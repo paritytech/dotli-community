@@ -1,0 +1,35 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The row's leading part, the mockup's icon and .row-label: the name
+   ellipsizes before the segments give up any width. */
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--chrome-text-muted);
+}
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Phones: the boards' 20 px icon, 12 px from the name. */
+@media (max-width: 560px) {
+  .label {
+    gap: var(--sp-3);
+  }
+  .icon {
+    width: 20px;
+    height: 20px;
+  }
+}

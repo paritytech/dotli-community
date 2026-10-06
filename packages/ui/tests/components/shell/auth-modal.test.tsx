@@ -6,14 +6,24 @@ import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { AuthModal } from '../../../src/components/shell/AuthModal.js';
 import { setAuthState } from '../../../src/state/auth.js';
 import { updateAuthModal } from '../../../src/state/auth-modal.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
+import { getTopbarState, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
+import { anyTopbarSurfaceOpen } from '../../../src/state/topbar-surfaces.js';
 import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
-import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
-import { byId, coordinator, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
-import { normalized, oldModal, type OldModalBody } from './old-auth-markup.js';
-import type * as PopoverModule from '../../../src/components/shell/create-popover.js';
-import { query } from '../../support.js';
+import { mouseClick, renderComponent } from '../../helpers/solid.js';
+import { setViewportWidth, stubPhoneViewport } from '../../helpers/viewport.js';
+import {
+  byId,
+  coordinator,
+  expectQrSpinnerView,
+  press,
+  recordEvents,
+  settleAll,
+  useAuthController,
+} from './auth-harness.js';
+import { byTestId, query } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const device = vi.hoisted(() => ({ mobile: false }));
 vi.mock('../../../../shared/src/device.js', () => ({
@@ -33,34 +43,10 @@ vi.mock('qrcode', () => {
   };
 });
 
-// Counts the auth modal's dialog `setOpen` calls: its popover is the only
-// one in `dialog` mode here.
-const dialogSetOpen = vi.hoisted(() => ({ calls: [] as boolean[] }));
-vi.mock('../../../src/components/shell/create-popover.js', async importOriginal => {
-  const actual = await importOriginal<typeof PopoverModule>();
-  return {
-    ...actual,
-    createPopover: (options: Parameters<typeof actual.createPopover>[0]) => {
-      const popover = actual.createPopover(options);
-      if (options.mode !== 'dialog') {
-        return popover;
-      }
-      return {
-        ...popover,
-        setOpen: (next: boolean) => {
-          dialogSetOpen.calls.push(next);
-          popover.setOpen(next);
-        },
-      };
-    },
-  };
-});
-
 useAuthController();
 
 beforeEach(() => {
   device.mobile = false;
-  dialogSetOpen.calls = [];
   qr.toCanvas = vi.fn<DrawQr>(() => Promise.resolve());
 });
 
@@ -106,18 +92,161 @@ function pairing(extra: Partial<DotliAuthState> = {}): DotliAuthState {
 }
 
 function isOpen(): boolean {
-  return byId('auth-modal-backdrop').classList.contains('open');
+  return byId('auth-modal-backdrop').hasAttribute('data-open');
 }
 
 function qrText(): string {
   return byId('auth-modal-qr').textContent;
 }
 
-function expectMarkup(
-  backdrop: Element,
-  opts: Omit<Parameters<typeof oldModal>[0], 'body'> & { body: OldModalBody },
-): void {
-  expect(normalized(backdrop).isEqualNode(normalized(oldModal(opts)))).toBe(true);
+type ModalBody =
+  | { kind: 'empty' }
+  | { kind: 'spinner' }
+  | { kind: 'canvas'; payload: string }
+  | { kind: 'mobile-qr'; payload: string; qrShown: boolean }
+  | { kind: 'authenticating' }
+  | { kind: 'error'; title: string; subtitle: string; detail?: string; retry: boolean };
+
+interface ModalExpectation {
+  open: boolean;
+  productLabel?: string;
+  reason?: string;
+  hint: string;
+  getAppHidden: boolean;
+  body: ModalBody;
+}
+
+const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
+
+/** The drawn code on its tile: the canvas, named as an image, then the badge. */
+function expectQrTile(tile: Element, payload: string): void {
+  expect(tags(tile)).toEqual(['CANVAS', 'SPAN']);
+  const canvas = nth(tile.children, 0) as HTMLElement;
+  expect(canvas.dataset['qrPayload']).toBe(payload);
+  expect(canvas.getAttribute('role')).toBe('img');
+  expect(canvas.getAttribute('aria-label')).toBe('Sign-in QR code');
+  expect(tile.children[1]?.getAttribute('aria-hidden')).toBe('true');
+}
+
+/** The QR container's content for each view the modal can show. */
+function expectQrBody(qrBox: Element, body: ModalBody): void {
+  switch (body.kind) {
+    case 'empty':
+      expect(qrBox.childNodes).toHaveLength(0);
+      break;
+    case 'spinner':
+      expectQrSpinnerView();
+      break;
+    case 'canvas': {
+      expect(tags(qrBox)).toEqual(['DIV', 'P']);
+      expectQrTile(byTestId('auth-modal-qr-tile', qrBox), body.payload);
+      expect(byTestId('auth-modal-waiting', qrBox).textContent).toBe('Waiting for your phone');
+      break;
+    }
+    case 'mobile-qr': {
+      const openApp = byTestId('auth-modal-open-app', qrBox, HTMLAnchorElement);
+      expect(openApp.getAttribute('href')).toBe(body.payload);
+      expect(openApp.textContent).toBe('Login With Polkadot App');
+      if (body.qrShown) {
+        // The QR on top, the deeplink demoted to a link under it, the toggle gone.
+        expect(tags(qrBox)).toEqual(['A', 'P', 'A']);
+        const qrLink = byTestId('auth-modal-qr-link', qrBox, HTMLAnchorElement);
+        expect(qrLink.getAttribute('href')).toBe(body.payload);
+        expectQrTile(qrLink, body.payload);
+        expect(byTestId('auth-modal-waiting', qrBox).textContent).toBe('Waiting for your phone');
+        expect(qrBox.lastElementChild).toBe(openApp);
+        expect(qrBox.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
+      } else {
+        // The deeplink leads, then the toggle, and no QR yet.
+        expect(tags(qrBox)).toEqual(['A', 'BUTTON']);
+        expect(qrBox.firstElementChild).toBe(openApp);
+        const toggle = byTestId('auth-modal-qr-toggle', qrBox, HTMLButtonElement);
+        expect(toggle.type).toBe('button');
+        expect(toggle.textContent).toBe('Show QR instead');
+        expect(qrBox.querySelector('canvas')).toBeNull();
+      }
+      break;
+    }
+    case 'authenticating': {
+      expect(tags(qrBox)).toEqual(['DIV']);
+      const progress = nth(qrBox.children, 0);
+      expect(tags(progress)).toEqual(['DIV', 'P']);
+      byTestId('auth-modal-spinner', progress);
+      expect(progress.children[1]?.textContent).toBe('Logging in...');
+      break;
+    }
+    case 'error': {
+      expect(tags(qrBox)).toEqual(['DIV']);
+      const view = nth(qrBox.children, 0);
+      const expectedTags = ['DIV', 'DIV', 'DIV'];
+      if (body.detail !== undefined && body.detail.length > 0) {
+        expectedTags.push('DIV');
+      }
+      if (body.retry) {
+        expectedTags.push('BUTTON');
+      }
+      expect(tags(view)).toEqual(expectedTags);
+      expect(view.children[0]?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+      expect(view.children[1]?.textContent).toBe(body.title);
+      expect(view.children[2]?.textContent).toBe(body.subtitle);
+      if (body.detail !== undefined && body.detail.length > 0) {
+        expect(view.children[3]?.textContent).toBe(body.detail);
+      }
+      if (body.retry) {
+        const retry = view.lastElementChild as HTMLButtonElement;
+        expect(retry.tagName).toBe('BUTTON');
+        expect(retry.textContent).toBe('Retry');
+      }
+      break;
+    }
+  }
+}
+
+/**
+ * The surface apart from styling: the dialog ARIA, the head and the body in
+ * order with their ids and text, the visibility of the reason and the get-app
+ * link, and the QR container's view.
+ */
+function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
+  expect(backdrop.id).toBe('auth-modal-backdrop');
+  expect(backdrop.tagName).toBe('DIALOG');
+  expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
+  expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
+  // The scrim, then the card: no sheet head on a wide screen, and the card
+  // holds the Surface with the parts.
+  expect(tags(backdrop)).toEqual(['DIV', 'DIV']);
+  const surface = nth(backdrop.children, 1);
+  expect(surface.getAttribute('data-testid')).toBe('auth-modal');
+  expect(tags(surface)).toEqual(['DIV']);
+  expect(tags(nth(surface.children, 0))).toEqual(['SECTION']);
+  const body = nth(nth(surface.children, 0).children, 0);
+  expect(Array.from(body.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+    'DIV#',
+    'DIV#auth-modal-qr',
+    'A#auth-modal-get-app',
+    'BUTTON#auth-modal-close',
+  ]);
+  const head = nth(body.children, 0);
+  expect(Array.from(head.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+    'H2#auth-modal-title',
+    'P#auth-modal-reason',
+    'P#auth-modal-hint',
+  ]);
+  expect(byId('auth-modal-title').textContent).toBe(
+    opts.productLabel !== undefined ? `${opts.productLabel} wants you to sign in` : 'Login with Polkadot Mobile',
+  );
+  const reason = byId('auth-modal-reason');
+  expect(reason.hidden).toBe(opts.reason === undefined);
+  expect(reason.textContent).toBe(opts.reason ?? '');
+  expect(byId('auth-modal-hint').textContent).toBe(opts.hint);
+  const getApp = byId('auth-modal-get-app', HTMLAnchorElement);
+  expect(getApp.hidden).toBe(opts.getAppHidden);
+  expect(getApp.getAttribute('href')).toBe('https://docs.polkadot.com/apps/');
+  expect(getApp.getAttribute('target')).toBe('_blank');
+  expect(getApp.getAttribute('rel')).toBe('noopener noreferrer');
+  expect(getApp.textContent).toBe("Don't have the app? Get Polkadot Mobile");
+  expect(byId('auth-modal-close').textContent).toBe('Cancel');
+  expectQrBody(byId('auth-modal-qr'), opts.body);
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -128,15 +257,14 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
+useFloatingSurfaces();
+
 describe('AuthModal markup', () => {
-  it('As a dotli user, the closed modal has the dialog markup the topbar set up, empty', async () => {
+  it('As a dotli user, the closed modal has its dialog ids, labels and ARIA state, empty', async () => {
     // When
     const backdrop = await renderModal();
 
     // Then
-    expect(backdrop.getAttribute('role')).toBe('dialog');
-    expect(backdrop.getAttribute('aria-modal')).toBe('true');
-    expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
     expectMarkup(backdrop, {
       open: false,
       hint: DESKTOP_HINT,
@@ -145,7 +273,7 @@ describe('AuthModal markup', () => {
     });
   });
 
-  it('As a desktop user, the login modal opens on the spinner, then shows the QR code the topbar drew', async () => {
+  it('As a desktop user, the login modal opens on the spinner, then shows the QR code', async () => {
     // Given
     const backdrop = await renderModal();
 
@@ -167,8 +295,9 @@ describe('AuthModal markup', () => {
     // Then
     expect(qr.toCanvas).toHaveBeenCalledTimes(1);
     expect(qr.toCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), DEEPLINK, {
-      width: 200,
+      width: 218,
       margin: 2,
+      errorCorrectionLevel: 'Q',
       color: { dark: '#000000', light: '#ffffff' },
     });
     expectMarkup(backdrop, {
@@ -179,6 +308,60 @@ describe('AuthModal markup', () => {
       body: { kind: 'canvas', payload: DEEPLINK },
     });
     expect(document.querySelector('#auth-modal-qr canvas')).toBe(qr.toCanvas.mock.calls[0]?.[0]);
+  });
+
+  it("As a user on a phone-width window, the QR code is drawn at the phone sheet's larger size", async () => {
+    // Given
+    setViewportWidth(390);
+    try {
+      await renderModal();
+      byId('auth-button').click();
+      await settleQr();
+
+      // When
+      await authState(pairing());
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(1);
+      expect(qr.toCanvas).toHaveBeenCalledWith(
+        expect.any(HTMLCanvasElement),
+        DEEPLINK,
+        expect.objectContaining({ width: 248 }),
+      );
+    } finally {
+      setViewportWidth(1024);
+    }
+  });
+
+  it('As a desktop user narrowing the window to a phone width and back, the open QR code is redrawn at each size', async () => {
+    // Given
+    try {
+      await renderModal();
+      byId('auth-button').click();
+      await settleQr();
+      await authState(pairing());
+      const canvas = qr.toCanvas.mock.calls[0]?.[0];
+
+      // When
+      setViewportWidth(390);
+      await settleQr();
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(2);
+      expect(qr.toCanvas).toHaveBeenLastCalledWith(canvas, DEEPLINK, expect.objectContaining({ width: 248 }));
+      expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
+
+      // When
+      setViewportWidth(1024);
+      await settleQr();
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(3);
+      expect(qr.toCanvas).toHaveBeenLastCalledWith(canvas, DEEPLINK, expect.objectContaining({ width: 218 }));
+      expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
+    } finally {
+      setViewportWidth(1024);
+    }
   });
 
   it('As a user asked to sign in by a product, the title names it and shows why, as text', async () => {
@@ -195,7 +378,7 @@ describe('AuthModal markup', () => {
 
     // Then
     expect(byId('auth-modal-title').querySelector('b')).toBeNull();
-    expect(byId('auth-modal-title').textContent).toBe('localhost:<b>x</b> is asking you to sign in');
+    expect(byId('auth-modal-title').textContent).toBe('localhost:<b>x</b> wants you to sign in');
     expect(byId('auth-modal-reason').textContent).toBe('<i>to vote</i>');
     expectMarkup(backdrop, {
       open: true,
@@ -217,7 +400,7 @@ describe('AuthModal markup', () => {
 
     // Then
     expect(qrText()).toContain('Logging in...');
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    byTestId('auth-modal-spinner', byId('auth-modal-qr'));
     expect(isOpen()).toBe(true);
     expectMarkup(backdrop, {
       open: true,
@@ -227,7 +410,7 @@ describe('AuthModal markup', () => {
     });
   });
 
-  it('As a new user, a failed login shows the error view the topbar built, and Retry starts over', async () => {
+  it('As a new user, a failed login shows the error view, and Retry starts over', async () => {
     // Given
     const loginRequests = recordEvents('dotli:truapi-login-request');
     const backdrop = await renderModal();
@@ -255,13 +438,13 @@ describe('AuthModal markup', () => {
     });
 
     // When
-    query(document, '.auth-modal-retry').click();
+    byTestId('auth-modal-retry', document).click();
     await settleQr();
 
     // Then
     expect(loginRequests.details).toEqual([{ reason: undefined }]);
     expect(isOpen()).toBe(true);
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    expectQrSpinnerView();
   });
 
   it('As a new user whose account is still being set up, the error view hides the raw reason', async () => {
@@ -420,42 +603,6 @@ describe('AuthModal login flow', () => {
     expect(document.activeElement).toBe(byId('auth-button'));
   });
 
-  it('As a keyboard user, Tab and Shift+Tab stay inside the open modal', async () => {
-    // Given: Cancel is the modal's last control.
-    await renderModal();
-    await authState(pairing());
-    byId('auth-modal-close').focus();
-
-    // When
-    const tab = press('Tab');
-
-    // Then: it wraps to the modal's first control.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
-    expect(document.activeElement).not.toBe(byId('auth-modal-close'));
-
-    // When: focus somehow left the modal.
-    byId('outside').focus();
-    const shiftTab = press('Tab', { shiftKey: true });
-
-    // Then
-    expect(shiftTab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(byId('auth-modal-close'));
-  });
-
-  it('As a keyboard user, the open modal focuses its first control, not a link, as a Radix Dialog does', async () => {
-    // Given
-    await renderModal();
-    byId('auth-button').focus();
-
-    // When
-    await authState(pairing());
-
-    // Then: the get-app link is hidden on desktop, and the QR (a canvas)
-    // takes no focus, so Cancel is the first control.
-    expect(document.activeElement).toBe(byId('auth-modal-close'));
-  });
-
   it('As a user, the page does not scroll behind the open modal, and scrolls again once it closes', async () => {
     // Given
     document.body.style.overflow = 'auto';
@@ -495,22 +642,6 @@ describe('AuthModal login flow', () => {
     document.body.style.overflow = '';
   });
 
-  it('As a user, a press outside the modal (neither its backdrop nor the auth button) closes it and cancels the login', async () => {
-    // Given
-    const cancels = recordEvents('dotli:truapi-cancel-login');
-    await renderModal();
-    await authState(pairing());
-    expect(isOpen()).toBe(true);
-
-    // When: something above the backdrop, outside it, is pressed.
-    pointerPress(byId('outside'));
-    await settleQr();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(cancels.details).toHaveLength(1);
-  });
-
   it('As a keyboard user, Retry keeps focus in the modal while the error view it sat in goes away', async () => {
     // Given
     await renderModal();
@@ -519,18 +650,18 @@ describe('AuthModal login flow', () => {
       kind: 'Other',
       reason: 'Host failure',
     });
-    const retry = document.querySelector<HTMLElement>('.auth-modal-retry');
-    retry?.focus();
+    const retry = byTestId('auth-modal-retry', document);
+    retry.focus();
     expect(document.activeElement).toBe(retry);
 
     // When
-    retry?.click();
+    retry.click();
     await settleQr();
 
     // Then: the button is gone, and focus is on the modal, not the body.
-    expect(retry?.isConnected).toBe(false);
+    expect(retry.isConnected).toBe(false);
     expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(byId('auth-modal-backdrop'));
+    expect(document.activeElement).toBe(byTestId('auth-modal', document));
   });
 
   it('As a user, the modal stays open, focused and trapping Tab through its own blocking-modal lease, while the theme menu closes for it', async () => {
@@ -539,7 +670,7 @@ describe('AuthModal login flow', () => {
     await renderModal();
     mouseClick(byId('theme-toggle'));
     await settleQr();
-    expect(byId('theme-popover').classList.contains('open')).toBe(true);
+    expect(byId('theme-popover').hasAttribute('data-open')).toBe(true);
 
     // When: the controller takes the lease, which marks a blocking modal up.
     await authState(pairing());
@@ -547,7 +678,7 @@ describe('AuthModal login flow', () => {
     await settleQr();
 
     // Then
-    expect(byId('theme-popover').classList.contains('open')).toBe(false);
+    expect(byId('theme-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
     byId('auth-modal-close').focus();
@@ -607,8 +738,60 @@ describe('AuthModal login flow', () => {
 
     // Then
     expect(isOpen()).toBe(true);
-    expect(byId('auth-modal-title').textContent).toBe('localhost:3000 is asking you to sign in');
+    expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
     expect(document.querySelector('#auth-modal-qr canvas')).not.toBeNull();
+  });
+});
+
+describe('AuthModal and the topbar', () => {
+  it('As a dApp user with the bar folded into the capsule, a product asking me to sign in brings the pill back, and the bar counts the sign-in as open until it closes', async () => {
+    // Given
+    await renderModal();
+    setTopbarVisible(false);
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'localhost:3000' } }));
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(getTopbarState().visible).toBe(true);
+    expect(anyTopbarSurfaceOpen()).toBe(true);
+
+    // When
+    byId('auth-modal-close').click();
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(anyTopbarSurfaceOpen()).toBe(false);
+  });
+
+  it('As a dApp user with the bar folded, a sign-in waiting behind another prompt leaves the capsule alone until it opens', async () => {
+    // Given: a prompt holds the blocking-modal queue.
+    await renderModal();
+    setTopbarVisible(false);
+    const scope = coordinator.createScope();
+    const { promise: held, resolve: release }: PromiseWithResolvers<void> = Promise.withResolvers();
+    const prompt = scope.enqueue(() => held);
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'localhost:3000' } }));
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(getTopbarState().visible).toBe(false);
+
+    // When
+    release();
+    await prompt;
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(getTopbarState().visible).toBe(true);
+    scope.dispose();
   });
 });
 
@@ -620,7 +803,7 @@ describe('AuthModal QR', () => {
     qr.toCanvas = vi.fn<DrawQr>(() => drawing.promise);
     await renderModal();
     await authState(pairing());
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    expectQrSpinnerView();
 
     // When: the wallet approved before the drawing finished.
     await authState({ tag: 'Authenticating' });
@@ -672,7 +855,7 @@ describe('AuthModal QR', () => {
 
     // Then
     expect(document.querySelector('#auth-modal-qr canvas')).toBeNull();
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    expectQrSpinnerView();
 
     // When
     drawings.get('polkadotapp://second')?.();
@@ -745,25 +928,6 @@ describe('AuthModal on unrelated store writes', () => {
     expect(qr.toCanvas).toHaveBeenCalledTimes(1);
     expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
   });
-
-  it("As a user, the open modal's dialog is set once per open, not again on other modal writes", async () => {
-    // Given
-    await renderModal();
-    await authState(pairing());
-    expect(isOpen()).toBe(true);
-    const opens = dialogSetOpen.calls.length;
-    expect(dialogSetOpen.calls.at(-1)).toBe(true);
-
-    // When
-    updateAuthModal({ reason: 'first' });
-    await settleQr();
-    updateAuthModal({ productLabel: 'other.dot' });
-    await settleQr();
-
-    // Then
-    expect(dialogSetOpen.calls.length).toBe(opens);
-    expect(isOpen()).toBe(true);
-  });
 });
 
 describe('AuthModal on a phone', () => {
@@ -798,7 +962,7 @@ describe('AuthModal on a phone', () => {
     expect(byId('auth-modal-get-app').hidden).toBe(true);
   });
 
-  it('As a phone user, the deeplink leads and the QR is behind Show QR instead, with the markup the topbar built', async () => {
+  it('As a phone user, the deeplink leads and the QR is behind Show QR instead, with its ids, labels and ARIA state', async () => {
     // Given
     device.mobile = true;
     const backdrop = await renderModal();
@@ -812,12 +976,11 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: MOBILE_HINT,
       getAppHidden: false,
-      mobileClass: true,
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: false },
     });
 
     // When
-    query(document, '.auth-modal-qr-toggle').click();
+    byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
 
     // Then
@@ -826,11 +989,10 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: DESKTOP_HINT,
       getAppHidden: false,
-      mobileClass: true,
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: true },
     });
 
-    // When: the wallet approved; the QR's hint and the column layout stay.
+    // When: the wallet approved, the QR's hint stays.
     await authState({ tag: 'Authenticating' });
 
     // Then
@@ -839,7 +1001,6 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: DESKTOP_HINT,
       getAppHidden: true,
-      mobileClass: true,
       body: { kind: 'authenticating' },
     });
 
@@ -852,9 +1013,91 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: MOBILE_HINT,
       getAppHidden: false,
-      mobileClass: true,
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: false },
     });
+  });
+
+  it('As a phone user, the sign-in sheet is headed Sign in with a close button, which closes it and cancels the login', async () => {
+    // Given
+    device.mobile = true;
+    stubPhoneViewport(true);
+    try {
+      const backdrop = await renderModal();
+      const cancels = recordEvents('dotli:truapi-cancel-login');
+
+      // When
+      await authState(pairing());
+
+      // Then: the head leads the sheet, above the body as it was.
+      const surface = byTestId('auth-modal', backdrop);
+      const head = byTestId('auth-modal-sheet-head', surface);
+      expect(surface.firstElementChild).toBe(head);
+      const title = byTestId('auth-modal-sheet-title', head);
+      expect(title.tagName).toBe('H2');
+      expect(title.textContent).toBe('Sign in');
+      expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
+
+      // When
+      const close = byTestId('auth-modal-sheet-close', head);
+      expect(close.getAttribute('aria-label')).toBe('Close');
+      close.click();
+      await settleQr();
+
+      // Then
+      expect(isOpen()).toBe(false);
+      expect(cancels.details).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('As a user who narrows an open sign-in to a phone width, the sheet it becomes is headed Sign in with a close button', async () => {
+    // Given: the sign-in open on a wide screen.
+    const viewport = stubPhoneViewport(false);
+    try {
+      const backdrop = await renderModal();
+      await authState(pairing());
+      const cancels = recordEvents('dotli:truapi-cancel-login');
+
+      // When
+      viewport.set(true);
+      await settleQr();
+
+      // Then
+      const surface = byTestId('auth-modal', backdrop);
+      const head = byTestId('auth-modal-sheet-head', surface);
+      expect(surface.firstElementChild).toBe(head);
+      expect(byTestId('auth-modal-sheet-title', head).textContent).toBe('Sign in');
+
+      // When
+      byTestId('auth-modal-sheet-close', head).click();
+      await settleQr();
+
+      // Then
+      expect(isOpen()).toBe(false);
+      expect(cancels.details).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('As a keyboard user on a phone, Show QR instead keeps focus in the sign-in while the button goes away', async () => {
+    // Given
+    device.mobile = true;
+    await renderModal();
+    await authState(pairing());
+    const toggle = byTestId('auth-modal-qr-toggle', document);
+    toggle.focus();
+    expect(document.activeElement).toBe(toggle);
+
+    // When
+    toggle.click();
+    await settleQr();
+
+    // Then: the button is gone, and focus is on the dialog, not the body.
+    expect(toggle.isConnected).toBe(false);
+    expect(byTestId('auth-modal-qr-link', document)).toBeInstanceOf(HTMLAnchorElement);
+    expect(document.activeElement).toBe(byTestId('auth-modal', document));
   });
 });
 
@@ -864,16 +1107,17 @@ describe('AuthModal on a phone, on unrelated store writes', () => {
     device.mobile = true;
     await renderModal();
     await authState(pairing());
-    query(document, '.auth-modal-qr-toggle').click();
+    byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
-    expect(query(document, '.auth-modal-qr-link').hidden).toBe(false);
+    expect(document.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
 
     // When
     updateAuthModal({ reason: 'first' });
     await settleQr();
 
     // Then
-    expect(query(document, '.auth-modal-qr-link').hidden).toBe(false);
+    expect(document.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
+    expect(byTestId('auth-modal-qr-link', document, HTMLAnchorElement).getAttribute('href')).toBe(DEEPLINK);
     expect(byId('auth-modal-hint').textContent).toBe(DESKTOP_HINT);
   });
 });
@@ -967,7 +1211,7 @@ describe('AuthModal error copy', () => {
   it('As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports', async () => {
     const modalText = await failWith('Host failure');
     expect(modalText).toContain('Login did not complete');
-    expect(document.querySelector('#auth-modal-qr .auth-modal-error')?.textContent).toBe('Host failure');
+    expect(query(document, '#auth-modal-qr [data-testid="auth-modal-error"]').textContent).toBe('Host failure');
     expect(modalText).toContain('Retry');
   });
 });

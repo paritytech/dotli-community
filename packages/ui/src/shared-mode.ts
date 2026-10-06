@@ -165,17 +165,14 @@ export async function bootstrapSharedMode(): Promise<void> {
   try {
     sharedReads = await Promise.all(SHARED_KEYS.map(key => channel.read(key)));
   } catch (error: unknown) {
-    log.warn(
-      '[dot.li shared-mode] Initial read failed; using per-origin localStorage:',
-      error instanceof Error ? error.message : error,
-    );
+    log.warn('[dot.li shared-mode] Initial read failed; using per-origin localStorage:', error);
     return;
   }
 
   const trackWrite = (operation: Promise<void>, key: string, label: string): void => {
     const pending = operation
       .catch((err: unknown) => {
-        log.warn(`[dot.li shared-mode] ${label} failed for`, key, err instanceof Error ? err.message : err);
+        log.warn(`[dot.li shared-mode] ${label} failed for`, key, err);
       })
       .finally(() => {
         pendingWrites.delete(pending);

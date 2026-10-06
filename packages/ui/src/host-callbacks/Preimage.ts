@@ -21,7 +21,7 @@ function noop(): void {
 function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['lookupPreimage'] {
   return request => {
     const key = toHex(request);
-    log.warn(`[${label}] Preimage lookup subscribe, key: ${key}`);
+    log.debug(`[${label}] Preimage lookup subscribe, key: ${key}`);
 
     const cached = preimageCache.get(key);
     if (cached) {

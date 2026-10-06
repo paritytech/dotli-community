@@ -201,6 +201,13 @@ sessions are not disposed by this failure.
 See [Experimental test wallet](../../README.md#experimental-test-wallet) for activation, claim confirmation, custody
 risks, and recovery behavior.
 
+The Wallet view lives in `packages/ui/src/components/truapi-debug/wallet/`: `controller.ts` holds its state and safety
+rules (scoped reads, secret clearing, listener disposal) and survives tab swaps; `WalletView.tsx` and
+`AllowanceSnapshot.tsx` draw it with co-located CSS modules, and the header entry is part of `Header.tsx`. The filter
+bar and detail pane are hidden while Wallet is selected. `@dotli/truapi-debug` stays DOM- and style-free: it exports
+only the wallet types (`ExperimentalWalletControls` and the `Inspector*` shapes) and the allocation-outcome model
+(`observedAllocations`, `isAllocationEvent`).
+
 ## Filters
 
 The filter bar at the top of the panel applies to the two event views:
@@ -304,10 +311,17 @@ long after the panel is up.
 
 ### Keyed reconciliation
 
-Both the list and the timeline renderers avoid `innerHTML =` on steady-state updates. Every logical element (row, box,
-rail, tick, label, connector) carries a `data-key` derived from its stable id (event seq, segment anchor, etc.). On each
-render we walk the new layout and either update an existing element's attributes in place or create it if it didn't
-exist; elements whose key is absent from the new layout are removed.
+No view rebuilds its markup on steady-state updates. The list and the Timeline are Solid components that key every
+logical element on its stable id: a row on its event seq, a swimlane on its lane key, and a rail, tick or box on its
+anchor seq. A redraw updates an element that is still there in place, creates one that is new and removes one whose key
+is gone. The Timeline's geometry comes from `buildTimeline` in `timeline.ts`, a pure function over `timeline-layout.ts`.
+Its selection is reactive: the box holding the selected seq carries `data-selected`, so a click redraws nothing.
+
+The Resolution view does the same with Solid: its facts are keyed by name, its rows by chain role and its blocks by
+position, and a redraw whose model did not change stops before touching anything.
+
+View geometry and labels live next to the view that draws them: pure detail formatting in `detail-format.ts`, the
+Timeline geometry in `timeline.ts`, and the Resolution formatting in the UI package's `resolution/format.ts`.
 
 This keeps hover state stable and means clicks don't get dropped between pointerdown and click when events are streaming
 in — the earlier bug class where `<details>` expansion and timeline-box selection were flaky under heavy traffic.

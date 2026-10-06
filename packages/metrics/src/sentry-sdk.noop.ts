@@ -12,7 +12,6 @@ const noop = (): void => {
 
 export const init = noop;
 export const captureException = noop;
-export const captureMessage = noop;
 export const setUser = noop;
 export const setTag = noop;
 export const addBreadcrumb = noop;

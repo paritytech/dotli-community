@@ -1,0 +1,105 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 300px;
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+}
+
+.bar {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--h-control-lg);
+  margin: 0;
+  padding: 0 var(--sp-2) 0 var(--sp-5);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  transition: box-shadow var(--dur-fast);
+}
+
+.bar:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--border-subtle),
+    0 0 0 2px var(--border-focus);
+}
+
+/* After the focus rule, so an invalid name stays red while the input has focus. */
+.bar[data-invalid],
+.bar[data-invalid]:focus-within {
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+.input {
+  flex: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
+}
+
+/* The bar draws the ring. Outweighs global.css's :focus-visible whatever the
+   sheet order (dev loads it last). */
+.input:focus-visible {
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--text-secondary);
+}
+
+.suffix {
+  flex: none;
+  font-size: var(--fs-title-lg);
+  white-space: nowrap;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.go {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
+  margin: 0 0 0 var(--sp-2);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--fill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    background var(--dur-fast);
+}
+
+.input:not(:placeholder-shown) ~ .go {
+  background: var(--text-strong);
+  color: var(--bg-page);
+}
+
+.error {
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  text-align: center;
+  color: var(--danger);
+}

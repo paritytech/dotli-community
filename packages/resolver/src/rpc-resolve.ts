@@ -20,7 +20,7 @@ import { createClient, type SubstrateClient } from '@polkadot-api/substrate-clie
 
 import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
-import { log, dur } from '@dotli/shared';
+import { log } from '@dotli/shared';
 
 import { namehash, toHex, decodeIpfsContenthashResult } from './abi.js';
 import { ContenthashDecodeError, UnsupportedContenthashCodecError } from './errors.js';
@@ -101,7 +101,7 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   // request timer still wins and the host reports the generic message.
   try {
     await raceSyncTimeout(api.whenReady(), 'Asset Hub RPC', TIMEOUTS.HUB_FINALIZED_SYNC);
-    log.warn(`[dot.li rpc-resolve] RPC chain head ready (${dur(t0)})`);
+    log.event('RPC chain head ready', { flow: 'resolve', ms: Math.round(performance.now() - t0) });
   } catch (err) {
     try {
       api.destroy();
@@ -110,7 +110,7 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
     } catch {
       /* already dead */
     }
-    log.error(`[dot.li rpc-resolve] RPC connection failed: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(`[dot.li rpc-resolve] RPC connection failed: ${err instanceof Error ? err.message : String(err)}`, err);
     throw err;
   }
 
@@ -142,10 +142,6 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
  */
 export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
   return withRpcClient(async api => {
-    log.warn(
-      `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
-    );
-
     const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
     const node = namehash(domain);
 
@@ -160,7 +156,11 @@ export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): 
       dotns.STORAGE_SLOTS.CONTENTHASH,
     );
 
-    log.warn(`[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`);
+    log.event('Contenthash read', {
+      flow: 'resolve',
+      found: contenthashBytes !== null,
+      ms: Math.round(performance.now() - t0),
+    });
 
     if (contenthashBytes === null) {
       onStatus?.(`Domain "${domain}" not found or no content set`);
@@ -172,7 +172,6 @@ export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): 
     const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
     switch (decoded.kind) {
       case 'ok':
-        log.warn(`[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`);
         onStatus?.(`Resolved "${domain}" via Trusted Provider`);
         return decoded.cid;
       case 'empty':

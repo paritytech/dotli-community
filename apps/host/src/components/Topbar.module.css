@@ -1,0 +1,198 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* One element morphs between the open pill and the collapsed status capsule
+   (data-hidden, from the auto-hide). Open, it is as wide as its content up to
+   95% of the window. data-tone colours the capsule's bar and data-action
+   shows its pulsing dot (bindTopbarStatus). body[data-landing] hides it. */
+
+.topbar {
+  position: fixed;
+  top: calc(var(--topbar-inset) + var(--safe-top));
+  left: 50%;
+  z-index: 1000;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: calc(95vw - var(--safe-left) - var(--safe-right));
+  height: var(--h-bar);
+  margin: 0;
+  padding: 0;
+  border-radius: var(--r-full);
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-bar);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+  transform: translateX(-50%);
+  /* Lets width animate between the capsule's size and fit-content where
+     supported, elsewhere it snaps. */
+  interpolate-size: allow-keywords;
+  /* No overshoot: a spring carries the pill past its size and back, and the
+     row inside visibly lurches as it settles. */
+  transition:
+    width var(--dur-morph) var(--ease-out),
+    height var(--dur-morph) var(--ease-out),
+    top var(--dur-morph) var(--ease-out),
+    box-shadow var(--dur);
+}
+/* Desktop only, like the auto-hide: a data-hidden that lands on a phone
+   (between a resize across 560 px and the auto-hide reacting) must not fold
+   the header. */
+@media (min-width: 561px) {
+  .topbar[data-hidden] {
+    top: calc(var(--sp-1) + var(--safe-top));
+    width: 120px;
+    height: var(--sp-2);
+    /* Clip, not hidden: a hidden overflow is a scroll container, and focusing
+       a clipped control would scroll the strip out of view. */
+    overflow: clip;
+    box-shadow: var(--chrome-shadow-capsule);
+  }
+}
+:global(body[data-landing]) .topbar {
+  display: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: var(--h-bar);
+  padding: 6px;
+  transition: opacity var(--dur) var(--delay-content) ease-out;
+}
+/* Collapsed, the row stays in the DOM and keeps its tab stops (tabbing into
+   it reveals the bar), clipped by the capsule and transparent. */
+@media (min-width: 561px) {
+  .topbar[data-hidden] .row {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast);
+  }
+}
+
+.strip {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  gap: var(--sp-1);
+  box-sizing: border-box;
+  padding: var(--sp-hair);
+  pointer-events: none;
+}
+/* Shown at once, the bar would fill the pill while it still shrinks, a wide
+   flash of colour. It fades in over the collapse instead, slow at first while
+   the pill is large, and out quickly as the bar opens. Hidden once faded, so
+   its loops do not run behind the open bar. */
+@media (min-width: 561px) {
+  .strip {
+    display: flex;
+    visibility: hidden;
+    opacity: 0;
+    transition:
+      opacity var(--dur-fast),
+      visibility 0s var(--dur-fast);
+  }
+  .topbar[data-hidden] .strip {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity var(--dur-morph) ease-in;
+  }
+}
+/* The bar's --tone is the network's, from the topbar's data-tone. */
+.bar {
+  flex: 1;
+  align-self: stretch;
+  border-radius: var(--r-full);
+  background: var(--tone, var(--chrome-ok));
+}
+.topbar[data-tone='idle'] .bar {
+  animation: pulse var(--loop) infinite ease-in-out;
+}
+/* Something waits on the user: a white dot leads the bar and pulses in
+   colour, not in size, so the capsule never changes shape. The colour fades
+   through an overlay's opacity, which stays on the compositor, where an
+   animated background would repaint the blurred capsule every frame. */
+.action {
+  position: relative;
+  display: none;
+  flex: none;
+  width: var(--sp-1);
+  height: var(--sp-1);
+  border-radius: 50%;
+  background: var(--chrome-action);
+}
+.action::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--chrome-action-dim);
+  opacity: 0;
+  animation: action var(--loop) infinite ease-in-out;
+}
+.topbar[data-action] .action {
+  display: block;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes action {
+  50% {
+    opacity: 1;
+  }
+}
+/* Phones: the square header across the top (the board's .tb-header): the
+   glass, a hairline at the bottom, the 60 px row under the top inset, no
+   radius and no shadow. The auto-hide never folds it at this width
+   (topbar-autohide.ts), and it never slides away on scroll. Fixed rather
+   than in the flow: the host page never scrolls, and the page and the frame
+   already start below --topbar-height (global.css), so the two look the
+   same and the element stays the one that morphs at desktop widths. */
+@media (max-width: 560px) {
+  .topbar {
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    height: calc(var(--h-bar) + var(--safe-top));
+    padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+    border-radius: 0;
+    box-shadow: inset 0 -1px 0 var(--chrome-line);
+    transform: none;
+    transition: none;
+  }
+  .row {
+    gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .row,
+  .topbar[data-hidden] .row,
+  .strip,
+  .topbar[data-hidden] .strip {
+    transition: none;
+  }
+  .bar,
+  .action::after {
+    animation: none;
+  }
+}
+
+/* Out of sight but still announced. */
+.offline {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

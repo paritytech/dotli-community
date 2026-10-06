@@ -3,4 +3,4 @@
 
 // Public API of @dotli/sandbox-checker. Other workspace packages import only from here.
 // Every other module under src/ is private to the package.
-export { loadSandboxChecker, type SandboxCheckerModule } from './lazy.js';
+export { loadSandboxChecker } from './lazy.js';

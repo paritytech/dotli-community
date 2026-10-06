@@ -226,13 +226,3 @@ export function decodeIpfsContenthashResult(contenthashHex: string): Contenthash
     return { kind: 'decode-error', cause };
   }
 }
-
-/**
- * Backwards-compatible string-or-null surface, for call sites that haven't
- * been migrated to the discriminated variant yet. New callers should use
- * `decodeIpfsContenthashResult` directly so they can surface the reason.
- */
-export function decodeIpfsContenthash(contenthashHex: string): string | null {
-  const result = decodeIpfsContenthashResult(contenthashHex);
-  return result.kind === 'ok' ? result.cid : null;
-}

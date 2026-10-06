@@ -7,17 +7,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { bindUrlPill } from '../src/url-pill.js';
 import { resetUrlPill, showLocalhostPill, showProductPill } from '../src/state/url-pill.js';
-import { byId } from './support.js';
+import { byId, byTestId } from './support.js';
 
 let unbind: (() => void) | undefined;
 
 /** The build-time URL bar, bound to the store. */
 function bind(): HTMLElement {
   document.body.innerHTML = `
-    <div class="topbar-url" id="topbar-url" hidden>
-      <div class="topbar-url-pill" id="url-pill">
-        <svg class="localhost-icon"></svg>
-        <span class="topbar-url-text"><span class="dot-domain"></span><span class="dot-tld"></span></span>
+    <div id="topbar-url" hidden>
+      <div id="url-pill">
+        <svg></svg>
+        <span data-testid="url-pill-text"><span id="url-pill-domain"></span><span id="url-pill-tld"></span></span>
       </div>
     </div>`;
   const bar = byId('topbar-url');
@@ -26,7 +26,7 @@ function bind(): HTMLElement {
 }
 
 function text(): string {
-  return byId('topbar-url').querySelector('.topbar-url-text')?.textContent ?? '';
+  return byTestId('url-pill-text', byId('topbar-url')).textContent;
 }
 
 afterEach(() => {
@@ -55,9 +55,9 @@ describe('URL bar', () => {
 
     // Then
     expect(bar.hidden).toBe(false);
-    expect(bar.querySelector('.dot-domain')?.textContent).toBe('early');
-    expect(bar.querySelector('.dot-tld')?.textContent).toBe('.dot.li');
-    expect(byId('url-pill').classList.contains('localhost-pill')).toBe(false);
+    expect(byId('url-pill-domain').textContent).toBe('early');
+    expect(byId('url-pill-tld').textContent).toBe('.dot.li');
+    expect(byId('url-pill').hasAttribute('data-localhost')).toBe(false);
 
     // When
     showProductPill('later', '.dot.li');
@@ -75,7 +75,7 @@ describe('URL bar', () => {
 
     // Then
     expect(byId('topbar-url').hidden).toBe(false);
-    expect(byId('url-pill').classList.contains('localhost-pill')).toBe(true);
+    expect(byId('url-pill').hasAttribute('data-localhost')).toBe(true);
     expect(text()).toBe('<b>localhost:3000</b>');
     expect(byId('url-pill').querySelector('b')).toBeNull();
   });

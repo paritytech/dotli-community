@@ -1,0 +1,231 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board's network menu: the status well, then per chain its name and
+   peers over a strip of block bars, the download rows and the tips. The
+   Surface around them sets the rhythm between them. */
+
+.status {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.status-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  min-width: 0;
+}
+.status-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.status-detail {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+
+.group {
+  padding: 0 var(--sp-1);
+}
+/* The surface's gap plus 4 between chains. */
+.group + .group {
+  margin-top: var(--sp-1);
+}
+.group-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+}
+/* Tabular figures, so a changing count cannot reflow the row it sits on. */
+.peers {
+  color: var(--chrome-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.peers[data-none] {
+  color: var(--chrome-err-text);
+}
+.cell {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+}
+.cell[data-unavailable],
+.waiting {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1;
+  white-space: nowrap;
+}
+.waiting {
+  position: absolute;
+  top: 50%;
+  left: var(--sp-1);
+  transform: translateY(-50%);
+}
+.bars {
+  position: relative;
+  display: flex;
+  /* 48 slots share the width. The newest is at the right edge. */
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--sp-hair);
+  box-sizing: border-box;
+  /* A flex item defaults to `min-width: auto`, which lets its content set
+     the floor and defeats the clipping. */
+  min-width: 0;
+  height: var(--sp-3);
+  overflow: hidden;
+}
+/* Set for one frame after a block lands (slideStrip): the strip starts
+   shifted right by the room the new bar took, then settles to zero, so the
+   row glides left together instead of the bars jumping a step. */
+.bars[data-sliding] {
+  transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.bar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border-radius: var(--r-hair);
+  transform-origin: bottom center;
+}
+/* A slot with no sample yet. */
+.stub {
+  flex: 1;
+  min-width: 0;
+  height: 3px;
+  border-radius: var(--r-hair);
+  background: var(--chrome-fill-strong);
+}
+.bar[data-new] {
+  animation: bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes bar-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+.bar[data-health='onTime'] {
+  background: var(--chrome-ok);
+}
+/* 8 and 5 of the strip's 12 px (the board's 10 and 6 of 16). */
+.bar[data-health='late'] {
+  height: 8px;
+  background: var(--chrome-warn);
+}
+.bar[data-health='veryLate'] {
+  height: 5px;
+  background: var(--chrome-err);
+}
+/* Its inline height is the elapsed share of the chain's block time once a first
+   head anchors the estimate. Searching before that, full and pulsing once the
+   block is due. */
+.pending {
+  height: 20%;
+  background: var(--chrome-idle);
+  opacity: 0.75;
+}
+.pending[data-pending='searching'] {
+  height: 45%;
+}
+.pending[data-pending='due'] {
+  height: 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pending {
+    transition: height 0.25s linear;
+  }
+  .pending[data-pending='searching'],
+  .pending[data-pending='due'] {
+    animation: pending-pulse var(--loop) ease-in-out infinite;
+  }
+}
+@keyframes pending-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bars[data-sliding] {
+    transition: none;
+  }
+  .bar[data-new] {
+    animation: none;
+  }
+}
+
+.transfer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+}
+/* Both rows empty (the product is on screen): no gap left behind. */
+.transfer:not(:has(> .transfer-row:not(:empty))) {
+  display: none;
+}
+.transfer-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  white-space: nowrap;
+}
+.transfer-row:empty {
+  display: none;
+}
+.transfer-label {
+  color: var(--chrome-text-muted);
+}
+.transfer-value {
+  color: var(--chrome-text);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phones: the boards' sizes. */
+@media (max-width: 560px) {
+  .status {
+    gap: var(--sp-3);
+  }
+  .group-label {
+    gap: var(--sp-2);
+  }
+  .bars {
+    height: var(--sp-4);
+  }
+  .stub {
+    height: 4px;
+  }
+  .bar[data-health='late'] {
+    height: 10px;
+  }
+  .bar[data-health='veryLate'] {
+    height: 6px;
+  }
+  .transfer-row {
+    gap: var(--sp-3);
+  }
+}

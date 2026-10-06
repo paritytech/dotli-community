@@ -6,9 +6,7 @@
 // Solid-free: consumed by the Solid truapi-debug components in
 // `packages/ui/src/components/truapi-debug/`, so it must not import
 // `@dotli/ui` or `solid-js`. These functions return plain data, never
-// markup — callers that render to `innerHTML` are responsible for
-// `escapeHtml`-guarding every field before it reaches the DOM; callers
-// that render via JSX get automatic text escaping instead.
+// markup. The callers render every field as JSX text, which escapes it.
 
 import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
 import type { StoredSystemEvent, StoredTruapiEvent } from './event-store.js';
@@ -60,17 +58,19 @@ export function ridColor(rid: string): string {
   return `hsl(${String(hue)}, 65%, 65%)`;
 }
 
-export function tagClass(tag: string): string {
+export type TagKind = 'request' | 'response' | 'subscription' | 'plain';
+
+export function tagKind(tag: string): TagKind {
   if (tag.endsWith('_request') || tag.endsWith('_start') || tag.endsWith('_submit')) {
-    return 'td-tag td-tag-req';
+    return 'request';
   }
   if (tag.endsWith('_response')) {
-    return 'td-tag td-tag-res';
+    return 'response';
   }
   if (tag.endsWith('_receive') || tag.endsWith('_interrupt') || tag.endsWith('_stop') || tag.endsWith('_subscribe')) {
-    return 'td-tag td-tag-sub';
+    return 'subscription';
   }
-  return 'td-tag';
+  return 'plain';
 }
 
 export interface TruapiRowData {
@@ -79,7 +79,7 @@ export interface TruapiRowData {
   requestId: string;
   ridShort: string;
   ridColor: string;
-  tagClassName: string;
+  tagKind: TagKind;
   displayTag: string;
   summary: string;
   pendingKey: string | null;
@@ -87,8 +87,7 @@ export interface TruapiRowData {
 
 /**
  * Pure fields derived from a stored TrUAPI event for its list row: the
- * decoded chain label/summary plus the badge inputs. Markup assembly
- * (with `escapeHtml`) is the caller's job.
+ * decoded chain label/summary plus the badge inputs.
  */
 export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null): TruapiRowData {
   const chain = decodeChainAnnotations(ev.tag, ev.payload);
@@ -100,7 +99,7 @@ export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null):
     requestId: ev.requestId,
     ridShort: ev.requestId.slice(0, 6),
     ridColor: ridColor(ev.requestId),
-    tagClassName: tagClass(ev.tag),
+    tagKind: tagKind(ev.tag),
     displayTag,
     summary,
     pendingKey,
@@ -130,20 +129,16 @@ export function systemRowData(ev: StoredSystemEvent): SystemRowData {
   };
 }
 
+export type RowSelection = 'selected' | 'paired';
+
 /**
- * Class attribute of a list row. Order is part of the markup contract:
- * td-row, selected, paired, system.
+ * A row is `selected` when it is the selected event, and `paired` when it
+ * shares the selected event's correlation key. A selected row is never also
+ * paired.
  */
-export function rowClassName(selected: boolean, paired: boolean, system: boolean): string {
-  let out = 'td-row';
+export function rowSelection(selected: boolean, inSelectedGroup: boolean): RowSelection | undefined {
   if (selected) {
-    out += ' selected';
+    return 'selected';
   }
-  if (paired) {
-    out += ' paired';
-  }
-  if (system) {
-    out += ' system';
-  }
-  return out;
+  return inSelectedGroup ? 'paired' : undefined;
 }
