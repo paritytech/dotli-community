@@ -62,6 +62,7 @@ import {
   withLocalIdentityUpdate,
   type LiveLocalWallet,
   type CoreConnection,
+  type CoreLease,
 } from './page-core.js';
 import type { InspectorProduct } from '@dotli/truapi-debug';
 import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
@@ -101,6 +102,7 @@ import { MediatedInputHost, validatedMediatedInputRequest } from './mediated-inp
 import { decidePromptPermission } from './host-callbacks/PromptPermission.js';
 import { createSubmitRateLimiter } from './host-callbacks/rate-limit.js';
 import { installPolkaVmViewInsetsRelay } from './polkavm-view-insets.js';
+import { createMediaHost, mediaOwnsCapture, PROTECTED_MEDIA_ALLOW, PROTECTED_MEDIA_SANDBOX } from './media-host.js';
 
 const noop = (): void => undefined;
 
@@ -111,6 +113,8 @@ interface ActiveHost {
   wallet: LiveLocalWallet | undefined;
   generation: number;
   iframe: HTMLIFrameElement;
+  /** End host-owned calls now, before a replacement render settles. */
+  stopMedia: () => void;
   dispose: () => void;
 }
 
@@ -125,12 +129,14 @@ type CurrentProduct =
       label: string;
       url: string;
       productId?: string | undefined;
+      legacyCapture: boolean;
     }
   | {
       mode: 'subdomain';
       label: string;
       cid: string;
       executableManifest: string | null;
+      legacyCapture: boolean;
     };
 
 let currentHost: ActiveHost | null = null;
@@ -676,8 +682,11 @@ function rerenderProduct(product: CurrentProduct): void {
     product.mode === 'iframe'
       ? renderIframe(product.url, product.label, {
           productId: product.productId,
+          legacyCapture: product.legacyCapture,
         })
-      : renderAppSubdomain(product.cid, product.label, product.executableManifest);
+      : renderAppSubdomain(product.cid, product.label, product.executableManifest, {
+          legacyCapture: product.legacyCapture,
+        });
   void render.catch((error: unknown) => {
     // A newer render superseded this one, so its result owns the UI now.
     if (renderGeneration !== expectedGeneration) {
@@ -702,11 +711,31 @@ function rerenderProduct(product: CurrentProduct): void {
 // Listen for device permission grants. Reload the iframe so the updated
 // `allow` attribute takes effect. Keep the current iframe visible and surface
 // a retry if replacement host startup fails.
-window.addEventListener('dotli:device-permission-changed', () => {
+window.addEventListener('dotli:device-permission-changed', event => {
   const product = currentProduct;
-  if (product !== null) {
+  const permission = (event as CustomEvent<{ permission?: unknown } | null>).detail?.permission;
+  // A protected Media container denies raw camera and microphone in its
+  // `allow` attribute whatever the grant, so those changes need no reload.
+  if (
+    product !== null &&
+    !(mediaOwnsCapture(product.label) && (permission === 'Camera' || permission === 'Microphone'))
+  ) {
     rerenderProduct(product);
   }
+});
+
+// The trusted permissions menu switches this execution between the protected
+// host Media container and legacy raw product capture.
+window.addEventListener('dotli:capture-container-changed', event => {
+  const detail = (event as CustomEvent<{ label?: unknown; legacyCapture?: unknown } | null>).detail;
+  const product = currentProduct;
+  if (product === null || detail?.label !== product.label || typeof detail.legacyCapture !== 'boolean') {
+    return;
+  }
+  // Calls and raw capture end before the replacement container exists.
+  currentHost?.dispose();
+  currentHost = null;
+  rerenderProduct({ ...product, legacyCapture: detail.legacyCapture });
 });
 
 let motionRelayCleanup: (() => void) | null = null;
@@ -1201,10 +1230,12 @@ function getDeepPath(): string {
 
 /**
  * Pin the product iframe to the area the host chrome and the insets leave.
- * product-frame-layout owns its geometry from here on.
+ * product-frame-layout owns its geometry from here on. A protected Media
+ * container positions its trusted compositor, which the iframe fills.
  */
 function applyIframeStyling(iframe: HTMLIFrameElement): void {
-  attachProductFrame(iframe);
+  const parent = iframe.parentElement;
+  attachProductFrame(iframe, parent?.classList.contains('host-media-compositor') === true ? parent : iframe);
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
 }
@@ -1329,8 +1360,10 @@ function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase 
     getPermissionAuthorizationStatuses(requests) {
       return provider.getPermissionAuthorizationStatuses(requests);
     },
-    setPermissionAuthorizationStatus(request, status) {
-      return provider.setPermissionAuthorizationStatus(request, status);
+    async setPermissionAuthorizationStatus(request, status) {
+      await provider.setPermissionAuthorizationStatus(request, status);
+      // Report the decision only once every live core sharing it applied it.
+      await connection.waitForPermissionRefresh(request);
     },
     dispose() {
       if (disposed) {
@@ -1470,8 +1503,40 @@ async function createHost(args: {
   extraAllow?: readonly string[];
   debugFlowId: string;
   viewInsetsRelay?: boolean;
+  /** Cross-origin product origin of a protected Media container. */
+  mediaOrigin?: string;
 }): Promise<ActiveHost> {
-  const lease = await acquireCore();
+  const coordinator = blockingModalCoordinator;
+  const media =
+    args.mediaOrigin !== undefined && coordinator !== null
+      ? createMediaHost({
+          label: args.label,
+          productId: args.productId ?? labelToProductId(args.label),
+          origin: args.mediaOrigin,
+          coordinator,
+        })
+      : undefined;
+  // The trusted compositor is the product frame's immediate, isolated parent;
+  // host media planes sit beside the frame inside it.
+  const container = media === undefined ? args.container : document.createElement('div');
+  if (media !== undefined) {
+    container.className = 'host-media-compositor';
+    container.style.cssText = 'position:fixed;isolation:isolate;z-index:0;overflow:hidden;';
+    args.container.append(container);
+  }
+  const disposeMedia = (): void => {
+    media?.dispose();
+    if (media !== undefined) {
+      container.remove();
+    }
+  };
+  let lease: CoreLease;
+  try {
+    lease = await acquireCore();
+  } catch (error) {
+    disposeMedia();
+    throw error;
+  }
   let connection: CoreConnection;
   let chatCapable: boolean;
   try {
@@ -1480,12 +1545,14 @@ async function createHost(args: {
     // The capability is primed by the host shell before rendering, so
     // this await settles from cache or the in-flight manifest read.
     chatCapable = await chatCapabilityFor(args.label);
-    connection = await lease.connect(chatCapable ? 'Worker' : 'App');
+    connection = await lease.connect(chatCapable ? 'Worker' : 'App', media);
   } catch (error) {
+    disposeMedia();
     lease.release();
     throw error;
   }
   const coreProvider = wrapCoreProviderForDebug(connection);
+  media?.bindProvider(coreProvider);
   const unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
   const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
   let productProvider: Provider | null = null;
@@ -1512,21 +1579,33 @@ async function createHost(args: {
     unregisterPermissions();
     unregisterChat();
     cleanupProductSide();
+    disposeMedia();
     coreProvider.dispose();
     lease.release();
   };
   try {
-    const allow = [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join(
-      '; ',
-    );
+    const granted = await buildAllowAttribute(args.label);
+    // A protected container never receives raw capture, whatever was granted.
+    const productAllow =
+      media === undefined
+        ? granted
+        : [
+            ...granted.split('; ').filter(directive => directive !== 'camera' && directive !== 'microphone'),
+            PROTECTED_MEDIA_ALLOW,
+          ].join('; ');
+    const allow = [productAllow, ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
       allow,
       sandbox: args.sandbox,
-      container: args.container,
+      container,
       onPort: connectProductPort,
     });
+    if (media !== undefined) {
+      host.iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;z-index:1;';
+      media.attach(host.iframe, container);
+    }
     if (args.viewInsetsRelay === true) {
       disposeViewInsets = installPolkaVmViewInsetsRelay(host.iframe, args.allowedOrigin);
     }
@@ -1551,6 +1630,8 @@ async function createHost(args: {
         }
         probeConnectionId = typeof connectionId === 'string' ? connectionId : null;
         if (probeMode === 'modern') {
+          // A second handshake means the product document was replaced.
+          media?.dispose();
           const channel = new MessageChannel();
           connectProductPort(channel.port1);
           targetWindow.postMessage({ type: 'truapi-init' }, args.allowedOrigin, [channel.port2]);
@@ -1578,6 +1659,9 @@ async function createHost(args: {
       wallet: connection.wallet,
       generation: renderGeneration,
       iframe: host.iframe,
+      stopMedia() {
+        media?.dispose();
+      },
       dispose() {
         mediatedInputHost.stop();
         disposeViewInsets?.();
@@ -1621,7 +1705,7 @@ function registerProductChat({ provider, productId }: CoreConnection, archiveCid
 export async function renderIframe(
   url: string,
   label: string,
-  options: { productId?: string | undefined } = {},
+  options: { productId?: string | undefined; legacyCapture?: boolean } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId('render');
@@ -1639,7 +1723,7 @@ export async function renderIframe(
   // A core booting for it can take several seconds. Removing the old iframe
   // first made permission-triggered reloads look like a permanently blank
   // application.
-  const previousHost = currentHost;
+  const previousHost = retirePreviousMedia(options.legacyCapture === true);
   if (previousHost === null) {
     // This path has no loading overlay to keep, so the tracked roots go first
     // and whatever else the page left in `#app` goes with them.
@@ -1653,6 +1737,7 @@ export async function renderIframe(
     label,
     url,
     productId: options.productId,
+    legacyCapture: options.legacyCapture === true,
   };
 
   const iframeUrl = new URL(url, window.location.href);
@@ -1666,12 +1751,19 @@ export async function renderIframe(
   const host = await createHost({
     iframeUrl: iframeUrl.href,
     allowedOrigin: iframeUrl.origin,
-    // Keep parity with the current dotli product sandbox permissions.
-    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock',
+    sandbox:
+      options.legacyCapture === true
+        ? // Keep parity with the current dotli product sandbox permissions.
+          'allow-scripts allow-same-origin allow-forms allow-pointer-lock'
+        : PROTECTED_MEDIA_SANDBOX,
     label,
     productId: options.productId,
     container: app,
     debugFlowId: bridgeFlowId,
+    // Same-origin frames cannot be isolated from the host's Media.
+    ...(options.legacyCapture !== true && iframeUrl.origin !== location.origin
+      ? { mediaOrigin: iframeUrl.origin }
+      : {}),
   });
   if (myRenderGeneration !== renderGeneration) {
     host.dispose();
@@ -1720,6 +1812,22 @@ export async function renderIframe(
   });
 }
 
+/**
+ * End the current product's host Media before its replacement renders. A
+ * legacy raw-capture frame is removed at once when protected Media replaces
+ * it. Returns the host to keep visible until the replacement is ready.
+ */
+function retirePreviousMedia(legacyCapture: boolean): ActiveHost | null {
+  const previous = currentHost;
+  previous?.stopMedia();
+  if (previous !== null && currentProduct?.legacyCapture === true && !legacyCapture) {
+    previous.dispose();
+    currentHost = null;
+    return null;
+  }
+  return previous;
+}
+
 function isPolkaVmExecutableManifest(value: string | null): boolean {
   if (value === null) {
     return false;
@@ -1754,6 +1862,7 @@ export async function renderAppSubdomain(
   cid: string,
   label: string,
   executableManifest: string | null = null,
+  options: { legacyCapture?: boolean } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId('render');
@@ -1762,7 +1871,7 @@ export async function renderAppSubdomain(
   // Permission changes rebuild this host so the iframe receives a refreshed
   // `allow` attribute. Keep the current product visible until its replacement
   // iframe is connected, just like the direct-iframe render path.
-  const previousHost = currentHost;
+  const previousHost = retirePreviousMedia(options.legacyCapture === true);
   setPageProduct({ label });
 
   currentProduct = {
@@ -1770,6 +1879,7 @@ export async function renderAppSubdomain(
     label,
     cid,
     executableManifest,
+    legacyCapture: options.legacyCapture === true,
   };
 
   // Propagate the current sandbox contract. The `?mode=` preset param is no
@@ -1840,13 +1950,17 @@ export async function renderAppSubdomain(
   const host = await createHost({
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
-    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',
+    sandbox:
+      options.legacyCapture === true
+        ? 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups'
+        : PROTECTED_MEDIA_SANDBOX,
     label,
     archiveCid: cid,
     extraAllow: isPolkaVm ? ['accelerometer', 'gyroscope'] : [],
     viewInsetsRelay: isPolkaVm,
     container: app,
     debugFlowId: bridgeFlowId,
+    ...(options.legacyCapture === true ? {} : { mediaOrigin: appOrigin }),
   });
   if (myRenderGeneration !== renderGeneration) {
     host.dispose();

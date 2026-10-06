@@ -744,7 +744,7 @@ export function subscribeSharedWallet(listener: (state: SharedWalletState) => vo
 /** Private host-shell custody channel; no product API forwards this method. */
 export async function requestCoreCustody(
   operation: CoreCustodyOperation,
-): Promise<string | Uint8Array | Blob | undefined> {
+): Promise<string | Uint8Array | Blob | boolean | undefined> {
   const result = await postRequest('coreCustody', {
     siteId: SITE_ID,
     operation,
@@ -752,6 +752,7 @@ export async function requestCoreCustody(
   if (
     result !== undefined &&
     typeof result !== 'string' &&
+    typeof result !== 'boolean' &&
     !(result instanceof Uint8Array) &&
     !(result instanceof Blob)
   ) {
@@ -797,6 +798,20 @@ export async function writeSharedAuthStorage(
 
 export async function clearSharedAuthStorage(siteId: SiteId, key: string): Promise<void> {
   await postRequest('authStorageClear', { siteId, key });
+}
+
+/** Atomic core-session bytes, executed at the actual shared storage origin. */
+export async function compareExchangeSharedAuthStorage(
+  siteId: SiteId,
+  key: string,
+  expected: Uint8Array | null,
+  replacement: Uint8Array,
+): Promise<boolean> {
+  const result = await postRequest('authStorageCompareExchange', { siteId, key, expected, replacement });
+  if (typeof result !== 'boolean') {
+    throw new Error('Invalid shared storage CAS response');
+  }
+  return result;
 }
 
 /**

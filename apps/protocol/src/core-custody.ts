@@ -85,7 +85,7 @@ function transaction<T>(
 export async function handleCoreCustody(
   operation: CoreCustodyOperation,
   deadlineMs?: number,
-): Promise<string | Uint8Array | Blob | undefined> {
+): Promise<string | Uint8Array | Blob | boolean | undefined> {
   if (operation.action === 'acquire') {
     if (!pageActive) {
       throw new Error('Private custody host is inactive');
@@ -168,7 +168,7 @@ export async function handleCoreCustody(
     await owner.released;
     return;
   }
-  let result: Uint8Array | Blob | undefined;
+  let result: Uint8Array | Blob | boolean | undefined;
   await withSharedWalletRevision(
     owner.revision,
     async () => {
@@ -214,13 +214,13 @@ export async function handleCoreCustody(
         }
         const storedKey: unknown = await transaction(db, 'readonly', store => store.get(KEY));
         const stored: unknown =
-          operation.action === 'read' ? await transaction(db, 'readonly', store => store.get(storageKey)) : undefined;
+          operation.action === 'write' ? undefined : await transaction(db, 'readonly', store => store.get(storageKey));
         if (operation.action === 'read' && stored === undefined) {
           return;
         }
         let key: CryptoKey;
         if (storedKey === undefined) {
-          if (operation.action === 'read') {
+          if (stored !== undefined) {
             throw new Error('Private custody encryption key is missing');
           }
           const existing = await transaction(db, 'readonly', store => store.count(IDBKeyRange.bound('core:', 'core;')));
@@ -241,34 +241,54 @@ export async function handleCoreCustody(
           key = storedKey;
         }
         const additionalData = new TextEncoder().encode(storageKey);
-        if (operation.action === 'read') {
-          if (!(stored instanceof Uint8Array) || stored.length < 28) {
+        const decrypt = async (record: unknown): Promise<Uint8Array> => {
+          if (!(record instanceof Uint8Array) || record.length < 28) {
             throw new Error('Private custody record is corrupt');
           }
           // Failure is not absence: never delete/recreate an undecryptable purse or device.
-          result = new Uint8Array(
+          return new Uint8Array(
             await crypto.subtle.decrypt(
               {
                 name: 'AES-GCM',
-                iv: new Uint8Array(stored.subarray(0, 12)),
+                iv: new Uint8Array(record.subarray(0, 12)),
                 additionalData,
               },
               key,
-              new Uint8Array(stored.subarray(12)),
+              new Uint8Array(record.subarray(12)),
             ),
           );
-        } else {
-          const iv = crypto.getRandomValues(new Uint8Array(12));
-          const ciphertext = new Uint8Array(
-            await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData }, key, new Uint8Array(operation.value)),
-          );
-          const record = new Uint8Array(iv.length + ciphertext.length);
-          record.set(iv);
-          record.set(ciphertext, iv.length);
-          if (lease !== owner) {
-            throw new Error('Private custody lease changed');
+        };
+        if (operation.action === 'read') {
+          result = await decrypt(stored);
+          return;
+        }
+        if (operation.action === 'compareExchange') {
+          // The custody lock above serializes this read with every write and clear.
+          const current = stored === undefined ? null : await decrypt(stored);
+          const expected = operation.expected;
+          const matches =
+            current === null || expected === null
+              ? current === expected
+              : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+          if (!matches) {
+            result = false;
+            return;
           }
-          await transaction(db, 'readwrite', store => store.put(record, storageKey));
+        }
+        const value = operation.action === 'write' ? operation.value : operation.replacement;
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const ciphertext = new Uint8Array(
+          await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData }, key, new Uint8Array(value)),
+        );
+        const record = new Uint8Array(iv.length + ciphertext.length);
+        record.set(iv);
+        record.set(ciphertext, iv.length);
+        if (lease !== owner) {
+          throw new Error('Private custody lease changed');
+        }
+        await transaction(db, 'readwrite', store => store.put(record, storageKey));
+        if (operation.action === 'compareExchange') {
+          result = true;
         }
       } finally {
         db.close();

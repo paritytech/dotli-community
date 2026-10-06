@@ -161,6 +161,14 @@ export function oldPermissionsPopover(opts: { open: boolean; list: OldPermission
       list.appendChild(row(perm, content.statuses[perm.name] ?? 'ask', content.menuOpen === perm.name));
     }
     list.appendChild(footer('Changing permissions will reload the app.'));
+    // The Media layer's trusted container switch, for an unprotected execution.
+    const containerSwitch = document.createElement('button');
+    containerSwitch.type = 'button';
+    containerSwitch.className = 'permissions-popover-select';
+    containerSwitch.title =
+      "The product's raw capture and fullscreen access is removed. Calling and capture are handled only by the trusted host.";
+    containerSwitch.textContent = 'Use protected host Media (reloads)';
+    list.appendChild(containerSwitch);
   }
   return popover;
 }

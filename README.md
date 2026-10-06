@@ -320,6 +320,39 @@ recreate the native Wallet or reset its signing watermark.
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
 replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
+### Protected browser Media
+
+The bridge installs `@parity/truapi-host/web`'s `createBrowserMediaBackend` for each cross-origin HTML and PolkaVM
+product connection, App and Worker alike. The Media service (prototype wire trait 218) needs the matching vendored
+client, host callbacks, worker bridge and WASM from the native Media layer; updating a single vendored file is unsafe.
+
+A protected product iframe has no camera, microphone, display-capture, fullscreen or picture-in-picture permission and
+no popups or top navigation; its other device grants still apply. Capture grants authorize the trusted host, not raw
+iframe capture. Host video planes are siblings of the product inside an isolated compositor that takes the frame's
+layout; neither product DOM/canvas readback nor the product's own RTC connections reach host tracks, peers, SDP, ICE or
+decoded pictures. Host occlusion hides or clips the planes, scaled, rotated or skewed layouts blank them, and the call,
+screen-picker, audio-resume and end-call controls stay above the product.
+
+Calling consent shows the exact product, sr25519 account and network genesis. Each prompt is cancelled with its
+operation, never reloads the product, and persists nothing in browser UI code: the core owns scoped authorization. The
+permissions menu lists the Calling scopes the core used and revokes them; withdrawing Calling, microphone or camera
+authority ends active calls. Runtime replacement, navigation, identity changes and teardown fence pending consent and
+capture.
+
+Core storage implements exact-byte compare-exchange. Browser slots serialize per physical slot on cross-document Web
+Locks, the shared auth session on its protocol-origin slot lock, and test-wallet custody in the protocol frame's custody
+lock. An explicit policy change queues its scoped notification with the successful commit; unanswered Ask initialization
+stays silent. Cores sharing that storage refresh authorization through a host-private, acknowledged BroadcastChannel,
+and the settings setter returns only after that fan-out. Unavailable locking or synchronization fails closed.
+
+Products needing legacy raw capture can select **Use legacy raw capture** in the permissions menu. This ends protected
+calls and reloads into an execution where Media is unsupported and existing device grants govern raw capture. **Use
+protected host Media** reloads back. The choice is execution-local, not a remembered consent. Same-origin frames never
+advertise Media.
+
+ICE uses the browser's host-candidate configuration (`[]`): no product-supplied ICE settings and no embedded public
+relay credentials. Cross-NAT connectivity needs a trusted host TURN facility.
+
 ## Development
 
 ### Prerequisites
@@ -340,9 +373,10 @@ npm install
 npm run preview          # Build + serve both apps on localhost:5173
 ```
 
-This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the unified host-rust-core
-runtime. `vendor/truapi-host.lock.json` records the source revisions, archive hashes, `dist/generated/client.js` digest,
-and signing-host WASM digest. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
+This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the native Media layer
+(`feat/media-sessions`, Chat #709 plus the Media service). `vendor/truapi-host.lock.json` records the source revision,
+archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests; that revision is local until
+the Media layer is pushed. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
 dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
 
 ```bash

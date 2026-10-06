@@ -13,6 +13,7 @@ import {
   type PermissionStatus,
 } from '../../permissions.js';
 import { recordPermissionChange } from '../../state/permissions.js';
+import { callingPermissionSettings, mediaOwnsCapture, type CallingPermissionSetting } from '../../media-host.js';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
@@ -21,8 +22,19 @@ import { usePopover } from './Popover.js';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 
-/** The last statuses read, for the product they were read for. */
-type Fetched = { label: string; statuses: PermissionStatus[] } | { label: string; failed: true };
+/**
+ * The last statuses read, for the product they were read for, with the
+ * execution's host Media state: whether its container is protected and the
+ * Calling scopes its core has used.
+ */
+type Fetched =
+  | {
+      label: string;
+      statuses: PermissionStatus[];
+      protectedMedia: boolean;
+      calling: CallingPermissionSetting[];
+    }
+  | { label: string; failed: true };
 
 /** The loaded product's label, or null while none is loaded. */
 function currentLabel(): string | null {
@@ -100,9 +112,9 @@ export function PermissionsContent(): JSX.Element {
           setFetched(read);
         }
       };
-      getPermissionStatuses(current, PERMISSION_NAMES).then(
-        statuses => {
-          land({ label: current, statuses });
+      Promise.all([getPermissionStatuses(current, PERMISSION_NAMES), callingPermissionSettings(current)]).then(
+        ([statuses, calling]) => {
+          land({ label: current, statuses, protectedMedia: mediaOwnsCapture(current), calling });
         },
         () => {
           land({ label: current, failed: true });
@@ -183,12 +195,22 @@ export function PermissionsContent(): JSX.Element {
       : undefined;
   };
 
-  const statuses = (): PermissionStatus[] | undefined => {
+  const loaded = (): Extract<Fetched, { statuses: PermissionStatus[] }> | undefined => {
     const current = product();
     const read = fetched();
     return current.status === 'loaded' && read !== null && read.label === current.label && 'statuses' in read
-      ? read.statuses
+      ? read
       : undefined;
+  };
+
+  /** Switch this execution between protected host Media and raw capture. */
+  const switchContainer = (label: string, protectedMedia: boolean): void => {
+    popover.close();
+    window.dispatchEvent(
+      new CustomEvent('dotli:capture-container-changed', {
+        detail: { label, legacyCapture: protectedMedia },
+      }),
+    );
   };
 
   return (
@@ -196,14 +218,14 @@ export function PermissionsContent(): JSX.Element {
       <div class="permissions-popover-header">Permissions</div>
       <div class="permissions-popover-list" id="permissions-popover-list">
         <Show when={hint()}>{text => <div class="permissions-popover-footer">{text()}</div>}</Show>
-        <Show when={statuses()}>
-          {list => (
+        <Show when={loaded()}>
+          {read => (
             <>
               <For each={ALL_PERMISSIONS}>
                 {(perm, index) => (
                   <PermissionRow
                     perm={perm}
-                    status={list()[index()] ?? 'ask'}
+                    status={read().statuses[index()] ?? 'ask'}
                     open={openRow() === perm.name}
                     toggleMenu={toggleDropdown}
                     choose={choose}
@@ -216,11 +238,61 @@ export function PermissionsContent(): JSX.Element {
                   />
                 )}
               </For>
-              <div class="permissions-popover-footer">Changing permissions will reload the app.</div>
+              <For each={read().calling}>{setting => <CallingRow setting={setting} />}</For>
+              <div class="permissions-popover-footer">
+                {read().protectedMedia
+                  ? 'Calling is scoped to the exact account and network shown. Revoking call, microphone, or camera authority ends active calls. Products never receive raw browser capture access.'
+                  : 'Changing permissions will reload the app.'}
+              </div>
+              <button
+                type="button"
+                class="permissions-popover-select"
+                title={
+                  read().protectedMedia
+                    ? 'Media becomes Unsupported. Existing camera/microphone grants then allow the product to access raw media directly. This choice applies to this execution only.'
+                    : "The product's raw capture and fullscreen access is removed. Calling and capture are handled only by the trusted host."
+                }
+                onClick={() => {
+                  switchContainer(read().label, read().protectedMedia);
+                }}
+              >
+                {read().protectedMedia
+                  ? 'Use legacy raw capture (ends calls and reloads)'
+                  : 'Use protected host Media (reloads)'}
+              </button>
             </>
           )}
         </Show>
       </div>
     </>
+  );
+}
+
+/** One Calling scope the core has used, with a trusted revocation control. */
+function CallingRow(props: { setting: CallingPermissionSetting }): JSX.Element {
+  const [failed, setFailed] = createSignal(false);
+  const [pending, setPending] = createSignal(false);
+  const revoke = (): void => {
+    setPending(true);
+    setFailed(false);
+    props.setting.revoke().then(
+      () => {
+        setPending(false);
+      },
+      () => {
+        setPending(false);
+        setFailed(true);
+      },
+    );
+  };
+  return (
+    <div class="permissions-popover-row">
+      <div class="permissions-popover-name" style={{ 'overflow-wrap': 'anywhere', 'white-space': 'pre-line' }}>
+        {`Calling — ${props.setting.status}\nProduct: ${props.setting.productId}\nAccount (sr25519): ${props.setting.account}\nNetwork genesis: ${props.setting.network}`}
+      </div>
+      <button type="button" class="permissions-popover-select" disabled={pending()} onClick={revoke}>
+        {failed() ? 'Revocation failed — retry' : 'Revoke / ask again'}
+      </button>
+    </div>
   );
 }

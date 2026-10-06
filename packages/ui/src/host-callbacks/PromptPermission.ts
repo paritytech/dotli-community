@@ -29,10 +29,10 @@ import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } fro
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
 import { ERRORS } from '../errors.js';
 import { recordPermissionChange } from '../state/permissions.js';
+import { mediaOwnsCapture } from '../media-host.js';
 
-// Remote tags that don't reach a host enforcement point: WebRtc is gated
-// by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
-// reliably intercepted from inside the sandbox. Auto-grant either.
+// Legacy HTML products have no host interception point for independent HTTP/WS/RTC.
+// Protected Media containers separately deny all product-side raw capture.
 function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
@@ -41,6 +41,7 @@ function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePer
       return tag;
     case 'Remote':
     case 'WebRtc':
+    case 'Calling':
       return null;
   }
 }
@@ -51,6 +52,10 @@ export function createPromptPermission(
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
+    // A protected Media container never receives raw capture; the host owns it.
+    if (mediaOwnsCapture(label) && (tag === 'Camera' || tag === 'Microphone')) {
+      return 'Deny';
+    }
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
@@ -60,6 +65,10 @@ export function createPromptPermission(
   };
 
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
+    // Calling consent is operation-scoped through the host Media backend.
+    if (request.permission.tag === 'Calling') {
+      return 'Deny';
+    }
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
       return 'AllowOnce';

@@ -39,6 +39,8 @@ export type DockSource = 'debug' | 'sandbox-checker';
 
 interface LayoutState {
   frame: HTMLIFrameElement | null;
+  /** The element whose geometry is written: the frame, or its Media compositor. */
+  box: HTMLElement | null;
   topbarOffset: boolean;
   topbarShown: boolean;
   transition: string;
@@ -49,6 +51,7 @@ interface LayoutState {
 function initialState(): LayoutState {
   return {
     frame: null,
+    box: null,
     topbarOffset: true,
     topbarShown: true,
     transition: '',
@@ -60,8 +63,8 @@ function initialState(): LayoutState {
 let state = initialState();
 
 function write(): void {
-  const { frame } = state;
-  if (frame === null) {
+  const { box: target } = state;
+  if (target === null) {
     return;
   }
   let box;
@@ -90,7 +93,7 @@ function write(): void {
     right += dock.right;
     bottom += dock.bottom;
   }
-  Object.assign(frame.style, {
+  Object.assign(target.style, {
     position: 'fixed',
     top: box.top,
     left: box.left,
@@ -106,10 +109,13 @@ function write(): void {
 
 /**
  * Take over a newly rendered product frame. The latest frame wins, and layout
- * reported before any frame existed applies to it now.
+ * reported before any frame existed applies to it now. A protected Media
+ * container passes its compositor as `box`: the compositor takes the geometry
+ * and the frame fills it.
  */
-export function attachProductFrame(iframe: HTMLIFrameElement): void {
+export function attachProductFrame(iframe: HTMLIFrameElement, box: HTMLElement = iframe): void {
   state.frame = iframe;
+  state.box = box;
   write();
 }
 

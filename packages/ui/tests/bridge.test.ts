@@ -18,6 +18,7 @@ import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { settle as settleSolid } from './helpers/solid.js';
+import { installWebLocks } from './helpers/web-locks.js';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -51,10 +52,16 @@ type ProviderCloseListener = (error: Error) => void;
 // Window listeners the bridge under test added; removed after each test so an
 // earlier test's bridge never reacts to a later test's events.
 let bridgeListeners: Parameters<typeof window.removeEventListener>[] = [];
+let uninstallWebLocks: (() => void) | undefined;
+
+beforeEach(() => {
+  uninstallWebLocks = installWebLocks();
+});
 
 afterEach(() => {
   resetOverlays();
   vi.unstubAllGlobals();
+  uninstallWebLocks?.();
   for (const [type, listener] of bridgeListeners) {
     window.removeEventListener(type, listener);
   }
@@ -100,11 +107,13 @@ vi.mock('@parity/truapi-host', async importOriginal => ({
   createWasmRawCallbacks: mocks.createWasmRawCallbacks,
 }));
 
-vi.mock('@parity/truapi-host/web', () => ({
+// vi.mock factories run before static imports, so the double loads here.
+vi.mock('@parity/truapi-host/web', async () => ({
   createBrowserNativeChatFilesHost: vi.fn(),
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
   createIframeHost: mocks.createIframeHost,
+  createBrowserMediaBackend: (await import('./helpers/web-locks.js')).fakeBrowserMediaBackend,
 }));
 
 vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
@@ -266,9 +275,12 @@ describe('bridge render lifecycle', () => {
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
-      (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement }) => {
+      (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement; sandbox: string }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
+        // As the real host: Media checks the attached frame's src and sandbox.
+        iframe.src = args.iframeUrl;
+        iframe.setAttribute('sandbox', args.sandbox);
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -411,9 +423,14 @@ describe('bridge render lifecycle', () => {
       nth(mocks.coreProviderDefers, index).resolve(makeProvider());
       await rendered;
       const { iframe } = nth(mocks.iframeHosts, index);
-      expect(iframe.style.position).toBe('fixed');
+      // Cross-origin products render in a protected Media compositor, which
+      // takes the frame's layout while the frame fills it.
+      const compositor = iframe.parentElement;
+      expect(compositor?.classList.contains('host-media-compositor')).toBe(true);
+      expect(compositor?.style.position).toBe('fixed');
+      expect(iframe.style.position).toBe('absolute');
       layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
-      expect(iframe.style.transform).toBe('translateY(0)');
+      expect(compositor?.style.transform).toBe('translateY(0)');
     }
   }, 10_000);
 
@@ -945,9 +962,12 @@ describe('bridge app roots', () => {
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
-      (args: { iframeUrl: string; allowedOrigin: string; allow?: string; container: HTMLElement }) => {
+      (args: { iframeUrl: string; allowedOrigin: string; allow?: string; container: HTMLElement; sandbox: string }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
+        // As the real host: Media checks the attached frame's src and sandbox.
+        iframe.src = args.iframeUrl;
+        iframe.setAttribute('sandbox', args.sandbox);
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -1054,7 +1074,10 @@ describe('bridge app roots', () => {
     expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(nth(disposeLoading.mock.invocationCallOrder, 0));
     const app = document.getElementById('app');
     expect(app?.children).toHaveLength(1);
-    expect(app?.firstElementChild?.tagName).toBe('IFRAME');
+    // A cross-origin product frame sits in its protected Media compositor.
+    expect(app?.firstElementChild?.classList.contains('host-media-compositor')).toBe(true);
+    expect(app?.firstElementChild?.children).toHaveLength(1);
+    expect(app?.firstElementChild?.firstElementChild?.tagName).toBe('IFRAME');
   }, 10_000);
 
   it('As a visitor on a preview or local target, the first iframe render takes the static screen down', async () => {
@@ -1086,7 +1109,8 @@ describe('bridge app roots', () => {
       return Promise.resolve(runtime);
     });
     await renderAppSubdomain('cid', 'reloaded');
-    const previousFrame = document.querySelector('#app > iframe');
+    const previousFrame = document.querySelector('#app > .host-media-compositor > iframe');
+    expect(previousFrame).not.toBeNull();
     showErrorPage({ title: 'Failed' });
 
     expect(document.querySelector('#app > .error-page')).not.toBeNull();
@@ -1095,11 +1119,11 @@ describe('bridge app roots', () => {
     // not a fabricated sandbox message with the detached frame's null source.
     await renderAppSubdomain('cid', 'reloaded');
 
-    const frame = document.querySelector('#app > iframe');
+    const frame = document.querySelector('#app > .host-media-compositor > iframe');
     expect(document.querySelector('#app > .error-page')).toBeNull();
     expect(frame?.isConnected).toBe(true);
     expect(frame).not.toBe(previousFrame);
-    expect(document.querySelectorAll('#app > iframe')).toHaveLength(1);
+    expect(document.querySelectorAll('#app iframe')).toHaveLength(1);
   }, 10_000);
 });
 
