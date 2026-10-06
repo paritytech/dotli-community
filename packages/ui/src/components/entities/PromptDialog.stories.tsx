@@ -5,8 +5,8 @@ import { withActiveTld } from '@dotli/config';
 import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
-import { iconMarkup, JAM_PEERS_ICON, PERMISSION_ICONS } from '../../permission-icons.js';
-import { jamPeersPermissionText } from '../../permission-modal.js';
+import { CALLING_ICON, iconMarkup, JAM_PEERS_ICON, PERMISSION_ICONS } from '../../permission-icons.js';
+import { jamPeersPermissionText, MEDIA_CONSENT_NOTICE, PERMISSION_DESCRIPTIONS } from '../../permission-modal.js';
 import type { ModalEntry, ModalView } from '../../state/modals.js';
 import { PromptDialog } from './PromptDialog.js';
 
@@ -81,6 +81,45 @@ export const JamPeersPermission: Story = {
 
 export const JamPeersPermissionPhone: Story = {
   ...JamPeersPermission,
+  tags: ['!autodocs'],
+  globals: { viewport: { value: 'phone', isRotated: false } },
+};
+
+// What host Media asks (media-host.ts requestConsent) before a product's call:
+// the exact product id, network and account, and no raw capture for the app.
+export const MediaCallingPermission: Story = {
+  args: {
+    entry: entry({
+      icon: iconMarkup(CALLING_ICON),
+      title: 'Permission Request',
+      fields: [
+        { label: 'Application', value: 'vox.paseo' },
+        { label: 'Permission', value: PERMISSION_DESCRIPTIONS.Calling },
+        {
+          label: 'Network genesis hash',
+          value: '0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f',
+          mono: true,
+        },
+        {
+          label: 'Account (sr25519)',
+          value: '0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d',
+          mono: true,
+        },
+      ],
+      notice: MEDIA_CONSENT_NOTICE,
+      buttons: [
+        { label: 'Deny', variant: 'danger', result: 'denied' },
+        { label: 'Allow', variant: 'primary', result: 'granted' },
+      ],
+      dismissOnBackdrop: true,
+      dismissResult: 'dismissed',
+      fallbackResult: 'dismissed',
+    }),
+  },
+};
+
+export const MediaCallingPermissionPhone: Story = {
+  ...MediaCallingPermission,
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
 };

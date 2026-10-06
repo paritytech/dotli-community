@@ -42,6 +42,10 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName | 'Callin
   StatementSubmit: 'Submit signed statements to the statement store',
 };
 
+/** What a host Media consent prompt promises: the product never gets raw capture. */
+export const MEDIA_CONSENT_NOTICE =
+  'Only the trusted host handles call media. The application receives no camera, microphone, screen pixels, or raw browser capture permission.';
+
 /** The question asked before an app may reach the validators of one JAM network. */
 export function jamPeersPermissionText(label: string, genesis: string): string {
   return `Allow ${withActiveTld(label)} to connect to JAM network ${genesis.slice(0, 10)}… (read-only peer access, no accounts or signing)?`;
@@ -141,8 +145,7 @@ async function showPermissionPrompt(
       ],
       ...(media !== undefined
         ? {
-            notice:
-              'Only the trusted host handles call media. The application receives no camera, microphone, screen pixels, or raw browser capture permission.',
+            notice: MEDIA_CONSENT_NOTICE,
           }
         : prompt.reloads
           ? { notice: 'Granting this permission will reload the application.' }
