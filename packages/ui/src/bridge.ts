@@ -1521,12 +1521,18 @@ async function createHost(args: {
   let disposePipe: (() => void) | null = null;
   let productProbeCleanup: (() => void) | null = null;
   let disposeViewInsets: (() => void) | null = null;
+  // Whether the product has sent a frame on the current port, which proves
+  // it adopted that port's `truapi-init`.
+  let productPortUsed = false;
+  let unsubscribeProductPortUse: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
     productId: connection.productId,
   };
   const cleanupProductSide = (): void => {
+    unsubscribeProductPortUse?.();
+    unsubscribeProductPortUse = null;
     disposePipe?.();
     productProvider?.dispose();
     disposePipe = null;
@@ -1534,8 +1540,15 @@ async function createHost(args: {
   };
   const connectProductPort = (port: MessagePort): void => {
     cleanupProductSide();
-    productProvider = createMessagePortProvider(port);
-    disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
+    productPortUsed = false;
+    const provider = createMessagePortProvider(port);
+    productProvider = provider;
+    unsubscribeProductPortUse = provider.subscribe(() => {
+      productPortUsed = true;
+      unsubscribeProductPortUse?.();
+      unsubscribeProductPortUse = null;
+    });
+    disposePipe = pipeProviders(provider, coreProvider, pipeArgs);
   };
   const cleanupCoreSide = (): void => {
     unregisterPermissions();
@@ -1571,14 +1584,26 @@ async function createHost(args: {
       if (!targetWindow || event.source !== targetWindow || event.origin !== args.allowedOrigin) {
         return;
       }
-      if ((event.data as { type?: unknown } | null)?.type === 'truapi-ready') {
-        const connectionId = (event.data as { connectionId?: unknown }).connectionId;
-        // Ready is retried while the first port transfer is in flight. Replacing
-        // that port strands the client, which accepts only the first transfer.
-        if (typeof connectionId === 'string' && connectionId === probeConnectionId) {
-          return;
+      const data: unknown = event.data;
+      if (typeof data === 'object' && data !== null && 'type' in data && data.type === 'truapi-ready') {
+        const connectionId = 'connectionId' in data ? data.connectionId : undefined;
+        if (typeof connectionId === 'string') {
+          // Ready is retried while the first port transfer is in flight. Replacing
+          // that port strands the client, which accepts only the first transfer.
+          if (connectionId === probeConnectionId) {
+            return;
+          }
+          probeConnectionId = connectionId;
+        } else {
+          // Clients before @parity/truapi 0.23 retry ready without a
+          // connectionId and also accept only the first transfer. Until the
+          // product uses the current port, a repeat is a retry of that
+          // handshake; afterwards it means a replaced product document.
+          if (probeMode === 'modern' && probeConnectionId === null && !productPortUsed) {
+            return;
+          }
+          probeConnectionId = null;
         }
-        probeConnectionId = typeof connectionId === 'string' ? connectionId : null;
         if (probeMode === 'modern') {
           const channel = new MessageChannel();
           connectProductPort(channel.port1);
