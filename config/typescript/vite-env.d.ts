@@ -11,7 +11,6 @@ interface ImportMetaEnv {
   readonly VITE_APP_URL?: string;
   readonly VITE_COMMIT_SHA?: string;
   readonly VITE_DESKTOP_DOWNLOAD_URL?: string;
-  readonly VITE_MEDIA_ICE_SERVERS?: string;
   readonly VITE_METRICS?: string;
   readonly VITE_NETWORKS?: string;
   readonly VITE_RECEIVING_RELAY_URL?: string;

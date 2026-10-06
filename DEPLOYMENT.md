@@ -91,17 +91,25 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
 
 ## Media TURN credentials
 
-Host Media calls are relay-only and need TURN. The Deploy workflow mints Cloudflare TURN credentials immediately before
-`build:prod` (`scripts/mint-media-turn.ts`) when the environment has the secrets `DOTLI_TURN_CLOUDFLARE_KEY_ID` and
-`DOTLI_TURN_CLOUDFLARE_API_TOKEN`, and passes only the masked relay credentials to the build as
-`VITE_MEDIA_ICE_SERVERS`. The API token never reaches the bundle or the log.
+Host Media calls are relay-only and need TURN. NGINX serves `GET /__dotli-media/turn` on the apex and shell (`*.<site>`)
+servers only (`nginx/snippets/dotli-media-turn.conf`); the app and protocol servers answer 404. Each request mints
+12-hour Cloudflare TURN credentials: NGINX adds the API token and a fixed `{"ttl":43200}` body and posts to
+`https://rtc.live.cloudflare.com/v1/turn/keys/<key id>/credentials/generate`. The shell reuses them for two thirds of
+that lifetime. Nothing is baked into the frontend build, so credentials never go stale and no periodic redeploy is
+needed.
 
-- The credentials expire **48 hours** after the deploy (Cloudflare's maximum). After that, calls from the deployed build
-  cannot connect until a redeploy mints fresh ones, so redeploy an environment that must keep calling at least every two
-  days.
-- Without the secrets the workflow emits a warning and builds without a relay: Media calls cannot connect.
-- A local `make deploy` build has no relay unless `VITE_MEDIA_ICE_SERVERS` is exported (see README, Protected browser
-  Media).
+- The route accepts same-origin browser requests only (no or matching `Origin`, `Sec-Fetch-Site` empty, `same-origin` or
+  `none`), `GET` without a query. Responses are `Cache-Control: no-store` and
+  `Cross-Origin-Resource-Policy: same-origin`. Each client IP gets 6 requests per minute (burst 10); excess gets 429.
+  Non-browser clients can still mint relay credentials; the per-IP limit bounds that.
+- `make deploy-nginx` reads `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` from `deploy.env` or
+  the environment, and the CI config rollout passes the environment secrets of the same names. It pipes them over SSH
+  into `/etc/nginx/dotli-private/<site>-media-turn.conf` (`root:root`, `0600`). The token is not in the rendered site
+  config, `/tmp`, rsync uploads, the frontend build or the make log, and the route has access and error logging off.
+- Set both secrets or neither. Unset, `deploy-nginx` warns and writes the file empty: the route answers 503 and calls
+  cannot connect. Removing the secrets and redeploying disables the route.
+- The token is the Cloudflare Realtime TURN key's API token (`Authorization: Bearer`), paired with that key's id. Rotate
+  it by updating both secrets and rerunning the config rollout.
 
 ## Opt-in CI identity proxy rollout
 
@@ -133,14 +141,17 @@ The selected environment must already be provisioned:
   `127.0.0.53` must already be available.
 - Keep the environment's configured `SENTRY_DSN` secret: CI forwards the same value used by the frontend build when
   rendering the `/t` tunnel. An unset secret disables that tunnel; do not omit an existing DSN for config rollout.
+- Keep `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` set as environment secrets wherever calls
+  must connect: every config rollout rewrites the server's TURN include, and unset secrets disable the Media TURN route.
 - The runner needs `make`, `envsubst` (gettext-base), `ssh`, `scp`, `rsync`, `curl`, and `jq`. This path does not
   provision packages or certificates.
 
 The config-only commands used by CI are alternatives; run only the command for the approved environment:
 
 ```sh
-# Export DEPLOY_USER, DEPLOY_HOST, DEPLOY_PATH, and the configured SENTRY_DSN
-# from the approved environment; load its SSH key and known_hosts first.
+# Export DEPLOY_USER, DEPLOY_HOST, DEPLOY_PATH, the configured SENTRY_DSN and the
+# DOTLI_TURN_CLOUDFLARE_KEY_ID/DOTLI_TURN_CLOUDFLARE_API_TOKEN pair from the
+# approved environment; load its SSH key and known_hosts first.
 make ci-deploy-nginx ENV=dev-polkadot
 # Or, for an independently approved westendli.dev rollout:
 make ci-deploy-nginx ENV=dev-westend
@@ -160,8 +171,10 @@ After frontend upload, the opted-in job performs a public read-only GET to
 
 `https://<site>/__dotli-identity/paseo/attester`, matching its environment. It requires successful HTTP status and a
 JSON object containing a 32-byte hex `attester`; frontend HTML with status 200 fails. No authentication challenge,
-token, or username is created by the smoke check. Unset `DEPLOY_NGINX` to return to dist-only CI; this does not remove
-an already installed proxy.
+token, or username is created by the smoke check. When `DOTLI_TURN_CLOUDFLARE_KEY_ID` is set, the job also GETs
+`https://<site>/__dotli-media/turn` and requires a credentialed `turn:`/`turns:` relay, printing only the verdict; this
+mints one short-lived relay credential. Unset `DEPLOY_NGINX` to return to dist-only CI; this does not remove an already
+installed proxy.
 
 ## Qualify and deploy Chat on paseo.fyi
 
@@ -271,8 +284,8 @@ provider credentials.
 The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must have compatible receiving-enabled
 contracts and exact recorded source provenance. Required exports are `browser-receiving-worker` and
 `WasmNotificationReceiver` from `wasm/web`. This top integration vendors both SDK archives and both WASM bundles from
-native `feat/media-on-jam-seity` `6d424c208b26900ed30945b5d726346cb0ad5a5d` (trinity-user-agents #1217), the Media layer
-merged into #1011 integration revision `795a4082023abd952041c784c9f9e81714aab999`. Archive and generated client/WASM
+native `feat/media-on-jam-seity` `674e9a8a17b3916b1eaf99a53baa71a73b2fb115` (trinity-user-agents #1217), the Media layer
+merged into #1011 integration revision `e4d0a15b5b74e7636ac50f2ee1563bf734c54c81`. Archive and generated client/WASM
 checksums are recorded in `vendor/truapi-host.lock.json`; the only package override is the host SDK's local
 `@parity/truapi` dependency. A clean #185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never
 reuse this top integration artifact downward. The build bundles `host-receiving.js` as a standalone classic IIFE and

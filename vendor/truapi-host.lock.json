@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "f22a9384846101a245f923fa6285572b4f20b1fb",
-  "upstreamRevisionNote": "Approved merge of Media integration #1217 ab66181ef6589808441985b7558adf586b07fd1b into the Tommy-qualified integration 509b854239b049af4abcfbfc7d1433bf33d3e365, preserving both feature histories and Media wire trait 218 above #1011.",
+  "upstreamRevision": "674e9a8a17b3916b1eaf99a53baa71a73b2fb115",
+  "upstreamRevisionNote": "--no-ff merge of feat/media-sessions (3762b3a8f373fcbd1f27b158f125ad33458e0aba, Media at prototype wire trait 218 with the minification-safe isolation probe and handshake retry) into origin f22a9384846101a245f923fa6285572b4f20b1fb, which carries the receiving integration at e4d0a15b5b74e7636ac50f2ee1563bf734c54c81 and the Tommy blockers #1216; client, host glue, signing-host WASM and testing WASM rebuilt together at 674e9a8a17b3916b1eaf99a53baa71a73b2fb115.",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
   "baseRevision": "795a4082023abd952041c784c9f9e81714aab999",
@@ -18,14 +18,14 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "d0236c14bb50b79bf002a6d50351cf1df7b8e3a6245be36f3c055bfd65cb2eb5",
+      "sourceArchiveSha256": "1bb083cb3e0ab8fc79614f774a8df427bd5ee3643cf4c26d5078aa3f72d7606b",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "4c3844aadcdc4a4016a16b947dbd13b0a474d1396bb5505d694922bcb1cafe94",
-      "testingWasmSha256": "e7ca80fac2da29bac8f13c36803003545b02a3e601bc942293f5dcbe80cdf09f",
+      "wasmSha256": "2fcf0c8e467ee9acc54a654dafc1d16dc92ddce3e5bc3ba6876636496cd77b17",
+      "testingWasmSha256": "f1e717ed21b863f90ac89e4b1f8f2a8fa8fb29139a70ac686e224e585926cd04",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "f22a9384846101a245f923fa6285572b4f20b1fb"
+  "wasmUpstreamRevision": "674e9a8a17b3916b1eaf99a53baa71a73b2fb115"
 }

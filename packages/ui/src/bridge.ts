@@ -740,9 +740,10 @@ window.addEventListener('dotli:device-permission-changed', event => {
 window.addEventListener('dotli:permission-changed', event => {
   const detail = (event as CustomEvent<{ productId?: string; label?: string } | null>).detail;
   if (
+    detail === null ||
     currentProduct === null ||
     currentHost === null ||
-    (detail?.productId !== currentHost.productId && detail?.label !== currentProduct.label)
+    (detail.productId !== currentHost.productId && detail.label !== currentProduct.label)
   ) {
     return;
   }
