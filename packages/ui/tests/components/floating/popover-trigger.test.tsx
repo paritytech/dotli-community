@@ -33,7 +33,9 @@ function renderHarness(initial: Held, onOpenChange: (open: boolean) => void = ()
           B
         </button>
         <Popover id="story" title="Story" trigger={trigger()} onOpenChange={onOpenChange}>
-          <button type="button">Inside</button>
+          <button type="button" id="inside">
+            Inside
+          </button>
         </Popover>
       </>
     );
@@ -143,6 +145,63 @@ describe('A Popover given its trigger', () => {
     expect(byId('b').style.getPropertyValue('anchor-name')).toBe('');
     expect(byId('b').getAttribute('aria-controls')).toBe('story');
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user, a button handed back and forth is wired once: one click opens once', async () => {
+    // Given
+    const onOpenChange = vi.fn<(open: boolean) => void>();
+    const setHeld = renderHarness('a', onOpenChange);
+    await settle();
+
+    // When: A, then B, then A again.
+    setHeld('b');
+    await settle();
+    setHeld('a');
+    await settle();
+    mouseClick(byId('a'));
+    await settle();
+
+    // Then
+    expect(onOpenChange.mock.calls).toEqual([[true]]);
+    expect(isOpen()).toBe(true);
+  });
+
+  it('As a signed-in user whose session drops while the popover is open, it closes and focus goes back to the button it let go', async () => {
+    // Given: open, with focus inside.
+    const onOpenChange = vi.fn<(open: boolean) => void>();
+    const setHeld = renderHarness('a', onOpenChange);
+    await settle();
+    mouseClick(byId('a'));
+    await settle();
+    byId('inside').focus();
+
+    // When: the popover lets its button go.
+    setHeld(undefined);
+    await settle();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(onOpenChange.mock.calls).toEqual([[true], [false]]);
+    expect(document.activeElement).toBe(byId('a'));
+  });
+
+  it('As a dotli user, a button let go while the popover is open and focus is not inside closes it and leaves focus alone', async () => {
+    // Given: open, with focus dropped to the body (as Safari leaves it after a press).
+    const setHeld = renderHarness('a');
+    await settle();
+    mouseClick(byId('a'));
+    await settle();
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    // When
+    setHeld(undefined);
+    await settle();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('As a screen-reader user, a DropdownMenu trigger announces a menu', async () => {

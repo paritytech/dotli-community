@@ -235,6 +235,21 @@ describe('UserPopover', () => {
     expect(loginRequests.details).toHaveLength(0);
   });
 
+  it('As a signed-in user whose session drops while my account is open, it closes and focus goes back to the button', async () => {
+    // Given
+    await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
+    await openPopover();
+    byId('user-popover-disconnect').focus();
+
+    // When
+    setAuthState({ tag: 'Disconnected' });
+    await settleAll();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(byId('auth-button'));
+  });
+
   it('As a dotli integrator, the controller emits the Rust-core disconnect request', () => {
     // Given
     const disconnects = recordEvents('dotli:truapi-disconnect-request');

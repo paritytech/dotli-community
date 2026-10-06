@@ -4,85 +4,117 @@
 import { createSignal } from 'solid-js';
 import { describe, expect, it, vi } from 'vitest';
 import { Popover } from '../../../src/components/floating/Popover.js';
-import type * as SurfaceModule from '../../../src/components/floating/PopoverSurface.js';
 import { mouseClick, renderComponent, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
 
-/** The surface's chunk, held back until `release()`. */
+/** The surface's chunk, on its way until `release()`. */
 const chunk = vi.hoisted(() => {
   let release = (): void => undefined;
-  const loaded = new Promise<void>(resolve => {
+  const arrived = new Promise<void>(resolve => {
     release = resolve;
   });
   return {
-    loaded,
+    arrived,
     release: () => {
       release();
     },
   };
 });
 
-// The shell's import resolves at once (the setup's preload), to a surface
-// that renders only once the chunk is released: a chunk still on its way.
 vi.mock('../../../src/components/floating/PopoverSurface.js', async importOriginal => {
-  const { lazy } = await import('solid-js');
-  return {
-    PopoverSurface: lazy(() => chunk.loaded.then(() => importOriginal<typeof SurfaceModule>()), {
-      export: 'PopoverSurface',
-    }),
-  };
+  await chunk.arrived;
+  return importOriginal();
 });
 
-describe('A Popover whose surface has not loaded', () => {
-  it('As a dotli user on a slow network, a click opens it at once, a second closes it, and the surface shows once loaded', async () => {
-    // Given
-    const onOpenChange = vi.fn<(open: boolean) => void>();
-    renderComponent(() => {
-      const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
-      return (
-        <>
-          <button ref={setButton} id="trigger" type="button">
-            Open
-          </button>
-          <Popover id="slow" title="Slow" trigger={button()} onOpenChange={onOpenChange}>
-            <button type="button" id="inside">
-              Inside
-            </button>
-          </Popover>
-        </>
-      );
-    });
+/** A button and the popover it opens, `#<id>-trigger` and `#<id>`, its content `#<id>-inside`. */
+function Slow(props: { id: string; onOpenChange: (open: boolean) => void }) {
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  return (
+    <>
+      <button ref={setButton} id={`${props.id}-trigger`} type="button">
+        Open {props.id}
+      </button>
+      <Popover id={props.id} title={props.id} trigger={button()} onOpenChange={props.onOpenChange}>
+        <button type="button" id={`${props.id}-inside`}>
+          Inside
+        </button>
+      </Popover>
+    </>
+  );
+}
+
+function isOpen(id: string): boolean {
+  return document.getElementById(id)?.hasAttribute('data-open') === true;
+}
+
+describe('Popovers opened while their surface is on its way', () => {
+  it('As a dotli user on a slow network, an opening shows when the surface arrives, unless I closed it or went on to another', async () => {
+    // Given: three popovers, none of whose surface is in yet.
+    const changes = { x: vi.fn<(open: boolean) => void>(), p: vi.fn(), q: vi.fn() };
+    renderComponent(() => (
+      <>
+        <Slow id="x" onOpenChange={changes.x} />
+        <Slow id="p" onOpenChange={changes.p} />
+        <Slow id="q" onOpenChange={changes.q} />
+      </>
+    ));
     await settle();
-    const trigger = byId('trigger');
+
+    // When: X opens, and its button closes it again, with no layer for the invoker to close.
+    mouseClick(byId('x-trigger'));
+    await settle();
+
+    // Then: open at once, with no surface yet.
+    expect(changes.x.mock.calls).toEqual([[true]]);
+    expect(byId('x-trigger').getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('x')).toBeNull();
 
     // When
-    mouseClick(trigger);
-    await settle();
-
-    // Then: open, with no surface yet.
-    expect(onOpenChange.mock.calls).toEqual([[true]]);
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(document.getElementById('slow')).toBeNull();
-
-    // When: the button again, with no layer for its invoker to close.
-    mouseClick(trigger);
+    mouseClick(byId('x-trigger'));
     await settle();
 
     // Then
-    expect(onOpenChange.mock.calls).toEqual([[true], [false]]);
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(changes.x.mock.calls).toEqual([[true], [false]]);
+    expect(byId('x-trigger').getAttribute('aria-expanded')).toBe('false');
 
-    // When: opened again, and the chunk arrives.
-    mouseClick(trigger);
+    // When: P opens from its focused button, then I go on to Q's.
+    byId('p-trigger').focus();
+    mouseClick(byId('p-trigger'));
     await settle();
+    byId('q-trigger').focus();
+    mouseClick(byId('q-trigger'));
+    await settle();
+
+    // When: the chunk arrives, as I watch what is shown and focused.
+    const shown: string[] = [];
+    const focused: string[] = [];
+    const onToggle = (ev: Event): void => {
+      if ((ev as ToggleEvent).newState === 'open') {
+        shown.push((ev.target as HTMLElement).id);
+      }
+    };
+    const onFocusIn = (ev: FocusEvent): void => {
+      focused.push((ev.target as HTMLElement).id);
+    };
+    document.addEventListener('beforetoggle', onToggle, true);
+    document.addEventListener('focusin', onFocusIn, true);
     chunk.release();
 
-    // Then: the surface shows, open, with focus inside.
+    // Then: Q shows, open, with focus inside; P, which I left, closed without showing; X stays shut.
     await vi.waitFor(() => {
-      expect(byId('slow').hasAttribute('data-open')).toBe(true);
+      expect(isOpen('q')).toBe(true);
     });
-    expect(onOpenChange.mock.calls).toEqual([[true], [false], [true]]);
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(document.activeElement).toBe(byId('inside'));
+    await settle();
+    expect(document.activeElement).toBe(byId('q-inside'));
+    expect(changes.q.mock.calls).toEqual([[true]]);
+    expect(changes.p.mock.calls).toEqual([[true], [false]]);
+    expect(isOpen('p')).toBe(false);
+    expect(byId('p-trigger').getAttribute('aria-expanded')).toBe('false');
+    expect(changes.x.mock.calls).toEqual([[true], [false]]);
+    expect(isOpen('x')).toBe(false);
+    expect(shown).toEqual(['q']);
+    expect(focused).toEqual(['q-inside']);
+    document.removeEventListener('beforetoggle', onToggle, true);
+    document.removeEventListener('focusin', onFocusIn, true);
   });
 });
