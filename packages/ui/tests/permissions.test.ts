@@ -255,6 +255,16 @@ describe('device permission prompts', () => {
     await expect(createPromptPermission('myapp').devicePermission(PRODUCT, 'OpenUrl')).resolves.toBe('AllowOnce');
     expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
   });
+
+  it.each(['Camera', 'Notifications'] as const)(
+    'keeps the core authorization snapshot unchanged while approving %s',
+    async permission => {
+      const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
+      await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
+      await expect(response).resolves.toBe('AllowAlways');
+      expect(await getPermissionStatus('myapp', permission)).toBe('ask');
+    },
+  );
 });
 
 describe('getGrantedDevicePermissions', () => {
@@ -447,15 +457,30 @@ describe('three-way permission prompts', () => {
   it('As a mediated camera user, I can allow one scan without making the grant durable', async () => {
     const response = decidePromptPermission('myapp', 'Camera', {
       kind: 'Device',
-      commit: 'host',
       limiter: { allow: () => true },
       gatedByIframe: false,
+      commitOwner: 'host',
     });
 
     await clickPromptButton('Allow once');
 
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
+  });
+
+  it.each([
+    ['Always allow', 'AllowAlways', 'granted'],
+    ['Deny', 'Deny', 'denied'],
+  ] as const)('remembers a host-initiated camera decision: %s', async (button, decision, status) => {
+    const response = decidePromptPermission('myapp', 'Camera', {
+      kind: 'Device',
+      limiter: { allow: () => true },
+      gatedByIframe: false,
+      commitOwner: 'host',
+    });
+    await clickPromptButton(button);
+    await expect(response).resolves.toBe(decision);
+    expect(await getPermissionStatus('myapp', 'Camera')).toBe(status);
   });
 
   it('As a product, an existing grant is answered without being upgraded to a lasting one', async () => {

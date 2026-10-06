@@ -310,6 +310,16 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
 
+### Permission decision ownership
+
+Core-initiated permission callbacks return the user's decision without writing the grant. The canonical core commits
+that decision against the permission revision it captured before prompting; an adapter-side write would invalidate the
+pending request. Host-initiated mediated-device prompts still persist their own durable decisions.
+
+After a committed permission change, the bridge matches the canonical product identity and refreshes the active iframe's
+Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps the
+requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
+
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
@@ -343,6 +353,12 @@ permission prompt does not delay the notification ID, cancellation or scheduler;
 delayed OS presentation. Plain host toasts without an action or destination remain non-interactive. OS focus and window
 opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not supply
 one.
+
+### Background receiving activation
+
+Startup republication of unchanged, already-enabled watches in the current authorized receiver scope preserves its
+revision, retained events, display receipts and transport synchronization state. A cold notification click therefore
+survives product startup. Genuine watch changes still advance the revision and reject clicks from the previous policy.
 
 ### Product chat
 
@@ -404,12 +420,6 @@ lock. An explicit policy change queues its scoped notification with the successf
 stays silent. Cores sharing that storage refresh authorization through a host-private, acknowledged BroadcastChannel,
 and the settings setter returns only after that fan-out. Without Web Locks, compare-exchange and unavailable
 synchronization fail closed; plain slot reads, writes and clears continue.
-
-Core-requested device and remote consent returns a decision without an admin write from the browser prompt. Rust alone
-commits that answer against the displayed permission generation; a competing browser write would invalidate the answer
-and reject the first operation after **Always allow**. Committed, refreshed device-policy changes trigger any required
-iframe reload. Notification consent never reloads the iframe. Host-initiated mediated camera consent uses the explicit
-host commit path instead.
 
 Products needing legacy raw capture can select **Use legacy raw capture** in the permissions menu. This ends protected
 calls and reloads into an execution where Media is unsupported and existing device grants govern raw capture. **Use

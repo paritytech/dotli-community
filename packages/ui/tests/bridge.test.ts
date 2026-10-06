@@ -15,7 +15,7 @@ import {
   scale,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
-import type { RequiredHostCallbacks } from '@parity/truapi-host';
+import type { PermissionAuthorizationRequest, RequiredHostCallbacks } from '@parity/truapi-host';
 import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -429,6 +429,55 @@ describe('bridge render lifecycle', () => {
     },
     10_000,
   );
+  it('keeps notification grants in place and reloads only a changed committed iframe policy', async () => {
+    const { renderIframe } = await import('../src/bridge.js');
+    const { labelToProductId } = await import('../src/runtime-config.js');
+    let locationGranted = false;
+    const provider = makeProvider();
+    provider.getPermissionAuthorizationStatuses.mockImplementation((requests: PermissionAuthorizationRequest[]) =>
+      Promise.resolve(
+        requests.map(request =>
+          request.tag === 'Device' &&
+          (request.value === 'Notifications' || (request.value === 'Location' && locationGranted))
+            ? 'Authorized'
+            : 'NotDetermined',
+        ),
+      ),
+    );
+    const initial = renderIframe('https://preview.example/app', 'committed-policy');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(provider);
+    await initial;
+    const first = nth(mocks.iframeHosts, 0);
+    const notify = async (): Promise<void> => {
+      vi.useFakeTimers({ toFake: ['setTimeout'] });
+      try {
+        window.dispatchEvent(
+          new CustomEvent('dotli:permission-changed', {
+            detail: { productId: labelToProductId('committed-policy') },
+          }),
+        );
+        await vi.runAllTimersAsync();
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    await notify();
+    expect(first.iframe.isConnected).toBe(true);
+    expect(mocks.iframeHosts).toHaveLength(1);
+
+    locationGranted = true;
+    await notify();
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(provider);
+    await vi.waitFor(() => {
+      expect(first.iframe.isConnected).toBe(false);
+      expect(nth(mocks.iframeHosts, 1).iframe.allow.split('; ')).toContain('geolocation');
+    });
+    await notify();
+    expect(nth(mocks.iframeHosts, 1).iframe.isConnected).toBe(true);
+    expect(mocks.iframeHosts).toHaveLength(2);
+  });
 
   it('does not enable experimental custody through stored state or a debug URL in production', async () => {
     localStorage.setItem('dotli:local-wallet-enabled', '1');
@@ -551,9 +600,21 @@ describe('bridge render lifecycle', () => {
   it('As a product user, legacy media grants reload the sandbox with origin-scoped capture and revocation removes device access', async () => {
     // Re-import after resetModules so the test exercises this render's listener state.
     const { renderAppSubdomain } = await import('../src/bridge.js');
+    const { labelToProductId } = await import('../src/runtime-config.js');
+    let deviceStatus = 'NotDetermined';
+    const permissionStatuses = (requests: PermissionAuthorizationRequest[]): Promise<string[]> =>
+      Promise.resolve(
+        requests.map(request =>
+          request.tag === 'Device' && (request.value === 'Camera' || request.value === 'Microphone')
+            ? deviceStatus
+            : 'NotDetermined',
+        ),
+      );
+    const initialProvider = makeProvider();
+    initialProvider.getPermissionAuthorizationStatuses.mockImplementation(permissionStatuses);
     const render = renderAppSubdomain('verified-cid', 'myapp', null, { legacyCapture: true });
     await waitForProviderRequests(1);
-    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    nth(mocks.coreProviderDefers, 0).resolve(initialProvider);
     await render;
 
     const initial = nth(mocks.iframeHosts, 0);
@@ -565,24 +626,16 @@ describe('bridge render lifecycle', () => {
     ]);
     expect(initial.allowedOrigin).toBe(origin);
 
+    deviceStatus = 'Authorized';
     window.dispatchEvent(
       new CustomEvent('dotli:permission-changed', {
-        detail: { productId: 'myapp.paseo', request: { tag: 'Device', value: 'Camera' } },
+        detail: { productId: labelToProductId('myapp'), request: { tag: 'Device', value: 'Camera' } },
       }),
     );
     await waitForProviderRequests(2);
     expect(initial.iframe.isConnected).toBe(true);
     const grantedProvider = makeProvider();
-    grantedProvider.getPermissionAuthorizationStatuses.mockImplementation(
-      (requests: { tag: string; value?: string }[]) =>
-        Promise.resolve(
-          requests.map(request =>
-            request.tag === 'Device' && (request.value === 'Camera' || request.value === 'Microphone')
-              ? 'Authorized'
-              : 'NotDetermined',
-          ),
-        ),
-    );
+    grantedProvider.getPermissionAuthorizationStatuses.mockImplementation(permissionStatuses);
     nth(mocks.coreProviderDefers, 1).resolve(grantedProvider);
     await vi.waitFor(() => {
       expect(initial.dispose).toHaveBeenCalledTimes(1);
@@ -596,16 +649,15 @@ describe('bridge render lifecycle', () => {
       'cross-origin-isolated',
     ]);
 
+    deviceStatus = 'Denied';
     window.dispatchEvent(
       new CustomEvent('dotli:permission-changed', {
-        detail: { productId: 'myapp.paseo', request: { tag: 'Device', value: 'Camera' } },
+        detail: { productId: labelToProductId('myapp'), request: { tag: 'Device', value: 'Camera' } },
       }),
     );
     await waitForProviderRequests(3);
     const revokedProvider = makeProvider();
-    revokedProvider.getPermissionAuthorizationStatuses.mockImplementation((requests: unknown[]) =>
-      Promise.resolve(requests.map(() => 'Denied')),
-    );
+    revokedProvider.getPermissionAuthorizationStatuses.mockImplementation(permissionStatuses);
     nth(mocks.coreProviderDefers, 2).resolve(revokedProvider);
     await vi.waitFor(() => {
       expect(granted.dispose).toHaveBeenCalledTimes(1);

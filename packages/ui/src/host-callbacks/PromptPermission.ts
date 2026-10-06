@@ -1,7 +1,6 @@
-// Permission prompt. The Rust core awaits the typed response before encoding
-// the product reply, so a slow modal blocks the product just as long as the
-// user takes to dismiss it. The core commits its own decisions; the committed
-// policy notification schedules any required Permissions Policy iframe reload.
+// Core-owned prompts return a decision; Rust commits it against the permission
+// revision captured before prompting. Writing the grant here would invalidate
+// that compare-exchange and turn an approval into Permission denied.
 //
 // "Always allow" and "Deny" are durable. Generic permission grants appear in
 // the topbar permissions menu; JAM peer decisions are keyed by product and
@@ -66,7 +65,7 @@ export function createPromptPermission(
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, tag, { kind: 'Device', limiter, commit: 'core' }, modalScope);
+    return decidePromptPermission(label, tag, { kind: 'Device', limiter, commitOwner: 'core' }, modalScope);
   };
 
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
@@ -87,7 +86,7 @@ export function createPromptPermission(
     if (name === null) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, name, { kind: 'Remote', limiter, commit: 'core' }, modalScope);
+    return decidePromptPermission(label, name, { kind: 'Remote', limiter, commitOwner: 'core' }, modalScope);
   };
 
   return { devicePermission, remotePermission };
@@ -122,9 +121,10 @@ async function decideJamPeersPermission(
 
 interface PromptOptions {
   kind: 'Device' | 'Remote';
-  commit: 'core' | 'host';
   limiter: { allow: () => boolean };
   gatedByIframe?: boolean;
+  /** Host-initiated operations have no enclosing core prompt commit. */
+  commitOwner: 'core' | 'host';
 }
 
 export function decidePromptPermission(
@@ -175,9 +175,7 @@ async function decidePromptPermissionWhenActive(
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
-  // The core fences its own answer against the generation shown to the user.
-  // An admin write here would invalidate that snapshot before it can commit.
-  if (options.commit === 'core') {
+  if (options.commitOwner === 'core') {
     return decision === 'denied' ? 'Deny' : decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';
   }
   if (decision === 'denied') {

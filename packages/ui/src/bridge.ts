@@ -46,7 +46,7 @@ import { chatCapabilityFor, log } from '@dotli/shared';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { createIframeHost } from '@parity/truapi-host/web';
-import { buildAllowAttribute, isDevicePermission, registerPermissionAuthorizationProvider } from './permissions.js';
+import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createContactAvatars, installProfileDebugTrigger } from './host-callbacks/Profile.js';
 import type { AvatarSurfaceFit } from './profile/avatar-overlay.js';
@@ -119,10 +119,12 @@ interface ActiveHost {
   core: CoreProviderBase;
   wallet: LiveLocalWallet | undefined;
   generation: number;
+  productId: string;
   iframe: HTMLIFrameElement;
   receiving: ReceivingExecution;
   /** End host-owned calls now, before a replacement render settles. */
   stopMedia: () => void;
+  refreshPermissionPolicy: () => Promise<void>;
   dispose: () => void;
 }
 
@@ -170,9 +172,9 @@ const mediatedInputHost = new MediatedInputHost({
         'Camera',
         {
           kind: 'Device',
-          commit: 'host',
           limiter: mediatedInputPermissionLimiter,
           gatedByIframe: false,
+          commitOwner: 'host',
         },
         scope,
       );
@@ -735,32 +737,18 @@ window.addEventListener('dotli:device-permission-changed', event => {
   }
 });
 
-// Core-requested consent is committed by Rust, never by the prompt callback.
-// Refresh completion precedes a policy reload so the originating call can settle.
 window.addEventListener('dotli:permission-changed', event => {
-  const detail = (event as CustomEvent<{ productId?: string; request?: { tag?: string; value?: string } } | null>)
-    .detail;
-  const product = currentProduct;
-  const permission = detail?.request?.value;
+  const detail = (event as CustomEvent<{ productId?: string; label?: string } | null>).detail;
   if (
-    product === null ||
-    detail?.productId !==
-      (product.mode === 'iframe'
-        ? (product.productId ?? labelToProductId(product.label))
-        : labelToProductId(product.label)) ||
-    detail.request?.tag !== 'Device' ||
-    permission === undefined ||
-    !isDevicePermission(permission) ||
-    (mediaOwnsCapture(product.label) && (permission === 'Camera' || permission === 'Microphone'))
+    currentProduct === null ||
+    currentHost === null ||
+    (detail?.productId !== currentHost.productId && detail?.label !== currentProduct.label)
   ) {
     return;
   }
-  const generation = renderGeneration;
-  setTimeout(() => {
-    if (currentProduct === product && renderGeneration === generation) {
-      rerenderProduct(product);
-    }
-  }, 0);
+  void currentHost.refreshPermissionPolicy().catch((error: unknown) => {
+    log.warn('[dot.li] Permission policy refresh failed:', error);
+  });
 });
 
 window.addEventListener('dotli:receiving-account-changed', () => {
@@ -1760,18 +1748,21 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const granted = await buildAllowAttribute(args.label, args.allowedOrigin);
-    // Protected Media denies capture even when a legacy grant names an origin.
-    const productAllow =
-      media === undefined
-        ? granted
-        : [
-            ...granted
-              .split('; ')
-              .filter(directive => !/^(?:camera|microphone|display-capture)(?:\s|$)/.test(directive)),
-            PROTECTED_MEDIA_ALLOW,
-          ].join('; ');
-    const allow = [productAllow, ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    const readAllow = async (): Promise<string> => {
+      const granted = await buildAllowAttribute(args.label, args.allowedOrigin);
+      // Protected Media denies capture even when a legacy grant names an origin.
+      const productAllow =
+        media === undefined
+          ? granted
+          : [
+              ...granted
+                .split('; ')
+                .filter(directive => !/^(?:camera|microphone|display-capture)(?:\s|$)/.test(directive)),
+              PROTECTED_MEDIA_ALLOW,
+            ].join('; ');
+      return [productAllow, ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    };
+    const allow = await readAllow();
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -1838,10 +1829,24 @@ async function createHost(args: {
       core: coreProvider,
       wallet: connection.wallet,
       generation: hostGeneration,
+      productId: connection.productId,
       receiving: connection.receiving,
       iframe: host.iframe,
       stopMedia() {
         media?.dispose();
+      },
+      async refreshPermissionPolicy() {
+        const nextAllow = await readAllow();
+        // Only committed policy changes can replace the current execution.
+        // A notification grant or another identical policy keeps it alive.
+        if (
+          hostGeneration === renderGeneration &&
+          currentHost?.iframe === host.iframe &&
+          currentProduct !== null &&
+          nextAllow !== host.iframe.allow
+        ) {
+          rerenderProduct(currentProduct);
+        }
       },
       dispose() {
         mediatedInputHost.stop();
