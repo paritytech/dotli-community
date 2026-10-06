@@ -1,8 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, createEffect, createSignal, Loading, onCleanup, useContext, type Accessor } from 'solid-js';
+import {
+  createContext,
+  createEffect,
+  createSignal,
+  Errored,
+  Loading,
+  onCleanup,
+  useContext,
+  type Accessor,
+} from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { captureException } from '@dotli/metrics';
 import { anchorName, FloatingLayer, type Placement } from './FloatingLayer.js';
 import s from './Tooltip.module.css';
 
@@ -213,7 +223,9 @@ function Trigger(props: { children: (t: TooltipTriggerProps) => JSX.Element }): 
 /**
  * The tooltip: a `manual` FloatingLayer with `role="tooltip"`, under its
  * trigger from the trigger's left edge unless `placement` says otherwise.
- * Its children render from a showing until its exit has played.
+ * Its children render from a showing until its exit has played. Children
+ * that cannot load (a `lazy()` chunk gone after a deploy) or throw are
+ * reported once and hide the tooltip; the next showing loads them again.
  */
 function Content(props: {
   class?: string | undefined;
@@ -239,9 +251,23 @@ function Content(props: {
         }
       }}
     >
-      <Loading fallback={null}>{props.children}</Loading>
+      <Errored fallback={err => <Broken id={state.id} error={err()} fail={state.hide} />}>
+        <Loading fallback={null}>{props.children}</Loading>
+      </Errored>
     </FloatingLayer>
   );
+}
+
+/** Reports the content's failure once and hides the tooltip. */
+function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.Element {
+  createEffect(
+    () => props.error,
+    error => {
+      captureException(error, { flow: 'ui', step: 'root_render', tags: { root: `tooltip:${props.id}` } });
+      props.fail();
+    },
+  );
+  return null;
 }
 
 export const Tooltip = Object.assign(TooltipRoot, { Trigger, Content });
