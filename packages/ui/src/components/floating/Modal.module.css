@@ -151,7 +151,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card {
+  /* The placement's own animation outranks the bare class. */
+  .card,
+  .card[data-placement] {
     animation: none;
     transition: none;
   }
