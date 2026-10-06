@@ -50,13 +50,16 @@ type Story = StoryObj<typeof meta>;
 const input = async () => (await import('vitest/browser')).userEvent;
 
 /**
- * A real tap (Chromium's own gesture, through the DevTools protocol), at the
- * centre of `el` in the top page's coordinates: the test runs in a frame,
- * which the runner may scale. A scripted touch focuses as a script does,
- * which `:focus-visible` takes for a keyboard's.
+ * A real tap (a touch start and end through the DevTools protocol, as
+ * Playwright's own tap does), at the centre of `el` in the top page's
+ * coordinates: the test runs in a frame, which the runner may scale. A
+ * scripted touch focuses as a script does, which `:focus-visible` takes for
+ * a keyboard's. Not `Input.synthesizeTapGesture`: on Linux CI its gesture
+ * never reaches the page.
  */
 const tap = async (el: Element) => {
   const { cdp } = await import('vitest/browser');
+  const session = cdp();
   const box = el.getBoundingClientRect();
   let x = box.left + box.width / 2;
   let y = box.top + box.height / 2;
@@ -68,7 +71,14 @@ const tap = async (el: Element) => {
     y = frame.top + y * scale;
     win = win.parent;
   }
-  await cdp().send('Input.synthesizeTapGesture', { x, y, gestureSourceType: 'touch' });
+  // Chromium turns touches into a click only while touch is emulated.
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  try {
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  }
 };
 
 const tip = (): HTMLElement => {
