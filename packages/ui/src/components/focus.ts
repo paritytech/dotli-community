@@ -108,3 +108,20 @@ export function lockScroll(): () => void {
     }
   };
 }
+
+/** Whether focus is lost (on the body) or still inside `surface`. */
+export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
+  const active = document.activeElement;
+  return active === null || active === document.body || surface?.contains(active) === true;
+}
+
+/**
+ * Focus the trigger. A trigger the topbar has collapsed (reached through the
+ * More menu) cannot take focus, so `fallback`, the More button, gets it.
+ */
+export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLElement | undefined): void {
+  trigger?.focus();
+  if (trigger !== undefined && document.activeElement !== trigger) {
+    fallback?.focus();
+  }
+}

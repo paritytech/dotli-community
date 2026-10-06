@@ -70,8 +70,11 @@ export function openSurface(ids: { trigger?: string; surface: string }): Play {
     }
     await step('Then the surface is open with its content', async () => {
       await waitFor(() => expect(byId(ids.surface)).toHaveAttribute('data-open'));
-      // Lazy bodies show a placeholder first.
-      await waitFor(() => expect(byId(ids.surface).querySelector('[data-testid="popover-loading"]')).toBeNull());
+      // Lazy bodies show a placeholder first. Their chunk loads slower than
+      // waitFor's 1s default while three engines share the dev server.
+      await waitFor(() => expect(byId(ids.surface).querySelector('[data-testid="popover-loading"]')).toBeNull(), {
+        timeout: 5000,
+      });
     });
   };
 }

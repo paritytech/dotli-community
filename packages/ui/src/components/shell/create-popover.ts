@@ -5,7 +5,7 @@ import { createEffect, createSignal, onCleanup, onSettled, untrack, useContext, 
 import { topbarStore } from '../../state/topbar.js';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
-import { containTab, focusInto, lockScroll } from '../focus.js';
+import { containTab, focusInto, focusLostOrInside, focusTrigger, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
 
@@ -111,23 +111,6 @@ let pendingHandoff: 'pending' | 'taken' | undefined;
  * narrowed to `pending` across the activation that sets it.
  */
 const pendingHandoffTaken = (): boolean => pendingHandoff === 'taken';
-
-/** Whether focus is lost (on the body) or still inside `surface`. */
-export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
-  const active = document.activeElement;
-  return active === null || active === document.body || surface?.contains(active) === true;
-}
-
-/**
- * Focus the trigger. A trigger the topbar has collapsed (reached through the
- * More menu) cannot take focus, so `fallback`, the More button, gets it.
- */
-export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLElement | undefined): void {
-  trigger?.focus();
-  if (trigger !== undefined && document.activeElement !== trigger) {
-    fallback?.focus();
-  }
-}
 
 const MENU_ITEM_SELECTOR = '[role^="menuitem"]';
 

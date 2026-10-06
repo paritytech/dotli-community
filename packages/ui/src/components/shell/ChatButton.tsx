@@ -14,7 +14,7 @@ import {
 import { Chip } from '../primitives/Chip.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
-import { focusLostOrInside, focusTrigger } from './create-popover.js';
+import { focusLostOrInside, focusTrigger } from '../focus.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarContext } from './topbar/context.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
