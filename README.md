@@ -226,6 +226,11 @@ frame of sampling-boundary tolerance. The displayed short-window FPS remains unr
 Update p95 must remain below 28.6ms; cold/warm first-frame limits remain 3,000/1,000ms, with audio and translation cache
 checks unchanged. This replaces the instantaneous `FPS >= 35` gate explicitly; earlier failures remain recorded.
 
+Runtime failures are reported from the sandbox to Sentry with the resolved CID, program SHA-256, pinned browser-runtime
+revision, active backend, startup stage, graphics profile, and trap program counter when present. The existing
+resolution ID correlates the failure with the host and protocol events for the same load; app bytes and imported file
+contents are never attached.
+
 ## Caching and verification
 
 dotli uses three cache layers:
