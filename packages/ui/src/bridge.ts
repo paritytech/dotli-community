@@ -2077,11 +2077,13 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
   }
   currentHost = host;
   const product = currentProduct;
-  if (product?.mode === 'subdomain') {
+  if (product !== null) {
     const generation = renderGeneration;
     const unregister = registerProductNotificationTarget(product.label, {
-      artifact: product.cid,
-      entryUrl: new URL('/', window.location.origin).href,
+      // Direct frames have mutable, unverified content: activations belong to
+      // this execution, not a later visit to the same URL.
+      artifact: product.mode === 'subdomain' ? product.cid : `iframe:${crypto.randomUUID()}`,
+      entryUrl: product.mode === 'subdomain' ? new URL('/', window.location.origin).href : window.location.href,
       isActive: () => currentHost === host && renderGeneration === generation,
       focus: () => {
         window.focus();

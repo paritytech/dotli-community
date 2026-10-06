@@ -307,7 +307,7 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
-host-owned IndexedDB, scoped to the verified product, authenticated account, network and executable artifact. OS
+host-owned IndexedDB, scoped to the product execution, authenticated account, network and executable artifact. OS
 notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
 the host entry page. It does not navigate the product's route.
 
@@ -315,6 +315,10 @@ The matching foreground product polls `notifications.activationEvents()` and rec
 `{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
 consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
 product, account, network or artifact cannot read or acknowledge the retained activation.
+
+Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
+URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
+replacing a direct iframe cannot inherit an earlier execution's notification activations.
 
 Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
 opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
