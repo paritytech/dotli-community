@@ -384,10 +384,12 @@ export function waitForCoreStoragePermissionRefresh(
   return group.wait(productId, request);
 }
 
-function withPhysicalCoreSlot<T>(slot: string, operation: () => Promise<T>): Promise<T> {
+function withPhysicalCoreSlot<T>(slot: string, operation: () => Promise<T>, atomic: boolean): Promise<T> {
   const locks = navigator.locks as LockManager | null | undefined;
   if (locks === null || locks === undefined) {
-    return Promise.reject(new Error('Atomic cross-document core storage is unavailable'));
+    // Only compare-exchange needs cross-document atomicity; it fails closed.
+    // Plain reads, writes and clears are last-writer-wins and stay usable.
+    return atomic ? Promise.reject(new Error('Atomic cross-document core storage is unavailable')) : operation();
   }
   // Never pass a caller's AbortSignal: dropping a core future must not release
   // this lock while its encryption/storage callback is still in flight.
@@ -442,8 +444,8 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
   );
   // The protocol frame serializes custody and the shared auth session; other
   // browser slots serialize on a Web Lock across this origin's documents.
-  const locked = async <T>(key: CoreStorageKey, operation: () => Promise<T>): Promise<T> =>
-    key.tag === 'AuthSession' ? operation() : withPhysicalCoreSlot(coreLocalStorageKey(key), operation);
+  const locked = async <T>(key: CoreStorageKey, operation: () => Promise<T>, atomic = false): Promise<T> =>
+    key.tag === 'AuthSession' ? operation() : withPhysicalCoreSlot(coreLocalStorageKey(key), operation, atomic);
   const storage: CoreStorage = {
     async readCoreStorage(key) {
       if (experimental) {
@@ -507,21 +509,25 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
           emitLocalChange();
         }
       } else {
-        changed = await locked(key, async () => {
-          const current = await readCoreStorageValue(key, false);
-          if (current === undefined && localStorage.getItem(coreLocalStorageKey(key)) !== null) {
-            throw new Error('Core storage value cannot be decoded');
-          }
-          const matches =
-            current === undefined || expected === undefined
-              ? current === expected
-              : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
-          if (!matches) {
-            return false;
-          }
-          await writeCoreStorageValue(key, replacement);
-          return true;
-        });
+        changed = await locked(
+          key,
+          async () => {
+            const current = await readCoreStorageValue(key, false);
+            if (current === undefined && localStorage.getItem(coreLocalStorageKey(key)) !== null) {
+              throw new Error('Core storage value cannot be decoded');
+            }
+            const matches =
+              current === undefined || expected === undefined
+                ? current === expected
+                : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+            if (!matches) {
+              return false;
+            }
+            await writeCoreStorageValue(key, replacement);
+            return true;
+          },
+          true,
+        );
       }
       // Enqueued before completion, even if the requesting core future was dropped.
       if (changed && notifyOnSuccess) {

@@ -344,7 +344,8 @@ Core storage implements exact-byte compare-exchange. Browser slots serialize per
 Locks, the shared auth session on its protocol-origin slot lock, and test-wallet custody in the protocol frame's custody
 lock. An explicit policy change queues its scoped notification with the successful commit; unanswered Ask initialization
 stays silent. Cores sharing that storage refresh authorization through a host-private, acknowledged BroadcastChannel,
-and the settings setter returns only after that fan-out. Unavailable locking or synchronization fails closed.
+and the settings setter returns only after that fan-out. Without Web Locks, compare-exchange and unavailable
+synchronization fail closed; plain slot reads, writes and clears continue.
 
 Products needing legacy raw capture can select **Use legacy raw capture** in the permissions menu. This ends protected
 calls and reloads into an execution where Media is unsupported and existing device grants govern raw capture. **Use
