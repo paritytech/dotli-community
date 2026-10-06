@@ -332,6 +332,12 @@ In-page toasts remain actionable when OS permission or service-worker notificati
 window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
 supply one.
 
+### Background receiving activation
+
+Startup republication of unchanged, already-enabled watches in the current authorized receiver scope preserves its
+revision, retained events, display receipts and transport synchronization state. A cold notification click therefore
+survives product startup. Genuine watch changes still advance the revision and reject clicks from the previous policy.
+
 ### Product chat
 
 Products that declare `includes.chat` in their `worker.<label>.<tld>` executable manifest get a Worker-kind TrUAPI
@@ -427,9 +433,9 @@ npm run preview          # Build + serve both apps on localhost:5173
 
 This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the native integration layer
 `feat/media-on-jam-seity` (#1011 plus the Media layer `feat/media-sessions`). `vendor/truapi-host.lock.json` records the
-source revision, archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests; that revision
-is local until the integration layer is pushed. The browser wallet artifact enables `wasm-signing-host`, without
-`test-host`. Install the dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local
+source revision, archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests. The pinned
+revision is published on native #1217. The browser wallet artifact enables `wasm-signing-host`, without `test-host`.
+Install the dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local
 truapi checkout instead, run:
 
 ```bash
