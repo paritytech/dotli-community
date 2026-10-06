@@ -277,7 +277,7 @@ test('a verified PolkaVM package translates and renders in the sandbox', async (
 });
 
 test('a running PolkaVM worker failure reaches Sentry with runtime identity', async ({ page }) => {
-  test.skip(process.env.VITE_METRICS !== 'true', 'needs a VITE_METRICS=true build');
+  test.skip(process.env['VITE_METRICS'] !== 'true', 'needs a VITE_METRICS=true build');
   const fixture = await polkavmCar();
   const program = await readFile(join(import.meta.dirname, 'fixtures/polkavm/framebuffer-test.polkavm'));
   const programSha256 = createHash('sha256').update(program).digest('hex');
