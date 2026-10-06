@@ -3,7 +3,7 @@
 
 /**
  * The phone layout's breakpoint. At this width and below the bar is the
- * phone header, which never folds away (topbar-autohide.ts), the actions
+ * phone bar at the foot of the screen, which never folds away (topbar-autohide.ts), the actions
  * live in More (topbar-status.ts), and popovers and menus open as bottom
  * sheets (floating/Popover.tsx, floating/DropdownMenu.tsx). The stylesheets
  * repeat it as `@media (max-width: 560px)`.

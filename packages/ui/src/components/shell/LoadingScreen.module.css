@@ -6,7 +6,7 @@
    pages put theirs, so a failed load swaps one for the other in place. */
 .screen {
   position: absolute;
-  top: var(--topbar-height);
+  top: var(--content-top);
   right: 0;
   left: 0;
   z-index: 10;
