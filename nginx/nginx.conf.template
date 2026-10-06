@@ -8,6 +8,9 @@
 # Sentry tunnel lines: "" when SENTRY_DSN is set (with ${SENTRY_INGEST} and
 # ${SENTRY_PROJECT} cut from the DSN), "#" when it is not - the tunnel
 # snippet is then neither included nor uploaded.
+# The Media TURN route is always rendered; its Cloudflare key id and token live
+# only in /etc/nginx/dotli-private/${DOMAIN}-media-turn.conf, written by
+# `make deploy-nginx` (empty, so the route answers 503, when unset).
 # nginx's own $variables are left intact.
 #
 # Three-build architecture:
@@ -35,6 +38,10 @@ ${RL}    default    "";
 ${RL}}
 ${RL}limit_req_zone $${ZONE}_key        zone=${ZONE}:10m        rate=15r/s;
 ${RL}limit_req_zone $${ZONE}_assets_key zone=${ZONE}_assets:10m rate=64r/s;
+
+# Media TURN credentials: always limited, per client IP, on every env. Each
+# shell tab mints at most once per credential lifetime plus retries.
+limit_req_zone $binary_remote_addr zone=${ZONE}_media_turn:1m rate=6r/m;
 
 # ────────────────────────────────────────────────────────────
 # HTTP → HTTPS redirect
@@ -64,6 +71,12 @@ server {
     resolver 127.0.0.53 valid=300s ipv6=off;
     resolver_timeout 5s;
     include /etc/nginx/snippets/dotli-identity-proxy.conf;
+    location = /__dotli-media/turn {
+        limit_req zone=${ZONE}_media_turn burst=10 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/dotli-private/${DOMAIN}-media-turn.conf;
+        include /etc/nginx/snippets/dotli-media-turn.conf;
+    }
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
@@ -107,6 +120,7 @@ server {
     include /etc/nginx/snippets/dotli-sw-app.conf;
 
     location ^~ /__dotli-identity { return 404; }
+    location ^~ /__dotli-media { return 404; }
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
@@ -143,6 +157,7 @@ server {
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
     location ^~ /__dotli-identity { return 404; }
+    location ^~ /__dotli-media { return 404; }
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
@@ -180,6 +195,12 @@ server {
     resolver 127.0.0.53 valid=300s ipv6=off;
     resolver_timeout 5s;
     include /etc/nginx/snippets/dotli-identity-proxy.conf;
+    location = /__dotli-media/turn {
+        limit_req zone=${ZONE}_media_turn burst=10 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/dotli-private/${DOMAIN}-media-turn.conf;
+        include /etc/nginx/snippets/dotli-media-turn.conf;
+    }
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
