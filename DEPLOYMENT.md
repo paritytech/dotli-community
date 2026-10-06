@@ -89,6 +89,20 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
   rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag
   and `paseoli.dev` from `main`.
 
+## Media TURN credentials
+
+Host Media calls are relay-only and need TURN. The Deploy workflow mints Cloudflare TURN credentials immediately before
+`build:prod` (`scripts/mint-media-turn.ts`) when the environment has the secrets `DOTLI_TURN_CLOUDFLARE_KEY_ID` and
+`DOTLI_TURN_CLOUDFLARE_API_TOKEN`, and passes only the masked relay credentials to the build as
+`VITE_MEDIA_ICE_SERVERS`. The API token never reaches the bundle or the log.
+
+- The credentials expire **48 hours** after the deploy (Cloudflare's maximum). After that, calls from the deployed build
+  cannot connect until a redeploy mints fresh ones, so redeploy an environment that must keep calling at least every two
+  days.
+- Without the secrets the workflow emits a warning and builds without a relay: Media calls cannot connect.
+- A local `make deploy` build has no relay unless `VITE_MEDIA_ICE_SERVERS` is exported (see README, Protected browser
+  Media).
+
 ## Opt-in CI identity proxy rollout
 
 CI normally uploads only the three frontend builds. To also deploy the existing NGINX template and identity proxy, set

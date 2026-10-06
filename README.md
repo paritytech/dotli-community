@@ -352,12 +352,12 @@ calls and reloads into an execution where Media is unsupported and existing devi
 protected host Media** reloads back. The choice is execution-local, not a remembered consent. Same-origin frames never
 advertise Media.
 
-ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay. Set
-`VITE_MEDIA_ICE_SERVERS` at build time to a JSON `RTCIceServer[]` of credentialed `turn:`/`turns:` servers (the deploy
-workflow reads the `MEDIA_ICE_SERVERS` secret), e.g.
+ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay.
+`VITE_MEDIA_ICE_SERVERS` is a build-time JSON `RTCIceServer[]` of credentialed `turn:`/`turns:` servers, e.g.
 `[{"urls":["turns:turn.example:5349"],"username":"dotli","credential":"…"}]`. STUN entries, extra fields and missing
-credentials are rejected; unset means calls cannot connect. Products never supply ICE settings, and the credentials ship
-in the public bundle, so use relay-scoped credentials.
+credentials are rejected; unset means calls cannot connect. Products never supply ICE settings. The Deploy workflow
+mints 48-hour Cloudflare TURN credentials for each deploy (`scripts/mint-media-turn.ts`); they ship in the public bundle
+and expire 48 hours later, when a redeploy refreshes them. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
 
 ## Development
 
