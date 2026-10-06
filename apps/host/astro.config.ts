@@ -324,6 +324,7 @@ export default defineConfig({
     hostUpdateWorker(),
     // Emit both independent notification handlers before Workbox precaching.
     receivingWorker(),
+
     notificationWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
@@ -358,6 +359,7 @@ export default defineConfig({
         // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
         // ring-VRF operation first needs it. Precaching it would make every
         // installed shell download it after each release.
+        // Imported service-worker code must bypass the shell precache.
         globIgnores: [
           '**/truapi_provider_bg*.wasm',
           '**/truapi_verifiable_bg*.wasm',

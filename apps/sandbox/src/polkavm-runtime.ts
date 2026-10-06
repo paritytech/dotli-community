@@ -1426,6 +1426,11 @@ function createShell(): {
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
+    #dotli-polkavm-loading{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:12px;background:#050505b8;color:#fff;font:600 15px/1.4 system-ui,sans-serif;pointer-events:none}
+    #dotli-polkavm-loading[hidden]{display:none}
+    .dotli-polkavm-loading-spinner{width:22px;height:22px;box-sizing:border-box;border:3px solid #ffffff45;border-top-color:#e6007a;border-radius:50%;animation:dotli-polkavm-spin .8s linear infinite}
+    @keyframes dotli-polkavm-spin{to{transform:rotate(360deg)}}
+    @media(prefers-reduced-motion:reduce){.dotli-polkavm-loading-spinner{animation:none;border-color:#e6007a}}
     #dotli-polkavm-menu-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
     #dotli-polkavm-menu-open:hover{border-color:#e6007a}
     .dotli-polkavm-menu{position:fixed;inset:52px 12px auto auto;margin:0;box-sizing:border-box;max-width:calc(100vw - 24px);max-height:calc(100dvh - 64px);overflow:auto;font:14px/1.5 system-ui,sans-serif}
@@ -1665,7 +1670,7 @@ export function installFileInputControls(
           const accepted =
             approved !== undefined || (await askFileInputConsent(file, [candidate.handler], signal)) !== null;
           if (accepted && !cancelled()) {
-            status.textContent = `Loading ${file.name}…`;
+            menu.setLoadingFile(file.name);
           }
           return accepted && !cancelled();
         },
@@ -1682,6 +1687,7 @@ export function installFileInputControls(
       if (result.status === 'delivered') {
         requestedHandle = undefined;
       } else {
+        menu.setLoadingFile(null);
         cancelRequest();
         status.textContent =
           result.status === 'rejected'
@@ -2940,6 +2946,7 @@ async function startPolkaVmApplication(
     status.textContent = `PolkaVM startup: ${stage.replaceAll('-', ' ')}…`;
     updateMetrics();
   };
+  let finishFileLoading = (): void => undefined;
   const presentedFrame = (): void => {
     polkavmMetrics.frames++;
     canvas.dataset['polkavmFrames'] = String(polkavmMetrics.frames);
@@ -2960,6 +2967,7 @@ async function startPolkaVmApplication(
       updateMetrics();
       resolveStarted(undefined);
     }
+    finishFileLoading();
   };
 
   const resumeAudio = (): void => {
@@ -3373,6 +3381,9 @@ async function startPolkaVmApplication(
       void stopWorker().then(() => launch());
     },
   });
+  finishFileLoading = () => {
+    menu.setLoadingFile(null);
+  };
   const fileControls = installFileInputControls(
     surface,
     menu.status,
@@ -3414,11 +3425,11 @@ async function startPolkaVmApplication(
           resolveStarted(undefined);
           stop();
           void stopWorker().then(() => launch(relaunch));
+        } else if (message['outcome'] === 'ready') {
+          menu.loadingReady();
         } else {
-          menu.status.textContent =
-            message['outcome'] === 'ready'
-              ? 'File delivered. Resume to return to the app.'
-              : 'The app could not accept this file. Choose another file or resume.';
+          menu.setLoadingFile(null);
+          menu.status.textContent = 'The app could not accept this file. Choose another file or resume.';
         }
         break;
       }

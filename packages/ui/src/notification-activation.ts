@@ -82,7 +82,6 @@ export function notificationDeliveryIsCurrent(scope: NotificationScope): boolean
     (target === undefined || target.artifact === scope.artifact)
   );
 }
-
 /** A typed callback receives routes through polling; clicks never navigate its iframe. */
 export async function presentProductNotification(params: {
   product: string;

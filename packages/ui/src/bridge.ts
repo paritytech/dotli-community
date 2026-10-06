@@ -1685,6 +1685,7 @@ async function createHost(args: {
     // bytes have no codec marker and must never reach the codec-2 decoder.
     // Only the modern SDK's transferred MessagePort is supported.
     let probeMode: 'pending' | 'modern' = 'pending';
+    let probeConnectionId: string | null = null;
     let warnedLegacyTransport = false;
     const onProbe = (event: MessageEvent): void => {
       const targetWindow = host.iframe.contentWindow;
@@ -1692,6 +1693,13 @@ async function createHost(args: {
         return;
       }
       if ((event.data as { type?: unknown } | null)?.type === 'truapi-ready') {
+        const connectionId = (event.data as { connectionId?: unknown }).connectionId;
+        // Ready is retried while the first port transfer is in flight. Replacing
+        // that port strands the client, which accepts only the first transfer.
+        if (typeof connectionId === 'string' && connectionId === probeConnectionId) {
+          return;
+        }
+        probeConnectionId = typeof connectionId === 'string' ? connectionId : null;
         if (probeMode === 'modern') {
           const channel = new MessageChannel();
           connectProductPort(channel.port1);

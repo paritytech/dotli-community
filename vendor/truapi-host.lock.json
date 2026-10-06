@@ -2,28 +2,28 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "work/paseo-tommy-blockers",
-  "upstreamRevision": "e485861aeceb4cfb16541b730e0820c2d5ff77c9",
-  "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
-  "baseRevision": "75796176b248c8e17e5996e4975d4a4ee2c642e9",
-  "publication": "Local blocker candidate; SDK packages are vendored, not npm-published.",
+  "upstreamRevision": "ec4a489949506862707c4ea6398298e87d7841eb",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1216",
+  "baseRevision": "1f1443bd54fcf8ee4eb5805c36130a5d3d32409f",
+  "publication": "Reviewed identity and notification activation integration; SDK packages are vendored, not npm-published.",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
-      "sourceArchiveSha256": "7efcd0cc797b0b48a666feaab12e1f7d81989eff16eec85cdff49ab2aa11cd6c",
+      "sourceArchiveSha256": "f98bb80dcae8692963d579dcbb5778f082c26afda9eb7d8d985d785aff8a79a4",
       "clientSha256": "f327dda7b159e40218e306fbcfc3823c861be08de2bcf40942523adb3d2d6a6e"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "5b71ae2bbb983eb87bbfc465f441fd648333457e9b5f020450ead1e6115c5e34",
+      "sourceArchiveSha256": "7084049e6e074a9b74790f1930b5688fef984e5ef0a55e1f14c0b52479181195",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "6fb656b1a32d69b00471acac8c987aeb3f7f9289cd8b9c209f77fcc5ff7e501b",
-      "testingWasmSha256": "858a98098c954b0c6ea66caaa303a8523e426e41d5a6ae142135a7dd810d2932",
+      "wasmSha256": "27238654a4c8004411ed8420cabcf5f24dbb8690a90578acc83783f96b44ce0f",
+      "testingWasmSha256": "4e7fa77caa5550af24d9cedc96f71f01bf98cfa345ee627a1959ed8dcc9229f4",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "e485861aeceb4cfb16541b730e0820c2d5ff77c9"
+  "wasmUpstreamRevision": "ec4a489949506862707c4ea6398298e87d7841eb"
 }

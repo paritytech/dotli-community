@@ -61,6 +61,11 @@ name.app.paseo.li        App build (CID from URL contract, content fetch, render
 Each product gets its own `<label>.app.paseo.li` origin, so versions of the same product share an origin while different
 products stay isolated for SW/storage/security purposes.
 
+The iframe bridge deduplicates TrUAPI readiness retries by the SDK's public `connectionId`. Replacing an already-adopted
+port on a queued retry disconnects the product, so only a new connection identifier triggers reconnection. A genuine
+document reload supplies a new identifier. The existing source-window and origin checks still apply; the identifier is
+not an authority token.
+
 ### What it does
 
 1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected
@@ -194,6 +199,11 @@ when ready. Packaged content starts normally without selecting a file. A guest `
 the user clicks **Open file** to supply the browser activation required for the native picker. The host asks for
 explicit consent and routes the file to that execution's current registration, not to another product or a stale
 handler.
+
+After file approval, a host-owned loading overlay names the selected file. Once delivery is ready, the paused menu
+offers **Resume and load**; the overlay stays visible while the guest processes the file and clears on the next
+presented frame. Delivery rejection clears it and keeps the recovery menu available. This is an activity indicator, not
+a percentage estimate of guest-side decoding.
 
 Inline and relaunch handlers receive bounded bytes. Stream handlers receive the original browser `Blob`, without a
 whole-file read or upload by the host; the runtime manages bounded reads and private OPFS caches. Cache creation and

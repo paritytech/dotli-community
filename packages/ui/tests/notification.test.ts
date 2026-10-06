@@ -201,7 +201,6 @@ describe('bound notification activation', () => {
       { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/dm/alice' },
     ]);
   });
-
   it('makes cancelled and expired notification tokens inert', async () => {
     const api = createNotificationAdapters(label);
     const pushed = await api.pushNotification({ text: 'Cancelled', deeplink: '/dm/alice' });
