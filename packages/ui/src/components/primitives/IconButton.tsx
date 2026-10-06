@@ -17,6 +17,9 @@ export interface IconButtonProps {
   'aria-haspopup'?: 'dialog' | 'menu' | undefined;
   'aria-expanded'?: 'true' | 'false';
   'aria-controls'?: string;
+  /** The id of the `popover` this button opens and closes (Popover.Trigger's). */
+  popovertarget?: string | undefined;
+  style?: JSX.CSSProperties | undefined;
   badge?: boolean;
   /** The badge's colour; white without one. */
   badgeTone?: StatusTone;
@@ -42,6 +45,8 @@ export function IconButton(props: IconButtonProps): JSX.Element {
       aria-haspopup={props['aria-haspopup']}
       aria-expanded={props['aria-expanded']}
       aria-controls={props['aria-controls']}
+      popovertarget={props.popovertarget}
+      style={props.style}
       class={[s['button'], props.class]}
       data-badge={props.badge === true ? '' : undefined}
       data-tone={props.badgeTone}

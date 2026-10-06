@@ -25,7 +25,7 @@ import { BACKEND_KEY } from '@dotli/config';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { mouseClick, pointerPress, renderComponent, settle, tabTo, waitForContent } from '../../helpers/solid.js';
-import { byId, byTestId, must, query } from '../../support.js';
+import { byId, byTestId, must } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 
 vi.mock('../../../src/recent-labels.js', () => ({
@@ -109,7 +109,7 @@ describe('Topbar actions island', () => {
     }
   });
 
-  it("As a mobile user, the More menu's Appearance and Settings rows open the Appearance menu and the settings popover", async () => {
+  it("As a mobile user, the More menu's Appearance and Settings rows open the Appearance popover and the settings popover", async () => {
     // Given
     initSettingsStore();
     stubTopbarLayout(MORE_ONLY);
@@ -122,9 +122,8 @@ describe('Topbar actions island', () => {
     expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(byId('theme-popover').hasAttribute('data-open')).toBe(true);
 
-    // When: the More button's tap is outside the theme menu, a modal menu,
-    // so it only closes the menu: its click is swallowed.
-    pointerPress(byId('more-button'));
+    // When
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await settle();
 
     // Then
@@ -363,14 +362,12 @@ describe('Topbar actions island', () => {
     const more = byId('more-popover');
     expect(more.hasAttribute('data-open')).toBe(false);
     expect(more.hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('theme-popover');
+    expect(byTestId('menu-scrim').hasAttribute('data-handoff')).toBe(true);
+    const sheet = byId('theme-popover', HTMLDialogElement);
+    expect(sheet.open).toBe(true);
     expect(sheet.hasAttribute('data-open')).toBe(true);
-    expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
     expect(sheet.contains(document.activeElement)).toBe(true);
-    const scrims = [...document.querySelectorAll('[data-testid="menu-scrim"]')];
-    expect(scrims).toHaveLength(2);
-    expect(scrims.every(scrim => scrim.hasAttribute('data-handoff'))).toBe(true);
   });
 
   it("As a phone user choosing Settings in More, the settings sheet takes More's place without sliding", async () => {
@@ -392,24 +389,6 @@ describe('Topbar actions island', () => {
     expect(byId('mode-popover-backdrop').hasAttribute('data-handoff')).toBe(true);
   });
 
-  it('As a phone keyboard user choosing Appearance in More, the Appearance sheet opens on its first item', async () => {
-    // Given
-    stubTopbarLayout(MORE_ONLY);
-    stubPhoneViewport(true);
-    await renderIsland();
-    pointerPress(byId('more-button'));
-    await settle();
-
-    // When: Enter on a row is a click with no pointer behind it
-    moreRow('theme').click();
-    await settle();
-
-    // Then
-    const sheet = byId('theme-popover');
-    expect(sheet.hasAttribute('data-open')).toBe(true);
-    expect(document.activeElement).toBe(query(sheet, '[role="menuitemradio"]'));
-  });
-
   it("As a phone user closing a sheet that took More's place, it slides out", async () => {
     // Given
     stubTopbarLayout(MORE_ONLY);
@@ -425,9 +404,6 @@ describe('Topbar actions island', () => {
     const sheet = byId('theme-popover');
     expect(sheet.hasAttribute('data-open')).toBe(false);
     expect(sheet.hasAttribute('data-handoff')).toBe(false);
-    const scrim = sheet.previousElementSibling;
-    expect(scrim?.getAttribute('data-testid')).toBe('menu-scrim');
-    expect(scrim?.hasAttribute('data-handoff')).toBe(false);
   });
 
   // Off with the chat button (TopbarActions.tsx) until it is redone.

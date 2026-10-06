@@ -5,6 +5,7 @@ import { createEffect, createSignal, onCleanup, onSettled, untrack, useContext, 
 import { topbarStore } from '../../state/topbar.js';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
+import { handOffSheet } from '../floating/SheetFrame.js';
 import { containTab, focusInto, focusLostOrInside, focusTrigger, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
@@ -489,9 +490,11 @@ export function createPopover(options: PopoverOptions): Popover {
       try {
         setOpen(false);
         focusBack();
-        activate();
+        // A floating/ BottomSheet (Appearance's) takes a hand-off through
+        // SheetFrame's own, which flushes this close with its opening.
+        const sheetTookIt = handOffSheet(activate);
         // In the batch of this close and that opening, so both land in one frame.
-        setHandedOff(pendingHandoffTaken());
+        setHandedOff(pendingHandoffTaken() || sheetTookIt);
       } finally {
         pendingHandoff = undefined;
       }
