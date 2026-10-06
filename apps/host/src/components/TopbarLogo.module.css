@@ -39,21 +39,17 @@
 .beta {
   position: absolute;
   top: 2px;
-  right: 2px;
+  right: 4px;
   display: inline-flex;
   align-items: center;
   height: 12px;
-  padding: 0 4px;
+  padding: 0 3px;
   border-radius: var(--r-full);
   background: var(--chrome-fill-strong);
   color: var(--chrome-text-muted);
   font: var(--fw-semibold) 8px / 1 var(--font-sans);
   letter-spacing: var(--ls-caps);
-  text-transform: uppercase;
   pointer-events: none;
-}
-.sign {
-  display: none;
 }
 /* Narrow pills: the mark alone, so the wordmark doesn't squeeze the address
    and push actions into More. The tag shrinks to β in the corner, with room
@@ -71,19 +67,7 @@
     clip-path: inset(50%);
   }
   .beta {
-    right: 0;
-    justify-content: center;
-    width: 12px;
-    padding: 0;
-    /* Uppercase would turn β into a capital that reads as a B. */
-    text-transform: none;
-    letter-spacing: 0;
-  }
-  .word {
-    display: none;
-  }
-  .sign {
-    display: inline;
+    right: 2px;
   }
 }
 /* Phones: the mark alone, centred in a 44 px box like an icon (the board's
