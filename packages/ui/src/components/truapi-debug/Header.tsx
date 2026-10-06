@@ -26,8 +26,7 @@ function ExportIcon(): JSX.Element {
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <path d="M12 15V3" />
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M12 15V3m9 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="m7 10 5 5 5-5" />
     </svg>
   );
@@ -65,8 +64,8 @@ function DockRightIcon(): JSX.Element {
       stroke-linejoin="round"
     >
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
-      <line x1="10" y1="2.5" x2="10" y2="13.5" />
-      <rect x="10" y="2.5" width="4.5" height="11" fill="currentColor" fill-opacity="0.4" stroke="none" />
+      <path d="M10 2.5v11" />
+      <path fill="currentColor" fill-opacity=".4" d="M10 2.5h4.5v11H10z" stroke="none" />
     </svg>
   );
 }
@@ -85,8 +84,8 @@ function DockBottomIcon(): JSX.Element {
       stroke-linejoin="round"
     >
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
-      <line x1="1.5" y1="10" x2="14.5" y2="10" />
-      <rect x="1.5" y="10" width="13" height="3.5" fill="currentColor" fill-opacity="0.4" stroke="none" />
+      <path d="M1.5 10h13" />
+      <path fill="currentColor" fill-opacity=".4" d="M1.5 10h13v3.5h-13z" stroke="none" />
     </svg>
   );
 }

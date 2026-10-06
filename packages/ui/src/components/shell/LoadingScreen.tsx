@@ -35,15 +35,7 @@ export function LoadingScreen(): JSX.Element {
       <div class={s['screen']} id="app-loading" data-dismissing={dismissing() ? '' : undefined}>
         <div class={s['column']}>
           <div class={s['logo']} id="loading-logo">
-            <svg
-              class={s['mark']}
-              width="56"
-              height="56"
-              viewBox="0 0 256 256"
-              fill="none"
-              aria-hidden="true"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg class={s['mark']} width="56" height="56" viewBox="0 0 256 256" fill="none" aria-hidden="true">
               <For each={PETAL_PATHS}>{d => <path class={s['petal']} d={d} />}</For>
             </svg>
           </div>
@@ -105,9 +97,7 @@ export function LoadingScreen(): JSX.Element {
               // @ts-expect-error -- not in Solid's SVG types, but hides the icon from focus
               focusable="false"
             >
-              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <path d="M12 9v4" />
-              <path d="M12 17h.01" />
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01" />
             </svg>
             <span id="loading-warning-text">{warning() ?? ''}</span>
           </p>

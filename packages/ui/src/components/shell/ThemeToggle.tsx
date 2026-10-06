@@ -38,7 +38,7 @@ function SunGlyph(props: GlyphProps): JSX.Element {
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+      <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
     </svg>
   );
 }
@@ -75,7 +75,7 @@ function MonitorGlyph(props: GlyphProps): JSX.Element {
       aria-hidden="true"
     >
       <rect x="2" y="3" width="20" height="14" rx="3" />
-      <path d="M8 21h8M12 17v4" />
+      <path d="M8 21h8m-4-4v4" />
     </svg>
   );
 }

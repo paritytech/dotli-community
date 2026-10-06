@@ -15,11 +15,10 @@ import type { StatusTone } from './components/primitives/StatusDot.js';
 export const NOTIFICATION_DISMISS_MS = 10_000;
 
 const ALERT_PATHS =
-  '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
-  '<path d="M12 9v4"/><path d="M12 17h.01"/>';
+  '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01"/>';
 
 const TONE_ICON_PATHS: Record<StatusTone, string> = {
-  info: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  info: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9m4.3 13a1.94 1.94 0 0 0 3.4 0"/>',
   ok: '<path d="M20 6 9 17l-5-5"/>',
   warn: ALERT_PATHS,
   err: ALERT_PATHS,
