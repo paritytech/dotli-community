@@ -234,7 +234,7 @@ function expectInfoRow(
 ): void {
   expect(tags(must(row, 'a row'))).toEqual(opts.copyable === true ? ['SPAN', 'BUTTON', 'SPAN'] : ['SPAN', 'CODE']);
   expect(row?.children[0]?.textContent).toBe(label);
-  expect(row?.children[1]?.textContent).toBe(value);
+  expect(row?.querySelector('code')?.textContent).toBe(value);
   expect(row?.hasAttribute('data-copyable')).toBe(opts.copyable === true);
   expect(row?.hasAttribute('data-dense')).toBe(opts.dense === true);
   let title: string | null = null;
@@ -763,8 +763,7 @@ describe('The settings popover island', () => {
     const site = infoRow('Site');
     const button = query(site, 'button', HTMLButtonElement);
     const status = query(site, '[role="status"]');
-    expect(button.getAttribute('aria-label')).toBe('Copy Site');
-    expect(byId(button.getAttribute('aria-describedby') ?? '').textContent).toBe(window.location.host);
+    expect(button.textContent).toBe(`Copy Site ${window.location.host}`);
     expect(focusables(byId('mode-popover'))).toContain(button);
     expect(infoRow('Build').querySelector('button')).toBeNull();
 

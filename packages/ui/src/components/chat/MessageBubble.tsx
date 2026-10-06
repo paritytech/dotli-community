@@ -100,7 +100,6 @@ export function MessageBubble(props: {
                       void userTriggerAction(record.productId, record.roomId, {
                         messageId: record.messageId,
                         actionId: action.actionId,
-                        // eslint-disable-next-line solid/reactivity -- props read at call time inside the promise callback
                       }).catch(() => {
                         props.onActionError();
                       });

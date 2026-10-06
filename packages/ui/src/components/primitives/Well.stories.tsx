@@ -79,7 +79,7 @@ export const KeyValues: Story = {
   },
   play: async ({ canvas, userEvent, step }) => {
     await step('When I copy the commit with the keyboard', async () => {
-      canvas.getByRole('button', { name: 'Copy Commit' }).focus();
+      canvas.getByRole('button', { name: 'Copy Commit 4a879e54' }).focus();
       await userEvent.keyboard('{Enter}');
     });
     await step('Then the row announces it', async () => {

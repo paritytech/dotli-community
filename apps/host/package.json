@@ -34,7 +34,7 @@
     "jsqr": "^1.4.0",
     "playwright": "^1.63.0",
     "simple-statistics": "^7.12.1",
-    "vite-plugin-pwa": "^1.3.0",
+    "vite-plugin-pwa": "^2.0.0",
     "vite-plugin-wasm": "^3.6.0",
     "workbox-window": "^7.4.1"
   },
@@ -49,8 +49,8 @@
     "@dotli/storage": "*",
     "@dotli/truapi-debug": "*",
     "@dotli/ui": "*",
-    "@sentry/browser": "^11.1.0",
-    "@sentry/vite-plugin": "^5.4.0",
-    "astro": "^7.3.5"
+    "@sentry/browser": "^11.4.0",
+    "@sentry/vite-plugin": "^5.4.1",
+    "astro": "^7.3.6"
   }
 }
