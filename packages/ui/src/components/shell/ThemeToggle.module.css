@@ -112,13 +112,7 @@
 }
 
 /* Phones: the sheet's head carries the title, and the tiles sit inset
-   under it (the board's .popover.is-sheet). The wrapper in the sheet is no
-   glass: the sheet's own width and padding hold. */
-.popover[data-sheet] {
-  width: auto;
-  max-width: none;
-  padding: 0;
-}
+   under it (the board's .popover.is-sheet). */
 .tiles[data-sheet] {
   margin: var(--sp-1) var(--sp-4) 0;
 }

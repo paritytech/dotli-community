@@ -102,10 +102,10 @@ function Trigger(props: {
 /**
  * The panel: a FloatingLayer (`role="dialog"`, named by the title), or a
  * BottomSheet with the title in its head for an opening on a phone. `class`
- * goes on the anchored surface, and in a sheet on a wrapper marked
- * `data-sheet`. Children render from an opening until its exit has played;
- * a `lazy()` child shows a spinner while it loads, and `preload` runs when
- * the browser is idle.
+ * goes on the anchored surface only: a sheet keeps its own width and inset.
+ * Children render from an opening until its exit has played; a `lazy()`
+ * child shows a spinner while it loads, and `preload` runs when the browser
+ * is idle.
  */
 function Content(props: {
   class?: string | undefined;
@@ -145,7 +145,6 @@ function Content(props: {
         focusInto(surface);
       }}
       sheetTestId="popover"
-      sheetClass={props.class}
       sheetFocus={firstControl}
       sheetChildren={wrapper => body(wrapper)}
     >

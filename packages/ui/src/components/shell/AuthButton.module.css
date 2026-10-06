@@ -6,10 +6,6 @@
 .popover {
   width: var(--w-pop-sm);
 }
-/* A sheet's wrapper takes the sheet's width. */
-.popover[data-sheet] {
-  width: auto;
-}
 
 /* The bar's Sign in button and account chip: the Button at the bar's
    control height, its type, padding and gap scaled with it. */
