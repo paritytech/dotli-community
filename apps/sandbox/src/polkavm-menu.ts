@@ -174,7 +174,11 @@ export function installPolkaVmMenu(
       }
       loadingFileName = fileName;
       loading.hidden = fileName === null;
-      surface.toggleAttribute('aria-busy', fileName !== null);
+      if (fileName === null) {
+        surface.removeAttribute('aria-busy');
+      } else {
+        surface.setAttribute('aria-busy', 'true');
+      }
       resume.textContent = 'Resume';
       if (fileName === null) {
         loadingText.textContent = '';
