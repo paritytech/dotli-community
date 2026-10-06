@@ -191,6 +191,10 @@ function expectRow(el: Element, perm: (typeof ALL_PERMISSIONS)[number], status: 
  * open, and nothing while closed.
  */
 function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
+  // In the page from its first opening (or idle preload).
+  if (!opts.open && document.getElementById('permissions-popover') === null) {
+    return;
+  }
   const popover = byId('permissions-popover');
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Permissions');
@@ -484,11 +488,8 @@ describe('PermissionsPopover', () => {
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
     const button = byId('permissions-button');
-    const popover = byId('permissions-popover');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Permissions');
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-controls')).toBe('permissions-popover');
     expect(button.getAttribute('aria-expanded')).toBe('false');
@@ -498,6 +499,9 @@ describe('PermissionsPopover', () => {
 
     // Then
     expect(button.getAttribute('aria-expanded')).toBe('true');
+    const popover = byId('permissions-popover');
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Permissions');
   });
 
   it('As a user, the lock button shows its grants badge while the app has any permission granted, including an app loaded before the island mounted', async () => {

@@ -313,12 +313,8 @@ describe('The network popover island', () => {
 
     // Then
     expectChainsButton(false);
-    // The surface is the shared Popover's, and holds nothing until opened.
-    const popover = byId('chains-popover');
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Network');
-    expect(popover.getAttribute('tabindex')).toBe('-1');
-    expect(body().childElementCount).toBe(0);
+    // The surface is the shared Popover's, in the page from its first opening (or idle preload).
+    expect(document.getElementById('chains-popover')).toBeNull();
   });
 
   it('As a user, the network button carries a badge in the network health tone', async () => {
@@ -781,11 +777,8 @@ describe('The network popover island', () => {
     // Given
     await renderPopover();
     const button = byId('chains-button');
-    const popover = byId('chains-popover');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Network');
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-controls')).toBe('chains-popover');
     expect(button.getAttribute('aria-expanded')).toBe('false');
@@ -795,6 +788,10 @@ describe('The network popover island', () => {
 
     // Then
     expect(button.getAttribute('aria-expanded')).toBe('true');
+    const popover = byId('chains-popover');
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Network');
+    expect(popover.getAttribute('tabindex')).toBe('-1');
   });
 
   it('As a visitor, the button shows once the product is on screen, whether that came before or after the mount', async () => {

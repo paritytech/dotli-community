@@ -119,8 +119,9 @@ async function drain(): Promise<void> {
   }
 }
 
+/** Open, as the surface says; it is in the page only from its first opening. */
 function isOpen(): boolean {
-  return byId('mode-popover').hasAttribute('data-open');
+  return document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
 }
 
 function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -457,9 +458,8 @@ describe('The settings popover island', () => {
     // Then
     expectModeButton(false);
     expect(byId('mode-button').hasAttribute('data-badge')).toBe(false);
-    // The surface is the shared Popover's, and holds nothing until opened.
-    expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
-    expect(byId('mode-popover').childElementCount).toBe(0);
+    // The surface is the shared Popover's, in the page from its first opening (or idle preload).
+    expect(document.getElementById('mode-popover')).toBeNull();
   });
 
   it('As a visitor on trusted providers, the button carries the trusted-provider mark', async () => {
@@ -935,11 +935,8 @@ describe('The settings popover island', () => {
     // Given
     await renderPopover();
     const settingsButton = byId('mode-button');
-    const popover = byId('mode-popover');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Settings');
     expect(settingsButton.getAttribute('aria-haspopup')).toBe('dialog');
     expect(settingsButton.getAttribute('aria-controls')).toBe('mode-popover');
     expect(settingsButton.getAttribute('aria-expanded')).toBe('false');
@@ -949,6 +946,9 @@ describe('The settings popover island', () => {
 
     // Then
     expect(settingsButton.getAttribute('aria-expanded')).toBe('true');
+    const popover = byId('mode-popover');
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Settings');
   });
 
   it('As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button', async () => {

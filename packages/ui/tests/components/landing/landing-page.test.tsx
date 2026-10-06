@@ -12,6 +12,7 @@ import type * as UiModule from '../../../src/ui.js';
 import type * as LoadingModule from '../../../src/state/loading.js';
 import type * as TopbarModule from '../../../src/state/topbar.js';
 import { byTestId, must } from '../../support.js';
+import { stubIdleBrowser } from '../../helpers/idle.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -113,7 +114,8 @@ describe('landing page island', () => {
   });
 
   it('As a visitor, the loading screen stays up until the landing page is ready, then the page replaces it', async () => {
-    // Given
+    // Given: an idle browser, whose preload puts the account surface in the page.
+    stubIdleBrowser();
     const release = gateChunk();
     await mountIsland();
 
@@ -139,6 +141,7 @@ describe('landing page island', () => {
     expect(
       [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
     ).toEqual(['auth']);
+    await vi.waitFor(() => must(byId('landing-user-popover'), '#landing-user-popover'));
     for (const id of ['landing-auth-button', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }

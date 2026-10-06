@@ -185,6 +185,8 @@ describe('chat panel', () => {
     const web = await import('@solidjs/web');
     const { ChatButton } = await import('../src/components/shell/ChatButton.js');
     const { ActionGroup } = await import('../src/components/shell/topbar/ActionGroup.js');
+    // This graph's More menu, whose surface chunk the setup's preload has not loaded.
+    await (await import('../src/components/floating/DropdownMenu.js')).preloadDropdownMenuSurface();
     stubTopbarLayout(1);
     disposeButton = web.render(
       () =>

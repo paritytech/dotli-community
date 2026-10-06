@@ -23,7 +23,7 @@ export interface ButtonProps {
   'aria-expanded'?: 'true' | 'false' | undefined;
   'aria-controls'?: string | undefined;
   'aria-haspopup'?: 'dialog' | 'menu' | undefined;
-  /** The id of the `popover` this button opens and closes (Popover.Trigger's). */
+  /** The id of the `popover` this button opens and closes. */
   popovertarget?: string | undefined;
   style?: JSX.CSSProperties | undefined;
   class?: string | undefined;

@@ -117,10 +117,10 @@ export function moreRow(name: string): HTMLElement {
 
 /**
  * Open the More menu, unless it is open: its rows are in the page only
- * while it is.
+ * while it is, and the menu itself from its first opening.
  */
 export async function openMore(): Promise<void> {
-  if (!byId('more-popover').hasAttribute('data-open')) {
+  if (document.getElementById('more-popover')?.hasAttribute('data-open') !== true) {
     mouseClick(byId('more-button'));
     await settle();
   }

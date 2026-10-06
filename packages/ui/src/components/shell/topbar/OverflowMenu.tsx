@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, For, Show } from 'solid-js';
+import { createEffect, createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { DropdownMenu, useDropdownMenu } from '../../floating/DropdownMenu.js';
 import { IconButton } from '../../primitives/IconButton.js';
@@ -70,34 +70,31 @@ export function OverflowMenu(props: {
     );
   const moreLabel = (): string => ['More', ...raised().map(alert => alert.label)].join(', ');
 
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+
   return (
-    <DropdownMenu id="more-popover" title="More">
-      <CloseWhenEmpty empty={props.rows.length === 0} />
+    <>
       <span class={props.class} data-testid="more-item" data-parked={props.rows.length === 0 ? '' : undefined}>
-        <DropdownMenu.Trigger>
-          {t => (
-            <IconButton
-              {...t}
-              ref={el => {
-                t.ref(el);
-                props.buttonRef(el);
-              }}
-              id="more-button"
-              title="More"
-              aria-label={moreLabel()}
-              badge={badgeTone() !== undefined}
-              badgeTone={badgeTone() ?? 'ok'}
-            >
-              <svg data-testid="more-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <circle cx="5" cy="12" r="1.8" />
-                <circle cx="12" cy="12" r="1.8" />
-                <circle cx="19" cy="12" r="1.8" />
-              </svg>
-            </IconButton>
-          )}
-        </DropdownMenu.Trigger>
+        <IconButton
+          ref={el => {
+            setButton(el);
+            props.buttonRef(el);
+          }}
+          id="more-button"
+          title="More"
+          aria-label={moreLabel()}
+          badge={badgeTone() !== undefined}
+          badgeTone={badgeTone() ?? 'ok'}
+        >
+          <svg data-testid="more-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="19" cy="12" r="1.8" />
+          </svg>
+        </IconButton>
       </span>
-      <DropdownMenu.Content class={s['menu']}>
+      <DropdownMenu id="more-popover" title="More" trigger={button()} class={s['menu']}>
+        <CloseWhenEmpty empty={props.rows.length === 0} />
         <For each={props.rows}>
           {entry => (
             <DropdownMenu.Item
@@ -122,12 +119,12 @@ export function OverflowMenu(props: {
             </DropdownMenu.Item>
           )}
         </For>
-      </DropdownMenu.Content>
-    </DropdownMenu>
+      </DropdownMenu>
+    </>
   );
 }
 
-/** The last row going (the bar grew) takes the flyout with it. */
+/** The last row going (the bar grew) takes the open flyout with it. */
 function CloseWhenEmpty(props: { empty: boolean }): JSX.Element {
   const menu = useDropdownMenu();
   createEffect(

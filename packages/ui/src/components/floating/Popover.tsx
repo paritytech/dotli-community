@@ -1,24 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, createEffect, Errored, Loading, onSettled, untrack, useContext, type Accessor } from 'solid-js';
+import { createContext, createEffect, lazy, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { focusables, focusInto } from '../focus.js';
-import { preloadWhenIdle } from '../idle.js';
-import { Spinner } from '../primitives/Spinner.js';
-import {
-  AnchoredContent,
-  anchoredTrigger,
-  createAnchored,
-  type Anchored,
-  type AnchoredTriggerProps,
-} from './anchored.js';
-import { Broken } from './broken.js';
+import { createAnchored, createSurfacePreload, SurfaceSlot, createTriggerWiring, type Anchored } from './anchored.js';
 import type { CloseReason } from './close-reason.js';
 import type { Placement } from './FloatingLayer.js';
-import s from './Popover.module.css';
 
-export type PopoverTriggerProps = AnchoredTriggerProps<'dialog'>;
+/** The frame, the sheet and the content's boundaries: a chunk of their own, off the first visit's path. */
+const Surface = lazy(() => import('./PopoverSurface.js'), { export: 'PopoverSurface' });
+
+/** Load the surface's chunk now, ahead of the idle preload every Popover makes. */
+export function preloadPopoverSurface(): Promise<unknown> {
+  return Surface.preload();
+}
 
 export interface PopoverApi {
   id: string;
@@ -28,21 +23,17 @@ export interface PopoverApi {
   close: () => void;
 }
 
-type PopoverState = Anchored & PopoverApi;
+export type PopoverState = Anchored & PopoverApi;
 
 const PopoverContext = createContext<PopoverState | null>(null);
 
-function usePopoverState(): PopoverState {
-  const state = useContext(PopoverContext);
-  if (state === null) {
-    throw new Error('Popover parts outside a Popover');
-  }
-  return state;
-}
-
 /** The popover a content component renders in. */
 export function usePopover(): PopoverApi {
-  return usePopoverState();
+  const state = useContext(PopoverContext);
+  if (state === null) {
+    throw new Error('usePopover outside a Popover');
+  }
+  return state;
 }
 
 /**
@@ -52,26 +43,45 @@ export function usePopover(): PopoverApi {
  */
 const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'sheet', 'trigger', 'programmatic']);
 
+export interface PopoverProps {
+  id: string;
+  title: string;
+  /** The button that opens it, wired while given (see createTriggerWiring). */
+  trigger: HTMLElement | undefined;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** On the anchored surface only: a sheet keeps its own width and inset. */
+  class?: string | undefined;
+  placement?: Placement | undefined;
+  /** The content's chunk, loaded when the browser is idle. */
+  preload?: (() => Promise<unknown>) | undefined;
+  testId?: string | undefined;
+  children: JSX.Element;
+}
+
 /**
- * A non-modal panel opened from a button: anchored glass on wide screens,
- * a bottom sheet when it opens on a phone's. Focus moves in and Tab stays
+ * A non-modal panel opened from a button: anchored glass on wide screens
+ * (a FloatingLayer, `role="dialog"`, named by the title), a bottom sheet
+ * titled with it when it opens on a phone's. Focus moves in and Tab stays
  * inside. A press outside, a press in the product's iframe (seen as the
  * window blurring), Escape, the button again, focus leaving or a modal
  * opening closes it, and a press outside still reaches what it pressed.
+ *
+ * The open state and the button's wiring are here; the surface is a lazy
+ * chunk, preloaded when the browser is idle. An opening before it has
+ * loaded is open at once (`aria-expanded`), and the surface shows when it
+ * arrives. Children render from an opening until its exit has played; a
+ * `lazy()` child shows a spinner while it loads.
  */
-function PopoverRoot(props: {
-  id: string;
-  title: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  children: JSX.Element;
-}): JSX.Element {
+export function Popover(props: PopoverProps): JSX.Element {
   const anchored = createAnchored(props, RETURN_FOCUS_ON);
-  const state: PopoverState = Object.assign(anchored, {
+  const state: PopoverState & { setTrigger: (el: HTMLElement | undefined) => void } = Object.assign(anchored, {
     close: () => {
       anchored.setOpen(false);
     },
   });
+  createTriggerWiring(state, () => props.trigger, 'dialog');
+  createSurfacePreload(state, Surface.preload, () => props.preload);
 
   createEffect(
     () => props.open,
@@ -82,99 +92,13 @@ function PopoverRoot(props: {
     },
   );
 
-  return <PopoverContext value={state}>{props.children}</PopoverContext>;
-}
-
-/**
- * The button, through a render function given its props and `activate`
- * (TopbarItem's, for the More menu's row, which toggles programmatically).
- */
-function Trigger(props: {
-  children: (t: PopoverTriggerProps, activate: (ev?: Event) => void) => JSX.Element;
-}): JSX.Element {
-  const state = usePopoverState();
-  const activate = (): void => {
-    state.setOpen(!untrack(state.open));
-  };
-  return <>{props.children(anchoredTrigger(state, 'dialog'), activate)}</>;
-}
-
-/**
- * The panel: a FloatingLayer (`role="dialog"`, named by the title), or a
- * BottomSheet with the title in its head for an opening on a phone. `class`
- * goes on the anchored surface only: a sheet keeps its own width and inset.
- * Children render from an opening until its exit has played; a `lazy()`
- * child shows a spinner while it loads, and `preload` runs when the browser
- * is idle.
- */
-function Content(props: {
-  class?: string | undefined;
-  placement?: Placement | undefined;
-  preload?: (() => Promise<unknown>) | undefined;
-  testId?: string | undefined;
-  children: JSX.Element;
-}): JSX.Element {
-  const state = usePopoverState();
-  onSettled(() => {
-    const preload = props.preload;
-    return preload === undefined ? undefined : preloadWhenIdle({ preload });
-  });
-  const body = (root: () => HTMLElement | null | undefined): JSX.Element => (
-    <Errored fallback={err => <Broken root={`popover:${state.id}`} error={err()} fail={state.close} />}>
-      <Loading
-        fallback={
-          <div class={s['loading']} data-testid="popover-loading" aria-hidden="true">
-            <Spinner class={s['spinner']} />
-          </div>
-        }
-      >
-        {props.children}
-        <FocusWhenLoaded root={root} />
-      </Loading>
-    </Errored>
-  );
   return (
-    <AnchoredContent
-      state={state}
-      role="dialog"
-      placement={props.placement}
-      class={[s['surface'], props.class].filter(Boolean).join(' ')}
-      testId={props.testId}
-      trapFocus
-      onOpened={surface => {
-        focusInto(surface);
-      }}
-      sheetTestId="popover"
-      sheetFocus={firstControl}
-      sheetChildren={wrapper => body(wrapper)}
-    >
-      {body(() => document.getElementById(state.id))}
-    </AnchoredContent>
+    <PopoverContext value={state}>
+      <SurfaceSlot state={state}>
+        <Surface state={state} class={props.class} placement={props.placement} testId={props.testId}>
+          {props.children}
+        </Surface>
+      </SurfaceSlot>
+    </PopoverContext>
   );
 }
-
-/** The first control Tab reaches in `root`, links skipped, as focusInto picks. */
-function firstControl(root: HTMLElement): HTMLElement | undefined {
-  return focusables(root).find(el => !(el instanceof HTMLAnchorElement));
-}
-
-/**
- * The popover opened before its content was in, so the surface itself took
- * focus (the anchored layer, or the sheet holding `root`): once the content
- * renders, focus moves into it.
- */
-function FocusWhenLoaded(props: { root: () => HTMLElement | null | undefined }): JSX.Element {
-  onSettled(() => {
-    const root = props.root();
-    if (root === null || root === undefined) {
-      return;
-    }
-    const holder = root.closest('[data-modal-surface]') ?? root;
-    if (document.activeElement === holder) {
-      focusInto(root);
-    }
-  });
-  return null;
-}
-
-export const Popover = Object.assign(PopoverRoot, { Trigger, Content });

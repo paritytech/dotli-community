@@ -17,7 +17,7 @@ export interface IconButtonProps {
   'aria-haspopup'?: 'dialog' | 'menu' | undefined;
   'aria-expanded'?: 'true' | 'false';
   'aria-controls'?: string;
-  /** The id of the `popover` this button opens and closes (Popover.Trigger's). */
+  /** The id of the `popover` this button opens and closes. */
   popovertarget?: string | undefined;
   style?: JSX.CSSProperties | undefined;
   badge?: boolean;

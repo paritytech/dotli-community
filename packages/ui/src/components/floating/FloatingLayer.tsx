@@ -5,6 +5,7 @@ import { createEffect, onCleanup, Show, untrack } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { containTab } from '../focus.js';
+import { anchorName } from './anchor-name.js';
 import type { CloseReason } from './close-reason.js';
 import { createPresence } from './presence.js';
 import s from './FloatingLayer.module.css';
@@ -16,11 +17,6 @@ export type LayerCloseReason = Exclude<CloseReason, 'sheet'>;
 
 /** How long content stays after a close: the surface's exit, `--dur`. */
 export const EXIT_MS = 220;
-
-/** A unique CSS anchor name per trigger, for `trigger-start`. */
-export function anchorName(id: string): string {
-  return `--anchor-${id}`;
-}
 
 export interface FloatingLayerProps {
   id: string;

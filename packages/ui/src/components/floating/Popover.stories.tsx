@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy } from 'solid-js';
+import { createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
@@ -16,6 +16,7 @@ const body = within(document.body);
 const Failing = lazy(() => Promise.reject(new Error('chunk')));
 
 function Harness(props: { content?: 'buttons' | 'failing'; opensElse?: boolean }) {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const content = (): JSX.Element =>
     props.content === 'failing' ? (
       <Failing />
@@ -27,29 +28,26 @@ function Harness(props: { content?: 'buttons' | 'failing'; opensElse?: boolean }
     );
   return (
     <div style={{ display: 'flex', 'justify-content': 'flex-end' }}>
-      <Popover id="story-popover" title="Example" onOpenChange={onOpenChange}>
-        <Popover.Trigger>
-          {t =>
-            props.opensElse === true ? (
-              // As AuthButton while not connected: no invoker, its click starts something else.
-              <Button
-                {...t}
-                popovertarget={undefined}
-                testId="trigger"
-                onClick={() => {
-                  onElse();
-                }}
-              >
-                Open
-              </Button>
-            ) : (
-              <Button {...t} testId="trigger">
-                Open
-              </Button>
-            )
+      <Button
+        ref={setTrigger}
+        testId="trigger"
+        onClick={() => {
+          if (props.opensElse === true) {
+            onElse();
           }
-        </Popover.Trigger>
-        <Popover.Content testId="story-popover-surface">{content()}</Popover.Content>
+        }}
+      >
+        Open
+      </Button>
+      {/* With `opensElse`, as AuthButton while not connected: the button is not the trigger, its click starts something else. */}
+      <Popover
+        id="story-popover"
+        title="Example"
+        trigger={props.opensElse === true ? undefined : trigger()}
+        onOpenChange={onOpenChange}
+        testId="story-popover-surface"
+      >
+        {content()}
       </Popover>
     </div>
   );
@@ -135,13 +133,13 @@ export const PhoneClosesReturnFocus: Story = {
 export const TriggerWithoutTargetOpensNothing: Story = {
   args: { opensElse: true },
   play: async ({ step }) => {
-    await step('When I press a trigger that has dropped its popovertarget', () => press('trigger'));
+    await step('When I press a button the popover does not hold as its trigger', () => press('trigger'));
     await step('Then its own click ran and the popover stayed closed', async () => {
       await expect(onElse).toHaveBeenCalledOnce();
       await expect(body.getByTestId('trigger')).not.toHaveAttribute('popovertarget');
       await new Promise(resolve => requestAnimationFrame(resolve));
       await expect(onOpenChange).not.toHaveBeenCalled();
-      await expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open');
+      await expect(document.getElementById('story-popover')?.hasAttribute('data-open') ?? false).toBe(false);
     });
   },
 };

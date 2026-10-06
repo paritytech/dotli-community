@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { Button } from '../primitives/Button.js';
@@ -12,6 +13,7 @@ const onOpenChangeA = fn().mockName('onOpenChangeA');
 const onOpenChangeB = fn().mockName('onOpenChangeB');
 
 function Harness() {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
     <div style={{ display: 'flex', gap: '8px', 'justify-content': 'flex-end' }}>
       <Button
@@ -22,20 +24,20 @@ function Harness() {
       >
         Other
       </Button>
-      <Popover id="story-popover" title="Example" onOpenChange={onOpenChange}>
-        <Popover.Trigger>
-          {t => (
-            <Button {...t} testId="trigger">
-              Open
-            </Button>
-          )}
-        </Popover.Trigger>
-        <Popover.Content testId="story-popover-surface">
-          <div style={{ padding: '12px', display: 'flex', gap: '8px' }}>
-            <Button testId="inside-a">A</Button>
-            <Button testId="inside-b">B</Button>
-          </div>
-        </Popover.Content>
+      <Button ref={setTrigger} testId="trigger">
+        Open
+      </Button>
+      <Popover
+        id="story-popover"
+        title="Example"
+        trigger={trigger()}
+        onOpenChange={onOpenChange}
+        testId="story-popover-surface"
+      >
+        <div style={{ padding: '12px', display: 'flex', gap: '8px' }}>
+          <Button testId="inside-a">A</Button>
+          <Button testId="inside-b">B</Button>
+        </div>
       </Popover>
       <iframe
         data-testid="product"
@@ -49,22 +51,28 @@ function Harness() {
 
 /** Two popovers side by side, each placed under its own trigger, so neither covers the other's. */
 function TwoPopovers() {
-  const one = (key: 'a' | 'b', onChange: (open: boolean) => void) => (
-    <Popover id={`story-popover-${key}`} title={key.toUpperCase()} onOpenChange={onChange}>
-      <Popover.Trigger>
-        {t => (
-          <Button {...t} testId={`trigger-${key}`}>
-            Open {key.toUpperCase()}
-          </Button>
-        )}
-      </Popover.Trigger>
-      <Popover.Content testId={`surface-${key}`} placement="trigger-start">
-        <div style={{ padding: '12px' }}>
-          <Button testId={`inside-${key}`}>Inside {key.toUpperCase()}</Button>
-        </div>
-      </Popover.Content>
-    </Popover>
-  );
+  const one = (key: 'a' | 'b', onChange: (open: boolean) => void) => {
+    const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+    return (
+      <>
+        <Button ref={setTrigger} testId={`trigger-${key}`}>
+          Open {key.toUpperCase()}
+        </Button>
+        <Popover
+          id={`story-popover-${key}`}
+          title={key.toUpperCase()}
+          trigger={trigger()}
+          onOpenChange={onChange}
+          testId={`surface-${key}`}
+          placement="trigger-start"
+        >
+          <div style={{ padding: '12px' }}>
+            <Button testId={`inside-${key}`}>Inside {key.toUpperCase()}</Button>
+          </div>
+        </Popover>
+      </>
+    );
+  };
   return (
     <div style={{ display: 'flex', gap: '8px' }}>
       {one('a', onOpenChangeA)}

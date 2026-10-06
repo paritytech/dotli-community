@@ -13,7 +13,8 @@ import {
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { Broken } from './broken.js';
-import { anchorName, FloatingLayer, type Placement } from './FloatingLayer.js';
+import { anchorName } from './anchor-name.js';
+import { FloatingLayer, type Placement } from './FloatingLayer.js';
 import s from './Tooltip.module.css';
 
 /** How long a mouse rests on the trigger before the tooltip shows. */

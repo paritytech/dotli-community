@@ -36,8 +36,9 @@ function themeOption(pref: string): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>(`[data-testid="theme-option-${pref}"]`);
 }
 
+/** Open, as the surface says; it is in the page only from its first opening. */
 function isOpen(): boolean {
-  return themePopover().hasAttribute('data-open');
+  return document.getElementById('theme-popover')?.hasAttribute('data-open') === true;
 }
 
 /** The toggle, with a known stored theme and OS. */
@@ -102,16 +103,16 @@ describe('ThemeToggle', () => {
       ['sun', 'moon'].map(icon => document.querySelector(`[data-testid="theme-icon-${icon}"]`)?.parentElement),
     ).toEqual([btn, btn]);
     expect(btn.querySelector('[data-testid="theme-icon-system"]')).toBeNull();
-    const popover = themePopover();
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Appearance');
-    expect(popover.getAttribute('tabindex')).toBe('-1');
 
     // When
     mouseClick(btn);
     await settle();
 
     // Then
+    const popover = themePopover();
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Appearance');
+    expect(popover.getAttribute('tabindex')).toBe('-1');
     expect(query(popover, '[role="radiogroup"]').getAttribute('aria-label')).toBe('Theme');
     const options = Array.from(popover.querySelectorAll<HTMLButtonElement>('[data-testid^="theme-option-"]'));
     expect(options.map(o => o.dataset['testid'])).toEqual([
@@ -129,14 +130,13 @@ describe('ThemeToggle', () => {
     // Given
     await renderToggle('light', 'dark');
     const btn = themeButton();
-    const popover = themePopover();
 
     // When
     mouseClick(btn);
     await settle();
 
     // Then
-    expect(popover.hasAttribute('data-open')).toBe(true);
+    expect(themePopover().hasAttribute('data-open')).toBe(true);
     expect(btn.getAttribute('aria-expanded')).toBe('true');
     expect(themeOption('light')?.getAttribute('aria-checked')).toBe('true');
     expect(themeOption('dark')?.getAttribute('aria-checked')).toBe('false');

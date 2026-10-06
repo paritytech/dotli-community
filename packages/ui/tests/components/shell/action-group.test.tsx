@@ -79,8 +79,9 @@ function moreShows(): boolean {
   return !byTestId('more-item').hasAttribute('data-parked');
 }
 
+/** Open, as the menu says; it is in the page only from its first opening. */
 function isOpen(): boolean {
-  return byId('more-popover').hasAttribute('data-open');
+  return document.getElementById('more-popover')?.hasAttribute('data-open') === true;
 }
 
 async function pressKey(key: string): Promise<void> {
@@ -295,12 +296,12 @@ describe('ActionGroup', () => {
     expect(button.getAttribute('aria-haspopup')).toBe('menu');
     expect(button.getAttribute('aria-controls')).toBe('more-popover');
     expect(button.getAttribute('aria-expanded')).toBe('false');
-    const popover = byId('more-popover');
-    expect(popover.getAttribute('role')).toBe('menu');
-    expect(popover.getAttribute('aria-label')).toBe('More');
     expect(button.getAttribute('aria-label')).toBe('More');
     expect(button.hasAttribute('data-badge')).toBe(false);
     await openMore();
+    const popover = byId('more-popover');
+    expect(popover.getAttribute('role')).toBe('menu');
+    expect(popover.getAttribute('aria-label')).toBe('More');
     const row = moreRow('theme');
     expect(row.getAttribute('role')).toBe('menuitem');
     expect(row.getAttribute('tabindex')).toBe('-1');

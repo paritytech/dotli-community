@@ -20,8 +20,11 @@ afterEach(() => {
 
 const PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 
-/** The button and the popover, as their island, plus a button outside. */
-async function renderAccount(session?: TruapiSessionUiState): Promise<HTMLElement> {
+/**
+ * The button and the popover, as their island, plus a button outside.
+ * Returns the popover, which is in the page from its first opening.
+ */
+async function renderAccount(session?: TruapiSessionUiState): Promise<() => HTMLElement> {
   renderComponent(() => (
     <div>
       <AuthButton />
@@ -35,11 +38,11 @@ async function renderAccount(session?: TruapiSessionUiState): Promise<HTMLElemen
     setAuthState({ tag: 'Connected', session });
     await settleAll();
   }
-  return byId('user-popover');
+  return () => byId('user-popover');
 }
 
 function isOpen(): boolean {
-  return byId('user-popover').hasAttribute('data-open');
+  return document.getElementById('user-popover')?.hasAttribute('data-open') === true;
 }
 
 /**
@@ -108,7 +111,7 @@ describe('UserPopover', () => {
     // Then
     expect(byId('user-popover-username').textContent).toBe('pgherveou.04');
     expect(document.getElementById('user-popover-hint')).toBeNull();
-    expectMarkup(popover, {
+    expectMarkup(popover(), {
       username: 'pgherveou.04',
       hint: false,
       open: true,
@@ -142,7 +145,7 @@ describe('UserPopover', () => {
     // Then
     expect(byId('user-popover-username').textContent).toBe('0x000102...1e1f');
     expect(byId('user-popover-hint').textContent).toContain('No username');
-    expectMarkup(popover, {
+    expectMarkup(popover(), {
       username: '0x000102...1e1f',
       hint: true,
       open: true,
@@ -166,7 +169,7 @@ describe('UserPopover', () => {
     await openPopover();
 
     // Then
-    expectMarkup(popover, {
+    expectMarkup(popover(), {
       username: 'Connected with Polkadot Mobile',
       hint: true,
       open: true,
@@ -196,7 +199,7 @@ describe('UserPopover', () => {
     await openPopover();
 
     // Then
-    expect(popover.querySelector('b')).toBeNull();
+    expect(popover().querySelector('b')).toBeNull();
     expect(byId('user-popover-username').textContent).toBe('<b>x</b>');
   });
 
@@ -249,17 +252,18 @@ describe('UserPopover', () => {
     const button = byId('auth-button');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Account');
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
     expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(button.getAttribute('popovertarget')).toBe('user-popover');
 
     // When
     await openPopover();
 
     // Then
     expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(popover().getAttribute('role')).toBe('dialog');
+    expect(popover().getAttribute('aria-label')).toBe('Account');
 
     // When
     press('Escape');
@@ -272,10 +276,23 @@ describe('UserPopover', () => {
     setAuthState({ tag: 'Disconnected' });
     await settleAll();
 
-    // Then: it announces the auth modal a click now opens instead.
+    // Then: it announces the auth modal a click now opens instead, and invokes no popover.
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(button.getAttribute('aria-controls')).toBe('auth-modal-backdrop');
+    expect(button.hasAttribute('popovertarget')).toBe(false);
+    expect(button.style.getPropertyValue('anchor-name')).toBe('');
+
+    // When: logging in again.
+    setAuthState({ tag: 'Connected', session: { connected: true, liteUsername: 'pgherveou.04' } });
+    await settleAll();
+
+    // Then: it is the popover's trigger again.
+    expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(button.getAttribute('aria-controls')).toBe('user-popover');
+    expect(button.getAttribute('popovertarget')).toBe('user-popover');
+    expect(button.style.getPropertyValue('anchor-name')).toBe('--anchor-user-popover');
   });
 
   it('As a returning user whose session was restored before the islands loaded, the popover shows my username as it mounts', async () => {

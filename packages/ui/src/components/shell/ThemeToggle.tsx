@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Show, useContext } from 'solid-js';
+import { createSignal, Show, useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { themeStore, type ThemePref } from '../../state/theme.js';
 import { selectThemePref } from '../../theme-controller.js';
@@ -160,27 +160,24 @@ export function ThemeToggle(): JSX.Element {
   const theme = useStore(themeStore);
   const pref = (): ThemePref => theme().pref;
   const title = (): string => `Appearance: ${THEME_LABEL[pref()]}`;
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
-    <Popover id="theme-popover" title="Appearance">
-      <Popover.Trigger>
-        {(t, activate) => (
-          <TopbarItem
-            name="theme"
-            label="Appearance"
-            icon={ThemeIcons}
-            priority={TOPBAR_PRIORITY.theme}
-            activate={activate}
-          >
-            <IconButton {...t} id="theme-toggle" title={title()} aria-label={title()}>
-              <ThemeIcons />
-            </IconButton>
-          </TopbarItem>
-        )}
-      </Popover.Trigger>
-      <Popover.Content class={s['popover']}>
+    <>
+      <TopbarItem
+        name="theme"
+        label="Appearance"
+        icon={ThemeIcons}
+        priority={TOPBAR_PRIORITY.theme}
+        activate={() => button()?.click()}
+      >
+        <IconButton ref={setButton} id="theme-toggle" title={title()} aria-label={title()}>
+          <ThemeIcons />
+        </IconButton>
+      </TopbarItem>
+      <Popover id="theme-popover" title="Appearance" trigger={button()} class={s['popover']}>
         <AppearanceBody pref={pref()} />
-      </Popover.Content>
-    </Popover>
+      </Popover>
+    </>
   );
 }
 

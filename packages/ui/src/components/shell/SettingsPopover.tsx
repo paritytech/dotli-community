@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy, onCleanup } from 'solid-js';
+import { createSignal, lazy, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { SLIDERS_PATH } from '../../settings-glyph.js';
 import { settingsStore } from '../../state/settings.js';
@@ -67,37 +67,42 @@ export function SettingsPopover(): JSX.Element {
   onCleanup(() => {
     setSettingsOpen(false);
   });
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
-    <Popover id="mode-popover" title="Settings" open={open()} onOpenChange={setSettingsOpen}>
-      <Popover.Trigger>
-        {(t, activate) => (
-          <TopbarItem
-            name="settings"
-            label="Settings"
-            icon={SlidersIcon}
-            aside={
-              settings()?.verified === false
-                ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
-                : undefined
-            }
-            priority={TOPBAR_PRIORITY.settings}
-            activate={activate}
-          >
-            <IconButton
-              {...t}
-              id="mode-button"
-              badge={settings()?.verified === false}
-              title="Settings"
-              aria-label="Settings"
-            >
-              <SlidersIcon />
-            </IconButton>
-          </TopbarItem>
-        )}
-      </Popover.Trigger>
-      <Popover.Content class={s['popover']} preload={Settings.preload}>
+    <>
+      <TopbarItem
+        name="settings"
+        label="Settings"
+        icon={SlidersIcon}
+        aside={
+          settings()?.verified === false
+            ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
+            : undefined
+        }
+        priority={TOPBAR_PRIORITY.settings}
+        activate={() => button()?.click()}
+      >
+        <IconButton
+          ref={setButton}
+          id="mode-button"
+          badge={settings()?.verified === false}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <SlidersIcon />
+        </IconButton>
+      </TopbarItem>
+      <Popover
+        id="mode-popover"
+        title="Settings"
+        trigger={button()}
+        open={open()}
+        onOpenChange={setSettingsOpen}
+        class={s['popover']}
+        preload={Settings.preload}
+      >
         <Settings />
-      </Popover.Content>
-    </Popover>
+      </Popover>
+    </>
   );
 }

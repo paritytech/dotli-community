@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy } from 'solid-js';
+import { createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { networkHealthStore } from '../../state/network-health.js';
 import { healthWord } from '../../network-health.js';
@@ -56,36 +56,33 @@ function GlobeIcon(): JSX.Element {
 export function ChainsPopover(): JSX.Element {
   const topbar = useStore(topbarStore);
   const health = useStore(networkHealthStore);
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
-    <Popover id="chains-popover" title="Network">
-      <Popover.Trigger>
-        {(t, activate) => (
-          <TopbarItem
-            name="network"
-            label="Network"
-            icon={GlobeIcon}
-            alert={
-              health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
-            }
-            aside={() => (
-              <>
-                <StatusDot tone={health()} size="sm" pulse={health() === 'idle'} />
-                <span>{healthWord(health())}</span>
-              </>
-            )}
-            priority={TOPBAR_PRIORITY.network}
-            visible={topbar().chainsButtonVisible}
-            activate={activate}
-          >
-            <IconButton {...t} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
-              <GlobeIcon />
-            </IconButton>
-          </TopbarItem>
+    <>
+      <TopbarItem
+        name="network"
+        label="Network"
+        icon={GlobeIcon}
+        alert={
+          health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
+        }
+        aside={() => (
+          <>
+            <StatusDot tone={health()} size="sm" pulse={health() === 'idle'} />
+            <span>{healthWord(health())}</span>
+          </>
         )}
-      </Popover.Trigger>
-      <Popover.Content class={s['popover']} preload={Chains.preload}>
+        priority={TOPBAR_PRIORITY.network}
+        visible={topbar().chainsButtonVisible}
+        activate={() => button()?.click()}
+      >
+        <IconButton ref={setButton} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
+          <GlobeIcon />
+        </IconButton>
+      </TopbarItem>
+      <Popover id="chains-popover" title="Network" trigger={button()} class={s['popover']} preload={Chains.preload}>
         <Chains />
-      </Popover.Content>
-    </Popover>
+      </Popover>
+    </>
   );
 }

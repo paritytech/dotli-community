@@ -85,27 +85,36 @@ export function PermissionsPopover(): JSX.Element {
     },
   );
 
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
-    <Popover id="permissions-popover" title="Permissions">
-      <Popover.Trigger>
-        {(t, activate) => (
-          <TopbarItem
-            name="permissions"
-            label="Permissions"
-            icon={LockIcon}
-            aside={hasGrants() ? () => <StatusDot tone="info" size="sm" label="Has permissions" /> : undefined}
-            priority={TOPBAR_PRIORITY.permissions}
-            activate={activate}
-          >
-            <IconButton {...t} id="permissions-button" badge={hasGrants()} title="Permissions" aria-label="Permissions">
-              <LockIcon />
-            </IconButton>
-          </TopbarItem>
-        )}
-      </Popover.Trigger>
-      <Popover.Content class={s['popover']} preload={Permissions.preload}>
+    <>
+      <TopbarItem
+        name="permissions"
+        label="Permissions"
+        icon={LockIcon}
+        aside={hasGrants() ? () => <StatusDot tone="info" size="sm" label="Has permissions" /> : undefined}
+        priority={TOPBAR_PRIORITY.permissions}
+        activate={() => button()?.click()}
+      >
+        <IconButton
+          ref={setButton}
+          id="permissions-button"
+          badge={hasGrants()}
+          title="Permissions"
+          aria-label="Permissions"
+        >
+          <LockIcon />
+        </IconButton>
+      </TopbarItem>
+      <Popover
+        id="permissions-popover"
+        title="Permissions"
+        trigger={button()}
+        class={s['popover']}
+        preload={Permissions.preload}
+      >
         <Permissions />
-      </Popover.Content>
-    </Popover>
+      </Popover>
+    </>
   );
 }

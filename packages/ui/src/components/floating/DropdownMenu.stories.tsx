@@ -15,43 +15,38 @@ const body = within(document.body);
 function Harness() {
   // What the Settings row opens: on a phone, a sheet that takes the menu's place.
   const [settings, setSettings] = createSignal(false);
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
     <div style={{ display: 'flex', 'justify-content': 'flex-end' }}>
-      <DropdownMenu id="story-menu" title="More">
-        <DropdownMenu.Trigger>
-          {t => (
-            <IconButton {...t} id="story-more" aria-label="More" testId="story-more">
-              …
-            </IconButton>
-          )}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content>
-          <DropdownMenu.Item
-            testId="row-network"
-            onSelect={() => {
-              onRow('network');
-            }}
-          >
-            Network
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            testId="row-permissions"
-            onSelect={() => {
-              onRow('permissions');
-            }}
-          >
-            Permissions
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            testId="row-settings"
-            onSelect={() => {
-              onRow('settings');
-              setSettings(true);
-            }}
-          >
-            Settings
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
+      <IconButton ref={setTrigger} id="story-more" aria-label="More" testId="story-more">
+        …
+      </IconButton>
+      <DropdownMenu id="story-menu" title="More" trigger={trigger()}>
+        <DropdownMenu.Item
+          testId="row-network"
+          onSelect={() => {
+            onRow('network');
+          }}
+        >
+          Network
+        </DropdownMenu.Item>
+        <DropdownMenu.Item
+          testId="row-permissions"
+          onSelect={() => {
+            onRow('permissions');
+          }}
+        >
+          Permissions
+        </DropdownMenu.Item>
+        <DropdownMenu.Item
+          testId="row-settings"
+          onSelect={() => {
+            onRow('settings');
+            setSettings(true);
+          }}
+        >
+          Settings
+        </DropdownMenu.Item>
       </DropdownMenu>
       <BottomSheet open={settings()} onOpenChange={setSettings} title="Settings" id="story-settings" testId="settings">
         <p style={{ padding: '0 20px' }}>Settings</p>
