@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { blake2b } from '@noble/hashes/blake2.js';
 import { createPreimageAdapters } from '../src/host-callbacks/Preimage.js';
-import { computePreimageKey } from '@dotli/content';
-import { fromHex } from '@dotli/shared';
 import type { bitswapGet } from '@dotli/content';
 import { yielded } from './support.js';
 
@@ -59,7 +58,7 @@ describe('preimage host callbacks', () => {
     try {
       const { lookupPreimage } = createPreimageAdapters('myapp');
       const found = new TextEncoder().encode('retried preimage');
-      const key = fromHex(computePreimageKey(found));
+      const key = blake2b(found, { dkLen: 32 });
       mocks.fetchFromIpfs.mockRejectedValueOnce(new Error('gateway unavailable'));
       mocks.fetchFromIpfs.mockResolvedValueOnce({ data: found });
 
@@ -135,7 +134,7 @@ describe('preimage host callbacks', () => {
     vi.useFakeTimers();
     try {
       const data = new TextEncoder().encode('verified gateway preimage');
-      const key = fromHex(computePreimageKey(data));
+      const key = blake2b(data, { dkLen: 32 });
       mocks.fetchFromIpfs.mockResolvedValue({ data });
       const { lookupPreimage } = createPreimageAdapters('myapp');
 
@@ -173,7 +172,7 @@ describe('preimage host callbacks', () => {
       try {
         const expected = new TextEncoder().encode(`expected preimage from ${backend}`);
         const corrupt = new TextEncoder().encode('corrupt preimage');
-        const key = fromHex(computePreimageKey(expected));
+        const key = blake2b(expected, { dkLen: 32 });
         mocks.getBackend.mockReturnValue(backend);
         mocks.fetchFromIpfs.mockResolvedValue({ data: corrupt });
         mocks.bitswapGet.mockResolvedValue(corrupt);

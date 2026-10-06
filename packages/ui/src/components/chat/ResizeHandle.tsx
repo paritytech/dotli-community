@@ -4,6 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import { chatPanelStore, persistChatPanelWidth, setChatPanelWidth } from '../../state/chat-panel.js';
 import { startDrag } from '../drag.js';
+import s from './ResizeHandle.module.css';
 
 /** Drag handle on the panel's left edge. */
 export function ResizeHandle(): JSX.Element {
@@ -27,7 +28,7 @@ export function ResizeHandle(): JSX.Element {
 
   return (
     <div
-      class="chat-panel-resize"
+      class={s['handle']}
       id="chat-panel-resize"
       aria-hidden="true"
       ref={el => {

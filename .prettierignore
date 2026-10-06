@@ -5,3 +5,4 @@ tests/results/
 docs/
 apps/sandbox/public/polkavm-runtime/
 vendor/
+storybook-static/

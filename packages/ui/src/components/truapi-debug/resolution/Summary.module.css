@@ -1,0 +1,72 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel Resolution summary */
+
+.summary {
+  display: grid;
+  width: 100%;
+  /* Fills the panel. A minimum wide enough that thirteen cards settle into
+     about two rows on a bottom dock rather than a crushed single line. */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px 14px;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.key {
+  display: flex;
+  align-items: center;
+  color: var(--td-fg-dim);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 2px;
+}
+
+.info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-left: 4px;
+  border: 1px solid var(--td-line-hover);
+  border-radius: 50%;
+  color: var(--td-fg-dim);
+  font-size: 8px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: middle;
+  cursor: help;
+}
+.info:hover {
+  border-color: var(--td-teal);
+  color: var(--td-teal);
+}
+
+.value {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-fg-strong);
+}
+
+.text[data-tone='ok'] {
+  color: var(--td-health-ok);
+}
+.text[data-tone='warn'] {
+  color: var(--td-health-warn);
+}
+.text[data-tone='bad'] {
+  color: var(--td-health-bad);
+}
+.text[data-tone='running'] {
+  color: var(--td-cyan);
+}
+.text[data-tone='dim'] {
+  color: var(--td-fg-dim);
+}

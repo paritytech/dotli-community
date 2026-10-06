@@ -1,0 +1,43 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Host-drawn contact names over a product frame (label-overlay.ts). Like the
+   avatar layer, it copies the frame's inline geometry and never takes
+   pointer events. Names do not depend on a shared profile or its photo. */
+
+.overlay {
+  position: fixed;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  contain: layout paint;
+}
+.overlay * {
+  pointer-events: none;
+}
+.slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+}
+/* Hidden while the product's rows move, so a name never trails its row. */
+.slot[data-moving] {
+  visibility: hidden;
+}
+/* Covers the product's own placeholder in its row. */
+.label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-family: var(--font-sans);
+  color: var(--chrome-text);
+  background: var(--surface);
+  border-radius: 4px;
+}

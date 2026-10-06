@@ -1,0 +1,67 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's .seg. The pressed option is a raised fill with
+   white text, never coloured text, so it keeps AAA contrast and every option
+   keeps its width (no layout shift between states). */
+
+:where(.seg) {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  gap: var(--sp-hair);
+  width: fit-content;
+  margin: 0;
+  padding: var(--sp-hair);
+  border-radius: var(--r-full);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+}
+.option {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 24px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--chrome-text-muted);
+  font: var(--fw-medium) var(--fs-caption) / 1 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.option:hover {
+  color: var(--chrome-text);
+}
+.option:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.option[aria-pressed='true'] {
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+}
+.option > svg {
+  flex: none;
+}
+/* Phones: the boards' 36 px control, 32 px options. */
+@media (max-width: 560px) {
+  .option {
+    gap: var(--sp-2);
+    height: var(--h-row-sm);
+    padding: 0 var(--sp-3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .option {
+    transition: none;
+  }
+}

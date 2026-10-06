@@ -1,0 +1,75 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board's .menu-row parts in the DropdownMenu's rows. The row sizes
+   each item's icon, 16 px on desktop and the board's 20 px on phones, with
+   its 1.75 stroke. */
+.icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--chrome-text-muted);
+}
+.icon > svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+}
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What an item adds at its row's end, 12 px apart like the row's other
+   parts: the network's dot and verdict word (the board's .dot.dot-sm and
+   .caption.menu-row-end), the chat's unread count. */
+.aside {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+
+/* The trailing chevron. */
+.row > svg {
+  width: 14px;
+  height: 14px;
+}
+@media (max-width: 560px) {
+  .icon > svg {
+    width: 20px;
+    height: 20px;
+  }
+  .aside {
+    gap: var(--sp-3);
+  }
+  .row > svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Phones: the board's More sheet, its rows in a flush well under the head
+   (the sheet's rows wrapper), 56 px tall at 15 px, with hairlines between
+   them. */
+.menu[data-sheet] {
+  margin: var(--sp-1) var(--sp-4) 0;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+}
+.menu[data-sheet] .row {
+  height: var(--h-row-lg);
+  padding: 0 var(--sp-4);
+  border-radius: 0;
+  font-size: var(--fs-title);
+}
+.menu[data-sheet] .row + .row {
+  border-top: 1px solid var(--chrome-line);
+}

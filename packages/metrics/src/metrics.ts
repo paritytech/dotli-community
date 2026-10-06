@@ -389,9 +389,19 @@ const NOOP_HANDLE: SpanHandle = {
   },
 };
 
+// The Sentry span behind each live handle, for the one consumer that needs the
+// SDK object itself: `captureException` makes it active so the error joins the
+// span's trace. Weak, so a handle's span is not kept alive after the handle.
+const sentrySpans = new WeakMap<SpanHandle, SentrySpan>();
+
+/** The Sentry span behind a handle, or undefined for an inert one. Package-private. */
+export function sentrySpanOf(handle: SpanHandle): unknown {
+  return sentrySpans.get(handle);
+}
+
 function wrap(sentrySpan: SentrySpan): SpanHandle {
   let ended = false;
-  return {
+  const handle: SpanHandle = {
     setAttributes: attrs => {
       if (ended) {
         return;
@@ -407,6 +417,8 @@ function wrap(sentrySpan: SentrySpan): SpanHandle {
       sentrySpan.end(endTime);
     },
   };
+  sentrySpans.set(handle, sentrySpan);
+  return handle;
 }
 
 /**

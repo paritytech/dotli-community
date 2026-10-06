@@ -7,9 +7,20 @@ import { log } from '@dotli/shared';
 import { rasterImageType, type ProfileDrawerOptions } from '../../profile/drawer.js';
 import { moodIsCurrent, type Mood } from '../../profile/profile-record.js';
 import { INTENSITY, MOOD_PALETTE } from '../../profile/mood-ring.js';
-import { Dialog } from './Dialog.js';
+import { Modal } from '../floating/Modal.js';
+import { Button } from '../primitives/Button.js';
+import { Spinner } from '../primitives/Spinner.js';
 import { MoodRing } from './MoodRing.js';
+import s from './ProfileDrawer.module.css';
 
+const TITLE_ID = 'profile-drawer-title';
+
+/**
+ * A profile a product asked the host to show (profile/drawer.ts mounts it):
+ * the photo and mood the host fetched and decrypted, attributed to the
+ * product and, when shared over Chat, to the contact. Close, Escape, the
+ * scrim and a swipe all close it.
+ */
 export function ProfileDrawer(props: {
   options: ProfileDrawerOptions;
   signal: AbortSignal;
@@ -100,74 +111,94 @@ export function ProfileDrawer(props: {
     );
   });
   return (
-    <Dialog
-      titleId="profile-drawer-title"
-      backdropClass="profile-drawer-backdrop"
-      dialogClass="profile-drawer"
-      initialFocus={() => closeButton}
-      onDismiss={() => {
+    <Modal
+      open
+      onOpenChange={() => {
         props.onClose();
       }}
+      title="Profile"
+      labelledBy={TITLE_ID}
+      initialFocus={() => closeButton}
+      testId="profile-drawer"
     >
-      <header class="profile-drawer-header">
-        <h2 id="profile-drawer-title">Profile</h2>
-        <button
+      <Modal.Head titleId={TITLE_ID} title="Profile" />
+      <Modal.Body>
+        <div class={s['profile']}>
+          <Show when={contactName()}>
+            {name => (
+              <p class={s['contact']} data-testid="profile-drawer-contact">
+                {name()}
+              </p>
+            )}
+          </Show>
+          <div class={s['portrait']}>
+            <Show when={mood()}>{value => <MoodRing mood={value()} size={160} animated />}</Show>
+            <div
+              class={s['avatar']}
+              data-empty={!loading() && photo() === null ? '' : undefined}
+              data-testid="profile-drawer-avatar"
+            >
+              <Show when={loading()}>
+                <Spinner testId="profile-drawer-spinner" />
+              </Show>
+              <Show when={photo()}>
+                {url => (
+                  <img
+                    src={url()}
+                    alt="Profile picture"
+                    onError={() => {
+                      setPhoto(null);
+                      fail('The profile image could not be displayed.');
+                    }}
+                  />
+                )}
+              </Show>
+            </div>
+          </div>
+          <p class={s['mood']} data-testid="profile-drawer-mood">
+            <Show when={mood()}>
+              {value => (
+                <>{`${MOOD_PALETTE[value().kind].label} · ${INTENSITY[value().intensity].label.toLowerCase()} · ${String(Math.max(1, Math.round((value().setAt + value().ttlSecs - Date.now() / 1000) / 3600)))} h left`}</>
+              )}
+            </Show>
+          </p>
+          <p
+            class={s['status']}
+            data-error={failed() ? '' : undefined}
+            data-testid="profile-drawer-status"
+            role="status"
+          >
+            {status()}
+          </p>
+          <p class={s['attribution']} data-testid="profile-drawer-attribution">
+            {props.options.loadProfile === undefined ? (
+              `Shown in ${props.options.productId}. Shared information will appear here after it reaches this host.`
+            ) : contactName() === undefined ? (
+              `Shown by ${props.options.productId}. Seity profile content is self-described; dot.li does not verify it.`
+            ) : (
+              <>
+                Shared with you over Chat by {contactName()} · shown in {props.options.productId}. Profile content is
+                self-described; the host confirms who sent it, not who it depicts.
+              </>
+            )}
+          </p>
+        </div>
+      </Modal.Body>
+      <Modal.Actions testId="profile-drawer-actions">
+        <Button
           ref={el => {
             closeButton = el;
           }}
-          type="button"
-          class="profile-drawer-close"
-          aria-label="Close profile"
+          variant="secondary"
+          block
+          testId="profile-drawer-close"
           onClick={() => {
             props.onClose();
           }}
         >
-          ×
-        </button>
-      </header>
-      <Show when={contactName()}>{name => <p class="profile-drawer-contact">{name()}</p>}</Show>
-      <div class="profile-drawer-portrait">
-        <Show when={mood()}>{value => <MoodRing mood={value()} size={160} animated />}</Show>
-        <div class={['profile-drawer-avatar', { 'profile-drawer-avatar-empty': !loading() && photo() === null }]}>
-          <Show when={loading()}>
-            <div class="spinner" />
-          </Show>
-          <Show when={photo()}>
-            {url => (
-              <img
-                src={url()}
-                alt="Profile picture"
-                onError={() => {
-                  setPhoto(null);
-                  fail('The profile image could not be displayed.');
-                }}
-              />
-            )}
-          </Show>
-        </div>
-      </div>
-      <p class="profile-drawer-mood">
-        <Show when={mood()}>
-          {value => (
-            <>{`${MOOD_PALETTE[value().kind].label} · ${INTENSITY[value().intensity].label.toLowerCase()} · ${String(Math.max(1, Math.round((value().setAt + value().ttlSecs - Date.now() / 1000) / 3600)))} h left`}</>
-          )}
-        </Show>
-      </p>
-      <p class={['profile-drawer-status', { 'profile-drawer-status-error': failed() }]} role="status">
-        {status()}
-      </p>
-      <p class="profile-drawer-attribution">
-        {props.options.loadProfile === undefined ? (
-          `Shown in ${props.options.productId}. Shared information will appear here after it reaches this host.`
-        ) : contactName() === undefined ? (
-          `Shown by ${props.options.productId}. Seity profile content is self-described; dot.li does not verify it.`
-        ) : (
-          <>
-            Shared with you over Chat by {contactName()} · shown in {props.options.productId}. Profile content is
-            self-described; the host confirms who sent it, not who it depicts.
-          </>
-        )}
-      </p>
-    </Dialog>
+          Close
+        </Button>
+      </Modal.Actions>
+    </Modal>
   );
 }

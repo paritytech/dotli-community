@@ -108,9 +108,7 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
         error: (err: unknown) => {
           // A dropped chain renders as a gap in its strip, which is the
           // truth, so this is worth a log line and nothing louder.
-          log.warn(
-            `[dot.li network] block stream for ${short} ended: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          log.warn(`[dot.li network] block stream for ${short} ended:`, err);
         },
       });
       live.teardown = () => {
@@ -120,7 +118,7 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
         client.destroy();
       };
     } catch (err: unknown) {
-      log.warn(`[dot.li network] cannot watch ${short}: ${err instanceof Error ? err.message : String(err)}`);
+      log.warn(`[dot.li network] cannot watch ${short}:`, err);
     }
   };
 

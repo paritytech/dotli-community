@@ -1,0 +1,63 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A product's layout modifiers arrive as inline styles and win over the padding
+   and margin here. */
+
+.button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button[data-variant='primary'] {
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+}
+.button[data-variant='primary']:hover:not(:disabled) {
+  background: var(--inverse-bg-hover);
+}
+
+.button[data-variant='secondary'] {
+  background: var(--chat-bg-surface-nested);
+  color: var(--chat-fg-primary);
+}
+.button[data-variant='secondary']:hover:not(:disabled) {
+  background: var(--chat-bg-surface-container);
+}
+
+.button[data-variant='text'] {
+  background: transparent;
+  color: var(--chat-fg-primary);
+}
+.button[data-variant='text']:hover:not(:disabled) {
+  background: var(--chat-bg-surface-container);
+}
+
+.button[data-loading] {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button[data-loading] {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* Last on purpose: a loading button is disabled as well, and with reduced
+   motion it rests at this 0.5, not at the 0.6 above. */
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

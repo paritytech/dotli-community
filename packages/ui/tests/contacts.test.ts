@@ -10,7 +10,7 @@ import { createContactsPlatform, NativeChatContactsDirectory } from '../src/host
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { settle } from './helpers/solid.js';
-import { must } from './support.js';
+import { byTestId, must } from './support.js';
 import { createContactLabelOverlay, type ContactLabelOverlay } from '../src/contacts/label-overlay.js';
 
 const walletPublicKey = `0x${'11'.repeat(32)}` as const;
@@ -91,8 +91,8 @@ function fixture(labels?: ContactLabelOverlay): ContactsFixture {
 
 async function choices(): Promise<HTMLElement[]> {
   await overlaysReady();
-  await expect.poll(() => document.querySelector('.contacts-picker-choice')).not.toBeNull();
-  return Array.from(document.querySelectorAll<HTMLElement>('.contacts-picker-choice'));
+  await expect.poll(() => document.querySelector('[data-testid="prompt-choice"]')).not.toBeNull();
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-testid="prompt-choice"]'));
 }
 
 async function labelFixture(): Promise<{
@@ -192,15 +192,16 @@ describe('native Chat contacts', () => {
     const buttons = await choices();
     expect(must(buttons[0], 'Alice choice').textContent).toContain('<img src=x onerror=alert(1)>');
     expect(must(buttons[0], 'Alice choice').querySelector('img')).toBeNull();
-    expect(document.querySelector('[role=dialog]')?.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
-    expect(document.querySelector('[role=dialog]')?.textContent).toContain(product.productId);
+    const dialog = byTestId('signing-modal');
+    expect(dialog.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
+    expect(dialog.textContent).toContain(product.productId);
     must(buttons[1], 'Bob choice').click();
     await expect(picked).resolves.toEqual({
       tag: 'Picked',
       value: { account: bob },
     });
     await overlaysReady();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
   });
 
   it('does not return a contact removed while the picker was open', async () => {
@@ -220,7 +221,7 @@ describe('native Chat contacts', () => {
     state.snapshot = { ...state.snapshot, [field]: `0x${'77'.repeat(32)}` };
     await expect(state.adapter.callbacks.pickContact(product)).rejects.toThrow();
     await expect(state.adapter.callbacks.contacts({ handleKey, handles: [aliceHandle] })).rejects.toThrow();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
   });
 
   it('distinguishes an authenticated empty roster from an unavailable signing session', async () => {
@@ -258,7 +259,7 @@ describe('native Chat contacts', () => {
     state.adapter.dispose();
     await rejected;
     await overlaysReady();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
     const other = createContactsPlatform(state.directory, state.coordinator.createScope());
     cleanups.push(() => {
       other.dispose();
@@ -281,7 +282,7 @@ describe('native Chat contacts', () => {
     await rejected;
     blocker.resolve(undefined);
     await blocking;
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
     blockerScope.dispose();
   });
 
@@ -312,7 +313,7 @@ describe('native Chat contacts', () => {
     );
     await rejectedPick;
     await overlaysReady();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
     const pending = Promise.withResolvers<NativeChatContactsSnapshot>();
     state.setRead(() => pending.promise);
     const lookup = state.adapter.callbacks.contacts({
@@ -345,7 +346,7 @@ describe('native Chat contacts', () => {
         cancelable: true,
       }),
     );
-    expect(document.activeElement).toBe(document.querySelector('.signing-btn-cancel'));
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="signing-btn-cancel"]'));
     must(document.activeElement, 'Focused picker action').dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     );
@@ -359,21 +360,24 @@ describe('native Chat contacts', () => {
       selected: [alice],
     });
     const rows = await choices();
-    expect(document.querySelector('[role=dialog]')?.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
+    expect(byTestId('signing-modal').textContent).not.toMatch(/0x[0-9a-f]{64}/i);
     const firstRow = must(rows[0], 'First contact choice');
     const secondRow = must(rows[1], 'Second contact choice');
     const first = must(firstRow.querySelector<HTMLInputElement>('input[type="checkbox"]'), 'First contact checkbox');
     const second = must(secondRow.querySelector<HTMLInputElement>('input[type="checkbox"]'), 'Second contact checkbox');
     expect(first.checked).toBe(true);
     expect(second.checked).toBe(false);
-    const search = must(document.querySelector<HTMLInputElement>('input[type="search"]'), 'Contact search');
+    const search = must(
+      document.querySelector<HTMLInputElement>('[data-testid="prompt-choice-search"]'),
+      'Contact search',
+    );
     search.value = 'bob';
     search.dispatchEvent(new Event('input', { bubbles: true }));
     await expect.poll(() => firstRow.hidden).toBe(true);
     expect(secondRow.hidden).toBe(false);
     second.click();
     await settle();
-    must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
+    byTestId('signing-btn-sign').click();
     await expect(picked).resolves.toEqual({
       tag: 'Picked',
       value: { accounts: [alice, bob] },
@@ -391,7 +395,7 @@ describe('native Chat contacts', () => {
       'First contact checkbox',
     ).click();
     await settle();
-    must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
+    byTestId('signing-btn-sign').click();
     await expect(cleared).resolves.toEqual({
       tag: 'Picked',
       value: { accounts: [] },
@@ -412,7 +416,7 @@ describe('native Chat contacts', () => {
       'Second reopened checkbox',
     ).click();
     await settle();
-    must(document.querySelector<HTMLButtonElement>('.signing-btn-cancel'), 'Cancel selection').click();
+    byTestId('signing-btn-cancel').click();
     await expect(canceled).resolves.toEqual({ tag: 'Dismissed' });
   });
 
@@ -424,21 +428,21 @@ describe('native Chat contacts', () => {
     );
     state.setRead(() => Promise.resolve(state.snapshot));
     await adapter.callbacks.placeContactLabels(product, placed);
-    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+    await expect.poll(() => document.querySelector('[data-testid="contact-label"]')?.textContent).toBe('alice.paseo');
   });
 
   it('refreshes the latest labels after a same-wallet directory change without another placement', async () => {
     const { state, adapter, placed } = await labelFixture();
     await adapter.callbacks.placeContactLabels(product, placed);
-    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
-    expect(document.querySelectorAll('.contact-label')[1]?.getAttribute('aria-label')).toBe(bob);
+    await expect.poll(() => document.querySelector('[data-testid="contact-label"]')?.textContent).toBe('alice.paseo');
+    expect(document.querySelectorAll('[data-testid="contact-label"]')[1]?.getAttribute('aria-label')).toBe(bob);
     state.snapshot = {
       ...state.snapshot,
       contacts: [{ peerIdentity: alice, username: 'renamed.paseo' }],
     };
     state.directory.invalidate();
-    expect(document.querySelector('.contact-label')).toBeNull();
-    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('renamed.paseo');
+    expect(document.querySelector('[data-testid="contact-label"]')).toBeNull();
+    await expect.poll(() => document.querySelector('[data-testid="contact-label"]')?.textContent).toBe('renamed.paseo');
     expect(document.querySelector(`[aria-label="${bob}"]`)).toBeNull();
   });
 
@@ -447,7 +451,7 @@ describe('native Chat contacts', () => {
     async ending => {
       const { state, adapter, placed, frame } = await labelFixture();
       await adapter.callbacks.placeContactLabels(product, placed);
-      await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+      await expect.poll(() => document.querySelector('[data-testid="contact-label"]')?.textContent).toBe('alice.paseo');
       const pending = Promise.withResolvers<NativeChatContactsSnapshot>();
       const started = Promise.withResolvers<undefined>();
       state.setRead(() => {
@@ -468,20 +472,20 @@ describe('native Chat contacts', () => {
       } else {
         state.switchSession();
       }
-      expect(document.querySelector('.contact-label')).toBeNull();
+      expect(document.querySelector('[data-testid="contact-label"]')).toBeNull();
       pending.resolve(state.snapshot);
       await redraw();
-      expect(document.querySelector('.contact-label')).toBeNull();
+      expect(document.querySelector('[data-testid="contact-label"]')).toBeNull();
     },
   );
 
   it('does not replay a queued directory refresh after navigation', async () => {
     const { state, adapter, placed, frame } = await labelFixture();
     await adapter.callbacks.placeContactLabels(product, placed);
-    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+    await expect.poll(() => document.querySelector('[data-testid="contact-label"]')?.textContent).toBe('alice.paseo');
     state.directory.invalidate();
     frame.dispatchEvent(new Event('load'));
     await redraw();
-    expect(document.querySelector('.contact-label')).toBeNull();
+    expect(document.querySelector('[data-testid="contact-label"]')).toBeNull();
   });
 });

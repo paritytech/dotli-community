@@ -1,0 +1,181 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board's .toast: dark glass in both page themes, the icon tile tinted
+   by the toast's tone. Desktop sizes by default, the board's in the phone
+   block. */
+
+.card {
+  /* The board's 8 px step on the narrower card. */
+  --pile-step: 7px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border-radius: 20px;
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+}
+
+/* Piled in one cell, each older card a step higher, 4% smaller and 5% darker. */
+.stacked {
+  grid-area: 1 / 1;
+  align-self: end;
+  transform: translateY(calc(var(--i, 0) * -1 * var(--pile-step))) scale(calc(1 - var(--i, 0) * 0.04));
+  filter: brightness(calc(1 - var(--i, 0) * 0.05));
+  transition:
+    transform var(--dur) ease,
+    filter var(--dur) ease;
+}
+
+.expanded {
+  opacity: 1;
+  transition: opacity var(--dur) ease;
+}
+
+.card[data-hidden] {
+  display: none;
+}
+
+:where(.icon) {
+  --tone: var(--chrome-info);
+}
+.icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--sp-8);
+  height: var(--sp-8);
+  margin: 0;
+  padding: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tone) var(--chrome-tint), transparent);
+  color: var(--tone);
+}
+/* Host icons are SVG strings without a size. */
+.icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+/* A toast the app can be reopened from: its text is the button. Its hover,
+   underline and focus ring hug the text, not the card's width. */
+button.body {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-hair);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+button.body:hover {
+  text-decoration: underline;
+  /* The board's .link offset. */
+  text-underline-offset: 3px;
+}
+button.body:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+
+.action,
+.close {
+  flex: none;
+}
+
+/* The stack's close-all badge stands in for the cards' close buttons. */
+.stacked:not(.single) .close {
+  display: none;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-3));
+  }
+}
+.card[data-entering] {
+  animation: enter var(--dur) backwards var(--ease-spring);
+}
+
+@keyframes leave {
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+.card[data-leaving] {
+  animation: leave var(--dur) forwards ease;
+  pointer-events: none;
+}
+
+/* PHONE_QUERY in phone-viewport.ts: the board's sizes. */
+@media (max-width: 560px) {
+  .card {
+    --pile-step: var(--sp-2);
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border-radius: var(--r-lg);
+  }
+  .icon {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+    border-radius: var(--r-sm);
+  }
+  .icon svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* A card is removed on its animationend, so the animations shrink to
+   nothing instead of going away. */
+@media (prefers-reduced-motion: reduce) {
+  .stacked,
+  .expanded {
+    transition: none;
+  }
+  .card[data-entering],
+  .card[data-leaving] {
+    animation-duration: 0.01ms;
+  }
+}

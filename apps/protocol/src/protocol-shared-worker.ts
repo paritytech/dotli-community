@@ -18,7 +18,10 @@ import { isValidNetwork, setNetworkOverride, getActiveServicesConfig } from '@do
 
 import {
   createChainProvider,
+  enableSyncReporting,
   isChainSupported,
+  onChainDetail,
+  onChainSync,
   onProviderFatal,
   onSmoldotDbOutcome,
   resolveDotName,
@@ -32,7 +35,14 @@ import {
   waitForPeopleFinalized,
 } from '@dotli/resolver';
 
-import { m, initSentry, installGlobalErrorHandlers, spans as S } from '@dotli/metrics';
+import {
+  m,
+  captureException,
+  initSentry,
+  installGlobalErrorHandlers,
+  spans as S,
+  type SpanHandle,
+} from '@dotli/metrics';
 
 import {
   createChainPool,
@@ -44,8 +54,9 @@ import {
   type ProtocolRequestMap,
   type ProtocolEnvelope,
 } from '@dotli/protocol';
-import { errorName, serializeError, isExecutableKind } from '@dotli/shared';
+import { errorName, isExecutableKind, log, serializeError } from '@dotli/shared';
 
+import { errorResponse } from './error-response.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { createWorkerChainSessions, type WorkerChainSessions } from './worker-chains.js';
 
@@ -59,6 +70,12 @@ export interface SWRelayRequest {
   type: 'relay-request';
   envelope: ProtocolRequestEnvelope;
   origin: string;
+  /**
+   * The page load of the tab that sent the request. Carried per request
+   * because this worker serves every tab at once: it can only ever label the
+   * work done for one request, never its own context.
+   */
+  resolutionId?: string;
 }
 
 export interface SWRelayResponse {
@@ -75,21 +92,18 @@ export interface SWError {
   message: string;
 }
 
-export type SWInbound = SWRelayRequest;
 export type SWOutbound = SWRelayResponse | SWReady | SWError;
 
 const TAG = '[dot.li SW]';
 
-function swLog(...args: unknown[]): void {
-  console.warn(TAG, ...args);
-}
-
-function swError(...args: unknown[]): void {
-  console.error(TAG, ...args);
+function swEvent(message: string, data?: Record<string, unknown>): void {
+  log.event(message, { flow: 'protocol', ...data });
 }
 
 const ports = new Set<MessagePort>();
 const pendingPorts: MessagePort[] = [];
+// Each port's way out of the chain sync streams, released with the port.
+const syncForwarders = new Map<MessagePort, () => void>();
 let engineReady = false;
 // Why the engine is dead for good: pre-sync failed, or the light client could
 // not connect a chain. Every port that connects later is told, never `ready`.
@@ -122,8 +136,13 @@ if (requestedNetwork === null) {
 } else {
   setNetworkOverride(requestedNetwork);
   m.setDefaults({ network: requestedNetwork });
-  swLog(`Active network pinned to ${requestedNetwork}`);
 }
+
+// This worker owns the light client in shared-worker mode, so it is the only
+// place the chains' sync can be observed from. Enabled before pre-sync opens
+// the first connection, which would otherwise carry no lifecycle watch. Same
+// chains as direct mode.
+enableSyncReporting(['relay', 'asset-hub', 'bulletin', 'people']);
 
 // Light-client death broadcast. When the light client cannot connect a chain,
 // relay a `fatal` envelope to every connected port so the host client rejects
@@ -138,7 +157,7 @@ onProviderFatal(message => {
   if (workerStopped) {
     return;
   }
-  swError(`Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`);
+  log.error(`${TAG} Light client died, broadcasting fatal to ${String(ports.size)} port(s): ${message}`);
   engineReady = false;
   presyncFailureMessage = message;
   broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
@@ -176,7 +195,7 @@ function requireChainSessions(): WorkerChainSessions {
 
 async function presync(): Promise<void> {
   const t0 = performance.now();
-  m.breadcrumb('presync starting');
+  swEvent('Pre-sync started');
 
   try {
     // Create the broker FIRST and route the resolver's Asset Hub reads
@@ -187,7 +206,7 @@ async function presync(): Promise<void> {
       createTransport: createChainProvider,
       destroyDelay: Infinity,
     });
-    chainSessions = createWorkerChainSessions(pool, isChainSupported, sendToPort, swLog);
+    chainSessions = createWorkerChainSessions(pool, isChainSupported, sendToPort, swEvent);
     setResolverAssetHubProvider(() =>
       requireBrokerLocalProvider(pool, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
     );
@@ -202,14 +221,8 @@ async function presync(): Promise<void> {
     // Wait for Asset Hub to sync to a finalized block via the
     // explicit presync primitive (no more overloading `resolveDotName`
     // with a sentinel label). This now syncs the broker's shared chain.
-    swLog('Waiting for Asset Hub to reach finalized block...');
-    await waitForAssetHubFinalized(msg => {
-      swLog(`Pre-sync status: ${msg}`);
-    });
-    const totalMs = performance.now() - t0;
-    m.measure(S.SMOLDOT_PRESYNC, totalMs);
-    m.distribution(S.SMOLDOT_PRESYNC, totalMs);
-    swLog(`Asset Hub synced (${String(Math.round(totalMs))}ms total)`);
+    // The resolver records the `smoldot.presync` timing for this wait.
+    await waitForAssetHubFinalized();
 
     // A light client that failed while Asset Hub synced stays dead: the
     // waiting ports were told by the fatal broadcast, and must not hear ready.
@@ -217,8 +230,7 @@ async function presync(): Promise<void> {
       return;
     }
 
-    // Success: mark ready.
-    swLog('Pre-sync complete, engine ready');
+    swEvent('Pre-sync complete', { ms: Math.round(performance.now() - t0) });
     engineReady = true;
 
     // Signal ready to any ports that connected during pre-sync
@@ -233,24 +245,16 @@ async function presync(): Promise<void> {
     // the parachain warp sync (the source of the intermittent failures). Start
     // syncing it now so it is ready by the time auth runs. People is not needed
     // for resolution, so this must not gate the ready signal above.
-    swLog('Warming People chain in background...');
-    void waitForPeopleFinalized(msg => {
-      swLog(`People warm status: ${msg}`);
-    })
-      .then(() => {
-        swLog('People chain warmed');
-      })
-      .catch((err: unknown) => {
-        swLog(`People chain warm failed (retried on demand): ${serializeError(err)}`);
-      });
+    void waitForPeopleFinalized().catch((err: unknown) => {
+      log.warn(`${TAG} People chain warm failed (retried on demand)`, err);
+    });
   } catch (err: unknown) {
     const msg = serializeError(err);
-    swError(`Pre-sync failed: ${msg}`);
+    log.error(`${TAG} Pre-sync failed: ${msg}`, err);
     m.count(S.SMOLDOT_PRESYNC, {
       outcome: 'error',
       reason: err instanceof Error ? err.name : 'unknown',
     });
-    m.breadcrumb('smoldot presync failed', { reason: msg });
 
     // Surface the actual cause to every waiting port. Engine remains
     // permanently dead. The user must reload to retry. A light client that
@@ -296,27 +300,67 @@ function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
     // cause (a structured-clone failure on an un-transferable payload,
     // for example) is a real bug and we want it visible instead of
     // silently removing an otherwise-healthy port.
-    const name = errorName(err) ?? '';
-    if (name === 'InvalidStateError') {
-      swLog('Port closed, cleaning up');
-      removePort(port);
+    if (errorName(err) === 'InvalidStateError') {
+      removePort(port, 'closed');
       return;
     }
-    swError(`sendToPort unexpected failure (name=${name || '<unknown>'}):`, err);
-    // Remove the port regardless, since we can't deliver to it. The
-    // error log above preserves the real cause for triage.
-    removePort(port);
+    // What failed to arrive is lost for good: a response leaves the tab
+    // waiting out its timeout with no cause, and a broadcast never arrives.
+    // Nothing reaches the host to report, so this is the only report.
+    captureException(err, {
+      flow: 'protocol',
+      step: 'worker_port_send',
+      tags: { envelope_kind: envelope.kind },
+    });
+    // Remove the port regardless, since we can't deliver to it.
+    removePort(port, 'send_failed');
   }
 }
 
-function removePort(port: MessagePort): void {
+type PortRemoval = 'closed' | 'disconnect' | 'stale' | 'send_failed';
+
+function removePort(port: MessagePort, reason: PortRemoval): void {
   ports.delete(port);
+  syncForwarders.get(port)?.();
+  syncForwarders.delete(port);
   const cleaned = chainSessions?.removePort(port) ?? 0;
-  swLog(`Port removed (cleaned ${String(cleaned)} connections, ${String(ports.size)} ports remaining)`);
+  swEvent('Port removed', { reason, connections: cleaned, ports: ports.size });
+}
+
+/**
+ * Forward what the chains report about their sync to one tab.
+ *
+ * The chains are shared, so every tab hears every chain's events. Each
+ * subscription first replays where each chain stands, which is what a tab
+ * joining a running worker needs to hear.
+ */
+function forwardChainSync(port: MessagePort, joinedSynced: boolean): void {
+  let replaying = true;
+  const stopSync = onChainSync(event => {
+    const { chain, kind, ...rest } = event;
+    sendToPort(port, { namespace: 'dotli:protocol', kind: 'chain-sync', chain, syncKind: kind, ...rest });
+  });
+  const stopDetail = onChainDetail(detail => {
+    // A tab joining a synced worker paid no sync cost, whatever the worker's
+    // own first start found on disk: the rule `smoldot-db` follows below.
+    const reported =
+      replaying && joinedSynced && detail.dbCache !== undefined ? { ...detail, dbCache: 'hit' as const } : detail;
+    sendToPort(port, { namespace: 'dotli:protocol', kind: 'chain-detail', ...reported });
+  });
+  replaying = false;
+  const stop = (): void => {
+    stopSync();
+    stopDetail();
+  };
+  // A failed send during the replay has already removed the port.
+  if (!ports.has(port)) {
+    stop();
+    return;
+  }
+  syncForwarders.set(port, stop);
 }
 
 async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope, origin: string): Promise<void> {
-  const t = performance.now();
   if (isSharedAuthRequestMethod(request.method)) {
     throw new Error(`Shared auth requests must be handled on host.dot.li, not the SharedWorker: ${request.method}`);
   }
@@ -333,7 +377,6 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
     case 'warmup': {
       // Pre-sync already started smoldot, the relay chain, and periodic
       // saves. Just confirm it's done.
-      swLog(`Warmup acknowledged (engine already pre-synced) (${String(Math.round(performance.now() - t))}ms)`);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -358,7 +401,6 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
         },
         ...syncOptions,
       });
-      swLog(`Resolved "${payload.label}" → ${result ?? 'null'} (${String(Math.round(performance.now() - t))}ms)`);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -387,7 +429,6 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
       const payload = request.payload as ProtocolRequestMap['resolveOwner'];
       assertString(payload.label, 'label');
       const result = await resolveOwner(payload.label, syncOptions);
-      swLog(`Owner "${payload.label}" → ${result ?? 'null'} (${String(Math.round(performance.now() - t))}ms)`);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -489,6 +530,35 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
   }
 }
 
+// Bounds what a tab can write into this worker's span attributes. The host
+// mints a UUID.
+const RESOLUTION_ID_PATTERN = /^[\w-]{1,64}$/;
+
+/**
+ * A span for the work one tab's request costs this worker, labelled with the
+ * page load of that tab.
+ *
+ * The label goes on this span alone. The worker serves every tab at once, so a
+ * resolution id set on its scope or its metric defaults would label the work
+ * of other tabs too.
+ */
+function openRequestSpan(envelope: ProtocolRequestEnvelope, resolutionId: unknown): SpanHandle | null {
+  // One per product JSON-RPC message: as on the host, it would swamp the
+  // resolution requests.
+  if (envelope.method === 'chainSend') {
+    return null;
+  }
+  return m.open(S.PROTOCOL_WORKER_REQUEST, {
+    root: true,
+    attributes: {
+      method: envelope.method,
+      ...(typeof resolutionId === 'string' && RESOLUTION_ID_PATTERN.test(resolutionId)
+        ? { resolution_id: resolutionId }
+        : {}),
+    },
+  });
+}
+
 // Proactively clean up stale ports by sending a ping.
 // Posting to a closed port throws, and we catch that to detect dead ports.
 function cleanStalePorts(): void {
@@ -496,8 +566,7 @@ function cleanStalePorts(): void {
     try {
       p.postMessage({ type: 'ping' });
     } catch {
-      swLog('Detected stale port during cleanup');
-      removePort(p);
+      removePort(p, 'stale');
     }
   }
 }
@@ -515,7 +584,10 @@ self.addEventListener('connect', event => {
   cleanStalePorts();
 
   ports.add(port);
-  swLog(`Port connected (${String(ports.size)} total, engine ${engineReady ? 'ready' : 'syncing'})`);
+  swEvent('Port connected', {
+    ports: ports.size,
+    engine: presyncFailureMessage !== null ? 'failed' : engineReady ? 'ready' : 'syncing',
+  });
 
   port.addEventListener('message', (msgEvent: MessageEvent) => {
     if (workerStopped) {
@@ -525,8 +597,7 @@ self.addEventListener('connect', event => {
 
     // Handle disconnect signal from iframe beforeunload
     if (data?.type === 'disconnect') {
-      swLog('Port sent disconnect signal, cleaning up');
-      removePort(port);
+      removePort(port, 'disconnect');
       return;
     }
 
@@ -536,22 +607,31 @@ self.addEventListener('connect', event => {
 
     const relayData = data as SWRelayRequest;
     const { envelope, origin } = relayData;
-    void handleRequest(port, envelope, origin).catch((error: unknown) => {
-      const msg = serializeError(error);
-      const name = errorName(error);
-      swError(`Request ${envelope.method} failed:`, msg);
-      sendToPort(port, {
-        namespace: 'dotli:protocol',
-        kind: 'response',
-        id: envelope.id,
-        ok: false,
-        error: msg,
-        ...(name !== undefined ? { errorName: name } : {}),
+    const span = openRequestSpan(envelope, relayData.resolutionId);
+    void handleRequest(port, envelope, origin)
+      .then(
+        () => {
+          span?.setAttributes({ outcome: 'ok' });
+        },
+        (error: unknown) => {
+          span?.setAttributes({ outcome: 'error', error_name: errorName(error) ?? 'NonError' });
+          // The host rebuilds this failure from the response and reports it.
+          log.warn(`${TAG} ${envelope.method} failed`, error);
+          sendToPort(port, errorResponse(envelope.id, error));
+        },
+      )
+      .finally(() => {
+        span?.end();
       });
-    });
   });
 
   port.start();
+
+  // Before the ready signal, so a tab hears where the chains stand before it
+  // starts its resolution against them.
+  if (presyncFailureMessage === null) {
+    forwardChainSync(port, engineReady);
+  }
 
   if (presyncFailureMessage !== null) {
     // The engine is dead: pre-sync failed, or the light client could not
@@ -590,15 +670,16 @@ self.addEventListener('connect', event => {
         outcome,
       });
     }
-    swLog('Engine not ready yet, queuing port for ready signal');
     pendingPorts.push(port);
   }
 });
 
 if (networkInitFailure !== null) {
-  swError(networkInitFailure);
+  // Every tab hears this as the reason the worker never became ready, and the
+  // host reports it from there.
+  log.error(`${TAG} ${networkInitFailure}`);
   presyncFailureMessage = networkInitFailure;
 } else {
-  swLog('SharedWorker initialized, starting pre-sync...');
+  swEvent('Worker started', { network: requestedNetwork });
   void presync();
 }

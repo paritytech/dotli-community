@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Entry of the lazily loaded TrUAPI debug panel. The host imports the chunk
-// with its stylesheet, so dock measurements run only after CSS is ready.
+// with its CSS-module stylesheet, so dock measurements run only after CSS is
+// ready.
 
 import { flush } from 'solid-js';
 import { DEBUG } from '@dotli/config';
 import type { ExperimentalWalletControls } from '@dotli/truapi-debug';
-import '@dotli/truapi-debug/styles.css';
 import { onDotliDebugEvent, type DotliDebugBusEvent, EventStore, createResolutionRecorder } from '@dotli/truapi-debug';
 
 import { mountRoot } from '../../mount/root.js';
