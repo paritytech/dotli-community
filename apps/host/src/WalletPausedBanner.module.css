@@ -1,16 +1,18 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The test wallet paused because another tab took it: a status card under
-   the bar, in the toasts' glass. It never takes a click, so the click that
-   resumes the wallet reaches whatever is below. */
+/* The test wallet paused because another tab took it: a status card at the
+   top of the content area, under the desktop bar and clear of the phone bar
+   at the foot, in the toasts' glass. It never takes a click, so the click
+   that resumes the wallet reaches whatever is below. */
 
 .banner {
   position: fixed;
-  top: calc(var(--topbar-height) + 8px);
+  top: calc(var(--content-top) + 8px);
   left: 50%;
   z-index: 900;
   box-sizing: border-box;
+  width: max-content;
   max-width: min(560px, calc(100vw - 32px));
   margin: 0;
   padding: 10px 14px;

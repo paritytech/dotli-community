@@ -790,6 +790,121 @@ describe('bridge render lifecycle', () => {
     showNotification.mockRestore();
   });
 
+  async function renderWithProductPort(label: string): Promise<{
+    core: MockProvider;
+    productPort: MessagePort;
+    ready: (connectionId?: string) => void;
+    inits: () => MessagePort[];
+  }> {
+    const channel = new MessageChannel();
+    let allowedOrigin = '';
+    mocks.createIframeHost.mockImplementationOnce(
+      (args: { allowedOrigin: string; container: HTMLElement; onPort: (port: MessagePort) => void }) => {
+        // The real iframe host hands its port over at once and answers the
+        // first ready itself with the other end.
+        allowedOrigin = args.allowedOrigin;
+        args.onPort(channel.port1);
+        const iframe = document.createElement('iframe');
+        args.container.appendChild(iframe);
+        return {
+          iframe,
+          dispose: vi.fn(() => {
+            iframe.remove();
+          }),
+        };
+      },
+    );
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('cid', label);
+    await waitForProviderRequests(1);
+    const core = makeProvider();
+    nth(mocks.coreProviderDefers, 0).resolve(core);
+    await render;
+    const targetWindow = document.querySelector('iframe')?.contentWindow;
+    if (!targetWindow) {
+      throw new Error('app frame has no content window');
+    }
+    const inits: MessagePort[] = [];
+    vi.spyOn(targetWindow, 'postMessage').mockImplementation((...args: unknown[]) => {
+      const [message, targetOrigin, transfer] = args;
+      expect(message).toEqual({ type: 'truapi-init' });
+      expect(targetOrigin).toBe(allowedOrigin);
+      if (Array.isArray(transfer)) {
+        // The bridge's MessageChannel is Node's, not happy-dom's, so check by shape.
+        inits.push(
+          ...transfer.filter(
+            (port): port is MessagePort => typeof port === 'object' && port !== null && 'postMessage' in port,
+          ),
+        );
+      }
+    });
+    return {
+      core,
+      productPort: channel.port2,
+      ready(connectionId) {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: connectionId === undefined ? { type: 'truapi-ready' } : { type: 'truapi-ready', connectionId },
+            origin: allowedOrigin,
+            source: targetWindow,
+          }),
+        );
+      },
+      inits: () => [...inits],
+    };
+  }
+
+  it('treats connectionId-less ready repeats as retries until the product uses its port', async () => {
+    const product = await renderWithProductPort('legacy-ready');
+    // Pre-0.23 clients retry ready every 50 ms without a connectionId and
+    // adopt only the first truapi-init port.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      product.ready();
+    }
+    expect(product.inits()).toEqual([]);
+
+    const frame = new Uint8Array([7, 7, 7]);
+    product.productPort.postMessage(frame);
+    await vi.waitFor(() => {
+      expect(product.core.postMessage).toHaveBeenCalledWith(frame);
+    });
+
+    // After the product used its port, a new ready is a replaced document.
+    product.ready();
+    expect(product.inits()).toHaveLength(1);
+    product.ready();
+    expect(product.inits()).toHaveLength(1);
+
+    const replacement = nth(product.inits(), 0);
+    const replacementFrame = new Uint8Array([9, 9]);
+    replacement.postMessage(replacementFrame);
+    await vi.waitFor(() => {
+      expect(product.core.postMessage).toHaveBeenCalledWith(replacementFrame);
+    });
+    product.ready();
+    expect(product.inits()).toHaveLength(2);
+    product.productPort.close();
+    for (const port of product.inits()) {
+      port.close();
+    }
+  });
+
+  it('replaces the product port once per new ready connectionId', async () => {
+    const product = await renderWithProductPort('modern-ready');
+    product.ready('first');
+    product.ready('first');
+    expect(product.inits()).toEqual([]);
+    product.ready('second');
+    product.ready('second');
+    expect(product.inits()).toHaveLength(1);
+    product.ready();
+    expect(product.inits()).toHaveLength(2);
+    product.productPort.close();
+    for (const port of product.inits()) {
+      port.close();
+    }
+  });
+
   it('forwards a sandbox schema mismatch as a host PWA update request', async () => {
     const { renderAppSubdomain } = await import('../src/bridge.js');
     const render = renderAppSubdomain('manifest-cid', 'manifest-app');

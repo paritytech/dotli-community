@@ -31,8 +31,8 @@ function recordingFrame(): {
 }
 
 const SAFE_WIDTH = 'calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))';
-const BELOW_BAR_TOP = 'var(--topbar-height, 68px)';
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))';
+const CLEAR_OF_BAR_TOP = 'var(--content-top, 68px)';
+const CLEAR_OF_BAR_HEIGHT = 'calc(100dvh - var(--content-top, 68px) - var(--content-bottom, 0px))';
 const HIDDEN_BAR_TOP = 'var(--safe-top, 0px)';
 const HIDDEN_BAR_HEIGHT = 'calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))';
 
@@ -57,10 +57,10 @@ describe('product frame layout', () => {
     // Then
     expect(style).toEqual({
       position: 'fixed',
-      top: BELOW_BAR_TOP,
+      top: CLEAR_OF_BAR_TOP,
       left: 'var(--safe-left, 0px)',
       width: SAFE_WIDTH,
-      height: BELOW_BAR_HEIGHT,
+      height: CLEAR_OF_BAR_HEIGHT,
       transform: '',
       transition: '',
       border: 'none',
@@ -87,8 +87,8 @@ describe('product frame layout', () => {
     setTopbarLayout({ offset: true });
 
     // Then
-    expect(style['top']).toBe(BELOW_BAR_TOP);
-    expect(style['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(style['top']).toBe(CLEAR_OF_BAR_TOP);
+    expect(style['height']).toBe(CLEAR_OF_BAR_HEIGHT);
   });
 
   it('As a chat user, opening, resizing and closing chat narrows and restores the frame', () => {
@@ -193,14 +193,14 @@ describe('product frame layout: docked panels', () => {
 
     // Then
     expect(style['width']).toBe(`calc(${SAFE_WIDTH} - 400px)`);
-    expect(style['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(style['height']).toBe(CLEAR_OF_BAR_HEIGHT);
 
     // When
     setDockInset({ right: 0, bottom: 300 }, 'debug');
 
     // Then
     expect(style['width']).toBe(SAFE_WIDTH);
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
   });
 
   it("As a dotli developer, opening, dragging and closing chat keeps the bottom dock's reservation", () => {
@@ -214,21 +214,21 @@ describe('product frame layout: docked panels', () => {
 
     // Then
     expect(style['width']).toBe(`calc(${SAFE_WIDTH} - 360px)`);
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
 
     // When chat is dragged wider
     setChatWidth(420);
 
     // Then
     expect(style['width']).toBe(`calc(${SAFE_WIDTH} - 420px)`);
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
 
     // When chat closes
     setChatWidth(0);
 
     // Then
     expect(style['width']).toBe(SAFE_WIDTH);
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
   });
 
   it('As a dotli developer, a product reload with chat open and a right dock keeps both', () => {
@@ -244,7 +244,7 @@ describe('product frame layout: docked panels', () => {
 
     // Then
     expect(second.style['width']).toBe(`calc(${SAFE_WIDTH} - 760px)`);
-    expect(second.style['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(second.style['height']).toBe(CLEAR_OF_BAR_HEIGHT);
   });
 
   it("As a dotli developer, hiding and revealing the bar keeps the bottom dock's reservation", () => {
@@ -304,13 +304,13 @@ describe('product frame layout: docked panels', () => {
     setDockInset({ right: 0, bottom: 120 }, 'sandbox-checker');
 
     // Then
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 420px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 420px)`);
 
     // When the sandbox checker goes away
     setDockInset({ right: 0, bottom: 0 }, 'sandbox-checker');
 
     // Then the debug dock keeps its space
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
   });
 
   it('As a dotli integrator, a dock reported before any product frame applies once one attaches', () => {
@@ -322,7 +322,7 @@ describe('product frame layout: docked panels', () => {
     attachProductFrame(frame);
 
     // Then
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
   });
 });
 
