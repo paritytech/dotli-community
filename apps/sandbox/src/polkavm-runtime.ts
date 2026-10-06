@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ArchiveFiles } from '@dotli/content';
+import { captureException } from '@dotli/metrics';
 import type { PolkaVmDebugMessage, PolkaVmDebugSnapshot } from '@dotli/truapi-debug';
 import {
   deliverFileInput,
@@ -156,6 +157,14 @@ interface WorkerMetrics {
   updateP50Ms: number;
   updateP95Ms: number;
   updateMaxMs: number;
+}
+
+interface PolkaVmFailureDetails {
+  backend: PolkaVmDebugSnapshot['backend'];
+  phase: 'startup' | 'running';
+  programSha256: string;
+  source: string;
+  startupStage: string;
 }
 
 export type UiPlatformRect = readonly [number, number, number, number];
@@ -2664,11 +2673,33 @@ export async function runPolkaVmApplication(
     throw new Error('package is not a PolkaVM application');
   }
   validateFiles(files, descriptor);
+  const reportedErrors = new WeakSet<Error>();
+  const reportFailure = (error: unknown, details?: PolkaVmFailureDetails): void => {
+    const runtimeError = error instanceof Error ? error : new Error(String(error));
+    if (reportedErrors.has(runtimeError)) {
+      return;
+    }
+    reportedErrors.add(runtimeError);
+    const trapPc = /\btrapped at (\d+)\b/.exec(runtimeError.message)?.[1];
+    captureException(runtimeError, {
+      surface: 'sandbox_polkavm_runtime',
+      cid,
+      polkavm_backend: details?.backend ?? 'starting',
+      polkavm_failure_source: details?.source ?? 'sandbox',
+      polkavm_graphics_profile: descriptor.graphicsProfile,
+      polkavm_phase: details?.phase ?? 'startup',
+      polkavm_program_sha256: details?.programSha256 ?? 'unavailable',
+      polkavm_runtime_source: POLKAVM_RUNTIME_SOURCE,
+      polkavm_startup_stage: details?.startupStage ?? 'pre-worker',
+      ...(trapPc === undefined ? {} : { polkavm_trap_pc: trapPc }),
+    });
+  };
   let cleanupRecovery = (): void => undefined;
   const launch = async (fileRelaunch?: FileRelaunch): Promise<void> => {
     cleanupRecovery();
     cleanupRecovery = () => undefined;
     const recover = (error: unknown): void => {
+      reportFailure(error);
       const { surface, canvas, status } = createShell();
       status.textContent = '';
       const menu = installPolkaVmMenu(surface, canvas, descriptor.controls, {
@@ -2686,7 +2717,7 @@ export async function runPolkaVmApplication(
       cleanupRecovery = menu.cleanup;
     };
     try {
-      await startPolkaVmApplication(files, cid, descriptor, fileRelaunch, launch, recover);
+      await startPolkaVmApplication(files, cid, descriptor, fileRelaunch, launch, recover, reportFailure);
     } catch (error) {
       recover(error);
     }
@@ -2701,6 +2732,7 @@ async function startPolkaVmApplication(
   fileRelaunch: FileRelaunch | undefined,
   launch: (fileRelaunch?: FileRelaunch) => Promise<void>,
   recover: (error: unknown) => void,
+  reportFailure: (error: unknown, details?: PolkaVmFailureDetails) => void,
 ): Promise<void> {
   const programBytes = validateFiles(files, descriptor);
   const forceInterpreter = new URLSearchParams(location.search).get('polkavmMode') === 'interpreter';
@@ -2726,7 +2758,8 @@ async function startPolkaVmApplication(
 
   const runtime = await runtimeBytes();
   const program = ownedBytes(programBytes);
-  const cacheKey = `${POLKAVM_RUNTIME_SOURCE}:${await programDigest(program)}`;
+  const programSha256 = await programDigest(program);
+  const cacheKey = `${POLKAVM_RUNTIME_SOURCE}:${programSha256}`;
   const compiledProgram = forceInterpreter ? undefined : compiledPrograms.get(cacheKey);
   const compiledBytes = !forceInterpreter && compiledProgram === undefined ? await loadTranslation(cacheKey) : null;
   let saveIdentity = cid;
@@ -2783,7 +2816,7 @@ async function startPolkaVmApplication(
   };
   canvas.dataset['polkavmHostFrameRequests'] = '0';
   canvas.dataset['polkavmHostFrameResponses'] = '0';
-  let failRuntime = (error: Error): void => {
+  let failRuntime: (error: Error, source?: string) => void = error => {
     status.textContent = error.message;
     rejectStarted(error);
     void stopWorker();
@@ -2994,7 +3027,7 @@ async function startPolkaVmApplication(
         }
       },
       error: error => {
-        failRuntime(error);
+        failRuntime(error, 'webgpu');
       },
     });
     try {
@@ -3215,10 +3248,17 @@ async function startPolkaVmApplication(
     closeHostFramePort();
     hostFrameQueue.close();
   };
-  failRuntime = (error: Error): void => {
+  failRuntime = (error: Error, source = 'host-runtime'): void => {
     if (stopped) {
       return;
     }
+    reportFailure(error, {
+      backend: polkavmMetrics.backend,
+      phase: firstFrame ? 'running' : 'startup',
+      programSha256,
+      source,
+      startupStage: polkavmMetrics.startupStage,
+    });
     status.textContent = error.message;
     stop();
     rejectStarted(error);
@@ -3232,6 +3272,13 @@ async function startPolkaVmApplication(
     if (stopped) {
       return;
     }
+    reportFailure(error, {
+      backend: polkavmMetrics.backend,
+      phase: firstFrame ? 'running' : 'startup',
+      programSha256,
+      source: 'tri2d-recovery',
+      startupStage: polkavmMetrics.startupStage,
+    });
     status.textContent = `${error.message}; restoring app…`;
     stop();
     rejectStarted(error);
@@ -3727,7 +3774,7 @@ async function startPolkaVmApplication(
           console.warn(text);
           menu.status.textContent = text;
         } else {
-          failRuntime(new Error(text));
+          failRuntime(new Error(text), 'worker-message');
         }
         break;
       }
@@ -3737,7 +3784,10 @@ async function startPolkaVmApplication(
     handleWorkerMessage(event.data);
   };
   worker.onerror = (event: ErrorEvent): void => {
-    failRuntime(new Error(event.message ? `PolkaVM worker failed: ${event.message}` : 'PolkaVM worker failed'));
+    failRuntime(
+      new Error(event.message ? `PolkaVM worker failed: ${event.message}` : 'PolkaVM worker failed'),
+      'worker-error-event',
+    );
   };
 
   const runtimeCopy = runtime.slice(0);
