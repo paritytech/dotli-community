@@ -21,7 +21,7 @@ interface Dimensions {
 interface Callbacks {
   event: (bytes: Uint8Array) => void;
   capabilities: (bytes: Uint8Array) => void;
-  presented: () => void;
+  presented: (sequence: number) => void;
   error: (error: Error) => void;
 }
 
@@ -105,9 +105,9 @@ export class WebGpuBridge {
         resolve(bytes);
       } else if (message?.['type'] === 'event' && message['bytes'] instanceof Uint8Array) {
         callbacks.event(message['bytes']);
-      } else if (message?.['type'] === 'presented') {
+      } else if (message?.['type'] === 'presented' && typeof message['sequence'] === 'number') {
         if (!this.#backgrounded) {
-          callbacks.presented();
+          callbacks.presented(message['sequence']);
         }
       } else if (message?.['type'] === 'error') {
         this.#clearCapabilityTimer();
