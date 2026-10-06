@@ -224,7 +224,7 @@ test.describe('host service worker update recovery', () => {
         await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
         await page.reload();
         await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
-        await expect(page.locator('.landing')).toBeVisible();
+        await expect(page.getByTestId('landing')).toBeVisible();
         await seedUserData(page);
         let navigations = 0;
         page.on('framenavigated', frame => {
@@ -278,7 +278,7 @@ test.describe('host service worker update recovery', () => {
           await reload.click();
         }
         await expect.poll(() => navigations).toBe(1);
-        await expect(page.locator('.landing')).toBeVisible();
+        await expect(page.getByTestId('landing')).toBeVisible();
         await expectUserData(page);
         expect(errors).toEqual([]);
       } finally {
