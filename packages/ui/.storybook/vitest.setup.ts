@@ -3,6 +3,11 @@
 
 import { afterEach, expect } from 'vitest';
 import { page } from 'vitest/browser';
+import { configure } from 'storybook/test';
+
+// Vite transforms each lazy chunk on first request, which on a shared CI
+// runner outlasts waitFor's 1 s default; a real failure still fails, later.
+configure({ asyncUtilTimeout: 5000 });
 
 // Stories whose capture is not stable run to run (a spinner, a caret), by
 // story id, each with the reason. addon-vitest exposes only `storyId` on the
