@@ -124,7 +124,8 @@ resubmitting a transaction. The provider's heartbeat owns reconnection; there is
 Smoldot terminal loss retires the pool entry, errors pending requests, stops follows, and ends subscriptions before
 notifying each lease. The protocol iframe and SharedWorker use the same transport hooks while retaining their long-lived
 chain pools. The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing
-dropped legacy-extrinsic case (see ADR 0002).
+dropped legacy-extrinsic case (see ADR 0002). The other temporary trusted-RPC use is the Media advertisement lookup (see
+[Protected browser Media](#protected-browser-media)).
 
 The native connection stays open across a halt: queued requests receive terminal errors, existing follows stop, and the
 same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
@@ -405,8 +406,11 @@ no popups or top navigation; its other device grants still apply. Capture grants
 iframe capture: a raw camera or microphone request fails with an error rather than a denial, so it never records a
 durable device denial that would block host Media. Host video planes are siblings of the product inside an isolated
 compositor that takes the frame's layout; neither product DOM/canvas readback nor the product's own RTC connections
-reach host tracks, peers, SDP, ICE or decoded pictures. Host occlusion hides or clips the planes, scaled, rotated or
-skewed layouts blank them, and the call, screen-picker, audio-resume and end-call controls stay above the product.
+reach host tracks, peers, SDP, ICE or decoded pictures. Host UI that paints above the compositor's stacking context
+(toasts, popovers, modals) covers the planes while pictures keep rendering; any other visible host element over the
+product, or one whose stacking order cannot be established, blanks them. Viewport edges and the call bar clip the
+planes, scaled, rotated or skewed layouts blank them, and the call, screen-picker, audio-resume and end-call controls
+stay above the product.
 
 Calling consent shows the exact product, sr25519 account and network genesis. Each prompt is cancelled with its
 operation, never reloads the product, and persists nothing in browser UI code: the core owns scoped authorization. The
@@ -438,6 +442,18 @@ a peer, the shell fetches short-lived Cloudflare TURN credentials from its own o
 keeps its relay for at least four hours. A failed or unconfigured route (503) leaves the peer without a relay: it fails
 with `Media:NoTurnRelay` in the console, and the next peer retries. Products never supply ICE settings. The local dev
 and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
+
+Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
+client (smoldot, `@parity/truapi-provider` 0.3.1) answers a statement subscription with no stored statements, only later
+gossip, so on the light client backends the host TEMPORARILY sends these advertisement lookups, and nothing else, to the
+People chain's trusted RPC node (`packages/ui/src/host-callbacks/media-advertisement-lookup.ts`). The core opens a
+separate connection per lookup and marks its requests with the id prefix `truapi:media-advertisement-lookup:`; only
+statement subscribe/unsubscribe requests carrying it leave the light client. Chat, product statement subscriptions, live
+call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator sees which callee
+advertisement topics are looked up and when (the topic derives from the callee's account and product), and can withhold
+advertisements; it cannot forge one, since the core verifies each statement proof and advertisement signature. Remove
+the module and its single use in `Chain.ts` once the light client serves stored statements. On Trusted Providers every
+request already uses RPC.
 
 ## Development
 

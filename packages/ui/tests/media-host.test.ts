@@ -290,4 +290,114 @@ describe('Media viewport occlusion', () => {
       expect(styled.has(covering)).toBe(true);
     });
   });
+
+  describe('host UI over the media', () => {
+    const defaults = {
+      display: 'block',
+      visibility: 'visible',
+      opacity: '1',
+      transform: 'none',
+      contentVisibility: 'visible',
+      position: 'static',
+      zIndex: 'auto',
+      isolation: 'auto',
+      willChange: 'auto',
+    };
+
+    /**
+     * A compositor laid out like bridge.ts, and a toast stack overlapping the
+     * media's lower-right corner, as the persistent "Get Polkadot Desktop" one.
+     */
+    function layout(
+      stack: Record<string, string>,
+      options: { before?: boolean; wrapper?: Record<string, string> } = {},
+    ): { frame: HTMLIFrameElement; compositor: HTMLDivElement } {
+      const rects = new Map<Element, DOMRect>();
+      const styles = new Map<Element, Record<string, string>>();
+      const compositor = document.createElement('div');
+      const frame = document.createElement('iframe');
+      compositor.append(frame);
+      document.body.append(compositor);
+      rects.set(compositor, rect(0, 0, 400, 300));
+      rects.set(frame, rect(0, 0, 400, 300));
+      styles.set(compositor, { position: 'fixed', isolation: 'isolate', zIndex: '0' });
+      styles.set(frame, { position: 'absolute', zIndex: '1' });
+      Object.defineProperty(frame, 'clientWidth', { value: 400 });
+      Object.defineProperty(frame, 'clientHeight', { value: 300 });
+      const toasts = document.createElement('div');
+      const toast = document.createElement('div');
+      const title = document.createElement('span');
+      toast.append(title);
+      toasts.append(toast);
+      let outer: HTMLElement = toasts;
+      if (options.wrapper) {
+        outer = document.createElement('div');
+        styles.set(outer, options.wrapper);
+        outer.append(toasts);
+      }
+      if (options.before === true) {
+        document.body.prepend(outer);
+      } else {
+        document.body.append(outer);
+      }
+      styles.set(toasts, stack);
+      for (const element of [toasts, toast, title]) {
+        rects.set(element, rect(250, 220, 140, 70));
+      }
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+        return (
+          rects.get(this) ??
+          (this.classList.contains('host-media-indicator') ? rect(0, 768, 1024, 0) : rect(0, 0, 0, 0))
+        );
+      });
+      vi.spyOn(window, 'getComputedStyle').mockImplementation(
+        element => ({ ...defaults, ...styles.get(element) }) as unknown as CSSStyleDeclaration,
+      );
+      return { frame, compositor };
+    }
+
+    it('As a caller, my pictures keep rendering under a host toast that paints above them', () => {
+      // Given: the fixed z-index 900 toast stack over part of the call
+      const { frame, compositor } = layout({ position: 'fixed', zIndex: '900' });
+      const options = mediaHost();
+
+      // When
+      const geometry = options.measureViewport?.(frame, compositor, 1n);
+
+      // Then: the whole product stays measured; the toast stacks over the planes
+      expect(geometry).toMatchObject({ width: 400, height: 300, clip: { x: 0, y: 0, width: 400, height: 300 } });
+    });
+
+    it('As a caller, my pictures keep rendering under later host UI at the same z-index', () => {
+      // Given: a positioned host element after the compositor, at its z-index
+      const { frame, compositor } = layout({ position: 'absolute', zIndex: '0' });
+      const options = mediaHost();
+
+      // Then
+      expect(options.measureViewport?.(frame, compositor, 1n)).toMatchObject({ width: 400, height: 300 });
+    });
+
+    it.each([
+      ['beneath the compositor by z-index', { position: 'fixed', zIndex: '-1' }, {}],
+      ['in normal flow', {}, {}],
+      ['positioned at the same z-index before the compositor', { position: 'absolute', zIndex: '0' }, { before: true }],
+      [
+        'inside a lower stacking context',
+        { position: 'fixed', zIndex: '900' },
+        { before: true, wrapper: { position: 'relative', zIndex: '0' } },
+      ],
+      [
+        'inside an element whose stacking context is not modelled',
+        { position: 'fixed', zIndex: '900' },
+        { wrapper: { willChange: 'transform' } },
+      ],
+    ])('As a caller, media blanks rather than cover host UI %s', (_, stack, placement) => {
+      // Given
+      const { frame, compositor } = layout(stack, placement);
+      const options = mediaHost();
+
+      // Then: a plane could cover it, so nothing is drawn
+      expect(options.measureViewport?.(frame, compositor, 1n)).toBeUndefined();
+    });
+  });
 });

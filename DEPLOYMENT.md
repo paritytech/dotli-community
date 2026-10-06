@@ -111,6 +111,17 @@ needed.
 - The token is the Cloudflare Realtime TURN key's API token (`Authorization: Bearer`), paired with that key's id. Rotate
   it by updating both secrets and rerunning the config rollout.
 
+## Media advertisement lookups over trusted RPC (temporary)
+
+On the light client backends, Media sends its advertisement lookups (requests whose id starts with
+`truapi:media-advertisement-lookup:`, statement subscribe/unsubscribe only) to the People chain's trusted RPC node,
+because smoldot returns no stored statements in a subscription snapshot. No server configuration is involved: the
+browser dials the same People RPC endpoint the Trusted Providers backend uses. That operator learns which callee
+advertisement topics a caller looks up and when, and can withhold advertisements (calls then fail `NotConnected`, as
+they do on the light client today); it cannot forge an endpoint. Mention this in release notes for any deploy carrying
+it, and remove `packages/ui/src/host-callbacks/media-advertisement-lookup.ts` with its one use in `Chain.ts` once the
+light client serves stored statements. See [README.md](README.md#protected-browser-media).
+
 ## Opt-in CI identity proxy rollout
 
 CI normally uploads only the three frontend builds. To also deploy the existing NGINX template and identity proxy, set
