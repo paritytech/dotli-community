@@ -3,17 +3,40 @@
 
 import { createContext, createEffect, lazy, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { createAnchored, createSurfacePreload, SurfaceSlot, createTriggerWiring, type Anchored } from './anchored.js';
+import {
+  createAnchored,
+  createSurfaceLoad,
+  createTriggerWiring,
+  SurfaceSlot,
+  type Anchored,
+  type SurfaceChunk,
+} from './anchored.js';
 import type { CloseReason } from './close-reason.js';
 import type { Placement } from './FloatingLayer.js';
 
 /** The frame, the sheet and the content's boundaries: a chunk of their own, off the first visit's path. */
 const Surface = lazy(() => import('./PopoverSurface.js'), { export: 'PopoverSurface' });
 
-/** Load the surface's chunk now, ahead of the idle preload every Popover makes. */
+let surfaceLoaded = false;
+
+/**
+ * Load the surface's chunk now, ahead of the idle preload every Popover
+ * makes. Exported for DropdownMenu's surface, so a More row's popover opens
+ * in place of the More sheet (the hand-off renders it synchronously), and
+ * for the tests, which read a surface in the tick that opens it.
+ */
 export function preloadPopoverSurface(): Promise<unknown> {
-  return Surface.preload();
+  const loading = Surface.preload();
+  loading.then(
+    () => {
+      surfaceLoaded = true;
+    },
+    () => undefined,
+  );
+  return loading;
 }
+
+const chunk: SurfaceChunk = { load: preloadPopoverSurface, loaded: () => surfaceLoaded };
 
 export interface PopoverApi {
   id: string;
@@ -81,7 +104,7 @@ export function Popover(props: PopoverProps): JSX.Element {
     },
   });
   createTriggerWiring(state, () => props.trigger, 'dialog');
-  createSurfacePreload(state, Surface.preload, () => props.preload);
+  createSurfaceLoad(state, chunk, () => props.preload);
 
   createEffect(
     () => props.open,

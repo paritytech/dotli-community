@@ -15,8 +15,9 @@ const body = within(document.body);
 
 const Failing = lazy(() => Promise.reject(new Error('chunk')));
 
-function Harness(props: { content?: 'buttons' | 'failing'; opensElse?: boolean }) {
+function Harness(props: { content?: 'buttons' | 'failing'; handOver?: boolean }) {
   const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  const [held, setHeld] = createSignal(true);
   const content = (): JSX.Element =>
     props.content === 'failing' ? (
       <Failing />
@@ -27,23 +28,33 @@ function Harness(props: { content?: 'buttons' | 'failing'; opensElse?: boolean }
       </div>
     );
   return (
-    <div style={{ display: 'flex', 'justify-content': 'flex-end' }}>
+    <div style={{ display: 'flex', gap: '8px', 'justify-content': 'flex-end' }}>
+      {/* With `handOver`, as AuthButton when the session drops: the popover lets the button go, whose click then starts something else. */}
+      {props.handOver === true ? (
+        <Button
+          testId="let-go"
+          onClick={() => {
+            setHeld(false);
+          }}
+        >
+          Let go
+        </Button>
+      ) : null}
       <Button
         ref={setTrigger}
         testId="trigger"
         onClick={() => {
-          if (props.opensElse === true) {
+          if (!held()) {
             onElse();
           }
         }}
       >
         Open
       </Button>
-      {/* With `opensElse`, as AuthButton while not connected: the button is not the trigger, its click starts something else. */}
       <Popover
         id="story-popover"
         title="Example"
-        trigger={props.opensElse === true ? undefined : trigger()}
+        trigger={held() ? trigger() : undefined}
         onOpenChange={onOpenChange}
         testId="story-popover-surface"
       >
@@ -130,16 +141,28 @@ export const PhoneClosesReturnFocus: Story = {
   },
 };
 
-export const TriggerWithoutTargetOpensNothing: Story = {
-  args: { opensElse: true },
+export const ReleasedTriggerOpensNothing: Story = {
+  args: { handOver: true },
   play: async ({ step }) => {
-    await step('When I press a button the popover does not hold as its trigger', () => press('trigger'));
-    await step('Then its own click ran and the popover stayed closed', async () => {
+    const trigger = () => body.getByTestId('trigger');
+    await step('Given the popover holds the button as its trigger', async () => {
+      await waitFor(() => expect(trigger()).toHaveAttribute('popovertarget', 'story-popover'));
+      await expect(trigger().style.getPropertyValue('anchor-name')).toBe('--anchor-story-popover');
+    });
+    await step('When the popover lets it go', () => press('let-go'));
+    await step('And I press the button', () => press('trigger'));
+    await step('Then its own click ran and nothing opened', async () => {
       await expect(onElse).toHaveBeenCalledOnce();
-      await expect(body.getByTestId('trigger')).not.toHaveAttribute('popovertarget');
       await new Promise(resolve => requestAnimationFrame(resolve));
       await expect(onOpenChange).not.toHaveBeenCalled();
       await expect(document.getElementById('story-popover')?.hasAttribute('data-open') ?? false).toBe(false);
+    });
+    await step('And the button lost the invoker and the anchor, and kept its ARIA', async () => {
+      await expect(trigger()).not.toHaveAttribute('popovertarget');
+      await expect(trigger().style.getPropertyValue('anchor-name')).toBe('');
+      await expect(trigger()).toHaveAttribute('aria-haspopup', 'dialog');
+      await expect(trigger()).toHaveAttribute('aria-controls', 'story-popover');
+      await expect(trigger()).toHaveAttribute('aria-expanded', 'false');
     });
   },
 };

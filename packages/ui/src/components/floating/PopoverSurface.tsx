@@ -12,11 +12,8 @@ import type { PopoverState } from './Popover.js';
 import s from './Popover.module.css';
 
 /**
- * Popover's surface, its lazy chunk: a FloatingLayer (`role="dialog"`,
- * named by the title), or a BottomSheet with the title in its head for an
- * opening on a phone. `class` goes on the anchored surface only. A `lazy()`
- * child shows a spinner while it loads; content that fails is reported once
- * and closes the popover.
+ * Popover's lazy chunk: the content in its boundaries, a spinner while it
+ * loads and Broken when it fails, with focus moving in as it renders.
  */
 export function PopoverSurface(props: {
   state: PopoverState;

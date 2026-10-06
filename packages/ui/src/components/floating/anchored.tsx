@@ -38,6 +38,8 @@ export interface Anchored {
   trigger: () => HTMLElement | undefined;
   /** Focus to the trigger, or to More while the topbar has collapsed it. */
   focusBack: () => void;
+  /** Focus is nowhere (the body), or where focusBack puts it. */
+  focusAtTrigger: () => boolean;
   /** Whether the surface is in the page: from the first opening or preload on. */
   mounted: Accessor<boolean>;
   mount: () => void;
@@ -100,6 +102,10 @@ export function createAnchored(
       triggerEl = el;
     },
     focusBack,
+    focusAtTrigger: () => {
+      const active = document.activeElement;
+      return active === null || active === document.body || active === triggerEl || active === bar?.moreButton();
+    },
     mounted,
     mount: () => {
       setMounted(true);
@@ -118,16 +124,27 @@ export function createAnchored(
  * none, or the surface gone) loses the invoker, the anchor name and the
  * listeners, and keeps its ARIA: AuthButton hands its one button to the
  * auth modal, whose ARIA it has just written through JSX, which runs ahead
- * of this effect. `opening` sees the click that opens the surface;
+ * of this effect. A trigger let go while open closes the surface first,
+ * with focus back on it if it was inside: there would be no trigger to
+ * return it to afterwards. `opening` sees the click that opens the surface;
  * `onKeyDown` the trigger's keys.
  */
 export function createTriggerWiring(
   state: Anchored & { setTrigger: (el: HTMLElement | undefined) => void },
   trigger: () => HTMLElement | undefined,
   haspopup: 'dialog' | 'menu',
-  extra: { opening?: (ev: MouseEvent) => void; onKeyDown?: (ev: KeyboardEvent, el: HTMLElement) => void } = {},
+  extra: { opening?: (ev: MouseEvent) => void; onKeyDown?: (ev: KeyboardEvent) => void } = {},
 ): void {
+  let held: HTMLElement | undefined;
   createEffect(trigger, el => {
+    const released = held;
+    held = el;
+    if (released !== undefined && untrack(state.open)) {
+      if (document.getElementById(state.id)?.contains(document.activeElement) === true) {
+        released.focus();
+      }
+      state.setOpen(false, 'released');
+    }
     state.setTrigger(el);
     if (el === undefined) {
       return;
@@ -144,9 +161,9 @@ export function createTriggerWiring(
       // runs, which would hide it again; and on a phone a sheet opens
       // instead of the layer.
       if (untrack(state.open)) {
-        // No layer for the invoker to close (its chunk is still loading,
-        // or the opening is a sheet that has not loaded): the state closes
-        // it, as the invoker would.
+        // No layer for the invoker to close: a sheet's opening drops
+        // `popovertarget`, and a layer still loading is not in the page.
+        // The state closes it, as the invoker would.
         if (!el.hasAttribute('popovertarget') || document.getElementById(id)?.hasAttribute('popover') !== true) {
           state.setOpen(false, 'trigger');
         }
@@ -157,7 +174,7 @@ export function createTriggerWiring(
       state.setOpen(true);
     };
     const onKeyDown = (ev: KeyboardEvent): void => {
-      extra.onKeyDown?.(ev, el);
+      extra.onKeyDown?.(ev);
     };
     el.addEventListener('click', onClick);
     el.addEventListener('keydown', onKeyDown);
@@ -189,18 +206,58 @@ export function createTriggerWiring(
   );
 }
 
+/** A surface's chunk: its load, and whether it is in. */
+export interface SurfaceChunk {
+  load: () => Promise<unknown>;
+  loaded: () => boolean;
+}
+
+/** Whether a modal dialog is open, which an anchored surface must not cover. */
+function modalOpen(): boolean {
+  return document.querySelector('dialog:modal') !== null;
+}
+
 /**
- * Once the browser is idle: the surface's chunk, which puts the surface in
- * the page, and the content's `preload`, so neither waits on the network at
- * the first opening.
+ * Loads the surface's chunk. Once the browser is idle, it loads it, which
+ * puts the surface in the page, and the content's `preload`, so neither
+ * waits on the network at the first opening. An opening made before the
+ * chunk is in shows when it arrives, unless the user has gone on meanwhile:
+ * a modal dialog opened, or focus moved off the trigger. None of the
+ * layer's own closes (a press outside, Escape, blur) were listening yet, so
+ * the arrival closes it instead, without taking focus.
  */
-export function createSurfacePreload(
+export function createSurfaceLoad(
   state: Anchored,
-  surface: () => Promise<unknown>,
+  surface: SurfaceChunk,
   content: () => (() => Promise<unknown>) | undefined,
 ): void {
+  /** Where focus was as an opening began before the chunk was in. */
+  let waiting: { focus: Element | null } | undefined;
+  const load = (): Promise<void> =>
+    surface.load().then(() => {
+      const opening = waiting;
+      waiting = undefined;
+      if (opening === undefined || !untrack(state.open)) {
+        return;
+      }
+      const moved = document.activeElement !== opening.focus && !state.focusAtTrigger();
+      if (moved || modalOpen()) {
+        state.setOpen(false, 'focus-out');
+      }
+    });
+  createEffect(state.open, open => {
+    if (!open) {
+      waiting = undefined;
+      return;
+    }
+    if (!surface.loaded()) {
+      waiting = { focus: document.activeElement };
+      // A failure is SurfaceSlot's to report: the lazy surface fails with it.
+      load().catch(() => undefined);
+    }
+  });
   onSettled(() => {
-    const cancels = [preloadWhenIdle({ preload: () => surface().then(state.mount) })];
+    const cancels = [preloadWhenIdle({ preload: () => load().then(state.mount) })];
     const preload = content();
     if (preload !== undefined) {
       cancels.push(preloadWhenIdle({ preload }));

@@ -3,7 +3,14 @@
 
 import { createContext, lazy, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { createAnchored, createSurfacePreload, SurfaceSlot, createTriggerWiring, type Anchored } from './anchored.js';
+import {
+  createAnchored,
+  createSurfaceLoad,
+  createTriggerWiring,
+  SurfaceSlot,
+  type Anchored,
+  type SurfaceChunk,
+} from './anchored.js';
 import type { CloseReason } from './close-reason.js';
 import type { Placement } from './FloatingLayer.js';
 import s from './DropdownMenu.module.css';
@@ -11,10 +18,25 @@ import s from './DropdownMenu.module.css';
 /** The frame, the sheet and the menu's keys: a chunk of their own, off the first visit's path. */
 const Surface = lazy(() => import('./DropdownMenuSurface.js'), { export: 'DropdownMenuSurface' });
 
-/** Load the surface's chunk now, ahead of the idle preload every DropdownMenu makes. */
+let surfaceLoaded = false;
+
+/**
+ * Load the surface's chunk now, ahead of the idle preload every DropdownMenu
+ * makes. Exported for the tests, which read a surface in the tick that
+ * opens it.
+ */
 export function preloadDropdownMenuSurface(): Promise<unknown> {
-  return Surface.preload();
+  const loading = Surface.preload();
+  loading.then(
+    () => {
+      surfaceLoaded = true;
+    },
+    () => undefined,
+  );
+  return loading;
 }
+
+const chunk: SurfaceChunk = { load: preloadDropdownMenuSurface, loaded: () => surfaceLoaded };
 
 export type MenuState = Anchored & {
   /** The opening came from a key: it lands on the first item. */
@@ -90,15 +112,15 @@ function DropdownMenuRoot(props: {
     opening: ev => {
       state.keyboard.value = ev.detail === 0;
     },
-    onKeyDown: (ev, el) => {
-      if (ev.key === 'ArrowDown' && !untrack(state.open) && el.hasAttribute('popovertarget')) {
+    onKeyDown: ev => {
+      if (ev.key === 'ArrowDown' && !untrack(state.open)) {
         ev.preventDefault();
         state.keyboard.value = true;
         state.setOpen(true);
       }
     },
   });
-  createSurfacePreload(state, Surface.preload, () => undefined);
+  createSurfaceLoad(state, chunk, () => undefined);
   return (
     <MenuContext value={state}>
       <SurfaceSlot state={state}>

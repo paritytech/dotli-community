@@ -5,6 +5,8 @@
  * Why an anchored surface (Popover, DropdownMenu) closed, which decides
  * whether focus goes back to its trigger. `sheet` is the sheet's own close
  * (Escape, the scrim, the head's close button, a swipe) for an opening on a
- * phone; the others are FloatingLayer's.
+ * phone, and `released` the trigger let go while open, which hands focus
+ * back itself; the others are FloatingLayer's.
  */
-export type CloseReason = 'outside' | 'escape' | 'trigger' | 'blur' | 'focus-out' | 'programmatic' | 'sheet';
+export type CloseReason =
+  'outside' | 'escape' | 'trigger' | 'blur' | 'focus-out' | 'programmatic' | 'sheet' | 'released';

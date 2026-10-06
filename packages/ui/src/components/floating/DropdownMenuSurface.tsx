@@ -5,6 +5,7 @@ import type { JSX } from '@solidjs/web';
 import { AnchoredContent } from './AnchoredContent.js';
 import { SheetChoice, type MenuState } from './DropdownMenu.js';
 import type { Placement } from './FloatingLayer.js';
+import { preloadPopoverSurface } from './Popover.js';
 import { handOffSheet } from './SheetFrame.js';
 import s from './DropdownMenu.module.css';
 
@@ -65,11 +66,10 @@ function focusHovered(ev: PointerEvent): void {
 }
 
 /**
- * DropdownMenu's surface, its lazy chunk: a FloatingLayer (`role="menu"`,
- * named by the title), or a BottomSheet titled with it for an opening on a
- * phone, whose body is the `role="menu"` element. `class` goes on the
- * anchored surface, and in a sheet on the rows' wrapper, marked
- * `data-sheet`. The items render from an opening until its exit has played.
+ * DropdownMenu's lazy chunk: the menu's keys, hover focus and opening focus,
+ * and the sheet hand-off its items run. It loads Popover's chunk as it
+ * mounts: a More row opening a popover then renders it in the hand-off's
+ * frame, so its sheet takes More's place.
  */
 export function DropdownMenuSurface(props: {
   state: MenuState;
@@ -77,6 +77,8 @@ export function DropdownMenuSurface(props: {
   placement?: Placement | undefined;
   children: JSX.Element;
 }): JSX.Element {
+  // A failure is left to the opening that renders it, which reports it.
+  preloadPopoverSurface().catch(() => undefined);
   /** Where focus goes as the menu opens: the first item for a key, else the menu. */
   const openingFocus = (menu: HTMLElement, root: HTMLElement): HTMLElement => {
     const keyboard = props.state.keyboard.value;
