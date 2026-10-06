@@ -131,7 +131,10 @@ interface ActiveHost {
 type CoreProviderBase = Provider &
   Pick<
     TrUApiProductProvider,
-    'getPermissionAuthorizationStatus' | 'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
+    | 'getPermissionAuthorizationStatus'
+    | 'getPermissionAuthorizationStatuses'
+    | 'setPermissionAuthorizationStatus'
+    | 'trustedRemotePermissions'
   >;
 type CurrentProduct =
   | {
@@ -1440,6 +1443,7 @@ function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase 
   });
 
   return {
+    trustedRemotePermissions: provider.trustedRemotePermissions === true,
     postMessage(message: Uint8Array): void {
       if (disposed) {
         return;

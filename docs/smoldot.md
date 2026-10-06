@@ -128,8 +128,9 @@ Bulletin preimage submission is built, signed, and submitted entirely by the Rus
 The browser's upload review offers **Allow once**, **Allow bounded automatic uploads**, and **Deny**. Automatic consent is separate from signing grants and the Remote PreimageSubmit permission. It covers only the displayed product, root account and Bulletin genesis: up to 256 KiB per upload, four automatic uploads per rolling hour. Larger uploads and exhausted budgets still require individual review. In Permissions, **Automatic Preimage Uploads** can be reset to **Ask per upload** or revoked for the active account; either stops automatic approval without blocking individual upload requests or resetting the persisted budget. The row is hidden while signed out, and account changes invalidate stale status reads and settings actions.
 
 Trusted-product notifications skip only the per-app consent sheet. The worker's
-Rust classifier supplies `trustedRemotePermissions` for its product; the UI does
-not duplicate the trusted-label list. Stored refusals still win, and notification
+Rust classifier supplies `trustedRemotePermissions` for its product; the debug
+provider wrapper preserves that metadata, and the UI does not duplicate the
+trusted-label list. Stored refusals still win, and notification
 delivery still checks/requests the browser's OS permission. This exception never
 authorizes camera, microphone or other capture capabilities.
 
