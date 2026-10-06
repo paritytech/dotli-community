@@ -23,6 +23,7 @@ import {
 } from './auth-harness.js';
 import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const device = vi.hoisted(() => ({ mobile: false }));
 vi.mock('../../../../shared/src/device.js', () => ({
@@ -255,6 +256,8 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   });
   return { promise, resolve };
 }
+
+useFloatingSurfaces();
 
 describe('AuthModal markup', () => {
   it('As a dotli user, the closed modal has its dialog ids, labels and ARIA state, empty', async () => {

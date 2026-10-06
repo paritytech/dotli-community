@@ -20,6 +20,7 @@ import type * as ChainsFormatModule from '../../../src/components/shell/chains-f
 import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -305,6 +306,8 @@ function waitingText(): string | null | undefined {
 
 /** The wait of preloadWhenIdle's timer in an environment without idle callbacks. */
 const PRELOAD_IDLE_MS = 2000;
+
+useFloatingSurfaces();
 
 describe('The network popover island', () => {
   it('As a dotli user, the closed button and popover carry their labels and ARIA', async () => {

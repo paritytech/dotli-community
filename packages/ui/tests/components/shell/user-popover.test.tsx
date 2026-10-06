@@ -11,6 +11,7 @@ import { byId, press, recordEvents, settleAll, useAuthController } from './auth-
 import { byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 useAuthController();
 
@@ -96,6 +97,8 @@ async function openPopover(): Promise<void> {
   expect(isOpen()).toBe(true);
   await waitForContent('user-popover');
 }
+
+useFloatingSurfaces();
 
 describe('UserPopover', () => {
   it('As a logged-in user, the popover shows my username, with its ids, labels and ARIA state', async () => {

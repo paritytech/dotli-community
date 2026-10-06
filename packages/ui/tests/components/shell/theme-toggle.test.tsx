@@ -10,6 +10,7 @@ import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { byId, byTestId, query } from '../../support.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 beforeEach(() => {
   vi.unstubAllGlobals();
@@ -88,6 +89,8 @@ async function pressThemeKey(key: string): Promise<KeyboardEvent> {
   await settle();
   return event;
 }
+
+useFloatingSurfaces();
 
 describe('ThemeToggle', () => {
   it('As a dotli user, the theme button and popover keep their ids, roles and labels', async () => {

@@ -7,6 +7,7 @@ import { DropdownMenu } from '../../../src/components/floating/DropdownMenu.js';
 import { Popover } from '../../../src/components/floating/Popover.js';
 import { mouseClick, renderComponent, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 type Held = 'a' | 'b' | undefined;
 
@@ -56,6 +57,8 @@ function triggerAttributes(el: HTMLElement): Record<string, string | null> {
 function isOpen(): boolean {
   return document.getElementById('story')?.hasAttribute('data-open') === true;
 }
+
+useFloatingSurfaces();
 
 describe('A Popover given its trigger', () => {
   it('As a screen-reader user, the button it holds announces the dialog, whose opening flips aria-expanded', async () => {

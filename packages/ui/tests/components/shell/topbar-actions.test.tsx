@@ -27,6 +27,7 @@ import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { mouseClick, pointerPress, renderComponent, settle, tabTo, waitForContent } from '../../helpers/solid.js';
 import { byId, byTestId, must } from '../../support.js';
 import { ITEM_WIDTH, moreRow, moreRowNames, openMore, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 vi.mock('../../../src/recent-labels.js', () => ({
   loadRecentLabels: () => Promise.resolve([]),
@@ -57,6 +58,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+useFloatingSurfaces();
 
 describe('Topbar actions island', () => {
   it("As a mobile user, the More menu's Permissions row opens the permissions popover, which shows the app's grants", async () => {

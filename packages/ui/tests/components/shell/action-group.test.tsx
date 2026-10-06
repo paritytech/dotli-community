@@ -18,6 +18,7 @@ import { mouseClick, renderComponent, resetStores, settle } from '../../helpers/
 import { byId, byTestId } from '../../support.js';
 import { ITEM_WIDTH, moreRow, moreRowNames as rowNames, openMore, renderTopbar } from './topbar-harness.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 interface Activation {
   name: string;
@@ -100,6 +101,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+useFloatingSurfaces();
 
 describe('ActionGroup', () => {
   it('As a desktop user, every item sits in the bar when there is room, and the More button stays out of the way', async () => {

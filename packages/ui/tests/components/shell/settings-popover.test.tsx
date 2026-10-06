@@ -30,6 +30,7 @@ import { byId, byTestId, must, query } from '../../support.js';
 import { focusables } from '../../../src/components/focus.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const actions = vi.hoisted(() => ({
   applyAndReset: vi.fn(),
@@ -449,6 +450,8 @@ function expectModeButton(open: boolean): void {
   expect(button.getAttribute('aria-controls')).toBe('mode-popover');
   expect(tags(button)).toEqual(['svg']);
 }
+
+useFloatingSurfaces();
 
 describe('The settings popover island', () => {
   it('As a dotli user, the closed button and popover have their ids, labels and ARIA state', async () => {

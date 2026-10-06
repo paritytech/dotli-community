@@ -17,6 +17,7 @@ import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const LABEL = 'localhost:3000';
 
@@ -250,6 +251,8 @@ function expectPermissionsButton(open: boolean): void {
   expect(button.getAttribute('aria-controls')).toBe('permissions-popover');
   expect(tags(button)).toEqual(['svg']);
 }
+
+useFloatingSurfaces();
 
 describe('PermissionsPopover', () => {
   it('As a dotli user, the button and closed popover have their ids, labels and ARIA state', async () => {
