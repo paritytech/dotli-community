@@ -2873,7 +2873,7 @@ async function startPolkaVmApplication(
     updateMetrics();
   };
   let finishFileLoading = (): void => undefined;
-  const presentedFrame = (): void => {
+  const presentedFrame = (newContent = true): void => {
     polkavmMetrics.frames++;
     canvas.dataset['polkavmFrames'] = String(polkavmMetrics.frames);
     frameWindowCount++;
@@ -2893,7 +2893,9 @@ async function startPolkaVmApplication(
       updateMetrics();
       resolveStarted(undefined);
     }
-    finishFileLoading();
+    if (newContent) {
+      finishFileLoading();
+    }
   };
 
   const resumeAudio = (): void => {
@@ -2972,6 +2974,8 @@ async function startPolkaVmApplication(
   let timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
   let webGpu: WebGpuBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
+  let lastSubmittedGpuSequence = 0;
+  let loadingGpuSequence = 0;
   if (descriptor.graphicsProfile === 'webgpu-raster' || descriptor.graphicsProfile === 'webgpu') {
     if (descriptor.webGpuRequirements === null) {
       throw new Error('WebGPU requirements are missing');
@@ -2984,9 +2988,9 @@ async function startPolkaVmApplication(
       event: bytes => {
         worker.postMessage({ type: 'gpu-event', bytes }, [bytes.buffer]);
       },
-      presented: () => {
+      presented: sequence => {
         if (!paused && !backgroundPending) {
-          presentedFrame();
+          presentedFrame(sequence > loadingGpuSequence);
         }
       },
       error: error => {
@@ -3349,6 +3353,9 @@ async function startPolkaVmApplication(
           stop();
           void stopWorker().then(() => launch(relaunch));
         } else if (message['outcome'] === 'ready') {
+          // Resuming can display a retained GPU surface that was submitted
+          // before selection. Only a later batch can finish file loading.
+          loadingGpuSequence = lastSubmittedGpuSequence;
           menu.loadingReady();
         } else {
           menu.setLoadingFile(null);
@@ -3369,7 +3376,7 @@ async function startPolkaVmApplication(
         if (!paused) {
           try {
             if (tri2d?.setBackgrounded(false) === true) {
-              presentedFrame();
+              presentedFrame(false);
             }
           } catch (error) {
             recoverTri2d(error instanceof Error ? error : new Error('Tri2D resume failed'));
@@ -3676,12 +3683,15 @@ async function startPolkaVmApplication(
           webGpu === null ||
           !(batch.bytes instanceof Uint8Array) ||
           !(batch.bytes.buffer instanceof ArrayBuffer) ||
-          batch.bytes.byteLength === 0 ||
+          batch.bytes.byteLength < 24 ||
           batch.bytes.byteLength > 4 * 1024 * 1024
         ) {
           failRuntime(new Error('PolkaVM guest emitted an invalid WebGPU batch'));
           return;
         }
+        lastSubmittedGpuSequence = Number(
+          new DataView(batch.bytes.buffer, batch.bytes.byteOffset, batch.bytes.byteLength).getBigUint64(16, true),
+        );
         webGpu.submit(batch.bytes);
         break;
       }
