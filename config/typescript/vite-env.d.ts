@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_APP_DEBUG?: string;
   readonly VITE_APP_URL?: string;
   readonly VITE_COMMIT_SHA?: string;
+  readonly VITE_SENTRY_RELEASE?: string;
   readonly VITE_DESKTOP_DOWNLOAD_URL?: string;
   readonly VITE_METRICS?: string;
   readonly VITE_NETWORKS?: string;
@@ -20,5 +21,4 @@ interface ImportMetaEnv {
   readonly VITE_RUNTIME_NETWORK_CONFIG?: string;
   readonly VITE_SANDBOX_CHECKER?: string;
   readonly VITE_SENTRY_DSN?: string;
-  readonly VITE_SS_RELAY_CHAIN?: string;
 }

@@ -1,53 +1,51 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy, onCleanup } from 'solid-js';
+import { createSignal, lazy, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { SLIDERS_PATH } from '../../settings-glyph.js';
 import { settingsStore } from '../../state/settings.js';
 import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
+import { Popover } from '../floating/Popover.js';
+import { IconButton } from '../primitives/IconButton.js';
+import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
-import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
+import s from './SettingsPopover.module.css';
 
 /** The popover's body, its own chunk. */
 const Settings = lazy(() => import('./SettingsContent.js'), { export: 'SettingsContent' });
 
-const SETTINGS_ICON_PATH =
-  'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z';
-
-/** The settings gear, on the button and the More menu row. */
-function GearIcon(props: { size: number }): JSX.Element {
+/** The board's settings sliders, on the button and the More menu row. */
+function SlidersIcon(): JSX.Element {
   return (
     <svg
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <circle cx="12" cy="12" r="3" />
-      <path d={SETTINGS_ICON_PATH} />
+      <path d={SLIDERS_PATH} />
     </svg>
   );
 }
 
 /**
- * The settings button (`#mode-button`), its popover (`#mode-popover`, a
- * Popover with a backdrop, in the body) and the popover's backdrop, an item
- * of the topbar's action group island (see src/islands/), rendered with the
- * host page and hydrated.
+ * The settings button (`#mode-button`) and its popover (`#mode-popover`, a
+ * floating Popover), an item of the topbar's action group island (see
+ * src/islands/), rendered with the host page and hydrated.
  *
  * The popover's body, SettingsContent, is its own chunk: the network and
  * transport choices, the cache switches, "Clear all caches" and the
- * diagnostics. Network, transport, cache and runtime changes stay a draft
- * until Save & Apply, which saves them and reloads (settings-actions.ts);
- * receiving controls apply immediately. Each opening starts from the saved
- * settings. The button carries `.gateway-mode` while the session is not
- * verified (trusted providers).
+ * diagnostics, and the background receiving controls. Network, transport,
+ * cache and runtime changes stay a draft until Save and apply, which saves
+ * them and reloads (settings-actions.ts); receiving controls apply
+ * immediately. Each opening starts from the saved settings. The button
+ * carries its badge (`data-badge`) while the session is not verified
+ * (trusted providers).
  *
  * The saved settings come only from settingsStore, which the host seeds at
  * boot, possibly after this island mounted: until then the button shows no
@@ -57,13 +55,12 @@ function GearIcon(props: { size: number }): JSX.Element {
  * choice the browser cannot run), and the boot's URL settings step must see
  * the saved value first.
  *
- * On a wide screen it is a non-modal popover: Tab loops inside it, and a
- * press outside (the backdrop included), focus moved out, Escape and a
- * blocking modal close it. On a phone it is a modal bottom sheet, with a
- * header and a close button. The topbar store's `settingsOpen` follows it,
- * and openSettings() (an error page's "Open settings") opens it through
- * that. The More menu's Settings row opens it while the topbar has
- * collapsed the button.
+ * On a wide screen it is a non-modal popover, Tab looping inside it; on a
+ * phone it is a modal bottom sheet, with a header and a close button. It
+ * closes as every Popover does (floating/Popover.tsx). The topbar store's
+ * `settingsOpen` follows it, and openSettings() (an error page's "Open
+ * settings") opens it through that. The More menu's Settings row opens it
+ * while the topbar has collapsed the button.
  */
 export function SettingsPopover(): JSX.Element {
   const settings = useStore(settingsStore);
@@ -72,34 +69,42 @@ export function SettingsPopover(): JSX.Element {
   onCleanup(() => {
     setSettingsOpen(false);
   });
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
-    <Popover
-      id="mode-popover"
-      title="Settings"
-      class="mode-popover"
-      backdrop
-      content={Settings}
-      open={open()}
-      onOpenChange={setSettingsOpen}
-      trigger={t => (
-        <TopbarItem
-          name="settings"
-          label="Settings"
-          icon={() => <GearIcon size={14} />}
-          priority={TOPBAR_PRIORITY.settings}
-          activate={t.onClick}
+    <>
+      <TopbarItem
+        name="settings"
+        label="Settings"
+        icon={SlidersIcon}
+        aside={
+          settings()?.verified === false
+            ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
+            : undefined
+        }
+        priority={TOPBAR_PRIORITY.settings}
+        activate={() => button()?.click()}
+      >
+        <IconButton
+          ref={setButton}
+          id="mode-button"
+          badge={settings()?.verified === false}
+          title="Settings"
+          aria-label="Settings"
         >
-          <button
-            {...t}
-            id="mode-button"
-            class={settings()?.verified === false ? 'topbar-btn gateway-mode' : 'topbar-btn'}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <GearIcon size={12} />
-          </button>
-        </TopbarItem>
-      )}
-    />
+          <SlidersIcon />
+        </IconButton>
+      </TopbarItem>
+      <Popover
+        id="mode-popover"
+        title="Settings"
+        trigger={button()}
+        open={open()}
+        onOpenChange={setSettingsOpen}
+        class={s['popover']}
+        preload={Settings.preload}
+      >
+        <Settings />
+      </Popover>
+    </>
   );
 }

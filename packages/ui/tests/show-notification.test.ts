@@ -6,6 +6,7 @@ import { NOTIFICATION_DISMISS_MS, showNotification } from '../src/notification.j
 import { toastsStore } from '../src/state/toasts.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { settle } from './helpers/solid.js';
+import { byId, byTestId } from './support.js';
 
 function setVisibility(state: 'visible' | 'hidden'): void {
   Object.defineProperty(document, 'visibilityState', {
@@ -27,17 +28,34 @@ afterEach(() => {
 });
 
 describe('showNotification', () => {
-  it('keeps a toast with no destination non-interactive', async () => {
+  it('As a dotli user, a toast with no destination stays non-interactive, so a click on it expands the stack', async () => {
+    // When
     showNotification({ label: 'Plain', text: 'No destination' });
     await overlaysReady();
+
+    // Then
+    const root = byId('overlay-root');
     expect(toastsStore.get().items[0]?.onActivate).toBeUndefined();
-    expect(document.querySelector('#overlay-root button.notif-body')).toBeNull();
-    expect(document.querySelector('#overlay-root span.notif-body')?.textContent).toBe('No destination');
+    expect(byTestId('notif-body', root).tagName).toBe('SPAN');
+    expect(byTestId('notif-body', root).textContent).toBe('No destination');
+
+    // When
     showNotification({ label: 'Second', text: 'Another destination-less toast' });
     await overlaysReady();
-    document.querySelector<HTMLElement>('#overlay-root .notif-body')?.click();
+    byTestId('notif-body', root).click();
     await settle();
-    expect(document.querySelector('#overlay-root .notif-stack.expanded')).not.toBeNull();
+
+    // Then
+    expect(byTestId('notif-stack', root).hasAttribute('data-expanded')).toBe(true);
+  });
+
+  it('As a dotli integrator, a notification keeps the tone it is given, info by default', () => {
+    // When
+    showNotification({ label: 'Plain', text: 'Body' });
+    showNotification({ label: 'Failed', text: 'Body', tone: 'err' });
+
+    // Then
+    expect(toastsStore.get().items.map(t => t.tone)).toEqual(['info', 'err']);
   });
 
   it('As a dotli user, a notification appears in the overlay root with the default bell icon', async () => {
@@ -46,9 +64,9 @@ describe('showNotification', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('Hello');
-    expect(document.querySelector('#overlay-root .notif-body')?.textContent).toBe('World');
-    expect(document.querySelector('#overlay-root .notif-icon svg')).not.toBeNull();
+    expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Hello');
+    expect(byTestId('notif-body', byId('overlay-root')).textContent).toBe('World');
+    expect(document.querySelector('#overlay-root [data-testid="notif-icon"] svg')).not.toBeNull();
   });
 
   it('As a dotli integrator, empty text shows nothing, long text is cut to 200 characters, and non-http links are dropped', () => {
@@ -132,4 +150,19 @@ describe('showNotification', () => {
       }
     },
   );
+
+  it('As a dotli user, a notification without its own icon shows the icon of its tone', async () => {
+    // When
+    showNotification({ label: 'Plain', text: 'Body' });
+    showNotification({ label: 'Failed', text: 'Body', tone: 'err' });
+    showNotification({ label: 'Blocked', text: 'Body', tone: 'idle' });
+    showNotification({ label: 'Own', text: 'Body', tone: 'err', icon: '<svg data-own=""></svg>' });
+    await overlaysReady();
+
+    // Then
+    const icons = [...document.querySelectorAll<HTMLElement>('#overlay-root [data-testid="notif-icon"]')];
+    expect(icons.map(icon => icon.getAttribute('data-tone'))).toEqual(['info', 'err', 'idle', 'err']);
+    expect(new Set(icons.slice(0, 3).map(icon => icon.innerHTML)).size).toBe(3);
+    expect(icons[3]?.querySelector('svg[data-own]')).not.toBeNull();
+  });
 });

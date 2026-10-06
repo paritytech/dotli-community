@@ -5,6 +5,7 @@ import { For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { AvatarBox, AvatarSlotView } from '../../profile/avatar-overlay.js';
 import { MoodRing } from './MoodRing.js';
+import s from './ContactAvatars.module.css';
 
 function boxStyle(box: AvatarBox): JSX.CSSProperties {
   return {
@@ -19,21 +20,24 @@ export function ContactAvatars(props: { slots: Accessor<readonly AvatarSlotView[
     <For each={props.slots()}>
       {slot => (
         <div
-          class={['contact-avatar-slot', { 'contact-avatar-moving': slot.state().moving }]}
+          class={s['slot']}
+          data-moving={slot.state().moving ? '' : undefined}
+          data-testid="contact-avatar-slot"
           style={boxStyle(slot.state().rootBox)}
         >
-          <div class="contact-avatar" style={boxStyle(slot.state().anchorBox)}>
+          <div class={s['avatar']} data-testid="contact-avatar" style={boxStyle(slot.state().anchorBox)}>
             <Show when={slot.state().mood}>
               {mood => (
                 <MoodRing
                   mood={mood()}
                   size={Math.round(Math.min(slot.state().anchorBox.w, slot.state().anchorBox.h))}
+                  class={s['ring']}
                 />
               )}
             </Show>
             <Show when={slot.state().photoUrl}>
               {url => (
-                <div class="contact-avatar-photo">
+                <div class={s['photo']}>
                   <img src={url()} alt="" draggable={false} decoding="async" />
                 </div>
               )}

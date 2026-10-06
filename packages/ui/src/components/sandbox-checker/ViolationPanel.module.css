@@ -1,0 +1,126 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — Sandbox checker violation panel */
+
+.panel {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  box-sizing: border-box;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color-scheme: dark;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.panel[data-visible] {
+  display: block;
+}
+
+.resizeHandle {
+  height: 5px;
+  background: transparent;
+  cursor: ns-resize;
+  transition: background 0.15s;
+}
+
+.resizeHandle:hover,
+.resizeHandle:active {
+  background: var(--border-focus);
+}
+
+.panel[data-collapsed] .resizeHandle {
+  display: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.label {
+  color: var(--text-muted);
+  font-family: system-ui, sans-serif;
+  font-size: 0.75rem;
+}
+
+.toggle {
+  margin: 0 0 0 auto;
+  padding: 2px 6px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--text-strong);
+}
+
+.log {
+  box-sizing: border-box;
+  max-height: 160px;
+  padding: 4px 12px;
+  overflow-y: auto;
+}
+
+.panel[data-collapsed] .log {
+  display: none;
+}
+
+.entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.entry:last-child {
+  border-bottom: none;
+}
+
+.time {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.api {
+  flex-shrink: 0;
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.details {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,25 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A Seity mood ring, centred on the circle it wraps (the profile drawer's
+   portrait, a contact avatar). It is wider than that circle, so it never
+   takes pointer events. */
+
+.ring {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  pointer-events: none;
+}
+.ring canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* No WebGL: a still ring from the same three colours. */
+.ring[data-static] {
+  border-radius: 50%;
+  background: conic-gradient(var(--ring-a), var(--ring-b), var(--ring-c), var(--ring-a));
+  -webkit-mask: radial-gradient(circle, transparent 54%, #000 55%, #000 60%, transparent 61%);
+  mask: radial-gradient(circle, transparent 54%, #000 55%, #000 60%, transparent 61%);
+}

@@ -715,6 +715,82 @@ describe('chain pool brokering', () => {
     ]);
   });
 
+  it('As a dApp user, joining a follow another session holds replays only blocks still pinned upstream', () => {
+    // Given: session A follows, sees two blocks finalized and a third on top,
+    // then unpins what it no longer needs, as papi does
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => messagesA.push(message));
+    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-a' });
+    const localTokenA = (JSON.parse(messagesA[0] ?? '{}') as { result: string }).result;
+    const event = (result: Record<string, unknown>): void => {
+      harness.emit({ jsonrpc: '2.0', method: 'chainHead_v1_followEvent', params: { subscription: 'up-a', result } });
+    };
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: { type: 'valid' } });
+    event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event({ event: 'newBlock', blockHash: '0xb2', parentBlockHash: '0xb1' });
+    event({ event: 'finalized', finalizedBlockHashes: ['0xb1', '0xb2'], prunedBlockHashes: [] });
+    event({ event: 'newBlock', blockHash: '0xb3', parentBlockHash: '0xb2' });
+    event({ event: 'bestBlockChanged', bestBlockHash: '0xb3' });
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'chainHead_v1_unpin',
+        params: [localTokenA, ['0xf0', '0xb1', '0xb3']],
+      }),
+    );
+
+    // When
+    connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] }));
+
+    // Then: B starts from the newest finalized block, and every block it hears of is still pinned
+    const unpinned = harness.sent
+      .filter(message => message.method === 'chainHead_v1_unpin')
+      .flatMap(message => (message.params as [string, string[]])[1]);
+    const replay = messagesB
+      .slice(1)
+      .map(message => (JSON.parse(message) as { params: { result: Record<string, unknown> } }).params.result);
+    expect(replay).toEqual([
+      { event: 'initialized', finalizedBlockHashes: ['0xb2'], finalizedBlockRuntime: { type: 'valid' } },
+      { event: 'newBlock', blockHash: '0xb3', parentBlockHash: '0xb2' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xb3' },
+    ]);
+    expect(unpinned).not.toContain('0xb2');
+    expect(unpinned).not.toContain('0xb3');
+  });
+
+  it('As a dApp user, joining a follow after a runtime upgrade was finalized replays the upgraded runtime', () => {
+    // Given
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-a' });
+    const event = (result: Record<string, unknown>): void => {
+      harness.emit({ jsonrpc: '2.0', method: 'chainHead_v1_followEvent', params: { subscription: 'up-a', result } });
+    };
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: { type: 'valid', spec: 1 } });
+    event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0', newRuntime: { type: 'valid', spec: 2 } });
+    event({ event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+
+    // When
+    connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] }));
+
+    // Then
+    expect((JSON.parse(messagesB[1] ?? '{}') as { params: { result: unknown } }).params.result).toEqual({
+      event: 'initialized',
+      finalizedBlockHashes: ['0xb1'],
+      finalizedBlockRuntime: { type: 'valid', spec: 2 },
+    });
+  });
+
   it('provides a local provider that uses the same upstream broker', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
@@ -1268,6 +1344,35 @@ describe('chain pool brokering', () => {
   });
 });
 
+describe('broker warnings', () => {
+  it('As a dotli maintainer, an anomaly repeated on every message logs its first few, then only a running count', async () => {
+    // Given: a fresh module, so no earlier suite's anomalies count against this one.
+    vi.resetModules();
+    const { log } = await import('@dotli/shared');
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const { createChainPool: freshPool } = await import('../src/chain-pool.js');
+    const harness = createProviderHarness();
+    const pool = freshPool({ createTransport: () => harness.provider, destroyDelay: Infinity });
+    pool.connectRemote('asset-hub', 'conn-a', () => undefined);
+
+    // When: the upstream answers a thousand requests nobody sent.
+    for (let id = 0; id < 1000; id++) {
+      harness.emit({ jsonrpc: '2.0', id: `stray-${String(id)}`, result: null });
+    }
+
+    // Then
+    expect(warn.mock.calls.map(([line]) => line)).toEqual([
+      '[dot.li broker] ← upstream response for unknown id=stray-0',
+      '[dot.li broker] ← upstream response for unknown id=stray-1',
+      '[dot.li broker] ← upstream response for unknown id=stray-2',
+      '[dot.li broker] response_unknown_id: 10 so far',
+      '[dot.li broker] response_unknown_id: 100 so far',
+      '[dot.li broker] response_unknown_id: 1000 so far',
+    ]);
+    warn.mockRestore();
+  });
+});
+
 describe('ChainBroker.halt', () => {
   function setup(): {
     broker: ChainBroker;
@@ -1463,5 +1568,105 @@ describe('ChainBroker.halt', () => {
         error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
       },
     ]);
+  });
+});
+
+describe('upstream follow stop', () => {
+  interface Event {
+    method?: string;
+    id?: unknown;
+    result?: unknown;
+    params?: { subscription?: string; result?: { event?: string } };
+  }
+
+  /**
+   * A session that re-follows from inside the delivery of a `stop`, as papi's
+   * chainHead client does. It gives up after 20 stops, so a broker that keeps
+   * answering the re-follow with another stop ends instead of hanging.
+   */
+  function refollowingSession(broker: ChainBroker): { messages: Event[]; stops: () => number } {
+    const messages: Event[] = [];
+    let stops = 0;
+    let nextId = 2;
+    const connection = broker.connect(
+      'a',
+      message => {
+        const event = message as Event;
+        messages.push(event);
+        if (event.params?.result?.event === 'stop' && stops < 20) {
+          stops += 1;
+          connection.send({ jsonrpc: '2.0', id: nextId, method: 'chainHead_v1_follow', params: [true] });
+          nextId += 1;
+        }
+      },
+      'object',
+      () => undefined,
+    );
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    return { messages, stops: () => stops };
+  }
+
+  it('As a dApp user, a follow the node stops is followed afresh once, not looped on the dead one', () => {
+    // Given: a session following through the broker, with a snapshot cached.
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(
+      harness.provider,
+      () => undefined,
+      () => undefined,
+    );
+    const session = refollowingSession(broker);
+    const first = harness.sent[0] as { id: string };
+    harness.emit({ jsonrpc: '2.0', id: first.id, result: 'up-1' });
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-1', result: { event: 'initialized', finalizedBlockHashes: ['0xaa'] } },
+    });
+
+    // When: the node stops the follow, and the session re-follows at once.
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-1', result: { event: 'stop' } },
+    });
+
+    // Then: one stop, and the re-follow goes upstream as a fresh follow.
+    expect(session.stops()).toBe(1);
+    const follows = harness.sent.filter(m => m.method === 'chainHead_v1_follow');
+    expect(follows).toHaveLength(2);
+  });
+
+  it('As a dApp user, the fresh follow carries on under its own token and the stopped one hears nothing more', () => {
+    // Given
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(
+      harness.provider,
+      () => undefined,
+      () => undefined,
+    );
+    const session = refollowingSession(broker);
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
+    const oldToken = (session.messages[0] as { result: string }).result;
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-1', result: { event: 'stop' } },
+    });
+    const refollow = harness.sent.filter(m => m.method === 'chainHead_v1_follow')[1] as { id: string };
+
+    // When
+    harness.emit({ jsonrpc: '2.0', id: refollow.id, result: 'up-2' });
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-2', result: { event: 'bestBlockChanged', bestBlockHash: '0xbb' } },
+    });
+
+    // Then
+    const ack = session.messages.find(m => m.id === 2) as { result: string } | undefined;
+    expect(ack?.result).toEqual(expect.any(String));
+    expect(ack?.result).not.toBe(oldToken);
+    const best = session.messages.filter(m => m.params?.result?.event === 'bestBlockChanged');
+    expect(best.map(m => m.params?.subscription)).toEqual([ack?.result]);
   });
 });

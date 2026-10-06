@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { withActiveTld } from '@dotli/config';
+import { CALLING_ICON, iconMarkup, JAM_PEERS_ICON, PERMISSION_ICONS } from './permission-icons.js';
 import { isDevicePermission, type EnforceablePermissionName } from './permissions.js';
 import { presentModal } from './overlays/load.js';
 import type { ModalButton } from './state/modals.js';
@@ -20,7 +21,7 @@ import type { ModalButton } from './state/modals.js';
 // dismissing the dialog without storing a denial. With `allowOnce`, the prompt
 // also offers a one-time grant and highlights it over "Always allow".
 //
-// Rendered by the overlays root (components/overlays/SigningDialog.tsx).
+// Rendered by the overlays root (components/entities/PromptDialog.tsx).
 
 export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName | 'Calling', string> = {
   Calling: 'Make and receive encrypted calls for this account and network',
@@ -40,83 +41,6 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName | 'Callin
   PreimageSubmit: 'Store preimage data on-chain via the Bulletin network',
   StatementSubmit: 'Submit signed statements to the statement store',
 };
-
-const PERMISSION_ICONS: Record<EnforceablePermissionName | 'Calling', string> = {
-  Calling:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h4l2 5-3 2a14 14 0 0 0 5 5l2-3 5 2v4c0 2-2 3-4 2C9 18 4 13 3 6 2 4 4 3 6 3Z"/></svg>',
-  Notifications:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>' +
-    '<path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
-  Camera:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
-    '<circle cx="12" cy="13" r="4"/></svg>',
-  Microphone:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>' +
-    '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/>' +
-    '<line x1="12" y1="19" x2="12" y2="23"/>' +
-    '<line x1="8" y1="23" x2="16" y2="23"/></svg>',
-  Location:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>' +
-    '<circle cx="12" cy="10" r="3"/></svg>',
-  Bluetooth:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/></svg>',
-  NFC:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M17 7a7 7 0 0 1 0 10"/>' +
-    '<path d="M13 9a4 4 0 0 1 0 6"/>' +
-    '<circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/></svg>',
-  Clipboard:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>' +
-    '<rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>',
-  Biometrics:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M12 11a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0v-2a4 4 0 0 0-4-4z"/>' +
-    '<path d="M6 11a6 6 0 0 1 12 0"/>' +
-    '<path d="M4 11a8 8 0 0 1 16 0"/></svg>',
-  ChatAuthority:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<circle cx="8" cy="8" r="4"/>' +
-    '<path d="M2 21a6 6 0 0 1 12 0"/>' +
-    '<path d="M17 11l2 2 4-4"/><path d="M19 13v7"/></svg>',
-  IdentityDisclosure:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<circle cx="12" cy="8" r="4"/>' +
-    '<path d="M4 21a8 8 0 0 1 16 0"/>' +
-    '<path d="M19 3v4h4"/></svg>',
-  ProfileDisclosure:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>' +
-    '<circle cx="9" cy="7" r="4"/>' +
-    '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>' +
-    '<path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-  ChainSubmit:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>' +
-    '<polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
-  PreimageSubmit:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
-    '<polyline points="17 8 12 3 7 8"/>' +
-    '<line x1="12" y1="3" x2="12" y2="15"/></svg>',
-  StatementSubmit:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
-    '<polyline points="14 2 14 8 20 8"/>' +
-    '<line x1="8" y1="13" x2="16" y2="13"/>' +
-    '<line x1="8" y1="17" x2="14" y2="17"/></svg>',
-};
-
-const JAM_PEERS_ICON =
-  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>' +
-  '<line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>' +
-  '<line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
 
 /** The question asked before an app may reach the validators of one JAM network. */
 export function jamPeersPermissionText(label: string, genesis: string): string {
@@ -156,7 +80,7 @@ export async function showPermissionRequestModal(
   return showPermissionPrompt(
     label,
     {
-      icon: PERMISSION_ICONS[permission],
+      icon: iconMarkup(permission === 'Calling' ? CALLING_ICON : PERMISSION_ICONS[permission]),
       description: PERMISSION_DESCRIPTIONS[permission],
       reloads: isDevicePermission(permission),
     },
@@ -174,7 +98,7 @@ export function showJamPeersPermissionModal(
   return showPermissionPrompt(
     label,
     {
-      icon: JAM_PEERS_ICON,
+      icon: iconMarkup(JAM_PEERS_ICON),
       description: jamPeersPermissionText(label, genesis),
       detail: genesis,
       reloads: false,
@@ -193,7 +117,7 @@ async function showPermissionPrompt(
   const allowOnce = options.allowOnce === true;
   const media = options.media;
   const buttons: ModalButton<PermissionPromptDecision>[] = [
-    { label: 'Deny', variant: 'cancel', result: 'denied' },
+    { label: 'Deny', variant: 'danger', result: 'denied' },
     allowOnce
       ? { label: 'Always allow', variant: 'secondary', result: 'granted' }
       : { label: 'Allow', variant: 'primary', result: 'granted' },

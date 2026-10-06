@@ -7,10 +7,11 @@
 // preimage data on the Bulletin chain. Returns a Promise that
 // resolves on "Allow" and rejects on "Cancel".
 //
-// Rendered by the overlays root (components/overlays/SigningDialog.tsx).
+// Rendered by the overlays root (components/entities/PromptDialog.tsx).
 
 import { ERRORS } from './errors.js';
 import { presentModal } from './overlays/load.js';
+import { iconMarkup, PERMISSION_ICONS } from './permission-icons.js';
 
 function formatSize(bytes: number): string {
   return bytes >= 1024 ? `${String(Math.round(bytes / 1024))} KB` : `${String(bytes)} B`;
@@ -19,6 +20,8 @@ function formatSize(bytes: number): string {
 export async function showPreimageSubmitModal(dataSize: number, signal?: AbortSignal): Promise<void> {
   const { result } = await presentModal<'cancel' | 'allow'>(
     {
+      // The same upload glyph as the PreimageSubmit permission.
+      icon: iconMarkup(PERMISSION_ICONS.PreimageSubmit),
       title: 'Submit Preimage',
       fields: [{ label: 'Data size', value: formatSize(dataSize) }],
       buttons: [

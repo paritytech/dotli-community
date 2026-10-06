@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlacedAvatar, PlacedAvatars } from '@parity/truapi-host';
 import type { Window as HappyWindow } from 'happy-dom';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
   createAvatarProfileCache,
   createContactAvatarOverlay,
@@ -89,12 +87,12 @@ function placement(surfaceWidth: number, surfaceHeight: number, avatars: PlacedA
 
 function layer(): HTMLElement | null {
   flush();
-  return document.querySelector('.contact-avatar-overlay');
+  return document.querySelector('[data-testid="contact-avatar-overlay"]');
 }
 
 function slots(): HTMLElement[] {
   flush();
-  return [...document.querySelectorAll<HTMLElement>('.contact-avatar-slot')];
+  return [...document.querySelectorAll<HTMLElement>('[data-testid="contact-avatar-slot"]')];
 }
 
 /** An element's `[x, y, width, height]` as the overlay placed it. */
@@ -123,13 +121,6 @@ async function settle(): Promise<void> {
 
 /** How long positions must hold still before a moved avatar shows again. */
 const SETTLE_MS = 150;
-
-function useStyles(): HTMLStyleElement {
-  const style = document.createElement('style');
-  style.textContent = readFileSync(resolve(import.meta.dirname, '../src/styles/contact-avatars.css'), 'utf8');
-  document.head.appendChild(style);
-  return style;
-}
 
 // The test window is happy-dom's, whose device settings drive CSS media queries.
 const happyWindow = window as unknown as HappyWindow;
@@ -181,7 +172,7 @@ describe('host-drawn contact avatars', () => {
 
     expect(layer()?.previousElementSibling).toBe(iframe);
     expect(box(slots()[0])).toEqual([0, 100, 400, 600]);
-    expect(box(slots()[0]?.querySelector('.contact-avatar'))).toEqual([16, 20, 44, 44]);
+    expect(box(slots()[0]?.querySelector('[data-testid="contact-avatar"]'))).toEqual([16, 20, 44, 44]);
   });
 
   it('contain-fits a letterboxed PolkaVM framebuffer, centred', async () => {
@@ -189,14 +180,14 @@ describe('host-drawn contact avatars', () => {
     await draw('contain', [400, 400], placement(200, 100, [slot(1, 'photo', [10, 20, 30], [0, 10, 200, 80])]));
 
     expect(box(slots()[0])).toEqual([0, 120, 400, 160]);
-    expect(box(slots()[0]?.querySelector('.contact-avatar'))).toEqual([20, 20, 60, 60]);
+    expect(box(slots()[0]?.querySelector('[data-testid="contact-avatar"]'))).toEqual([20, 20, 60, 60]);
   });
 
   it('stretches a Tri2D surface over the whole frame', async () => {
     await draw('fill', [400, 300], placement(800, 600, [slot(1, 'photo', [100, 200, 88], [0, 0, 800, 600])]));
 
     expect(box(slots()[0])).toEqual([0, 0, 400, 300]);
-    expect(box(slots()[0]?.querySelector('.contact-avatar'))).toEqual([50, 100, 44, 44]);
+    expect(box(slots()[0]?.querySelector('[data-testid="contact-avatar"]'))).toEqual([50, 100, 44, 44]);
   });
 
   it("cuts avatars to the product's clip and drops those outside it", async () => {
@@ -216,7 +207,7 @@ describe('host-drawn contact avatars', () => {
     const [first, last] = slots();
     expect(slots()).toHaveLength(2);
     expect(box(first)).toEqual([0, 100, 400, 600]);
-    expect(box(first?.querySelector('.contact-avatar'))).toEqual([16, -20, 44, 44]);
+    expect(box(first?.querySelector('[data-testid="contact-avatar"]'))).toEqual([16, -20, 44, 44]);
     expect(box(last)).toEqual([0, 700, 400, 100]);
   });
 
@@ -237,11 +228,11 @@ describe('host-drawn contact avatars', () => {
     const [both, ring] = slots();
     expect(slots()).toHaveLength(2);
     expect(both?.querySelector('img')?.getAttribute('src')).toBe('blob:avatar-1');
-    expect(both?.querySelector('.profile-mood-ring')).not.toBeNull();
+    expect(both?.querySelector('[data-testid="mood-ring"]')).not.toBeNull();
     expect(ring?.querySelector('img')).toBeNull();
-    const ringElement = ring?.querySelector<HTMLElement>('.profile-mood-ring');
+    const ringElement = ring?.querySelector<HTMLElement>('[data-testid="mood-ring"]');
     // The static ring wraps the circle and leaves its centre clear.
-    expect(ringElement?.classList.contains('profile-mood-ring-static')).toBe(true);
+    expect(ringElement?.hasAttribute('data-static')).toBe(true);
     expect(ringElement?.style.width).toBe('66px');
     expect(ring?.querySelector('canvas')).toBeNull();
   });
@@ -258,7 +249,7 @@ describe('host-drawn contact avatars', () => {
 
     expect(slots()).toHaveLength(1);
     expect(slots()[0]?.querySelector('img')).not.toBeNull();
-    expect(slots()[0]?.querySelector('.profile-mood-ring')).not.toBeNull();
+    expect(slots()[0]?.querySelector('[data-testid="mood-ring"]')).not.toBeNull();
   });
 
   it('reloads a renewed share and keeps the old photo until it arrives', async () => {
@@ -300,7 +291,7 @@ describe('host-drawn contact avatars', () => {
     overlay.place(placement(400, 800, [slot(2, 'mood', [0, 60, 44])]));
     await settle();
     expect(slots()).toEqual([kept]);
-    expect(box(kept?.querySelector('.contact-avatar'))).toEqual([0, 60, 44, 44]);
+    expect(box(kept?.querySelector('[data-testid="contact-avatar"]'))).toEqual([0, 60, 44, 44]);
 
     overlay.place(placement(400, 800, []));
     expect(layer()).toBeNull();
@@ -327,7 +318,7 @@ describe('host-drawn contact avatars', () => {
     await settle();
 
     expect(slots()).toHaveLength(1);
-    expect(box(slots()[0]?.querySelector('.contact-avatar'))).toEqual([0, 60, 44, 44]);
+    expect(box(slots()[0]?.querySelector('[data-testid="contact-avatar"]'))).toEqual([0, 60, 44, 44]);
     expect(loads).toEqual(['photo']);
   });
 
@@ -376,7 +367,6 @@ describe('host-drawn contact avatars', () => {
   });
 
   it('never takes pointer events or reaches into the product frame', async () => {
-    const style = useStyles();
     const iframe = frame(400, 800);
     iframe.style.pointerEvents = 'auto';
     const post = vi.fn();
@@ -394,11 +384,9 @@ describe('host-drawn contact avatars', () => {
       expect(getComputedStyle(element).pointerEvents).toBe('none');
     }
     expect(post).not.toHaveBeenCalled();
-    style.remove();
   });
 
   it('hides a moving avatar until positions hold still', async () => {
-    const style = useStyles();
     await draw(
       'viewport',
       [400, 800],
@@ -422,12 +410,10 @@ describe('host-drawn contact avatars', () => {
     expect(hidden(moving)).toBe(true);
     await vi.advanceTimersByTimeAsync(50);
     expect(hidden(moving)).toBe(false);
-    expect(box(moving?.querySelector('.contact-avatar'))).toEqual([0, 80, 44, 44]);
-    style.remove();
+    expect(box(moving?.querySelector('[data-testid="contact-avatar"]'))).toEqual([0, 80, 44, 44]);
   });
 
   it('hides every avatar while the frame itself moves', async () => {
-    const style = useStyles();
     const iframe = await draw(
       'viewport',
       [400, 800],
@@ -447,12 +433,11 @@ describe('host-drawn contact avatars', () => {
     expect(slots().map(hidden)).toEqual([true, true]);
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
     expect(slots().map(hidden)).toEqual([false, false]);
-    style.remove();
   });
 
   it('draws only the latest of several placements, once per frame', async () => {
     await draw('viewport', [400, 800], placement(400, 800, [slot(1, 'photo', [0, 0, 44])]));
-    const anchor = slots()[0]?.querySelector('.contact-avatar');
+    const anchor = slots()[0]?.querySelector('[data-testid="contact-avatar"]');
 
     for (const y of [10, 20, 30]) {
       overlay.place(placement(400, 800, [slot(1, 'photo', [0, y, 44])]));
@@ -465,7 +450,6 @@ describe('host-drawn contact avatars', () => {
   });
 
   it('hides and shows without fading under reduced motion', async () => {
-    const style = useStyles();
     const device = happyWindow.happyDOM.settings.device;
     device.prefersReducedMotion = 'reduce';
     try {
@@ -476,7 +460,6 @@ describe('host-drawn contact avatars', () => {
       expect([hidden(drawn), fades(drawn)]).toEqual([false, false]);
     } finally {
       device.prefersReducedMotion = 'no-preference';
-      style.remove();
     }
   });
 });

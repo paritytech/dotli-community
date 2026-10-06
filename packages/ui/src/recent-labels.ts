@@ -40,7 +40,7 @@ export async function loadRecentLabels(): Promise<string[]> {
   try {
     raw = await channel.read(RECENT_KEY);
   } catch (err: unknown) {
-    log.warn('[dot.li recent] Shared read failed; using per-origin mirror:', err instanceof Error ? err.message : err);
+    log.warn('[dot.li recent] Shared read failed; using per-origin mirror:', err);
     return getRecentLabels();
   }
 
@@ -48,7 +48,7 @@ export async function loadRecentLabels(): Promise<string[]> {
     const mirror = getRecentLabels();
     if (mirror.length > 0) {
       void channel.write(RECENT_KEY, serializeRecentLabels(mirror)).catch((err: unknown) => {
-        log.warn('[dot.li recent] Migration write failed:', err instanceof Error ? err.message : err);
+        log.warn('[dot.li recent] Migration write failed:', err);
       });
     }
     return mirror;
@@ -88,6 +88,6 @@ async function updateRecentLabels(next: (labels: string[]) => string[]): Promise
   try {
     await channel.write(RECENT_KEY, serializeRecentLabels(updated));
   } catch (err: unknown) {
-    log.warn('[dot.li recent] Shared write failed:', err instanceof Error ? err.message : err);
+    log.warn('[dot.li recent] Shared write failed:', err);
   }
 }

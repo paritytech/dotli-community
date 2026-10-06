@@ -700,7 +700,7 @@ async function decodeCoreStorageValue(
     }
     // A compare-exchange probe runs under the slot lock and must not rewrite it.
     if (migrate) {
-      log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
+      log.event('re-encrypting legacy plaintext core storage', { flow: 'wallet', slot: key.tag });
       await writeCoreStorageValue(key, bytes);
     }
     return bytes;

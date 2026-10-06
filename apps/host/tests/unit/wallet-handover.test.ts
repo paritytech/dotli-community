@@ -3,7 +3,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WALLET_OWNER_BUSY_ERROR } from '@dotli/protocol';
-import { describeError, ERROR_TITLES } from '../../src/errors.js';
+import { ERROR_TITLES } from '../../src/error-copy.js';
+import { describeError } from '../../src/errors.js';
 import { onNextInteraction } from '../../src/wallet-handover.js';
 
 describe('resuming a paused tab', () => {

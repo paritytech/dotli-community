@@ -1,0 +1,41 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+:where(.chip) {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  margin: 0;
+  padding: 0 7px;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill-strong);
+  color: var(--chrome-text);
+  font: var(--fw-semibold) var(--fs-label) / 1 var(--font-sans);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.chip[data-tone='ok'] {
+  background: color-mix(in srgb, var(--chrome-ok) var(--chrome-tint), transparent);
+  color: var(--chrome-ok-text);
+}
+.chip[data-tone='mono'] {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--chrome-well);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring-subtle);
+  color: var(--chrome-text-muted);
+  font: var(--fw-regular) var(--fs-caption) / 1 var(--font-mono);
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+}
+/* Phones: the boards' 20 px chip. */
+@media (max-width: 560px) {
+  :where(.chip) {
+    height: var(--h-chip);
+    padding: 0 var(--sp-2);
+  }
+}

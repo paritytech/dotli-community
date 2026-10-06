@@ -136,7 +136,7 @@ function getHandle(): Promise<ChainProviderHandle> {
     // than to callers. One context means one client means one emitter, whether
     // that context is the SharedWorker serving every tab or a per-tab iframe.
     startLightClientHeartbeat();
-    log.warn('[dot.li provider] truapi-provider ready (embedded smoldot wasm)');
+    log.event('Light client ready', { flow: 'protocol' });
     return handle;
   })().catch((error: unknown) => {
     // Clear the cached promise so the next call retries instead of handing the
@@ -371,7 +371,7 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
         if (connected) {
           // A malformed response, a throwing consumer or a broken read on
           // this chain: it halts alone, as when its stream ends.
-          log.warn(`[dot.li provider] chain ${key} read failed, halting it: ${reason}`);
+          log.warn(`[dot.li provider] chain ${key} read failed, halting it: ${reason}`, error);
         } else {
           markFatal(`chain ${key} connection failed: ${reason}`);
         }

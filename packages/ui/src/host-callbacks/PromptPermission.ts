@@ -159,6 +159,7 @@ async function decidePromptPermissionWhenActive(
         kind === 'Device'
           ? `${name} access is blocked. Use the permissions menu in the top bar to change this.`
           : 'Transaction signing is blocked. Use the permissions menu in the top bar to change this.',
+      tone: 'idle',
       dismissMs: 6000,
       browserNotification: false,
     });

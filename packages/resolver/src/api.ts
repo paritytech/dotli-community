@@ -7,13 +7,38 @@
 // Resolve the child trie afresh for each logical read so redeploys are visible.
 
 import type { FollowResponse, SubstrateClient } from '@polkadot-api/substrate-client';
-import { StopError } from '@polkadot-api/substrate-client';
+import { OperationInaccessibleError, StopError } from '@polkadot-api/substrate-client';
 import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
 import { fromHex, toHex, mergeUint8 } from '@polkadot-api/utils';
 
 const enc = new TextEncoder();
 const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox128(enc.encode('AccountInfoOf'))]);
 const decodeVecU8 = Hex().dec;
+
+/**
+ * `operationInaccessible` is the node saying it cannot serve a read right now.
+ * A light client says it just after syncing, before any peer has answered for
+ * the proof. papi's observable client retries it every 750 ms; the
+ * raw client these reads go through does not. The window bounds it so a read
+ * no peer ever serves still fails, instead of polling the long-lived shared
+ * follow after its caller has given up.
+ */
+const INACCESSIBLE_RETRY_DELAY_MS = 750;
+const INACCESSIBLE_RETRY_WINDOW_MS = 30_000;
+
+async function withInaccessibleRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const started = performance.now();
+  for (;;) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!(err instanceof OperationInaccessibleError) || performance.now() - started >= INACCESSIBLE_RETRY_WINDOW_MS) {
+        throw err;
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, INACCESSIBLE_RETRY_DELAY_MS));
+  }
+}
 
 /** A dead API generation; the existing resolver owner must redial. */
 export class ApiStoppedError extends Error {
@@ -223,7 +248,9 @@ export function createRawApi(client: SubstrateClient): Api {
         terminate(error);
         throw error;
       }
-      return await guard(() => activeFollow.storage(hash, 'value', key, trie, operations.signal));
+      return await withInaccessibleRetry(() =>
+        guard(() => activeFollow.storage(hash, 'value', key, trie, operations.signal)),
+      );
     } finally {
       pin.readers--;
       releaseObsolete();

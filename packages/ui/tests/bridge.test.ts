@@ -122,6 +122,9 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
   default: mocks.HostWorker,
 }));
 
+const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
+vi.mock('../../metrics/src/sentry.js', () => sentry);
+
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
     count: vi.fn(),
@@ -204,7 +207,8 @@ function loginResponseFrame(
   result:
     | { success: true; value: 'Success' | 'AlreadyConnected' | 'Rejected' }
     | { success: false; reason: string }
-    | { success: false; hostFailure: string },
+    | { success: false; hostFailure: string }
+    | { success: false; cancelled: true },
 ): Uint8Array {
   // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
@@ -214,27 +218,29 @@ function loginResponseFrame(
   const value = responseCodec.enc(
     result.success
       ? { success: true, value: { tag: 'V1', value: result.value } }
-      : 'hostFailure' in result
-        ? {
-            success: false,
-            value: {
-              tag: 'HostFailure',
-              value: { reason: result.hostFailure },
-            },
-          }
-        : {
-            success: false,
-            value: {
-              tag: 'Domain',
+      : 'cancelled' in result
+        ? { success: false, value: { tag: 'Cancelled' } }
+        : 'hostFailure' in result
+          ? {
+              success: false,
               value: {
-                tag: 'V1',
+                tag: 'HostFailure',
+                value: { reason: result.hostFailure },
+              },
+            }
+          : {
+              success: false,
+              value: {
+                tag: 'Domain',
                 value: {
-                  tag: 'Unknown',
-                  value: { reason: result.reason },
+                  tag: 'V1',
+                  value: {
+                    tag: 'Unknown',
+                    value: { reason: result.reason },
+                  },
                 },
               },
             },
-          },
   );
   const frame = encodeWireMessage({
     requestId,
@@ -520,7 +526,7 @@ describe('bridge render lifecycle', () => {
     assert.isDefined(record);
     expect(record.entryUrl).toBe(window.location.href);
     await overlaysReady();
-    const notification = document.querySelector<HTMLButtonElement>('.notif-body');
+    const notification = document.querySelector<HTMLButtonElement>('[data-testid="notif-body"]');
     expect(notification?.textContent).toBe('Preview notification');
     notification?.click();
     await vi.waitFor(async () => {
@@ -735,7 +741,8 @@ describe('bridge render lifecycle', () => {
       () => renderAppSubdomain('cid', 'product'),
     ];
     for (const [index, render] of renders.entries()) {
-      layout.setTopbarLayout({ offset: true, shown: true, transition: '' });
+      // When
+      layout.setTopbarLayout({ offset: true });
       const rendered = render();
       await waitForProviderRequests(index + 1);
       nth(mocks.coreProviderDefers, index).resolve(makeProvider());
@@ -747,8 +754,10 @@ describe('bridge render lifecycle', () => {
       expect(compositor?.classList.contains('host-media-compositor')).toBe(true);
       expect(compositor?.style.position).toBe('fixed');
       expect(iframe.style.position).toBe('absolute');
-      layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
-      expect(compositor?.style.transform).toBe('translateY(0)');
+
+      // And later layout changes reach it
+      layout.setTopbarLayout({ offset: false });
+      expect(compositor?.style.top).toBe('var(--safe-top, 0px)');
     }
   }, 10_000);
 
@@ -834,8 +843,8 @@ describe('bridge render lifecycle', () => {
       }),
     );
     await overlaysReady();
-    expect(document.querySelectorAll('.notif-action')).toHaveLength(1);
-    const enable = document.querySelector<HTMLButtonElement>('.notif-action');
+    expect(document.querySelectorAll('[data-testid="notif-action"]')).toHaveLength(1);
+    const enable = document.querySelector<HTMLButtonElement>('[data-testid="notif-action"]');
     enable?.click();
     enable?.click();
     await vi.waitFor(() => {
@@ -845,7 +854,7 @@ describe('bridge render lifecycle', () => {
         created.allowedOrigin,
       );
     });
-    const prompt = enable?.closest('.notif-card');
+    const prompt = enable?.closest('[data-testid="notif-card"]');
     if (prompt === null || prompt === undefined) {
       throw new Error('motion permission prompt is missing');
     }
@@ -860,7 +869,7 @@ describe('bridge render lifecycle', () => {
       }),
     );
     await settleSolid();
-    expect(document.querySelector('.notif-action')).toBeNull();
+    expect(document.querySelector('[data-testid="notif-action"]')).toBeNull();
 
     window.dispatchEvent(new TestDeviceMotionEvent('devicemotion'));
     expect(postMessage).toHaveBeenCalledWith(
@@ -1293,6 +1302,52 @@ describe('bridge render lifecycle', () => {
     });
   }, 10_000);
 
+  it('As an operator, a login that fails before the core answers is reported under the wallet flow', async () => {
+    // Given: a topbar login whose core connection drops once the request is sent
+    await import('../src/bridge.js');
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const failure = new Error('worker fatal error: boom');
+    const login = makeLoginProvider({
+      onPostMessage() {
+        login.closeListener?.(failure);
+      },
+    });
+
+    // When
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then
+    await vi.waitFor(() => {
+      expect(sentry.captureException).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'login' });
+    });
+    expect(sentry.recordExpected).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it('As an operator, a login the user cancels leaves a breadcrumb, not an issue', async () => {
+    // Given: a topbar login
+    await import('../src/bridge.js');
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const login = makeLoginProvider({
+      onPostMessage(message) {
+        login.listener?.(loginResponseFrame(requestIdFromFrame(message), { success: false, cancelled: true }));
+      },
+    });
+
+    // When: the user cancels it
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then
+    await vi.waitFor(() => {
+      expect(sentry.recordExpected).toHaveBeenCalledWith(expect.objectContaining({ name: 'LoginRequestError' }), {
+        flow: 'wallet',
+        step: 'login',
+      });
+    });
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  }, 10_000);
+
   it('As a dotli integrator, the host boots the page core to disconnect a stored session without a product', async () => {
     // Given
     await import('../src/bridge.js');
@@ -1316,7 +1371,7 @@ describe('bridge app roots', () => {
     mocks.coreProviderDefers.length = 0;
     mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
-    document.body.innerHTML = `<div id="app"><div class="loading"></div></div>`;
+    document.body.innerHTML = `<div id="app"><div data-testid="loading-stand-in"></div></div>`;
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
@@ -1359,9 +1414,9 @@ describe('bridge app roots', () => {
   }> {
     const { registerAppRoot } = await import('../src/mount/app-roots.js');
     const app = document.getElementById('app');
-    const loading = app?.querySelector<HTMLElement>('.loading');
+    const loading = app?.querySelector<HTMLElement>('[data-testid="loading-stand-in"]');
     if (app === null || loading === null || loading === undefined) {
-      throw new Error('fixture has no #app > .loading');
+      throw new Error('fixture has no loading stand-in in #app');
     }
     const page = document.createElement('div');
     page.id = 'app-view';
@@ -1441,7 +1496,7 @@ describe('bridge app roots', () => {
   it('As a visitor on a preview or local target, the first iframe render takes the static screen down', async () => {
     // Given the static screen, with no phases started, and the loading
     // controller loaded over it as the host's startup bundle loads it
-    document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
+    document.body.innerHTML = `<div id="app-loading"></div><div id="app"></div>`;
     const [{ renderIframe }, loading] = await Promise.all([
       import('../src/bridge.js'),
       import('../src/state/loading.js'),
@@ -1471,14 +1526,14 @@ describe('bridge app roots', () => {
     expect(previousFrame).not.toBeNull();
     showErrorPage({ title: 'Failed' });
 
-    expect(document.querySelector('#app > .error-page')).not.toBeNull();
+    expect(document.querySelector('#app > [data-testid="error-page"]')).not.toBeNull();
 
     // An error page replaces the frame, so recovery now comes from the host,
     // not a fabricated sandbox message with the detached frame's null source.
     await renderAppSubdomain('cid', 'reloaded');
 
     const frame = document.querySelector('#app > .host-media-compositor > iframe');
-    expect(document.querySelector('#app > .error-page')).toBeNull();
+    expect(document.querySelector('#app > [data-testid="error-page"]')).toBeNull();
     expect(frame?.isConnected).toBe(true);
     expect(frame).not.toBe(previousFrame);
     expect(document.querySelectorAll('#app iframe')).toHaveLength(1);

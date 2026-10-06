@@ -17,16 +17,15 @@ export {
   type ChatMessageRecord,
   type ChatRoomRecord,
 } from './chat.js';
+export { isExpectedDbError } from './db.js';
 export {
   RECENT_KEY,
-  addRecentLabel,
   clearInstalledExecutableCache,
   evictCachedInstalledExecutable,
   getCachedInstalledExecutable,
   getRecentLabels,
   parseRecentLabels,
   reconcileInstalledExecutable,
-  removeRecentLabel,
   serializeRecentLabels,
   setCachedInstalledExecutable,
   withRecentLabel,

@@ -23,3 +23,18 @@ export function recordPermissionChange(change: PermissionChange): void {
     }),
   );
 }
+
+/**
+ * Announce that `permissions` of `label` changed together, as one grant
+ * change. The bridge then refreshes the core's permission policy, and only a
+ * committed policy change (a device permission changing the iframe's `allow`
+ * attribute) replaces the app, once for all of them. Nothing changed
+ * announces nothing.
+ */
+export function recordPermissionsChanged(label: string, permissions: readonly string[]): void {
+  const permission = permissions[0];
+  if (permission === undefined) {
+    return;
+  }
+  recordPermissionChange({ kind: 'grant', label, permission });
+}

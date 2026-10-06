@@ -315,7 +315,7 @@ export function createMediaHost(options: {
   indicator.className = 'host-media-indicator';
   indicator.setAttribute('aria-label', `${productId} trusted call controls`);
   indicator.style.cssText =
-    'position:fixed;bottom:0;left:0;right:0;z-index:4000;isolation:isolate;pointer-events:auto;background:var(--bg-primary,#fff);color:var(--text-primary,#111);max-height:40dvh;overflow:auto;';
+    'position:fixed;bottom:0;left:0;right:0;z-index:4000;isolation:isolate;pointer-events:auto;background:var(--chrome-solid,#2a2a2e);color:var(--chrome-text,#f4f4f5);max-height:40dvh;overflow:auto;';
   document.body.append(indicator);
 
   let disposed = false;

@@ -5,6 +5,9 @@ import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfir
 import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
 import { registerPermissionAuthorizationProvider } from '../src/permissions.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId, query } from './support.js';
+import { getTopbarState } from '../src/state/topbar.js';
+import { resetStores } from './helpers/solid.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -48,27 +51,27 @@ describe('blocking modal queue', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Account Access');
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
+    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Account Access');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
     await overlaysReady();
     await vi.waitFor(() => {
-      expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Permission Request');
+      expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Permission Request');
     });
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(camera).resolves.toEqual('AllowAlways');
     await overlaysReady();
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
     scope.dispose();
   });
 
@@ -88,7 +91,7 @@ describe('blocking modal queue', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('first.dot');
+    expect(byTestId('signing-field-value').textContent).toBe('first.dot');
 
     // When
     firstScope.dispose();
@@ -96,11 +99,11 @@ describe('blocking modal queue', () => {
     // Then
     await expect(first).rejects.toMatchObject({ name: 'AbortError' });
     await overlaysReady();
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('second.dot');
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
+    expect(byTestId('signing-field-value').textContent).toBe('second.dot');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(second).resolves.toBe(true);
@@ -157,5 +160,56 @@ describe('blocking modal queue', () => {
     finishActive();
     await active;
     activeScope.dispose();
+  });
+});
+
+describe('blocking modal queue, waiting count', () => {
+  afterEach(() => {
+    resetStores();
+  });
+
+  it('As a user, the bar knows how many prompts wait behind the one on screen', async () => {
+    // Given
+    const scope = createBlockingModalCoordinator().createScope();
+    let finishFirst: () => void = () => {};
+    const first = scope.enqueue(
+      () =>
+        new Promise<void>(resolve => {
+          finishFirst = resolve;
+        }),
+    );
+    const second = scope.enqueue(() => new Promise<void>(() => {}));
+
+    // Then
+    expect(getTopbarState().blockingModalActive).toBe(true);
+    expect(getTopbarState().blockingModalsWaiting).toBe(1);
+
+    // When
+    finishFirst();
+    await first;
+
+    // Then
+    expect(getTopbarState().blockingModalsWaiting).toBe(0);
+    scope.dispose();
+    await second.catch(() => {});
+  });
+
+  it('As a user leaving a product, its waiting prompts no longer count', async () => {
+    // Given
+    const coordinator = createBlockingModalCoordinator();
+    const other = coordinator.createScope();
+    const leaving = coordinator.createScope();
+    const active = other.enqueue(() => new Promise<void>(() => {}));
+    const waiting = leaving.enqueue(() => new Promise<void>(() => {}));
+    expect(getTopbarState().blockingModalsWaiting).toBe(1);
+
+    // When
+    leaving.dispose();
+    await waiting.catch(() => {});
+
+    // Then
+    expect(getTopbarState().blockingModalsWaiting).toBe(0);
+    other.dispose();
+    await active.catch(() => {});
   });
 });

@@ -3,7 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { CORE_CUSTODY_BUSY_ERROR } from '@dotli/protocol';
-import { describeError, ERROR_TITLES } from '../../src/errors.js';
+import { ERROR_TITLES } from '../../src/error-copy.js';
+import { describeError } from '../../src/errors.js';
 
 describe('test wallet open in another tab', () => {
   it('is not reported as an unreachable domain with connectivity advice', () => {

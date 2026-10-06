@@ -52,6 +52,15 @@ afterEach(() => {
 });
 
 describe('toast store', () => {
+  it('As a dotli user, a toast without a tone reads as info, and a toast given one keeps it', () => {
+    // When
+    pushToast(input());
+    pushToast(input({ tone: 'warn' }));
+
+    // Then
+    expect(toastsStore.get().items.map(t => t.tone)).toEqual(['info', 'warn']);
+  });
+
   it('As a dotli user, a toast leaves after its duration and calls onDismiss once', () => {
     // Given
     const onDismiss = vi.fn();
@@ -209,7 +218,9 @@ describe('toast store', () => {
     // Then
     expect(leaving()).toEqual([true]);
     expect(sentry.captureException).toHaveBeenCalledWith(error, {
-      kind: 'toast_on_dismiss_error',
+      flow: 'ui',
+      step: 'toast_dismiss',
+      tags: { kind: 'toast_on_dismiss_error' },
     });
   });
 

@@ -103,7 +103,7 @@ export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number):
  * The auto-allow poller answers permission and account prompts meanwhile.
  */
 async function waitForHostModalsSettled(page: Page): Promise<void> {
-  const backdrop = page.locator('.signing-modal-backdrop');
+  const backdrop = page.getByTestId('signing-modal-backdrop');
   const deadline = Date.now() + HOST_MODAL_SETTLE_TIMEOUT_MS;
   let quietSince = Date.now();
   while (Date.now() < deadline) {
@@ -138,7 +138,10 @@ export async function openHostPlayground(page: Page): Promise<void> {
   }
 
   const restoreStart = Date.now();
-  await page.locator('#auth-button .user-badge').waitFor({ state: 'visible', timeout: USER_BADGE_TIMEOUT_MS });
+  await page
+    .locator('#auth-button')
+    .getByTestId('user-badge')
+    .waitFor({ state: 'visible', timeout: USER_BADGE_TIMEOUT_MS });
   console.log(`[pairedPage] session restored in ${String(Date.now() - restoreStart)}ms`);
 }
 

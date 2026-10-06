@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
-import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createClient, OperationInaccessibleError, type SubstrateClient } from '@polkadot-api/substrate-client';
 import type { JsonRpcMessage, JsonRpcProvider, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { toHex } from '@polkadot-api/utils';
 import { createRawApi, ApiStoppedError, type Api, type ContractStorage } from '../src/api.js';
@@ -51,6 +51,8 @@ interface StorageServer {
   open: (hashes?: string[]) => Promise<{ api: Api; chain: Chain }>;
   waitReads: (chain: Chain, count: number) => Promise<void>;
   complete: (chain: Chain, index: number, value: string | null, error?: string) => void;
+  /** End read `index` with `operationInaccessible`: the node cannot serve it yet. */
+  inaccessible: (chain: Chain, index: number) => void;
   advance: (chain: Chain, hash: string, parent: string, pruned?: string[]) => void;
 }
 
@@ -237,6 +239,13 @@ function server(shared = false): StorageServer {
         }
         event(chain, { event: 'operationStorageDone', operationId: op.id });
       }
+    },
+    inaccessible(chain: Chain, index: number) {
+      const op = required(chain.reads[index]);
+      if (!chain.operations.delete(op.id)) {
+        throw new Error('Operation already ended');
+      }
+      event(chain, { event: 'operationInaccessible', operationId: op.id });
     },
     advance(chain: Chain, hash: string, parent: string, pruned: string[] = []) {
       event(chain, {
@@ -603,5 +612,108 @@ describe('raw API block ownership', () => {
     expect(h.violations).toEqual([]);
     freshApi.destroy();
     h.client.destroy();
+  });
+
+  describe('a storage read the light client cannot serve yet', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      // The retry window is measured on performance.now: follow the fake clock.
+      vi.spyOn(performance, 'now').mockImplementation(() => Date.now());
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    });
+
+    /**
+     * Answer each new read `operationInaccessible` until `done`, a step at a
+     * time. A read is answered only after a step, once its operation started.
+     */
+    async function refuseReads(h: StorageServer, chain: Chain, done: () => boolean): Promise<number> {
+      let answered = 0;
+      for (let step = 0; !done() && step < 2000; step++) {
+        await vi.advanceTimersByTimeAsync(50);
+        while (chain.reads.length > answered) {
+          h.inaccessible(chain, answered++);
+        }
+      }
+      return answered;
+    }
+
+    async function untilReads(chain: Chain, count: number): Promise<void> {
+      for (let step = 0; chain.reads.length < count && step < 200; step++) {
+        await vi.advanceTimersByTimeAsync(50);
+      }
+      expect(chain.reads.length).toBeGreaterThanOrEqual(count);
+    }
+
+    it('As a dotli user on a freshly synced light client, a name read the node cannot serve yet is retried until it answers', async () => {
+      // Given
+      const h = server();
+      const { api, chain } = await h.open();
+
+      // When: the node refuses the account read once, then the slot read once.
+      const read = readMappingBytes(api, ADDRESS, KEY, 0);
+      await untilReads(chain, 1);
+      h.inaccessible(chain, 0);
+      await untilReads(chain, 2);
+      h.complete(chain, 1, ACCOUNT);
+      await untilReads(chain, 3);
+      h.inaccessible(chain, 2);
+      await untilReads(chain, 4);
+      h.complete(chain, 3, `0x01${'00'.repeat(30)}02`);
+
+      // Then
+      expect(await read).toEqual(new Uint8Array([0x01]));
+      expect(chain.reads).toHaveLength(4);
+      expect(h.violations).toEqual([]);
+      api.destroy();
+      h.client.destroy();
+    });
+
+    it('As a dotli user on a light client that never serves a read, the read fails instead of retrying forever', async () => {
+      // Given
+      const h = server();
+      const { api, chain } = await h.open();
+      let outcome: unknown;
+
+      // When
+      void readMappingBytes(api, ADDRESS, KEY, 0).then(
+        () => {
+          outcome = 'resolved';
+        },
+        (error: unknown) => {
+          outcome = error;
+        },
+      );
+      const answered = await refuseReads(h, chain, () => outcome !== undefined);
+
+      // Then: it gave up after the retry window, not on the first refusal.
+      expect(outcome).toBeInstanceOf(OperationInaccessibleError);
+      expect(answered).toBeGreaterThan(1);
+      expect(h.violations).toEqual([]);
+      api.destroy();
+      h.client.destroy();
+    });
+
+    it('As a dotli user on a light client, a read waiting to retry stops when the chain follow stops', async () => {
+      // Given
+      const h = server();
+      const { api, chain } = await h.open();
+      const read = readMappingBytes(api, ADDRESS, KEY, 0);
+      const settled = expect(read).rejects.toBeInstanceOf(ApiStoppedError);
+      await untilReads(chain, 1);
+      h.inaccessible(chain, 0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      // When
+      api.destroy();
+      await vi.advanceTimersByTimeAsync(2000);
+
+      // Then
+      await settled;
+      expect(chain.reads).toHaveLength(1);
+      h.client.destroy();
+    });
   });
 });

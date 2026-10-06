@@ -120,7 +120,7 @@ describe('bound notification activation', () => {
     const record = await findNotification(label, pushed.id);
     assert.isDefined(record);
     await overlaysReady();
-    const body = document.querySelector<HTMLButtonElement>('.notif-body');
+    const body = document.querySelector<HTMLButtonElement>('[data-testid="notif-body"]');
     expect(body?.textContent).toBe('Open conversation');
     body?.click();
     await vi.waitFor(async () => {
@@ -128,6 +128,8 @@ describe('bound notification activation', () => {
         { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/dm/alice' },
       ]);
     });
+    // A product cannot pick a tone, so its toasts read as info.
+    expect(document.querySelector('[data-testid="notif-icon"]')?.getAttribute('data-tone')).toBe('info');
     const { events } = await api.activationEvents();
     const first = events[0];
     assert.isDefined(first);
@@ -235,7 +237,7 @@ describe('bound notification activation', () => {
       assert.isDefined(record);
       await overlaysReady();
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-      document.querySelector<HTMLButtonElement>('.notif-body')?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="notif-body"]')?.click();
       await vi.waitFor(async () => {
         expect((await api.activationEvents()).events).toEqual([
           { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/dm/alice' },

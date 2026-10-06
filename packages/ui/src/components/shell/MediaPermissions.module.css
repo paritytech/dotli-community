@@ -1,0 +1,17 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A Calling scope is consented for its exact account and network, so its
+   values wrap in full instead of ellipsizing. */
+.scope > * {
+  align-items: flex-start;
+}
+.scope code {
+  overflow-wrap: anywhere;
+  text-align: right;
+  white-space: normal;
+}
+.revoke {
+  align-self: flex-end;
+  margin: var(--sp-1) 0;
+}

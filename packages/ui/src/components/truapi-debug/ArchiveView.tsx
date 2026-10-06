@@ -11,6 +11,7 @@ import { isEncrypted, type ArchiveFiles } from '@dotli/content';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import type { ArchiveLoader } from './archive-source.js';
+import s from './ArchiveView.module.css';
 
 interface ArchiveFile {
   path: string;
@@ -170,70 +171,88 @@ export function ArchiveView(props: {
   };
 
   return (
-    <div class={{ 'td-archive': true, hidden: !props.active }}>
+    <div class={s['archive']} data-testid="td-archive" hidden={!props.active}>
       <Switch>
         <Match when={product().status !== 'loaded'}>
-          <div class="td-archive-empty">No product loaded yet.</div>
+          <div class={s['empty']} data-testid="td-archive-empty">
+            No product loaded yet.
+          </div>
         </Match>
         <Match when={cid() === undefined}>
-          <div class="td-archive-empty">This product is not served from a CID, so it has no archive.</div>
+          <div class={s['empty']} data-testid="td-archive-empty">
+            This product is not served from a CID, so it has no archive.
+          </div>
         </Match>
         <Match when={failure() !== undefined}>
-          <div class="td-archive-empty">Could not read the archive: {failure()}</div>
+          <div class={s['empty']} data-testid="td-archive-empty">
+            Could not read the archive: {failure()}
+          </div>
         </Match>
         <Match when={loaded() === undefined}>
-          <div class="td-archive-empty">Reading archive {cid()}…</div>
+          <div class={s['empty']} data-testid="td-archive-empty">
+            Reading archive {cid()}…
+          </div>
         </Match>
         <Match when={loaded()}>
           {archive => (
             <>
-              <div class="td-archive-sidebar">
-                <div class="td-archive-summary">
+              <div class={s['sidebar']}>
+                <div class={s['summary']} data-testid="td-archive-summary">
                   {`${String(archive().files.length)} ${archive().files.length === 1 ? 'file' : 'files'} · ${formatBytes(archive().total)}`}
                 </div>
-                <ul class="td-archive-files">
+                <ul class={s['files']}>
                   <For each={archive().files}>
                     {file => (
                       <li>
                         <button
                           type="button"
-                          class={{ 'td-archive-file': true, active: selectedPath() === file.path }}
+                          class={s['file']}
+                          data-testid="td-archive-file"
+                          data-active={selectedPath() === file.path ? '' : undefined}
                           data-path={file.path}
                           title={file.path}
                           onClick={() => {
                             setSelectedPath(file.path);
                           }}
                         >
-                          <span class="td-archive-path">{file.path}</span>
-                          <span class="td-archive-size">{formatBytes(file.bytes.length)}</span>
+                          <span class={s['path']}>{file.path}</span>
+                          <span class={s['size']}>{formatBytes(file.bytes.length)}</span>
                         </button>
                       </li>
                     )}
                   </For>
                 </ul>
               </div>
-              <div class="td-archive-content">
-                <Switch fallback={<div class="td-archive-empty">Select a file.</div>}>
+              <div class={s['content']} data-testid="td-archive-content">
+                <Switch
+                  fallback={
+                    <div class={s['empty']} data-testid="td-archive-empty">
+                      Select a file.
+                    </div>
+                  }
+                >
                   <Match when={shown()?.kind === 'encrypted'}>
-                    <div class="td-archive-empty">Encrypted, not decrypted: the sandbox asks for its password.</div>
+                    <div class={s['empty']} data-testid="td-archive-empty">
+                      Encrypted, not decrypted: the sandbox asks for its password.
+                    </div>
                   </Match>
                   <Match when={shown()?.kind === 'image'}>
                     <Show when={imageUrl()}>
-                      {src => <img class="td-archive-image" src={src()} alt={selectedPath() ?? ''} />}
+                      {src => <img class={s['image']} src={src()} alt={selectedPath() ?? ''} />}
                     </Show>
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>
-                    <div class="td-archive-empty">Binary, {formatBytes(selected()?.bytes.length ?? 0)}</div>
+                    <div class={s['empty']} data-testid="td-archive-empty">
+                      Binary, {formatBytes(selected()?.bytes.length ?? 0)}
+                    </div>
                   </Match>
                   <Match when={shownText()}>
                     {text => (
                       <>
                         <Show when={text().length > MAX_TEXT_CHARS}>
-                          <div class="td-archive-note">
-                            Showing the first {MAX_TEXT_CHARS.toLocaleString()} characters.
-                          </div>
+                          <div class={s['note']}>Showing the first {MAX_TEXT_CHARS.toLocaleString()} characters.</div>
                         </Show>
-                        <pre class="td-archive-text">{text().slice(0, MAX_TEXT_CHARS)}</pre>
+                        <pre class={s['text']}>{text().slice(0, MAX_TEXT_CHARS)}</pre>
                       </>
                     )}
                   </Match>

@@ -119,14 +119,14 @@ describe('chat custom message', () => {
     const { container } = renderMessage();
     await settle();
     FakeObserver.last?.scroll(true);
-    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).not.toBeNull();
 
     // When
     nth(service.sinks, 0).onUpdate(button('Vote'));
     await settle();
 
     // Then
-    expect(container.querySelector('.chat-custom-placeholder')).toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).toBeNull();
     expect(container.querySelector('button')?.textContent).toBe('Vote');
   });
 
@@ -144,7 +144,7 @@ describe('chat custom message', () => {
 
     // Then
     expect(container.querySelector('button')).toBeNull();
-    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).not.toBeNull();
   });
 
   it('As a user, a tap the product cannot receive says so', async () => {
@@ -173,7 +173,7 @@ describe('chat custom message', () => {
       },
     ]);
     expect(container.querySelector('button')).toBeNull();
-    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).not.toBeNull();
   });
 
   it('As a user typing in a live message, a streamed update keeps my focus and text', async () => {
@@ -223,7 +223,7 @@ describe('chat custom message', () => {
     await settle();
 
     // Then
-    expect(container.querySelector('.chat-custom-placeholder')).toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).toBeNull();
     expect(container.querySelector('button')?.textContent).toBe('Retry');
   });
 
@@ -296,7 +296,7 @@ describe('custom message resource lifetime', () => {
     await settle();
     expect(service.stops).toBe(1);
     expect(service.sinks).toHaveLength(1);
-    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).not.toBeNull();
   });
 
   it('releases image URLs on replacement, visibility loss and unmount, ignoring late image bytes', async () => {
@@ -354,7 +354,7 @@ describe('custom message resource lifetime', () => {
     await settle();
     await settle();
     expect(container.querySelector('img')).toBeNull();
-    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).not.toBeNull();
     expect(nth(service.imageLoads, 0).signal.aborted).toBe(true);
     expect(service.stops).toBe(1);
   });
@@ -372,6 +372,6 @@ it('keeps the new tree when an action from its predecessor fails late', async ()
   await settle();
   await settle();
   expect(container.querySelector('button')?.textContent).toBe('After');
-  expect(container.querySelector('.chat-custom-placeholder')).toBeNull();
+  expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).toBeNull();
   expect(service.stops).toBe(0);
 });

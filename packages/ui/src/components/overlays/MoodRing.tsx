@@ -5,6 +5,7 @@ import { createMemo, createSignal, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { animateMoodRing, moodAge, MOOD_PALETTE } from '../../profile/mood-ring.js';
 import type { Mood } from '../../profile/profile-record.js';
+import s from './MoodRing.module.css';
 
 interface Animation {
   mood: Mood;
@@ -32,14 +33,22 @@ function AnimatedMoodRing(props: { animation: Animation; onFallback: (fallback: 
   );
 }
 
-export function MoodRing(props: { mood: Mood; size: number; animated?: boolean }): JSX.Element {
+export function MoodRing(props: {
+  mood: Mood;
+  size: number;
+  animated?: boolean;
+  /** The owner's placement of the ring around its circle. */
+  class?: string | undefined;
+}): JSX.Element {
   const [fallback, setFallback] = createSignal(false);
   const animation = createMemo(() => (props.animated === true ? { mood: props.mood, size: props.size } : undefined));
   const palette = createMemo(() => MOOD_PALETTE[props.mood.kind]);
   const staticRing = createMemo(() => props.animated !== true || fallback());
   return (
     <div
-      class={['profile-mood-ring', { 'profile-mood-ring-static': staticRing() }]}
+      class={[s['ring'], props.class]}
+      data-static={staticRing() ? '' : undefined}
+      data-testid="mood-ring"
       aria-hidden="true"
       style={{
         width: `${String(Math.round(props.size * 1.5))}px`,

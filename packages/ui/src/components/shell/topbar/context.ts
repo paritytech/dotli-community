@@ -3,6 +3,17 @@
 
 import { createContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import type { StatusTone } from '../../primitives/StatusDot.js';
+
+/**
+ * A status an item raises on the More button while it is collapsed: the
+ * badge's tone, and the words More's accessible name adds for it
+ * ("network syncing", "chat has unread messages").
+ */
+export interface TopbarAlert {
+  readonly tone: StatusTone;
+  readonly label: string;
+}
 
 /** What a topbar item tells the bar it sits in (see TopbarItem). */
 export interface TopbarEntry {
@@ -12,6 +23,17 @@ export interface TopbarEntry {
   readonly label: string;
   /** The menu row's icon, rendered afresh for each row. */
   readonly icon: () => JSX.Element;
+  /**
+   * A status the More button raises while the item is in the menu (the
+   * network's while it is not ok, the chat's while it has unread messages),
+   * undefined for none.
+   */
+  readonly alert: Accessor<TopbarAlert | undefined>;
+  /**
+   * What the menu row shows after its label (the network's dot and verdict
+   * word, the chat's unread count), undefined for nothing.
+   */
+  readonly aside: Accessor<(() => JSX.Element) | undefined>;
   /** See TOPBAR_PRIORITY. */
   readonly priority: number;
   /** Whether the item shows at all, inline or as a row. */
