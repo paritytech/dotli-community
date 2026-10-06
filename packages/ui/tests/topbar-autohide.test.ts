@@ -623,7 +623,7 @@ describe('topbar auto-hide on a phone', () => {
     expect(appFrame().style.top).toBe('56px');
   });
 
-  it('As a phone user, the header never folds away, and the app starts below it', async () => {
+  it('As a phone user, the bar never folds away, and the app keeps clear of it', async () => {
     // Given
     viewport.set(true);
     const { armTopbarAutoHide } = await loadAutoHide();
@@ -638,7 +638,7 @@ describe('topbar auto-hide on a phone', () => {
     expect(appFrame().style.top).toBe('56px');
   });
 
-  it('As a user narrowing the window to a phone width, the folded bar comes back as the header, the app moves below it, and widening folds it again', async () => {
+  it('As a user narrowing the window to a phone width, the folded bar comes back as the phone bar, the app keeps clear of it, and widening folds it again', async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();

@@ -38,6 +38,9 @@ vi.mock('@dotli/ui', () => ({
 
 vi.mock('@dotli/metrics', () => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
 vi.mock('@dotli/shared', () => ({ markContinuation: vi.fn() }));
+// pwa.ts answers the sandbox contract-version probe from @dotli/config, whose
+// module body reads `self.location.hostname`; the stubbed location has none.
+vi.mock('@dotli/config', () => ({ SANDBOX_SCHEMA_VERSION: 1 }));
 
 function emit(type: string, event?: { wasWaitingBeforeRegister?: boolean }): void {
   for (const listener of workbox.listeners.get(type) ?? []) {
@@ -56,7 +59,7 @@ beforeEach(async () => {
   notifications.actions = [];
   reload.mockClear();
   vi.stubGlobal('navigator', {
-    serviceWorker: { getRegistration: () => Promise.resolve({ waiting }) },
+    serviceWorker: { addEventListener: vi.fn(), getRegistration: () => Promise.resolve({ waiting }) },
   });
   vi.stubGlobal('location', { reload });
   await import('../../src/pwa.js');

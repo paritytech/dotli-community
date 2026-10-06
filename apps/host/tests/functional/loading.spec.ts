@@ -260,8 +260,10 @@ test('As a user, when executable-manifest resolution fails, I see the original r
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, { timeout: 10_000 });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
 
@@ -286,7 +288,7 @@ test('As a user, when the app executable manifest is invalid, I see its validati
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('error-page-title')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('#error-retry-btn')).toHaveCount(0);
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
@@ -302,7 +304,10 @@ test('As a user, a stopped chainHead follow reconnects once without showing a do
       const upstream = socket.connectToServer();
       socket.onMessage(message => {
         const request = JSON.parse(String(message)) as { method?: string; params?: unknown[] };
-        if (request.method === 'chainHead_v1_follow') {
+        // The resolver follows without runtime updates. The topbar's health
+        // watch opens its own runtime follow on the same socket once the
+        // product is on screen; that is not a reconnect.
+        if (request.method === 'chainHead_v1_follow' && request.params?.[0] === false) {
           follows += 1;
         }
         if (!stopped && request.method === 'chainHead_v1_storage') {
