@@ -65,52 +65,105 @@ export async function callingPermissionSettings(label: string): Promise<CallingP
   return (await Promise.all(hosts.map(host => host.callingSettings()))).flat();
 }
 
+/** Same-origin shell route that mints TURN credentials (nginx/snippets/dotli-media-turn.conf). */
+export const MEDIA_TURN_PATH = '/__dotli-media/turn';
+
+/** Credential lifetime in seconds, announced by the TURN route. */
+const MEDIA_TURN_TTL_HEADER = 'Dotli-Media-Turn-Ttl';
+
+/** Port 53 relays are blocked by many networks and collide with DNS filtering. */
+const PORT_53 = /^turns?:(?:\[[^\]]*\]|[^:?]*):53(?:\?|$)/i;
+
 /**
- * Parses the deployment's TURN relays (`VITE_MEDIA_ICE_SERVERS`, a JSON
- * `RTCIceServer[]`). The host Media backend gathers relay candidates only, so
- * every entry must be a credentialed `turn:`/`turns:` server; STUN or host
- * candidates would expose addresses and are rejected. Unset means no relay,
- * and calls cannot connect.
+ * Converts Cloudflare's `credentials/generate` response into relay-only
+ * `RTCIceServer`s: credentialed `turn:`/`turns:` URLs off port 53. STUN or
+ * host candidates would expose addresses; everything else is dropped. Accepts
+ * both the array and the older single-object `iceServers` shapes.
  */
-export function parseMediaIceServers(raw: string | undefined): RTCIceServer[] {
-  if (raw === undefined || raw.trim() === '') {
-    return [];
-  }
-  const fail = (reason: string): never => {
-    throw new Error(`Media:InvalidIceServers: VITE_MEDIA_ICE_SERVERS ${reason}`);
-  };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return fail('is not JSON');
-  }
-  if (!Array.isArray(parsed)) {
-    return fail('must be a JSON array of RTCIceServer');
-  }
-  return parsed.map((entry: unknown, index): RTCIceServer => {
-    const at = `[${String(index)}]`;
-    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      return fail(`${at} must be an object`);
+export function toMediaIceServers(response: unknown): RTCIceServer[] {
+  const raw = (response as { iceServers?: unknown } | null)?.iceServers;
+  const entries: unknown[] = Array.isArray(raw) ? raw : raw === undefined || raw === null ? [] : [raw];
+  return entries.flatMap((entry): RTCIceServer[] => {
+    if (typeof entry !== 'object' || entry === null) {
+      return [];
     }
-    const { urls, username, credential, ...extra } = entry as Record<string, unknown>;
-    if (Object.keys(extra).length > 0) {
-      return fail(`${at} allows only urls, username and credential`);
-    }
-    const list = typeof urls === 'string' ? [urls] : urls;
-    if (
-      !Array.isArray(list) ||
-      list.length === 0 ||
-      !list.every((url: unknown) => typeof url === 'string' && /^turns?:/i.test(url))
-    ) {
-      return fail(`${at}.urls must be turn: or turns: URLs`);
-    }
+    const { urls, username, credential } = entry as Record<string, unknown>;
     if (typeof username !== 'string' || username === '' || typeof credential !== 'string' || credential === '') {
-      return fail(`${at} needs a username and credential`);
+      return [];
     }
-    return { urls: [...(list as string[])], username, credential };
+    const list = (typeof urls === 'string' ? [urls] : Array.isArray(urls) ? urls : []).filter(
+      (url): url is string => typeof url === 'string' && /^turns?:/i.test(url) && !PORT_53.test(url),
+    );
+    return list.length === 0 ? [] : [{ urls: list, username, credential }];
   });
 }
+
+/**
+ * TURN relays for the host Media backend, minted by the shell origin's
+ * {@link MEDIA_TURN_PATH} route (the Cloudflare API token stays on the
+ * server). Credentials are reused for the first two thirds of their announced
+ * lifetime: a Cloudflare allocation ends when its credential expires, so a call
+ * started from cached credentials keeps its relay for at least the last third.
+ * Concurrent peers share one request. Fails closed: a failed, unconfigured
+ * (503) or relay-less answer rejects with `Media:NoTurnRelay`, the peer fails
+ * and the next peer retries.
+ */
+export function mediaTurnIceServers(
+  options: { fetch?: typeof fetch; now?: () => number; url?: string } = {},
+): () => Promise<RTCIceServer[]> {
+  const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
+  const now = options.now ?? Date.now;
+  let cached: { servers: RTCIceServer[]; reuseUntil: number } | undefined;
+  let pending: Promise<RTCIceServer[]> | undefined;
+  async function mint(): Promise<RTCIceServer[]> {
+    const requestedAt = now();
+    const fail = (reason: string): never => {
+      const error = new Error(`Media:NoTurnRelay: ${MEDIA_TURN_PATH} ${reason}; host Media calls cannot connect`);
+      console.error('[media]', error.message);
+      throw error;
+    };
+    let response: Response;
+    try {
+      response = await fetchImpl(options.url ?? new URL(MEDIA_TURN_PATH, location.origin).href, {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      return fail('is unreachable');
+    }
+    if (!response.ok) {
+      return fail(`answered HTTP ${String(response.status)}`);
+    }
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return fail('answered invalid JSON');
+    }
+    const servers = toMediaIceServers(body);
+    if (servers.length === 0) {
+      return fail('returned no credentialed turn:/turns: relay');
+    }
+    const ttl = Number(response.headers.get(MEDIA_TURN_TTL_HEADER));
+    cached = { servers, reuseUntil: Number.isFinite(ttl) && ttl > 0 ? requestedAt + (ttl * 1000 * 2) / 3 : 0 };
+    return servers;
+  }
+  return async () => {
+    if (cached !== undefined && now() < cached.reuseUntil) {
+      return cached.servers;
+    }
+    pending ??= mint().finally(() => {
+      pending = undefined;
+    });
+    return pending;
+  };
+}
+
+/** One credential cache per shell document, shared by its Media hosts. */
+let shellTurnIceServers: (() => Promise<RTCIceServer[]>) | undefined;
 
 /** Host-only adapter for an authenticated, cross-origin product execution. */
 export function createMediaHost(options: {
@@ -126,8 +179,8 @@ export function createMediaHost(options: {
     throw new Error('Media:UnsafeContainer');
   }
   // Relay-only ICE from trusted host facilities, never product values. With
-  // no configured TURN relay, calls cannot connect.
-  const iceServers = options.iceServers ?? parseMediaIceServers(import.meta.env.VITE_MEDIA_ICE_SERVERS);
+  // no TURN relay from the shell route, calls cannot connect.
+  const iceServers = options.iceServers ?? (shellTurnIceServers ??= mediaTurnIceServers());
   const indicator = document.createElement('div');
   indicator.className = 'host-media-indicator';
   indicator.setAttribute('aria-label', `${productId} trusted call controls`);

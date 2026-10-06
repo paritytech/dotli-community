@@ -414,12 +414,13 @@ calls and reloads into an execution where Media is unsupported and existing devi
 protected host Media** reloads back. The choice is execution-local, not a remembered consent. Same-origin frames never
 advertise Media.
 
-ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay.
-`VITE_MEDIA_ICE_SERVERS` is a build-time JSON `RTCIceServer[]` of credentialed `turn:`/`turns:` servers, e.g.
-`[{"urls":["turns:turn.example:5349"],"username":"dotli","credential":"…"}]`. STUN entries, extra fields and missing
-credentials are rejected; unset means calls cannot connect. Products never supply ICE settings. The Deploy workflow
-mints 48-hour Cloudflare TURN credentials for each deploy (`scripts/mint-media-turn.ts`); they ship in the public bundle
-and expire 48 hours later, when a redeploy refreshes them. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
+ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay. When a call opens
+a peer, the shell fetches short-lived Cloudflare TURN credentials from its own origin at `/__dotli-media/turn`
+(`nginx/snippets/dotli-media-turn.conf`); the Cloudflare API token stays on the server. Only credentialed
+`turn:`/`turns:` URLs off port 53 are used. Credentials are reused for two thirds of their 12-hour lifetime, so a call
+keeps its relay for at least four hours. A failed or unconfigured route (503) leaves the peer without a relay: it fails
+with `Media:NoTurnRelay` in the console, and the next peer retries. Products never supply ICE settings. The local dev
+and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
 
 ## Development
 
