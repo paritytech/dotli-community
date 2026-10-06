@@ -172,7 +172,9 @@ export function createSessionStoreAdapters(): CoreStorage & SecretCoreStorage {
         const raw = localStorage.getItem(coreLocalStorageKey(key));
         return raw === null
           ? undefined
-          : decodeStoredBytes(raw, `core storage ${key.tag}`);
+          : key.tag === "PermissionAuthorization"
+            ? hexToBytes(raw)
+            : decodeStoredBytes(raw, `core storage ${key.tag}`);
       });
     },
     writeCoreStorage(key, value) {

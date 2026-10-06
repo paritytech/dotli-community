@@ -151,6 +151,23 @@ describe("session-store host callbacks", () => {
     expect(await readCoreStorage(key)).toBeUndefined();
   });
 
+  it("rejects malformed permission storage without turning it into an unanswered request", async () => {
+    const storage = createSessionStoreAdapters();
+    const key = {
+      tag: "PermissionAuthorization",
+      value: {
+        productId: "calendar.dot",
+        request: { tag: "Device", value: "Camera" },
+      },
+    } satisfies CoreStorageKey;
+    await storage.writeCoreStorage(key, new Uint8Array([1]));
+    const storageKey = localStorage.key(0) ?? "";
+    localStorage.setItem(storageKey, "not-hex");
+
+    await expect(storage.readCoreStorage(key)).rejects.toThrow();
+    expect(localStorage.getItem(storageKey)).toBe("not-hex");
+  });
+
   it("As a dotli integrator, the host keeps remote permission authorization keys opaque", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
