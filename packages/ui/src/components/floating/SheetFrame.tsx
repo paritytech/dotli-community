@@ -32,14 +32,24 @@ export function handOffSheet(activate: () => void): boolean {
     // Only now is it known whether a sheet came: a closing sheet stayed up
     // until here, and goes at once if one did, or slides out if none did.
     // Still in this task, so the two sheets change in the same frame.
-    for (const settle of leaving) {
-      settle(taken);
-    }
+    settleLeaving(taken);
     flush();
     return taken;
   } finally {
     pendingHandoff = undefined;
-    leaving.clear();
+    // `activate` threw after a sheet was held: it closes as without a
+    // hand-off, rather than stay up over an inert page.
+    if (leaving.size > 0) {
+      settleLeaving(false);
+      flush();
+    }
+  }
+}
+
+function settleLeaving(taken: boolean): void {
+  for (const settle of leaving) {
+    leaving.delete(settle);
+    settle(taken);
   }
 }
 

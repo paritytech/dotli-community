@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, untrack } from 'solid-js';
+import { createSignal, flush, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { Button } from '../primitives/Button.js';
@@ -189,6 +189,54 @@ export const CloseWithoutHandOff: Story = {
         leaving: { open: false, handoff: false },
         coming: { open: false, handoff: false },
       });
+    });
+  },
+};
+
+const onThrow = fn().mockName('onThrow');
+
+function ThrowingHandOffHarness() {
+  const [open, setOpen] = createSignal(true);
+  return (
+    <BottomSheet open={open()} onOpenChange={setOpen} title="More" id="first-sheet" testId="first">
+      <div style={{ padding: '0 16px' }}>
+        <Button
+          testId="hand-off"
+          onClick={() => {
+            try {
+              handOffSheet(() => {
+                setOpen(false);
+                // The sheet is held from here, waiting on the hand-off's outcome.
+                flush();
+                throw new Error('the row failed');
+              });
+            } catch (err) {
+              onThrow(err);
+            }
+          }}
+        >
+          Next
+        </Button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+export const HandOffThatThrows: Story = {
+  render: () => <ThrowingHandOffHarness />,
+  play: async ({ userEvent, step }) => {
+    onThrow.mockClear();
+    const dialog = () => document.getElementById('first-sheet') as HTMLDialogElement;
+    await step('Given the sheet is open', async () => {
+      await waitFor(() => expect(dialog().open).toBe(true));
+    });
+    await step('When the hand-off it runs throws after the sheet was held', async () => {
+      await userEvent.click(body.getByTestId('hand-off'));
+    });
+    await step('Then the sheet closed with the throw, and the page is no longer inert', async () => {
+      await expect(onThrow).toHaveBeenCalledOnce();
+      await expect(dialog().open).toBe(false);
+      await expect(document.querySelector(':modal')).toBeNull();
     });
   },
 };
