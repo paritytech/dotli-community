@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-sessions",
-  "upstreamRevision": "36b99e3d3853eef260033fad10bb5758b8da168a",
+  "upstreamRevision": "f9197dc8edc27b983207e86845a43a6f9fdd5860",
   "upstreamRevisionNote": "Local, unpushed: the Media layer (prototype wire trait 218) rebased onto #709 head a78944c2375f212e86cb57bfff3be92923ee1793. Push it before CI can check out this revision.",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/709",
   "baseRevision": "a78944c2375f212e86cb57bfff3be92923ee1793",
@@ -16,7 +16,7 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "5aa9fe76483e5712fe653b410a9065bfce24f6e4e9c3e255e91571e88cd9b211",
+      "sourceArchiveSha256": "b5816f6ba2db93301f1cba40b500eae44f96ccfa815e7dee67412fd4ff3c6f00",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasmSha256": "ed12c034739b49c1f429b9db3d703cc0f4af6770e497bbfc6913b76246263320",
       "testingWasmSha256": "fcd7517c86b2c1da69a986757488a30784b1b3b36627386a1989cb390190b2e9",
@@ -25,5 +25,5 @@
       ]
     }
   },
-  "wasmUpstreamRevision": "36b99e3d3853eef260033fad10bb5758b8da168a"
+  "wasmUpstreamRevision": "f9197dc8edc27b983207e86845a43a6f9fdd5860"
 }
