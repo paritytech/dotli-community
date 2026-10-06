@@ -123,6 +123,7 @@ interface ActiveHost {
   receiving: ReceivingExecution;
   /** End host-owned calls now, before a replacement render settles. */
   stopMedia: () => void;
+  refreshPermissionPolicy: () => Promise<void>;
   dispose: () => void;
 }
 
@@ -172,6 +173,7 @@ const mediatedInputHost = new MediatedInputHost({
           kind: 'Device',
           limiter: mediatedInputPermissionLimiter,
           gatedByIframe: false,
+          commitOwner: 'host',
         },
         scope,
       );
@@ -732,6 +734,16 @@ window.addEventListener('dotli:device-permission-changed', event => {
   ) {
     rerenderProduct(product);
   }
+});
+
+window.addEventListener('dotli:permission-changed', event => {
+  const detail = (event as CustomEvent<{ productId?: string; label?: string }>).detail;
+  if (currentProduct === null || (detail?.productId ?? detail?.label) !== currentProduct.label) {
+    return;
+  }
+  void currentHost?.refreshPermissionPolicy().catch((error: unknown) => {
+    log.warn('[dot.li] Permission policy refresh failed:', error);
+  });
 });
 
 window.addEventListener('dotli:receiving-account-changed', () => {
@@ -1731,16 +1743,19 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const granted = await buildAllowAttribute(args.label);
-    // A protected container never receives raw capture, whatever was granted.
-    const productAllow =
-      media === undefined
-        ? granted
-        : [
-            ...granted.split('; ').filter(directive => directive !== 'camera' && directive !== 'microphone'),
-            PROTECTED_MEDIA_ALLOW,
-          ].join('; ');
-    const allow = [productAllow, ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    const readAllow = async (): Promise<string> => {
+      const granted = await buildAllowAttribute(args.label);
+      // A protected container never receives raw capture, whatever was granted.
+      const productAllow =
+        media === undefined
+          ? granted
+          : [
+              ...granted.split('; ').filter(directive => directive !== 'camera' && directive !== 'microphone'),
+              PROTECTED_MEDIA_ALLOW,
+            ].join('; ');
+      return [productAllow, ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    };
+    const allow = await readAllow();
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -1811,6 +1826,19 @@ async function createHost(args: {
       iframe: host.iframe,
       stopMedia() {
         media?.dispose();
+      },
+      async refreshPermissionPolicy() {
+        const nextAllow = await readAllow();
+        // Only committed policy changes can replace the current execution.
+        // A notification grant or another identical policy keeps it alive.
+        if (
+          hostGeneration === renderGeneration &&
+          currentHost?.iframe === host.iframe &&
+          currentProduct !== null &&
+          nextAllow !== host.iframe.allow
+        ) {
+          rerenderProduct(currentProduct);
+        }
       },
       dispose() {
         mediatedInputHost.stop();

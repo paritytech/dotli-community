@@ -251,34 +251,16 @@ describe('isEnforceableDevicePermission', () => {
 });
 
 describe('device permission prompts', () => {
-  async function grantAndCountReloads(permission: 'Camera' | 'Notifications'): Promise<number> {
-    let reloads = 0;
-    const onReload = (): void => {
-      reloads += 1;
-    };
-    window.addEventListener('dotli:device-permission-changed', onReload);
-
-    const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
-    await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
-    await expect(response).resolves.toEqual('AllowAlways');
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    window.removeEventListener('dotli:device-permission-changed', onReload);
-    document.body.replaceChildren();
-    return reloads;
-  }
-
   it('As a product, an auto-granted OpenUrl is answered once without a prompt', async () => {
     await expect(createPromptPermission('myapp').devicePermission(PRODUCT, 'OpenUrl')).resolves.toBe('AllowOnce');
     expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
   });
 
-  it('As a product, my iframe stays alive when notifications are granted', async () => {
-    expect(await grantAndCountReloads('Notifications')).toBe(0);
-  });
-
-  it('As a product, my iframe reloads when a grant changes its allow attribute', async () => {
-    expect(await grantAndCountReloads('Camera')).toBe(1);
+  it.each(['Camera', 'Notifications'] as const)('keeps the core authorization snapshot unchanged while approving %s', async permission => {
+    const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
+    await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
+    await expect(response).resolves.toBe('AllowAlways');
+    expect(await getPermissionStatus('myapp', permission)).toBe('ask');
   });
 });
 
@@ -386,41 +368,6 @@ describe('three-way permission prompts', () => {
     expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
   });
 
-  it('As a dotli user, always allowing transactions saves the grant', async () => {
-    // Given
-    const events: unknown[] = [];
-    const onPermissionChanged = (e: Event): void => {
-      events.push((e as CustomEvent).detail);
-    };
-    window.addEventListener('dotli:permission-changed', onPermissionChanged);
-    const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
-      permission: { tag: 'ChainSubmit' },
-    });
-
-    // When
-    await clickPromptButton('Always allow');
-
-    // Then
-    await expect(response).resolves.toBe('AllowAlways');
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('granted');
-    expect(events).toEqual([{ label: 'myapp', permission: 'ChainSubmit' }]);
-    window.removeEventListener('dotli:permission-changed', onPermissionChanged);
-  });
-
-  it('As a dotli user, denying transactions saves the refusal', async () => {
-    // Given
-    const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
-      permission: { tag: 'ChainSubmit' },
-    });
-
-    // When
-    await clickPromptButton('Deny');
-
-    // Then
-    await expect(response).resolves.toBe('Deny');
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('denied');
-  });
-
   it('As a dotli user, I am asked which JAM network an app may reach', async () => {
     const genesis = `0x3539${'ab'.repeat(30)}` as const;
     for (const [button, decision] of [
@@ -482,12 +429,28 @@ describe('three-way permission prompts', () => {
       kind: 'Device',
       limiter: { allow: () => true },
       gatedByIframe: false,
+      commitOwner: 'host',
     });
 
     await clickPromptButton('Allow once');
 
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
+  });
+
+  it.each([
+    ['Always allow', 'AllowAlways', 'granted'],
+    ['Deny', 'Deny', 'denied'],
+  ] as const)('remembers a host-initiated camera decision: %s', async (button, decision, status) => {
+    const response = decidePromptPermission('myapp', 'Camera', {
+      kind: 'Device',
+      limiter: { allow: () => true },
+      gatedByIframe: false,
+      commitOwner: 'host',
+    });
+    await clickPromptButton(button);
+    await expect(response).resolves.toBe(decision);
+    expect(await getPermissionStatus('myapp', 'Camera')).toBe(status);
   });
 
   it('As a product, an existing grant is answered without being upgraded to a lasting one', async () => {
