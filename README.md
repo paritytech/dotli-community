@@ -352,8 +352,12 @@ calls and reloads into an execution where Media is unsupported and existing devi
 protected host Media** reloads back. The choice is execution-local, not a remembered consent. Same-origin frames never
 advertise Media.
 
-ICE uses the browser's host-candidate configuration (`[]`): no product-supplied ICE settings and no embedded public
-relay credentials. Cross-NAT connectivity needs a trusted host TURN facility.
+ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay. Set
+`VITE_MEDIA_ICE_SERVERS` at build time to a JSON `RTCIceServer[]` of credentialed `turn:`/`turns:` servers (the deploy
+workflow reads the `MEDIA_ICE_SERVERS` secret), e.g.
+`[{"urls":["turns:turn.example:5349"],"username":"dotli","credential":"…"}]`. STUN entries, extra fields and missing
+credentials are rejected; unset means calls cannot connect. Products never supply ICE settings, and the credentials ship
+in the public bundle, so use relay-scoped credentials.
 
 ## Development
 

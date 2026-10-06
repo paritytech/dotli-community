@@ -65,6 +65,53 @@ export async function callingPermissionSettings(label: string): Promise<CallingP
   return (await Promise.all(hosts.map(host => host.callingSettings()))).flat();
 }
 
+/**
+ * Parses the deployment's TURN relays (`VITE_MEDIA_ICE_SERVERS`, a JSON
+ * `RTCIceServer[]`). The host Media backend gathers relay candidates only, so
+ * every entry must be a credentialed `turn:`/`turns:` server; STUN or host
+ * candidates would expose addresses and are rejected. Unset means no relay,
+ * and calls cannot connect.
+ */
+export function parseMediaIceServers(raw: string | undefined): RTCIceServer[] {
+  if (raw === undefined || raw.trim() === '') {
+    return [];
+  }
+  const fail = (reason: string): never => {
+    throw new Error(`Media:InvalidIceServers: VITE_MEDIA_ICE_SERVERS ${reason}`);
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return fail('is not JSON');
+  }
+  if (!Array.isArray(parsed)) {
+    return fail('must be a JSON array of RTCIceServer');
+  }
+  return parsed.map((entry: unknown, index): RTCIceServer => {
+    const at = `[${String(index)}]`;
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return fail(`${at} must be an object`);
+    }
+    const { urls, username, credential, ...extra } = entry as Record<string, unknown>;
+    if (Object.keys(extra).length > 0) {
+      return fail(`${at} allows only urls, username and credential`);
+    }
+    const list = typeof urls === 'string' ? [urls] : urls;
+    if (
+      !Array.isArray(list) ||
+      list.length === 0 ||
+      !list.every((url: unknown) => typeof url === 'string' && /^turns?:/i.test(url))
+    ) {
+      return fail(`${at}.urls must be turn: or turns: URLs`);
+    }
+    if (typeof username !== 'string' || username === '' || typeof credential !== 'string' || credential === '') {
+      return fail(`${at} needs a username and credential`);
+    }
+    return { urls: [...(list as string[])], username, credential };
+  });
+}
+
 /** Host-only adapter for an authenticated, cross-origin product execution. */
 export function createMediaHost(options: {
   label: string;
@@ -78,6 +125,9 @@ export function createMediaHost(options: {
   if (new URL(options.origin).origin !== options.origin || options.origin === location.origin) {
     throw new Error('Media:UnsafeContainer');
   }
+  // Relay-only ICE from trusted host facilities, never product values. With
+  // no configured TURN relay, calls cannot connect.
+  const iceServers = options.iceServers ?? parseMediaIceServers(import.meta.env.VITE_MEDIA_ICE_SERVERS);
   const indicator = document.createElement('div');
   indicator.className = 'host-media-indicator';
   indicator.setAttribute('aria-label', `${productId} trusted call controls`);
@@ -185,12 +235,21 @@ export function createMediaHost(options: {
       ) {
         continue;
       }
-      const style = getComputedStyle(node);
-      if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) {
+      // Geometry first: this runs every animation frame over the whole body,
+      // and getComputedStyle is the expensive check.
+      const box = node.getBoundingClientRect();
+      if (
+        !box.width ||
+        !box.height ||
+        box.left >= right ||
+        box.right <= left ||
+        box.top >= bottom ||
+        box.bottom <= top
+      ) {
         continue;
       }
-      const box = node.getBoundingClientRect();
-      if (box.width && box.height && box.left < right && box.right > left && box.top < bottom && box.bottom > top) {
+      const style = getComputedStyle(node);
+      if (style.display !== 'none' && style.visibility === 'visible' && Number(style.opacity) !== 0) {
         return undefined;
       }
     }
@@ -219,9 +278,7 @@ export function createMediaHost(options: {
     getCompositorMount: id => (id === runtimeId && mount?.isConnected === true ? mount : null),
     isProductIsolated: isolated,
     measureViewport: measure,
-    // No product-supplied ICE and no invented public relay. This is the browser's
-    // real host-candidate configuration. Cross-NAT TURN requires host facilities.
-    iceServers: options.iceServers ?? [],
+    iceServers,
     async requestConsent(request, context) {
       if (disposed || context.productId !== productId || context.runtimeId !== runtimeId || context.signal.aborted) {
         throw blockingModalAbortError();
