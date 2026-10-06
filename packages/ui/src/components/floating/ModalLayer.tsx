@@ -17,7 +17,7 @@ export interface ModalLayerProps {
   label?: string | undefined;
   labelledBy?: string | undefined;
   initialFocus?: (() => HTMLElement | undefined) | undefined;
-  scrim?: 'dark' | 'light';
+  scrim?: 'dark' | 'light' | undefined;
   /** How the frame lays the surface out: centred card, sheet at the foot, under the topbar's end. */
   layout: Accessor<'center' | 'sheet' | 'topbar-end'>;
   /** A sheet taking another's place: no fade, no slide (see handOffSheet). */
@@ -94,6 +94,17 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     restoreFocus(restoreTo);
   };
 
+  const opening = (): { follows: boolean; restoreTo: HTMLElement | null } => ({
+    follows: document.querySelector('dialog[data-modal-layer][open]') !== null,
+    restoreTo: restoreTargetNow(),
+  });
+  /**
+   * A layer created open reads its opening as it is created. The next of a
+   * queue is created in the update that removes the answered one, and that
+   * one has closed by the time effects run, so a read there would miss it.
+   */
+  let openingAtCreation = untrack(() => props.open) ? opening() : undefined;
+
   createEffect(
     () => props.open,
     open => {
@@ -103,8 +114,10 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
       }
       if (open && !shown) {
         shown = true;
-        restoreTo = restoreTargetNow();
-        el.toggleAttribute('data-follows', document.querySelector('dialog[data-modal-layer][open]') !== null);
+        const { follows, restoreTo: target } = openingAtCreation ?? opening();
+        openingAtCreation = undefined;
+        restoreTo = target;
+        el.toggleAttribute('data-follows', follows);
         restoreTargets.set(el, restoreTo);
         el.showModal();
         unlockScroll = lockScroll();

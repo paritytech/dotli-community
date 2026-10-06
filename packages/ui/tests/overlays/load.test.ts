@@ -50,13 +50,13 @@ describe('overlays loader', () => {
     expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Hello');
   });
 
-  it('As a dotli user, a dialog renders into the overlay root and settles from its buttons', async () => {
+  it('As a dotli user, a dialog renders from the overlays root and settles from its buttons', async () => {
     // Given
     const outcome = presentModal(VIEW);
     await overlaysReady();
 
-    // When
-    byTestId('signing-btn-sign', byId('overlay-root')).click();
+    // When: the dialog is portalled into the body, for the top layer.
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(outcome).resolves.toEqual({ result: 'yes' });
@@ -158,7 +158,7 @@ describe('overlays loader', () => {
       // from its own button, instead of hanging forever.
       const recovered = presentModal(VIEW);
       await overlaysReady();
-      byTestId('signing-btn-sign', byId('overlay-root')).click();
+      byTestId('signing-btn-sign').click();
 
       // Then
       await expect(recovered).resolves.toEqual({ result: 'yes' });

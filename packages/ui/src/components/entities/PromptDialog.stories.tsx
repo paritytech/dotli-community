@@ -3,7 +3,7 @@
 
 import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect } from 'storybook/test';
+import { expect, within } from 'storybook/test';
 import { iconMarkup, PERMISSION_ICONS } from '../../permission-icons.js';
 import type { ModalEntry, ModalView } from '../../state/modals.js';
 import { PromptDialog } from './PromptDialog.js';
@@ -73,9 +73,10 @@ export const PasswordPrompt: Story = {
       fallbackResult: 'cancel',
     }),
   },
-  play: async ({ canvas, step }) => {
+  play: async ({ step }) => {
     await step('Then the password field has the focus', async () => {
-      await expect(canvas.getByTestId('password-prompt-input')).toHaveFocus();
+      // The dialog is portalled into the body, outside the story's canvas.
+      await expect(within(document.body).getByTestId('password-prompt-input')).toHaveFocus();
     });
   },
 };

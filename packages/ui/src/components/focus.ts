@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Focus and scroll helpers shared by the shell surfaces (shell/create-popover.ts),
-// the dialogs (primitives/Dialog.tsx) and the topbar's auto-hide
+// the modal layers (floating/ModalLayer.tsx) and the topbar's auto-hide
 // (topbar-autohide.ts). Solid-free.
 
 const TABBABLE = [

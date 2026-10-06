@@ -47,7 +47,16 @@ export interface SheetFrameProps {
   closeLabel?: string;
   /** Prefix for `-sheet-head`, `-sheet-title`, `-sheet-close`. */
   testId: string;
-  body?: { role?: 'menu'; label?: string; orientation?: 'horizontal' | undefined; testId?: string } | undefined;
+  body?:
+    | {
+        role?: 'menu';
+        label?: string;
+        orientation?: 'horizontal' | undefined;
+        testId?: string;
+        /** The body's own layout (Modal's keeps its answers in view). */
+        class?: string | undefined;
+      }
+    | undefined;
   children: JSX.Element;
 }
 
@@ -106,7 +115,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         </IconButton>
       </div>
       <div
-        class={s['body']}
+        class={[s['body'], props.body?.class]}
         role={props.body?.role}
         aria-label={props.body?.role === undefined ? undefined : props.body.label}
         aria-orientation={props.body?.orientation}

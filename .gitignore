@@ -92,3 +92,6 @@ docs/superpowers/
 # Storybook
 storybook-static
 packages/ui/.vrt/
+
+# Vitest attachments written by the screenshot runs (test:vrt)
+packages/ui/.vitest/
