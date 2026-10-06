@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "674e9a8a17b3916b1eaf99a53baa71a73b2fb115",
-  "upstreamRevisionNote": "--no-ff merge of feat/media-sessions (3762b3a8f373fcbd1f27b158f125ad33458e0aba, Media at prototype wire trait 218 with the minification-safe isolation probe and handshake retry) into origin f22a9384846101a245f923fa6285572b4f20b1fb, which carries the receiving integration at e4d0a15b5b74e7636ac50f2ee1563bf734c54c81 and the Tommy blockers #1216; client, host glue, signing-host WASM and testing WASM rebuilt together at 674e9a8a17b3916b1eaf99a53baa71a73b2fb115.",
+  "upstreamRevision": "e1808d8856dd07e4622eb3d54e2fada13a37a9c8",
+  "upstreamRevisionNote": "--no-ff merge of feat/media-sessions (36b99e3d3853eef260033fad10bb5758b8da168a, which marks Media advertisement lookups on their own connection) into #1217 head 674e9a8a17b3916b1eaf99a53baa71a73b2fb115 (feat/media-sessions 3762b3a8f373fcbd1f27b158f125ad33458e0aba merged into origin f22a9384846101a245f923fa6285572b4f20b1fb, which carries the receiving integration at e4d0a15b5b74e7636ac50f2ee1563bf734c54c81 and the Tommy blockers #1216); client, host glue, signing-host WASM and testing WASM rebuilt together at e1808d8856dd07e4622eb3d54e2fada13a37a9c8.",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
   "baseRevision": "795a4082023abd952041c784c9f9e81714aab999",
@@ -18,14 +18,14 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "1bb083cb3e0ab8fc79614f774a8df427bd5ee3643cf4c26d5078aa3f72d7606b",
+      "sourceArchiveSha256": "e1cafec116e2c2b1d66d55d49c39dbf84ea3404393e9b0d2ab9cbabcdb901350",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "2fcf0c8e467ee9acc54a654dafc1d16dc92ddce3e5bc3ba6876636496cd77b17",
-      "testingWasmSha256": "f1e717ed21b863f90ac89e4b1f8f2a8fa8fb29139a70ac686e224e585926cd04",
+      "wasmSha256": "abebe6235a9703f374b7c52fced369f32b0cd7712a4bf84ad567f907f221348a",
+      "testingWasmSha256": "c6f59b4bc1220344f141da155b7724accb5fb0bf029f3fbcd77457f6fb83c3a7",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "674e9a8a17b3916b1eaf99a53baa71a73b2fb115"
+  "wasmUpstreamRevision": "e1808d8856dd07e4622eb3d54e2fada13a37a9c8"
 }

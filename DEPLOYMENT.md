@@ -295,15 +295,16 @@ provider credentials.
 The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must have compatible receiving-enabled
 contracts and exact recorded source provenance. Required exports are `browser-receiving-worker` and
 `WasmNotificationReceiver` from `wasm/web`. This top integration vendors both SDK archives and both WASM bundles from
-native `feat/media-on-jam-seity` `674e9a8a17b3916b1eaf99a53baa71a73b2fb115` (trinity-user-agents #1217), the Media layer
-merged into #1011 integration revision `e4d0a15b5b74e7636ac50f2ee1563bf734c54c81`. Archive and generated client/WASM
-checksums are recorded in `vendor/truapi-host.lock.json`; the only package override is the host SDK's local
-`@parity/truapi` dependency. A clean #185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never
-reuse this top integration artifact downward. The build bundles `host-receiving.js` as a standalone classic IIFE and
-copies that SDK's WASM to a content-hashed, same-origin `assets/receiving-<sha256>.wasm`. No dynamic imports or second
-service-worker registration are used. The canonical installer owns callback SCALE adaptation. Workbox imports this
-bundle into `/host-sw.js`, retains its existing precache rules and prompted update behavior, and precaches the matching
-WASM. Deploy the complete host output together, not a worker or WASM file in isolation.
+native `feat/media-on-jam-seity` `e1808d8856dd07e4622eb3d54e2fada13a37a9c8` (local; #1217 head plus the Media
+advertisement-lookup marking), the Media layer merged into #1011 integration revision
+`e4d0a15b5b74e7636ac50f2ee1563bf734c54c81`. Archive and generated client/WASM checksums are recorded in
+`vendor/truapi-host.lock.json`; the only package override is the host SDK's local `@parity/truapi` dependency. A clean
+#185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never reuse this top integration artifact
+downward. The build bundles `host-receiving.js` as a standalone classic IIFE and copies that SDK's WASM to a
+content-hashed, same-origin `assets/receiving-<sha256>.wasm`. No dynamic imports or second service-worker registration
+are used. The canonical installer owns callback SCALE adaptation. Workbox imports this bundle into `/host-sw.js`,
+retains its existing precache rules and prompted update behavior, and precaches the matching WASM. Deploy the complete
+host output together, not a worker or WASM file in isolation.
 
 For CSP-enforcing hosting, the build also emits `host-receiving-csp.conf`, an nginx `add_header` directive with the
 exact relay origin. `deploy-nginx` installs this file as the site-specific `dotli-receiving-csp.conf` when
