@@ -197,7 +197,10 @@ test('As a user, a stopped chainHead follow reconnects once without showing a do
       const upstream = socket.connectToServer();
       socket.onMessage(message => {
         const request = JSON.parse(String(message)) as { method?: string; params?: unknown[] };
-        if (request.method === 'chainHead_v1_follow') {
+        // The resolver follows without runtime updates. The topbar's health
+        // watch opens its own runtime follow on the same socket once the
+        // product is on screen; that is not a reconnect.
+        if (request.method === 'chainHead_v1_follow' && request.params?.[0] === false) {
           follows += 1;
         }
         if (!stopped && request.method === 'chainHead_v1_storage') {

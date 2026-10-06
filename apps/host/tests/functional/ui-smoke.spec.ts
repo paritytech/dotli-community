@@ -432,7 +432,8 @@ test.describe('Shell UI smoke', () => {
     await page.route('**/*.css', async route => {
       const response = await route.fetch();
       const body = await response.text();
-      if (body.includes('#truapi-debug-panel')) {
+      // The panel's CSS modules are hashed; its own --td-* palette is not.
+      if (body.includes('--td-bg:')) {
         requested = true;
         await stylesheet.promise;
       }
