@@ -309,6 +309,16 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
 
+### Permission decision ownership
+
+Core-initiated permission callbacks return the user's decision without writing the grant. The canonical core commits
+that decision against the permission revision it captured before prompting; an adapter-side write would invalidate the
+pending request. Host-initiated mediated-device prompts still persist their own durable decisions.
+
+After a committed permission change, the bridge matches the canonical product identity and refreshes the active
+iframe's Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps
+the requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
+
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in

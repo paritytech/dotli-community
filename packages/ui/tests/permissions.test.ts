@@ -254,12 +254,15 @@ describe('device permission prompts', () => {
     expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
   });
 
-  it.each(['Camera', 'Notifications'] as const)('keeps the core authorization snapshot unchanged while approving %s', async permission => {
-    const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
-    await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
-    await expect(response).resolves.toBe('AllowAlways');
-    expect(await getPermissionStatus('myapp', permission)).toBe('ask');
-  });
+  it.each(['Camera', 'Notifications'] as const)(
+    'keeps the core authorization snapshot unchanged while approving %s',
+    async permission => {
+      const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
+      await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
+      await expect(response).resolves.toBe('AllowAlways');
+      expect(await getPermissionStatus('myapp', permission)).toBe('ask');
+    },
+  );
 });
 
 describe('getGrantedDevicePermissions', () => {

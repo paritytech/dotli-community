@@ -303,11 +303,14 @@ describe('bridge render lifecycle', () => {
     let locationGranted = false;
     const provider = makeProvider();
     provider.getPermissionAuthorizationStatuses.mockImplementation((requests: PermissionAuthorizationRequest[]) =>
-      Promise.resolve(requests.map(request =>
-        request.tag === 'Device' && (request.value === 'Notifications' || (request.value === 'Location' && locationGranted))
-          ? 'Authorized'
-          : 'NotDetermined',
-      )),
+      Promise.resolve(
+        requests.map(request =>
+          request.tag === 'Device' &&
+          (request.value === 'Notifications' || (request.value === 'Location' && locationGranted))
+            ? 'Authorized'
+            : 'NotDetermined',
+        ),
+      ),
     );
     const initial = renderIframe('https://preview.example/app', 'committed-policy');
     await waitForProviderRequests(1);
@@ -317,9 +320,11 @@ describe('bridge render lifecycle', () => {
     const notify = async (): Promise<void> => {
       vi.useFakeTimers({ toFake: ['setTimeout'] });
       try {
-        window.dispatchEvent(new CustomEvent('dotli:permission-changed', {
-          detail: { productId: labelToProductId('committed-policy') },
-        }));
+        window.dispatchEvent(
+          new CustomEvent('dotli:permission-changed', {
+            detail: { productId: labelToProductId('committed-policy') },
+          }),
+        );
         await vi.runAllTimersAsync();
       } finally {
         vi.useRealTimers();
