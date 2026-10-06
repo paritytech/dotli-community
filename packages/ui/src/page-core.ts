@@ -15,6 +15,10 @@ import {
 import { log } from '@dotli/shared';
 import type {
   AuthState,
+  CoreStorage,
+  CoreStorageKey,
+  MediaPlatform,
+  PermissionAuthorizationRequest,
   ProductExecutionKind,
   RequiredHostCallbacks,
   TrUApiProductProvider,
@@ -44,6 +48,8 @@ import {
   onVerifiedLocalIdentityChanged,
   readLocalWalletSecret,
   readVerifiedLocalIdentity,
+  registerCoreStoragePermissionProvider,
+  waitForCoreStoragePermissionRefresh,
   writeVerifiedLocalIdentity,
   type LocalWalletIdentityBinding,
 } from './host-callbacks/SessionStore.js';
@@ -60,6 +66,8 @@ export interface CoreConnectionOptions {
   contactLabels?: ContactLabelOverlay;
   archiveCid?: string | undefined;
   isCurrentExecution?: () => boolean;
+  /** Host-owned Media for a protected container; never product-supplied. */
+  media?: ConnectionMedia;
 }
 
 export interface PageProduct {
@@ -78,12 +86,24 @@ export interface LiveLocalWallet {
 
 type PageRuntime = WorkerPairingHostRuntime | WorkerSigningHostRuntime;
 
+/**
+ * Host-owned Media for one product connection. Built by the trusted host page
+ * only, never from product metadata or requests.
+ */
+export interface ConnectionMedia {
+  platform: Required<MediaPlatform>;
+  authChanged(state: AuthState): void;
+  observeStorage(key: CoreStorageKey): void;
+}
+
 /** Close through `close`, never the provider, so expected closes stay local. */
 export interface CoreConnection {
   provider: TrUApiProductProvider;
   productId: string;
   wallet: LiveLocalWallet | undefined;
   receiving: ReceivingExecution;
+  /** Settles once every live core sharing this storage applied the decision. */
+  waitForPermissionRefresh(request: PermissionAuthorizationRequest): Promise<void>;
   close(): void;
 }
 
@@ -101,6 +121,8 @@ interface Core {
   leases: number;
   persistent: boolean;
   faulted: boolean;
+  /** The session-store adapters, before any observing wrapper. */
+  permissionStorage(): CoreStorage;
   openCallbacks(options: CoreConnectionOptions): { callbacks: RequiredHostCallbacks; dispose(): void };
   dispose(): void;
 }
@@ -284,6 +306,8 @@ function createCore(product: PageProduct): Core {
   let pendingWalletAuthState: AuthState | undefined;
   let custodyLease: string | undefined;
   let nativeChatFiles: BrowserNativeChatFilesHost | undefined;
+  let permissionStorage: CoreStorage | undefined;
+  const connectionMedia = new Set<ConnectionMedia>();
   const contactsGenesis = getActiveServicesConfig().people.genesis;
   const contactsDirectory =
     context === undefined
@@ -342,6 +366,35 @@ function createCore(product: PageProduct): Core {
       ...(contactsDirectory === undefined ? {} : { contactsDirectory }),
     });
     runtimeCallbacks = callbacks;
+    permissionStorage = callbacks.coreStorage;
+    // Live Media connections learn the persisted Calling scopes the core uses,
+    // so trusted settings can list and revoke them.
+    const sessionStorage = callbacks.coreStorage;
+    const observePermission = (key: CoreStorageKey): void => {
+      if (key.tag === 'PermissionAuthorization') {
+        for (const media of connectionMedia) {
+          media.observeStorage(key);
+        }
+      }
+    };
+    callbacks.coreStorage = {
+      ...sessionStorage,
+      readCoreStorage: key => {
+        observePermission(key);
+        return sessionStorage.readCoreStorage(key);
+      },
+      writeCoreStorage: async (key, value) => {
+        await sessionStorage.writeCoreStorage(key, value);
+        observePermission(key);
+      },
+      compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => {
+        const changed = await sessionStorage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
+        if (changed) {
+          observePermission(key);
+        }
+        return changed;
+      },
+    };
     if (contactsDirectory !== undefined) {
       callbacks.coreStorage = contactsDirectory.observeStorage(callbacks.coreStorage);
     }
@@ -365,9 +418,13 @@ function createCore(product: PageProduct): Core {
       callbacks.nativeChatFiles = nativeChatFiles;
     }
     const presentAuthState = callbacks.auth.authStateChanged;
+    // Media fences its operations on every accepted authority change.
     const forwardAuthState = (state: AuthState): void => {
       if (isPageProduct(core) && state.tag === 'Connected') {
         setReceivingAccount(state.value.identityAccountId);
+      }
+      for (const media of connectionMedia) {
+        media.authChanged(state);
       }
       presentAuthState(state);
     };
@@ -544,7 +601,14 @@ function createCore(product: PageProduct): Core {
     leases: 0,
     persistent: context !== undefined,
     faulted: false,
+    permissionStorage() {
+      if (disposed || permissionStorage === undefined) {
+        throw new Error('Page core storage is unavailable');
+      }
+      return permissionStorage;
+    },
     openCallbacks(options) {
+      const media = options.media;
       if (disposed || runtimeCallbacks === undefined) {
         throw new Error('Page core callbacks are unavailable');
       }
@@ -575,6 +639,10 @@ function createCore(product: PageProduct): Core {
         },
       };
       callbacks.coreStorage = runtimeCallbacks.coreStorage;
+      if (media !== undefined) {
+        callbacks.media = media.platform;
+        connectionMedia.add(media);
+      }
       if (nativeChatFiles !== undefined) {
         callbacks.nativeChatFiles = nativeChatFiles;
       }
@@ -587,6 +655,9 @@ function createCore(product: PageProduct): Core {
         options.contactAvatars?.dispose();
         options.contactLabels?.dispose();
         connectionDisposers.delete(dispose);
+        if (media !== undefined) {
+          connectionMedia.delete(media);
+        }
         contacts?.dispose();
         scope.dispose();
       };
@@ -647,6 +718,7 @@ async function connect(
     throw new Error('Page core is closed');
   }
   const productId = productIdOf(core.product);
+  const storage = core.permissionStorage();
   const callbacks = core.openCallbacks(options);
   const receiving = createReceivingExecution(productId, options.archiveCid, options.isCurrentExecution);
   callbacks.callbacks.notifications.receiverCommand = (product, action, payload) =>
@@ -660,15 +732,27 @@ async function connect(
     core.faulted = true;
     throw error;
   }
-  if (!cores.has(core)) {
+  let unregisterRefresh: () => void;
+  try {
+    if (!cores.has(core)) {
+      throw new Error('Page core closed while connecting the product');
+    }
+    // Decisions persisted by any core sharing this storage reach this one.
+    unregisterRefresh = await registerCoreStoragePermissionProvider(storage, productId, provider);
+    if (!cores.has(core)) {
+      unregisterRefresh();
+      throw new Error('Page core closed while connecting the product');
+    }
+  } catch (error) {
     receiving.close();
     callbacks.dispose();
     provider.dispose();
-    throw new Error('Page core closed while connecting the product');
+    throw error;
   }
   let closing = false;
   provider.subscribeClose?.(() => {
     receiving.close();
+    unregisterRefresh();
     callbacks.dispose();
     if (!closing) {
       core.faulted = true;
@@ -679,12 +763,14 @@ async function connect(
     productId,
     wallet: core.wallet,
     receiving,
+    waitForPermissionRefresh: request => waitForCoreStoragePermissionRefresh(storage, productId, request),
     close() {
       if (closing) {
         return;
       }
       closing = true;
       receiving.close();
+      unregisterRefresh();
       callbacks.dispose();
       provider.dispose();
     },

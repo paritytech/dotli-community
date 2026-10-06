@@ -89,6 +89,20 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
   rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag
   and `paseoli.dev` from `main`.
 
+## Media TURN credentials
+
+Host Media calls are relay-only and need TURN. The Deploy workflow mints Cloudflare TURN credentials immediately before
+`build:prod` (`scripts/mint-media-turn.ts`) when the environment has the secrets `DOTLI_TURN_CLOUDFLARE_KEY_ID` and
+`DOTLI_TURN_CLOUDFLARE_API_TOKEN`, and passes only the masked relay credentials to the build as
+`VITE_MEDIA_ICE_SERVERS`. The API token never reaches the bundle or the log.
+
+- The credentials expire **48 hours** after the deploy (Cloudflare's maximum). After that, calls from the deployed build
+  cannot connect until a redeploy mints fresh ones, so redeploy an environment that must keep calling at least every two
+  days.
+- Without the secrets the workflow emits a warning and builds without a relay: Media calls cannot connect.
+- A local `make deploy` build has no relay unless `VITE_MEDIA_ICE_SERVERS` is exported (see README, Protected browser
+  Media).
+
 ## Opt-in CI identity proxy rollout
 
 CI normally uploads only the three frontend builds. To also deploy the existing NGINX template and identity proxy, set
@@ -163,12 +177,13 @@ Each browser layer must vendor a matching client/host package set from its corre
 | ----------------------- | --------------------------------------------------------- |
 | #185 PolkaVM runtime    | `host-rust-core#540`, `feat/pvm-app-runtime`              |
 | #255 Chat               | `host-rust-core#709`, `feat/chat-v2-product-authority`    |
+| Media (on #255, no PR)  | `feat/media-sessions` on `host-rust-core#709`             |
 | #287 Seity profiles     | `host-rust-core#1001`, `feat/chat-seity-profile`          |
 | #290 JAM PeerTransport  | `host-rust-core#1010`, `feat/pvm-peer-transport`          |
 | #291 Deploy integration | `host-rust-core#1011`, `feat/jam-peer-transport-on-seity` |
 
 Keep #291 and native #1011 integration-only: merge their refreshed Seity and PeerTransport parents with `--no-ff`, then
-refresh the matching vendored packages. Never copy Chat, Seity, or PeerTransport APIs into a lower layer.
+refresh the matching vendored packages. Never copy Chat, Seity, PeerTransport, or Media APIs into a lower layer.
 
 Before publishing the Chat layer:
 

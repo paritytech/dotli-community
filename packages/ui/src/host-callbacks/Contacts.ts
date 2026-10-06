@@ -96,13 +96,13 @@ export class NativeChatContactsDirectory {
    * The native getter shares the writer's lock and cannot read pre-commit state.
    */
   observeStorage(storage: CoreStorage): CoreStorage {
-    const mutate = async (key: CoreStorageKey, operation: () => Promise<void>): Promise<void> => {
+    const mutate = async <T>(key: CoreStorageKey, operation: () => Promise<T>): Promise<T> => {
       if (!affectsContacts(key)) {
         return operation();
       }
       this.invalidate();
       try {
-        await operation();
+        return await operation();
       } finally {
         this.invalidate();
       }
@@ -111,6 +111,8 @@ export class NativeChatContactsDirectory {
       ...storage,
       writeCoreStorage: (key, value) => mutate(key, () => storage.writeCoreStorage(key, value)),
       clearCoreStorage: key => mutate(key, () => storage.clearCoreStorage(key)),
+      compareExchangeCoreStorage: (key, expected, replacement, notifyOnSuccess) =>
+        mutate(key, () => storage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess)),
     };
   }
 }

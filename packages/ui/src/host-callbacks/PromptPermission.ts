@@ -29,10 +29,10 @@ import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } fro
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
 import { ERRORS } from '../errors.js';
 import { recordPermissionChange } from '../state/permissions.js';
+import { mediaOwnsCapture } from '../media-host.js';
 
-// Remote tags that don't reach a host enforcement point: WebRtc is gated
-// by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
-// reliably intercepted from inside the sandbox. Auto-grant either.
+// Legacy HTML products have no host interception point for independent HTTP/WS/RTC.
+// Protected Media containers separately deny all product-side raw capture.
 // `JamPeers` carries its genesis and has its own prompt.
 function gatedRemotePermissionName(
   tag: Exclude<RemotePermission['tag'], 'JamPeers'>,
@@ -44,6 +44,7 @@ function gatedRemotePermissionName(
       return tag;
     case 'Remote':
     case 'WebRtc':
+    case 'Calling':
       return null;
   }
 }
@@ -54,6 +55,12 @@ export function createPromptPermission(
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
+    // A protected Media container never receives raw capture; the host owns it.
+    // Refuse by error, never `Deny`: the core would persist a durable device
+    // denial on the same key host Media consent reads, disabling calls.
+    if (mediaOwnsCapture(label) && (tag === 'Camera' || tag === 'Microphone')) {
+      throw new Error(ERRORS.MEDIA_RAW_CAPTURE_REFUSED);
+    }
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
@@ -71,6 +78,10 @@ export function createPromptPermission(
           signal,
         }),
       );
+    }
+    // Calling consent is operation-scoped through the host Media backend.
+    if (permission.tag === 'Calling') {
+      return 'Deny';
     }
     const name = gatedRemotePermissionName(permission.tag);
     if (name === null) {

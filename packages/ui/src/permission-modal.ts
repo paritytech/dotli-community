@@ -22,7 +22,8 @@ import type { ModalButton } from './state/modals.js';
 //
 // Rendered by the overlays root (components/overlays/SigningDialog.tsx).
 
-export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
+export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName | 'Calling', string> = {
+  Calling: 'Make and receive encrypted calls for this account and network',
   Notifications: 'Show in-app and system notifications',
   Camera: 'Access your camera for photo and video capture',
   Microphone: 'Access your microphone for audio input',
@@ -40,7 +41,9 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   StatementSubmit: 'Submit signed statements to the statement store',
 };
 
-const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
+const PERMISSION_ICONS: Record<EnforceablePermissionName | 'Calling', string> = {
+  Calling:
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h4l2 5-3 2a14 14 0 0 0 5 5l2-3 5 2v4c0 2-2 3-4 2C9 18 4 13 3 6 2 4 4 3 6 3Z"/></svg>',
   Notifications:
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>' +
@@ -134,6 +137,11 @@ export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | '
 export interface PermissionRequestModalOptions {
   /** Offer "Allow once" alongside "Always allow" and "Deny". */
   allowOnce?: boolean;
+  /**
+   * Trusted host Media consent: the exact product id and scope fields. Media
+   * consent never reloads the product or grants it raw capture.
+   */
+  media?: { productId: string; fields: readonly (readonly [string, string])[] };
 }
 
 /**
@@ -141,7 +149,7 @@ export interface PermissionRequestModalOptions {
  */
 export async function showPermissionRequestModal(
   label: string,
-  permission: EnforceablePermissionName,
+  permission: EnforceablePermissionName | 'Calling',
   signal?: AbortSignal,
   options: PermissionRequestModalOptions = {},
 ): Promise<PermissionPromptDecision> {
@@ -183,6 +191,7 @@ async function showPermissionPrompt(
   options: PermissionRequestModalOptions,
 ): Promise<PermissionPromptDecision> {
   const allowOnce = options.allowOnce === true;
+  const media = options.media;
   const buttons: ModalButton<PermissionPromptDecision>[] = [
     { label: 'Deny', variant: 'cancel', result: 'denied' },
     allowOnce
@@ -201,11 +210,19 @@ async function showPermissionPrompt(
       icon: prompt.icon,
       title: 'Permission Request',
       fields: [
-        { label: 'Application', value: withActiveTld(label) },
+        { label: 'Application', value: media?.productId ?? withActiveTld(label) },
         { label: 'Permission', value: prompt.description },
         ...(prompt.detail === undefined ? [] : [{ label: 'JAM network genesis', value: prompt.detail, mono: true }]),
+        ...(media?.fields ?? []).map(([fieldLabel, value]) => ({ label: fieldLabel, value, mono: true })),
       ],
-      ...(prompt.reloads ? { notice: 'Granting this permission will reload the application.' } : {}),
+      ...(media !== undefined
+        ? {
+            notice:
+              'Only the trusted host handles call media. The application receives no camera, microphone, screen pixels, or raw browser capture permission.',
+          }
+        : prompt.reloads
+          ? { notice: 'Granting this permission will reload the application.' }
+          : {}),
       buttons,
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',

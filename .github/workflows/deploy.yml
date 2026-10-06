@@ -121,6 +121,16 @@ jobs:
         if: github.event_name == 'release'
         run: node scripts/set-version.ts "${{ github.event.release.tag_name }}"
 
+      # Relay-only host Media needs TURN. Mint 48-hour Cloudflare credentials
+      # for this build; the API token stays in this step, the masked relay
+      # credentials reach the bundle through VITE_MEDIA_ICE_SERVERS. Without the
+      # secrets the step warns and calls cannot connect. Redeploy to refresh.
+      - name: Mint Media TURN credentials
+        run: node scripts/mint-media-turn.ts
+        env:
+          DOTLI_TURN_CLOUDFLARE_KEY_ID: ${{ secrets.DOTLI_TURN_CLOUDFLARE_KEY_ID }}
+          DOTLI_TURN_CLOUDFLARE_API_TOKEN: ${{ secrets.DOTLI_TURN_CLOUDFLARE_API_TOKEN }}
+
       - run: npx turbo run build:prod
         env:
           VITE_APP_URL: ${{ vars.APP_URL }}
@@ -133,6 +143,11 @@ jobs:
           VITE_RECEIVING_PUSH_ORIGIN: ${{ vars.RECEIVING_PUSH_ORIGIN }}
           VITE_RECEIVING_VAPID_PUBLIC_KEY: ${{ vars.RECEIVING_VAPID_PUBLIC_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      # Scope the relay credentials to build:prod; later steps never see them.
+      - name: Drop Media TURN credentials from the job environment
+        if: always()
+        run: echo "VITE_MEDIA_ICE_SERVERS=" >> "$GITHUB_ENV"
 
       - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
         with:
