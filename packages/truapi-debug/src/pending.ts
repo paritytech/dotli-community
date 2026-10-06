@@ -44,35 +44,9 @@ export function pendingKeyOf(ev: StoredEvent): string | null {
 }
 
 /**
- * Every call still waiting on a reply, mapped to the time its request went
- * out. Absence from this map is what tells a row's badge to disappear.
- */
-export function openCalls(events: readonly StoredEvent[]): Map<string, number> {
-  const requestedAt = new Map<string, number>();
-  const answered = new Set<string>();
-
-  for (const ev of events) {
-    if (ev.kind !== 'truapi') {
-      continue;
-    }
-    const key = callKeyOf(ev);
-    if (ev.tag.endsWith('_response')) {
-      answered.add(key);
-    } else if (!requestedAt.has(key)) {
-      requestedAt.set(key, ev.receivedAt);
-    }
-  }
-
-  for (const key of answered) {
-    requestedAt.delete(key);
-  }
-  return requestedAt;
-}
-
-/**
- * `openCalls`, kept up to date from successive snapshots of one event store
- * at a cost proportional to the events that arrived or left since the last
- * snapshot, not to the events retained.
+ * Every call still waiting on a reply, kept up to date from successive
+ * snapshots of one event store at a cost proportional to the events that
+ * arrived or left since the last snapshot, not to the events retained.
  */
 export class OpenCallTracker {
   private seen: readonly StoredEvent[] = [];
@@ -83,7 +57,11 @@ export class OpenCallTracker {
   private readonly openByKey = new Map<string, number>();
   private changed: ReadonlySet<string> = new Set();
 
-  /** Every call still waiting on a reply, as `openCalls` returns it. */
+  /**
+   * Every call still waiting on a reply, mapped to the time its first
+   * retained non-reply event arrived. Absence from this map is what tells a
+   * row's badge to disappear.
+   */
   get open(): ReadonlyMap<string, number> {
     return this.openByKey;
   }

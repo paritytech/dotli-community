@@ -4,32 +4,47 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { cleanup as unmountAll } from '@solidjs/testing-library';
-import { setBackend, setCacheSettings, setNetwork } from '@dotli/config';
+import {
+  BACKEND_LABELS,
+  setBackend,
+  setCacheSettings,
+  setNetwork,
+  NETWORK_NAME_TO_SERVICES_CONFIG,
+  type Backend,
+  type CacheSettings,
+  type Network,
+} from '@dotli/config';
 
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import {
-  pointerPress,
-  pointerPressUnfocusable,
-  renderComponent,
-  resetStores,
-  tabTo,
-  waitForContent,
-} from '../../helpers/solid.js';
-import { normalized, sameChildren } from './old-auth-markup.js';
+import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
-import { oldModeButton, oldModePopover, type OldSettings } from './old-settings-markup.js';
+import {
+  buildBaseDiagnosticsRows,
+  buildLightClientVersionLabel,
+  packageVersions,
+} from '../../../src/settings-actions.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
-import { byId, query } from '../../support.js';
+import { byId, byTestId, must, query } from '../../support.js';
+import { focusables } from '../../../src/components/focus.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
-const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
-vi.mock('../../../src/settings-actions.js', async importOriginal => ({
-  ...(await importOriginal<typeof SettingsActionsModule>()),
-  applyAndReset: actions.applyAndReset,
+const actions = vi.hoisted(() => ({
+  applyAndReset: vi.fn(),
+  extraRows: [] as [label: string, value: string][],
 }));
+vi.mock('../../../src/settings-actions.js', async importOriginal => {
+  const actual = await importOriginal<typeof SettingsActionsModule>();
+  return {
+    ...actual,
+    applyAndReset: actions.applyAndReset,
+    // Lets a test add a row the default backend does not produce, such as a node reading "n/a".
+    buildBaseDiagnosticsRows: () => [...actual.buildBaseDiagnosticsRows(), ...actions.extraRows],
+  };
+});
 
 // No chain answers here: the share report's block heights read "n/a".
 vi.mock('../../../../protocol/src/client.js', () => ({
@@ -71,6 +86,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   actions.applyAndReset.mockReset();
+  actions.extraRows = [];
   actions.applyAndReset.mockResolvedValue(undefined);
   rpc.live = null;
   networks.enabled = null;
@@ -104,8 +120,9 @@ async function drain(): Promise<void> {
   }
 }
 
+/** Open, as the surface says; it is in the page only from its first opening. */
 function isOpen(): boolean {
-  return byId('mode-popover').classList.contains('open');
+  return document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
 }
 
 function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -130,7 +147,7 @@ function button(text: string): HTMLButtonElement {
 }
 
 function applyButton(): HTMLButtonElement {
-  return query(document, '.mode-apply-row button', HTMLButtonElement);
+  return query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
 }
 
 function toggle(label: string): HTMLButtonElement {
@@ -142,38 +159,13 @@ function radio(name: string, value: string): HTMLInputElement {
 }
 
 function infoRow(label: string): HTMLElement {
-  const found = Array.from(document.querySelectorAll<HTMLElement>('.mode-info-row')).find(
+  const found = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mode-info-row"]')).find(
     row => row.firstElementChild?.textContent === label,
   );
   if (found === undefined) {
     throw new Error(`no "${label}" row`);
   }
   return found;
-}
-
-/**
- * The viewport width against the CSS breakpoint where the popover becomes a
- * full-screen sheet, `(max-width: 560px)`: happy-dom cannot evaluate it.
- * Flip `narrow` to resize.
- */
-function stubViewport(narrow: boolean): { narrow: boolean } {
-  const viewport = { narrow };
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    get matches() {
-      return query === '(max-width: 560px)' && viewport.narrow;
-    },
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
-  return viewport;
-}
-
-/** The popover's controls that Tab reaches, in order. */
-function tabbables(): HTMLElement[] {
-  return Array.from(
-    byId('mode-popover').querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
-  ).filter(el => !(el instanceof HTMLInputElement && !el.checked));
 }
 
 async function renderPopover({ seed = true } = {}): Promise<void> {
@@ -201,27 +193,245 @@ async function openPopover(): Promise<void> {
   await settle();
 }
 
-/** The backdrop: the shared Popover's, open with the popover. */
-function expectBackdrop(open: boolean): void {
-  const backdrop = byId('mode-popover-backdrop');
-  expect(backdrop.classList.contains('popover-backdrop')).toBe(true);
-  expect(backdrop.classList.contains('open')).toBe(open);
+/** What the popover reads from @dotli/config when it opens. */
+interface Settings {
+  chain: Backend;
+  network: Network;
+  cache: CacheSettings;
+  enabledNetworks: Network[];
+  sharedWorkerSupported: boolean;
+  debugOn: boolean;
+}
+
+const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
+
+/** A section header: a div holding only its text. */
+function expectHeader(el: Element | undefined, text: string): void {
+  expect(el?.tagName).toBe('DIV');
+  expect(el?.childElementCount).toBe(0);
+  expect(el?.textContent).toBe(text);
+}
+
+/** A cache row: its label and a switch of the same name. */
+function expectCacheRow(row: Element | undefined, label: string, checked: boolean): void {
+  expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'BUTTON']);
+  expect(row?.children[0]?.textContent).toBe(label);
+  const toggle = nth(must(row, 'a cache row').children, 1);
+  expect(toggle.getAttribute('role')).toBe('switch');
+  expect(toggle.getAttribute('aria-label')).toBe(label);
+  expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
+}
+
+/**
+ * A diagnostics row: label and value, the copy hint on the copyable ones,
+ * dense in the package list with the full name as its tooltip.
+ */
+function expectInfoRow(
+  row: Element | undefined,
+  label: string,
+  value: string,
+  opts: { copyable?: boolean; dense?: boolean } = {},
+): void {
+  expect(tags(must(row, 'a row'))).toEqual(opts.copyable === true ? ['SPAN', 'BUTTON', 'SPAN'] : ['SPAN', 'CODE']);
+  expect(row?.children[0]?.textContent).toBe(label);
+  expect(row?.querySelector('code')?.textContent).toBe(value);
+  expect(row?.hasAttribute('data-copyable')).toBe(opts.copyable === true);
+  expect(row?.hasAttribute('data-dense')).toBe(opts.dense === true);
+  let title: string | null = null;
+  if (opts.copyable === true) {
+    title = `Click to copy ${label}`;
+  } else if (opts.dense === true) {
+    title = label;
+  }
+  expect(row?.getAttribute('title')).toBe(title);
+}
+
+/** A radio card: a label holding the radio (name, value, checked, disabled), its title, its chip and its description. */
+function expectChoice(
+  card: Element | undefined,
+  name: string,
+  opts: { value: string; label: string; description: string; selected: boolean; disabled?: boolean; chip?: string },
+): void {
+  expect(card?.tagName).toBe('LABEL');
+  const input = query(must(card, 'a choice'), 'input', HTMLInputElement);
+  expect(input.type).toBe('radio');
+  expect(input.name).toBe(name);
+  expect(input.value).toBe(opts.value);
+  expect(input.checked).toBe(opts.selected);
+  expect(input.disabled).toBe(opts.disabled === true);
+  expect(card?.hasAttribute('data-selected')).toBe(opts.selected);
+  expect(card?.hasAttribute('data-disabled')).toBe(opts.disabled === true);
+  expect(card?.textContent).toBe(`${opts.label}${opts.chip ?? ''}${opts.description}`);
+}
+
+/** A labelled radio group: its caps label over the group of cards. Returns the group. */
+function expectRadioGroup(section: Element, label: string): Element {
+  expect(tags(section)).toEqual(['DIV', 'DIV']);
+  expectHeader(section.children[0], label);
+  const group = nth(section.children, 1);
+  expect(group.getAttribute('role')).toBe('radiogroup');
+  expect(group.getAttribute('aria-label')).toBe(label);
+  return group;
+}
+
+/** The left column: network, transport and cache settings. */
+function expectSettingsColumn(left: Element, settings: Settings): void {
+  const sections = Array.from(left.children);
+  let at = 0;
+  if (settings.enabledNetworks.length > 1) {
+    const group = expectRadioGroup(nth(sections, at++), 'Network');
+    expect(group.childElementCount).toBe(settings.enabledNetworks.length);
+    settings.enabledNetworks.forEach((n, i) => {
+      const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
+      expectChoice(group.children[i], 'dotli-network', {
+        value: n,
+        label: cfg.label,
+        description: cfg.description,
+        selected: n === settings.network,
+      });
+    });
+  }
+
+  const transports = expectRadioGroup(nth(sections, at++), 'Network transport');
+  const choices: [Backend, string][] = [
+    ['smoldot-direct', 'Verified in your browser, separate for each tab'],
+    ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
+    ['rpc-gateway', 'Fetched from trusted servers. Fastest, but less private'],
+  ];
+  expect(transports.childElementCount).toBe(choices.length);
+  choices.forEach(([value, description], i) => {
+    const disabled = value === 'smoldot-shared-worker' && !settings.sharedWorkerSupported;
+    expectChoice(transports.children[i], 'dotli-backend', {
+      value,
+      label: BACKEND_LABELS[value],
+      description: disabled ? 'Unavailable in this browser or private window' : description,
+      selected: value === settings.chain,
+      disabled,
+      ...(value === 'smoldot-direct' ? { chip: 'Recommended' } : {}),
+    });
+  });
+
+  const cache = nth(sections, at++);
+  expect(tags(cache)).toEqual(['DIV', 'DIV', 'DIV']);
+  expectHeader(cache.children[0], 'Cache');
+  const well = nth(cache.children, 1);
+  expect(well.getAttribute('data-testid')).toBe('mode-cache');
+  expect(well.childElementCount).toBe(3);
+  expectCacheRow(well.children[0], 'dotNS cache', !settings.cache.skipCidCache);
+  expectCacheRow(well.children[1], 'Archive cache', !settings.cache.skipArchiveCache);
+  expectCacheRow(well.children[2], 'Worker cache', !settings.cache.skipWorkerCache);
+  const clearRow = nth(cache.children, 2);
+  expect(clearRow.getAttribute('data-testid')).toBe('mode-clear-all-row');
+  expect(tags(clearRow)).toEqual(['BUTTON']);
+  expect(clearRow.children[0]?.textContent).toBe('Clear all caches');
+  expect(clearRow.children[0]?.getAttribute('title')).toBe(
+    'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
+  );
+  expect(sections).toHaveLength(at);
+}
+
+/** The right column: the diagnostics well, the closed Packages disclosure and the share and debug buttons. */
+function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
+  expect(tags(right)).toEqual(['DIV', 'DIV', 'DIV', 'DIV']);
+  const [header, diagnostics, packages, actions] = Array.from(right.children) as [Element, Element, Element, Element];
+  expectHeader(header, 'Diagnostics');
+
+  expect(diagnostics.getAttribute('data-testid')).toBe('mode-diagnostics');
+  const copyable = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
+  const base = buildBaseDiagnosticsRows();
+  expect(diagnostics.childElementCount).toBe(base.length);
+  base.forEach(([label, value], i) => {
+    expectInfoRow(diagnostics.children[i], label, value, { copyable: copyable.has(label) });
+  });
+
+  expect(packages.getAttribute('data-testid')).toBe('mode-packages-well');
+  const { polkadotApi, parityTruapi } = packageVersions();
+  const toggle = byTestId('mode-packages-toggle', packages, HTMLButtonElement);
+  expect(toggle.type).toBe('button');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.getAttribute('aria-controls')).toBe('mode-packages');
+  expect(toggle.textContent).toBe(`Packages${String(1 + polkadotApi.length + parityTruapi.length)}`);
+  const list = byId('mode-packages');
+  expect(list.parentElement).toBe(packages);
+  expect(list.hidden).toBe(true);
+  const items = Array.from(list.children);
+  let at = 0;
+  expectHeader(items[at++], 'Light client');
+  expectInfoRow(items[at++], '@parity/truapi-provider', buildLightClientVersionLabel(), { dense: true });
+  if (polkadotApi.length > 0) {
+    expectHeader(items[at++], '@polkadot-api');
+    for (const pkg of polkadotApi) {
+      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
+    }
+  }
+  if (parityTruapi.length > 0) {
+    expectHeader(items[at++], '@parity/truapi');
+    for (const pkg of parityTruapi) {
+      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
+    }
+  }
+  expect(items).toHaveLength(at);
+
+  expect(actions.getAttribute('data-testid')).toBe('mode-diagnostic-actions');
+  expect(tags(actions)).toEqual(['BUTTON', 'BUTTON']);
+  const [share, debug] = Array.from(actions.children) as [HTMLButtonElement, HTMLButtonElement];
+  expect(share.type).toBe('button');
+  expect(share.textContent).toBe('Share diagnostic');
+  expect(share.title).toBe('Open a new issue on paritytech/dotli pre-filled with these diagnostics');
+  expect(debug.type).toBe('button');
+  expect(debug.textContent).toBe(debugOn ? 'Exit debug mode' : 'Debug mode');
+  expect(debug.title).toBe(
+    debugOn
+      ? 'Reload this tab with the TrUAPI debug panel disabled'
+      : 'Reload this tab with the TrUAPI debug panel enabled (off again on tab close)',
+  );
 }
 
 /**
  * The open popover: the shared Popover's surface, whose body holds the
- * settings topbar.ts rendered. Their sheet header is the Popover's now, and
- * only a sheet's.
+ * settings panel (its title, the two columns and the footer), with their
+ * ids, labels and ARIA state. A sheet leaves its title to the sheet header.
  */
-function expectPopoverMatches(settings: OldSettings): void {
+function expectPopoverMatches(settings: Settings, sheet = false): void {
   const popover = byId('mode-popover');
-  expect(popover.getAttribute('role')).toBe('dialog');
+  // A sheet is a native dialog, whose role is implicit and which labels itself
+  // by its title.
+  if (sheet) {
+    expect(popover.tagName).toBe('DIALOG');
+  } else {
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('tabindex')).toBe('-1');
+  }
   expect(popover.getAttribute('aria-label')).toBe('Settings');
-  const expected = oldModePopover({ open: true, ...settings });
-  expected.querySelector('.mode-popover-sheet-header')?.remove();
-  expect(sameChildren(normalized(query(popover, ':scope > .popover-body')), normalized(expected))).toBe(true);
-  // isEqualNode leaves out the `checked` property, which the old code set.
-  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('.mode-radio-input'))
+  const body = must(popoverBody('mode-popover'), '#mode-popover');
+  expect(tags(body)).toEqual(['DIV']);
+  const content = nth(body.children, 0);
+  expect(content.id).toBe('mode-popover-content');
+  expect(tags(content)).toEqual(['SECTION']);
+  const panel = nth(content.children, 0);
+  expect(tags(panel)).toEqual(sheet ? ['DIV', 'DIV'] : ['DIV', 'DIV', 'DIV']);
+  const [head, columns, footer] = (sheet ? [undefined, ...panel.children] : Array.from(panel.children)) as [
+    Element | undefined,
+    Element,
+    Element,
+  ];
+  expect(head?.querySelector('h2')?.textContent).toBe(sheet ? undefined : 'Settings');
+  expect(columns.getAttribute('data-testid')).toBe('mode-popover-columns');
+  expect(tags(columns)).toEqual(['DIV', 'DIV']);
+  expectSettingsColumn(nth(columns.children, 0), settings);
+  expectDiagnosticsColumn(nth(columns.children, 1), settings.debugOn);
+
+  expect(footer.contains(byTestId('mode-apply-row'))).toBe(true);
+  expect(byTestId('mode-apply-row').childElementCount).toBe(1);
+  const apply = applyButton();
+  expect(apply.disabled).toBe(true);
+  expect(apply.dataset['variant']).toBe('primary');
+  expect(apply.textContent).toBe('Save and apply');
+  const hint = byTestId('mode-apply-warning');
+  expect(footer.contains(hint)).toBe(true);
+  expect(hint.textContent).toBe('Transport and cache changes reload the app');
+
+  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
     .filter(input => input.checked)
     .map(input => `${input.name}=${input.value}`);
   expect(checked).toEqual([
@@ -230,19 +440,29 @@ function expectPopoverMatches(settings: OldSettings): void {
   ]);
 }
 
+/** The button: its label, icon and the ARIA of a popover trigger. */
+function expectModeButton(open: boolean): void {
+  const button = byId('mode-button');
+  expect(button.getAttribute('title')).toBe('Settings');
+  expect(button.getAttribute('aria-label')).toBe('Settings');
+  expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+  expect(button.getAttribute('aria-expanded')).toBe(String(open));
+  expect(button.getAttribute('aria-controls')).toBe('mode-popover');
+  expect(tags(button)).toEqual(['svg']);
+}
+
+useFloatingSurfaces();
+
 describe('The settings popover island', () => {
-  it('As a dotli user, the closed button, backdrop and popover match what the topbar rendered', async () => {
+  it('As a dotli user, the closed button and popover have their ids, labels and ARIA state', async () => {
     // When
     await renderPopover();
 
     // Then
-    expect(
-      normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: true }))),
-    ).toBe(true);
-    expectBackdrop(false);
-    // The surface is the shared Popover's, and holds nothing until opened.
-    expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
-    expect(query(byId('mode-popover'), ':scope > .popover-body').childElementCount).toBe(0);
+    expectModeButton(false);
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(false);
+    // The surface is the shared Popover's, in the page from its first opening (or idle preload).
+    expect(document.getElementById('mode-popover')).toBeNull();
   });
 
   it('As a visitor on trusted providers, the button carries the trusted-provider mark', async () => {
@@ -253,9 +473,8 @@ describe('The settings popover island', () => {
     await renderPopover();
 
     // Then
-    expect(
-      normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: false }))),
-    ).toBe(true);
+    expectModeButton(false);
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(true);
   });
 
   it('As the host booting, an island mounted before the settings store is seeded reads no setting itself and follows the store once seeded', async () => {
@@ -270,7 +489,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(localStorage.getItem('dotli:chain-backend')).toBe('smoldot-shared-worker');
-    expect(byId('mode-button').className).toBe('topbar-btn');
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(false);
 
     // When: the host seeds the store.
     setBackend('rpc-gateway');
@@ -278,12 +497,12 @@ describe('The settings popover island', () => {
     await settle();
 
     // Then
-    expect(byId('mode-button').className).toBe('topbar-btn gateway-mode');
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(true);
   });
 
   it('As a mobile user opening it before the settings store is seeded, the sheet can be closed every way and fills in once the store is seeded', async () => {
     // Given: the islands mounted before the host seeded the settings.
-    stubViewport(true);
+    stubPhoneViewport(true);
     await renderPopover({ seed: false });
 
     // When
@@ -291,8 +510,9 @@ describe('The settings popover island', () => {
 
     // Then: no settings yet, but the sheet header and its close button are
     // there.
-    expect(document.querySelector('.mode-popover-columns')).toBeNull();
-    expect(document.querySelector('.popover-sheet-close')).not.toBeNull();
+    expect(document.querySelector('[data-testid="mode-popover-columns"]')).toBeNull();
+    expect(document.querySelector('[data-testid="popover-sheet-close"]')).not.toBeNull();
+    expect(byId('mode-popover-content').hasAttribute('data-sheet')).toBe(true);
 
     // When
     press('Escape');
@@ -303,15 +523,7 @@ describe('The settings popover island', () => {
 
     // When
     await openPopover();
-    byId('mode-popover-backdrop').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-
-    // When
-    await openPopover();
-    query(document, '.popover-sheet-close').click();
+    byTestId('popover-sheet-close').click();
     await settle();
 
     // Then
@@ -325,17 +537,20 @@ describe('The settings popover island', () => {
 
     // Then: the content appears without reopening.
     expect(isOpen()).toBe(true);
-    expectPopoverMatches({
-      chain: 'smoldot-direct',
-      network: 'previewnet',
-      cache: DEFAULT_CACHE,
-      enabledNetworks: ['paseo-next-v2', 'previewnet'],
-      sharedWorkerSupported: typeof SharedWorker !== 'undefined',
-      debugOn: false,
-    });
+    expectPopoverMatches(
+      {
+        chain: 'smoldot-direct',
+        network: 'previewnet',
+        cache: DEFAULT_CACHE,
+        enabledNetworks: ['paseo-next-v2', 'previewnet'],
+        sharedWorkerSupported: typeof SharedWorker !== 'undefined',
+        debugOn: false,
+      },
+      true,
+    );
   });
 
-  it('As a dotli user opening it with several networks, it matches what the topbar rendered', async () => {
+  it('As a dotli user opening it with several networks, it shows its ids, labels and ARIA state', async () => {
     // Given
     setNetwork('previewnet');
     setCacheSettings({ ...DEFAULT_CACHE, skipArchiveCache: true });
@@ -346,7 +561,6 @@ describe('The settings popover island', () => {
 
     // Then
     expect(byId('mode-button').getAttribute('aria-expanded')).toBe('true');
-    expectBackdrop(true);
     expectPopoverMatches({
       chain: 'smoldot-direct',
       network: 'previewnet',
@@ -357,7 +571,7 @@ describe('The settings popover island', () => {
     });
   });
 
-  it('As a dotli user opening it with one network, in debug mode, on trusted providers, without shared workers and with package versions, it matches what the topbar rendered', async () => {
+  it('As a dotli user opening it with one network, in debug mode, on trusted providers, without shared workers and with package versions, it shows its ids, labels and ARIA state', async () => {
     // Given
     networks.enabled = ['previewnet'];
     setNetwork('previewnet');
@@ -383,7 +597,7 @@ describe('The settings popover island', () => {
     });
   });
 
-  it('As a dotli user, a change enables Save & Apply, undoing it disables it again, and Save & Apply applies the draft', async () => {
+  it('As a dotli user, a change enables Save and apply, undoing it disables it again, and Save and apply applies the draft', async () => {
     // Given
     await renderPopover();
     await openPopover();
@@ -395,10 +609,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(toggle('dotNS cache').getAttribute('aria-checked')).toBe('false');
-    expect(toggle('dotNS cache').className).toBe('permissions-popover-toggle ');
     expect(applyButton().disabled).toBe(false);
-    expect(applyButton().className).toBe('mode-clear-btn mode-apply-dirty');
-    expect(document.querySelector('.mode-apply-warning')?.classList.contains('visible')).toBe(true);
 
     // When
     toggle('dotNS cache').click();
@@ -406,8 +617,6 @@ describe('The settings popover island', () => {
 
     // Then
     expect(applyButton().disabled).toBe(true);
-    expect(applyButton().className).toBe('mode-clear-btn');
-    expect(document.querySelector('.mode-apply-warning')?.classList.contains('visible')).toBe(false);
 
     // When
     radio('dotli-network', 'previewnet').click();
@@ -446,11 +655,11 @@ describe('The settings popover island', () => {
 
     // Then
     const checked = document.querySelector<HTMLInputElement>(
-      '[role="radiogroup"][aria-label="Network Transport"] input:checked',
+      '[role="radiogroup"][aria-label="Network transport"] input:checked',
     );
     expect(checked?.value).toBe('rpc-gateway');
     expect(document.activeElement).toBe(checked);
-    expect(checked?.closest('label')?.className).toBe('mode-radio-row selected');
+    expect(checked?.closest('label')?.hasAttribute('data-selected')).toBe(true);
   });
 
   it('As a dotli user, closing throws the draft away: the next open starts from the saved settings', async () => {
@@ -492,7 +701,7 @@ describe('The settings popover island', () => {
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {
       forceFullWipe: true,
     });
-    const clear = query(document, '.mode-clear-all-row button', HTMLButtonElement);
+    const clear = query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
     expect(clear.disabled).toBe(true);
     expect(clear.textContent).toBe('Clearing…');
 
@@ -526,7 +735,6 @@ describe('The settings popover island', () => {
     // Then
     expect(writeText).toHaveBeenCalledWith(window.location.host);
     expect(value.textContent).toBe('Copied');
-    expect(site.className).toBe('mode-endpoint-row mode-info-row mode-info-row-copyable copied');
 
     // When
     vi.advanceTimersByTime(1000);
@@ -534,7 +742,6 @@ describe('The settings popover island', () => {
 
     // Then
     expect(value.textContent).toBe(window.location.host);
-    expect(site.className).toBe('mode-endpoint-row mode-info-row mode-info-row-copyable');
 
     // When: a row that is not copyable.
     infoRow('Build').click();
@@ -542,6 +749,91 @@ describe('The settings popover island', () => {
 
     // Then
     expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a keyboard user, a copyable diagnostics row is a focusable Copy Site button, and activating it copies and announces', async () => {
+    // Given
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    await renderPopover();
+    await openPopover();
+    const site = infoRow('Site');
+    const button = query(site, 'button', HTMLButtonElement);
+    const status = query(site, '[role="status"]');
+    expect(button.textContent).toBe(`Copy Site ${window.location.host}`);
+    expect(focusables(byId('mode-popover'))).toContain(button);
+    expect(infoRow('Build').querySelector('button')).toBeNull();
+
+    // When
+    button.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    flush();
+
+    // Then
+    expect(writeText).toHaveBeenCalledWith(window.location.host);
+    expect(status.textContent).toBe('Copied');
+  });
+
+  it('As a dotli user, clicking a copyable row that reads n/a copies nothing', async () => {
+    // Given
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    actions.extraRows = [['Relay node', 'n/a']];
+    await renderPopover();
+    await openPopover();
+    const row = infoRow('Relay node');
+    const button = query(row, 'button', HTMLButtonElement);
+    expect(query(row, 'code').textContent).toBe('n/a');
+
+    // When
+    button.click();
+    await Promise.resolve();
+
+    // Then
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user, I open Packages to read the package versions and close it again', async () => {
+    // Given
+    vi.stubGlobal('__POLKADOT_API_VERSIONS__', [{ name: '@polkadot-api/ws-provider', version: '0.4.0' }]);
+    await renderPopover();
+    await openPopover();
+    const toggle = byTestId('mode-packages-toggle');
+
+    // When
+    toggle.click();
+    await settle();
+
+    // Then
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(byId('mode-packages').hidden).toBe(false);
+    expect(infoRow('@polkadot-api/ws-provider').children[1]?.textContent).toBe('0.4.0');
+
+    // When
+    toggle.click();
+    await settle();
+
+    // Then
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(byId('mode-packages').hidden).toBe(true);
+
+    // When: opened again, then the popover closed and reopened.
+    toggle.click();
+    await settle();
+    press('Escape');
+    await settle();
+    await openPopover();
+
+    // Then
+    expect(byTestId('mode-packages-toggle').getAttribute('aria-expanded')).toBe('false');
+    expect(byId('mode-packages').hidden).toBe(true);
   });
 
   it('As a dotli user on trusted providers, the AssetHub row shows the node the client is connected to, in the popover and the shared report', async () => {
@@ -594,7 +886,7 @@ describe('The settings popover island', () => {
         `Site: ${window.location.host}`,
         'Build: 0.0.0 (dev)',
         'Network: ' + (infoRow('Network').querySelector('code')?.textContent ?? ''),
-        'Network Transport: Light Client Per-Tab',
+        'Transport: Light client per tab',
         `Browser: ${infoRow('Browser').querySelector('code')?.textContent ?? ''}`,
         '',
         'Cache:',
@@ -620,7 +912,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // When
-    button('Open in debug mode').click();
+    button('Debug mode').click();
 
     // Then
     expect(assign).toHaveBeenCalledWith('https://app.dot.li/path?x=1&debug=true');
@@ -641,47 +933,12 @@ describe('The settings popover island', () => {
     expect(assign).toHaveBeenCalledWith('https://app.dot.li/?debug=off');
   });
 
-  it('As a keyboard user, opening it focuses its first control, Tab loops inside, and Escape closes it, handing focus back to the button', async () => {
-    // Given
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    const focusables = Array.from(
-      byId('mode-popover').querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
-    ).filter(el => !(el instanceof HTMLInputElement && !el.checked));
-    expect(document.activeElement).toBe(focusables[0]);
-    nth(focusables, focusables.length - 1).focus();
-
-    // When
-    const tab = press('Tab');
-
-    // Then: Tab loops back to the first control.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(focusables[0]);
-
-    // When
-    press('Escape');
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('mode-popover-backdrop').classList.contains('open')).toBe(false);
-    expect(byId('mode-button').getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(byId('mode-button'));
-  });
-
   it('As a screen-reader user, the button announces the dialog it opens and whether it is open', async () => {
     // Given
     await renderPopover();
     const settingsButton = byId('mode-button');
-    const popover = byId('mode-popover');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Settings');
     expect(settingsButton.getAttribute('aria-haspopup')).toBe('dialog');
     expect(settingsButton.getAttribute('aria-controls')).toBe('mode-popover');
     expect(settingsButton.getAttribute('aria-expanded')).toBe('false');
@@ -691,48 +948,15 @@ describe('The settings popover island', () => {
 
     // Then
     expect(settingsButton.getAttribute('aria-expanded')).toBe('true');
-  });
-
-  it('As a keyboard user on desktop, Tab past the last control keeps focus in the popover and leaves it open', async () => {
-    // Given
-    await renderPopover();
-    byId('mode-button').focus();
-    await openPopover();
-    expect(byId('mode-popover').contains(document.activeElement)).toBe(true);
-    const controls = byId('mode-popover').querySelectorAll<HTMLElement>('button:not([disabled])');
-    nth(controls, controls.length - 1).focus();
-    await settle();
-    expect(isOpen()).toBe(true);
-
-    // When
-    const tab = tabTo(byId('outside'));
-    await settle();
-
-    // Then
-    expect(tab.defaultPrevented).toBe(true);
-    expect(isOpen()).toBe(true);
-    expect(byId('mode-popover').contains(document.activeElement)).toBe(true);
-  });
-
-  it('As a dotli user on desktop, a press on the backdrop closes it without handing focus back to the button', async () => {
-    // Given
-    await renderPopover();
-    byId('mode-button').focus();
-    await openPopover();
-
-    // When: the backdrop covers the page, and takes no focus.
-    pointerPressUnfocusable(byId('mode-popover-backdrop'));
-    await settle();
-
-    // Then: focus follows the press.
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(document.body);
+    const popover = byId('mode-popover');
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Settings');
   });
 
   it('As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button', async () => {
     // Given: the bar has collapsed the settings button, which CSS hides, so
     // it cannot take focus; the sheet is reached through the More menu.
-    stubViewport(true);
+    stubPhoneViewport(true);
     initSettingsStore();
     await renderTopbar(() => <SettingsPopover />, 1);
     // Unmounted before the body is cleared, which its portals would not survive.
@@ -742,7 +966,7 @@ describe('The settings popover island', () => {
     expect(isOpen()).toBe(true);
 
     // When
-    query(document, '.popover-sheet-close').click();
+    byTestId('popover-sheet-close').click();
     await settle();
 
     // Then
@@ -750,160 +974,50 @@ describe('The settings popover island', () => {
     expect(document.activeElement).toBe(byId('more-button'));
   });
 
-  it('As a dotli user, a click on the backdrop or outside closes it, and a click inside does not', async () => {
-    // Given
-    await renderPopover();
-    await openPopover();
-
-    // When
-    query(document, '.mode-popover-columns').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When
-    byId('mode-popover-backdrop').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-
-    // When
-    await openPopover();
-    pointerPress(byId('outside'));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-  });
-
-  it('As a dotli user, a blocking modal coming up closes it', async () => {
-    // Given
-    await renderPopover();
-    await openPopover();
-
-    // When
-    setBlockingModalActive(true);
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('mode-popover-backdrop').classList.contains('open')).toBe(false);
-  });
-
-  it('As a mobile user, the full-screen settings sheet is a modal dialog: it traps Tab, keeps focus, locks the page scroll and says it is modal', async () => {
-    // Given
-    stubViewport(true);
-    document.body.style.overflow = '';
-    await renderPopover();
-    byId('mode-button').focus();
-
-    // When
-    await openPopover();
-
-    // Then
-    const popover = byId('mode-popover');
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-modal')).toBe('true');
-    expect(popover.contains(document.activeElement)).toBe(true);
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
-
-    // When: Tab on the last control.
-    const controls = tabbables();
-    nth(controls, controls.length - 1).focus();
-    const tab = press('Tab');
-
-    // Then: it wraps to the first.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(controls[0]);
-
-    // When: focus lands outside, as a modal dialog never lets it.
-    byId('outside').focus();
-    await settle();
-
-    // Then: a dialog does not close on focus leaving it.
-    expect(isOpen()).toBe(true);
-
-    // When
-    query(document, '.popover-sheet-close').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(popover.hasAttribute('aria-modal')).toBe(false);
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
-  });
-
-  it('As a phone user, the Settings sheet going away while open unlocks the page', async () => {
-    // Given
-    stubViewport(true);
-    await renderPopover();
-    await openPopover();
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
-
-    // When
-    for (const cleanup of cleanups) {
-      cleanup();
-    }
-    cleanups = [];
-    await settle();
-
-    // Then
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
-  });
-
-  it('As a desktop user, the settings popover is not modal: no aria-modal and no scroll lock, though Tab loops inside', async () => {
-    // Given
-    stubViewport(false);
-    document.body.style.overflow = '';
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
-    const controls = tabbables();
-    nth(controls, controls.length - 1).focus();
-    expect(press('Tab').defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(controls[0]);
-  });
-
   it('As a user who resized the window, the settings open as a sheet or a popover by the width at each opening', async () => {
     // Given: opened wide, then closed.
-    const viewport = stubViewport(false);
+    const viewport = stubPhoneViewport(false);
     await renderPopover();
     await openPopover();
-    expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
+    expect(byId('mode-popover').tagName).toBe('DIV');
     press('Escape');
     await settle();
 
     // When: narrowed, then opened again.
-    viewport.narrow = true;
+    viewport.set(true);
     await openPopover();
 
     // Then
-    expect(byId('mode-popover').getAttribute('aria-modal')).toBe('true');
-    const controls = tabbables();
-    nth(controls, controls.length - 1).focus();
-    expect(press('Tab').defaultPrevented).toBe(true);
+    expect(byId('mode-popover').tagName).toBe('DIALOG');
 
     // When: widened while open, then closed and opened.
-    viewport.narrow = false;
+    viewport.set(false);
     press('Escape');
     await settle();
     await openPopover();
 
     // Then
-    expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
+    expect(byId('mode-popover').tagName).toBe('DIV');
+  });
+
+  it('As a phone user, the settings sheet leaves its title to the sheet header and Save and apply spans the sheet', async () => {
+    // Given
+    stubPhoneViewport(true);
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byTestId('popover-sheet-title').textContent).toBe('Settings');
+    expect(byId('mode-popover-content').querySelector('h2')).toBeNull();
+    expect(applyButton().hasAttribute('data-block')).toBe(true);
   });
 
   it('As a mobile user, the settings sheet I opened from the More menu takes focus, and closing it hands focus back to the More button', async () => {
     // Given: the bar has collapsed the settings button, which CSS hides, so
     // it cannot take focus; the sheet is reached through the More menu.
-    stubViewport(true);
+    stubPhoneViewport(true);
     initSettingsStore();
     await renderTopbar(() => <SettingsPopover />, 1);
     // Unmounted before the body is cleared, which its portals would not survive.
@@ -915,7 +1029,7 @@ describe('The settings popover island', () => {
     await settle();
 
     // Then
-    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(byId('mode-popover').contains(document.activeElement)).toBe(true);
 

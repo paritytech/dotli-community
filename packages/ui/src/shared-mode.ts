@@ -156,16 +156,13 @@ export async function bootstrapSharedMode(): Promise<void> {
   try {
     sharedReads = await Promise.all(SHARED_KEYS.map(key => channel.read(key)));
   } catch (error: unknown) {
-    log.warn(
-      '[dot.li shared-mode] Initial read failed; using per-origin localStorage:',
-      error instanceof Error ? error.message : error,
-    );
+    log.warn('[dot.li shared-mode] Initial read failed; using per-origin localStorage:', error);
     return;
   }
 
   const mirrorUp = (key: string, value: string, label: string): void => {
     void channel.write(key, value).catch((err: unknown) => {
-      log.warn(`[dot.li shared-mode] ${label} failed for`, key, err instanceof Error ? err.message : err);
+      log.warn(`[dot.li shared-mode] ${label} failed for`, key, err);
     });
   };
 
@@ -207,7 +204,7 @@ export async function bootstrapSharedMode(): Promise<void> {
         /* localStorage unavailable */
       }
       void channel.write(key, value).catch((err: unknown) => {
-        log.warn('[dot.li shared-mode] Write failed for', key, err instanceof Error ? err.message : err);
+        log.warn('[dot.li shared-mode] Write failed for', key, err);
       });
     },
     removeItem: key => {
@@ -219,7 +216,7 @@ export async function bootstrapSharedMode(): Promise<void> {
         /* localStorage unavailable */
       }
       void channel.clear(key).catch((err: unknown) => {
-        log.warn('[dot.li shared-mode] Clear failed for', key, err instanceof Error ? err.message : err);
+        log.warn('[dot.li shared-mode] Clear failed for', key, err);
       });
     },
   };

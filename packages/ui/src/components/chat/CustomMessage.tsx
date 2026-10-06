@@ -15,6 +15,7 @@ import type { HexString, RenderContext, RendererNode } from '@parity/truapi';
 import { bytesToHex } from '@parity/truapi/scale';
 import { renderCustomMessage, userTriggerRendererAction } from '../../chat/service.js';
 import { CustomNode } from './CustomNode.js';
+import s from './CustomMessage.module.css';
 
 export interface CustomMessageProps {
   productId: string;
@@ -116,7 +117,8 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
 
   return (
     <div
-      class="chat-custom-root"
+      class={s['root']}
+      data-testid="chat-custom-root"
       ref={el => {
         root = el;
       }}
@@ -125,7 +127,11 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
         when={placeholder()}
         fallback={<Show when={tree()}>{node => <CustomNode node={node()} onAction={onAction} />}</Show>}
       >
-        {text => <span class="chat-custom-placeholder">{text()}</span>}
+        {text => (
+          <span class={s['placeholder']} data-testid="chat-custom-placeholder">
+            {text()}
+          </span>
+        )}
       </Show>
     </div>
   );

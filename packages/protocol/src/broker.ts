@@ -6,7 +6,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { log } from '@dotli/shared';
+import { log, serializeError } from '@dotli/shared';
 import { chainHaltedError } from './chain-halted.js';
 
 /**
@@ -69,13 +69,23 @@ interface SharedFollow {
     requestId: JsonRpcId;
     localToken: string;
   }[];
+  /** The newest finalized block alone, the base a later session's replay starts from. */
   finalizedBlockHashes: string[];
   finalizedBlockRuntime: unknown;
   bestBlockHash: string | null;
+  /** The unfinalized blocks above the newest finalized one. */
   blocks: Map<string, CachedBlock>;
-  /** Block hash -> local follow tokens still holding a pin on it. */
+  /** Block hash -> local follow tokens, and the snapshot, still holding a pin on it. */
   pins: Map<string, Set<string>>;
 }
+
+/**
+ * The pin holder for the blocks a later session is replayed. Sessions unpin as
+ * they please (papi drops all but the newest finalized block), and without
+ * this hold the last of them would unpin upstream a block the next session to
+ * join is then told of, whose every read the node refuses.
+ */
+const SNAPSHOT_HOLDER = 'snapshot';
 
 interface CachedBlock {
   result: Record<string, unknown>;
@@ -224,9 +234,21 @@ function brokerLog(...args: unknown[]): void {
   log.debug(BROKER_TAG, ...args);
 }
 // Protocol anomalies (malformed, unmatched or dropped messages): warn, so
-// they reach the Sentry breadcrumb sink in every build.
-function brokerWarn(...args: unknown[]): void {
-  log.warn(BROKER_TAG, ...args);
+// they reach the Sentry breadcrumb sink in every build. Each one is per
+// message, and a chain that goes wrong repeats it on every message, which
+// would leave room for nothing else in the trail. So each kind logs its first
+// few in full, then only a running count at each power of ten.
+const WARN_IN_FULL = 3;
+const warnCounts = new Map<string, number>();
+
+function brokerWarn(kind: string, message: string): void {
+  const count = (warnCounts.get(kind) ?? 0) + 1;
+  warnCounts.set(kind, count);
+  if (count <= WARN_IN_FULL) {
+    log.warn(`${BROKER_TAG} ${message}`);
+  } else if (/^10+$/.test(String(count))) {
+    log.warn(`${BROKER_TAG} ${kind}: ${String(count)} so far`);
+  }
 }
 
 export class ChainBroker {
@@ -415,7 +437,7 @@ export class ChainBroker {
       try {
         this.sendToSession(session, message);
       } catch (error) {
-        brokerWarn('Terminal message handler threw', error);
+        brokerWarn('halt_terminal_handler', `Terminal message handler threw: ${serializeError(error)}`);
       }
     }
     for (const session of sessions) {
@@ -423,7 +445,7 @@ export class ChainBroker {
       try {
         session.onHalt?.(error);
       } catch (error) {
-        brokerWarn('Halt handler threw', error);
+        brokerWarn('halt_handler', `Halt handler threw: ${serializeError(error)}`);
       }
     }
   }
@@ -431,7 +453,7 @@ export class ChainBroker {
   private sendFromSession(sessionId: string, message: unknown): void {
     const session = this.sessions.get(sessionId);
     if (session?.connected !== true) {
-      brokerWarn(`sendFromSession: session ${sessionId} not connected, dropping message`);
+      brokerWarn('session_not_connected', `sendFromSession: session ${sessionId} not connected, dropping message`);
       return;
     }
 
@@ -443,7 +465,7 @@ export class ChainBroker {
     try {
       parsed = parseInbound(message);
     } catch {
-      brokerWarn(`sendFromSession: invalid JSON from session ${sessionId}`);
+      brokerWarn('session_invalid_json', `sendFromSession: invalid JSON from session ${sessionId}`);
       this.sendToSession(session, {
         jsonrpc: '2.0',
         id: null,
@@ -458,7 +480,7 @@ export class ChainBroker {
     }
 
     if (!isRequestMessage(parsed)) {
-      brokerWarn(`sendFromSession: not a request from session ${sessionId}:`, parsed);
+      brokerWarn('session_not_request', `sendFromSession: not a request from session ${sessionId}`);
       this.sendToSession(session, buildJsonRpcError(null, 'Invalid JSON-RPC request'));
       return;
     }
@@ -500,7 +522,10 @@ export class ChainBroker {
 
     const rewritten = this.rewriteOwnedToken(session, request);
     if (rewritten === null) {
-      brokerWarn(`routeGenericRequest: unknown token for session ${session.id}, method=${method}`);
+      brokerWarn(
+        'request_unknown_token',
+        `routeGenericRequest: unknown token for session ${session.id}, method=${method}`,
+      );
       this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
@@ -700,8 +725,8 @@ export class ChainBroker {
       // arrives. Best-effort recover the JSON-RPC `id` from the raw text
       // so we can reject the matching pending request.
       const reason = err instanceof Error ? err.message : String(err);
-      const preview = typeof message === 'string' ? message.slice(0, 200) : JSON.stringify(message).slice(0, 200);
-      brokerWarn(`← upstream: unparseable message: ${preview} (${reason})`);
+      const size = typeof message === 'string' ? message.length : JSON.stringify(message).length;
+      brokerWarn('upstream_unparseable', `← upstream: unparseable message of ${String(size)} chars (${reason})`);
       if (typeof message === 'string') {
         const idMatch = /"id"\s*:\s*("?)([^",}\s]+)\1/.exec(message);
         const matchedId = idMatch?.[2];
@@ -727,7 +752,7 @@ export class ChainBroker {
     }
 
     if (Array.isArray(parsed)) {
-      brokerWarn(`← upstream: unexpected batch message, ignoring`);
+      brokerWarn('upstream_batch', `← upstream: unexpected batch message, ignoring`);
       return;
     }
 
@@ -762,13 +787,13 @@ export class ChainBroker {
       return;
     }
 
-    brokerWarn(`← upstream: unrecognized message type:`, JSON.stringify(parsed).slice(0, 200));
+    brokerWarn('upstream_unrecognized', `← upstream: unrecognized message type`);
   }
 
   private handleUpstreamResponse(response: JsonRpcResponse): void {
     const pending = this.pending.get(String(response.id));
     if (!pending) {
-      brokerWarn(`← upstream response for unknown id=${String(response.id)}`);
+      brokerWarn('response_unknown_id', `← upstream response for unknown id=${String(response.id)}`);
       return;
     }
     this.pending.delete(String(response.id));
@@ -787,7 +812,7 @@ export class ChainBroker {
     if (pending.method === 'chainHead_v1_follow' && typeof response.result === 'string') {
       const sharedFollow = this.sharedFollows.get(pending.sessionId);
       if (!sharedFollow) {
-        brokerWarn(`Missing shared follow state for key ${pending.sessionId}`);
+        brokerWarn('follow_state_missing', `Missing shared follow state for key ${pending.sessionId}`);
         return;
       }
       sharedFollow.requestInFlight = false;
@@ -807,6 +832,7 @@ export class ChainBroker {
     const session = this.sessions.get(pending.sessionId);
     if (session?.connected !== true) {
       brokerWarn(
+        'response_disconnected_session',
         `← upstream response for disconnected session: sessionId=${JSON.stringify(pending.sessionId)}, method=${pending.method}, responseId=${String(response.id)}, sessions=[${[...this.sessions.keys()].join(',')}]`,
       );
       return;
@@ -851,13 +877,18 @@ export class ChainBroker {
   private handleUpstreamSubscription(message: SubscriptionMessage): void {
     const upstreamToken = message.params?.subscription;
     if (typeof upstreamToken !== 'string') {
-      brokerWarn(`← upstream subscription with non-string token:`, message.params?.subscription);
+      brokerWarn('subscription_bad_token', `← upstream subscription with non-string token`);
       return;
     }
 
     const sharedFollow = this.upstreamFollowTokens.get(upstreamToken);
     if (sharedFollow) {
-      this.cacheSharedFollowEvent(sharedFollow, message.params?.result);
+      const eventResult = message.params?.result;
+      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
+        this.stopSharedFollow(sharedFollow, upstreamToken, message);
+        return;
+      }
+      this.cacheSharedFollowEvent(sharedFollow, eventResult);
       for (const localToken of sharedFollow.localTokens) {
         const local = this.localFollowTokens.get(localToken);
         if (!local) {
@@ -867,7 +898,6 @@ export class ChainBroker {
         if (session?.connected !== true) {
           continue;
         }
-        const eventResult = message.params?.result;
         this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
         const eventType = isJsonRpcObject(eventResult)
           ? typeof eventResult['event'] === 'string'
@@ -883,25 +913,6 @@ export class ChainBroker {
           },
         });
       }
-
-      // A `stop` kills this shared follow. Clear its dead upstream token and
-      // snapshot so a session's re-follow takes the fresh-follow path instead
-      // of binding to the dead token (which reads null and hangs). The `stop`
-      // already reached every session above, which papi needs before it
-      // re-issues `chainHead_v1_follow`.
-      const eventResult = message.params?.result;
-      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
-        brokerLog(
-          `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
-        );
-        this.upstreamFollowTokens.delete(upstreamToken);
-        sharedFollow.upstreamToken = null;
-        sharedFollow.requestInFlight = false;
-        sharedFollow.finalizedBlockHashes = [];
-        sharedFollow.finalizedBlockRuntime = null;
-        sharedFollow.bestBlockHash = null;
-        sharedFollow.blocks.clear();
-      }
       return;
     }
 
@@ -911,7 +922,7 @@ export class ChainBroker {
         this.bufferEarlySubscription(upstreamToken, message);
         return;
       }
-      brokerWarn(`← upstream subscription for unknown token: ${upstreamToken}`);
+      brokerWarn('subscription_unknown_token', `← upstream subscription for unknown token: ${upstreamToken}`);
       return;
     }
 
@@ -942,7 +953,10 @@ export class ChainBroker {
         this.releaseOwnedToken(localToken, false);
       }
       if (session?.connected !== true) {
-        brokerWarn(`← upstream subscription for disconnected session: ${owned.sessionId}`);
+        brokerWarn(
+          'subscription_disconnected_session',
+          `← upstream subscription for disconnected session: ${owned.sessionId}`,
+        );
         continue;
       }
 
@@ -971,7 +985,10 @@ export class ChainBroker {
         const oldestToken = this.earlySubscriptions.keys().next().value;
         if (oldestToken !== undefined) {
           this.earlySubscriptions.delete(oldestToken);
-          brokerWarn(`early-subscription token cap hit; dropping buffered events for oldest token: ${oldestToken}`);
+          brokerWarn(
+            'early_token_cap',
+            `early-subscription token cap hit; dropping buffered events for oldest token: ${oldestToken}`,
+          );
         }
       }
       events = [];
@@ -982,7 +999,7 @@ export class ChainBroker {
     } else {
       // Memory bound, not correctness: events for a token that never maps
       // to a local subscription would otherwise grow without limit.
-      brokerWarn(`early-subscription event cap hit; dropping event for token: ${upstreamToken}`);
+      brokerWarn('early_event_cap', `early-subscription event cap hit; dropping event for token: ${upstreamToken}`);
     }
   }
 
@@ -1175,6 +1192,34 @@ export class ChainBroker {
     this.sendUpstream({ ...rewritten, id: upstreamId });
   }
 
+  /**
+   * A `stop` ends the shared follow upstream. It is dropped, and its sessions'
+   * tokens released, before any session hears the `stop`. papi re-follows from
+   * inside that delivery, and bound to the dead follow it would be replayed the
+   * stopped snapshot and stopped again, without end.
+   */
+  private stopSharedFollow(sharedFollow: SharedFollow, upstreamToken: string, message: SubscriptionMessage): void {
+    brokerLog(
+      `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
+    );
+    this.upstreamFollowTokens.delete(upstreamToken);
+    this.sharedFollows.delete(sharedFollow.key);
+    const recipients: { session: Session; localToken: string }[] = [];
+    for (const localToken of sharedFollow.localTokens) {
+      const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
+      // With the shared follow gone, this releases only the session's side:
+      // nothing goes upstream for a follow the node already ended.
+      this.releaseLocalFollowToken(localToken);
+      if (session?.connected === true) {
+        recipients.push({ session, localToken });
+      }
+    }
+    for (const { session, localToken } of recipients) {
+      brokerLog(`← subscription [${session.id}] event=stop method=${String(message.method)}`);
+      this.sendToSession(session, { ...message, params: { ...message.params, subscription: localToken } });
+    }
+  }
+
   private releaseLocalFollowToken(localToken: string): void {
     const followToken = this.localFollowTokens.get(localToken);
     if (!followToken) {
@@ -1231,10 +1276,14 @@ export class ChainBroker {
       const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
         ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      sharedFollow.finalizedBlockHashes = hashes;
+      const newest = hashes.at(-1);
+      sharedFollow.finalizedBlockHashes = newest === undefined ? [] : [newest];
       sharedFollow.finalizedBlockRuntime = eventResult['finalizedBlockRuntime'] ?? null;
       sharedFollow.blocks.clear();
       sharedFollow.bestBlockHash = null;
+      if (newest !== undefined) {
+        this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
+      }
       return;
     }
 
@@ -1247,6 +1296,7 @@ export class ChainBroker {
         result: { ...eventResult },
         parentBlockHash: typeof eventResult['parentBlockHash'] === 'string' ? eventResult['parentBlockHash'] : null,
       });
+      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, blockHash);
       return;
     }
 
@@ -1260,12 +1310,28 @@ export class ChainBroker {
       const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
         ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      sharedFollow.finalizedBlockHashes = hashes;
+      const newest = hashes.at(-1);
+      if (newest === undefined) {
+        return;
+      }
+      for (const hash of hashes) {
+        const newRuntime = sharedFollow.blocks.get(hash)?.result['newRuntime'];
+        if (newRuntime !== undefined && newRuntime !== null) {
+          sharedFollow.finalizedBlockRuntime = newRuntime;
+        }
+      }
       const pruned = Array.isArray(eventResult['prunedBlockHashes'])
         ? eventResult['prunedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      for (const hash of pruned) {
+      const dropped = [...sharedFollow.finalizedBlockHashes, ...hashes.slice(0, -1), ...pruned];
+      for (const hash of [...dropped, newest]) {
         sharedFollow.blocks.delete(hash);
+      }
+      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
+      sharedFollow.finalizedBlockHashes = [newest];
+      const orphaned = this.releasePins(sharedFollow, SNAPSHOT_HOLDER, dropped);
+      if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
+        this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
       }
     }
   }

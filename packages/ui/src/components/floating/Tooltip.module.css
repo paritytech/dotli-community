@@ -1,0 +1,8 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Over the topbar's popovers, which a tooltip in the pill may sit over while
+   it leaves the top layer for its exit (Firefox and Safari). */
+.tooltip {
+  z-index: 1600;
+}

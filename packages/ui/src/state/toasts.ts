@@ -7,6 +7,7 @@
 
 import { captureException } from '@dotli/metrics';
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
+import type { StatusTone } from '../components/primitives/StatusDot.js';
 
 export interface ToastAction {
   label: string;
@@ -18,7 +19,8 @@ export interface ToastInput {
   label: string;
   deeplink?: string;
   icon: string;
-  iconBackground?: string;
+  /** What the toast reports, which tints its icon tile. Default: info. */
+  tone?: StatusTone;
   /** 0 = persistent. */
   dismissMs: number;
   onDismiss?: () => void;
@@ -31,7 +33,7 @@ export interface ToastEntry {
   label: string;
   deeplink?: string;
   icon: string;
-  iconBackground?: string;
+  tone: StatusTone;
   action?: ToastAction;
   leaving: boolean;
 }
@@ -50,7 +52,7 @@ interface Timer {
 }
 
 const INITIAL: ToastsState = { items: [], expanded: false };
-const toasts = createSyncStore<ToastsState>(INITIAL, { equals: shallowEqual });
+const toasts = createSyncStore<ToastsState>('toasts', INITIAL, { equals: shallowEqual });
 export const toastsStore: ReadableStore<ToastsState> = toasts;
 
 const timers = new Map<number, Timer>();
@@ -120,7 +122,7 @@ function finishTimer(id: number): void {
   try {
     timer?.onDismiss?.();
   } catch (err) {
-    captureException(err, { kind: 'toast_on_dismiss_error' });
+    captureException(err, { flow: 'ui', step: 'toast_dismiss', tags: { kind: 'toast_on_dismiss_error' } });
   }
 }
 
@@ -138,13 +140,11 @@ export function pushToast(input: ToastInput): number {
     text: input.text,
     label: input.label,
     icon: input.icon,
+    tone: input.tone ?? 'info',
     leaving: false,
   };
   if (input.deeplink !== undefined) {
     entry.deeplink = input.deeplink;
-  }
-  if (input.iconBackground !== undefined) {
-    entry.iconBackground = input.iconBackground;
   }
   if (input.action !== undefined) {
     entry.action = input.action;

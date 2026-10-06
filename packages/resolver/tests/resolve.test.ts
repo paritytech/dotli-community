@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
+import { m } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import type { Api } from '../src/api.js';
 
@@ -76,12 +77,18 @@ function haltedMidRead(err: Error): () => Api {
   });
 }
 
+const RETRY_LOG: unknown = expect.stringMatching(
+  /^\[dot\.li resolve\] Chain halted mid-resolution, retrying on a rebuilt chain \(attempt \d\/4\): /,
+);
+
 describe('resolve', () => {
   let disconnect: Mock<() => void>;
   let factory: Mock<() => JsonRpcProvider>;
+  let warn: Mock<(...args: unknown[]) => void>;
 
   beforeEach(() => {
-    vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    warn = vi.fn<(...args: unknown[]) => void>();
+    vi.spyOn(log, 'warn').mockImplementation(warn);
     destroyResolverClient();
     mocks.createRawApi.mockReset().mockImplementation(fakeApi);
     mocks.stops = [];
@@ -110,6 +117,7 @@ describe('resolve', () => {
     // Then
     expect(factory).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
   });
 
   it.each([
@@ -130,6 +138,8 @@ describe('resolve', () => {
     // Then
     expect(owner).toBeNull();
     expect(factory).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
+    expect(warn).toHaveBeenCalledWith(RETRY_LOG, expect.anything());
   });
 
   it.each([
@@ -149,6 +159,7 @@ describe('resolve', () => {
 
       // Then
       expect(factory).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledWith(RETRY_LOG, expect.anything());
     },
   );
 
@@ -178,6 +189,7 @@ describe('resolve', () => {
     // Then
     await expect(result).rejects.toThrow('chainHead follow stopped');
     expect(factory).toHaveBeenCalledTimes(4);
+    expect(warn.mock.calls.filter(([line]) => String(line).includes('retrying on a rebuilt chain'))).toHaveLength(3);
   });
 
   it('As a dotli user on a light client, a read that fails for any other reason is not retried', async () => {
@@ -194,6 +206,24 @@ describe('resolve', () => {
     // Then
     await expect(result).rejects.toThrow('Unknown subscription/token');
     expect(factory).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalledWith(RETRY_LOG, expect.anything());
+  });
+
+  it('As a dotli maintainer, each Asset Hub client bring-up is timed once, with its outcome', async () => {
+    // Given: a first client whose chain halts before its first block.
+    const distribution = vi.spyOn(m, 'distribution');
+    setResolverAssetHubProvider(factory);
+    mocks.createRawApi.mockImplementationOnce(haltedBeforeReady);
+
+    // When
+    await resolveOwner('alice');
+
+    // Then: the failed bring-up and the one that replaced it.
+    const presyncs = distribution.mock.calls.filter(([name]) => name === 'smoldot.presync');
+    expect(presyncs.map(([, , unit, attrs]) => [unit, attrs])).toEqual([
+      ['millisecond', { outcome: 'error' }],
+      ['millisecond', { outcome: 'ok' }],
+    ]);
   });
 
   it('As a dotli user on a light client, the retry only gets what is left of the request budget', async () => {
@@ -222,5 +252,6 @@ describe('resolve', () => {
     // Then
     expect(failure).toMatchObject({ name: 'NetworkSyncTimeoutError', timeoutMs: 700 });
     expect(factory).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(RETRY_LOG, expect.anything());
   });
 });

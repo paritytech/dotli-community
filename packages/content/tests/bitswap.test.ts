@@ -486,6 +486,31 @@ describe('listenForSandboxBitswap', () => {
     expect(chain.sent).toBeGreaterThan(sentBeforeForgery);
   }, 30_000);
 
+  it('As an operator, a failed fetch reaches the sandbox with its error class and code', async () => {
+    // Given a chain that rejects the request outright
+    stubChain([{ code: -32602 }]);
+    vi.resetModules();
+    const { listenForSandboxBitswap } = await import('../src/bitswap.js');
+    listenForSandboxBitswap();
+    const frame = fakeFrame();
+
+    // When a sandbox asks for the block
+    post(frame, { type: 'dotli:bitswap-get', id: 'req-1', cid: 'bafyX' });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Then the reply says what kind of failure it was, not only its text
+    expect(frame.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'dotli:bitswap-result',
+        id: 'req-1',
+        ok: false,
+        errorName: 'BitswapRpcError',
+        code: -32602,
+      }),
+      expect.anything(),
+    );
+  });
+
   it("As a user, two frames loading at once do not strand each other's fetches", async () => {
     // Given two frames whose request ids collide, which they can because ids
     // restart at 1 in every frame

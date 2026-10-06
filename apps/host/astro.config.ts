@@ -17,10 +17,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
 import astroSolid from '@config/astro-solid';
+import { astroLazyCss } from '@config/vite/astro-lazy-css';
 import { astroPwa } from '@config/vite/astro-pwa';
 import { buildInfo, readPackageVersion } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
+import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
+import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
 
@@ -45,6 +48,10 @@ if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
     // Not a git checkout, so leave it unset. topbar.ts treats that as "dev".
   }
 }
+
+// Before Vite reads the environment, so the SDK reports the release the
+// sourcemaps are uploaded under.
+provideSentryRelease(import.meta.dirname);
 
 const OUT_DIR = 'dist';
 const APP_URL = process.env['VITE_APP_URL'] ?? '';
@@ -270,7 +277,7 @@ function sentry(): PluginOption {
     project: 'dotli',
     telemetry: false,
     authToken: process.env['SENTRY_AUTH_TOKEN'],
-    release: process.env['VITE_COMMIT_SHA'] !== undefined ? { name: process.env['VITE_COMMIT_SHA'] } : {},
+    release: sentryUploadRelease(import.meta.dirname),
     sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
   });
 }
@@ -284,6 +291,9 @@ export default defineConfig({
     // Compiles Solid for the islands: server-rendered at build time and
     // hydrated in the browser (see config/astro-solid).
     astroSolid(),
+    // The CSS of a chunk the page imports on demand loads with that chunk
+    // rather than at boot.
+    astroLazyCss(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
@@ -334,6 +344,7 @@ export default defineConfig({
     }),
   ],
   vite: {
+    css: { modules: cssModules() },
     envDir: resolve(import.meta.dirname, '../..'),
     // The host's settings are VITE_*, as under plain Vite (Astro's own
     // default is PUBLIC_*).

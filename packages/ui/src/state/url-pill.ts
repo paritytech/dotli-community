@@ -20,7 +20,7 @@ export type UrlPillState =
       shield: ShieldState | null;
     };
 
-const urlPill = createSyncStore<UrlPillState>({ kind: 'none' }, { equals: shallowEqual });
+const urlPill = createSyncStore<UrlPillState>('url_pill', { kind: 'none' }, { equals: shallowEqual });
 
 export const urlPillStore: ReadableStore<UrlPillState> = urlPill;
 

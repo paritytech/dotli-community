@@ -9,23 +9,39 @@
 // API when the tab is hidden; that part does not depend on the overlays.
 
 import { presentToast } from './overlays/load.js';
+import type { StatusTone } from './components/primitives/StatusDot.js';
 
 /** Default auto-dismiss delay in ms. */
 export const NOTIFICATION_DISMISS_MS = 10_000;
 
-const BELL_SVG =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>' +
-  '<path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+const ALERT_PATHS =
+  '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01"/>';
+
+const TONE_ICON_PATHS: Record<StatusTone, string> = {
+  info: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9m4.3 13a1.94 1.94 0 0 0 3.4 0"/>',
+  ok: '<path d="M20 6 9 17l-5-5"/>',
+  warn: ALERT_PATHS,
+  err: ALERT_PATHS,
+  idle: '<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/>',
+};
+
+/** The tone's own icon, stroked in currentColor so the tile's tone colours it. */
+function toneIcon(tone: StatusTone): string {
+  return (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    TONE_ICON_PATHS[tone] +
+    '</svg>'
+  );
+}
 
 export interface NotificationParams {
   text: string;
   label: string;
   deeplink?: string | undefined;
-  /** SVG string for the icon. Default: bell. */
+  /** SVG string for the icon, stroked in currentColor to take the tone. Default: the tone's own icon. */
   icon?: string;
-  /** CSS color for an icon background. Default: inherits from .notif-icon (#0a0a0a). */
-  iconBackground?: string;
+  /** What the notification reports, which tints its icon tile. Default: info. */
+  tone?: StatusTone;
   /** Auto-dismiss in ms. 0 = persistent (manual close only). Default: NOTIFICATION_DISMISS_MS. */
   dismissMs?: number;
   /** Send browser Notification API when the tab is hidden. Default: true. */
@@ -88,16 +104,15 @@ export function showNotification(params: NotificationParams): void {
     return;
   }
   const deeplink = validateDeeplink(params.deeplink);
+  const tone = params.tone ?? 'info';
 
   presentToast({
     text,
     label: params.label,
-    icon: params.icon ?? BELL_SVG,
+    icon: params.icon ?? toneIcon(tone),
+    tone,
     dismissMs: params.dismissMs ?? NOTIFICATION_DISMISS_MS,
     ...(deeplink === undefined ? {} : { deeplink }),
-    ...(params.iconBackground === undefined || params.iconBackground === ''
-      ? {}
-      : { iconBackground: params.iconBackground }),
     ...(params.onDismiss === undefined ? {} : { onDismiss: params.onDismiss }),
     ...(params.action === undefined ? {} : { action: params.action }),
   });

@@ -27,7 +27,7 @@ const h = vi.hoisted(() => ({
   holdReads: false,
   held: [] as (() => void)[],
   unreadLabels: 0,
-  captured: [] as unknown[],
+  captured: [] as string[],
 }));
 
 vi.mock('../../../src/chat/service.js', async original => {
@@ -78,9 +78,10 @@ vi.mock('../../../src/state/chat-panel.js', async original => {
 });
 
 vi.mock('../../../../metrics/src/sentry.js', () => ({
-  captureException: (error: unknown) => {
-    h.captured.push(error);
+  captureException: (_error: unknown, ctx: { step: string }) => {
+    h.captured.push(ctx.step);
   },
+  recordExpected: () => undefined,
 }));
 
 import { ChatPanel } from '../../../src/components/chat/ChatPanel.js';
@@ -97,7 +98,7 @@ import { setLoggedIn } from '../../../src/state/auth.js';
 import { renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import type * as ServiceModule from '../../../src/chat/service.js';
 import type * as ChatPanelModule from '../../../src/state/chat-panel.js';
-import { byId } from '../../support.js';
+import { byId, byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const PRODUCT = 'chatty.dot';
@@ -148,7 +149,7 @@ function custom(seq: number, roomId = 'r0'): ChatMessageRecord {
 }
 
 function rows(): HTMLButtonElement[] {
-  return [...document.querySelectorAll<HTMLButtonElement>('.chat-room-item')];
+  return [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-room-item"]')];
 }
 
 let removeRules: (() => void) | undefined;
@@ -274,7 +275,7 @@ describe('chat panel, contact reads', () => {
     await idle();
 
     // Then
-    expect(rows().map(row => row.querySelector('.chat-room-name')?.textContent)).toEqual(['Room 0']);
+    expect(rows().map(row => byTestId('chat-room-name', row).textContent)).toEqual(['Room 0']);
   });
 
   it('As a user, going back to a list that missed nothing does not re-read it', async () => {
@@ -302,7 +303,7 @@ describe('chat panel, contact reads', () => {
     // Then
     expect(byId('chat-panel-hint').hidden).toBe(false);
     expect(byId('chat-panel-hint').textContent).toBe('Chat could not be loaded.');
-    expect(h.captured).toHaveLength(1);
+    expect(h.captured).toEqual(['chat_contacts_read']);
   });
 
   it('As a user, a conversation that cannot be read says so', async () => {
@@ -317,7 +318,7 @@ describe('chat panel, contact reads', () => {
     // Then
     expect(byId('chat-panel-hint').hidden).toBe(false);
     expect(byId('chat-panel-hint').textContent).toBe('Chat could not be loaded.');
-    expect(h.captured).toHaveLength(1);
+    expect(h.captured).toEqual(['chat_messages_read']);
   });
   it('As a user back on a working list, a conversation that could not be read no longer says so', async () => {
     // Given: a conversation whose messages cannot be read.
@@ -353,7 +354,7 @@ describe('chat panel, contact reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(1);
     expect(byId('chat-panel-hint').hidden).toBe(true);
   });
 
@@ -371,7 +372,7 @@ describe('chat panel, contact reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(1);
     expect(byId('chat-panel-hint').textContent).toBe('Chat could not be loaded.');
 
     // When: back on the list, a message and a re-read that works.
@@ -410,7 +411,7 @@ describe('chat panel, message reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(3);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(3);
   });
 
   it('As a user who went back to the list, a conversation read that lands late shows nothing and marks nothing seen', async () => {
@@ -437,8 +438,8 @@ describe('chat panel, message reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(0);
-    expect(rows()[1]?.querySelector('.chat-room-unread')?.textContent).toBe('1');
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(0);
+    expect(byTestId('chat-room-unread', nth(rows(), 1)).textContent).toBe('1');
   });
 });
 
@@ -497,9 +498,9 @@ describe('chat panel, scrolling', () => {
 
   /** The wrapper around the bubbles, whose height is the conversation's. */
   function thread(): HTMLElement {
-    const node = byId('chat-panel-messages').querySelector<HTMLElement>('.chat-panel-thread');
+    const node = byId('chat-panel-messages').querySelector<HTMLElement>('[data-testid="chat-panel-thread"]');
     if (node === null) {
-      throw new Error('missing .chat-panel-thread');
+      throw new Error('missing [data-testid="chat-panel-thread"]');
     }
     return node;
   }
@@ -522,7 +523,7 @@ describe('chat panel, scrolling', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(3);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(3);
     expect(list.scrollTop).toBe(100);
   });
 
@@ -568,7 +569,7 @@ describe('chat panel, scrolling', () => {
     await idle();
     expect(list.scrollTop).toBe(1000);
     const observer = observers.observing(thread());
-    expect(thread().querySelectorAll(':scope > .chat-msg')).toHaveLength(2);
+    expect(thread().querySelectorAll(':scope > [data-testid="chat-msg"]')).toHaveLength(2);
 
     // When: the list gets shorter (the window shrinks), which leaves the
     // scroll position short of the bottom without a scroll event, and the
@@ -647,7 +648,7 @@ describe('chat panel, scrolling', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(3);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(3);
     expect(list.scrollTop).toBe(1100);
   });
 

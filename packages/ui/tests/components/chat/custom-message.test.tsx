@@ -114,7 +114,7 @@ describe('chat custom message', () => {
     await settle();
 
     // Then
-    expect(container.querySelector('.chat-custom-placeholder')).toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).toBeNull();
     expect(container.querySelector('button')?.textContent).toBe('Vote');
   });
 
@@ -204,7 +204,7 @@ describe('chat custom message', () => {
     await settle();
 
     // Then
-    expect(container.querySelector('.chat-custom-placeholder')).toBeNull();
+    expect(container.querySelector('[data-testid="chat-custom-placeholder"]')).toBeNull();
     expect(container.querySelector('button')?.textContent).toBe('Retry');
   });
 

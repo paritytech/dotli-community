@@ -1,0 +1,107 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board's .toast-stack: bottom right on desktop, full width on phones. */
+
+.stack {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  /* Under the header (1000), the scrims and popovers (1400 up) and the modals
+     (2000 up), so a toast never covers a prompt the user has to answer. Under
+     the docked chat (900) and the debug panel (950) too, so it never covers
+     the chat's composer. */
+  z-index: 850;
+  box-sizing: border-box;
+  width: var(--w-toast);
+  margin: 0;
+  padding: 0;
+}
+/* PHONE_QUERY in phone-viewport.ts, where the bar becomes the header and
+   menus become sheets. */
+@media (max-width: 560px) {
+  .stack {
+    right: var(--sp-4);
+    bottom: calc(var(--sp-4) + var(--safe-bottom));
+    left: var(--sp-4);
+    width: auto;
+  }
+}
+
+.cards {
+  display: grid;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+/* The padding keeps the cards' shadows inside the scroll box, the margin
+   keeps the cards where they were. */
+.stack[data-expanded] .cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60dvh;
+  margin: calc(-1 * var(--sp-3));
+  padding: var(--sp-3);
+  overflow-y: auto;
+}
+
+/* 20 px with its centre 4 px inside the card's corner, the board's 24 on
+   phones. */
+.close-all {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--sp-5);
+  height: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--chrome-glass);
+  /* No text: only so it does not hold the UA's fractional 13.333 px. */
+  font: inherit;
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+/* The shared 16 px close icon drawn at the board's 12 px (10 on desktop),
+   its stroke thickened so it reads at that size. */
+.close-all svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.5;
+}
+.close-all:hover {
+  color: var(--chrome-text);
+}
+.close-all:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+/* PHONE_QUERY in phone-viewport.ts: the board's sizes. */
+@media (max-width: 560px) {
+  .stack[data-expanded] .cards {
+    gap: var(--sp-2);
+  }
+  .close-all {
+    top: calc(-1 * var(--sp-2));
+    right: calc(-1 * var(--sp-2));
+    width: var(--sp-6);
+    height: var(--sp-6);
+  }
+  .close-all svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .close-all {
+    transition: none;
+  }
+}

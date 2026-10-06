@@ -17,6 +17,7 @@ export {
   type ChatMessageRecord,
   type ChatRoomRecord,
 } from './chat.js';
+export { isExpectedDbError } from './db.js';
 export {
   RECENT_KEY,
   clearCidCache,
@@ -28,7 +29,6 @@ export {
   setCachedCid,
   withRecentLabel,
   writeRecentLabels,
-  type CachedCid,
   type CachedManifests,
 } from './cid-cache.js';
 export {

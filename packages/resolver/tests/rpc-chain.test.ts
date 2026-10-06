@@ -6,7 +6,6 @@ import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import {
   createCoreRpcChainProvider,
-  createRpcChainProvider,
   getConnectedRpcEndpoint,
   isCoreRpcChainSupported,
   type RpcChainProvider,
@@ -54,7 +53,7 @@ describe('rpc-chain', () => {
     const people = getActiveServicesConfig().people;
 
     // When
-    const provider = must(createRpcChainProvider(people.genesis), 'People provider');
+    const provider = must(createCoreRpcChainProvider(people.genesis), 'People provider');
     const { socket } = await connect(provider);
 
     // Then
@@ -65,20 +64,18 @@ describe('rpc-chain', () => {
 
   it('rejects unknown genesis hashes', () => {
     expect(isCoreRpcChainSupported('0xdeadbeef')).toBe(false);
-    expect(createRpcChainProvider('0xdeadbeef')).toBeNull();
+    expect(createCoreRpcChainProvider('0xdeadbeef')).toBeNull();
   });
 
-  it('As a dotli integrator, the host reserves Bulletin RPC access for the host-owned Rust core', () => {
+  it('As a dotli integrator, the host-owned Rust core reaches Bulletin over RPC', () => {
     // Given
     const bulletin = getActiveServicesConfig().bulletin;
 
     // When
-    const productProvider = createRpcChainProvider(bulletin.genesis);
     const coreSupported = isCoreRpcChainSupported(bulletin.genesis);
     const coreProvider = createCoreRpcChainProvider(bulletin.genesis);
 
     // Then
-    expect(productProvider).toBeNull();
     expect(coreSupported).toBe(true);
     expect(coreProvider).not.toBeNull();
   });

@@ -122,11 +122,6 @@ export function isSandboxOrigin(origin: string): boolean {
   }
 }
 
-/** Optional relay chain spec override for the statement store people chain.
- *  Value is the chain-spec file name without `.json`, e.g. "westend-local".
- *  When unset, the default Paseo relay chain is reused. */
-export const SS_RELAY_CHAIN: string | undefined = import.meta.env.VITE_SS_RELAY_CHAIN ?? undefined;
-
 // Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
 export const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
 

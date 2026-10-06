@@ -18,8 +18,8 @@
 // for incremental migration but collapses both into `null`.
 
 import type { Network } from '@dotli/config';
-import { getDb } from './db.js';
-import { m, captureException, spans as S } from '@dotli/metrics';
+import { getDb, isExpectedDbError } from './db.js';
+import { m, captureException, recordExpected, spans as S } from '@dotli/metrics';
 import { isValidDotLabel, log } from '@dotli/shared';
 
 const STORE = 'cids';
@@ -46,6 +46,26 @@ export interface CachedCid {
 }
 
 export type CidCacheResult = ({ kind: 'hit' } & CachedCid) | { kind: 'miss' } | { kind: 'error'; cause: unknown };
+
+type CacheAction = 'read' | 'write' | 'clear' | 'evict';
+
+// Sentry capture is throttled to once per action per page: a cache stuck in
+// one failure reports identically on every access.
+const reportedActions = new Set<CacheAction>();
+
+function report(action: CacheAction, err: unknown): void {
+  const step = `cid_cache_${action}`;
+  if (isExpectedDbError(err)) {
+    recordExpected(err, { flow: 'storage', step });
+    return;
+  }
+  log.error(`[dot.li cid-cache] ${action} error:`, err);
+  if (reportedActions.has(action)) {
+    return;
+  }
+  reportedActions.add(action);
+  captureException(err, { flow: 'storage', step, tags: { kind: `${step}_error` } });
+}
 
 export async function getCachedCidResult(label: string, network: Network): Promise<CidCacheResult> {
   const stop = m.timer(S.CACHE_READ_LATENCY);
@@ -86,8 +106,7 @@ export async function getCachedCidResult(label: string, network: Network): Promi
 export async function getCachedCid(label: string, network: Network): Promise<CachedCid | null> {
   const result = await getCachedCidResult(label, network);
   if (result.kind === 'error') {
-    log.error('[dot.li cid-cache] read error:', result.cause);
-    captureException(result.cause, { kind: 'cid_cache_read_error' });
+    report('read', result.cause);
     return null;
   }
   return result.kind === 'hit' ? { cid: result.cid, manifests: result.manifests } : null;
@@ -135,28 +154,6 @@ export function getRecentLabels(): string[] {
   }
 }
 
-/**
- * Record a label as recently visited in this origin's mirror.
- *
- * Call this only once a label has actually resolved. Writing on navigation
- * intent persisted typos as pills that reproduce "can't be reached" forever.
- */
-export function addRecentLabel(label: string): void {
-  if (!isValidDotLabel(label)) {
-    return;
-  }
-  writeRecentLabels(withRecentLabel(getRecentLabels(), label));
-}
-
-/** Drop a label from the recent list. Used by the pill's remove affordance. */
-export function removeRecentLabel(label: string): void {
-  const recent = getRecentLabels();
-  if (!recent.includes(label)) {
-    return;
-  }
-  writeRecentLabels(recent.filter(l => l !== label));
-}
-
 export function writeRecentLabels(labels: string[]): void {
   try {
     localStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));
@@ -187,8 +184,7 @@ export async function setCachedCid(
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li cid-cache] write error:', err);
-    captureException(err, { kind: 'cid_cache_write_error' });
+    report('write', err);
   }
 }
 
@@ -216,8 +212,7 @@ export async function clearCidCache(): Promise<void> {
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li cid-cache] clear error:', err);
-    captureException(err, { kind: 'cid_cache_clear_error' });
+    report('clear', err);
   }
 }
 
@@ -231,7 +226,6 @@ export async function evictCachedCid(label: string): Promise<void> {
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li cid-cache] evict error:', err);
-    captureException(err, { kind: 'cid_cache_evict_error' });
+    report('evict', err);
   }
 }

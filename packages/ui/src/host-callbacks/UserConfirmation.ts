@@ -23,16 +23,23 @@ import type {
   RawPayload,
   RingLocationJunction,
 } from '@parity/truapi';
+import { iconMarkup, PERMISSION_ICONS } from '../permission-icons.js';
 import { showPreimageSubmitModal } from '../preimage-modal.js';
 import { ERRORS } from '../errors.js';
 import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { presentModal } from '../overlays/load.js';
 import type { ModalButton, ModalField } from '../state/modals.js';
 
+// The board's pen, the chain-submit permission's, for every prompt that asks
+// for a signature. Markup, as the modal view is plain data.
+const PEN_ICON = iconMarkup(PERMISSION_ICONS.ChainSubmit);
+
 interface ConfirmationCopy {
   title: string;
   action: string;
   cancelAction?: string;
+  /** SVG markup for the head's tile. */
+  icon?: string;
 }
 
 type ConfirmationField = ModalField;
@@ -54,9 +61,10 @@ async function showConfirmationModal(
   allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
   const buttons: ModalButton<ConfirmationDecision>[] = [
+    // Every cancel here rejects the core's request, so it is drawn destructive.
     {
       label: copy.cancelAction ?? 'Cancel',
-      variant: 'cancel',
+      variant: 'danger',
       result: 'rejected',
     },
     allowOnce
@@ -72,6 +80,7 @@ async function showConfirmationModal(
   }
   const { result } = await presentModal<ConfirmationDecision>(
     {
+      ...(copy.icon === undefined ? {} : { icon: copy.icon }),
       title: copy.title,
       fields: confirmationDisplay(label, review).fields,
       buttons,
@@ -299,15 +308,15 @@ function createResourceAllocationFields(review: ResourceAllocationReview): Confi
 function confirmationCopy(review: ModalReview): ConfirmationCopy {
   switch (review.tag) {
     case 'SignPayload':
-      return { title: 'Sign Transaction', action: 'Sign' };
+      return { title: 'Sign Transaction', action: 'Sign', icon: PEN_ICON };
     case 'SignRaw':
-      return { title: 'Sign Message', action: 'Sign' };
+      return { title: 'Sign Message', action: 'Sign', icon: PEN_ICON };
     case 'StatementStoreProductSign':
-      return { title: 'Sign Statement', action: 'Sign' };
+      return { title: 'Sign Statement', action: 'Sign', icon: PEN_ICON };
     case 'SignVrf':
-      return { title: 'Sign VRF Transcript', action: 'Sign' };
+      return { title: 'Sign VRF Transcript', action: 'Sign', icon: PEN_ICON };
     case 'CreateTransaction':
-      return { title: 'Sign Transaction', action: 'Sign' };
+      return { title: 'Sign Transaction', action: 'Sign', icon: PEN_ICON };
     case 'AccountAlias':
       return {
         title: 'Alias Permission',

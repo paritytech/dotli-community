@@ -6,9 +6,6 @@
 // controller writes.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { Window } from 'happy-dom';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 
@@ -35,8 +32,7 @@ import { getLoadingState, updateLoading } from '../../../src/state/loading.js';
 import { showErrorPage } from '../../../src/ui.js';
 import { LandingPage } from '../../../src/islands/LandingPage.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
-import { byId } from '../../support.js';
-import { nth } from '../../helpers/nth.js';
+import { byId, byTestId, query } from '../../support.js';
 
 /** The mounted screens' disposers. */
 const mounted: (() => void)[] = [];
@@ -56,6 +52,8 @@ async function mountScreen(): Promise<HTMLElement> {
 }
 
 const FADE_MS = 300;
+// Mirrors MESSAGE_ROTATE_MS in loading-controller.ts.
+const ROTATE_MS = 9_000;
 
 // The status typewriter (loading-controller.ts) runs on animation frames,
 // which the tests step by hand.
@@ -75,42 +73,8 @@ function app(): HTMLElement {
   return byId('app');
 }
 
-function petals(root: ParentNode = document): SVGPathElement[] {
-  return [...root.querySelectorAll<SVGPathElement>('.loading-petal')];
-}
-
-const BASE_CSS = readFileSync(resolve(import.meta.dirname, '../../../src/styles/base.css'), 'utf8');
-
-/** A CSS time (`-1.2s`, `200ms`) in milliseconds. */
-function toMs(time: string): number {
-  return time.endsWith('ms') ? parseFloat(time) : parseFloat(time) * 1_000;
-}
-
-/**
- * The animation a browser with `motion` as its reduced-motion preference
- * applies to each petal of `markup`, under styles/base.css. A window of its
- * own, so the preference and the stylesheet stay out of the test document.
- */
-async function petalAnimations(
-  markup: string,
-  motion: 'no-preference' | 'reduce',
-): Promise<{ animation: string; delayMs: number }[]> {
-  const win = new Window({
-    settings: { device: { prefersReducedMotion: motion } },
-  });
-  const style = win.document.createElement('style');
-  style.textContent = BASE_CSS;
-  win.document.head.append(style);
-  win.document.body.innerHTML = markup;
-  const result = [...win.document.querySelectorAll('.loading-petal')].map(petal => {
-    const computed = win.getComputedStyle(petal);
-    return {
-      animation: computed.animation,
-      delayMs: toMs(computed.animationDelay || '0s'),
-    };
-  });
-  await win.happyDOM.close();
-  return result;
+function petals(): SVGPathElement[] {
+  return [...document.querySelectorAll<SVGPathElement>('#loading-logo path')];
 }
 
 async function settle(): Promise<void> {
@@ -149,13 +113,14 @@ afterEach(() => {
 });
 
 describe('Loading screen island', () => {
-  it('As a visitor, progress, status and warning made before it hydrates show at once, and nothing restarts', async () => {
+  it('As a visitor, progress, lines and warning made before it hydrates show at once, and nothing restarts', async () => {
     // Given a load already underway
     updateLoading({
       progress: 37.4,
-      statusText: 'Downloading the app',
-      statusOpacity: 0.8,
-      srText: 'Downloading the app',
+      step: ['Downloading the app'],
+      explanation: 'The files come from',
+      explanationOpacity: 0.8,
+      srText: 'The files come from many computers at once',
       warning: 'Still looking for peers',
     });
     const before = getLoadingState();
@@ -167,10 +132,11 @@ describe('Loading screen island', () => {
     expect(byId('loading-progress-fill').style.width).toBe('37.4%');
     expect(byId('loading-progress-pct').textContent).toBe('37%');
     expect(byId('loading-progress').getAttribute('aria-valuenow')).toBe('37');
-    expect(byId('status').textContent).toBe('Downloading the app');
+    expect(byId('loading-step').textContent).toBe('Downloading the app');
+    expect(byId('status').textContent).toBe('The files come from');
     expect(byId('status').style.opacity).toBe('0.8');
-    expect(byId('status-sr').textContent).toBe('Downloading the app');
-    expect(byId('loading-warning').classList.contains('visible')).toBe(true);
+    expect(byId('status-sr').textContent).toBe('The files come from many computers at once');
+    expect(byId('loading-warning').hasAttribute('data-visible')).toBe(true);
     expect(byId('loading-warning-text').textContent).toBe('Still looking for peers');
     await settle();
     expect(getLoadingState()).toEqual(before);
@@ -183,9 +149,10 @@ describe('Loading screen island', () => {
     // When
     updateLoading({
       progress: 62.6,
-      statusText: 'Connecting to',
-      statusOpacity: 0.9,
-      srText: 'Connecting to Polkadot',
+      step: ['Looking up ', { host: 'my<b>app</b>', tld: '.dot' }],
+      explanation: 'Catching up',
+      explanationOpacity: 0.9,
+      srText: 'Catching up on the newest blocks',
       warning: 'Slow <b>peers</b>',
     });
     await settle();
@@ -194,12 +161,14 @@ describe('Loading screen island', () => {
     expect(byId('loading-progress-fill').style.width).toBe('62.6%');
     expect(byId('loading-progress-pct').textContent).toBe('63%');
     expect(byId('loading-progress').getAttribute('aria-valuenow')).toBe('63');
-    expect(byId('status').textContent).toBe('Connecting to');
+    // The name is text, never markup.
+    expect(byId('loading-step').textContent).toBe('Looking up my<b>app</b>.dot');
+    expect(byId('loading-step').querySelector('b')).toBeNull();
+    expect(byId('status').textContent).toBe('Catching up');
     expect(byId('status').style.opacity).toBe('0.9');
-    expect(byId('status-sr').textContent).toBe('Connecting to Polkadot');
+    expect(byId('status-sr').textContent).toBe('Catching up on the newest blocks');
     const warning = byId('loading-warning');
-    expect(warning.classList.contains('visible')).toBe(true);
-    expect(warning.classList.contains('loading-warning')).toBe(true);
+    expect(warning.hasAttribute('data-visible')).toBe(true);
     // A warning is text, never markup.
     expect(byId('loading-warning-text').textContent).toBe('Slow <b>peers</b>');
     expect(warning.querySelector('b')).toBeNull();
@@ -209,7 +178,7 @@ describe('Loading screen island', () => {
     await settle();
 
     // Then
-    expect(warning.classList.contains('visible')).toBe(false);
+    expect(warning.hasAttribute('data-visible')).toBe(false);
     expect(byId('loading-warning-text').textContent).toBe('');
   });
 
@@ -224,11 +193,8 @@ describe('Loading screen island', () => {
     ctl.dismissLoading();
     await settle();
 
-    // Then: it fades (base.css), and lets clicks through.
-    expect(screen.classList.contains('dismissing')).toBe(true);
-    expect(BASE_CSS).toMatch(
-      /#app-loading\.dismissing \{\s*transition: opacity 0\.3s ease;\s*opacity: 0;\s*pointer-events: none;/,
-    );
+    // Then
+    expect(screen.hasAttribute('data-dismissing')).toBe(true);
     expect(byId('loading-progress-pct').textContent).toBe('100%');
     expect(screen.isConnected).toBe(true);
 
@@ -247,9 +213,9 @@ describe('Loading screen island', () => {
     expect(screen.isConnected).toBe(false);
     expect(document.getElementById('app-loading')).toBeNull();
     expect(getLoadingState().phase).toBe('gone');
-    updateLoading({ statusText: 'late line' });
+    updateLoading({ explanation: 'late line' });
     await settle();
-    expect(screen.querySelector('#status')?.textContent).not.toBe('late line');
+    expect(query(screen, '#status').textContent).not.toBe('late line');
     expect(frames.size).toBe(0);
   });
 
@@ -259,6 +225,8 @@ describe('Loading screen island', () => {
     ctl.advancePhase(0);
     await mountScreen();
     const screen = byId('app-loading');
+    // The first explanation is due one rotation in.
+    vi.advanceTimersByTime(ROTATE_MS);
     runFrames(100);
     // The typewriter's next frame.
     expect(frames.size).toBe(1);
@@ -274,7 +242,7 @@ describe('Loading screen island', () => {
     expect(getLoadingState().phase).toBe('gone');
     expect(getLoadingState().progress).toBe(frozen);
     expect(frames.size).toBe(0);
-    expect(document.querySelector('.error-page-title')?.textContent).toBe('Failed');
+    expect(byTestId('error-page-title').textContent).toBe('Failed');
   });
 
   it('As a visitor, the landing page disposes a loading screen mounted before it', async () => {
@@ -290,7 +258,7 @@ describe('Loading screen island', () => {
     mounted.push(render(() => <LandingPage />, landing));
     setLandingPage(true);
     await vi.waitFor(() => {
-      expect(document.querySelector('.landing')).not.toBeNull();
+      expect(document.querySelector('[data-testid="landing"]')).not.toBeNull();
     });
     await settle();
 
@@ -309,37 +277,6 @@ describe('Loading screen island', () => {
     expect(petals()).toHaveLength(6);
     expect(petals().every(p => !p.hasAttribute('style'))).toBe(true);
     expect(frames.size).toBe(0);
-  });
-
-  it('As a visitor, the petals of the loading screen light up in turn, a sixth of a cycle apart, and stay still under reduced motion', async () => {
-    // Given
-    await mountScreen();
-    const screens = {
-      live: byId('app-loading').outerHTML,
-    };
-
-    for (const [name, markup] of Object.entries(screens)) {
-      // When: no motion preference.
-      const moving = await petalAnimations(markup, 'no-preference');
-
-      // Then
-      expect(moving, name).toHaveLength(6);
-      for (const [i, petal] of moving.entries()) {
-        expect(petal.animation, `${name} petal ${String(i)}`).toMatch(/^loading-petal \S+ .*infinite$/);
-        const cycleMs = toMs(nth(petal.animation.split(' '), 1));
-        const offset = ((petal.delayMs % cycleMs) + cycleMs) % cycleMs;
-        expect(offset, `${name} petal ${String(i)}`).toBeCloseTo((i * cycleMs) / 6, 2);
-      }
-
-      // When: reduced motion.
-      const still = await petalAnimations(markup, 'reduce');
-
-      // Then
-      expect(
-        still.map(petal => petal.animation),
-        name,
-      ).toEqual(Array(6).fill(''));
-    }
   });
 
   it('As the shell, disposing the loading root stops the loading timers and the screen goes', async () => {

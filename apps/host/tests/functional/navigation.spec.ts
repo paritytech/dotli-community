@@ -226,7 +226,7 @@ test.describe('Validator regression guards', () => {
     // The pre-PR validator would have rejected `ref` as an unknown contract
     // key and rendered the error page. Assert no error page is showing.
     const errorVisible = await page
-      .locator('.error-page-title')
+      .getByTestId('error-page-title')
       .first()
       .isVisible()
       .catch(() => false);

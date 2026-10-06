@@ -17,6 +17,8 @@ import { createEffect, createUniqueId, For, Match, onCleanup, Show, Switch, untr
 import type { JSX } from '@solidjs/web';
 import type { RendererNode } from '@parity/truapi';
 import { boxStyle, columnStyle, modifierStyle, rowStyle, textStyle } from '../../chat/custom-styles.js';
+import { ChatActionButton, type ChatActionButtonVariant } from '../primitives/ChatActionButton.js';
+import s from './CustomNode.module.css';
 
 /** Reports a user gesture inside a rendered tree back to the product. */
 export type CustomActionHandler = (actionId: string, payload?: Uint8Array) => void;
@@ -36,7 +38,7 @@ function valueOf<T extends NodeTag>(node: RendererNode, tag: T): NodeValue<T> | 
   return node.tag === tag ? ((node as { value?: unknown }).value as NodeValue<T>) : false;
 }
 
-function buttonVariant(variant: NodeValue<'Button'>['props']['variant']): string {
+function buttonVariant(variant: NodeValue<'Button'>['props']['variant']): ChatActionButtonVariant {
   if (variant === 'Primary' || variant === undefined) {
     return 'primary';
   }
@@ -149,9 +151,9 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
     },
   );
   return (
-    <div class="chat-custom-field" style={modifierStyle(props.value.modifiers)}>
+    <div class={s['field']} data-testid="chat-custom-field" style={modifierStyle(props.value.modifiers)}>
       <Show when={props.value.props.label !== undefined && props.value.props.label !== ''}>
-        <label class="chat-custom-field-label" for={inputId}>
+        <label class={s['fieldLabel']} for={inputId}>
           {props.value.props.label}
         </label>
       </Show>
@@ -163,7 +165,7 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
         }}
         id={inputId}
         type="text"
-        class="chat-custom-field-input"
+        class={s['fieldInput']}
         placeholder={props.value.props.placeholder}
         disabled={props.value.props.enabled === false}
         onInput={event => {
@@ -186,7 +188,11 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
 
       <Match when={valueOf(props.node, 'Box')}>
         {value => (
-          <div class="chat-custom-box" style={boxStyle(value().props.contentAlignment, value().modifiers)}>
+          <div
+            class={s['box']}
+            data-testid="chat-custom-box"
+            style={boxStyle(value().props.contentAlignment, value().modifiers)}
+          >
             <Children nodes={value().children} onAction={props.onAction} />
           </div>
         )}
@@ -195,7 +201,8 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
       <Match when={valueOf(props.node, 'Column')}>
         {value => (
           <div
-            class="chat-custom-column"
+            class={s['column']}
+            data-testid="chat-custom-column"
             style={columnStyle(value().props.horizontalAlignment, value().props.verticalArrangement, value().modifiers)}
           >
             <Children nodes={value().children} onAction={props.onAction} />
@@ -206,7 +213,8 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
       <Match when={valueOf(props.node, 'Row')}>
         {value => (
           <div
-            class="chat-custom-row"
+            class={s['row']}
+            data-testid="chat-custom-row"
             style={rowStyle(value().props.horizontalArrangement, value().props.verticalAlignment, value().modifiers)}
           >
             <Children nodes={value().children} onAction={props.onAction} />
@@ -215,12 +223,16 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
       </Match>
 
       <Match when={valueOf(props.node, 'Spacer')}>
-        {value => <div class="chat-custom-spacer" style={modifierStyle(value().modifiers)} />}
+        {value => <div class={s['spacer']} data-testid="chat-custom-spacer" style={modifierStyle(value().modifiers)} />}
       </Match>
 
       <Match when={valueOf(props.node, 'Text')}>
         {value => (
-          <span class="chat-custom-text" style={textStyle(value().props.style, value().props.color, value().modifiers)}>
+          <span
+            class={s['text']}
+            data-testid="chat-custom-text"
+            style={textStyle(value().props.style, value().props.color, value().modifiers)}
+          >
             <Children nodes={value().children} onAction={props.onAction} />
           </span>
         )}
@@ -228,11 +240,12 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
 
       <Match when={valueOf(props.node, 'Button')}>
         {value => (
-          <button
-            type="button"
-            class={`chat-custom-btn chat-custom-btn-${buttonVariant(value().props.variant)}${value().props.loading === true ? ' chat-custom-btn-loading' : ''}`}
-            disabled={value().props.enabled === false || value().props.loading === true}
+          <ChatActionButton
+            variant={buttonVariant(value().props.variant)}
+            loading={value().props.loading === true}
+            disabled={value().props.enabled === false}
             style={modifierStyle(value().modifiers)}
+            testId="chat-custom-btn"
             onClick={() => {
               const action = value().props.clickAction;
               if (action !== undefined) {
@@ -241,7 +254,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             }}
           >
             {value().props.text}
-          </button>
+          </ChatActionButton>
         )}
       </Match>
 
@@ -252,12 +265,12 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
       {/* No fetch path for Bulletin or archive image bytes in the host frame
           yet, so an image draws as the empty space the RFC gives a miss. */}
       <Match when={valueOf(props.node, 'Image')}>
-        {value => <div class="chat-custom-image" style={modifierStyle(value().modifiers)} />}
+        {value => <div class={s['image']} data-testid="chat-custom-image" style={modifierStyle(value().modifiers)} />}
       </Match>
 
       <Match when={valueOf(props.node, 'Effect')}>
         {value => (
-          <div class={`chat-custom-effect chat-custom-effect-${value().props.effect.toLowerCase()}`}>
+          <div class={s['effect']} data-testid="chat-custom-effect" data-effect={value().props.effect.toLowerCase()}>
             <Children nodes={value().children} onAction={props.onAction} />
           </div>
         )}

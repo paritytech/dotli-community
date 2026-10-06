@@ -10,9 +10,9 @@ import type { JsonRpcProvider } from 'polkadot-api';
 import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
 import { namehash, toHex, decodeIpfsContenthashResult } from './abi.js';
-import { ContenthashDecodeError, UnsupportedContenthashCodecError } from './errors.js';
+import { ContenthashDecodeError, NetworkSyncTimeoutError, UnsupportedContenthashCodecError } from './errors.js';
 import { raceSyncTimeout, withSyncBudget, withHaltRetry } from './sync-deadline.js';
-import { dur, log } from '@dotli/shared';
+import { log } from '@dotli/shared';
 
 import { m, spans as S } from '@dotli/metrics';
 import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
@@ -71,7 +71,7 @@ export function setResolverPeopleProvider(factory: (() => JsonRpcProvider) | nul
  */
 export function destroyResolverClient(): void {
   if (clientInstance !== null) {
-    log.warn('[dot.li resolve] Destroying resolver client');
+    log.event('Resolver client destroyed', { flow: 'resolve' });
     try {
       apiInstance?.destroy();
       clientInstance.destroy();
@@ -104,7 +104,7 @@ function ensureClient(opts: ResolveOptions = {}): Promise<Api> {
 
 async function doCreateClient(onStatus?: StatusCallback, onPhase?: PhaseCallback): Promise<Api> {
   const initStart = performance.now();
-  const stopPresync = m.timer(S.SMOLDOT_PRESYNC);
+  let outcome: 'ok' | 'error' | 'timeout' = 'error';
 
   try {
     onPhase?.('light-client-starting');
@@ -116,13 +116,13 @@ async function doCreateClient(onStatus?: StatusCallback, onPhase?: PhaseCallback
       throw new Error('Resolver Asset Hub provider not set — call setResolverAssetHubProvider() during bootstrap');
     }
     const provider = resolverAssetHubProvider();
-    log.warn('[dot.li resolve] Creating substrate-client + storage API...');
     const client = createClient(provider);
     const api = createRawApi(client);
 
     onPhase?.('asset-hub-syncing');
     onStatus?.('Syncing with Asset Hub Paseo...');
     const syncStart = performance.now();
+    let syncMs: number;
     // Assign `clientInstance` / `apiInstance` only AFTER the chain head is
     // ready. If `whenReady` throws, we tear down the local client immediately.
     // Leaving an orphaned client behind would silently keep a smoldot chain
@@ -141,10 +141,9 @@ async function doCreateClient(onStatus?: StatusCallback, onPhase?: PhaseCallback
       await m.span(S.SMOLDOT_FINALIZED_BLOCK, () =>
         raceSyncTimeout(api.whenReady(), HUB_CHAIN, TIMEOUTS.HUB_FINALIZED_SYNC),
       );
-      const syncMs = performance.now() - syncStart;
+      syncMs = performance.now() - syncStart;
       m.measure(S.SMOLDOT_FINALIZED_BLOCK, syncMs);
       m.distribution(S.SMOLDOT_FINALIZED_BLOCK, syncMs);
-      log.warn(`[dot.li resolve] Chain head ready (${dur(syncStart)})`);
     } catch (err) {
       try {
         api.destroy();
@@ -168,12 +167,28 @@ async function doCreateClient(onStatus?: StatusCallback, onPhase?: PhaseCallback
 
     clientInstance = client;
     apiInstance = api;
-    log.warn(`[dot.li resolve] Ready (${dur(initStart)} total)`);
+    outcome = 'ok';
+    log.event('Asset Hub client ready', {
+      flow: 'resolve',
+      sync_ms: Math.round(syncMs),
+      total_ms: Math.round(performance.now() - initStart),
+    });
     onPhase?.('asset-hub-ready');
     onStatus?.('Connected to Asset Hub Paseo');
     return apiInstance;
+  } catch (err) {
+    if (err instanceof NetworkSyncTimeoutError) {
+      outcome = 'timeout';
+    }
+    throw err;
   } finally {
-    stopPresync();
+    // Recorded here alone: both the SharedWorker's pre-sync and direct mode's
+    // first resolution come through this function.
+    const totalMs = performance.now() - initStart;
+    if (outcome === 'ok') {
+      m.measure(S.SMOLDOT_PRESYNC, totalMs);
+    }
+    m.distribution(S.SMOLDOT_PRESYNC, totalMs, 'millisecond', { outcome });
   }
 }
 
@@ -226,7 +241,7 @@ export async function waitForPeopleFinalized(onStatus?: StatusCallback): Promise
   // use) rather than corrupting the broker's follow stream.
   const peopleProvider = resolverPeopleProvider;
   if (peopleProvider === null) {
-    log.warn('[dot.li resolve] People provider not set — skipping warm-keep (resolves on demand via broker)');
+    log.debug('[dot.li resolve] People provider not set — skipping warm-keep (resolves on demand via broker)');
     return;
   }
   peoplePromise ??= (async () => {
@@ -258,7 +273,7 @@ export async function waitForPeopleFinalized(onStatus?: StatusCallback): Promise
 
     peopleClientInstance = client;
     peopleApiInstance = api;
-    log.warn(`[dot.li resolve] People chain warmed (${dur(initStart)})`);
+    log.event('People chain warmed', { flow: 'resolve', ms: Math.round(performance.now() - initStart) });
     return api;
   })();
   await peoplePromise;
@@ -283,8 +298,9 @@ async function readDotName(label: string, opts: ResolveOptions): Promise<string 
   const contenthashBytes = await m.span(S.RESOLVE_STORAGE_READ, () =>
     readMappingBytes(api, dotns.DOTNS_CONTENT_RESOLVER, node, dotns.STORAGE_SLOTS.CONTENTHASH),
   );
-  m.measure(S.RESOLVE_STORAGE_READ, performance.now() - contentStart);
-  log.warn(`[dot.li resolve] get_storage contenthash: ${dur(contentStart)}`);
+  const contentMs = performance.now() - contentStart;
+  m.measure(S.RESOLVE_STORAGE_READ, contentMs);
+  log.event('Contenthash read', { flow: 'resolve', found: contenthashBytes !== null, ms: Math.round(contentMs) });
 
   if (contenthashBytes === null) {
     onStatus?.(`Domain ${domain} not found or no content set`);

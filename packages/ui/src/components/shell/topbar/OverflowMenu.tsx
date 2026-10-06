@@ -1,104 +1,139 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, For } from 'solid-js';
+import { createEffect, createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { createPopover } from '../create-popover.js';
-import type { TopbarEntry } from './context.js';
+import { DropdownMenu, useDropdownMenu } from '../../floating/DropdownMenu.js';
+import { IconButton } from '../../primitives/IconButton.js';
+import type { StatusTone } from '../../primitives/StatusDot.js';
+import type { TopbarAlert, TopbarEntry } from './context.js';
+import s from './OverflowMenu.module.css';
+
+const SEVERITY: Record<StatusTone, number> = { ok: 0, idle: 1, info: 2, warn: 3, err: 4 };
+
+/** The row's trailing chevron: choosing the row opens another surface. */
+function Chevron(): JSX.Element {
+  return (
+    <svg
+      data-testid="more-row-chevron"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
 
 /**
- * The topbar's More button (`#more-button`) and its flyout
- * (`#more-popover`), holding a row for each item the bar has collapsed
- * (`rows`, in bar order). The button shows only while there is a row; until
- * then it stays measurable, out of flow and invisible, so the bar knows the
- * room it takes.
+ * The topbar's More button (`#more-button`) and its flyout (`#more-popover`,
+ * rendered into the body), holding a row for each item the bar has
+ * collapsed (`rows`, in bar order). The button sits in a wrapper (`class`,
+ * the group's) that is `data-parked` while there is no row, so the bar
+ * still knows the room it takes.
  *
- * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
- * `menu` mode, which owns its keys and focus), with the rows as its menu
- * items. Choosing a row closes the flyout and hands focus back to the More
- * button, then activates the row's item with the row click, so the surface
- * it opens takes focus as its own mode dictates (a keyboard choice opens a
- * menu on its first item), and hands it back to the More button when it
- * closes: the item's own button is collapsed.
+ * The flyout is a DropdownMenu, with the rows as its items. It drops under
+ * the bar, and on a phone it opens as a bottom sheet titled More, its rows
+ * in a well. Each row is the board's menu row: the item's icon, its label
+ * and a chevron. An item may add to its row after the label (the network's
+ * dot and verdict word, the chat's unread count) and raise a status while it
+ * is collapsed. More's badge takes the most severe tone raised, and its name
+ * lists every raised status ("More, network offline, chat has unread
+ * messages"). The menu is named More whatever its button says.
+ *
+ * Choosing a row closes the flyout and hands focus back to the More button,
+ * then activates the row's item with the row click, so the surface it opens
+ * takes focus as its own kind says (a keyboard choice lands on its first
+ * control), and hands it back to the More button when it closes: the
+ * item's own button is collapsed. On a phone, a sheet the row opens takes
+ * More's place in the same frame, with no slide and no scrim fade, as the
+ * board swaps the sheet's content in place. A row that opens no sheet (Chat)
+ * lets More slide out.
  */
 export function OverflowMenu(props: {
   rows: readonly TopbarEntry[];
   buttonRef: (el: HTMLButtonElement) => void;
+  class?: string | undefined;
 }): JSX.Element {
-  let button: HTMLButtonElement | undefined;
-  let popover: HTMLDivElement | undefined;
-  const menu = createPopover({
-    mode: 'menu',
-    trigger: () => button,
-    surface: () => popover,
-  });
-  // The last row going (the bar grew) takes the flyout with it.
+  /** The collapsed items' raised statuses, in bar order. */
+  const raised = (): TopbarAlert[] =>
+    props.rows.map(entry => entry.alert()).filter((alert): alert is TopbarAlert => alert !== undefined);
+  /** More's badge: the most severe tone raised, so an offline network outranks unread chat. */
+  const badgeTone = (): StatusTone | undefined =>
+    raised().reduce<StatusTone | undefined>(
+      (worst, alert) => (worst === undefined || SEVERITY[alert.tone] > SEVERITY[worst] ? alert.tone : worst),
+      undefined,
+    );
+  const moreLabel = (): string => ['More', ...raised().map(alert => alert.label)].join(', ');
+
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+
+  return (
+    <>
+      <span class={props.class} data-testid="more-item" data-parked={props.rows.length === 0 ? '' : undefined}>
+        <IconButton
+          ref={el => {
+            setButton(el);
+            props.buttonRef(el);
+          }}
+          id="more-button"
+          title="More"
+          aria-label={moreLabel()}
+          badge={badgeTone() !== undefined}
+          badgeTone={badgeTone() ?? 'ok'}
+        >
+          <svg data-testid="more-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="19" cy="12" r="1.8" />
+          </svg>
+        </IconButton>
+      </span>
+      <DropdownMenu id="more-popover" title="More" trigger={button()} class={s['menu']}>
+        <CloseWhenEmpty empty={props.rows.length === 0} />
+        <For each={props.rows}>
+          {entry => (
+            <DropdownMenu.Item
+              class={s['row']}
+              data-item={entry.name}
+              onSelect={ev => {
+                entry.activate(ev);
+              }}
+            >
+              <span class={s['icon']} aria-hidden="true">
+                {entry.icon()}
+              </span>
+              <span class={s['label']}>{entry.label}</span>
+              <Show when={entry.aside()}>
+                {aside => (
+                  <span class={s['aside']} data-testid="more-row-aside">
+                    {aside()()}
+                  </span>
+                )}
+              </Show>
+              <Chevron />
+            </DropdownMenu.Item>
+          )}
+        </For>
+      </DropdownMenu>
+    </>
+  );
+}
+
+/** The last row going (the bar grew) takes the open flyout with it. */
+function CloseWhenEmpty(props: { empty: boolean }): JSX.Element {
+  const menu = useDropdownMenu();
   createEffect(
-    () => props.rows.length === 0,
+    () => props.empty,
     empty => {
       if (empty) {
         menu.setOpen(false);
       }
     },
   );
-
-  const choose = (entry: TopbarEntry, ev: MouseEvent): void => {
-    // The row's own click must not reach a document-level close-outside
-    // listener, which would see it as outside the surface it opens.
-    ev.stopPropagation();
-    menu.onItemChosen();
-    entry.activate(ev);
-  };
-
-  return (
-    <>
-      <button
-        ref={el => {
-          button = el;
-          props.buttonRef(el);
-        }}
-        onClick={menu.toggle}
-        id="more-button"
-        class={['topbar-btn topbar-more-btn', { 'topbar-more-idle': props.rows.length === 0 }]}
-        title="More"
-        aria-label="More"
-        aria-haspopup="menu"
-        aria-expanded={menu.open() ? 'true' : 'false'}
-        aria-controls="more-popover"
-      >
-        <span class="hamburger" aria-hidden="true">
-          <span class="hamburger-bar" />
-          <span class="hamburger-bar" />
-          <span class="hamburger-bar" />
-        </span>
-      </button>
-      <div
-        ref={el => {
-          popover = el;
-        }}
-        class={['more-popover', { open: menu.open() }]}
-        id="more-popover"
-        role="menu"
-        aria-labelledby="more-button"
-        tabindex="-1"
-      >
-        <For each={props.rows}>
-          {entry => (
-            <button
-              onClick={ev => {
-                choose(entry, ev);
-              }}
-              class="more-row"
-              role="menuitem"
-              tabindex="-1"
-              data-item={entry.name}
-            >
-              {entry.icon()}
-              <span>{entry.label}</span>
-            </button>
-          )}
-        </For>
-      </div>
-    </>
-  );
+  return null;
 }

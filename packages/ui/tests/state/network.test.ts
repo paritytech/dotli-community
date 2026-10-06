@@ -27,6 +27,12 @@ vi.mock('../../src/network-monitor.js', () => ({
   stopNetworkWatch: () => {
     monitor.watching = false;
   },
+  holdNetworkWatch: () => {
+    monitor.watching = true;
+    return () => {
+      monitor.watching = false;
+    };
+  },
 }));
 
 describe('network store', () => {

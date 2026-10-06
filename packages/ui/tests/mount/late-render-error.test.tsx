@@ -59,18 +59,6 @@ async function settleError(): Promise<void> {
 }
 
 beforeEach(() => {
-  const { settings } = (
-    window as unknown as {
-      happyDOM: {
-        settings: {
-          disableCSSFileLoading: boolean;
-          handleDisabledFileLoadingAsSuccess: boolean;
-        };
-      };
-    }
-  ).happyDOM;
-  settings.disableCSSFileLoading = true;
-  settings.handleDisabledFileLoadingAsSuccess = true;
   view.breakLater = null;
   view.disposed = 0;
   view.ticks = 0;

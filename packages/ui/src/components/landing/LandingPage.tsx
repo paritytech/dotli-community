@@ -40,7 +40,7 @@ function Broken(props: { error: unknown }): JSX.Element {
   createEffect(
     () => props.error,
     error => {
-      captureException(error, { root: 'page' });
+      captureException(error, { flow: 'ui', step: 'root_render', tags: { root: 'page' } });
       showBrokenPage();
     },
   );

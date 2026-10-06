@@ -6,7 +6,14 @@
 
 export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
-export { type ChainKey, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
+export {
+  enableSyncReporting,
+  onChainDetail,
+  onChainSync,
+  type ChainKey,
+  type ChainPeer,
+  type ChainSyncKind,
+} from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
 // From the schema module, not `./manifest.js`: the host validates cached
 // manifests on its eager path, and the reader would drag the chain-storage
@@ -15,7 +22,6 @@ export {
   toExecutableManifestResult,
   toRootManifestResult,
   type ExecutableManifest,
-  type ManifestRecordResult,
   type ManifestResult,
   type RootManifest,
 } from './manifest-types.js';
@@ -31,13 +37,6 @@ export {
   waitForPeopleFinalized,
   type ResolveOptions,
 } from './resolve.js';
-export { createCoreRpcChainProvider, getConnectedRpcEndpoint, isCoreRpcChainSupported } from './rpc-chain.js';
+export { createCoreRpcChainProvider, isCoreRpcChainSupported } from './rpc-chain.js';
 export { type ChainTransportHooks, type ConnectionStatus } from './transport-hooks.js';
-export {
-  loadProvider,
-  loadResolve,
-  loadRpcResolve,
-  type ProviderModule,
-  type ResolveModule,
-  type RpcResolveModule,
-} from './lazy.js';
+export { loadProvider, loadResolve, loadRpcResolve, type RpcResolveModule } from './lazy.js';

@@ -13,22 +13,22 @@ import {
   initSentry,
   installGlobalErrorHandlers,
   captureException,
+  recordExpected,
   m,
   setResolutionId,
   spans as S,
 } from '@dotli/metrics';
-import { showNotification, prefetchOverlays, showError, showPasswordPrompt } from '@dotli/ui';
+import { showNotification, prefetchOverlays, showError, showPasswordPrompt, showRetryScreen } from '@dotli/ui';
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
 window.addEventListener('vite:preloadError', event => {
   const evt = event as unknown as { payload?: unknown };
-  captureException(evt.payload ?? new Error('vite:preloadError'), {
-    kind: 'chunk_preload_error',
-  });
+  captureException(evt.payload ?? new Error('vite:preloadError'), { flow: 'boot', step: 'chunk_preload' });
   showNotification({
     label: 'Asset failed to load',
     text: 'A new version may have been deployed. Reload to get the latest.',
+    tone: 'err',
     dismissMs: 0,
     action: {
       label: 'Reload',
@@ -44,6 +44,7 @@ window.addEventListener('vite:preloadError', event => {
 prefetchOverlays();
 
 import {
+  CONTENT_ERRORS,
   packArchive,
   type ArchiveFiles,
   isEncrypted,
@@ -62,7 +63,7 @@ import {
   setNetworkOverride,
 } from '@dotli/config';
 
-import { endpointHost, gatewayUnreachable, elapsed, log } from '@dotli/shared';
+import { endpointHost, gatewayUnreachable, log } from '@dotli/shared';
 
 import { SANDBOX_ERRORS } from './errors.js';
 
@@ -71,6 +72,47 @@ installGlobalErrorHandlers('sandbox');
 import { loadSandboxChecker } from '@dotli/sandbox-checker';
 
 const T0 = performance.now();
+
+/** Milliseconds since this page started, for progress breadcrumbs. */
+function sinceStart(): number {
+  return Math.round(performance.now() - T0);
+}
+
+/** Warnings and errors of the content load, filed under its flow in the breadcrumb trail. */
+const contentLog = log.child({ flow: 'content' });
+
+/**
+ * The step of the content load that was running, named the same way in the
+ * Sentry capture and in the `failedStep` the host receives.
+ *
+ * `init` is everything before the Service Worker: the host contract, the
+ * full-reset purge, the network override. The `contract_*` steps are the
+ * host-to-sandbox contract checks that end the load without throwing. `verify`
+ * is never entered: a failure whose error says the content did not match its
+ * CID is attributed to it from whichever step fetched or parsed the bytes.
+ */
+type LoadStep =
+  | 'contract_top_level'
+  | 'contract_origin'
+  | 'contract_params'
+  | 'contract_rerender'
+  | 'retry_limit'
+  | 'init'
+  | 'sw_register'
+  | 'chunk_load'
+  | 'content_fetch'
+  | 'verify'
+  | 'decrypt'
+  | 'sw_store'
+  | 'archive_index'
+  | 'render';
+
+let loadStep: LoadStep = 'init';
+
+/** The step a load failure belongs to. */
+function failedStepOf(err: unknown): LoadStep {
+  return err instanceof Error && err.name === CONTENT_ERRORS.VERIFICATION ? 'verify' : loadStep;
+}
 
 // The sandbox only runs embedded inside the host iframe (`dot.li` iframes
 // `<label>.app.dot.li`). Direct or bookmarked loads of the sandbox origin
@@ -83,13 +125,24 @@ function showStatus(message: string): void {
   window.parent.postMessage({ type: 'dotli:loading-status', message }, '*');
 }
 
-function notifyLoadingDone(): void {
+function notifyLoadingDone(result: { outcome: 'loaded' } | { outcome: 'failed'; failedStep: LoadStep }): void {
+  window.parent.postMessage({ type: 'dotli:loading-status', done: true, ...result }, '*');
+}
+
+/** Clear the host overlay for a prompt shown before the content has loaded. */
+function dismissHostLoading(): void {
   window.parent.postMessage({ type: 'dotli:loading-status', done: true }, '*');
 }
 
-/** Total bytes of a decoded archive, which is what the dApp actually weighs. */
-function archiveBytes(files: ArchiveFiles): number {
-  return Object.values(files).reduce((sum, file) => sum + file.byteLength, 0);
+/** Total bytes of the fetched content, which is what the dApp actually weighs. */
+function resultBytes(result: FetchResult): number {
+  return result.type === 'single'
+    ? result.content.byteLength
+    : Object.values(result.files).reduce((sum, file) => sum + file.byteLength, 0);
+}
+
+function resultFileCount(result: FetchResult): number {
+  return result.type === 'single' ? 1 : Object.keys(result.files).length;
 }
 
 /**
@@ -142,23 +195,35 @@ function stripContractParamsFromUrl(): void {
  * contract error this path showed before recovery existed.
  */
 function requestHostRerender(reason: string): void {
+  log.event('Asking the host to re-render the sandbox', { flow: 'content', reason });
   showStatus('Restoring app...');
   window.parent.postMessage({ type: 'dotli:sandbox-recover' }, '*');
   window.setTimeout(() => {
-    failLoading('Invalid sandbox URL', reason);
+    failContract('contract_rerender', 'Invalid sandbox URL', reason);
   }, TIMEOUTS.SANDBOX_RECOVER);
 }
 
 /**
  * Render the sandbox-local error page AND tell the host shell its loading
- * overlay is finished. Without the parent notify, the host's `.loading`
- * stays visible (the host keeps it around as a sibling of the sandbox
- * iframe so progress updates can land) and the two screens stack visibly:
- * the error title plus the still-ticking progress bar from above.
+ * overlay is finished. Without the parent notify, the host's loading screen
+ * (`#app-loading`) stays visible (the host keeps it around as a sibling of the
+ * sandbox iframe so progress updates can land) and the two screens stack
+ * visibly: the error title plus the still-ticking progress bar from above.
  */
-function failLoading(...args: Parameters<typeof showError>): void {
-  notifyLoadingDone();
+function failLoading(step: LoadStep, ...args: Parameters<typeof showError>): void {
+  notifyLoadingDone({ outcome: 'failed', failedStep: step });
   showError(...args);
+}
+
+/**
+ * End the load on a broken host-to-sandbox contract, and report it: the host
+ * built a URL this sandbox cannot use, which no visitor can cause or fix.
+ */
+function failContract(step: LoadStep, title: string, reason: string): void {
+  const err = new Error(`${title}: ${reason}`);
+  err.name = 'SandboxContractError';
+  captureException(err, { flow: 'content', step, tags: { surface: 'sandbox_main' } });
+  failLoading(step, title, reason);
 }
 
 /**
@@ -210,10 +275,9 @@ function querySwVersion(sw: ServiceWorker): Promise<string | null> {
 
 /**
  * Check whether the active SW's build matches the page's build. On mismatch
- * surface a notification with a "Reload" action, and the user decides whether
- * to take it. NO automatic reload: silently triggering `update()` followed by
- * a reload on `controllerchange` would override the user's current session
- * without consent.
+ * fetch the new SW right away, which self-promotes via `skipWaiting()` and
+ * `clients.claim()`, so any reload gets fresh assets. The page itself is not
+ * reloaded: a notification offers it, and the user decides.
  */
 async function ensureFreshServiceWorker(registration: ServiceWorkerRegistration): Promise<void> {
   const expected = import.meta.env.VITE_COMMIT_SHA;
@@ -228,7 +292,17 @@ async function ensureFreshServiceWorker(registration: ServiceWorkerRegistration)
   if (actual === null || actual === expected) {
     return;
   }
-  log.warn(`[dot.li app] SW version mismatch (active=${actual}, expected=${expected}); prompting user`);
+  log.event('Service worker outdated, updating', { flow: 'content', active: actual, expected });
+  registration.update().catch((err: unknown) => {
+    // The worker script failing to download (offline, a flaky connection)
+    // rejects with a TypeError, and a registration a full reset already
+    // removed with InvalidStateError. Neither is a defect in this build.
+    if (err instanceof Error && (err.name === 'TypeError' || err.name === 'InvalidStateError')) {
+      recordExpected(err, { flow: 'content', step: 'sw_update' });
+      return;
+    }
+    captureException(err, { flow: 'content', step: 'sw_update' });
+  });
   showNotification({
     label: 'New version available',
     text: `App was updated. Reload to use the latest version.`,
@@ -236,20 +310,7 @@ async function ensureFreshServiceWorker(registration: ServiceWorkerRegistration)
     action: {
       label: 'Reload',
       onClick: () => {
-        // User-driven update then reload. The SW self-promotes via
-        // `skipWaiting()` and `clients.claim()`. When the controller flips,
-        // reload to pick up fresh assets.
-        navigator.serviceWorker.addEventListener(
-          'controllerchange',
-          () => {
-            window.location.reload();
-          },
-          { once: true },
-        );
-        registration.update().catch((err: unknown) => {
-          captureException(err, { kind: 'sw_update_failed' });
-          log.error('[dot.li app] SW update() failed:', err);
-        });
+        window.location.reload();
       },
     },
   });
@@ -271,6 +332,7 @@ async function registerAppServiceWorker({
   waitForFreshController = false,
 }: { waitForFreshController?: boolean } = {}): Promise<void> {
   if (!('serviceWorker' in navigator)) {
+    contentLog.warn('[dot.li app] No Service Worker support; continuing without one');
     return;
   }
 
@@ -310,8 +372,38 @@ async function registerAppServiceWorker({
 
     void ensureFreshServiceWorker(registration);
   } catch (err) {
-    log.warn('[dot.li app] Service worker registration failed:', err);
+    contentLog.warn('[dot.li app] Service worker registration failed; continuing without one:', err);
+    captureException(err, { flow: 'content', step: 'sw_register', tags: { surface: 'sandbox_main' } });
   }
+}
+
+let archiveFailuresHeard = false;
+
+/**
+ * Report the Service Worker's failures to keep the archive across its
+ * restarts. They arrive after the load has finished, often after the dApp
+ * has replaced this document, so the listener lives for the whole page.
+ */
+function listenForArchiveFailures(): void {
+  if (archiveFailuresHeard || !('serviceWorker' in navigator)) {
+    return;
+  }
+  archiveFailuresHeard = true;
+  navigator.serviceWorker.addEventListener('message', (evt: MessageEvent) => {
+    const msg = evt.data as { type?: unknown; stage?: unknown; name?: unknown; message?: unknown } | null;
+    if (msg?.type !== 'ARCHIVE_FAILURE') {
+      return;
+    }
+    const err = new Error(typeof msg.message === 'string' ? msg.message : 'unknown archive failure');
+    if (typeof msg.name === 'string' && msg.name !== '') {
+      err.name = msg.name;
+    }
+    captureException(err, {
+      flow: 'content',
+      step: msg.stage === 'restore' ? 'sw_restore' : 'sw_persist',
+      tags: { surface: 'app_sw' },
+    });
+  });
 }
 
 /**
@@ -320,8 +412,11 @@ async function registerAppServiceWorker({
  * otherwise CSS/JS requests fall through to nginx which returns the HTML fallback.
  */
 async function storeArchiveInSW(files: ArchiveFiles): Promise<void> {
-  const sw = navigator.serviceWorker.controller;
+  const sw = 'serviceWorker' in navigator ? navigator.serviceWorker.controller : null;
   if (!sw) {
+    contentLog.warn(
+      `[dot.li app] No Service Worker controls the page; ${String(Object.keys(files).length)} archive files will not be served`,
+    );
     return;
   }
 
@@ -382,15 +477,16 @@ async function decryptIfNeeded(data: Uint8Array, cid: string): Promise<ArchiveFi
   if (!isEncrypted(data)) {
     return null;
   }
-  log.warn(`[dot.li app] Content is encrypted, prompting for password...`);
+  log.event(`Content ${cid} is encrypted, asking for the password`, { flow: 'content' });
 
   // Tell the host to dismiss its loading overlay so the password prompt
   // isn't covered by the shell's spinner.
-  notifyLoadingDone();
+  dismissHostLoading();
 
   // Re-use password from this session if available
   let password = decryptedPasswords.get(cid);
   let error: string | undefined;
+  let attempt = 0;
 
   // Only treat ChaCha20-Poly1305 auth-tag mismatch as "wrong password". Any
   // other decryption error (corrupted ciphertext, library bug) is fatal.
@@ -398,6 +494,7 @@ async function decryptIfNeeded(data: Uint8Array, cid: string): Promise<ArchiveFi
   // "Wrong password" prompt.
   for (;;) {
     password ??= await showPasswordPrompt(error !== undefined ? { error } : {});
+    attempt += 1;
     try {
       const plaintext = await decryptContent(data, password);
       decryptedPasswords.set(cid, password);
@@ -408,6 +505,7 @@ async function decryptIfNeeded(data: Uint8Array, cid: string): Promise<ArchiveFi
       if (!looksLikeWrongPassword) {
         throw err;
       }
+      log.event(`Wrong password on attempt ${String(attempt)}, asking again`, { flow: 'content', attempt });
       error = 'Wrong password. Please try again.';
       password = undefined;
     }
@@ -527,7 +625,8 @@ async function purgeSandboxOriginState(): Promise<void> {
 async function main(): Promise<void> {
   const stopApp = m.timer(S.APP_TOTAL);
   performance.mark('dotli:app:start');
-  log.warn(`[dot.li app] main() started (${elapsed(T0)})`);
+  loadStep = 'init';
+  log.event('Sandbox load started', { flow: 'content', attempt: runAttempts, ms: sinceStart() });
 
   // The sandbox is host-managed only. It must run as an iframe child of
   // the dot.li shell. A top-level load here has no bridge to answer
@@ -535,7 +634,10 @@ async function main(): Promise<void> {
   // unified loading UI. Fail loudly instead of degrading into a broken
   // half-page. Users arriving via a bookmark are pointed back at dot.li.
   if (window.self === window.top) {
+    // A bookmark or a pasted link: the visitor's doing, not a defect.
+    recordExpected(new Error('Sandbox loaded as a top-level page'), { flow: 'content', step: 'contract_top_level' });
     failLoading(
+      'contract_top_level',
       'Sandbox URL not supported',
       `Open this dApp through https://${BASE_DOMAIN} — the sandbox origin (${window.location.host}) is not a standalone entry point.`,
     );
@@ -548,7 +650,8 @@ async function main(): Promise<void> {
   // loudly. The actual CID arrives on the host contract below.
   const subdomainLabel = parseSubdomainLabel();
   if (subdomainLabel === null) {
-    failLoading(
+    failContract(
+      'contract_origin',
       'Sandbox URL not supported',
       `This page must load as a dotns app subdomain (e.g. myapp.app.${BASE_DOMAIN}) through dot.li.`,
     );
@@ -569,7 +672,7 @@ async function main(): Promise<void> {
     if (parsed.recoverable === true) {
       requestHostRerender(parsed.reason);
     } else {
-      failLoading('Invalid sandbox URL', parsed.reason);
+      failContract('contract_params', 'Invalid sandbox URL', parsed.reason);
     }
     stopApp();
     return;
@@ -590,7 +693,7 @@ async function main(): Promise<void> {
   // Runs before SW registration so the fresh SW installs cleanly instead
   // of adopting stale state.
   if (parsed.params.fullReset) {
-    log.warn('[dot.li app] fullReset=1 → purging sandbox-origin state');
+    log.event('Purging sandbox-origin state for a full reset', { flow: 'content' });
     await purgeSandboxOriginState();
   }
 
@@ -605,6 +708,8 @@ async function main(): Promise<void> {
   // After a fullReset the existing `navigator.serviceWorker.controller`
   // is the SW we just unregistered, so force the registration path to wait
   // for a fresh controller rather than adopting that stale one.
+  loadStep = 'sw_register';
+  listenForArchiveFailures();
   const stopSw = m.timer(S.APP_SW_REGISTER);
   const swReady = registerAppServiceWorker({
     waitForFreshController: parsed.params.fullReset,
@@ -617,40 +722,64 @@ async function main(): Promise<void> {
   // need the bitswap-bridge module to call into the protocol iframe.
   const fetchChunkPromise = loadFetch();
   const bitswapBridgePromise = isGateway ? null : import('./bitswap-bridge.js');
+  // Awaited only after the SW is ready, so a chunk that fails first would
+  // also reach the global rejection handler and file a second issue.
+  void fetchChunkPromise.catch(() => undefined);
+  void bitswapBridgePromise?.catch(() => undefined);
 
   // The SW must control the page before the archive is handed to it.
   await swReady;
-  log.warn(`[dot.li app] SW ready (${elapsed(T0)})`);
+  log.event('Service worker ready', {
+    flow: 'content',
+    controlled: 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null,
+    ms: sinceStart(),
+  });
 
   let result: FetchResult;
 
   if (isGateway) {
     // rpc-gateway mode: HTTPS fetch from a trusted IPFS gateway.
-    log.warn(`[dot.li app] Fetching via IPFS gateway (${elapsed(T0)})`);
+    log.event(`Fetching ${cid} via IPFS gateway`, { flow: 'content', ms: sinceStart() });
     showStatus('Fetching via IPFS gateway...');
+    loadStep = 'chunk_load';
     const { fetchArchive } = await fetchChunkPromise;
+    loadStep = 'content_fetch';
     result = await fetchArchive(cid, showStatus, { useGateway: true });
   } else {
     // smoldot-direct / smoldot-shared-worker: fetch via smoldot's `bitswap_v1_get`
     // through the host-relayed protocol bridge. No libp2p in the sandbox.
-    log.warn(`[dot.li app] Fetching via bitswap, ${chainBackend} (${elapsed(T0)})`);
+    log.event(`Fetching ${cid} via bitswap`, { flow: 'content', chainBackend, ms: sinceStart() });
     showStatus('Fetching via bitswap...');
     if (bitswapBridgePromise === null) {
       throw new Error('Invariant violation: smoldot branch reached but bitswapBridgePromise was not pre-loaded');
     }
+    loadStep = 'chunk_load';
     const [{ fetchArchive }, { requestBitswapBlock }] = await Promise.all([fetchChunkPromise, bitswapBridgePromise]);
+    loadStep = 'content_fetch';
     result = await fetchArchive(cid, showStatus, {
       bitswapBlockSource: requestBitswapBlock,
     });
   }
-  log.warn(`[dot.li app] Content fetched → ${result.type} (${elapsed(T0)})`);
+  log.event(`Content fetched via ${isGateway ? 'gateway' : 'bitswap'}`, {
+    flow: 'content',
+    type: result.type,
+    bytes: resultBytes(result),
+    files: resultFileCount(result),
+    ms: sinceStart(),
+  });
 
   // Decrypt if the fetched content is an encrypted blob
   if (result.type === 'single') {
+    loadStep = 'decrypt';
     const decryptedFiles = await decryptIfNeeded(result.content, cid);
     if (decryptedFiles !== null) {
-      log.warn(`[dot.li app] Content decrypted (${elapsed(T0)})`);
       result = { type: 'archive', files: decryptedFiles };
+      log.event('Content decrypted', {
+        flow: 'content',
+        bytes: resultBytes(result),
+        files: resultFileCount(result),
+        ms: sinceStart(),
+      });
     }
   }
 
@@ -663,8 +792,14 @@ async function main(): Promise<void> {
   } else {
     // For multi-file archives, store files in the SW so it can serve
     // sub-resources (CSS, JS, fonts) when the browser loads them.
+    loadStep = 'sw_store';
     await storeArchiveInSW(result.files);
-    log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+    log.event('Archive handed to the service worker', {
+      flow: 'content',
+      files: resultFileCount(result),
+      ms: sinceStart(),
+    });
+    loadStep = 'archive_index';
     const indexHtml = result.files['index.html'] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error('Archive missing index.html — cannot render a sandbox without a root document.');
@@ -672,15 +807,17 @@ async function main(): Promise<void> {
     html = new TextDecoder().decode(indexHtml);
   }
 
+  loadStep = 'render';
   html = await maybeInjectSandboxChecker(html);
-  log.warn(`[dot.li app] writing content into window (${elapsed(T0)})`);
+  const bytes = resultBytes(result);
+  log.event('Writing content into the window', { flow: 'content', bytes, ms: sinceStart() });
   reportSandboxDebug('document_written', resolutionId ?? cid, {
     cid,
-    totalMs: Math.round(performance.now() - T0),
-    bytes: result.type === 'single' ? result.content.byteLength : archiveBytes(result.files),
-    fileCount: result.type === 'single' ? 1 : Object.keys(result.files).length,
+    totalMs: sinceStart(),
+    bytes,
+    fileCount: resultFileCount(result),
   });
-  notifyLoadingDone();
+  notifyLoadingDone({ outcome: 'loaded' });
   performance.mark('dotli:app:end');
   stopApp();
   stripContractParamsFromUrl();
@@ -688,7 +825,7 @@ async function main(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
   document.write(html);
   document.close();
-  log.warn(`[dot.li app] Done (${elapsed(T0)})`);
+  log.event('Content rendered', { flow: 'content', ms: sinceStart() });
 }
 
 // The retry button exists so a user can re-trigger a failed init after
@@ -713,11 +850,13 @@ const MAX_RUN_ATTEMPTS = 5;
 
 function run(): void {
   if (runInFlight) {
-    log.warn('[dot.li app] run() already in flight; ignoring re-entry');
+    log.debug('[dot.li app] run() already in flight; ignoring re-entry');
     return;
   }
   if (runAttempts >= MAX_RUN_ATTEMPTS) {
+    contentLog.warn(`[dot.li app] Retry refused after ${String(MAX_RUN_ATTEMPTS)} failed attempts`);
     failLoading(
+      'retry_limit',
       'Too many retry attempts',
       `Reached ${String(MAX_RUN_ATTEMPTS)} failed attempts. Reload the page to start over.`,
     );
@@ -736,6 +875,7 @@ function run(): void {
       if (isTeardownAbort(err)) {
         return;
       }
+      const step = failedStepOf(err);
       // Surface before rendering so Sentry sees every failure. Attribute
       // strictly from the explicit `chainBackend` URL param. Tag `unknown`
       // when missing rather than guessing (the missing-param path is
@@ -750,10 +890,9 @@ function run(): void {
             ? 'smoldot-bitswap'
             : 'unknown';
       captureException(err, {
-        surface: 'sandbox_main',
-        dependency,
-        chain_backend: b ?? 'unknown',
-        attempt: String(runAttempts),
+        flow: 'content',
+        step,
+        tags: { surface: 'sandbox_main', dependency, attempt: String(runAttempts) },
       });
       const raw = err instanceof Error ? err.message : String(err);
       // `TypeError: Failed to fetch` is all the browser says when it could not
@@ -769,16 +908,9 @@ function run(): void {
         dependency === 'ipfs-gateway' && raw.includes('Failed to fetch') && !raw.includes('dynamically imported module')
           ? gatewayUnreachable(endpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)))
           : `${raw} (via ${dependency})`;
-      failLoading('Failed to load content', message, () => {
+      failLoading(step, 'Failed to load content', message, () => {
         // Restore the loading UI and re-run main
-        const app = document.getElementById('app') ?? document.body;
-        app.innerHTML = `
-        <div class="loading">
-          <h1>dot.li</h1>
-          <div class="spinner"></div>
-          <p id="status">Retrying...</p>
-        </div>
-      `;
+        showRetryScreen();
         run();
       });
     })

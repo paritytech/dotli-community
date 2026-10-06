@@ -1,10 +1,20 @@
+import { createComponent } from 'solid-js';
+import { render } from '@solidjs/web';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { setupTruapiDebugPanel, type SetupOptions } from '../src/components/truapi-debug/mount.js';
-import { type InspectorIdentity, type LocalIdentityProgress, renderAllowanceSnapshot } from '@dotli/truapi-debug';
+import { AllowanceSnapshot } from '../src/components/truapi-debug/wallet/AllowanceSnapshot.js';
+import type { InspectorIdentity, LocalIdentityProgress } from '@dotli/truapi-debug';
 import { dispatchAuthState } from '../src/host-callbacks/AuthState.js';
 import type { WalletAllowanceSnapshot } from '@parity/truapi-host/web';
 import type * as Config from '@dotli/config';
 import { query } from './support.js';
+
+const ENTRY = '[data-testid="td-wallet-entry"]';
+const TECHNICAL = '[data-testid="td-wallet-technical"]';
+const USERNAME = '[data-testid="td-wallet-username"]';
+const ELAPSED = '[data-testid="td-wallet-elapsed"]';
+const LIST_TAB = '[data-testid="td-tab"][data-view="list"]';
+const ALLOWANCE_RESULTS = '[data-testid="td-wallet-allowance-results"]';
 
 const buildFlags = vi.hoisted(() => ({ debug: true }));
 vi.mock('@dotli/config', async importOriginal => ({
@@ -70,9 +80,7 @@ afterEach(() => {
 });
 
 function otherAppNotice(): HTMLElement | undefined {
-  return [...document.querySelectorAll<HTMLElement>('.td-wallet-hint')].find(hint =>
-    hint.textContent.includes('separately for each app'),
-  );
+  return document.querySelector<HTMLElement>('[data-testid="td-wallet-other-app"]') ?? undefined;
 }
 
 it('never exposes browser custody through runtime debug opt-in in a production build', () => {
@@ -80,7 +88,7 @@ it('never exposes browser custody through runtime debug opt-in in a production b
   const isActive = vi.fn(() => true);
   wallet.isActive = isActive;
   dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
-  expect(document.querySelector('.td-wallet-entry')).toBeNull();
+  expect(document.querySelector(ENTRY)).toBeNull();
   expect(document.querySelector('#td-wallet-view')).toBeNull();
   expect(isActive).not.toHaveBeenCalled();
 });
@@ -119,7 +127,7 @@ describe('wallet failure presentation', () => {
     wallet.getIdentity = () => identity.promise;
     wallet.refreshUsername = () => refresh.promise;
     dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
-    const entry = query(document, '.td-wallet-entry', HTMLButtonElement);
+    const entry = query(document, ENTRY, HTMLButtonElement);
     const iconLabel = entry.getAttribute('aria-label');
     expect(entry.textContent).toBe('');
 
@@ -146,7 +154,7 @@ describe('wallet failure presentation', () => {
     expect(entry.textContent).toBe(cached.liteUsername);
     expect(entry.getAttribute('aria-label')).toBe(namedLabel);
     expect(button('Claim username').disabled).toBe(true);
-    const details = query(document, '.td-wallet-error', HTMLDetailsElement);
+    const details = query(document, TECHNICAL, HTMLDetailsElement);
     expect(details.hidden).toBe(false);
     expect(details.open).toBe(false);
     expect(details.textContent).toContain('Native worker stopped');
@@ -157,7 +165,7 @@ describe('wallet failure presentation', () => {
     const getIdentity = vi.fn(() => pending.promise);
     wallet.getIdentity = getIdentity;
     dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
-    expect(document.querySelector('.td-wallet-entry')?.textContent).toContain(cached.liteUsername);
+    expect(document.querySelector(ENTRY)?.textContent).toContain(cached.liteUsername);
 
     dispatchAuthState({
       tag: 'WalletUnavailable',
@@ -169,12 +177,12 @@ describe('wallet failure presentation', () => {
     });
     expect(getIdentity).toHaveBeenCalledTimes(1);
     expect(button('Claim username').disabled).toBe(true);
-    expect(document.querySelector('.td-wallet-entry')?.textContent).toContain(cached.liteUsername);
+    expect(document.querySelector(ENTRY)?.textContent).toContain(cached.liteUsername);
 
     getIdentity.mockResolvedValue(cached);
     button('Retry wallet verification').click();
     await vi.waitFor(() => {
-      expect(document.querySelector('.td-wallet-entry')?.textContent).toBe(cached.liteUsername);
+      expect(document.querySelector(ENTRY)?.textContent).toBe(cached.liteUsername);
       expect(button('Check username').disabled).toBe(false);
     });
     expect(getIdentity).toHaveBeenCalledTimes(2);
@@ -195,8 +203,8 @@ describe('wallet failure presentation', () => {
       queueMicrotask(resolve);
     });
 
-    expect(document.querySelector('.td-wallet-error')?.textContent).toContain('Native worker stopped');
-    expect(document.querySelector('.td-wallet-entry')?.textContent).toContain(cached.liteUsername);
+    expect(document.querySelector(TECHNICAL)?.textContent).toContain('Native worker stopped');
+    expect(document.querySelector(ENTRY)?.textContent).toContain(cached.liteUsername);
     expect(button('Claim username').disabled).toBe(true);
     expect(button('Retry wallet verification').disabled).toBe(false);
     expect(getIdentity).toHaveBeenCalledTimes(1);
@@ -207,7 +215,7 @@ describe('wallet failure presentation', () => {
     wallet.getIdentity = getIdentity;
     dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
     await vi.waitFor(() => {
-      expect(document.querySelector('.td-wallet-entry')?.textContent).toBe(cached.liteUsername);
+      expect(document.querySelector(ENTRY)?.textContent).toBe(cached.liteUsername);
     });
     dispatchAuthState({ tag: 'Disconnected' });
     await new Promise<void>(resolve => {
@@ -223,7 +231,7 @@ describe('wallet failure presentation', () => {
     wallet.getCachedIdentity = () => unclaimed;
     wallet.getIdentity = () => Promise.resolve({ ...unclaimed, usernameVerified: true });
     dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
-    const status = (): string => query(document, '.td-wallet-username strong').textContent;
+    const status = (): string => query(document, '[data-testid="td-wallet-username-title"]').textContent;
     await vi.waitFor(() => {
       expect(status()).toBe('No username registered');
     });
@@ -257,10 +265,10 @@ async function prepareClaim(): Promise<ClaimFixture> {
   );
   dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
   await Promise.resolve();
-  const entry = query(document, '.td-wallet-entry', HTMLButtonElement);
-  const status = query(document, '.td-wallet-username', HTMLElement);
-  const input = query(document, '.td-wallet-username-input', HTMLInputElement);
-  const claim = query(document, '.td-wallet-claim', HTMLButtonElement);
+  const entry = query(document, ENTRY, HTMLButtonElement);
+  const status = query(document, USERNAME, HTMLElement);
+  const input = query(document, '[data-testid="td-wallet-username-input"]', HTMLInputElement);
+  const claim = query(document, '[data-testid="td-wallet-claim"]', HTMLButtonElement);
   entry.click();
   return {
     completion,
@@ -270,7 +278,7 @@ async function prepareClaim(): Promise<ClaimFixture> {
     claimUsername,
     start() {
       input.value = 'alice';
-      input.dispatchEvent(new Event('input'));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
       claim.click();
     },
     progress(progress: LocalIdentityProgress) {
@@ -292,7 +300,7 @@ describe('wallet claim progress', () => {
     expect(claim.status.textContent).toMatch(/checking/i);
     await vi.advanceTimersByTimeAsync(7100);
     expect(claim.status.textContent).toMatch(/checking/i);
-    expect(document.querySelector('.td-wallet-elapsed')?.textContent).toBe('7s elapsed');
+    expect(document.querySelector(ELAPSED)?.textContent).toBe('7s elapsed');
     claim.progress({ stage: 'authenticating' });
     expect(claim.status.textContent).toMatch(/authenticating/i);
     claim.progress({ stage: 'submitting' });
@@ -308,7 +316,7 @@ describe('wallet claim progress', () => {
     expect(claim.status.dataset['state']).toBe('claimed');
     expect(claim.entry.textContent).toBe(cached.liteUsername);
     expect(claim.status.textContent.split(cached.liteUsername).length).toBe(2);
-    expect(document.querySelector<HTMLElement>('.td-wallet-elapsed')?.hidden).toBe(true);
+    expect(document.querySelector<HTMLElement>(ELAPSED)?.hidden).toBe(true);
     claim.progress({ stage: 'retrying', error: 'late event' });
     expect(claim.status.dataset['state']).toBe('claimed');
     expect(claim.status.textContent).not.toContain('late event');
@@ -319,7 +327,7 @@ describe('wallet claim progress', () => {
     const claim = await prepareClaim();
     claim.start();
     claim.progress({ stage: 'retrying', error: 'RPC connection reset' });
-    const details = query(document, '.td-wallet-error', HTMLDetailsElement);
+    const details = query(document, TECHNICAL, HTMLDetailsElement);
     expect(claim.status.textContent).toMatch(/retrying/i);
     expect(claim.status.textContent).not.toContain('RPC connection reset');
     expect(details.hidden).toBe(false);
@@ -331,7 +339,7 @@ describe('wallet claim progress', () => {
     expect(claim.claim.disabled).toBe(true);
     expect(claim.claimUsername).toHaveBeenCalledTimes(1);
 
-    query(document, '.td-tab[data-view="list"]', HTMLButtonElement).click();
+    query(document, LIST_TAB, HTMLButtonElement).click();
     expect(claim.entry.getAttribute('aria-expanded')).toBe('false');
     claim.progress({ stage: 'confirming' });
     expect(details.hidden).toBe(true);
@@ -405,7 +413,7 @@ describe('wallet claim progress', () => {
     await claim.completion.promise;
     await vi.advanceTimersByTimeAsync(5000);
     expect(claim.status.outerHTML).toBe(before);
-    expect(document.querySelector('.td-wallet-entry')).toBeNull();
+    expect(document.querySelector(ENTRY)).toBeNull();
   });
 });
 
@@ -451,9 +459,10 @@ describe('wallet allowance inspection', () => {
         ],
       },
     };
-    renderAllowanceSnapshot(document.body, snapshot);
+    const disposeSnapshot = render(() => createComponent(AllowanceSnapshot, { snapshot }), document.body);
     expect(document.body.textContent).toContain('18,446,744,073,709,551,617');
     expect(document.body.textContent).toContain('Claim capacity cannot be read');
+    disposeSnapshot();
   });
 
   it('does not replace a reopened wallet snapshot with a late closed-view response', async () => {
@@ -466,23 +475,23 @@ describe('wallet allowance inspection', () => {
     await vi.waitFor(() => {
       expect(button('Check username').disabled).toBe(false);
     });
-    const entry = query(document, '.td-wallet-entry', HTMLButtonElement);
+    const entry = query(document, ENTRY, HTMLButtonElement);
     entry.click();
     await vi.waitFor(() => {
       expect(load).toHaveBeenCalledTimes(1);
     });
-    query(document, '.td-tab[data-view="list"]', HTMLButtonElement).click();
+    query(document, LIST_TAB, HTMLButtonElement).click();
     entry.click();
     await vi.waitFor(() => {
       expect(load).toHaveBeenCalledTimes(2);
     });
     currentRequest.resolve(unavailableSnapshot('Current snapshot'));
     await vi.waitFor(() => {
-      expect(document.querySelector('.td-wallet-allowance-results')?.textContent).toContain('Current snapshot');
+      expect(document.querySelector(ALLOWANCE_RESULTS)?.textContent).toContain('Current snapshot');
     });
     oldRequest.resolve(unavailableSnapshot('Stale snapshot'));
     await oldRequest.promise;
-    expect(document.querySelector('.td-wallet-allowance-results')?.textContent).toContain('Current snapshot');
-    expect(document.querySelector('.td-wallet-allowance-results')?.textContent).not.toContain('Stale snapshot');
+    expect(document.querySelector(ALLOWANCE_RESULTS)?.textContent).toContain('Current snapshot');
+    expect(document.querySelector(ALLOWANCE_RESULTS)?.textContent).not.toContain('Stale snapshot');
   });
 });

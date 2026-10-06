@@ -1,18 +1,51 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Header bar of the TrUAPI debug panel: title, counts and the pause, clear,
-// export, copy, dock, collapse and close controls.
+// Header bar of the TrUAPI debug panel: the debug-build wallet entry, title,
+// counts and the pause, clear, export, copy, dock, collapse and close controls.
 
 import { createSignal, flush, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DockPosition } from '@dotli/truapi-debug';
 import { exportFilename } from '@dotli/truapi-debug';
+import s from './Header.module.css';
+import { WALLET_VIEW_ID } from './wallet/WalletView.js';
 
 const DEBUG_SESSION_KEY = 'dotli:truapi-debug';
 const COPY_FLASH_MS = 1200;
 
+/** The header's wallet button: what it shows and what it opens. */
+export interface WalletEntryState {
+  /** A known full or Lite username, or empty for the icon. */
+  name: string;
+  /** The Wallet tab is on screen. */
+  expanded: boolean;
+  onOpen: () => void;
+}
+
+function walletTitle(name: string): string {
+  return name === '' ? 'Open wallet' : `Open wallet: ${name}`;
+}
+
 // Lucide glyphs.
+function WalletIcon(): JSX.Element {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a2 2 0 0 1-2-2V6" />
+      <path d="M20 12h-4a2 2 0 0 0 0 4h4" />
+    </svg>
+  );
+}
+
 function ExportIcon(): JSX.Element {
   return (
     <svg
@@ -25,8 +58,7 @@ function ExportIcon(): JSX.Element {
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <path d="M12 15V3" />
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M12 15V3m9 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="m7 10 5 5 5-5" />
     </svg>
   );
@@ -64,8 +96,8 @@ function DockRightIcon(): JSX.Element {
       stroke-linejoin="round"
     >
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
-      <line x1="10" y1="2.5" x2="10" y2="13.5" />
-      <rect x="10" y="2.5" width="4.5" height="11" fill="currentColor" fill-opacity="0.4" stroke="none" />
+      <path d="M10 2.5v11" />
+      <path fill="currentColor" fill-opacity=".4" d="M10 2.5h4.5v11H10z" stroke="none" />
     </svg>
   );
 }
@@ -84,18 +116,21 @@ function DockBottomIcon(): JSX.Element {
       stroke-linejoin="round"
     >
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
-      <line x1="1.5" y1="10" x2="14.5" y2="10" />
-      <rect x="1.5" y="10" width="13" height="3.5" fill="currentColor" fill-opacity="0.4" stroke="none" />
+      <path d="M1.5 10h13" />
+      <path fill="currentColor" fill-opacity=".4" d="M1.5 10h13v3.5h-13z" stroke="none" />
     </svg>
   );
 }
 
 export function Header(props: {
   counts: string;
-  walletEntry?: JSX.Element | undefined;
+  /** Debug builds with the experimental wallet only. */
+  wallet?: WalletEntryState | undefined;
   paused: boolean;
   collapsed: boolean;
   dock: DockPosition;
+  /** Where the panel sits: the picked dock, or the bottom on a phone. */
+  placement: DockPosition;
   /** The filtered events as export JSON: what the user currently sees. */
   exportJson: () => string;
   onTogglePause: () => void;
@@ -180,13 +215,39 @@ export function Header(props: {
   const dockLabel = (): string => (props.dock === 'right' ? 'Dock to bottom' : 'Dock to right');
 
   return (
-    <div class="td-header">
-      {props.walletEntry}
-      <span class="td-title">TrUAPI Debug</span>
-      <span class="td-counts">{props.counts}</span>
-      <span class="td-spacer" />
+    <div class={s['header']} data-testid="td-header" data-dock={props.placement}>
+      <Show when={props.wallet}>
+        {wallet => (
+          <button
+            class={`${s['btn'] ?? ''} ${s['icon'] ?? ''} ${s['wallet'] ?? ''}`}
+            data-testid="td-wallet-entry"
+            type="button"
+            title={walletTitle(wallet().name)}
+            aria-label={walletTitle(wallet().name)}
+            aria-controls={WALLET_VIEW_ID}
+            aria-expanded={wallet().expanded ? 'true' : 'false'}
+            onClick={() => {
+              wallet().onOpen();
+            }}
+          >
+            <span class={s['walletIcon']} aria-hidden="true" hidden={wallet().name !== ''}>
+              <WalletIcon />
+            </span>
+            <span class={s['walletName']}>{wallet().name}</span>
+          </button>
+        )}
+      </Show>
+      <span class={s['title']} data-testid="td-title">
+        TrUAPI Debug
+      </span>
+      <span class={s['counts']} data-testid="td-counts">
+        {props.counts}
+      </span>
+      <span class={s['spacer']} />
       <button
-        class={props.paused ? 'td-btn td-pause active' : 'td-btn td-pause'}
+        class={s['btn']}
+        data-testid="td-pause"
+        data-active={props.paused ? '' : undefined}
         type="button"
         onClick={() => {
           props.onTogglePause();
@@ -195,7 +256,8 @@ export function Header(props: {
         {props.paused ? 'Resume' : 'Pause'}
       </button>
       <button
-        class="td-btn td-clear"
+        class={s['btn']}
+        data-testid="td-clear"
         type="button"
         onClick={() => {
           props.onClear();
@@ -204,7 +266,8 @@ export function Header(props: {
         Clear
       </button>
       <button
-        class="td-btn td-btn-icon td-export"
+        class={[s['btn'], s['icon'], s['glyph']]}
+        data-testid="td-export"
         type="button"
         title="Download as JSON"
         aria-label="Download as JSON"
@@ -213,7 +276,8 @@ export function Header(props: {
         <ExportIcon />
       </button>
       <button
-        class="td-btn td-btn-icon td-copy"
+        class={[s['btn'], s['icon'], s['glyph']]}
+        data-testid="td-copy"
         type="button"
         title="Copy to clipboard"
         aria-label="Copy to clipboard"
@@ -225,7 +289,8 @@ export function Header(props: {
         </Show>
       </button>
       <button
-        class="td-btn td-btn-icon td-dock"
+        class={[s['btn'], s['icon'], s['glyph'], s['dock']]}
+        data-testid="td-dock"
         type="button"
         title={dockLabel()}
         aria-label={dockLabel()}
@@ -236,7 +301,8 @@ export function Header(props: {
         {props.dock === 'right' ? <DockBottomIcon /> : <DockRightIcon />}
       </button>
       <button
-        class="td-btn td-btn-icon td-collapse"
+        class={[s['btn'], s['icon']]}
+        data-testid="td-collapse"
         type="button"
         title="Collapse"
         onClick={() => {
@@ -245,7 +311,13 @@ export function Header(props: {
       >
         {props.collapsed ? '▲' : '▼'}
       </button>
-      <button class="td-close" type="button" title="Hide (Ctrl+Shift+D)" onClick={exitDebugMode}>
+      <button
+        class={s['close']}
+        data-testid="td-close"
+        type="button"
+        title="Hide (Ctrl+Shift+D)"
+        onClick={exitDebugMode}
+      >
         ×
       </button>
     </div>

@@ -51,7 +51,11 @@ describe('notification host callbacks', () => {
     const { ensureOverlays } = await import('../src/overlays/load.js');
     await ensureOverlays();
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect([...document.querySelectorAll('.notif-body')].map(node => node.textContent.trim())).toEqual(['hello']);
+    expect([...document.querySelectorAll('[data-testid="notif-body"]')].map(node => node.textContent.trim())).toEqual([
+      'hello',
+    ]);
+    // A product cannot pick a tone, so its toasts read as info
+    expect(document.querySelector('[data-testid="notif-icon"]')?.getAttribute('data-tone')).toBe('info');
   });
 
   it('As a dotli user who allowed one notification, delivering it does not prompt again', async () => {

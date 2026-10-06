@@ -23,7 +23,7 @@ export {
   haltReasonOf,
   type RemoteChainHalt,
 } from './chain-halted.js';
-export { createChainPool, type ChainPool, type ChainPoolOptions, type LeaseProvider } from './chain-pool.js';
+export { createChainPool, type ChainPool, type LeaseProvider } from './chain-pool.js';
 export {
   clearSharedAuthStorage,
   clearSharedModeStorage,
@@ -66,7 +66,6 @@ export {
   type SmoldotDbChain,
   type SmoldotDbOutcome,
 } from './messages.js';
-export { METHOD_TIMEOUTS } from './method-timeouts.js';
 export {
   isSharedWalletOperation,
   isSharedWalletState,

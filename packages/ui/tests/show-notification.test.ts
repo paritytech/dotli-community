@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOTIFICATION_DISMISS_MS, showNotification } from '../src/notification.js';
 import { toastsStore } from '../src/state/toasts.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byId, byTestId } from './support.js';
 
 function setVisibility(state: 'visible' | 'hidden'): void {
   Object.defineProperty(document, 'visibilityState', {
@@ -24,15 +25,24 @@ afterEach(() => {
 });
 
 describe('showNotification', () => {
+  it('As a dotli integrator, a notification keeps the tone it is given, info by default', () => {
+    // When
+    showNotification({ label: 'Plain', text: 'Body' });
+    showNotification({ label: 'Failed', text: 'Body', tone: 'err' });
+
+    // Then
+    expect(toastsStore.get().items.map(t => t.tone)).toEqual(['info', 'err']);
+  });
+
   it('As a dotli user, a notification appears in the overlay root with the default bell icon', async () => {
     // When
     showNotification({ label: 'Hello', text: '  World  ' });
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('Hello');
-    expect(document.querySelector('#overlay-root .notif-body')?.textContent).toBe('World');
-    expect(document.querySelector('#overlay-root .notif-icon svg')).not.toBeNull();
+    expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Hello');
+    expect(byTestId('notif-body', byId('overlay-root')).textContent).toBe('World');
+    expect(document.querySelector('#overlay-root [data-testid="notif-icon"] svg')).not.toBeNull();
   });
 
   it('As a dotli integrator, empty text shows nothing, long text is cut to 200 characters, and non-http links are dropped', () => {
@@ -89,5 +99,20 @@ describe('showNotification', () => {
 
     // Then
     expect(created).toEqual([{ title: 'Ping', body: 'Background' }]);
+  });
+
+  it('As a dotli user, a notification without its own icon shows the icon of its tone', async () => {
+    // When
+    showNotification({ label: 'Plain', text: 'Body' });
+    showNotification({ label: 'Failed', text: 'Body', tone: 'err' });
+    showNotification({ label: 'Blocked', text: 'Body', tone: 'idle' });
+    showNotification({ label: 'Own', text: 'Body', tone: 'err', icon: '<svg data-own=""></svg>' });
+    await overlaysReady();
+
+    // Then
+    const icons = [...document.querySelectorAll<HTMLElement>('#overlay-root [data-testid="notif-icon"]')];
+    expect(icons.map(icon => icon.getAttribute('data-tone'))).toEqual(['info', 'err', 'idle', 'err']);
+    expect(new Set(icons.slice(0, 3).map(icon => icon.innerHTML)).size).toBe(3);
+    expect(icons[3]?.querySelector('svg[data-own]')).not.toBeNull();
   });
 });

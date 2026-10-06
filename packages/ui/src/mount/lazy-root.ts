@@ -24,8 +24,8 @@ export interface LazyRootOptions {
    * option of that name.
    */
   load: (onBroken: () => void) => Promise<unknown>;
-  /** The Sentry `kind` of a chunk that failed to load or mount. */
-  errorKind: string;
+  /** The root's name, tagged on the report of a chunk that failed to load or mount. */
+  root: string;
   /**
    * The fallback when the chunk failed to load or mount, or the root later
    * broke. The next ensure() then tries again.
@@ -33,7 +33,7 @@ export interface LazyRootOptions {
   onFailure: () => void;
 }
 
-export function createLazyRoot({ load, errorKind, onFailure }: LazyRootOptions): LazyRoot {
+export function createLazyRoot({ load, root, onFailure }: LazyRootOptions): LazyRoot {
   let loading: Promise<void> | null = null;
   const fail = (): void => {
     loading = null;
@@ -43,7 +43,7 @@ export function createLazyRoot({ load, errorKind, onFailure }: LazyRootOptions):
     (loading ??= load(fail).then(
       () => undefined,
       (err: unknown) => {
-        captureException(err, { kind: errorKind });
+        captureException(err, { flow: 'ui', step: 'root_load', tags: { root, kind: `${root}_load_error` } });
         fail();
       },
     ));
