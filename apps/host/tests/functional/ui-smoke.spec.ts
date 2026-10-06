@@ -134,9 +134,9 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     const sheet = page.locator('#more-popover');
-    await expect(sheet).toHaveAttribute('data-sheet');
+    await expect(sheet).toHaveAttribute('data-layout', 'sheet');
     await expect(sheet.getByTestId('menu-sheet-title')).toHaveText('More');
-    await expect.poll(() => sheetBottom(sheet)).toBe(844);
+    await expect.poll(() => sheetBottom(sheet.getByTestId('menu'))).toBe(844);
 
     // When
     await page.mouse.click(195, 100);
@@ -159,11 +159,12 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
 
     // Then
-    await expect(sheet).toHaveAttribute('data-sheet');
-    await expect(sheet).toHaveAttribute('aria-modal', 'true');
+    await expect(sheet).toHaveAttribute('data-layout', 'sheet');
+    // A <dialog> opened with showModal() is modal without an aria-modal attribute.
+    expect(await sheet.evaluate(el => el.matches(':modal'))).toBe(true);
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
     // At the bottom edge, once it has slid up.
-    await expect.poll(() => sheetBottom(sheet)).toBe(740);
+    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740);
 
     // When
     await sheet.getByTestId('popover-sheet-close').click();
@@ -175,8 +176,8 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#more-button').click();
     await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
     await expect(sheet).toHaveAttribute('data-open');
-    await expect.poll(() => sheetBottom(sheet)).toBe(740);
-    const header = await sheet.getByTestId('popover-sheet-header').boundingBox();
+    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740);
+    const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
@@ -200,15 +201,16 @@ test.describe('Shell UI smoke', () => {
       await page.locator('#more-button').click();
       await page.locator('#more-popover [role="menuitem"][data-item="permissions"]').click();
       await expect(sheet).toHaveAttribute('data-open');
-      await expect.poll(() => sheetBottom(sheet)).toBe(740);
+      await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740);
     };
 
     // When
     await open();
 
     // Then
-    await expect(sheet).toHaveAttribute('data-sheet');
-    await expect(sheet).toHaveAttribute('aria-modal', 'true');
+    await expect(sheet).toHaveAttribute('data-layout', 'sheet');
+    // A <dialog> opened with showModal() is modal without an aria-modal attribute.
+    expect(await sheet.evaluate(el => el.matches(':modal'))).toBe(true);
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
     await expect(sheet.locator('#permissions-popover-list')).toBeAttached();
     await expect(sheet.getByTestId('permissions-popover-header')).toHaveCount(0);
@@ -221,7 +223,7 @@ test.describe('Shell UI smoke', () => {
 
     // When: open it again and swipe the header down.
     await open();
-    const header = await sheet.getByTestId('popover-sheet-header').boundingBox();
+    const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
