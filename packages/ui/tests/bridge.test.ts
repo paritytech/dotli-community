@@ -299,11 +299,12 @@ describe('bridge render lifecycle', () => {
 
   it('keeps notification grants in place and reloads only a changed committed iframe policy', async () => {
     const { renderIframe } = await import('../src/bridge.js');
-    let cameraGranted = false;
+    const { labelToProductId } = await import('../src/runtime-config.js');
+    let locationGranted = false;
     const provider = makeProvider();
     provider.getPermissionAuthorizationStatuses.mockImplementation((requests: PermissionAuthorizationRequest[]) =>
       Promise.resolve(requests.map(request =>
-        request.tag === 'Device' && (request.value === 'Notifications' || (request.value === 'Camera' && cameraGranted))
+        request.tag === 'Device' && (request.value === 'Notifications' || (request.value === 'Location' && locationGranted))
           ? 'Authorized'
           : 'NotDetermined',
       )),
@@ -316,7 +317,9 @@ describe('bridge render lifecycle', () => {
     const notify = async (): Promise<void> => {
       vi.useFakeTimers({ toFake: ['setTimeout'] });
       try {
-        window.dispatchEvent(new CustomEvent('dotli:permission-changed', { detail: { productId: 'committed-policy' } }));
+        window.dispatchEvent(new CustomEvent('dotli:permission-changed', {
+          detail: { productId: labelToProductId('committed-policy') },
+        }));
         await vi.runAllTimersAsync();
       } finally {
         vi.useRealTimers();
@@ -326,13 +329,13 @@ describe('bridge render lifecycle', () => {
     expect(first.iframe.isConnected).toBe(true);
     expect(mocks.iframeHosts).toHaveLength(1);
 
-    cameraGranted = true;
+    locationGranted = true;
     await notify();
     await waitForProviderRequests(2);
     nth(mocks.coreProviderDefers, 1).resolve(provider);
     await vi.waitFor(() => {
       expect(first.iframe.isConnected).toBe(false);
-      expect(nth(mocks.iframeHosts, 1).iframe.allow.split('; ')).toContain('camera');
+      expect(nth(mocks.iframeHosts, 1).iframe.allow.split('; ')).toContain('geolocation');
     });
     await notify();
     expect(nth(mocks.iframeHosts, 1).iframe.isConnected).toBe(true);
