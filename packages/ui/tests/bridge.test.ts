@@ -1085,12 +1085,19 @@ describe('bridge render lifecycle', () => {
     const channel = new MessageChannel();
     let allowedOrigin = '';
     mocks.createIframeHost.mockImplementationOnce(
-      (args: { allowedOrigin: string; container: HTMLElement; onPort: (port: MessagePort) => void }) => {
+      (args: {
+        iframeUrl: string;
+        allowedOrigin: string;
+        container: HTMLElement;
+        onPort: (port: MessagePort) => void;
+      }) => {
         // The real iframe host hands its port over at once and answers the
         // first ready itself with the other end.
         allowedOrigin = args.allowedOrigin;
         args.onPort(channel.port1);
         const iframe = document.createElement('iframe');
+        // The Media compositor only adopts a frame loaded from the product's origin.
+        iframe.src = args.iframeUrl;
         args.container.appendChild(iframe);
         return {
           iframe,
