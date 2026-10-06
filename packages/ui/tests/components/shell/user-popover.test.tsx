@@ -248,6 +248,8 @@ describe('UserPopover', () => {
     // Then
     expect(isOpen()).toBe(false);
     expect(document.activeElement).toBe(byId('auth-button'));
+    expect(byId('auth-button').getAttribute('aria-expanded')).toBe('false');
+    expect(byId('auth-button').getAttribute('aria-controls')).toBe('auth-modal-backdrop');
   });
 
   it('As a dotli integrator, the controller emits the Rust-core disconnect request', () => {
