@@ -1,0 +1,66 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { Meta, StoryObj } from 'storybook-solidjs-vite';
+import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
+import { expect, waitFor } from 'storybook/test';
+import { resetAllStoresForTests } from '../../state/create-store.js';
+import { getAuthModalState, updateAuthModal } from '../../state/auth-modal.js';
+import { AuthModal } from './AuthModal.js';
+
+const open = openSurface({ surface: 'auth-modal-backdrop' });
+
+const meta = {
+  title: 'Shell/AuthModal',
+  component: AuthModal,
+  parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
+  beforeEach: () => {
+    updateAuthModal({
+      open: true,
+      view: { kind: 'pairing', payload: 'polkadotapp://pair?x=1' },
+      productLabel: 'Example',
+      reason: null,
+    });
+    return resetAllStoresForTests;
+  },
+  render: () => (
+    <>
+      <TopbarFrame />
+      <AuthModal />
+    </>
+  ),
+} satisfies Meta<typeof AuthModal>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Open: Story = {
+  tags: ['!autodocs'],
+  play: async ctx => {
+    await open(ctx);
+  },
+};
+
+export const OpenPhone: Story = {
+  tags: ['!autodocs'],
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ctx => {
+    await expectPhone(ctx.step);
+    await open(ctx);
+  },
+};
+
+export const EscapeCancelsLogin: Story = {
+  tags: ['!autodocs'],
+  play: async ({ userEvent, step }) => {
+    await step('Given the sign-in is open', async () => {
+      await waitFor(() => expect(document.getElementById('auth-modal-backdrop')).toHaveAttribute('data-open'));
+    });
+    await step('When I press Escape', async () => {
+      await userEvent.keyboard('{Escape}');
+    });
+    await step('Then the store closed it', async () => {
+      await waitFor(() => expect(getAuthModalState().open).toBe(false));
+    });
+  },
+};

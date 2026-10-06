@@ -1,0 +1,97 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel PolkaVM Runtime view and its header badge */
+
+/* The header's live summary of a running PolkaVM product. */
+.badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(420px, 35vw);
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--td-boot-line);
+  border-radius: 999px;
+  background: var(--td-boot-bg);
+  color: var(--td-blue-soft);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.badge:hover {
+  border-color: var(--td-focus);
+  color: var(--td-info-fg);
+}
+.badge:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: 2px;
+}
+/* The right column is narrow: the badge keeps to its share of the header. */
+.badge[data-dock='right'] {
+  max-width: 145px;
+}
+
+.runtime {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  background: var(--td-bg);
+  padding: 18px;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  color: var(--td-fg-strong);
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.backend {
+  color: var(--td-fg-bright);
+  font-size: 18px;
+}
+.kicker,
+.stage {
+  color: var(--td-slate);
+}
+.kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.stage {
+  margin-left: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--td-slate-bg);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--td-slate-bg);
+}
+.metric {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--td-bg-raised);
+}
+.label {
+  margin: 0 0 4px;
+  color: var(--td-slate);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.value {
+  margin: 0;
+  color: var(--td-fg-strong);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}

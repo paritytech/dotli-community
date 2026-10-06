@@ -8,11 +8,16 @@ import wasmPlugin from 'vite-plugin-wasm';
 import { buildInfo } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
+import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
+
+// Before Vite reads the environment, so the SDK reports the release the
+// sourcemaps are uploaded under.
+provideSentryRelease(import.meta.dirname);
 
 const OUT_DIR = 'dist';
 const APP_URL = process.env['VITE_APP_URL'] ?? '';
@@ -29,7 +34,7 @@ function sentry(): PluginOption {
     project: 'dotli',
     telemetry: false,
     authToken: process.env['SENTRY_AUTH_TOKEN'],
-    release: process.env['VITE_COMMIT_SHA'] !== undefined ? { name: process.env['VITE_COMMIT_SHA'] } : {},
+    release: sentryUploadRelease(import.meta.dirname),
     sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
   });
 }

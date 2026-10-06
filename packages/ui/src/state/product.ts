@@ -12,7 +12,7 @@ export type ProductState =
 
 // Reloading the same product notifies nobody; the setters still dispatch
 // their events.
-const product = createSyncStore<ProductState>({ status: 'none' }, { equals: shallowEqual });
+const product = createSyncStore<ProductState>('product', { status: 'none' }, { equals: shallowEqual });
 
 export const productStore: ReadableStore<ProductState> = product;
 export const getProductState = product.get;

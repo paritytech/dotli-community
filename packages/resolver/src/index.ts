@@ -6,7 +6,14 @@
 
 export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
-export { type ChainKey, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
+export {
+  enableSyncReporting,
+  onChainDetail,
+  onChainSync,
+  type ChainKey,
+  type ChainPeer,
+  type ChainSyncKind,
+} from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
 // Keep cached-manifest validation free of the chain-storage reader.
 export {
@@ -24,7 +31,6 @@ export {
   type ExecutableManifest,
   type FileInputHandler,
   type FileInputRequirement,
-  type ManifestRecordResult,
   type ManifestResult,
   type PolkaVmAppManifestV2,
   type RootManifest,
@@ -47,13 +53,6 @@ export {
   type ResolveOptions,
 } from './resolve.js';
 export { type SeitySlot } from './seity-registry.js';
-export { createCoreRpcChainProvider, getConnectedRpcEndpoint, isCoreRpcChainSupported } from './rpc-chain.js';
+export { createCoreRpcChainProvider, isCoreRpcChainSupported } from './rpc-chain.js';
 export { type ChainTransportHooks, type ConnectionStatus } from './transport-hooks.js';
-export {
-  loadProvider,
-  loadResolve,
-  loadRpcResolve,
-  type ProviderModule,
-  type ResolveModule,
-  type RpcResolveModule,
-} from './lazy.js';
+export { loadProvider, loadResolve, loadRpcResolve, type RpcResolveModule } from './lazy.js';

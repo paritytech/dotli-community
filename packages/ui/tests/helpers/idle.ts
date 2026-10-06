@@ -1,0 +1,16 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { vi } from 'vitest';
+
+/**
+ * A browser that is idle at once: an idle preload (components/idle.ts) runs
+ * on the next task, which puts a Popover's surface in the page before any
+ * opening. Undone by `vi.unstubAllGlobals()`.
+ */
+export function stubIdleBrowser(): void {
+  vi.stubGlobal('requestIdleCallback', (run: () => void) => setTimeout(run, 0));
+  vi.stubGlobal('cancelIdleCallback', (handle: ReturnType<typeof setTimeout>) => {
+    clearTimeout(handle);
+  });
+}

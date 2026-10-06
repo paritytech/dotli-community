@@ -1,0 +1,94 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A transparent frame over the viewport. The UA's dialog box (margin auto,
+   padding, border, Canvas, max sizes) is reset, and its ::backdrop is
+   cleared: the frame draws its own scrim so it can fade out in every engine.
+   `display` is kept through the exit (allow-discrete), with the frame in the
+   body, where Firefox and Safari leave it once it drops out of the top layer. */
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  /* Not `hidden`, which is still a scroll container: iOS Safari scrolls it to
+     reveal the focus taken inside a sheet that is still below the frame at
+     its starting style, and the sheet then rests that far up. */
+  overflow: clip;
+  border: 0;
+  background: transparent;
+  color: var(--chrome-text);
+  display: none;
+  transition: display var(--dur-morph) allow-discrete;
+}
+.layer[data-open] {
+  display: grid;
+}
+.layer::backdrop {
+  background: transparent;
+}
+.layer:focus-visible {
+  outline: none;
+}
+.layer[data-layout='center'] {
+  place-items: center;
+  padding: var(--sp-6);
+}
+.layer[data-layout='sheet'] {
+  place-items: end stretch;
+}
+.layer[data-layout='topbar-end'] {
+  display: block;
+}
+.layer[data-layout='topbar-end']:not([data-open]) {
+  display: none;
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--chrome-scrim);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.layer[data-scrim='light'] .scrim {
+  background: var(--chrome-scrim-light);
+}
+.layer[data-open] .scrim {
+  opacity: 1;
+}
+@starting-style {
+  .layer[data-open] .scrim {
+    opacity: 0;
+  }
+}
+/* A follow-up opens over the scrim the last one left up, and a hand-off
+   swaps sheets under a scrim that never lightens. */
+.layer[data-follows] .scrim,
+.layer[data-handoff] .scrim {
+  transition: none;
+}
+@starting-style {
+  .layer[data-open][data-follows] .scrim,
+  .layer[data-open][data-handoff] .scrim {
+    opacity: 1;
+  }
+}
+/* The leaving frame of a hand-off keeps no `display` through an exit it
+   does not play. */
+.layer[data-handoff]:not([data-open]) {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layer,
+  .scrim {
+    transition: none !important;
+  }
+}

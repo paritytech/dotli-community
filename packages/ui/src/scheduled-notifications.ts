@@ -32,9 +32,11 @@ import {
   listAll,
   removeById,
   removeStale,
+  isExpectedDbError,
   type ScheduledNotificationRecord,
 } from '@dotli/storage';
 import { SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS } from '@dotli/config';
+import { captureException, recordExpected } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { findNotification } from '@dotli/storage/notification-activations';
 import { notificationContextIsCurrent, presentProductNotification } from './notification-activation.js';
@@ -60,6 +62,28 @@ let bcChannel: BroadcastChannel | null = null;
 // fires here lets us skip records we have already begun processing this
 // tick.
 const inFlight = new Set<number>();
+// Steps whose last attempt failed. The poller retries every second, so a
+// failure is reported when it starts, not on every tick it persists.
+type PollStep = 'remove_stale' | 'list_pending' | 'claim';
+const failing = new Set<PollStep>();
+
+function succeeded(step: PollStep): void {
+  failing.delete(step);
+}
+
+function failed(step: PollStep, err: unknown): void {
+  // The connection closes as the page unloads; a tick caught by it is moot.
+  if (shuttingDown || failing.has(step)) {
+    return;
+  }
+  failing.add(step);
+  if (isExpectedDbError(err)) {
+    recordExpected(err, { flow: 'notifications', step });
+    return;
+  }
+  log.error(`[scheduled notifications] ${step} failed:`, err);
+  captureException(err, { flow: 'notifications', step });
+}
 
 export function initScheduledNotifications(opts: InitOpts): void {
   if (initialized) {
@@ -74,7 +98,7 @@ export function initScheduledNotifications(opts: InitOpts): void {
     };
   }
 
-  log.warn(`[${opts.label}] scheduled notifications: init`);
+  log.debug(`[${opts.label}] scheduled notifications: init`);
 
   void rehydrate().then(() => {
     ensurePolling();
@@ -157,27 +181,34 @@ export async function cancelNotification(productId: string, perProductId: number
 }
 
 async function rehydrate(): Promise<void> {
-  try {
-    await removeStale(Date.now());
-  } catch (err) {
-    log.error('[scheduled notifications] removeStale on rehydrate failed:', err);
-  }
-
-  let records: ScheduledNotificationRecord[];
-  try {
-    records = await listAll();
-  } catch (err) {
-    log.error('[scheduled notifications] listAll on rehydrate failed:', err);
-    return;
-  }
-
+  const records = await pendingRecords();
   const now = Date.now();
-  for (const rec of records) {
+  for (const rec of records ?? []) {
     if (rec.scheduledAt > now) {
       continue;
     }
     await tryFire(rec, 'rehydrate');
   }
+}
+
+/** Drop stale records and list the rest; `null` when listing failed. */
+async function pendingRecords(): Promise<ScheduledNotificationRecord[] | null> {
+  try {
+    await removeStale(Date.now());
+    succeeded('remove_stale');
+  } catch (err) {
+    failed('remove_stale', err);
+  }
+
+  let records: ScheduledNotificationRecord[];
+  try {
+    records = await listAll();
+    succeeded('list_pending');
+  } catch (err) {
+    failed('list_pending', err);
+    return null;
+  }
+  return records;
 }
 
 function ensurePolling(): void {
@@ -201,17 +232,8 @@ async function tick(): Promise<void> {
   if (shuttingDown) {
     return;
   }
-  try {
-    await removeStale(Date.now());
-  } catch (err) {
-    log.error('[scheduled notifications] removeStale failed:', err);
-  }
-
-  let records: ScheduledNotificationRecord[];
-  try {
-    records = await listAll();
-  } catch (err) {
-    log.error('[scheduled notifications] listAll failed:', err);
+  const records = await pendingRecords();
+  if (records === null) {
     return;
   }
 
@@ -267,6 +289,10 @@ async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'r
       // No Web Locks. Rely on IDB tx serialization in `removeById`.
       await claimAndFire();
     }
+    succeeded('claim');
+  } catch (err) {
+    // Callers run from a timer with nothing to catch for them.
+    failed('claim', err);
   } finally {
     inFlight.delete(rec.hostId);
   }

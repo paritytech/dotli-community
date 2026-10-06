@@ -5,7 +5,10 @@ import { createSignal, For, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getActiveTldSuffix } from '@dotli/config';
 import { forgetRecentLabel, loadRecentLabels } from '../../recent-labels.js';
+import { CloseIcon } from '../primitives/IconButton.js';
+import { SectionLabel } from '../primitives/SectionLabel.js';
 import { dotUrl } from './dot-url.js';
+import s from './RecentPills.module.css';
 
 // Touch has no hover, so a long press on a pill reveals its remove button
 // instead of navigating.
@@ -29,23 +32,15 @@ export function RecentPills(): JSX.Element {
     setLabels(loaded);
   });
 
-  const itemOf = (target: EventTarget | null): HTMLElement | null =>
-    target instanceof Element ? target.closest<HTMLElement>('.landing-recent-item') : null;
+  const forget = (e: MouseEvent, label: string): void => {
+    e.preventDefault();
+    void forgetRecentLabel(label);
+    setLabels(all => all.filter(l => l !== label));
+  };
 
-  const onClick = (e: MouseEvent): void => {
-    const item = itemOf(e.target);
-    const label = item?.dataset['label'];
-    if (item === null || label === undefined) {
-      return;
-    }
-    if ((e.target as Element).closest('.landing-recent-remove') !== null) {
-      e.preventDefault();
-      void forgetRecentLabel(label);
-      setLabels(all => all.filter(l => l !== label));
-      return;
-    }
-    // A long press revealed the remove button, so swallow the tap that ends it
-    // rather than navigating to the site the visitor was about to forget.
+  // A long press revealed the remove button, so swallow the tap that ends it
+  // rather than navigating to the site the visitor was about to forget.
+  const open = (e: MouseEvent, label: string): void => {
     if (revealed() === label) {
       e.preventDefault();
     }
@@ -59,7 +54,8 @@ export function RecentPills(): JSX.Element {
     }
   };
   const onTouchStart = (e: Event): void => {
-    const label = itemOf(e.target)?.dataset['label'];
+    const target = e.target instanceof Element ? e.target : null;
+    const label = target?.closest<HTMLElement>('[data-label]')?.dataset['label'];
     if (label === undefined || revealed() === label) {
       return;
     }
@@ -93,46 +89,47 @@ export function RecentPills(): JSX.Element {
         el.addEventListener('touchend', cancelPress, { passive: true });
         el.addEventListener('touchcancel', cancelPress, { passive: true });
       }}
-      onClick={onClick}
       id="dotli-recent"
-      class="landing-recent"
+      class={s['recent']}
       hidden={labels().length === 0}
     >
       <Show when={labels().length > 0}>
-        <div class="landing-recent-list">
+        <SectionLabel as="h2" text="Recent" id="dotli-recent-label" class={s['heading']} />
+        <div class={s['list']} role="group" aria-labelledby="dotli-recent-label" data-testid="landing-recent-list">
           <For each={labels()}>
             {label => (
               <span
-                class={{
-                  'landing-recent-item': true,
-                  'is-removable': revealed() === label,
-                }}
+                class={s['item']}
+                data-testid="landing-recent-item"
                 data-label={label}
+                data-removable={revealed() === label ? '' : undefined}
               >
-                <a href={dotUrl(label)} class="landing-recent-pill">
-                  <span class="landing-recent-label">
+                <a
+                  href={dotUrl(label)}
+                  class={s['pill']}
+                  data-testid="landing-recent-pill"
+                  onClick={e => {
+                    open(e, label);
+                  }}
+                >
+                  <span class={s['label']} data-testid="landing-recent-label">
                     {label}
-                    <span class="landing-tld">{suffix}</span>
+                    <span class={s['tld']} data-testid="landing-tld">
+                      {suffix}
+                    </span>
                   </span>
                 </a>
                 <button
                   type="button"
-                  class="landing-recent-remove"
+                  class={s['remove']}
+                  data-testid="landing-recent-remove"
                   aria-label={`Remove ${label}${suffix} from recently visited`}
                   title="Remove"
+                  onClick={e => {
+                    forget(e, label);
+                  }}
                 >
-                  <svg
-                    width="8"
-                    height="8"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                  >
-                    <line x1="5" y1="5" x2="19" y2="19" />
-                    <line x1="19" y1="5" x2="5" y2="19" />
-                  </svg>
+                  <CloseIcon />
                 </button>
               </span>
             )}

@@ -46,14 +46,21 @@ const product: ProductContext = {
 };
 
 function drawer(): HTMLElement | null {
-  return document.querySelector('.profile-drawer');
+  return document.querySelector('[data-testid="profile-drawer"]');
+}
+
+/** Escape on the drawer's modal layer, where a key reaches it. */
+function pressEscape(): void {
+  document
+    .querySelector('[data-testid="profile-drawer-backdrop"]')
+    ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 }
 
 async function settle(): Promise<void> {
   // Initial preimage poll, then the fetch, decrypt and render microtasks.
   await vi.advanceTimersByTimeAsync(1_000);
   await vi.waitFor(() => {
-    expect(drawer()?.querySelector('.spinner')).toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-spinner"]')).toBeNull();
   });
 }
 
@@ -120,7 +127,7 @@ describe('profile drawer', () => {
   });
 
   afterEach(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    pressEscape();
     resetOverlays();
     vi.useRealTimers();
   });
@@ -132,7 +139,7 @@ describe('profile drawer', () => {
       reference: VECTOR.reference,
     });
 
-    expect(drawer()?.querySelector('.spinner')).not.toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-spinner"]')).not.toBeNull();
     expect(drawer()?.textContent).toContain('Shown by egui-chat.dot');
     await settle();
     const img = drawer()?.querySelector('img');
@@ -149,7 +156,7 @@ describe('profile drawer', () => {
     await settle();
 
     expect(drawer()?.querySelector('img')).toBeNull();
-    expect(drawer()?.querySelector('.profile-drawer-status-error')).not.toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-status"][data-error]')).not.toBeNull();
   });
 
   it('rejects an unparseable reference without opening UI', async () => {
@@ -175,8 +182,8 @@ describe('profile drawer', () => {
       },
     );
 
-    const attribution = drawer()?.querySelector('.profile-drawer-attribution');
-    expect(drawer()?.querySelector('.profile-drawer-contact')?.textContent).toBe('alice.01');
+    const attribution = drawer()?.querySelector('[data-testid="profile-drawer-attribution"]');
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-contact"]')?.textContent).toBe('alice.01');
     expect(attribution?.textContent).toContain('<b>echat.paseo</b>');
     expect(attribution?.children).toHaveLength(0);
     expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
@@ -202,10 +209,12 @@ describe('profile drawer', () => {
       },
     );
     await settle();
-    expect(drawer()?.querySelector('.profile-drawer-contact')?.textContent).toBe('alice.paseo');
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-contact"]')?.textContent).toBe('alice.paseo');
     expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
     if (shared) {
-      expect(drawer()?.querySelector('.profile-drawer-attribution')?.textContent).toContain('alice.paseo');
+      expect(drawer()?.querySelector('[data-testid="profile-drawer-attribution"]')?.textContent).toContain(
+        'alice.paseo',
+      );
       expect(drawer()?.querySelector('img')).not.toBeNull();
     } else {
       expect(drawer()?.querySelector('img')).toBeNull();
@@ -224,7 +233,7 @@ describe('profile drawer', () => {
     await platform.presentContactProfile(product, { peerIdentity: new Uint8Array(32), username: 'bob.paseo' });
     pending.resolve(contactSnapshot);
     await vi.advanceTimersByTimeAsync(50);
-    expect(drawer()?.querySelector('.profile-drawer-contact')?.textContent).toBe('bob.paseo');
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-contact"]')?.textContent).toBe('bob.paseo');
     expect(drawer()?.textContent).not.toContain('alice.paseo');
   });
 
@@ -281,13 +290,13 @@ describe('profile drawer', () => {
 
     const contact = { peerIdentity: new Uint8Array(32).fill(0xab), username: '<b>alice.01</b>' };
     await platform.presentContactProfile(product, contact);
-    expect(document.querySelectorAll('.profile-drawer')).toHaveLength(1);
-    const name = drawer()?.querySelector('.profile-drawer-contact');
+    expect(document.querySelectorAll('[data-testid="profile-drawer"]')).toHaveLength(1);
+    const name = drawer()?.querySelector('[data-testid="profile-drawer-contact"]');
     expect(name?.textContent).toBe(contact.username);
     expect(name?.children).toHaveLength(0);
     expect(drawer()?.querySelector('img')).toBeNull();
-    expect(drawer()?.querySelector('.spinner')).toBeNull();
-    expect(drawer()?.querySelector('.profile-drawer-status-error')).toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-spinner"]')).toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-status"][data-error]')).toBeNull();
     expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(mocks.bitswapGet).not.toHaveBeenCalled();
@@ -304,9 +313,9 @@ describe('profile drawer', () => {
 
     await platform.presentProfile(product, { reference: VECTOR.reference });
     await platform.presentProfile(product, { reference: VECTOR.reference });
-    expect(document.querySelectorAll('.profile-drawer')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="profile-drawer"]')).toHaveLength(1);
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    pressEscape();
     expect(drawer()).toBeNull();
   });
 
@@ -372,7 +381,7 @@ describe('placed contact avatars', () => {
         avatars: [at(1, VECTOR.reference)],
       }),
     ).resolves.toBeUndefined();
-    expect(document.querySelector('.contact-avatar-overlay')).toBeNull();
+    expect(document.querySelector('[data-testid="contact-avatar-overlay"]')).toBeNull();
 
     await platform.placeContactAvatars(product, {
       surfaceWidth: 400,
@@ -381,9 +390,9 @@ describe('placed contact avatars', () => {
     });
     await vi.advanceTimersByTimeAsync(1_000);
     await vi.waitFor(() => {
-      expect(document.querySelectorAll('.contact-avatar-overlay img')).toHaveLength(1);
+      expect(document.querySelectorAll('[data-testid="contact-avatar-overlay"] img')).toHaveLength(1);
     });
-    expect(document.querySelector('.contact-avatar-overlay img')?.getAttribute('src')).toMatch(/^blob:/);
+    expect(document.querySelector('[data-testid="contact-avatar-overlay"] img')?.getAttribute('src')).toMatch(/^blob:/);
 
     avatars.dispose();
     iframe.remove();

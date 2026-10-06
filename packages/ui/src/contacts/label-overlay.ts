@@ -4,6 +4,7 @@
 import type { Bytes32 } from '@parity/truapi';
 import type { PlacedContactLabels } from '@parity/truapi-host';
 import { surfaceMapping, type AvatarSurfaceFit } from '../profile/avatar-overlay.js';
+import s from './label-overlay.module.css';
 
 /** Host-owned names are painted outside the product document, without profiles. */
 export interface ContactLabelOverlay {
@@ -22,7 +23,8 @@ interface LabelView {
 
 export function createContactLabelOverlay(): ContactLabelOverlay {
   const layer = document.createElement('div');
-  layer.className = 'contact-label-overlay';
+  layer.className = s['overlay'] ?? '';
+  layer.setAttribute('data-testid', 'contact-label-overlay');
   const views = new Map<number, LabelView>();
   let frame: HTMLIFrameElement | null = null;
   let fit: AvatarSurfaceFit = 'viewport';
@@ -45,13 +47,13 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
     settleTimer = window.setTimeout(() => {
       settleTimer = null;
       for (const view of views.values()) {
-        view.root.classList.remove('contact-label-moving');
+        view.root.removeAttribute('data-moving');
       }
     }, 150);
   };
   const hideMoving = (): void => {
     for (const view of views.values()) {
-      view.root.classList.add('contact-label-moving');
+      view.root.setAttribute('data-moving', '');
     }
     if (views.size !== 0) {
       settle();
@@ -97,9 +99,10 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
       let view = views.get(label.slot);
       if (view === undefined) {
         const root = document.createElement('div');
-        root.className = 'contact-label-slot';
+        root.className = s['slot'] ?? '';
         const text = document.createElement('div');
-        text.className = 'contact-label';
+        text.className = s['label'] ?? '';
+        text.setAttribute('data-testid', 'contact-label');
         root.append(text);
         view = { root, text, geometry: '' };
         views.set(label.slot, view);
@@ -125,7 +128,7 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
         view.text.style.height = `${String(textHeight)}px`;
         view.text.style.lineHeight = `${String(textHeight)}px`;
         view.text.style.fontSize = `${String(Math.min(13 * map.scaleY, textHeight))}px`;
-        view.root.classList.add('contact-label-moving');
+        view.root.setAttribute('data-moving', '');
         moved = true;
       }
       const displayName = name === label.account ? `${label.account.slice(0, 8)}…${label.account.slice(-6)}` : name;

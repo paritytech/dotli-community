@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { showPermissionRequestModal } from '../src/permission-modal.js';
-import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { footerVariants, overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId } from './support.js';
 
 afterEach(() => {
   resetOverlays();
@@ -14,7 +15,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(decision).resolves.toBe('granted');
@@ -26,7 +27,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    byTestId('signing-btn-cancel').click();
 
     // Then
     await expect(decision).resolves.toBe('denied');
@@ -38,7 +39,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+    byTestId('signing-modal-backdrop').click();
 
     // Then
     await expect(decision).resolves.toBe('dismissed');
@@ -51,8 +52,8 @@ describe('permission request modal', () => {
 
     // Then
     expect(footerButtons()).toEqual([
-      { text: 'Deny', className: 'signing-btn-cancel' },
-      { text: 'Allow', className: 'signing-btn-sign' },
+      { text: 'Deny', testId: 'signing-btn-cancel' },
+      { text: 'Allow', testId: 'signing-btn-sign' },
     ]);
   });
 
@@ -65,9 +66,22 @@ describe('permission request modal', () => {
 
     // Then
     expect(footerButtons()).toEqual([
-      { text: 'Deny', className: 'signing-btn-cancel' },
-      { text: 'Always allow', className: 'signing-btn-secondary' },
-      { text: 'Allow once', className: 'signing-btn-sign' },
+      { text: 'Deny', testId: 'signing-btn-cancel' },
+      { text: 'Always allow', testId: 'signing-btn-secondary' },
+      { text: 'Allow once', testId: 'signing-btn-sign' },
+    ]);
+  });
+
+  it('As a dotli user, Deny is drawn as the destructive answer to a permission prompt', async () => {
+    // When
+    void showPermissionRequestModal('myapp', 'ChainSubmit', undefined, { allowOnce: true });
+    await overlaysReady();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Deny', 'danger'],
+      ['Always allow', 'secondary'],
+      ['Allow once', 'primary'],
     ]);
   });
 
@@ -77,7 +91,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(decision).resolves.toBe('granted-once');
@@ -89,7 +103,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-secondary')?.click();
+    byTestId('signing-btn-secondary').click();
 
     // Then
     await expect(decision).resolves.toBe('granted');
@@ -106,13 +120,16 @@ describe('permission request modal', () => {
 
     // Then
     await expect(decision).rejects.toMatchObject({ name: 'AbortError' });
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 });
 
-function footerButtons(): { text: string; className: string }[] {
-  return Array.from(document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'), button => ({
-    text: button.textContent,
-    className: button.className,
-  }));
+function footerButtons(): { text: string; testId: string | null }[] {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'),
+    button => ({
+      text: button.textContent,
+      testId: button.getAttribute('data-testid'),
+    }),
+  );
 }

@@ -21,7 +21,6 @@ export {
 export {
   SANDBOX_CONTRACT_PARAMS,
   validateSandboxParams,
-  type SandboxContractParam,
   type SandboxParams,
   type SandboxParamsResult,
 } from './host-sandbox-contract.js';
@@ -52,7 +51,6 @@ export {
   CHAIN_ROLE_LABELS,
   NETWORK_KEY,
   NETWORK_NAME_TO_SERVICES_CONFIG,
-  NetworkName,
   chainRoleForGenesis,
   getActiveChainRoles,
   getActiveCoreGatewayChains,

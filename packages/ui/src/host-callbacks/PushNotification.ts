@@ -8,6 +8,7 @@
 
 import type { Notifications } from '@parity/truapi-host';
 import type { NotificationActivation } from '@parity/truapi';
+import { log } from '@dotli/shared';
 import {
   retainNotification,
   findNotification,
@@ -26,6 +27,8 @@ import { ERRORS } from '../errors.js';
 
 export function createNotificationAdapters(label: string): Required<Notifications> {
   const pushNotification: Required<Notifications>['pushNotification'] = async ({ text, deeplink, scheduledAt }) => {
+    // Facts only: the text and deeplink are the product's content for the user.
+    log.event('push notification', { flow: 'notifications', scheduled: scheduledAt !== undefined });
     const context = notificationContext(label);
     if (deeplink !== undefined && !validNotificationRoute(deeplink)) {
       throw new Error('Invalid notification destination');

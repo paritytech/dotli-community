@@ -1,0 +1,91 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel "What is this?" block. Native <details> keeps
+   keyboard and AT support, so the open state is the native `open` attribute. */
+
+.explanation {
+  margin: 6px 0 10px;
+  padding: 0;
+  background: var(--td-teal-bg);
+  border-left: 2px solid var(--td-teal);
+  border-radius: 0 3px 3px 0;
+  color: var(--td-fg);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.toggle {
+  cursor: pointer;
+  margin: 0;
+  padding: 5px 10px;
+  color: var(--td-teal-soft);
+  font-weight: 500;
+  font-size: 11px;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.toggle::-webkit-details-marker {
+  display: none;
+}
+.toggle::before {
+  content: '▸';
+  color: var(--td-teal);
+  font-size: 9px;
+  transition: transform 0.12s;
+}
+.explanation[open] > .toggle::before {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggle::before {
+    transition: none;
+  }
+}
+.toggle:hover {
+  color: var(--td-teal-pale);
+}
+
+.body {
+  padding: 2px 10px 8px;
+}
+
+.paragraph {
+  margin: 6px 0;
+  padding: 0;
+}
+.paragraph:first-child {
+  margin-top: 0;
+}
+.paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.list {
+  margin: 6px 0;
+  padding: 0 0 0 16px;
+  list-style: none;
+}
+.item {
+  position: relative;
+  margin: 3px 0;
+  padding: 0 0 0 4px;
+}
+.item::before {
+  content: '•';
+  position: absolute;
+  left: -10px;
+  color: var(--td-teal);
+}
+
+.code {
+  font-family: inherit;
+  background: var(--td-teal-tint);
+  color: var(--td-teal-pale);
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 11px;
+}

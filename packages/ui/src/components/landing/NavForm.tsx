@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { getActiveTldSuffix } from '@dotli/config';
 import { validateDotLabel, type DotLabelResult } from '@dotli/shared';
 import { dotUrl } from './dot-url.js';
+import s from './NavForm.module.css';
 
 const PLACEHOLDER_NAMES = ['browse', 'mark3t', 'playground'] as const;
 
@@ -139,14 +140,8 @@ export function NavForm(): JSX.Element {
   };
 
   return (
-    <form onSubmit={onSubmit} id="dotli-nav-form" class="landing-nav-form" autocomplete="off">
-      <div
-        class={{
-          'landing-search-bar': true,
-          'landing-search-bar--error': invalid(),
-        }}
-        id="dotli-nav-bar"
-      >
+    <form onSubmit={onSubmit} id="dotli-nav-form" class={s['form']} autocomplete="off">
+      <div class={s['bar']} id="dotli-nav-bar" data-invalid={invalid() ? '' : undefined}>
         <input
           ref={el => {
             input = el;
@@ -156,7 +151,7 @@ export function NavForm(): JSX.Element {
             placeholder?.resume();
           }}
           id="dotli-nav-input"
-          class="landing-search-input"
+          class={s['input']}
           type="text"
           placeholder={PLACEHOLDER_NAMES[0]}
           spellcheck="false"
@@ -165,8 +160,8 @@ export function NavForm(): JSX.Element {
           aria-describedby="dotli-nav-error"
           aria-invalid={invalid() ? 'true' : undefined}
         />
-        <span class="landing-dot-label">{suffix}</span>
-        <button type="submit" class="landing-go-btn" aria-label="Go">
+        <span class={s['suffix']}>{suffix}</span>
+        <button type="submit" class={s['go']} aria-label="Go">
           <svg
             width="16"
             height="16"
@@ -177,12 +172,11 @@ export function NavForm(): JSX.Element {
             stroke-linecap="round"
             stroke-linejoin="round"
           >
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
+            <path d="M5 12h14m-7-7 7 7-7 7" />
           </svg>
         </button>
       </div>
-      <p id="dotli-nav-error" class="landing-nav-error" role="alert" hidden={!invalid()}>
+      <p id="dotli-nav-error" class={s['error']} role="alert" hidden={!invalid()}>
         {message()}
       </p>
     </form>

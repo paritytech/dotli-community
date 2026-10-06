@@ -8,6 +8,7 @@ import type { RenderContext, RendererNode } from '@parity/truapi';
 import { bytesToHex } from '@parity/truapi/scale';
 import { loadRendererImage, render, userTriggerRendererAction } from '../../chat/service.js';
 import { CustomNode, type CustomActionHandler, type RendererResources } from './CustomNode.js';
+import s from './CustomMessage.module.css';
 
 export interface CustomMessageProps {
   productId: string;
@@ -143,12 +144,20 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
 
   return (
     <div
-      class="chat-custom-root"
+      class={s['root']}
+      data-testid="chat-custom-root"
       ref={el => {
         root = el;
       }}
     >
-      <Show when={tree()} fallback={<span class="chat-custom-placeholder">{placeholder()}</span>}>
+      <Show
+        when={tree()}
+        fallback={
+          <span class={s['placeholder']} data-testid="chat-custom-placeholder">
+            {placeholder()}
+          </span>
+        }
+      >
         {live => <CustomNode node={live().node} resources={live().resources} onAction={live().onAction} />}
       </Show>
     </div>

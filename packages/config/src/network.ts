@@ -544,9 +544,8 @@ export function chainRoleForGenesis(genesisHash: string): ChainRole | null {
  * This list controls feature advertisement, not access control: the shared
  * Rust-core connection callback also serves core-owned Bulletin operations.
  *
- * Single source of truth shared by the host's chain-support advertisement
- * (`isRemoteChainSupported`) and the gateway provider factory
- * (`createRpcChainProvider`).
+ * Single source of truth for the host's chain-support advertisement
+ * (`isRemoteChainSupported`).
  */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();

@@ -11,21 +11,34 @@
   "exports": {
     ".": "./src/index.ts",
     "./islands/*": "./src/islands/*.ts",
-    "./styles.css": "./src/styles.css",
+    "./styles.css": "./src/global.css",
     "./package.json": "./package.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build -o storybook-static",
+    "test:stories": "vitest run --config vitest.storybook.config.ts",
+    "test:vrt": "VRT=1 vitest run --config vitest.storybook.config.ts"
   },
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
+    "@config/vite": "*",
     "@solidjs/testing-library": "1.0.0-beta.3",
     "@solidjs/vite-plugin": "3.0.0-next.47",
+    "@storybook/addon-a11y": "^10.6.1",
+    "@storybook/addon-docs": "^10.6.1",
+    "@storybook/addon-vitest": "^10.6.1",
     "@types/qrcode": "^1.5.6",
-    "fake-indexeddb": "^6.2.5"
+    "@vitest/browser-playwright": "^5.0.3",
+    "fake-indexeddb": "^6.2.5",
+    "playwright": "^1.63.0",
+    "storybook": "^10.6.1",
+    "storybook-solidjs-vite": "^10.7.2",
+    "vite-plugin-solid": "3.0.0-next.27"
   },
   "dependencies": {
     "@dotli/config": "*",
@@ -47,7 +60,7 @@
     "buffer": "^6.0.3",
     "@solidjs/web": "2.0.0-rc.13",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^3.2.0",
+    "polkadot-api": "^3.2.1",
     "qrcode": "^1.5.4",
     "solid-js": "2.0.0-rc.13"
   },

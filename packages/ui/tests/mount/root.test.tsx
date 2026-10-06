@@ -68,7 +68,11 @@ describe('mountRoot', () => {
 
     // Then
     expect(good.querySelector('.ok')?.textContent).toBe('ok');
-    expect(sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }), { root: 'bad' });
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }), {
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'bad' },
+    });
     expect(document.body.contains(good)).toBe(true);
   });
 
@@ -161,7 +165,9 @@ describe('mountRoot', () => {
     expect(onBroken).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'broke 1' }), {
-      root: 'late',
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'late' },
     });
   });
 

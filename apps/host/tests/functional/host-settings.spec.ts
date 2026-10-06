@@ -38,7 +38,7 @@ import { test } from './helpers/shared-mode-reset.js';
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 const LANDING_URL = `http://localhost:${PORT}/`;
-const FALLBACK_LABEL = 'Light Client Shared unavailable';
+const FALLBACK_LABEL = 'Light client shared unavailable';
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 4);
 
@@ -489,6 +489,9 @@ test.describe('Settings fails', () => {
     const state = await readChainBackendState(page, 'smoldot-direct');
     expect(state.chainBackend).toBe('smoldot-direct');
     await expect(page.getByText(FALLBACK_LABEL)).toBeVisible();
+    await expect(
+      page.getByTestId('notif-card').filter({ hasText: FALLBACK_LABEL }).getByTestId('notif-icon'),
+    ).toHaveAttribute('data-tone', 'warn');
   });
 
   test("As a user pasting a link that asks for the shared light client into a browser without shared worker support, the link is ignored and I'm told why", async ({
@@ -505,6 +508,9 @@ test.describe('Settings fails', () => {
     expect(state.chainBackend).toBe('smoldot-direct');
     expect(state.url).not.toContain('chainBackend=smoldot-shared-worker');
     await expect(page.getByText(FALLBACK_LABEL)).toBeVisible();
+    await expect(
+      page.getByTestId('notif-card').filter({ hasText: FALLBACK_LABEL }).getByTestId('notif-icon'),
+    ).toHaveAttribute('data-tone', 'warn');
   });
 
   test('As a user already on a per-tab light client, a browser without shared worker support changes nothing and says nothing', async ({

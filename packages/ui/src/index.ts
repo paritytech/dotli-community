@@ -28,27 +28,23 @@ export { showPasswordPrompt } from './password-prompt.js';
 export { recordRecentLabel } from './recent-labels.js';
 export { initScheduledNotifications } from './scheduled-notifications.js';
 export { wipeOriginState } from './settings-actions.js';
-export { getLoadingState, updateLoading } from './state/loading.js';
+export { getLoadingState } from './state/loading.js';
 export { initSettingsStore } from './state/settings.js';
 export { openSettings, setLandingPage, topbarStore } from './state/topbar.js';
 export { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
 export { bindUrlPill } from './url-pill.js';
+export { bindTopbarStatus } from './topbar-status.js';
 export {
   armTopbarAutoHide,
-  pinTopbarVisible,
+  setProductContentShown,
   registerTopbarElement,
   revealTopbar,
   scheduleTopbarHide,
   TOPBAR_REVEAL_SHORTCUT,
 } from './topbar-autohide.js';
 export { initTopBar, setChainsButtonVisible } from './topbar.js';
-export { SETTINGS_GLYPH, showError, showErrorPage, showNoContentError } from './ui.js';
+export { SETTINGS_GLYPH } from './settings-glyph.js';
+export { RELOAD_GLYPH } from './reload-glyph.js';
+export { showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';
 export { type ShieldState } from './verification-shield.js';
-export {
-  loadBridge,
-  loadTruapiDebugMount,
-  loadSharedMode,
-  type BridgeModule,
-  type TruapiDebugMountModule,
-  type SharedModeModule,
-} from './lazy.js';
+export { loadBridge, loadTruapiDebugMount, loadSharedMode, type BridgeModule } from './lazy.js';

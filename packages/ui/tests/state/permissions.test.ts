@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { recordPermissionChange } from '../../src/state/permissions.js';
+import { recordPermissionChange, recordPermissionsChanged } from '../../src/state/permissions.js';
 
 function capture(name: string): { details: unknown[]; stop: () => void } {
   const details: unknown[] = [];
@@ -61,6 +61,53 @@ describe('permission changes', () => {
       { label: 'myapp', permission: 'camera' },
     ]);
     expect(grants.details).toEqual([]);
+    grants.stop();
+    devices.stop();
+  });
+});
+
+describe('permissions changed together', () => {
+  it('As a user resetting a device permission among others, the app hears one device change, so it reloads once', () => {
+    // Given
+    const grants = capture('dotli:permission-changed');
+    const devices = capture('dotli:device-permission-changed');
+
+    // When
+    recordPermissionsChanged('myapp', ['Notifications', 'Camera', 'Microphone', 'ChainSubmit']);
+
+    // Then
+    expect(devices.details).toEqual([{ label: 'myapp', permission: 'Camera' }]);
+    expect(grants.details).toEqual([]);
+    grants.stop();
+    devices.stop();
+  });
+
+  it('As a user resetting only permissions the iframe does not gate, the app hears one grant change and does not reload', () => {
+    // Given
+    const grants = capture('dotli:permission-changed');
+    const devices = capture('dotli:device-permission-changed');
+
+    // When
+    recordPermissionsChanged('myapp', ['Notifications', 'ChainSubmit']);
+
+    // Then
+    expect(grants.details).toEqual([{ label: 'myapp', permission: 'Notifications' }]);
+    expect(devices.details).toEqual([]);
+    grants.stop();
+    devices.stop();
+  });
+
+  it('As a user whose reset changed nothing, nothing is announced', () => {
+    // Given
+    const grants = capture('dotli:permission-changed');
+    const devices = capture('dotli:device-permission-changed');
+
+    // When
+    recordPermissionsChanged('myapp', []);
+
+    // Then
+    expect(grants.details).toEqual([]);
+    expect(devices.details).toEqual([]);
     grants.stop();
     devices.stop();
   });

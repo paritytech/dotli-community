@@ -1,0 +1,57 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board's Settings popover (MenuSettings): the title, two columns (one in
+   a sheet) and a footer with the reload hint and Save and apply. The panel's
+   Surface is bare, inside the Popover's glass. In a sheet the footer ends
+   the scrolled content, Save and apply across its width. */
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--sp-4);
+}
+.content[data-sheet] .columns {
+  grid-template-columns: minmax(0, 1fr);
+}
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+/* The clear-caches button's icon. */
+.icon {
+  width: 14px;
+  height: 14px;
+}
+.apply {
+  flex: none;
+  margin-left: auto;
+}
+.content[data-sheet] .apply {
+  flex: 1 0 100%;
+  margin-left: 0;
+}
+/* A failed reset or apply, under the footer's action. */
+.error {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--chrome-err-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-body);
+}
+
+/* Phones: the boards' 20 px column rhythm and 16 px icon. */
+@media (max-width: 560px) {
+  .columns,
+  .column {
+    gap: var(--sp-5);
+  }
+  .icon {
+    width: 16px;
+    height: 16px;
+  }
+}

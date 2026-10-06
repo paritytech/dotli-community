@@ -16,12 +16,34 @@
 import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
 import type { ChainPhase } from '@dotli/ui';
 import { m, type SpanHandle, type SpanValue } from '@dotli/metrics';
+import { peekContinuation } from '@dotli/shared';
 import { getLoadingState } from '@dotli/ui';
+import type { Attempt } from './journey.js';
 
-/** How a resolution ended. `abandoned` means the tab left before it did. */
-export type ResolutionOutcome = 'rendered' | 'error' | 'abandoned';
+/**
+ * How a resolution ended, judged by what the visitor got.
+ *
+ * `rendered` is the sandbox reporting its content on screen, not the iframe
+ * being mounted: a load that fails or is left during the download is not a
+ * success. `no_content` is a name with nothing published on this network, and
+ * `content_error` a sandbox that could not load what is. `abandoned` means the
+ * tab left before any of these.
+ */
+export type ResolutionOutcome = 'rendered' | 'no_content' | 'error' | 'content_error' | 'abandoned';
 
 export type CacheResult = 'hit' | 'miss';
+
+/** What a CID cache lookup found. `skipped` is a lookup the settings turned off. */
+export type CidCacheResult = CacheResult | 'skipped';
+
+export interface FinishDetails {
+  /** Short failure description, for reading. Never grouped on. */
+  reason?: string;
+  /** The stable classification the error page was chosen from. */
+  errorKind?: string;
+  /** The sandbox step a content load stopped at. */
+  failedStep?: string;
+}
 
 /** The phases a chain moves through, as the light client reports them. */
 type Phase = 'connecting' | 'syncing' | 'ready';
@@ -123,15 +145,30 @@ export interface ResolutionTrace {
   content: (fetched: number, total: number | null) => void;
   /** The name resolved, or did not. */
   nameResolved: (cid: string | null) => void;
-  cidCache: (result: CacheResult) => void;
+  cidCache: (result: CidCacheResult) => void;
+  /** The step the load is in now, reported as `loading_phase` wherever it ends. */
+  step: (name: string) => void;
+  /** The sandbox iframe is mounted and the download is its to run. */
+  handedOff: () => void;
+  /** The loading screen showed the visitor a slow-load warning. */
+  warningShown: () => void;
   /** Close the trace. Idempotent: the first outcome wins. */
-  finish: (outcome: ResolutionOutcome, failureReason?: string) => void;
+  finish: (outcome: ResolutionOutcome, details?: FinishDetails) => void;
+  /** The root span, for linking the errors of this load to its trace. */
+  span: SpanHandle;
 }
 
 export interface ResolutionTraceOptions {
   domain: string;
   network: string;
   backend: string;
+  attempt: Attempt;
+  /**
+   * `performance.now()` at which the page load began. The trace opens once the
+   * label is known, which is after boot work that takes real time, so its root
+   * is backdated to here to cover it.
+   */
+  startedAt: number;
 }
 
 /**
@@ -145,8 +182,8 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
   // clock. Both are captured once here so every span time is the monotonic
   // delta projected onto the wall clock, and a system clock that steps mid-load
   // cannot reorder the tree.
-  const epochStart = Date.now();
-  const perfStart = performance.now();
+  const perfStart = opts.startedAt;
+  const epochStart = Date.now() - (performance.now() - perfStart);
   const at = (): number => epochStart + (performance.now() - perfStart);
   const sinceStart = (): number => performance.now() - perfStart;
 
@@ -160,6 +197,9 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
       network: opts.network,
       backend: opts.backend,
       sampled_children: sampled,
+      journey_id: opts.attempt.journeyId,
+      attempt_number: opts.attempt.attemptNumber,
+      entry: opts.attempt.entry,
     },
   });
 
@@ -193,8 +233,11 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
   let contentBytes = 0;
   let contentTotal: number | null = null;
   let cid: string | null = null;
-  let cidCacheResult: CacheResult | null = null;
+  let cidCacheResult: CidCacheResult | null = null;
   let nameResolvedMs: number | null = null;
+  let handoffMs: number | null = null;
+  let loadingPhase = 'boot';
+  let warned = false;
   let nameSpan: SpanHandle | null = sampled ? root.child('name_resolution', { startTime: epochStart }) : null;
   let contentSpan: SpanHandle | null = null;
   let finished = false;
@@ -318,7 +361,21 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
       cidCacheResult = result;
     },
 
-    finish: (outcome, failureReason) => {
+    step: name => {
+      loadingPhase = name;
+    },
+
+    handedOff: () => {
+      handoffMs ??= sinceStart();
+    },
+
+    warningShown: () => {
+      warned = true;
+    },
+
+    span: root,
+
+    finish: (outcome, details) => {
       if (finished) {
         return;
       }
@@ -349,7 +406,12 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
         ...(cid !== null ? { cid } : {}),
         ...(cidCacheResult !== null ? { cid_cache: cidCacheResult } : {}),
         ...(nameResolvedMs !== null ? { name_resolution_ms: nameResolvedMs } : {}),
-        ...(failureReason !== undefined ? { failure_reason: failureReason.slice(0, 200) } : {}),
+        ...(handoffMs !== null ? { handoff_ms: handoffMs } : {}),
+        loading_phase: loadingPhase,
+        warning_shown: warned,
+        ...(details?.reason !== undefined ? { failure_reason: details.reason.slice(0, 200) } : {}),
+        ...(details?.errorKind !== undefined ? { error_kind: details.errorKind } : {}),
+        ...(details?.failedStep !== undefined ? { failed_step: details.failedStep } : {}),
         // Flattened onto the root as well as the chain spans, so an unsampled
         // load still answers "which chain was slow" without any children.
         ...chainSummary(chains),
@@ -361,7 +423,16 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
   // A load that never finishes is the one worth having. Without this the tab
   // closes mid-resolution and the root span is never sent at all, so the
   // failures are exactly the traces Sentry never sees.
-  window.addEventListener('pagehide', () => {
+  //
+  // How the visitor left is recorded where the page can know it: a page kept
+  // in the back/forward cache says so, and a reload this app started marked
+  // its reason first. A browser reload, a typed URL and a closed tab all look
+  // the same from here; the next attempt's `entry` tells a reload apart.
+  window.addEventListener('pagehide', (event: PageTransitionEvent) => {
+    if (finished) {
+      return;
+    }
+    root.setAttributes({ exit: event.persisted ? 'bfcache' : (peekContinuation() ?? 'unload') });
     trace.finish('abandoned');
   });
 
