@@ -9,14 +9,14 @@ interface NotificationAction {
 }
 
 const workbox = vi.hoisted(() => ({
-  listeners: new Map<string, (() => void)[]>(),
+  listeners: new Map<string, ((event?: { wasWaitingBeforeRegister?: boolean }) => void)[]>(),
   messageSkipWaiting: vi.fn(),
 }));
 const notifications = vi.hoisted(() => ({ actions: [] as NotificationAction[] }));
 
 vi.mock('workbox-window', () => ({
   Workbox: class {
-    addEventListener(type: string, listener: () => void): void {
+    addEventListener(type: string, listener: (event?: { wasWaitingBeforeRegister?: boolean }) => void): void {
       workbox.listeners.set(type, [...(workbox.listeners.get(type) ?? []), listener]);
     }
     register(): Promise<undefined> {
@@ -39,9 +39,9 @@ vi.mock('@dotli/ui', () => ({
 vi.mock('@dotli/metrics', () => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
 vi.mock('@dotli/shared', () => ({ markContinuation: vi.fn() }));
 
-function emit(type: string): void {
+function emit(type: string, event?: { wasWaitingBeforeRegister?: boolean }): void {
   for (const listener of workbox.listeners.get(type) ?? []) {
-    listener();
+    listener(event);
   }
 }
 
@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 async function pressReload(): Promise<void> {
-  emit('waiting');
+  emit('waiting', {});
   const action = notifications.actions.at(-1);
   expect(action?.label).toBe('Reload');
   action?.onClick();
@@ -105,5 +105,28 @@ describe('the update available toast', () => {
     // Then
     expect(reload).toHaveBeenCalledOnce();
     expect(workbox.messageSkipWaiting).not.toHaveBeenCalled();
+  });
+});
+
+describe('an update that was already waiting when the page loaded', () => {
+  it('As a dotli user, a plain reload applies the waiting update without asking', async () => {
+    // Given
+    waiting = {};
+
+    // When
+    emit('waiting', { wasWaitingBeforeRegister: true });
+
+    // Then
+    expect(notifications.actions).toHaveLength(0);
+    await vi.waitFor(() => {
+      expect(workbox.messageSkipWaiting).toHaveBeenCalledOnce();
+    });
+    expect(reload).not.toHaveBeenCalled();
+
+    // When
+    emit('controlling');
+
+    // Then
+    expect(reload).toHaveBeenCalledOnce();
   });
 });
