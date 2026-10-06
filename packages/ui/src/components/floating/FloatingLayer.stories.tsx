@@ -8,6 +8,8 @@ import { Popover } from './Popover.js';
 
 const onOther = fn().mockName('onOther');
 const onOpenChange = fn().mockName('onOpenChange');
+const onOpenChangeA = fn().mockName('onOpenChangeA');
+const onOpenChangeB = fn().mockName('onOpenChangeB');
 
 function Harness() {
   return (
@@ -45,6 +47,32 @@ function Harness() {
   );
 }
 
+/** Two popovers side by side, each placed under its own trigger, so neither covers the other's. */
+function TwoPopovers() {
+  const one = (key: 'a' | 'b', onChange: (open: boolean) => void) => (
+    <Popover id={`story-popover-${key}`} title={key.toUpperCase()} onOpenChange={onChange}>
+      <Popover.Trigger>
+        {t => (
+          <Button {...t} testId={`trigger-${key}`}>
+            Open {key.toUpperCase()}
+          </Button>
+        )}
+      </Popover.Trigger>
+      <Popover.Content testId={`surface-${key}`} placement="trigger-start">
+        <div style={{ padding: '12px' }}>
+          <Button testId={`inside-${key}`}>Inside {key.toUpperCase()}</Button>
+        </div>
+      </Popover.Content>
+    </Popover>
+  );
+  return (
+    <div style={{ display: 'flex', gap: '8px' }}>
+      {one('a', onOpenChangeA)}
+      {one('b', onOpenChangeB)}
+    </div>
+  );
+}
+
 const meta = {
   title: 'Floating/Closing',
   component: Harness,
@@ -53,6 +81,8 @@ const meta = {
   beforeEach: () => {
     onOther.mockClear();
     onOpenChange.mockClear();
+    onOpenChangeA.mockClear();
+    onOpenChangeB.mockClear();
   },
 } satisfies Meta<typeof Harness>;
 
@@ -157,6 +187,26 @@ export const ClosesWhenAModalOpens: Story = {
     });
     await step('Then the popover closed', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+    });
+  },
+};
+
+export const OneClickMovesToAnotherPopover: Story = {
+  render: () => <TwoPopovers />,
+  play: async ({ step }) => {
+    await step('Given popover A is open', async () => {
+      await (await input()).click(body.getByTestId('trigger-a'));
+      await waitFor(() => expect(body.getByTestId('surface-a')).toHaveAttribute('data-open'));
+    });
+    await step("When I click B's trigger once", async () => {
+      await (await input()).click(body.getByTestId('trigger-b'));
+    });
+    await step('Then A closed and B is open with focus inside it, each change reported once', async () => {
+      await waitFor(() => expect(body.getByTestId('surface-b')).toHaveAttribute('data-open'));
+      await expect(body.getByTestId('surface-a')).not.toHaveAttribute('data-open');
+      await waitFor(() => expect(body.getByTestId('inside-b')).toHaveFocus());
+      await expect(onOpenChangeA.mock.calls).toEqual([[true], [false]]);
+      await expect(onOpenChangeB.mock.calls).toEqual([[true]]);
     });
   },
 };
