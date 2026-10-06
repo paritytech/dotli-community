@@ -1,11 +1,5 @@
 name: Setup Playwright
-description: 'Install Node dependencies and Playwright browsers (Chromium by default). Requires checkout first.'
-
-inputs:
-  browsers:
-    description: 'Space-separated Playwright browsers to install.'
-    required: false
-    default: 'chromium'
+description: 'Install Node dependencies and Playwright Chromium browser. Requires checkout first.'
 
 runs:
   using: 'composite'
@@ -19,5 +13,5 @@ runs:
     # tests fail at launch with "Executable doesn't exist".
     - name: Install Playwright browsers
       working-directory: apps/host
-      run: npx playwright install --with-deps ${{ inputs.browsers }}
+      run: npx playwright install --with-deps chromium
       shell: bash

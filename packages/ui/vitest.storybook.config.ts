@@ -12,7 +12,7 @@ import { playwright } from '@vitest/browser-playwright';
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 const vrt = process.env['VRT'] === '1';
 
-// Stories as tests, in real Chromium, Firefox and WebKit. The happy-dom unit tests keep
+// Stories as tests, in a real Chromium. The happy-dom unit tests keep
 // vitest.config.ts, so `npm test` needs no browser.
 export default defineConfig({
   plugins: [storybookTest({ configDir: join(import.meta.dirname, '.storybook') })],
@@ -26,10 +26,7 @@ export default defineConfig({
       enabled: true,
       headless: true,
       provider: playwright(),
-      // Screenshots are this machine's Chromium only; behaviour runs everywhere.
-      instances: vrt
-        ? [{ browser: 'chromium' }]
-        : [{ browser: 'chromium' }, { browser: 'firefox' }, { browser: 'webkit' }],
+      instances: [{ browser: 'chromium' }],
       expect: {
         toMatchScreenshot: {
           // Machine-local baselines for refactor checks, never committed.

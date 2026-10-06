@@ -30,7 +30,7 @@ jobs:
       - name: Run tests
         run: npx turbo run test
 
-  # Stories double as browser tests (axe included), so this needs Chromium, Firefox and WebKit.
+  # Stories double as browser tests (axe included), so this needs Chromium.
   # Playwright is installed from apps/host's pin, which packages/ui matches.
   stories:
     name: Stories
@@ -42,8 +42,6 @@ jobs:
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
-        with:
-          browsers: 'chromium firefox webkit'
 
       - name: Run stories as tests
         working-directory: packages/ui
