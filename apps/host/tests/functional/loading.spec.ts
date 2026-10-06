@@ -260,8 +260,10 @@ test('As a user, when executable-manifest resolution fails, I see the original r
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, { timeout: 10_000 });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
 
@@ -286,7 +288,7 @@ test('As a user, when the app executable manifest is invalid, I see its validati
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('error-page-title')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('#error-retry-btn')).toHaveCount(0);
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
