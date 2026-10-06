@@ -28,7 +28,7 @@ import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/top
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
 
 /** The board's auto-hide delay. */
-const HIDE_DELAY_MS = 2500;
+const HIDE_DELAY_MS = 2000;
 
 /** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
