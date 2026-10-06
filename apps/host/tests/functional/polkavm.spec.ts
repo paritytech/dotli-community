@@ -383,8 +383,8 @@ test('a PolkaVM package starts only after the user enables the experimental runt
   );
 
   const product = page.frameLocator('#polkavm-disabled-product');
-  await expect(product.locator('.error-page-title')).toHaveText('Experimental PolkaVM apps are disabled');
-  await expect(product.locator('.error-page-detail')).toContainText('Enable PolkaVM apps in dot.li Settings');
+  await expect(product.getByTestId('error-page-title')).toHaveText('Experimental PolkaVM apps are disabled');
+  await expect(product.getByTestId('error-page-detail')).toContainText('Enable PolkaVM apps in dot.li Settings');
   await expect(product.locator('#dotli-polkavm-canvas')).toHaveCount(0);
 
   await page.locator('#polkavm-disabled-product').evaluate(element => {
@@ -524,17 +524,17 @@ test('shows PolkaVM diagnostics inside the docked debug panel', async ({ page })
   });
   await expect(product.locator('#dotli-polkavm-metrics')).toHaveCount(0);
 
-  const runtimeBadge = panel.locator('.td-runtime-badge');
+  const runtimeBadge = panel.getByTestId('td-runtime-badge');
   await expect(runtimeBadge).toHaveAttribute('title', /PolkaVM \/ JIT · first frame/);
   await runtimeBadge.click();
 
-  const runtime = panel.locator('.td-runtime');
+  const runtime = panel.getByTestId('td-runtime');
   await expect(runtime).toBeVisible();
   await expect(runtime.locator('[data-runtime-metric="backend"]')).toHaveText('JIT');
   await expect(runtime.locator('[data-runtime-metric="first-frame"]')).not.toHaveText('pending');
 
-  await panel.locator('.td-dock').click();
-  await expect(panel).toHaveClass(/docked-right/);
+  await panel.getByTestId('td-dock').click();
+  await expect(panel).toHaveAttribute('data-dock', 'right');
   await expect(runtime).toBeVisible();
 });
 
