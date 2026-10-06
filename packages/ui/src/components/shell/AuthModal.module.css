@@ -1,64 +1,12 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The sign-in surface. The backdrop is the dialog and its scrim, and a press
-   on it closes. It stays above the bar, as the Popover backdrop does, so the
-   pill shows through the light scrim and a press on it lands on the scrim.
-   The surface is the shared anchored frame and, on a phone's viewport, the
-   shared sheet (components/sheet/Sheet.module.css), as the popovers' is.
-
-   The backdrop is a near twin of Popover.module.css's, kept here because it
-   differs (layer, timing) and holds the surface.
+/* The sign-in surface's content. The dialog, its scrim and the card (or, on a
+   phone, the sheet) are Modal's (components/floating); .surface only adds
+   the card's size cap.
 
    Desktop sizes by default, the boards' in the phone block: the 234 px QR
    tile in the 320 px surface is the board's 264 in 360. */
-
-/* Twin of Popover.module.css .backdrop, above the bar and on the --dur clock. */
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: none;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  background: var(--chrome-scrim-light);
-  opacity: 0;
-  transition:
-    opacity var(--dur) var(--ease-out),
-    display var(--dur) allow-discrete;
-}
-.backdrop[data-open] {
-  display: block;
-  opacity: 1;
-}
-.backdrop:focus-visible {
-  outline: none;
-}
-@starting-style {
-  .backdrop[data-open] {
-    opacity: 0;
-  }
-}
-/* The sheet sits inside the backdrop, so the scrim fades its colour, not
-   its opacity, and stays displayed (catching a tap's trailing click) until
-   the slide ends rather than the shared scrim's fade. */
-.backdrop[data-sheet] {
-  background: transparent;
-  opacity: 1;
-  transition:
-    background-color var(--dur) var(--ease-out),
-    display var(--dur-morph) allow-discrete;
-}
-.backdrop[data-sheet][data-open] {
-  background: var(--chrome-scrim);
-}
-@starting-style {
-  .backdrop[data-sheet][data-open] {
-    background: transparent;
-    opacity: 1;
-  }
-}
 
 /* The cap on the anchored frame's size, as Popover.module.css's. */
 :where(.surface) {
@@ -68,8 +16,13 @@
   );
   overflow-y: auto;
 }
-.surface[data-open] {
-  display: block;
+
+/* The sheet's body already pads the content as the Surface's sheet padding
+   does (4 px over, 16 px around): the Surface gives its own up. */
+@media (max-width: 560px) {
+  .content > section[data-sheet] {
+    padding: 0;
+  }
 }
 
 /* Not SurfaceHead: that head is a row with an aside, this one stacks the
@@ -308,11 +261,5 @@
   }
   .retry {
     margin-top: var(--sp-2);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .backdrop {
-    transition: none !important;
   }
 }

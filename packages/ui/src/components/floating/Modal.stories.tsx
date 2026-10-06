@@ -104,18 +104,32 @@ export const Phone: Story = {
 export const SwitchesFormKeepingContent: Story = {
   play: async ({ userEvent, step }) => {
     const input = () => body.getByTestId<HTMLInputElement>('story-password');
-    await step('Given I typed a password in the card', async () => {
-      await waitFor(() => expect(input()).toHaveFocus());
-      await userEvent.type(input(), 'hunter2');
-    });
-    await step('When the window narrows to a phone', async () => {
-      const { page } = await import('vitest/browser');
-      await page.viewport(390, 844);
-    });
-    await step('Then the sheet shows the same field, value and focus', async () => {
-      await waitFor(() => expect(body.getByTestId('story-modal-sheet-head')).toBeInTheDocument());
-      await expect(input().value).toBe('hunter2');
-      await expect(input()).toHaveFocus();
-    });
+    const { page } = await import('vitest/browser');
+    const wide = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await step('Given I typed a password in the card', async () => {
+        await waitFor(() => expect(input()).toHaveFocus());
+        await userEvent.type(input(), 'hunter2');
+      });
+      await step('When the window narrows to a phone', async () => {
+        await page.viewport(390, 844);
+      });
+      await step('Then the sheet shows the same field, value and focus', async () => {
+        await waitFor(() => expect(body.getByTestId('story-modal-sheet-head')).toBeInTheDocument());
+        await expect(input().value).toBe('hunter2');
+        await expect(input()).toHaveFocus();
+      });
+      await step('When the window widens back to a desktop', async () => {
+        await page.viewport(wide.width, wide.height);
+      });
+      await step('Then the card shows the same field, value and focus', async () => {
+        await waitFor(() => expect(body.queryByTestId('story-modal-sheet-head')).not.toBeInTheDocument());
+        await expect(input().value).toBe('hunter2');
+        await expect(input()).toHaveFocus();
+      });
+    } finally {
+      // The next story must not inherit the phone.
+      await page.viewport(wide.width, wide.height);
+    }
   },
 };

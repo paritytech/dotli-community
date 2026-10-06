@@ -3,8 +3,9 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
+import { expect, waitFor } from 'storybook/test';
 import { resetAllStoresForTests } from '../../state/create-store.js';
-import { updateAuthModal } from '../../state/auth-modal.js';
+import { getAuthModalState, updateAuthModal } from '../../state/auth-modal.js';
 import { AuthModal } from './AuthModal.js';
 
 const open = openSurface({ surface: 'auth-modal-backdrop' });
@@ -46,5 +47,20 @@ export const OpenPhone: Story = {
   play: async ctx => {
     await expectPhone(ctx.step);
     await open(ctx);
+  },
+};
+
+export const EscapeCancelsLogin: Story = {
+  tags: ['!autodocs'],
+  play: async ({ userEvent, step }) => {
+    await step('Given the sign-in is open', async () => {
+      await waitFor(() => expect(document.getElementById('auth-modal-backdrop')).toHaveAttribute('data-open'));
+    });
+    await step('When I press Escape', async () => {
+      await userEvent.keyboard('{Escape}');
+    });
+    await step('Then the store closed it', async () => {
+      await waitFor(() => expect(getAuthModalState().open).toBe(false));
+    });
   },
 };

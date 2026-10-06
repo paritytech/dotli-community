@@ -10,7 +10,7 @@ import { getTopbarState, setBlockingModalActive, setTopbarVisible } from '../../
 import { anyTopbarSurfaceOpen } from '../../../src/state/topbar-surfaces.js';
 import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
-import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
+import { mouseClick, renderComponent } from '../../helpers/solid.js';
 import { setViewportWidth, stubPhoneViewport } from '../../helpers/viewport.js';
 import {
   byId,
@@ -21,7 +21,6 @@ import {
   settleAll,
   useAuthController,
 } from './auth-harness.js';
-import type * as PopoverModule from '../../../src/components/shell/create-popover.js';
 import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
@@ -43,34 +42,10 @@ vi.mock('qrcode', () => {
   };
 });
 
-// Counts the auth modal's dialog `setOpen` calls: its popover is the only
-// one in `dialog` mode here.
-const dialogSetOpen = vi.hoisted(() => ({ calls: [] as boolean[] }));
-vi.mock('../../../src/components/shell/create-popover.js', async importOriginal => {
-  const actual = await importOriginal<typeof PopoverModule>();
-  return {
-    ...actual,
-    createPopover: (options: Parameters<typeof actual.createPopover>[0]) => {
-      const popover = actual.createPopover(options);
-      if (options.mode !== 'dialog') {
-        return popover;
-      }
-      return {
-        ...popover,
-        setOpen: (next: boolean) => {
-          dialogSetOpen.calls.push(next);
-          popover.setOpen(next);
-        },
-      };
-    },
-  };
-});
-
 useAuthController();
 
 beforeEach(() => {
   device.mobile = false;
-  dialogSetOpen.calls = [];
   qr.toCanvas = vi.fn<DrawQr>(() => Promise.resolve());
 });
 
@@ -233,14 +208,14 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
  */
 function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.id).toBe('auth-modal-backdrop');
-  expect(backdrop.getAttribute('role')).toBe('dialog');
-  expect(backdrop.getAttribute('aria-modal')).toBe('true');
+  expect(backdrop.tagName).toBe('DIALOG');
   expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
-  expect(backdrop.getAttribute('tabindex')).toBe('-1');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
-  expect(tags(backdrop)).toEqual(['DIV']);
-  // No sheet head on a wide screen: the body holds the Surface with the parts.
-  const surface = nth(backdrop.children, 0);
+  // The scrim, then the card: no sheet head on a wide screen, and the card
+  // holds the Surface with the parts.
+  expect(tags(backdrop)).toEqual(['DIV', 'DIV']);
+  const surface = nth(backdrop.children, 1);
+  expect(surface.getAttribute('data-testid')).toBe('auth-modal');
   expect(tags(surface)).toEqual(['DIV']);
   expect(tags(nth(surface.children, 0))).toEqual(['SECTION']);
   const body = nth(nth(surface.children, 0).children, 0);
@@ -287,9 +262,6 @@ describe('AuthModal markup', () => {
     const backdrop = await renderModal();
 
     // Then
-    expect(backdrop.getAttribute('role')).toBe('dialog');
-    expect(backdrop.getAttribute('aria-modal')).toBe('true');
-    expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
     expectMarkup(backdrop, {
       open: false,
       hint: DESKTOP_HINT,
@@ -611,6 +583,7 @@ describe('AuthModal login flow', () => {
     // Given
     const cancels = recordEvents('dotli:truapi-cancel-login');
     await renderModal();
+    byId('auth-button').focus();
 
     // When
     await authState(pairing());
@@ -626,42 +599,6 @@ describe('AuthModal login flow', () => {
     expect(isOpen()).toBe(false);
     expect(cancels.details).toHaveLength(1);
     expect(document.activeElement).toBe(byId('auth-button'));
-  });
-
-  it('As a keyboard user, Tab and Shift+Tab stay inside the open modal', async () => {
-    // Given: Retry is the first control and Cancel the last. The get-app link
-    // is hidden on desktop, so it takes no part.
-    await renderModal();
-    await authState({ tag: 'LoginFailed', kind: 'Other', reason: 'Host failure' });
-    byId('auth-modal-close').focus();
-
-    // When
-    const tab = press('Tab');
-
-    // Then: it wraps to the modal's first control.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(byTestId('auth-modal-retry', document));
-
-    // When: focus somehow left the modal.
-    byId('outside').focus();
-    const shiftTab = press('Tab', { shiftKey: true });
-
-    // Then
-    expect(shiftTab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(byId('auth-modal-close'));
-  });
-
-  it('As a keyboard user, the open modal focuses its first control, not a link, as a Radix Dialog does', async () => {
-    // Given
-    await renderModal();
-    byId('auth-button').focus();
-
-    // When
-    await authState(pairing());
-
-    // Then: the get-app link is hidden on desktop, and the QR (a canvas)
-    // takes no focus, so Cancel is the first control.
-    expect(document.activeElement).toBe(byId('auth-modal-close'));
   });
 
   it('As a user, the page does not scroll behind the open modal, and scrolls again once it closes', async () => {
@@ -703,22 +640,6 @@ describe('AuthModal login flow', () => {
     document.body.style.overflow = '';
   });
 
-  it('As a user, a press outside the modal (neither its backdrop nor the auth button) closes it and cancels the login', async () => {
-    // Given
-    const cancels = recordEvents('dotli:truapi-cancel-login');
-    await renderModal();
-    await authState(pairing());
-    expect(isOpen()).toBe(true);
-
-    // When: something above the backdrop, outside it, is pressed.
-    pointerPress(byId('outside'));
-    await settleQr();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(cancels.details).toHaveLength(1);
-  });
-
   it('As a keyboard user, Retry keeps focus in the modal while the error view it sat in goes away', async () => {
     // Given
     await renderModal();
@@ -738,7 +659,7 @@ describe('AuthModal login flow', () => {
     // Then: the button is gone, and focus is on the modal, not the body.
     expect(retry.isConnected).toBe(false);
     expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(byId('auth-modal-backdrop'));
+    expect(document.activeElement).toBe(byTestId('auth-modal', document));
   });
 
   it('As a user, the modal stays open, focused and trapping Tab through its own blocking-modal lease, while the theme menu closes for it', async () => {
@@ -768,6 +689,7 @@ describe('AuthModal login flow', () => {
   it('As a user, when my login completes the modal closes and focus goes back to the auth button', async () => {
     // Given
     await renderModal();
+    byId('auth-button').focus();
     await authState(pairing());
     expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
 
@@ -1005,25 +927,6 @@ describe('AuthModal on unrelated store writes', () => {
     expect(qr.toCanvas).toHaveBeenCalledTimes(1);
     expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
   });
-
-  it("As a user, the open modal's dialog is set once per open, not again on other modal writes", async () => {
-    // Given
-    await renderModal();
-    await authState(pairing());
-    expect(isOpen()).toBe(true);
-    const opens = dialogSetOpen.calls.length;
-    expect(dialogSetOpen.calls.at(-1)).toBe(true);
-
-    // When
-    updateAuthModal({ reason: 'first' });
-    await settleQr();
-    updateAuthModal({ productLabel: 'other.dot' });
-    await settleQr();
-
-    // Then
-    expect(dialogSetOpen.calls.length).toBe(opens);
-    expect(isOpen()).toBe(true);
-  });
 });
 
 describe('AuthModal on a phone', () => {
@@ -1125,7 +1028,7 @@ describe('AuthModal on a phone', () => {
       await authState(pairing());
 
       // Then: the head leads the sheet, above the body as it was.
-      const surface = nth(backdrop.children, 0);
+      const surface = byTestId('auth-modal', backdrop);
       const head = byTestId('auth-modal-sheet-head', surface);
       expect(surface.firstElementChild).toBe(head);
       const title = byTestId('auth-modal-sheet-title', head);
@@ -1160,7 +1063,7 @@ describe('AuthModal on a phone', () => {
       await settleQr();
 
       // Then
-      const surface = nth(backdrop.children, 0);
+      const surface = byTestId('auth-modal', backdrop);
       const head = byTestId('auth-modal-sheet-head', surface);
       expect(surface.firstElementChild).toBe(head);
       expect(byTestId('auth-modal-sheet-title', head).textContent).toBe('Sign in');
@@ -1193,7 +1096,7 @@ describe('AuthModal on a phone', () => {
     // Then: the button is gone, and focus is on the dialog, not the body.
     expect(toggle.isConnected).toBe(false);
     expect(byTestId('auth-modal-qr-link', document)).toBeInstanceOf(HTMLAnchorElement);
-    expect(document.activeElement).toBe(byId('auth-modal-backdrop'));
+    expect(document.activeElement).toBe(byTestId('auth-modal', document));
   });
 });
 
