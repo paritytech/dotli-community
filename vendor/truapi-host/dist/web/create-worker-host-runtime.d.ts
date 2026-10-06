@@ -70,6 +70,7 @@ export interface WorkerPairingHostRuntime {
     getPermissionAuthorizationStatus(productId: string, request: PermissionAuthorizationRequest): Promise<PermissionAuthorizationStatus>;
     getPermissionAuthorizationStatuses(productId: string, requests: PermissionAuthorizationRequest[]): Promise<PermissionAuthorizationStatus[]>;
     setPermissionAuthorizationStatus(productId: string, request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus): Promise<void>;
+    refreshPermissionAuthorization(productId: string, request: PermissionAuthorizationRequest): Promise<void>;
     getSessionChatIdentityKey(): Promise<Uint8Array | undefined>;
     getDeviceStatementKey(): Promise<Uint8Array | undefined>;
     getDeviceEncryptionKey(): Promise<Uint8Array>;

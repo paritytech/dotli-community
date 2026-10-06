@@ -1,5 +1,5 @@
 import type { ChatMessageContent, ChatRoom, HostChatRegisterBotRequest, ThemeVariant } from "@parity/truapi";
-import type { AuthState, HostChainSet, PermissionDecision, RequiredHostCallbacks, UserConfirmationReview } from "../generated/host-callbacks.js";
+import type { AuthState, CoreStorageKey, HostChainSet, PermissionDecision, RequiredHostCallbacks, UserConfirmationReview } from "../generated/host-callbacks.js";
 import type { ProductRuntimeConfig } from "../runtime.js";
 /** How the mock answers a permission prompt for one capability. */
 export type PermissionPolicy = "allow-all" | "deny-all";
@@ -277,6 +277,8 @@ export interface MockHost {
     sentRpc(): string[];
     /** Auth-state transitions the core emitted, in order. */
     authStates(): AuthState[];
+    /** Explicit core-storage policy notifications, excluding raw writes/clears. */
+    coreStorageChanges(): CoreStorageKey[];
     /**
      * Full confirmation reviews the core requested, in order.
      *

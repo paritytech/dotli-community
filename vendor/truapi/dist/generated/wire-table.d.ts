@@ -433,3 +433,58 @@ export declare const CONTACTS_PICK: {
     readonly method: 0;
     readonly kind: "request";
 };
+export declare const MEDIA_GET_CAPABILITIES: {
+    readonly trait: 218;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const MEDIA_SESSION_SUBSCRIBE: {
+    readonly trait: 218;
+    readonly method: 1;
+    readonly kind: "subscription";
+};
+export declare const MEDIA_CREATE_SESSION: {
+    readonly trait: 218;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const MEDIA_ADD_PARTICIPANT: {
+    readonly trait: 218;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const MEDIA_RESPOND_INCOMING: {
+    readonly trait: 218;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const MEDIA_REMOVE_PARTICIPANT: {
+    readonly trait: 218;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const MEDIA_SET_LOCAL_TRACKS: {
+    readonly trait: 218;
+    readonly method: 6;
+    readonly kind: "request";
+};
+export declare const MEDIA_SET_SURFACES: {
+    readonly trait: 218;
+    readonly method: 7;
+    readonly kind: "request";
+};
+export declare const MEDIA_END_SESSION: {
+    readonly trait: 218;
+    readonly method: 8;
+    readonly kind: "request";
+};
+export declare const MEDIA_GET_OPERATION: {
+    readonly trait: 218;
+    readonly method: 9;
+    readonly kind: "request";
+};
+export declare const MEDIA_CANCEL_OPERATION: {
+    readonly trait: 218;
+    readonly method: 10;
+    readonly kind: "request";
+};

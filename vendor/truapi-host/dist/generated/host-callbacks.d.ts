@@ -1,5 +1,5 @@
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, MediaLocalState, MediaLocalTracks, MediaOperationFailure, MediaOperationId, MediaParticipantId, MediaRemoteState, MediaSessionId, MediaSurface, MediaViewport, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
 import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
@@ -81,6 +81,27 @@ export type AuthState =
     tag: "Authenticating";
     value?: undefined;
 };
+/**
+ * Immutable calling-consent context resolved by the trusted core.
+ *
+ * Approval applies only to this exact canonical product, authenticated network,
+ * and authority-derived account. It neither grants camera/microphone access nor
+ * carries over to another account or network.
+ */
+export interface CallingReview {
+    /**
+     * Canonical product requesting calling authority.
+     */
+    productId: string;
+    /**
+     * Genesis hash of the authenticated network.
+     */
+    network: Uint8Array;
+    /**
+     * Product's authority-derived `Index(0)` sr25519 public key.
+     */
+    account: Uint8Array;
+}
 /**
  * Review shown before a product binds or uses wallet-held Chat identity authority.
  */
@@ -484,6 +505,397 @@ export interface MainPurseChatPaymentReview {
     operationId: Uint8Array;
 }
 /**
+ * Complete backend availability and simultaneous live-resource limits.
+ *
+ * `supported` is true only when every mandatory facility is implemented,
+ * including microphone/camera capture, screen picking, RTC, audio playback and
+ * routing, trusted indicators, and unreadable compositing. Runtime device
+ * absence or user denial does not mean a facility is unimplemented. There are
+ * deliberately no per-facility public support flags.
+ */
+export interface MediaBackendCapabilities {
+    /**
+     * Whether the backend implements the complete Media contract.
+     */
+    supported: boolean;
+    /**
+     * Maximum simultaneous local sessions; at least one when supported.
+     */
+    maxSessions: number;
+    /**
+     * Remote endpoints per session, excluding the local endpoint; at least five.
+     */
+    maxRemoteParticipants: number;
+    /**
+     * Pictures per session; at least twice the total endpoint capacity.
+     */
+    maxSurfacesPerSession: number;
+}
+/**
+ * Trusted operations scoped by the method's product and runtime parameters.
+ *
+ * IDs are core-admitted handles, not globally addressable resources. The
+ * backend must fence delayed callbacks and release capture obtained after an
+ * operation was cancelled, superseded, or its session/runtime was closed.
+ */
+export type MediaBackendCommand = 
+/**
+ * Prepare a local session and authorized capture with a trusted pending
+ * indicator. Returns `Done`; does not attach/send tracks, create peers,
+ * or publish committed state before `CommitOperation`.
+ */
+{
+    tag: "OpenSession";
+    value: {
+        sessionId: MediaSessionId;
+        operationId: MediaOperationId;
+        tracks: MediaLocalTracks;
+    };
+}
+/**
+ * Prepare replacement capture without attaching/sending the new tracks
+ * or publishing committed state. Returns `Done`. A newer revision
+ * supersedes uncommitted work; failed or cancelled acquisition preserves
+ * the last committed intent until `CommitOperation`.
+ */
+ | {
+    tag: "SetTracks";
+    value: {
+        sessionId: MediaSessionId;
+        operationId: MediaOperationId;
+        intentRevision: bigint;
+        tracks: MediaLocalTracks;
+    };
+}
+/**
+ * Cancel pending picker/device work, drop prepared capture, and stop
+ * late-acquired resources. The core dispatches this only if cancellation
+ * won before its commit decision; it must not undo committed state.
+ */
+ | {
+    tag: "CancelOperation";
+    value: {
+        operationId: MediaOperationId;
+    };
+}
+/**
+ * Stop capture/sending, clear surfaces, and release session resources.
+ * Cleanup is idempotent and must not ask permission or allocate quota.
+ */
+ | {
+    tag: "CloseSession";
+    value: {
+        sessionId: MediaSessionId;
+    };
+}
+/**
+ * Create one participant's connection; local descriptions/candidates are
+ * returned through the trusted event stream, never through product frames.
+ */
+ | {
+    tag: "CreatePeer";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+        offerer: boolean;
+    };
+}
+/**
+ * Apply a description delivered by core-authenticated signaling.
+ */
+ | {
+    tag: "ApplyDescription";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+        description: MediaDescription;
+    };
+}
+/**
+ * Apply a candidate delivered by core-authenticated signaling.
+ */
+ | {
+    tag: "AddIceCandidate";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+        candidate: MediaIceCandidate;
+    };
+}
+/**
+ * Idempotently close and release one participant's connection.
+ */
+ | {
+    tag: "RemovePeer";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+    };
+}
+/**
+ * Atomically replace this session's pictures for the current viewport.
+ * An empty list clears its surfaces; no product-readable frame is returned.
+ */
+ | {
+    tag: "SetSurfaces";
+    value: {
+        sessionId: MediaSessionId;
+        viewportRevision: bigint;
+        layoutRevision: bigint;
+        surfaces: Array<MediaSurface>;
+    };
+}
+/**
+ * Idempotently release every resource owned by this product runtime and
+ * fence all late work so it cannot recreate capture, peers, or surfaces.
+ */
+ | {
+    tag: "CloseRuntime";
+    value?: undefined;
+}
+/**
+ * Apply prepared tracks to all peer senders atomically, stop replaced/off
+ * tracks, and return `LocalState`. The core records its commit decision
+ * before dispatch; later cancellation waits for the committed/failed
+ * outcome and must never report the operation as cancelled.
+ */
+ | {
+    tag: "CommitOperation";
+    value: {
+        operationId: MediaOperationId;
+    };
+}
+/**
+ * Present an operation-scoped trusted consent prompt only when the core
+ * has no stored decision. CancelOperation/CloseRuntime must dismiss it;
+ * a late answer must never prepare capture or write a permission grant.
+ */
+ | {
+    tag: "RequestConsent";
+    value: {
+        operationId: MediaOperationId;
+        request: MediaConsentRequest;
+    };
+};
+/**
+ * Trusted events scoped to the product/runtime that opened the stream.
+ *
+ * The core converts observations into public lifecycle events. Descriptions
+ * and candidates go exclusively to core-authenticated signaling; they must
+ * never become product events, error diagnostics, or product debug logs.
+ */
+export type MediaBackendEvent = 
+/**
+ * Current host rendering attachment; ``undefined`` also clears its surfaces.
+ */
+{
+    tag: "ViewportChanged";
+    value: {
+        viewport?: MediaViewport;
+    };
+}
+/**
+ * Observed capture state, fenced by the accepted track intent revision.
+ */
+ | {
+    tag: "LocalStateChanged";
+    value: {
+        sessionId: MediaSessionId;
+        intentRevision: bigint;
+        state: MediaLocalState;
+    };
+}
+/**
+ * Observed connectivity, not inferred media quality.
+ */
+ | {
+    tag: "PeerStateChanged";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+        state: MediaBackendPeerState;
+    };
+}
+/**
+ * Observed remote track availability.
+ */
+ | {
+    tag: "RemoteStateChanged";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+        state: MediaRemoteState;
+    };
+}
+/**
+ * Locally generated description for authenticated signaling.
+ */
+ | {
+    tag: "Description";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+        description: MediaDescription;
+    };
+}
+/**
+ * Locally generated candidate for authenticated signaling.
+ */
+ | {
+    tag: "IceCandidate";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+        candidate: MediaIceCandidate;
+    };
+}
+/**
+ * Trusted screen-stop control invalidated prior pending screen intent.
+ */
+ | {
+    tag: "ScreenStopped";
+    value: {
+        sessionId: MediaSessionId;
+    };
+}
+/**
+ * Trusted host hangup control ended the session.
+ */
+ | {
+    tag: "HostEnded";
+    value: {
+        sessionId: MediaSessionId;
+    };
+}
+/**
+ * End affected sessions without silently downgrading capture. Only an
+ * explicit product-setting withdrawal changes the persisted core grant.
+ */
+ | {
+    tag: "PermissionRevoked";
+    value: {
+        permission: MediaRevokedPermission;
+        source: MediaRevocationSource;
+    };
+};
+/**
+ * Backend-observed connection state for one remote endpoint.
+ */
+export type MediaBackendPeerState = "Connecting" | "Connected" | "Reconnecting" | "Failed" | "Closed";
+/**
+ * Bounded result of a trusted backend command, without diagnostic strings.
+ */
+export type MediaBackendResponse = 
+/**
+ * Command completed without publishing new committed capture state.
+ */
+{
+    tag: "Done";
+    value?: undefined;
+}
+/**
+ * Accepted capture intent's currently observed device state.
+ */
+ | {
+    tag: "LocalState";
+    value: {
+        state: MediaLocalState;
+    };
+}
+/**
+ * Expected refusal or domain failure, such as picker cancellation or a
+ * missing device. Unexpected callback/IPC errors remain `GenericError`
+ * and are sanitized to `HostFailure` by the core.
+ */
+ | {
+    tag: "Rejected";
+    value: {
+        failure: MediaOperationFailure;
+    };
+}
+/**
+ * A genuine user decision. Dismissal/cancellation is a rejected response,
+ * never a remembered denial; only the core persists this answer.
+ */
+ | {
+    tag: "Consent";
+    value: {
+        granted: boolean;
+    };
+};
+/**
+ * User decision presented by trusted host UI for one cancellable operation.
+ * The core alone reads and persists grants; these prompts never delegate
+ * browser capture permission or media objects into the product realm.
+ */
+export type MediaConsentRequest = 
+/**
+ * Calling under the immutable active authority.
+ */
+{
+    tag: "Calling";
+    value: {
+        network: Uint8Array;
+        account: Uint8Array;
+    };
+}
+/**
+ * Host-owned microphone capture, not raw product capture.
+ */
+ | {
+    tag: "Microphone";
+    value?: undefined;
+}
+/**
+ * Host-owned camera capture, not raw product capture.
+ */
+ | {
+    tag: "Camera";
+    value?: undefined;
+};
+/**
+ * Host-only session description; Debug never includes SDP.
+ */
+export interface MediaDescription {
+    /**
+     * Negotiation role of this description.
+     */
+    kind: MediaDescriptionKind;
+    /**
+     * Sensitive transport description for trusted host signaling only.
+     */
+    sdp: string;
+}
+/**
+ * Negotiation role of a host-only description.
+ */
+export type MediaDescriptionKind = "Offer" | "Answer";
+/**
+ * Host-only ICE candidate; Debug never includes candidate or media-ID strings.
+ */
+export interface MediaIceCandidate {
+    /**
+     * Sensitive connectivity data for trusted host signaling only.
+     */
+    candidate: string;
+    /**
+     * Optional media section identifier.
+     */
+    mid?: string;
+    /**
+     * Optional media section index.
+     */
+    mlineIndex?: number;
+}
+/**
+ * OS gating must not overwrite a separately remembered product decision.
+ */
+export type MediaRevocationSource = "Product" | "OperatingSystem";
+/**
+ * Revocation observations; screen stopping is not a permission revocation.
+ */
+export type MediaRevokedPermission = "Calling" | "Microphone" | "Camera";
+/**
  * Trusted context for exporting a verified native Chat attachment.
  */
 export interface NativeChatFileExportRequest {
@@ -850,6 +1262,20 @@ export type PermissionAuthorizationRequest =
     value: {
         derivationIndex?: DerivationIndex;
     };
+}
+/**
+ * Calling consent for this product's authenticated network and account.
+ *
+ * The core resolves both fields from the active authority session, never
+ * from product-supplied identity claims. Unscoped `Remote(Calling)` grants
+ * do not authorize this request.
+ */
+ | {
+    tag: "Calling";
+    value: {
+        network: Uint8Array;
+        account: Uint8Array;
+    };
 };
 /**
  * Authorization status for a permission request.
@@ -1155,6 +1581,13 @@ export type UserConfirmationReview =
  | {
     tag: "MainPurseChatPayment";
     value: MainPurseChatPaymentReview;
+}
+/**
+ * Allow calling only in the immutable authenticated product/account/network scope.
+ */
+ | {
+    tag: "Calling";
+    value: CallingReview;
 };
 /**
  * Review shown before a product asks to access another product account.
@@ -1170,6 +1603,14 @@ export declare const AccountAliasReview: S.Codec<AccountAliasReview>;
  * and never derive auth UI from any other signal.
  */
 export declare const AuthState: S.Codec<AuthState>;
+/**
+ * Immutable calling-consent context resolved by the trusted core.
+ *
+ * Approval applies only to this exact canonical product, authenticated network,
+ * and authority-derived account. It neither grants camera/microphone access nor
+ * carries over to another account or network.
+ */
+export declare const CallingReview: S.Codec<CallingReview>;
 /**
  * Review shown before a product binds or uses wallet-held Chat identity authority.
  */
@@ -1244,6 +1685,66 @@ export declare const LoginFailureKind: S.Codec<LoginFailureKind>;
  * automatic product signing do not authorize it.
  */
 export declare const MainPurseChatPaymentReview: S.Codec<MainPurseChatPaymentReview>;
+/**
+ * Complete backend availability and simultaneous live-resource limits.
+ *
+ * `supported` is true only when every mandatory facility is implemented,
+ * including microphone/camera capture, screen picking, RTC, audio playback and
+ * routing, trusted indicators, and unreadable compositing. Runtime device
+ * absence or user denial does not mean a facility is unimplemented. There are
+ * deliberately no per-facility public support flags.
+ */
+export declare const MediaBackendCapabilities: S.Codec<MediaBackendCapabilities>;
+/**
+ * Trusted operations scoped by the method's product and runtime parameters.
+ *
+ * IDs are core-admitted handles, not globally addressable resources. The
+ * backend must fence delayed callbacks and release capture obtained after an
+ * operation was cancelled, superseded, or its session/runtime was closed.
+ */
+export declare const MediaBackendCommand: S.Codec<MediaBackendCommand>;
+/**
+ * Trusted events scoped to the product/runtime that opened the stream.
+ *
+ * The core converts observations into public lifecycle events. Descriptions
+ * and candidates go exclusively to core-authenticated signaling; they must
+ * never become product events, error diagnostics, or product debug logs.
+ */
+export declare const MediaBackendEvent: S.Codec<MediaBackendEvent>;
+/**
+ * Backend-observed connection state for one remote endpoint.
+ */
+export declare const MediaBackendPeerState: S.Codec<MediaBackendPeerState>;
+/**
+ * Bounded result of a trusted backend command, without diagnostic strings.
+ */
+export declare const MediaBackendResponse: S.Codec<MediaBackendResponse>;
+/**
+ * User decision presented by trusted host UI for one cancellable operation.
+ * The core alone reads and persists grants; these prompts never delegate
+ * browser capture permission or media objects into the product realm.
+ */
+export declare const MediaConsentRequest: S.Codec<MediaConsentRequest>;
+/**
+ * Host-only session description; Debug never includes SDP.
+ */
+export declare const MediaDescription: S.Codec<MediaDescription>;
+/**
+ * Negotiation role of a host-only description.
+ */
+export declare const MediaDescriptionKind: S.Codec<MediaDescriptionKind>;
+/**
+ * Host-only ICE candidate; Debug never includes candidate or media-ID strings.
+ */
+export declare const MediaIceCandidate: S.Codec<MediaIceCandidate>;
+/**
+ * OS gating must not overwrite a separately remembered product decision.
+ */
+export declare const MediaRevocationSource: S.Codec<MediaRevocationSource>;
+/**
+ * Revocation observations; screen stopping is not a permission revocation.
+ */
+export declare const MediaRevokedPermission: S.Codec<MediaRevokedPermission>;
 /**
  * Trusted context for exporting a verified native Chat attachment.
  */
@@ -1530,10 +2031,15 @@ export interface CoreAdmin {
      */
     getPermissionAuthorizationStatuses(requests: Array<PermissionAuthorizationRequest>): Promise<Array<PermissionAuthorizationStatus>>;
     /**
-     * Update a stored permission authorization status. `NotDetermined` clears
-     * the stored value so the next product request prompts again.
+     * Update a stored permission authorization status. `NotDetermined` resets
+     * the decision so the next product request prompts again.
      */
     setPermissionAuthorizationStatus(request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus): Promise<void>;
+    /**
+     * Re-read a stored product decision and fence revoked Media authorization.
+     * Host-only, read-only, and never prompts or consults OS permission state.
+     */
+    refreshPermissionAuthorization(request: PermissionAuthorizationRequest): Promise<void>;
     /**
      * Read the active session's X25519 chat identity private key, for hosts
      * that run their own P2P chat channel for the paired identity.
@@ -1618,6 +2124,23 @@ export interface CoreStorage {
      * Clear a core-owned value by typed slot.
      */
     clearCoreStorage(key: CoreStorageKey): Promise<void>;
+    /**
+     * Atomically replace exactly `expected` decoded bytes in this physical slot.
+     * ``undefined`` differs from an empty value. Serialize with every write, clear and
+     * compare-exchange across all cores sharing the store, through actual
+     * persistence completion even if the requesting future is dropped.
+     * On persisted success, `notify_on_success` enqueues `core_storage_changed`
+     * before completion even if the requester was cancelled. Initial unanswered
+     * snapshots pass false; explicit policy decisions pass true.
+     */
+    compareExchangeCoreStorage(key: CoreStorageKey, expected: Uint8Array | undefined, replacement: Uint8Array, notifyOnSuccess: boolean): Promise<boolean>;
+    /**
+     * Nonblocking notification after an explicit policy decision or reset.
+     * Queue deferred refreshes for every core group sharing the store and exact
+     * product, including the writer. Never await or reenter a core here. Raw
+     * writes/clears and CAS with `notify_on_success == false` must not emit this.
+     */
+    coreStorageChanged(key: CoreStorageKey): void;
 }
 /**
  * Feature-support probing. The host answers whether it can service a given
@@ -1698,6 +2221,36 @@ export interface LocaleHost {
      * Convert a bounded UTC batch using the supplied host locale snapshot.
      */
     localizeTimestamps?(request: HostLocaleLocalizeTimestampsRequest): Promise<HostLocaleLocalizeTimestampsResponse>;
+}
+/**
+ * Optional complete Media backend, reachable only by the trusted runtime.
+ *
+ * The runtime supplies the authenticated product and its own runtime identity;
+ * commands cannot choose a different owner. Implementations must isolate all
+ * resources and event streams by both values. The core owns all public
+ * admission, resource budgets, permission, operation, and signaling authority.
+ *
+ * A host without every mandatory facility omits this entire capability or
+ * reports `supported: false`; the core answers public calls `Unsupported`.
+ * See `crate::platform::OptionalPlatform`. Generic backend failures must be sanitized
+ * and must never contain SDP, candidates, relay credentials, or device IDs.
+ */
+export interface MediaPlatform {
+    /**
+     * Probe complete backend availability without prompting or capturing.
+     */
+    mediaBackendCapabilities(product: ProductContext): Promise<MediaBackendCapabilities>;
+    /**
+     * Observe only this runtime's backend state. Emit its current viewport
+     * first. Dropping an event listener does not implicitly close sessions;
+     * runtime destruction explicitly issues `CloseRuntime`.
+     */
+    mediaBackendEvents(product: ProductContext, runtimeId: bigint): AsyncIterable<Result<MediaBackendEvent, GenericError>>;
+    /**
+     * Execute one admitted command. Cancellation and teardown must remain
+     * actionable while a picker or other capture operation is pending.
+     */
+    mediaBackendCommand(product: ProductContext, runtimeId: bigint, command: MediaBackendCommand): Promise<MediaBackendResponse>;
 }
 /**
  * Host-private native Chat selection, immutable custody and safe export.
@@ -1980,6 +2533,7 @@ export interface HostCallbacks {
     coinageWallet?: CoinageWalletHost;
     contacts?: ContactsPlatform;
     identityBackend?: IdentityBackendHost;
+    media?: MediaPlatform;
     permissionStatus?: PermissionStatusHost;
     pocket?: PocketPlatform;
 }
@@ -2003,6 +2557,7 @@ export interface RequiredHostCallbacks {
     coinageWallet?: Required<CoinageWalletHost>;
     contacts?: Required<ContactsPlatform>;
     identityBackend?: Required<IdentityBackendHost>;
+    media?: Required<MediaPlatform>;
     permissionStatus?: Required<PermissionStatusHost>;
     pocket?: Required<PocketPlatform>;
 }
