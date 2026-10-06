@@ -276,7 +276,7 @@ function expectRadioGroup(section: Element, label: string): Element {
   return group;
 }
 
-/** The left column: network, transport and cache settings. */
+/** The left column: network, transport, cache, experimental and background receiving settings. */
 function expectSettingsColumn(left: Element, settings: Settings): void {
   const sections = Array.from(left.children);
   let at = 0;
@@ -327,7 +327,7 @@ function expectSettingsColumn(left: Element, settings: Settings): void {
   expect(tags(clearRow)).toEqual(['BUTTON']);
   expect(clearRow.children[0]?.textContent).toBe('Clear all caches');
   expect(clearRow.children[0]?.getAttribute('title')).toBe(
-    'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
+    'Clear caches and reset app data across all origins. Receiving revocation records remain until remote deletion is acknowledged. The app will reload.',
   );
   const experimental = nth(sections, at++);
   expect(tags(experimental)).toEqual(['DIV', 'DIV']);
@@ -336,6 +336,14 @@ function expectSettingsColumn(left: Element, settings: Settings): void {
   expect(experiments.getAttribute('data-testid')).toBe('mode-experimental');
   expect(experiments.childElementCount).toBe(1);
   expectCacheRow(experiments.children[0], 'PolkaVM apps', true);
+  const receiving = nth(sections, at++);
+  expect(receiving.getAttribute('data-testid')).toBe('mode-receiving');
+  expect(receiving.getAttribute('role')).toBe('group');
+  expect(receiving.getAttribute('aria-labelledby')).toBe('mode-receiving-label');
+  expectHeader(receiving.children[0], 'Background receiving');
+  expect(receiving.children[0]?.id).toBe('mode-receiving-label');
+  expect(byTestId('mode-receiving-enable', receiving, HTMLButtonElement).textContent).toBe('Enable Web Push');
+  expect(byTestId('mode-receiving-revoke', receiving, HTMLButtonElement).textContent).toBe('Revoke all receiving');
   expect(sections).toHaveLength(at);
 }
 
