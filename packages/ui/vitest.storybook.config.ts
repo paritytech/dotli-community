@@ -20,7 +20,8 @@ export default defineConfig({
   test: {
     name: 'storybook',
     // The Settings baseline shows the page's host, so the port is part of it.
-    api: { port: 63315, strictPort: true },
+    // Pinned for screenshots only: a plain run can take any free port.
+    ...(vrt ? { api: { port: 63315, strictPort: true } } : {}),
     setupFiles: [join(import.meta.dirname, '.storybook/vitest.setup.ts')],
     browser: {
       enabled: true,
