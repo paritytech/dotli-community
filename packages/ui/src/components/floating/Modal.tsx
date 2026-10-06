@@ -86,7 +86,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
       initialFocus={props.initialFocus}
       restoreFocus={props.restoreFocus}
       scrim={props.scrim}
-      layout={layout}
+      layout={layout()}
       ref={el => {
         frame = el;
         props.frameRef?.(el);

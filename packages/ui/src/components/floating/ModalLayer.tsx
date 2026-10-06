@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, onCleanup, untrack, type Accessor } from 'solid-js';
+import { createEffect, onCleanup, untrack } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { currentProductFrame } from '../../product-frame-layout.js';
 import { containTab, lockScroll } from '../focus.js';
@@ -21,9 +21,9 @@ export interface ModalLayerProps {
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
   scrim?: 'dark' | 'light' | undefined;
   /** How the frame lays the surface out: centred card, sheet at the foot, under the topbar's end. */
-  layout: Accessor<'center' | 'sheet' | 'topbar-end'>;
+  layout: 'center' | 'sheet' | 'topbar-end';
   /** A sheet taking another's place: no fade, no slide (see handOffSheet). */
-  handedOff?: Accessor<boolean>;
+  handedOff?: boolean | undefined;
   /** Receives the dialog. */
   ref?: (el: HTMLDialogElement) => void;
   class?: string | undefined;
@@ -143,7 +143,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     props.onDismiss();
   };
   const onKeyDown = (ev: KeyboardEvent): void => {
-    if (ev.key === 'Escape' && !ev.defaultPrevented) {
+    if (ev.key === 'Escape' && !ev.defaultPrevented && !ev.isComposing) {
       // Handled on the key, ahead of the browser's close request, which then
       // never comes: an untrusted key event (a test's, a script's) makes no
       // `cancel`.
@@ -168,9 +168,9 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
         data-chrome=""
         data-testid={`${props.testId}-backdrop`}
         data-open={props.open ? '' : undefined}
-        data-layout={props.layout()}
+        data-layout={props.layout}
         data-scrim={props.scrim ?? 'dark'}
-        data-handoff={props.handedOff?.() === true ? '' : undefined}
+        data-handoff={props.handedOff === true ? '' : undefined}
         aria-label={props.labelledBy === undefined ? props.label : undefined}
         aria-labelledby={props.labelledBy}
         onCancel={onCancel}

@@ -21,7 +21,8 @@ import { preloadWhenIdle } from '../idle.js';
 import { Spinner } from '../primitives/Spinner.js';
 import { TopbarContext } from '../shell/topbar/context.js';
 import { BottomSheet, SHEET_EXIT_MS } from './BottomSheet.js';
-import { anchorName, FloatingLayer, type CloseReason, type Placement } from './FloatingLayer.js';
+import type { CloseReason } from './close-reason.js';
+import { anchorName, FloatingLayer, type Placement } from './FloatingLayer.js';
 import { createPresence } from './presence.js';
 import s from './Popover.module.css';
 
@@ -105,7 +106,7 @@ function PopoverRoot(props: {
     // it where the user put it.
     const returnFocus =
       !next &&
-      (reason === 'escape' || reason === 'trigger' || reason === 'programmatic') &&
+      (reason === 'escape' || reason === 'dismiss' || reason === 'trigger' || reason === 'programmatic') &&
       focusLostOrInside(document.getElementById(props.id) ?? undefined);
     setOpenSignal(next);
     props.onOpenChange?.(next);
@@ -243,7 +244,7 @@ function Content(props: {
         <FloatingLayer
           id={state.id}
           kind="auto"
-          open={state.open}
+          open={state.open()}
           onClose={reason => {
             state.setOpen(false, reason);
           }}
@@ -265,7 +266,7 @@ function Content(props: {
       <BottomSheet
         open={state.open()}
         onOpenChange={next => {
-          state.setOpen(next, 'escape');
+          state.setOpen(next, 'dismiss');
         }}
         title={state.title}
         id={state.id}

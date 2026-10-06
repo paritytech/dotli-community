@@ -1,15 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, onCleanup, Show, untrack, type Accessor } from 'solid-js';
+import { createEffect, onCleanup, Show, untrack } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { containTab } from '../focus.js';
+import type { CloseReason } from './close-reason.js';
 import { createPresence } from './presence.js';
 import s from './FloatingLayer.module.css';
 
 export type Placement = 'topbar-end' | 'trigger-start';
-export type CloseReason = 'outside' | 'escape' | 'trigger' | 'blur' | 'focus-out' | 'programmatic';
+
+/** The closes a layer reports; `dismiss` is a sheet's. */
+export type LayerCloseReason = Exclude<CloseReason, 'dismiss'>;
 
 /** How long content stays after a close: the surface's exit, `--dur`. */
 export const EXIT_MS = 220;
@@ -22,9 +25,9 @@ export function anchorName(id: string): string {
 export interface FloatingLayerProps {
   id: string;
   kind: 'auto' | 'manual';
-  open: Accessor<boolean>;
+  open: boolean;
   /** A close the browser or the layer made: the owner sets its state from it. */
-  onClose: (reason: CloseReason) => void;
+  onClose: (reason: LayerCloseReason) => void;
   trigger: () => HTMLElement | undefined;
   placement?: Placement;
   role?: 'dialog' | 'menu' | 'tooltip' | undefined;
@@ -36,7 +39,7 @@ export interface FloatingLayerProps {
   onOpened?: (surface: HTMLElement) => void;
   /** Keys inside the surface, after the layer's own (Tab trap when trapFocus). */
   onKeyDown?: (ev: KeyboardEvent, surface: HTMLElement) => void;
-  trapFocus?: boolean;
+  trapFocus?: boolean | undefined;
   onPointerEnter?: (ev: PointerEvent) => void;
   onPointerLeave?: (ev: PointerEvent) => void;
   ref?: (el: HTMLDivElement) => void;
@@ -63,14 +66,14 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
    */
   let shown = false;
   /** The opening the content belongs to, 0 once its exit has played. */
-  const presence = createPresence(() => props.open(), EXIT_MS);
+  const presence = createPresence(() => props.open, EXIT_MS);
   /** Why the next close happens, set by the listener that saw its cause. */
-  let reason: CloseReason = 'programmatic';
+  let reason: LayerCloseReason = 'programmatic';
 
-  onCleanup(registerTopbarSurface({ element: () => surface, open: () => untrack(props.open) }));
+  onCleanup(registerTopbarSurface({ element: () => surface, open: () => untrack(() => props.open) }));
 
   createEffect(
-    () => props.open(),
+    () => props.open,
     open => {
       const el = surface;
       if (el === undefined) {
@@ -92,7 +95,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
 
   const onBeforeToggle = (ev: ToggleEvent): void => {
     shown = ev.newState === 'open';
-    if (!shown && untrack(props.open)) {
+    if (!shown && untrack(() => props.open)) {
       props.onClose(reason);
       reason = 'programmatic';
     }
@@ -101,7 +104,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   // Listeners that see why the browser is about to close the layer, and the
   // closes it never makes.
   createEffect(
-    () => props.open(),
+    () => props.open,
     open => {
       if (!open || props.kind !== 'auto') {
         return;
@@ -117,7 +120,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         }
       };
       const onKeyDown = (ev: KeyboardEvent): void => {
-        if (ev.key === 'Escape' && !ev.defaultPrevented) {
+        if (ev.key === 'Escape' && !ev.defaultPrevented && !ev.isComposing) {
           // Ahead of the browser's close request, which a prevented key never
           // makes, so the close is reported once; and ahead of a ModalLayer
           // under this layer, which leaves a prevented Escape alone.
@@ -172,7 +175,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         class={[s['layer'], props.placement === 'trigger-start' ? s['triggerStart'] : s['topbarEnd'], props.class]}
         style={props.placement === 'trigger-start' ? { 'position-anchor': anchorName(props.id) } : undefined}
         data-chrome=""
-        data-open={props.open() ? '' : undefined}
+        data-open={props.open ? '' : undefined}
         data-testid={props.testId}
         role={props.role}
         aria-label={props.label}

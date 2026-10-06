@@ -237,7 +237,7 @@ function Content(props: {
     <FloatingLayer
       id={state.id}
       kind="manual"
-      open={state.open}
+      open={state.open()}
       onClose={state.hide}
       trigger={state.trigger}
       placement={props.placement ?? 'trigger-start'}

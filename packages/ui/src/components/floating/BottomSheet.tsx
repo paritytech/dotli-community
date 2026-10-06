@@ -64,8 +64,8 @@ export function BottomSheet(props: BottomSheetProps): JSX.Element {
       testId={props.testId}
       label={props.title}
       initialFocus={props.initialFocus}
-      layout={() => 'sheet'}
-      handedOff={() => layer().handedOff}
+      layout="sheet"
+      handedOff={layer().handedOff}
     >
       <SheetFrame title={props.title} onDismiss={dismiss} testId={props.testId} body={props.body}>
         {props.children}
