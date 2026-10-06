@@ -61,11 +61,12 @@ function notificationActivation(params: NotificationParams): (() => void) | unde
       return undefined;
     }
   }
+  if (url === undefined) {
+    return undefined;
+  }
   return () => {
     window.focus();
-    if (url !== undefined) {
-      window.open(url.href, '_blank', 'noopener');
-    }
+    window.open(url.href, '_blank', 'noopener');
   };
 }
 
@@ -78,7 +79,11 @@ function fireBrowserNotification(text: string, activate: (() => void) | undefine
   const show = (): void => {
     const n = new Notification(label, { body: text });
     n.onclick = () => {
-      activate?.();
+      if (activate) {
+        activate();
+      } else {
+        window.focus();
+      }
       n.close();
     };
     setTimeout(() => {

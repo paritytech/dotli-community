@@ -44,10 +44,7 @@ async function activate(token: string): Promise<void> {
   );
   const target = hosts.find(client => client.focused) ?? hosts[0];
   if (target) {
-    const focused = await target.focus();
-    // This is only a wake hint. The page resolves durable state and authenticates
-    // its product/account/network/artifact; no route or identity crosses this channel.
-    focused.postMessage({ type: 'dotli:notification-activation' });
+    await target.focus();
   } else {
     await scope.clients.openWindow(entry.href);
   }

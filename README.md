@@ -155,12 +155,12 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
-On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/jam-peer-transport-on-seity`.
-JAM peer transport is execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission
-through the product's authenticated port to the shared page core. The host's Solid permission dialog shows the full
-genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions
-are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
-signing, storage, or arbitrary web access.
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to the blocker integration above
+`feat/jam-peer-transport-on-seity`. JAM peer transport is execution-local in the sandbox. Before dialing a network, it
+requests `JamPeers` permission through the product's authenticated port to the shared page core. The host's Solid
+permission dialog shows the full genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves
+no decision. Durable decisions are scoped to product and genesis, while a one-time grant lasts only for that execution.
+This grants no account, signing, storage, or arbitrary web access.
 
 The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
 the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
@@ -307,21 +307,32 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
-host-owned IndexedDB, scoped to the verified product, authenticated account, network and executable artifact. OS
-notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
-the host entry page. It does not navigate the product's route.
+host-owned IndexedDB, scoped to the host-selected product, live authenticated account, network and executable artifact.
+Published products bind to their verified CID; developer iframe previews instead bind to the host-accepted source URL
+and execution namespace, not to a claimed immutable artifact. A session without an optional identity account binds to
+its authenticated root public key. OS notifications carry only an opaque token; the existing host service worker records
+activation before focusing or opening the host entry page. It does not navigate the product's route.
 
 The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
 `{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
 consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
 product, account, network or artifact cannot read or acknowledge the retained activation.
 
+Scheduled presentation can continue after the product frame closes: the durable host-issued binding is checked against
+the current page core's live account and network, and any conflicting mounted artifact suppresses delivery. A click
+while the product is unmounted remains pending until the matching verified product is opened; the host does not execute
+the destination to reopen it. Account authority is cleared on logout, core retirement or product-core replacement, not
+on a storage reload hint: the core may reconcile the same session without emitting another auth transition.
+
 Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
 opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
-is bounded to 256 records; a full queue never evicts an unacknowledged clicked event to accept a new notification.
-In-page toasts remain actionable when OS permission or service-worker notification delivery is unavailable. OS focus and
-window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
-supply one.
+is bounded to 256 records; a full queue never evicts an unacknowledged clicked route event to accept a new notification.
+Clicks without a destination are consumed by the host, since there is no event for the product to acknowledge. In-page
+toasts remain actionable when OS permission or service-worker notification delivery is unavailable. A pending OS
+permission prompt does not delay the notification ID, cancellation or scheduler; cancelled records are rechecked before
+delayed OS presentation. Plain host toasts without an action or destination remain non-interactive. OS focus and window
+opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not supply
+one.
 
 ### Product chat
 
@@ -356,6 +367,11 @@ recreate the native Wallet or reset its signing watermark.
 
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
 replaces its own document with the dApp content so the dApp occupies the iframe directly.
+
+Screen capture is delegated to the verified product iframe origin with `display-capture`; the browser still owns the
+screen-selection prompt and capture consent. Camera and microphone delegation remain conditional on the host's
+individual grants. Granting or revoking either replaces the iframe so the browser applies the new Permissions Policy;
+revoking them does not remove screen-capture delegation. Products continue to use the browser media APIs.
 
 ## Development
 
@@ -422,6 +438,11 @@ display language. Products should use that date for day grouping rather than sli
 
 The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
 bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
+
+Refresh complete SDK packages using content checksums, not file timestamps and sizes. Reproducible npm archives can
+preserve both while wasm-bindgen glue changes. A checksum-based copy (for example, `rsync --checksum --delete`) keeps
+the glue and WASM from the same build; verify archive-to-vendor contents, allowing only the recorded local dependency
+override. Matching WASM hashes alone do not establish that its JavaScript glue matches.
 
 ### Running the functional browser suite locally
 

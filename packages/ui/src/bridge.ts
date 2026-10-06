@@ -1662,9 +1662,11 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const allow = [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join(
-      '; ',
-    );
+    const allow = [
+      await buildAllowAttribute(args.label, args.allowedOrigin),
+      ...(args.extraAllow ?? []),
+      'cross-origin-isolated',
+    ].join('; ');
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -2077,10 +2079,14 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
   }
   currentHost = host;
   const product = currentProduct;
-  if (product?.mode === 'subdomain') {
+  if (product !== null) {
     const generation = renderGeneration;
     const unregister = registerProductNotificationTarget(product.label, {
-      artifact: product.cid,
+      // Preview URLs identify a host-accepted source, not immutable CID content.
+      artifact:
+        product.mode === 'subdomain'
+          ? product.cid
+          : `preview:${JSON.stringify([product.productId ?? labelToProductId(product.label), new URL(product.url, window.location.href).href])}`,
       entryUrl: new URL('/', window.location.origin).href,
       isActive: () => currentHost === host && renderGeneration === generation,
       focus: () => {

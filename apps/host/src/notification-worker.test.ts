@@ -94,7 +94,7 @@ afterAll(() => {
 });
 
 describe('ordinary notification service worker activation', () => {
-  it('commits durable activation before focusing the preferred host and sends only a wake hint', async () => {
+  it('commits durable activation before focusing the preferred host without an unused wake message', async () => {
     const record = await retain();
     const otherHost = windowClient(`${origin}/`);
     const focusedHost = windowClient(`${origin}/?product=other`, true);
@@ -111,7 +111,7 @@ describe('ordinary notification service worker activation', () => {
     expect(matchAll).toHaveBeenCalledWith({ type: 'window', includeUncontrolled: true });
     expect(otherHost.focus).not.toHaveBeenCalled();
     expect(focusedHost.focus).toHaveBeenCalledOnce();
-    expect(focusedHost.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'dotli:notification-activation' });
+    expect(focusedHost.postMessage).not.toHaveBeenCalled();
     expect(openWindow).not.toHaveBeenCalled();
     expect(await pendingNotificationActivations(record.scope)).toEqual([{ ...record, activated: true }]);
     expect(await pendingNotificationActivations({ ...record.scope, account: 'bob' })).toEqual([]);

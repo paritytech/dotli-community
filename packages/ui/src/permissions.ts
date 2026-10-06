@@ -240,11 +240,14 @@ export async function hasAnyGrant(label: string): Promise<boolean> {
 
 /**
  * Build the iframe `allow` attribute value from granted device permissions.
- * Always includes `clipboard-write`; adds Permissions Policy directives
- * for each granted device permission.
+ * Always delegates `clipboard-write` and `display-capture`; adds Permissions
+ * Policy directives for each granted device permission. The capture origin
+ * comes from the host's verified iframe target, not the product label or a
+ * product-supplied permission request. Display capture remains subject to
+ * the browser's user-initiated picker consent on every request.
  */
-export async function buildAllowAttribute(label: string): Promise<string> {
-  const policies = ['clipboard-write'];
+export async function buildAllowAttribute(label: string, allowedOrigin: string): Promise<string> {
+  const policies = ['clipboard-write', `display-capture ${allowedOrigin}`];
   for (const name of await getGrantedDevicePermissions(label)) {
     const directive = DEVICE_PERMISSION_POLICY[name];
     if (directive !== undefined) {

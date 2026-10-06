@@ -3567,7 +3567,10 @@ export interface NotificationActivation {
     sequence: bigint;
     /** Identifier of the activated notification. */
     notificationId: number;
-    /** Validated product-relative route beginning with exactly one slash. */
+    /**
+     * Original product destination (local path or supported deep-link URI).
+     * Opaque data for the product router, never host navigation authority.
+     */
     route: string;
 }
 export const NotificationActivation: Codec<NotificationActivation>;
