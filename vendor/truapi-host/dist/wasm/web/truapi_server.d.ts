@@ -629,12 +629,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_10516: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_10573: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10515: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10572: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_4793: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_4784: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_4788: (a: number, b: number) => number;
-    readonly __wasm_bindgen_func_elem_10397: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10396: (a: number, b: number) => void;
     readonly __wasm_bindgen_func_elem_4790: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

@@ -296,21 +296,32 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
-host-owned IndexedDB, scoped to the verified product, authenticated account, network and executable artifact. OS
-notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
-the host entry page. It does not navigate the product's route.
+host-owned IndexedDB, scoped to the host-selected product, live authenticated account, network and executable artifact.
+Published products bind to their verified CID; developer iframe previews instead bind to the host-accepted source URL
+and execution namespace, not to a claimed immutable artifact. A session without an optional identity account binds to
+its authenticated root public key. OS notifications carry only an opaque token; the existing host service worker records
+activation before focusing or opening the host entry page. It does not navigate the product's route.
 
 The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
 `{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
 consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
 product, account, network or artifact cannot read or acknowledge the retained activation.
 
+Scheduled presentation can continue after the product frame closes: the durable host-issued binding is checked against
+the current page core's live account and network, and any conflicting mounted artifact suppresses delivery. A click
+while the product is unmounted remains pending until the matching verified product is opened; the host does not execute
+the destination to reopen it. Account authority is cleared on logout, core retirement or product-core replacement, not
+on a storage reload hint: the core may reconcile the same session without emitting another auth transition.
+
 Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
 opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
-is bounded to 256 records; a full queue never evicts an unacknowledged clicked event to accept a new notification.
-In-page toasts remain actionable when OS permission or service-worker notification delivery is unavailable. OS focus and
-window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
-supply one.
+is bounded to 256 records; a full queue never evicts an unacknowledged clicked route event to accept a new notification.
+Clicks without a destination are consumed by the host, since there is no event for the product to acknowledge. In-page
+toasts remain actionable when OS permission or service-worker notification delivery is unavailable. A pending OS
+permission prompt does not delay the notification ID, cancellation or scheduler; cancelled records are rechecked before
+delayed OS presentation. Plain host toasts without an action or destination remain non-interactive. OS focus and window
+opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not supply
+one.
 
 ### Product chat
 

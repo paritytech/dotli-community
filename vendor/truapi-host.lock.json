@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "work/paseo-tommy-blockers",
-  "upstreamRevision": "a618fbaf9021cb5da6ac8e57ddbebf7e16a2c193",
+  "upstreamRevision": "e485861aeceb4cfb16541b730e0820c2d5ff77c9",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
   "baseRevision": "75796176b248c8e17e5996e4975d4a4ee2c642e9",
   "publication": "Local blocker candidate; SDK packages are vendored, not npm-published.",
@@ -16,14 +16,14 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "981d38c837cd042e2d2ca63dc4930a98995578545cc5d0d3f911234c634421b2",
+      "sourceArchiveSha256": "5b71ae2bbb983eb87bbfc465f441fd648333457e9b5f020450ead1e6115c5e34",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "72f5742343ba8b06fcfdc5145d07a4d4d421fab2578f76ce26c1d1b9b18c01bb",
-      "testingWasmSha256": "c5aa53c36e2465896227f523493af1257c0e1edc4c7f41e9408ba43fcf564a3a",
+      "wasmSha256": "6fb656b1a32d69b00471acac8c987aeb3f7f9289cd8b9c209f77fcc5ff7e501b",
+      "testingWasmSha256": "858a98098c954b0c6ea66caaa303a8523e426e41d5a6ae142135a7dd810d2932",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "a618fbaf9021cb5da6ac8e57ddbebf7e16a2c193"
+  "wasmUpstreamRevision": "e485861aeceb4cfb16541b730e0820c2d5ff77c9"
 }

@@ -12,6 +12,7 @@ import {
   notificationContext,
   registerProductNotificationTarget,
   setNotificationAccount,
+  setNotificationHostAccount,
 } from '../src/notification-activation.js';
 import { toastsStore } from '../src/state/toasts.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -34,6 +35,7 @@ beforeEach(() => {
   focus.mockClear();
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   setNotificationAccount(label, account);
+  setNotificationHostAccount(account);
   dispose = registerProductNotificationTarget(label, {
     artifact: 'verified-artifact',
     entryUrl: 'https://chat.paseo.fyi/',
@@ -45,12 +47,73 @@ beforeEach(() => {
 afterEach(() => {
   dispose();
   setNotificationAccount(label, undefined);
+  setNotificationHostAccount(undefined);
   resetOverlays();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe('bound notification activation', () => {
+  it('returns a cancellable id while the OS permission prompt remains unresolved', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    let decide: ((permission: NotificationPermission) => void) | undefined;
+    const showSystem = vi.fn(async () => {});
+    vi.stubGlobal('Notification', {
+      permission: 'default',
+      requestPermission: () =>
+        new Promise<NotificationPermission>(resolve => {
+          decide = resolve;
+        }),
+    });
+    vi.stubGlobal('navigator', {
+      serviceWorker: {
+        getRegistration: () =>
+          Promise.resolve({ active: {}, showNotification: showSystem, getNotifications: () => Promise.resolve([]) }),
+      },
+    });
+    const api = createNotificationAdapters(label);
+    const pushed = api.pushNotification({ text: 'Prompt pending', deeplink: '/dm/alice' });
+    try {
+      let settled: { id: number } | undefined;
+      void pushed.then(value => {
+        settled = value;
+      });
+      await vi.waitFor(() => {
+        assert.isDefined(settled);
+        expect(settled.id).toBeTypeOf('number');
+      });
+      assert.isDefined(settled);
+      await api.cancelNotification(settled.id);
+      decide?.('granted');
+      expect(await findNotification(label, settled.id)).toBeUndefined();
+      expect(showSystem).not.toHaveBeenCalled();
+    } finally {
+      decide?.('denied');
+      await pushed;
+    }
+  }, 10_000);
+
+  it('does not exhaust capacity with clicked notifications that have no destination', async () => {
+    const scope = notificationContext(label).scope;
+    const entry = { scope, entryUrl: 'https://chat.paseo.fyi/', expiresAt: Date.now() + 60_000 };
+    const routable = await retainNotification({ ...entry, notificationId: 2000, route: '/dm/alice' });
+    await activateNotification(routable.token);
+    for (let id = 2001; id <= 2255; id++) {
+      const record = await retainNotification({ ...entry, notificationId: id, route: null });
+      await activateNotification(record.token);
+    }
+    const next = await retainNotification({ ...entry, notificationId: 2256, route: '/dm/bob' });
+    await activateNotification(next.token);
+    expect(await pendingNotificationActivations(scope)).toEqual([
+      expect.objectContaining({ route: '/dm/alice' }),
+      expect.objectContaining({ route: '/dm/bob' }),
+    ]);
+    const api = createNotificationAdapters(label);
+    await api.acknowledgeActivation({ sequence: BigInt(routable.sequence) });
+    expect(await pendingNotificationActivations(scope)).toEqual([expect.objectContaining({ route: '/dm/bob' })]);
+    await api.acknowledgeActivation({ sequence: BigInt(next.sequence) });
+  }, 30_000);
+
   it('retains an in-page click until exact acknowledgement without navigating/reloading the product', async () => {
     const api = createNotificationAdapters(label);
     const pushed = await api.pushNotification({ text: 'Open conversation', deeplink: '/dm/alice' });
@@ -87,6 +150,7 @@ describe('bound notification activation', () => {
       await activateNotification(record.token);
       if (field === 'account') {
         setNotificationAccount(label, '22'.repeat(32));
+        setNotificationHostAccount('22'.repeat(32));
       }
       if (field === 'network') {
         environment.network = 'other-environment';
@@ -132,6 +196,7 @@ describe('bound notification activation', () => {
     assert.isDefined(record);
     await activateNotification(record.token); // An OS click while the page is logged out.
     setNotificationAccount(label, account);
+    setNotificationHostAccount(account);
     expect((await api.activationEvents()).events).toEqual([
       { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/dm/alice' },
     ]);
