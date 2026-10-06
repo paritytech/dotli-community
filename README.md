@@ -195,6 +195,11 @@ the user clicks **Open file** to supply the browser activation required for the 
 explicit consent and routes the file to that execution's current registration, not to another product or a stale
 handler.
 
+After file approval, a host-owned loading overlay names the selected file. Once delivery is ready, the paused menu
+offers **Resume and load**; the overlay stays visible while the guest processes the file and clears on the next
+presented frame. Delivery rejection clears it and keeps the recovery menu available. This is an activity indicator, not
+a percentage estimate of guest-side decoding.
+
 Inline and relaunch handlers receive bounded bytes. Stream handlers receive the original browser `Blob`, without a
 whole-file read or upload by the host; the runtime manages bounded reads and private OPFS caches. Cache creation and
 cleanup errors are recoverable and reported separately from fatal runtime errors. Stopping cancels pending selection,
