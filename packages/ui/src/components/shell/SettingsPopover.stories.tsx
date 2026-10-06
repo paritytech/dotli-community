@@ -15,7 +15,16 @@ const meta = {
   parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
   beforeEach: () => {
     initSettingsStore();
-    return resetAllStoresForTests;
+    // Diagnostics shows the browser's version, which a Playwright upgrade changes.
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value:
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    });
+    return () => {
+      Reflect.deleteProperty(navigator, 'userAgent');
+      resetAllStoresForTests();
+    };
   },
   render: () => (
     <TopbarFrame>

@@ -19,6 +19,8 @@ export default defineConfig({
   define: { 'import.meta.env.VITE_VRT': JSON.stringify(vrt ? '1' : '0') },
   test: {
     name: 'storybook',
+    // The Settings baseline shows the page's host, so the port is part of it.
+    api: { port: 63315, strictPort: true },
     setupFiles: [join(import.meta.dirname, '.storybook/vitest.setup.ts')],
     browser: {
       enabled: true,
