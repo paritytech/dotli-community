@@ -21,8 +21,9 @@ function phoneQuery(): MediaQueryList {
 }
 
 // The host server-renders its islands at build time, where there is no window
-// and no viewport: a Modal reads the form as it renders. The wide form is what
-// the markup ships; the browser corrects it on hydration.
+// and no viewport. Reads there answer "wide" and watching does nothing; a
+// component that renders differently on a phone must not read this while
+// hydrating, or its first client render disagrees with that markup.
 const serverRendering = (): boolean => typeof window === 'undefined';
 
 /** Whether the viewport is a phone's now. */

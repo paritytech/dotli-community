@@ -86,6 +86,32 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#auth-modal-title')).toBeVisible();
   });
 
+  test('As a phone user, the sign-in opens as a sheet and the shell hydrates without warnings', async ({ page }) => {
+    // Given
+    const problems: string[] = [];
+    page.on('console', message => {
+      if (message.type() === 'error' || message.type() === 'warning') {
+        problems.push(message.text());
+      }
+    });
+    page.on('pageerror', err => {
+      problems.push(err.message);
+    });
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    // When: the idle-hydrated sign-in island has taken over its markup.
+    await page.goto(LANDING_URL);
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
+    await page.locator('#landing-auth-button').click();
+
+    // Then
+    const frame = page.locator('#auth-modal-backdrop');
+    await expect(frame).toHaveAttribute('data-open');
+    await expect(frame).toHaveAttribute('data-layout', 'sheet');
+    await expect(page.getByTestId('auth-modal-sheet-head')).toBeVisible();
+    expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
+  });
+
   test('As a phone user, the topbar keeps the account button and folds the rest into the More menu', async ({
     page,
   }) => {

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { children, createEffect, createSignal, onCleanup, Show } from 'solid-js';
+import { children, createEffect, createSignal, isHydrating, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport, watchPhoneViewport } from '../../phone-viewport.js';
 import { IconTile } from '../primitives/IconTile.js';
@@ -40,18 +40,21 @@ export interface ModalProps {
  */
 function ModalRoot(props: ModalProps): JSX.Element {
   let frame: HTMLDialogElement | undefined;
-  // Read as it mounts, so a phone opening is a sheet from its first frame.
-  const [phone, setPhone] = createSignal(isPhoneViewport());
+  // A client mount reads the form as it mounts, so a phone opening is a sheet
+  // from its first frame. Hydrating, it starts as the build-time render's wide
+  // form (that markup has no viewport) and takes the real one once settled.
+  const [phone, setPhone] = createSignal(isHydrating() ? false : isPhoneViewport());
   // A focused element is blurred as it moves between forms: what held focus
   // in the dialog as the viewport crossed, given focus again once moved.
   let focusAcross: Element | null = null;
-  onCleanup(
-    watchPhoneViewport(next => {
+  onSettled(() => {
+    setPhone(isPhoneViewport());
+    return watchPhoneViewport(next => {
       const active = document.activeElement;
       focusAcross = frame?.contains(active) === true ? active : null;
       setPhone(next);
-    }),
-  );
+    });
+  });
   createEffect(phone, () => {
     const held = focusAcross;
     focusAcross = null;
