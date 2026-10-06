@@ -2,7 +2,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* 10 px above and below on desktop, the board's 12 on phones. The value's
-   type follows the chrome's (the Dialog is data-chrome). */
+   type follows the chrome's (a Modal's frame is data-chrome). */
 :where(.field) {
   box-sizing: border-box;
   display: flex;

@@ -52,8 +52,7 @@ function GlobeIcon(): JSX.Element {
  * mounted. A content failure is reported as `popover:chains-popover` and
  * closes it, and the next opening renders it afresh.
  *
- * A press outside, focus leaving it, Escape and a blocking modal close the
- * popover, a non-modal one.
+ * It closes as every Popover does (floating/Popover.tsx).
  */
 export function ChainsPopover(): JSX.Element {
   const topbar = useStore(topbarStore);

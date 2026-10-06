@@ -35,8 +35,8 @@ function SlidersIcon(): JSX.Element {
 
 /**
  * The settings button (`#mode-button`) and its popover (`#mode-popover`, a
- * floating Popover), an item of the topbar's action group island (see src/islands/), rendered with the
- * host page and hydrated.
+ * floating Popover), an item of the topbar's action group island (see
+ * src/islands/), rendered with the host page and hydrated.
  *
  * The popover's body, SettingsContent, is its own chunk: the network and
  * transport choices, the cache switches, "Clear all caches" and the
@@ -53,13 +53,12 @@ function SlidersIcon(): JSX.Element {
  * choice the browser cannot run), and the boot's URL settings step must see
  * the saved value first.
  *
- * On a wide screen it is a non-modal popover: Tab loops inside it, and a
- * press outside, focus moved out, Escape and a
- * blocking modal close it. On a phone it is a modal bottom sheet, with a
- * header and a close button. The topbar store's `settingsOpen` follows it,
- * and openSettings() (an error page's "Open settings") opens it through
- * that. The More menu's Settings row opens it while the topbar has
- * collapsed the button.
+ * On a wide screen it is a non-modal popover, Tab looping inside it; on a
+ * phone it is a modal bottom sheet, with a header and a close button. It
+ * closes as every Popover does (floating/Popover.tsx). The topbar store's
+ * `settingsOpen` follows it, and openSettings() (an error page's "Open
+ * settings") opens it through that. The More menu's Settings row opens it
+ * while the topbar has collapsed the button.
  */
 export function SettingsPopover(): JSX.Element {
   const settings = useStore(settingsStore);

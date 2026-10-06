@@ -36,8 +36,9 @@ function LockIcon(): JSX.Element {
 
 /**
  * The permissions button (`#permissions-button`) and its popover
- * (`#permissions-popover`, a floating Popover; a bottom sheet on phones), an item of the topbar's action group island (see
- * src/islands/), rendered with the host page and hydrated.
+ * (`#permissions-popover`, a floating Popover; a bottom sheet on phones), an
+ * item of the topbar's action group island (see src/islands/), rendered with
+ * the host page and hydrated.
  *
  * The popover's body, PermissionsContent, is its own chunk: the loaded
  * product's permissions in a Device and an App group, each set with Ask,
@@ -46,8 +47,7 @@ function LockIcon(): JSX.Element {
  * permission granted, read again on a product loading or failing and on a
  * permission change.
  *
- * A press outside, focus leaving it, Escape and a
- * blocking modal close the popover, a non-modal one. The More menu's
+ * It closes as every Popover does (floating/Popover.tsx). The More menu's
  * Permissions row opens it while the topbar has collapsed the button.
  */
 export function PermissionsPopover(): JSX.Element {
