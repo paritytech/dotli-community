@@ -33,14 +33,16 @@
   }
 }
 
-/* The collapsed capsule is too small to aim at, so a wider transparent
-   target sits over it. */
+/* The collapsed capsule (120 x 8 px, 4 px from the top, Topbar.module.css)
+   is too small to aim at, so a transparent target sits over it, one --sp-2
+   wider on each side and below. It covers the product, so it stays that
+   small; from the screen's top edge it is still easy to reach. */
 .hit {
   position: fixed;
   top: 0;
   left: 50%;
   z-index: 999;
-  width: 200px;
-  height: calc(var(--sp-8) + var(--safe-top));
+  width: calc(120px + 2 * var(--sp-2));
+  height: calc(var(--sp-1) + var(--sp-2) + var(--sp-2) + var(--safe-top));
   transform: translateX(-50%);
 }

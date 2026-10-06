@@ -88,7 +88,7 @@ function setPhone(phone: boolean): void {
   flushUi();
 }
 
-/** A popover of the bar, as createPopover registers it, open or not. */
+/** A popover of the bar, as FloatingLayer registers it, open or not. */
 interface StandInSurface {
   element: HTMLElement;
   open: boolean;

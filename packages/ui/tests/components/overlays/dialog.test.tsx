@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent } from '@solidjs/testing-library';
+import { cleanup, fireEvent } from '@solidjs/testing-library';
 import { ModalOutlet } from '../../../src/components/overlays/ModalOutlet.js';
 import { openModal, resetModalsForTests, type ModalView } from '../../../src/state/modals.js';
 import { attachProductFrame, resetProductFrameLayout } from '../../../src/product-frame-layout.js';
@@ -55,12 +55,19 @@ function passwordView(error?: string): ModalView<'cancel' | 'unlock'> {
   };
 }
 
+/** Where a real key press goes: the focused element. */
+function focused(): Element {
+  return document.activeElement ?? document.body;
+}
+
 async function mountOutlet(): Promise<void> {
   renderComponent(() => <ModalOutlet />);
   await settle();
 }
 
 afterEach(() => {
+  // Unmount first: the dialog is portalled into the body, which is emptied below.
+  cleanup();
   vi.unstubAllGlobals();
   resetModalsForTests();
   resetProductFrameLayout();
@@ -75,11 +82,11 @@ describe('signing dialog', () => {
     // When
     await mountOutlet();
 
-    // Then
-    const modal = query(document, '[data-testid="signing-modal-backdrop"] > [data-testid="signing-modal"]');
-    expect(modal.getAttribute('role')).toBe('dialog');
-    expect(modal.getAttribute('aria-modal')).toBe('true');
-    const title = query(modal, `#${modal.getAttribute('aria-labelledby') ?? ''}`);
+    // Then: the frame is the modal dialog, named by the card's title.
+    const frame = byTestId('signing-modal-backdrop', document, HTMLDialogElement);
+    expect(frame.open).toBe(true);
+    const modal = query(frame, ':scope > [data-testid="signing-modal"]');
+    const title = query(modal, `#${frame.getAttribute('aria-labelledby') ?? ''}`);
     expect(title.tagName).toBe('H2');
     expect(title.textContent).toBe('Permission Request');
     expect(modal.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
@@ -182,29 +189,29 @@ describe('signing dialog', () => {
     expect(query(document, 'h2').textContent).toBe('Second');
 
     // When
-    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.keyDown(focused(), { key: 'Escape' });
     await settle();
 
     // Then
     await expect(second).resolves.toEqual({ result: 'dismissed' });
   });
 
-  it('As a dotli user, Escape does not also reach another document keydown listener', async () => {
+  it("As a dotli user, Escape that dismisses a prompt reaches the page's other key listeners as handled", async () => {
     // Given
     void openModal(permissionLike());
     await mountOutlet();
     const modal = byTestId('signing-modal', document);
-    const bubbleListener = vi.fn();
-    document.addEventListener('keydown', bubbleListener);
+    const handled = vi.fn((event: KeyboardEvent) => event.defaultPrevented);
+    document.addEventListener('keydown', handled);
 
     // When
     fireEvent.keyDown(modal, { key: 'Escape' });
     await settle();
 
     // Then
-    expect(bubbleListener).not.toHaveBeenCalled();
+    expect(handled).toHaveReturnedWith(true);
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
-    document.removeEventListener('keydown', bubbleListener);
+    document.removeEventListener('keydown', handled);
   });
 
   it('As a dotli user, the backdrop and Escape do nothing on a dialog that must be answered', async () => {
@@ -217,7 +224,7 @@ describe('signing dialog', () => {
 
     // When
     fireEvent.click(byTestId('signing-modal-backdrop', document));
-    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.keyDown(focused(), { key: 'Escape' });
     await settle();
 
     // Then
@@ -312,13 +319,13 @@ describe('signing dialog', () => {
 
     // When
     nth(buttons, 2).focus();
-    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.keyDown(focused(), { key: 'Tab' });
 
     // Then
     expect(document.activeElement).toBe(buttons[0]);
 
     // When
-    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    fireEvent.keyDown(focused(), { key: 'Tab', shiftKey: true });
 
     // Then
     expect(document.activeElement).toBe(buttons[2]);

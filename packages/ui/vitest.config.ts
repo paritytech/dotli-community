@@ -24,6 +24,7 @@ export default defineConfig({
     environment: 'happy-dom',
     name: 'ui',
     include: ['tests/**/*.test.{ts,tsx}'],
+    setupFiles: ['tests/setup/popover-polyfill.ts'],
     // Process CSS modules with the app naming, so `s['foo']` is a real scoped
     // class in tests rather than undefined.
     css: { include: [/\.module\.css$/], modules: { classNameStrategy: 'scoped' } },

@@ -2,8 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* The password prompt's parts: its caption, its error and the board's
-   password .input. Dialog.module.css draws the modal around them. Desktop
-   sizes by default, the boards' in the phone block. */
+   password .input. floating/Modal.module.css draws the modal around them.
+   Desktop sizes by default, the boards' in the phone block. */
 
 .caption {
   margin: 0;

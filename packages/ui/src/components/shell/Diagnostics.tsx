@@ -105,8 +105,7 @@ function TerminalIcon(): JSX.Element {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="m4 17 6-6-6-6" />
-      <path d="M12 19h8" />
+      <path d="m4 17 6-6-6-6m8 14h8" />
     </svg>
   );
 }

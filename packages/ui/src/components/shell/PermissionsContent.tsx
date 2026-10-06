@@ -23,7 +23,7 @@ import { Callout, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { PermissionRow } from './PermissionRow.js';
-import { usePopover } from './Popover.js';
+import { usePopover } from '../floating/Popover.js';
 import s from './PermissionsContent.module.css';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);

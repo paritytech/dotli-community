@@ -3,7 +3,7 @@
 
 import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect } from 'storybook/test';
+import { expect, within } from 'storybook/test';
 import { iconMarkup, PERMISSION_ICONS } from '../../permission-icons.js';
 import type { ModalEntry, ModalView } from '../../state/modals.js';
 import { PromptDialog } from './PromptDialog.js';
@@ -13,9 +13,7 @@ let nextId = 1000;
 const entry = (view: ModalView<string>): ModalEntry => ({ id: nextId++, view });
 
 const LOCK_SVG =
-  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<rect x="4" y="11" width="16" height="10" rx="3"/>' +
-  '<path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="3"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
 const meta = {
   title: 'Entities/PromptDialog',
@@ -73,9 +71,10 @@ export const PasswordPrompt: Story = {
       fallbackResult: 'cancel',
     }),
   },
-  play: async ({ canvas, step }) => {
+  play: async ({ step }) => {
     await step('Then the password field has the focus', async () => {
-      await expect(canvas.getByTestId('password-prompt-input')).toHaveFocus();
+      // The dialog is portalled into the body, outside the story's canvas.
+      await expect(within(document.body).getByTestId('password-prompt-input')).toHaveFocus();
     });
   },
 };

@@ -25,8 +25,9 @@ import { BACKEND_KEY } from '@dotli/config';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { mouseClick, pointerPress, renderComponent, settle, tabTo, waitForContent } from '../../helpers/solid.js';
-import { byId, byTestId, must, query } from '../../support.js';
-import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
+import { byId, byTestId, must } from '../../support.js';
+import { ITEM_WIDTH, moreRow, moreRowNames, openMore, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 vi.mock('../../../src/recent-labels.js', () => ({
   loadRecentLabels: () => Promise.resolve([]),
@@ -35,13 +36,6 @@ vi.mock('../../../src/recent-labels.js', () => ({
 
 /** Room for the More button only: every item is in the More menu. */
 const MORE_ONLY = ITEM_WIDTH;
-
-/** The items in the More menu, in its order. */
-function moreRowNames(): string[] {
-  return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
-    el => el.dataset['item'] ?? '',
-  );
-}
 
 async function renderIsland(): Promise<void> {
   const container = document.createElement('div');
@@ -64,6 +58,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+useFloatingSurfaces();
 
 describe('Topbar actions island', () => {
   it("As a mobile user, the More menu's Permissions row opens the permissions popover, which shows the app's grants", async () => {
@@ -94,8 +90,10 @@ describe('Topbar actions island', () => {
       // Then
       expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
       expect(byId('permissions-popover').hasAttribute('data-open')).toBe(true);
-      expect(byId('permissions-popover-backdrop').hasAttribute('data-open')).toBe(true);
-      expect(document.activeElement).toBe(byId('permissions-popover'));
+      expect(
+        byId('permissions-popover').contains(document.activeElement) ||
+          document.activeElement === byId('permissions-popover'),
+      ).toBe(true);
       // The list is the popover's body, its own chunk.
       await waitForContent('permissions-popover');
       await settle();
@@ -109,7 +107,7 @@ describe('Topbar actions island', () => {
     }
   });
 
-  it("As a mobile user, the More menu's Appearance and Settings rows open the Appearance menu and the settings popover", async () => {
+  it("As a mobile user, the More menu's Appearance and Settings rows open the Appearance popover and the settings popover", async () => {
     // Given
     initSettingsStore();
     stubTopbarLayout(MORE_ONLY);
@@ -122,9 +120,8 @@ describe('Topbar actions island', () => {
     expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(byId('theme-popover').hasAttribute('data-open')).toBe(true);
 
-    // When: the More button's tap is outside the theme menu, a modal menu,
-    // so it only closes the menu: its click is swallowed.
-    pointerPress(byId('more-button'));
+    // When
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await settle();
 
     // Then
@@ -144,6 +141,7 @@ describe('Topbar actions island', () => {
     // Given
     stubTopbarLayout(MORE_ONLY);
     await renderIsland();
+    await openMore();
     expect(document.querySelector('#more-popover [role="menuitem"][data-item="network"]')).toBeNull();
 
     // When
@@ -202,7 +200,7 @@ describe('Topbar actions island', () => {
     await settle();
 
     // Then
-    expect(moreRowNames()).toEqual(['network', 'permissions', 'theme', 'settings']);
+    expect(await moreRowNames()).toEqual(['network', 'permissions', 'theme', 'settings']);
     expect(byTestId('more-item').hasAttribute('data-parked')).toBe(false);
     const account = must(byId('auth-button').closest<HTMLElement>('[data-testid="topbar-item"]'), 'the account item');
     expect(account.hasAttribute('data-parked')).toBe(false);
@@ -221,7 +219,7 @@ describe('Topbar actions island', () => {
 
     // Then
     const more = byId('more-button');
-    expect(moreRowNames()[0]).toBe('network');
+    expect((await moreRowNames())[0]).toBe('network');
     expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
     expect(more.getAttribute('data-tone')).toBe('idle');
     expect(more.getAttribute('aria-label')).toBe('More, network syncing');
@@ -311,7 +309,7 @@ describe('Topbar actions island', () => {
 
       // Then
       const more = byId('more-button');
-      expect(moreRowNames()).toContain('chat');
+      expect(await moreRowNames()).toContain('chat');
       expect(more.hasAttribute('data-badge')).toBe(true);
       expect(more.getAttribute('data-tone')).toBe('info');
       expect(more.getAttribute('aria-label')).toBe('More, chat has unread messages');
@@ -322,22 +320,22 @@ describe('Topbar actions island', () => {
   });
 
   it('As a phone keyboard user, Tab in the More sheet reaches its Close button, which closes it and hands focus back to More', async () => {
-    // Given
+    // Given: a focused button turns Enter into a click with detail 0.
     stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
     const button = byId('more-button');
     button.focus();
-    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    button.click();
     await settle();
-    const sheet = byId('more-popover');
-    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    const sheet = byId('more-popover', HTMLDialogElement);
+    expect(sheet.open).toBe(true);
 
     // When
     const tab = tabTo(document.body);
 
     // Then: focus stays in the sheet, on its head's close button.
-    const close = within(sheet).getByRole('button', { name: 'Close' });
+    const close = byTestId('menu-sheet-close', sheet);
     expect(tab.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(close);
 
@@ -363,14 +361,11 @@ describe('Topbar actions island', () => {
     const more = byId('more-popover');
     expect(more.hasAttribute('data-open')).toBe(false);
     expect(more.hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('theme-popover');
+    const sheet = byId('theme-popover', HTMLDialogElement);
+    expect(sheet.open).toBe(true);
     expect(sheet.hasAttribute('data-open')).toBe(true);
-    expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
     expect(sheet.contains(document.activeElement)).toBe(true);
-    const scrims = [...document.querySelectorAll('[data-testid="menu-scrim"]')];
-    expect(scrims).toHaveLength(2);
-    expect(scrims.every(scrim => scrim.hasAttribute('data-handoff'))).toBe(true);
   });
 
   it("As a phone user choosing Settings in More, the settings sheet takes More's place without sliding", async () => {
@@ -385,29 +380,10 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byId('more-popover').hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('mode-popover');
+    const sheet = byId('mode-popover', HTMLDialogElement);
+    expect(sheet.open).toBe(true);
     expect(sheet.hasAttribute('data-open')).toBe(true);
-    expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
-    expect(byId('mode-popover-backdrop').hasAttribute('data-handoff')).toBe(true);
-  });
-
-  it('As a phone keyboard user choosing Appearance in More, the Appearance sheet opens on its first item', async () => {
-    // Given
-    stubTopbarLayout(MORE_ONLY);
-    stubPhoneViewport(true);
-    await renderIsland();
-    pointerPress(byId('more-button'));
-    await settle();
-
-    // When: Enter on a row is a click with no pointer behind it
-    moreRow('theme').click();
-    await settle();
-
-    // Then
-    const sheet = byId('theme-popover');
-    expect(sheet.hasAttribute('data-open')).toBe(true);
-    expect(document.activeElement).toBe(query(sheet, '[role="menuitemradio"]'));
   });
 
   it("As a phone user closing a sheet that took More's place, it slides out", async () => {
@@ -425,9 +401,6 @@ describe('Topbar actions island', () => {
     const sheet = byId('theme-popover');
     expect(sheet.hasAttribute('data-open')).toBe(false);
     expect(sheet.hasAttribute('data-handoff')).toBe(false);
-    const scrim = sheet.previousElementSibling;
-    expect(scrim?.getAttribute('data-testid')).toBe('menu-scrim');
-    expect(scrim?.hasAttribute('data-handoff')).toBe(false);
   });
 
   // Off with the chat button (TopbarActions.tsx) until it is redone.

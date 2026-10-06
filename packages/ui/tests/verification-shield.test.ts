@@ -1,19 +1,13 @@
+import { cleanup } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UrlPillShield } from '../src/components/shell/UrlPillShield.js';
 import { setVerificationShieldState, showProductPill } from '../src/state/url-pill.js';
-import { setBlockingModalActive } from '../src/state/topbar.js';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from '../src/verification-shield.js';
-import {
-  pointerPress,
-  pointerPressUnfocusable,
-  renderComponent,
-  resetStores,
-  settle,
-  tabTo,
-  waitForContent,
-} from './helpers/solid.js';
+import { renderComponent, resetStores, settle, waitForContent } from './helpers/solid.js';
 import { byId, byTestId } from './support.js';
-import { stubPhoneViewport } from './helpers/viewport.js';
+
+const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
+vi.mock('../../metrics/src/sentry.js', () => sentry);
 
 function button(): HTMLButtonElement {
   return byId(VERIFICATION_SHIELD_ID, HTMLButtonElement);
@@ -39,12 +33,21 @@ function rowFor(state: string): HTMLElement {
   return byTestId(`verification-tooltip-row-${state}`, panel());
 }
 
-/** Open the explainer, and wait for its body (its own chunk). */
+/**
+ * Open the explainer as Enter or Space does (a click with `detail` 0; its
+ * hover, focus and dismissal are the Tooltip stories'), and wait for its
+ * body (its own chunk).
+ */
 async function openShield(): Promise<void> {
-  button().click();
+  await showShield();
+  await waitForContent(VERIFICATION_TOOLTIP_ID);
+}
+
+/** Show the explainer as Enter or Space does, without waiting for its body. */
+async function showShield(): Promise<void> {
+  button().dispatchEvent(new MouseEvent('click', { detail: 0, bubbles: true }));
   await settle();
   expect(isOpen()).toBe(true);
-  await waitForContent(VERIFICATION_TOOLTIP_ID);
 }
 
 beforeEach(async () => {
@@ -60,146 +63,28 @@ beforeEach(async () => {
 afterEach(() => {
   vi.unstubAllGlobals();
   resetStores();
+  sentry.captureException.mockClear();
+  vi.doUnmock('../src/components/shell/VerificationContent.js');
 });
 
 describe('verification shield', () => {
-  it('As a phone user, the explainer opens as a sheet whose header names it, so the body has no title of its own', async () => {
-    // Given
-    stubPhoneViewport(true);
-
-    // When
-    await openShield();
-
-    // Then
-    expect(panel().hasAttribute('data-sheet')).toBe(true);
-    expect(panel().querySelector('[data-testid="verification-tooltip-title"]')).toBeNull();
-    expect(panel().querySelectorAll('[data-testid^="verification-tooltip-row-"]')).toHaveLength(2);
-  });
-
-  it('As a keyboard user, the shield is a real button that toggles the explainer', async () => {
+  it('As a screen-reader user, the shield is a real button described by the explainer, a tooltip', async () => {
     // Given
     const trigger = button();
     expect(trigger.tagName).toBe('BUTTON');
-    expect(trigger.getAttribute('aria-controls')).toBe(VERIFICATION_TOOLTIP_ID);
-    expect(isClosed()).toBe(true);
-
-    // When: Enter and Space on a native button dispatch click
-    trigger.click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When
-    trigger.click();
-    await settle();
-
-    // Then
-    expect(isClosed()).toBe(true);
-  });
-
-  it('As a screen-reader user, the shield is a disclosure: it says whether the explainer is shown, and the explainer is plain text, not a dialog', async () => {
-    // Given
-    const trigger = button();
-
-    // Then
+    expect(trigger.getAttribute('aria-describedby')).toBe(VERIFICATION_TOOLTIP_ID);
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(trigger.getAttribute('aria-controls')).toBe(VERIFICATION_TOOLTIP_ID);
-    expect(trigger.hasAttribute('aria-haspopup')).toBe(false);
-    expect(panel().hasAttribute('role')).toBe(false);
+
+    // When
+    await openShield();
+
+    // Then
+    expect(panel().getAttribute('role')).toBe('tooltip');
+    expect(panel().getAttribute('popover')).toBe('manual');
     expect(panel().hasAttribute('tabindex')).toBe(false);
-
-    // When
-    trigger.focus();
-    await openShield();
-
-    // Then: the explainer has nothing to focus, so focus stays on the shield.
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(document.activeElement).toBe(trigger);
   });
 
-  it('As a keyboard user, Tab away from the shield closes the explainer and focus moves on', async () => {
-    // Given
-    const next = document.createElement('button');
-    next.id = 'next-button';
-    document.body.append(next);
-    button().focus();
-    await openShield();
-
-    // When
-    const tab = tabTo(next);
-    await settle();
-
-    // Then
-    expect(tab.defaultPrevented).toBe(false);
-    expect(isClosed()).toBe(true);
-    expect(document.activeElement).toBe(next);
-  });
-
-  it('As a mouse user, a press elsewhere closes the explainer without handing focus back to the shield', async () => {
-    // Given
-    button().focus();
-    await openShield();
-
-    // When: the press lands on nothing that takes focus.
-    pointerPressUnfocusable(document.body);
-    await settle();
-
-    // Then
-    expect(isClosed()).toBe(true);
-    expect(document.activeElement).toBe(document.body);
-  });
-
-  it('As a keyboard user, Escape closes the explainer and returns focus to the shield', async () => {
-    // Given
-    await openShield();
-    button().blur();
-    expect(document.activeElement).toBe(document.body);
-
-    // When
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await settle();
-
-    // Then
-    expect(isClosed()).toBe(true);
-    expect(document.activeElement).toBe(button());
-  });
-
-  it('As a keyboard user, Escape leaves focus elsewhere in the bar where it is', async () => {
-    // Given
-    await openShield();
-    const other = byId('other-button');
-    other.focus();
-
-    // When
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await settle();
-
-    // Then
-    expect(isClosed()).toBe(true);
-    expect(document.activeElement).toBe(other);
-  });
-
-  it('As a touch user, tapping elsewhere dismisses the explainer but tapping it keeps it up', async () => {
-    // Given
-    await openShield();
-
-    // When: a tap lands on the panel copy
-    byTestId('verification-tooltip-title', panel()).dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When: a tap lands outside the shield
-    pointerPress(byId('other-button'));
-    await settle();
-
-    // Then
-    expect(isClosed()).toBe(true);
-  });
-
-  it('As a touch user, tapping into the app frame dismisses the explainer', async () => {
+  it('As a touch user, tapping into the app frame hides the explainer', async () => {
     // Given
     await openShield();
 
@@ -211,16 +96,62 @@ describe('verification shield', () => {
     expect(isClosed()).toBe(true);
   });
 
-  it('As a dotli integrator, a blocking modal closes the explainer', async () => {
+  it('As a dotli user, focus moving elsewhere (a modal coming up takes it) hides the explainer', async () => {
     // Given
     await openShield();
 
     // When
-    setBlockingModalActive(true);
+    byId('other-button').focus();
     await settle();
 
     // Then
     expect(isClosed()).toBe(true);
+    expect(document.activeElement).toBe(byId('other-button'));
+  });
+
+  it('As a visitor after a deploy, an explainer that cannot load is reported once and hides; the next showing loads it again', async () => {
+    // Given: a fresh page (the explainer's chunk not yet loaded) whose chunk
+    // is gone, its import rejecting until `fail` is cleared
+    cleanup();
+    vi.resetModules();
+    const chunk = { fail: true, imports: 0 };
+    vi.doMock('../src/components/shell/VerificationContent.js', async (importOriginal: () => Promise<unknown>) => {
+      chunk.imports += 1;
+      if (chunk.fail) {
+        throw new Error('chunk failed');
+      }
+      return importOriginal();
+    });
+    const pill = await import('../src/state/url-pill.js');
+    const { UrlPillShield: FreshShield } = await import('../src/components/shell/UrlPillShield.js');
+    pill.showProductPill('app', '.dot');
+    renderComponent(FreshShield);
+    await settle();
+
+    // When
+    await showShield();
+    await vi.waitFor(() => {
+      expect(sentry.captureException).toHaveBeenCalled();
+    });
+    await settle();
+
+    // Then
+    expect(isClosed()).toBe(true);
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'tooltip:verification-tooltip' },
+    });
+
+    // When: the chunk is back
+    chunk.fail = false;
+    await openShield();
+
+    // Then
+    expect(chunk.imports).toBe(2);
+    expect(byTestId('verification-tooltip-title', panel()).textContent).toBe('How was this site loaded?');
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
   });
 
   it('As a screen reader user, the state is in the button name, not only its colour', async () => {

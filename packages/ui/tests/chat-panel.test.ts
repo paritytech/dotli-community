@@ -14,6 +14,7 @@ import type * as ServiceModule from '../src/chat/service.js';
 import { byId, byTestId, query } from './support.js';
 import { moreRow, stubTopbarLayout } from './components/shell/topbar-harness.js';
 import { nth } from './helpers/nth.js';
+import { preloadFloatingSurfaces } from './helpers/floating.js';
 
 // happy-dom drops a calc() that holds a var(), so the box helper returns plain
 // stand-in values here. product-frame-layout tests cover the inset terms.
@@ -185,6 +186,8 @@ describe('chat panel', () => {
     const web = await import('@solidjs/web');
     const { ChatButton } = await import('../src/components/shell/ChatButton.js');
     const { ActionGroup } = await import('../src/components/shell/topbar/ActionGroup.js');
+    // The More menu opens and is read in the same tick: its surface chunk, from this graph.
+    await preloadFloatingSurfaces();
     stubTopbarLayout(1);
     disposeButton = web.render(
       () =>
@@ -203,12 +206,14 @@ describe('chat panel', () => {
     // When: a product with chat loads, with a session.
     loadProduct('chatty-more');
 
+    // When
+    byId('more-button').click();
+    flushUi();
+
     // Then
     expect(moreRow('chat').textContent).toBe('Chat');
 
     // When
-    byId('more-button').click();
-    flushUi();
     moreRow('chat').click();
     flushUi();
 

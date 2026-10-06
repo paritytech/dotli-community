@@ -5,8 +5,9 @@ import { createContext, type Accessor } from 'solid-js';
 
 /**
  * Whether the content is in a bottom sheet, provided by the frame it sits in
- * (Popover, AuthModal) and read by Surface. Its own module, so a frame that
- * provides it does not pull Surface and its stylesheet into its chunk. An
- * accessor, so a sheet that opens or closes around the content is seen.
+ * (Popover's, Modal's and BottomSheet's sheet) and read by Surface. Its own
+ * module, so a frame that provides it does not pull Surface and its
+ * stylesheet into its chunk. An accessor, so a sheet that opens or closes
+ * around the content is seen.
  */
 export const InSheet = createContext<Accessor<boolean>>(() => false);

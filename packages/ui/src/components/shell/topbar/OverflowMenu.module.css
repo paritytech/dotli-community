@@ -1,9 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's .menu-row parts in the Menu's rows. The row sizes each item's
-   icon, 16 px on desktop and the board's 20 px on phones, with its 1.75
-   stroke. */
+/* The board's .menu-row parts in the DropdownMenu's rows. The row sizes
+   each item's icon, 16 px on desktop and the board's 20 px on phones, with
+   its 1.75 stroke. */
 .icon {
   display: inline-flex;
   flex: none;
@@ -35,10 +35,6 @@
   line-height: var(--lh-body);
 }
 
-.rows {
-  display: flex;
-  flex-direction: column;
-}
 /* The trailing chevron. */
 .row > svg {
   width: 14px;
@@ -58,9 +54,10 @@
   }
 }
 
-/* Phones: the board's More sheet, its rows in a flush well under the head,
-   56 px tall at 15 px, with hairlines between them. */
-.menu[data-sheet] .rows {
+/* Phones: the board's More sheet, its rows in a flush well under the head
+   (the sheet's rows wrapper), 56 px tall at 15 px, with hairlines between
+   them. */
+.menu[data-sheet] {
   margin: var(--sp-1) var(--sp-4) 0;
   overflow: hidden;
   border-radius: var(--r-md);

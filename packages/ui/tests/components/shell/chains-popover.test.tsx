@@ -12,22 +12,15 @@ import { startNetworkStore } from '../../../src/state/network.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { setProductLoaded } from '../../../src/state/product.js';
-import { recordChainsButtonVisible, setBlockingModalActive } from '../../../src/state/topbar.js';
-import { EXIT_MS } from '../../../src/components/shell/Popover.js';
-import {
-  pointerPress,
-  pointerPressUnfocusable,
-  renderComponent,
-  resetStores,
-  tabTo,
-  waitForContent,
-} from '../../helpers/solid.js';
+import { recordChainsButtonVisible } from '../../../src/state/topbar.js';
+import { EXIT_MS } from '../../../src/components/floating/FloatingLayer.js';
+import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { HISTORY_SLOTS } from '../../../src/components/shell/chains-format.js';
 import type * as ChainsFormatModule from '../../../src/components/shell/chains-format.js';
-import { focusables } from '../../../src/components/focus.js';
-import { byId, byTestId, query } from '../../support.js';
+import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -178,22 +171,24 @@ async function renderPopover(): Promise<void> {
 
 /** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
+  // The content's idle preload is a timer of its own, not the countdown's.
+  vi.advanceTimersByTime(PRELOAD_IDLE_MS);
   byId('chains-button').click();
   await settle();
   expect(isOpen()).toBe(true);
   await waitForContent('chains-popover');
 }
 
-/** Close the popover with its button, past the exit transition. */
+/** Close the popover with Escape, past the exit transition. */
 async function closePopover(): Promise<void> {
-  byId('chains-button').click();
+  press('Escape');
   await settle();
   vi.advanceTimersByTime(EXIT_MS);
   await settle();
 }
 
 function body(): HTMLElement {
-  return query(byId('chains-popover'), ':scope > [data-testid="popover-body"]');
+  return must(popoverBody('chains-popover'), '#chains-popover');
 }
 
 /** The open popover's content, inside its body. */
@@ -309,6 +304,11 @@ function waitingText(): string | null | undefined {
   return byTestId('chains-bars-waiting').textContent;
 }
 
+/** The wait of preloadWhenIdle's timer in an environment without idle callbacks. */
+const PRELOAD_IDLE_MS = 2000;
+
+useFloatingSurfaces();
+
 describe('The network popover island', () => {
   it('As a dotli user, the closed button and popover carry their labels and ARIA', async () => {
     // When
@@ -316,12 +316,8 @@ describe('The network popover island', () => {
 
     // Then
     expectChainsButton(false);
-    // The surface is the shared Popover's, and holds nothing until opened.
-    const popover = byId('chains-popover');
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Network');
-    expect(popover.getAttribute('tabindex')).toBe('-1');
-    expect(body().childElementCount).toBe(0);
+    // The surface is the shared Popover's, in the page from its first opening (or idle preload).
+    expect(document.getElementById('chains-popover')).toBeNull();
   });
 
   it('As a user, the network button carries a badge in the network health tone', async () => {
@@ -544,7 +540,7 @@ describe('The network popover island', () => {
     await openPopover();
 
     // Then
-    expect(byId('chains-popover').hasAttribute('data-sheet')).toBe(true);
+    expect(must(popoverBody('chains-popover'), 'the sheet body').hasAttribute('data-sheet')).toBe(true);
     expect(byTestId('chains-content').hasAttribute('data-sheet')).toBe(true);
     expect(texts(content())).not.toContain('Network');
   });
@@ -745,6 +741,8 @@ describe('The network popover island', () => {
       step: 'root_render',
       tags: { root: 'popover:chains-popover' },
     });
+    vi.advanceTimersByTime(EXIT_MS);
+    await settle();
     expect(vi.getTimerCount()).toBe(0);
     expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
     expect(isOpen()).toBe(false);
@@ -778,36 +776,12 @@ describe('The network popover island', () => {
     expect(rows()).toEqual(['', '']);
   });
 
-  it('As a keyboard user, opening it focuses the popover and Escape closes it, handing focus back to the button', async () => {
-    // Given
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(document.activeElement).toBe(byId('chains-popover'));
-    expect(byId('chains-button').getAttribute('aria-expanded')).toBe('true');
-
-    // When
-    press('Escape');
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('chains-button').getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(byId('chains-button'));
-  });
-
   it('As a screen-reader user, the button announces the dialog it opens and whether it is open', async () => {
     // Given
     await renderPopover();
     const button = byId('chains-button');
-    const popover = byId('chains-popover');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Network');
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-controls')).toBe('chains-popover');
     expect(button.getAttribute('aria-expanded')).toBe('false');
@@ -817,82 +791,10 @@ describe('The network popover island', () => {
 
     // Then
     expect(button.getAttribute('aria-expanded')).toBe('true');
-  });
-
-  it('As a keyboard user, Tab stays inside the popover and it stays open', async () => {
-    // Given
-    await renderPopover();
-    byId('chains-button').focus();
-    await openPopover();
     const popover = byId('chains-popover');
-    expect(popover.contains(document.activeElement)).toBe(true);
-    const controls = focusables(popover);
-    controls.at(-1)?.focus();
-
-    // When
-    const tab = tabTo(byId('outside'));
-    await settle();
-
-    // Then: focus loops back into the popover.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(controls[0] ?? popover);
-  });
-
-  it('As a dotli user, a press outside closes it without handing focus back to the button', async () => {
-    // Given
-    await renderPopover();
-    byId('chains-button').focus();
-    await openPopover();
-
-    // When: the press lands on nothing that takes focus.
-    pointerPressUnfocusable(document.body);
-    await settle();
-
-    // Then: focus follows the press.
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(document.body);
-  });
-
-  it('As a dotli user, a click outside closes it, and a click inside does not', async () => {
-    // Given
-    await renderPopover();
-    await openPopover();
-
-    // When
-    byTestId('chains-tips').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When
-    pointerPress(byId('outside'));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-  });
-
-  it('As a dotli user, a blocking modal coming up closes it, stopping the countdown and the network watch', async () => {
-    // Given
-    monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
-    notify();
-    await renderPopover();
-    await openPopover();
-    expect(vi.getTimerCount()).toBe(1);
-    expect(monitor.stopNetworkWatch).not.toHaveBeenCalled();
-
-    // When
-    setBlockingModalActive(true);
-    await settle();
-    vi.advanceTimersByTime(EXIT_MS);
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Network');
+    expect(popover.getAttribute('tabindex')).toBe('-1');
   });
 
   it('As a visitor, the button shows once the product is on screen, whether that came before or after the mount', async () => {

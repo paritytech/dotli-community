@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Focus and scroll helpers shared by the shell surfaces (shell/create-popover.ts),
-// the dialogs (primitives/Dialog.tsx) and the topbar's auto-hide
+// Focus and scroll helpers shared by the floating surfaces (floating/), the
+// modal layers (floating/ModalLayer.tsx) and the topbar's auto-hide
 // (topbar-autohide.ts). Solid-free.
 
 const TABBABLE = [
@@ -107,4 +107,21 @@ export function lockScroll(): () => void {
       document.body.removeAttribute('data-scroll-locked');
     }
   };
+}
+
+/** Whether focus is lost (on the body) or still inside `surface`. */
+export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
+  const active = document.activeElement;
+  return active === null || active === document.body || surface?.contains(active) === true;
+}
+
+/**
+ * Focus the trigger. A trigger the topbar has collapsed (reached through the
+ * More menu) cannot take focus, so `fallback`, the More button, gets it.
+ */
+export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLElement | undefined): void {
+  trigger?.focus();
+  if (trigger !== undefined && document.activeElement !== trigger) {
+    fallback?.focus();
+  }
 }

@@ -68,9 +68,8 @@ export function resetAuthModal(): void {
 
 /**
  * The account button (components/shell/AuthButton.tsx), the modal's
- * trigger: it gets the focus back as the modal closes, and pressing it does
- * not count as outside the modal. The two render as separate islands, so
- * the button hands itself over here.
+ * trigger: it gets the focus back as the modal closes. The two render as
+ * separate islands, so the button hands itself over here.
  */
 let trigger: HTMLElement | undefined;
 

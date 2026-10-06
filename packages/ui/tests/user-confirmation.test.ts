@@ -819,10 +819,12 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(byTestId('signing-modal').getAttribute('role')).toBe('dialog');
+    expect(byTestId('signing-modal-backdrop').tagName).toBe('DIALOG');
 
-    // When
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    // When: the key goes to the focused element, as a real one does.
+    (document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
 
     // Then
     await expect(accepted).resolves.toBe(false);

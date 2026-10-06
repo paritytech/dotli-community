@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy } from 'solid-js';
+import { createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { networkHealthStore } from '../../state/network-health.js';
 import { healthWord } from '../../network-health.js';
 import { topbarStore } from '../../state/topbar.js';
+import { Popover } from '../floating/Popover.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
-import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './ChainsPopover.module.css';
@@ -29,15 +29,14 @@ function GlobeIcon(): JSX.Element {
       stroke-linejoin="round"
     >
       <circle cx="12" cy="12" r="10" />
-      <path d="M2 12h20" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </svg>
   );
 }
 
 /**
  * The network button (`#chains-button`) and its popover (`#chains-popover`,
- * a Popover in the body; a bottom sheet on phones), an item of the topbar's
+ * a floating Popover; a bottom sheet on phones), an item of the topbar's
  * action group island (see src/islands/), rendered with the host page and
  * hydrated.
  *
@@ -52,41 +51,38 @@ function GlobeIcon(): JSX.Element {
  * mounted. A content failure is reported as `popover:chains-popover` and
  * closes it, and the next opening renders it afresh.
  *
- * A press outside, focus leaving it, Escape and a blocking modal close the
- * popover, a non-modal one.
+ * It closes as every Popover does (floating/Popover.tsx).
  */
 export function ChainsPopover(): JSX.Element {
   const topbar = useStore(topbarStore);
   const health = useStore(networkHealthStore);
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
-    <Popover
-      id="chains-popover"
-      title="Network"
-      class={s['popover']}
-      content={Chains}
-      trigger={t => (
-        <TopbarItem
-          name="network"
-          label="Network"
-          icon={GlobeIcon}
-          alert={
-            health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
-          }
-          aside={() => (
-            <>
-              <StatusDot tone={health()} size="sm" pulse={health() === 'idle'} />
-              <span>{healthWord(health())}</span>
-            </>
-          )}
-          priority={TOPBAR_PRIORITY.network}
-          visible={topbar().chainsButtonVisible}
-          activate={t.onClick}
-        >
-          <IconButton {...t} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
-            <GlobeIcon />
-          </IconButton>
-        </TopbarItem>
-      )}
-    />
+    <>
+      <TopbarItem
+        name="network"
+        label="Network"
+        icon={GlobeIcon}
+        alert={
+          health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
+        }
+        aside={() => (
+          <>
+            <StatusDot tone={health()} size="sm" pulse={health() === 'idle'} />
+            <span>{healthWord(health())}</span>
+          </>
+        )}
+        priority={TOPBAR_PRIORITY.network}
+        visible={topbar().chainsButtonVisible}
+        activate={() => button()?.click()}
+      >
+        <IconButton ref={setButton} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
+          <GlobeIcon />
+        </IconButton>
+      </TopbarItem>
+      <Popover id="chains-popover" title="Network" trigger={button()} class={s['popover']} preload={Chains.preload}>
+        <Chains />
+      </Popover>
+    </>
   );
 }

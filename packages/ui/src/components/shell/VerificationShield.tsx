@@ -1,12 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For, lazy } from 'solid-js';
+import { For, lazy, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID, type ShieldState } from '../../verification-shield.js';
 import { pillShield, urlPillStore } from '../../state/url-pill.js';
+import { Tooltip } from '../floating/Tooltip.js';
+import { preloadWhenIdle } from '../idle.js';
 import { useStore } from '../use-store.js';
-import { Popover } from './Popover.js';
 import { GLYPH_PATHS, TOOLTIP_TITLE } from './verification-glyphs.js';
 import s from './VerificationShield.module.css';
 
@@ -22,17 +23,18 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
 
 /**
  * The URL pill's shield (`#verification-shield`) and its "How was this site
- * loaded?" explainer (`#verification-tooltip`), a Popover in the body that
- * drops from the pill below the shield: a disclosure (the button toggles it,
- * and it takes no focus) that also shows while a mouse rests on the shield,
- * and a bottom sheet on phones. It closes on a press outside both, on focus leaving both, on
- * Escape (focus back to the button when it was inside or lost to the body),
- * on window blur (a tap inside the product iframe) and when a blocking modal
- * comes up. The shield's state is the url-pill store's (pillShield), null
- * until the host knows how the product was loaded: the button carries it as
- * `data-state`, the verified glyph shows (CSS) and no row is marked as this
- * site.
- * The explainer's body, VerificationContent, is its own chunk.
+ * loaded?" explainer (`#verification-tooltip`), a Tooltip that drops from the
+ * bar below the shield: it shows while a mouse rests on the shield, at once
+ * when the shield gets keyboard focus, and on a tap; Enter or Space on the
+ * shield toggles it. It hides once the pointer has left the shield and the
+ * explainer, and on the shield's blur, Escape, a press or focus elsewhere
+ * and the window's blur (a tap inside the product iframe). It takes no
+ * focus, and is the same anchored tooltip on a phone, no sheet. The shield's
+ * state is the url-pill store's (pillShield), null until the host knows how
+ * the product was loaded: the button carries it as `data-state`, the
+ * verified glyph shows (CSS) and no row is marked as this site.
+ * The explainer's body, VerificationContent, is its own chunk, preloaded
+ * when the browser is idle.
  *
  * Rendered by the URL pill's UrlPillShield island.
  */
@@ -42,62 +44,58 @@ export function VerificationShield(): JSX.Element {
     const current = state();
     return current === null ? TOOLTIP_TITLE : `${BUTTON_LABEL[current]}. ${TOOLTIP_TITLE}`;
   };
+  onSettled(() => preloadWhenIdle(Explainer));
 
   return (
     <div class={s['wrap']}>
-      <Popover
-        id={VERIFICATION_TOOLTIP_ID}
-        title={TOOLTIP_TITLE}
-        class={s['tooltip']}
-        anchor="trigger"
-        disclosure
-        openOnHover
-        closeOnBlur
-        // Nothing inside takes focus, so Tab moves on (and closes it).
-        trapFocus={false}
-        content={Explainer}
-        trigger={t => (
-          <button
-            {...t}
-            type="button"
-            id={VERIFICATION_SHIELD_ID}
-            class={s['shield']}
-            data-state={state() ?? undefined}
-            aria-label={label()}
-          >
-            <svg
-              class={[s['glyph'], s['verifiedGlyph']]}
-              data-testid="verification-shield-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-              // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
-              focusable="false"
+      <Tooltip id={VERIFICATION_TOOLTIP_ID}>
+        <Tooltip.Trigger>
+          {t => (
+            <button
+              {...t}
+              type="button"
+              id={VERIFICATION_SHIELD_ID}
+              class={s['shield']}
+              data-state={state() ?? undefined}
+              aria-label={label()}
             >
-              <For each={GLYPH_PATHS.verified}>{d => <path d={d} />}</For>
-            </svg>
-            <svg
-              class={[s['glyph'], s['trustedGlyph']]}
-              data-testid="verification-shield-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-              // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
-              focusable="false"
-            >
-              <For each={GLYPH_PATHS.trusted}>{d => <path d={d} />}</For>
-            </svg>
-          </button>
-        )}
-      />
+              <svg
+                class={[s['glyph'], s['verifiedGlyph']]}
+                data-testid="verification-shield-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
+                focusable="false"
+              >
+                <For each={GLYPH_PATHS.verified}>{d => <path d={d} />}</For>
+              </svg>
+              <svg
+                class={[s['glyph'], s['trustedGlyph']]}
+                data-testid="verification-shield-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
+                focusable="false"
+              >
+                <For each={GLYPH_PATHS.trusted}>{d => <path d={d} />}</For>
+              </svg>
+            </button>
+          )}
+        </Tooltip.Trigger>
+        <Tooltip.Content class={s['tooltip']}>
+          <Explainer />
+        </Tooltip.Content>
+      </Tooltip>
     </div>
   );
 }

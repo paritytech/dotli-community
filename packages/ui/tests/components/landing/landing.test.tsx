@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { getActiveTldSuffix } from '@dotli/config';
 import { mountLandingPage } from '../../helpers/landing.js';
+import { stubIdleBrowser } from '../../helpers/idle.js';
 import { byId, byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
@@ -456,9 +457,13 @@ describe('landing page', () => {
   });
 
   it("As a visitor, the auth button sits in the page's corner, with its surface in the body", async () => {
+    // Given: an idle browser, whose preload puts the surface in the page.
+    stubIdleBrowser();
+
     // When
     mount();
     await settle();
+    await vi.waitFor(() => byId('landing-user-popover'));
 
     // Then: the button in its item wrapper, always inline (there is no
     // topbar to collapse it into). The page is always dark, so it has no

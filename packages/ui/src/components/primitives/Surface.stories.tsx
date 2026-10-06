@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
+import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { InSheet as InSheetContext } from '../sheet/in-sheet.js';
-import frame from '../sheet/Sheet.module.css';
-import popover from '../shell/Popover.module.css';
+import { InSheet as InSheetContext } from '../floating/in-sheet.js';
+import layer from '../floating/FloatingLayer.module.css';
+import popover from '../floating/Popover.module.css';
+import frame from '../floating/SheetFrame.module.css';
 import { Button } from './Button.js';
 import { Chip } from './Chip.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from './Surface.js';
@@ -13,15 +15,22 @@ import { Callout, InfoIcon, Well } from './Well.js';
 
 /** A Popover's open surface, the glass around its content, as a bottom sheet with `sheet`. */
 const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
-  <div
-    class={[frame['anchored'], popover['surface'], frame['sheet']]}
-    data-open=""
-    data-sheet={props.sheet === true ? '' : undefined}
+  <Show
+    when={props.sheet === true}
+    fallback={
+      <div class={[layer['layer'], layer['topbarEnd'], popover['surface']].join(' ')} data-open="">
+        <InSheetContext value={() => false}>{props.children}</InSheetContext>
+      </div>
+    }
   >
-    <div class={props.sheet === true ? frame['body'] : undefined}>
-      <InSheetContext value={() => props.sheet === true}>{props.children}</InSheetContext>
+    <div data-open="" style={{ position: 'fixed', right: 0, bottom: 0, left: 0 }}>
+      <div class={frame['sheet']} data-sheet="">
+        <div class={frame['body']}>
+          <InSheetContext value={() => true}>{props.children}</InSheetContext>
+        </div>
+      </div>
     </div>
-  </div>
+  </Show>
 );
 
 type SurfaceArgs = Parameters<typeof Surface>[0];

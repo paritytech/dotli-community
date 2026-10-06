@@ -60,10 +60,15 @@
   }
 }
 
-/* The explainer, over the topbar's other popovers, as wide as the menus. */
+/* The explainer, as wide as the menus, from the shield's left edge. It
+   drops from the bar's bottom, as every topbar surface does, not from the
+   shield's: an area from the horizontal axis alone spans the whole height,
+   so `top` is set from the viewport's. */
 .tooltip {
-  z-index: 1600;
   width: var(--w-pop-md);
+  position-area: span-right;
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
+  margin-top: 0;
 }
 
 /* Phones: the whole address is the button (the board's button.address), so
@@ -95,5 +100,12 @@
   }
   .shield:focus-visible {
     outline: none;
+  }
+  /* Under the pill, which fills the bar: centred, with the bar's gutters,
+     where from the shield's left edge it would run off the screen. */
+  .tooltip {
+    position-area: span-all;
+    justify-self: center;
+    width: min(var(--w-pop-md), calc(100vw - 24px - var(--safe-left) - var(--safe-right)));
   }
 }

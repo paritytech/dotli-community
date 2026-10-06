@@ -5,8 +5,8 @@
  * The phone layout's breakpoint. At this width and below the bar is the
  * phone header, which never folds away (topbar-autohide.ts), the actions
  * live in More (topbar-status.ts), and popovers and menus open as bottom
- * sheets (create-popover.ts). The stylesheets repeat it as
- * `@media (max-width: 560px)`.
+ * sheets (floating/Popover.tsx, floating/DropdownMenu.tsx). The stylesheets
+ * repeat it as `@media (max-width: 560px)`.
  */
 export const PHONE_QUERY = '(max-width: 560px)';
 
@@ -20,9 +20,15 @@ function phoneQuery(): MediaQueryList {
   return phoneList;
 }
 
+// The host server-renders its islands at build time, where there is no window
+// and no viewport. Reads there answer "wide" and watching does nothing; a
+// component that renders differently on a phone must not read this while
+// hydrating, or its first client render disagrees with that markup.
+const serverRendering = (): boolean => typeof window === 'undefined';
+
 /** Whether the viewport is a phone's now. */
 export function isPhoneViewport(): boolean {
-  return phoneQuery().matches;
+  return !serverRendering() && phoneQuery().matches;
 }
 
 /**
@@ -30,6 +36,9 @@ export function isPhoneViewport(): boolean {
  * crosses PHONE_QUERY. Returns a function that stops.
  */
 export function watchPhoneViewport(onChange: (phone: boolean) => void): () => void {
+  if (serverRendering()) {
+    return () => undefined;
+  }
   const query = phoneQuery();
   const notify = (): void => {
     onChange(query.matches);

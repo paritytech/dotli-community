@@ -4,8 +4,8 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { settleModal, type ModalButton, type ModalButtonVariant, type ModalEntry } from '../../state/modals.js';
+import { Modal } from '../floating/Modal.js';
 import { Button, type ButtonVariant } from '../primitives/Button.js';
-import { Dialog, DialogActions, DialogBody, DialogHead } from '../primitives/Dialog.js';
 import { Field } from '../primitives/Field.js';
 import { ReloadIcon } from '../primitives/Surface.js';
 import { Callout, Well } from '../primitives/Well.js';
@@ -28,7 +28,7 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
 
 /**
  * Every queued app prompt (a permission request, the password prompt, a
- * preimage submit, a transaction or message to sign) drawn as a Dialog: its
+ * preimage submit, a transaction or message to sign) drawn as a Modal: its
  * head, a well of fields, the notice, the password input, and the answers.
  * The close button (or a swipe) answers as the scrim does, and on a prompt
  * the scrim cannot dismiss, as its Cancel (or else its danger reject) does.
@@ -82,16 +82,22 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   };
 
   return (
-    <Dialog
-      titleId={titleId}
+    <Modal
+      open
+      onOpenChange={(_, reason) => {
+        if (reason === 'close') {
+          close();
+        } else {
+          dismiss();
+        }
+      }}
       title={view.title}
+      labelledBy={titleId}
       initialFocus={() => input}
-      onDismiss={dismiss}
-      onClose={close}
       testId="signing-modal"
     >
-      <DialogHead titleId={titleId} title={view.title} icon={view.icon} iconTestId="permission-modal-icon" />
-      <DialogBody>
+      <Modal.Head titleId={titleId} title={view.title} icon={view.icon} iconTestId="permission-modal-icon" />
+      <Modal.Body>
         <Show when={view.fields.length > 0}>
           <Well layout="list">
             <For each={view.fields}>
@@ -155,8 +161,8 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
             </>
           )}
         </Show>
-      </DialogBody>
-      <DialogActions testId="signing-modal-footer">
+      </Modal.Body>
+      <Modal.Actions testId="signing-modal-footer">
         <For each={view.buttons}>
           {button => (
             <Button
@@ -172,7 +178,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
             </Button>
           )}
         </For>
-      </DialogActions>
-    </Dialog>
+      </Modal.Actions>
+    </Modal>
   );
 }

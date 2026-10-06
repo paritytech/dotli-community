@@ -23,6 +23,9 @@ export interface ButtonProps {
   'aria-expanded'?: 'true' | 'false' | undefined;
   'aria-controls'?: string | undefined;
   'aria-haspopup'?: 'dialog' | 'menu' | undefined;
+  /** The id of the `popover` this button opens and closes. */
+  popovertarget?: string | undefined;
+  style?: JSX.CSSProperties | undefined;
   class?: string | undefined;
   testId?: string;
   children?: JSX.Element;
@@ -44,6 +47,8 @@ export function Button(props: ButtonProps): JSX.Element {
       aria-expanded={props['aria-expanded']}
       aria-controls={props['aria-controls']}
       aria-haspopup={props['aria-haspopup']}
+      popovertarget={props.popovertarget}
+      style={props.style}
       class={[s['button'], props.class]}
       data-variant={props.variant ?? 'secondary'}
       data-size={props.size ?? 'md'}

@@ -8,7 +8,7 @@ import { Button } from '../primitives/Button.js';
 import { Surface } from '../primitives/Surface.js';
 import { Callout, InfoIcon } from '../primitives/Well.js';
 import { sessionDisplayName, sessionInitials, sessionUsername, useAccount, UserIcon } from './account.js';
-import { usePopover } from './Popover.js';
+import { usePopover } from '../floating/Popover.js';
 import s from './AccountContent.module.css';
 
 function LogOutIcon(): JSX.Element {
@@ -25,9 +25,7 @@ function LogOutIcon(): JSX.Element {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9" />
     </svg>
   );
 }

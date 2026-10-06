@@ -1,15 +1,13 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The menu is the shared anchored frame (components/sheet/Sheet.module.css)
-   holding a column of rows. The base rules are wrapped in :where(), so a
-   consumer's class (the theme menu's width) wins over them whatever order
-   the stylesheets load in. */
-
-:where(.menu) {
-  /* Layout lives on the base rule, not on [data-open], so it holds through the
-     close transition while allow-discrete keeps `display: flex`. Otherwise the
-     rows briefly stack sideways on the way out. */
+/* The menu is FloatingLayer's glass holding a column of rows. A plain class,
+   not :where(): the layer's reset (padding 0) is a :where() rule, and the
+   menu's inset must win over it whatever order the stylesheets load in.
+   The layout is on the base rule, not on [data-open], so it holds through
+   the close transition while allow-discrete keeps `display: flex`;
+   otherwise the rows briefly stack sideways on the way out. */
+.menu {
   flex-direction: column;
   gap: 0;
   min-width: var(--w-pop-sm);
@@ -17,6 +15,11 @@
 }
 .menu[data-open] {
   display: flex;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
 }
 
 :where(.row) {
@@ -42,9 +45,6 @@
   background: var(--chrome-fill);
   color: var(--chrome-text);
 }
-.row[aria-checked='true'] {
-  background: var(--chrome-fill-strong);
-}
 .row:focus-visible {
   outline: var(--chrome-focus-ring);
   outline-offset: -2px;
@@ -56,7 +56,7 @@
 
 /* Phones: the boards' 8 px inset and 44 px rows. */
 @media (max-width: 560px) {
-  :where(.menu) {
+  .menu {
     padding: var(--sp-2);
   }
   :where(.row) {

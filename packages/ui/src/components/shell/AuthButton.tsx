@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy, onSettled, Show } from 'solid-js';
+import { createSignal, lazy, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { startLogin } from '../../auth-controller.js';
 import { getAuthState } from '../../state/auth.js';
 import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
+import { Popover } from '../floating/Popover.js';
 import { Button } from '../primitives/Button.js';
 import { useStore } from '../use-store.js';
 import { sessionDisplayName, sessionInitials, useAccount, UserIcon } from './account.js';
-import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './AuthButton.module.css';
@@ -19,8 +19,8 @@ const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountCont
 
 /**
  * The topbar's auth button (`#auth-button`) and the logged-in account's
- * popover (`#user-popover`, a Popover whose body, AccountContent, is its own
- * chunk; a bottom sheet on phones), an item of the topbar's action group
+ * popover (`#user-popover`, a floating Popover whose body, AccountContent, is
+ * its own chunk; a bottom sheet on phones), an item of the topbar's action group
  * (see TopbarActions.tsx) that never collapses into More. The host page
  * renders it logged out at build time, and it shows the session once
  * hydrated. The landing page (components/landing/) renders it too, in its
@@ -34,15 +34,16 @@ const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountCont
  * state (a pairing started while logged in included). Its trigger ARIA
  * follows the click, like a Radix Popover.Trigger or Dialog.Trigger:
  * `aria-haspopup="dialog"`, with `aria-controls` and `aria-expanded` for the
- * user popover while `Connected`, else for the auth modal
- * (`#auth-modal-backdrop`, open as authModalStore says).
+ * user popover while `Connected` (the button is the Popover's trigger then,
+ * which writes them), else for the auth modal (`#auth-modal-backdrop`, open
+ * as authModalStore says, written here).
  *
  * `idPrefix` sets another instance's ids apart (the landing page's, whose
  * page also holds the topbar's build-time markup).
  */
 export function AuthButton(props: { idPrefix?: string | undefined; showName?: boolean | undefined }): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
-  let button: HTMLButtonElement | undefined;
+  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = useAccount();
   const authModal = useStore(authModalStore);
   /**
@@ -62,79 +63,80 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
     return name === undefined ? label() : `${name}, account`;
   };
   // The auth modal's trigger, while mounted (see setAuthModalTrigger).
-  onSettled(() => (button === undefined ? undefined : setAuthModalTrigger(button)));
+  onSettled(() => {
+    const el = untrack(button);
+    return el === undefined ? undefined : setAuthModalTrigger(el);
+  });
+  // While connected the click is the popover's (the trigger's own
+  // listener); otherwise it starts the login.
+  const onClick = (): void => {
+    if (getAuthState().tag !== 'Connected') {
+      startLogin();
+    }
+  };
 
   return (
-    <Popover
-      id={id('user-popover')}
-      title="Account"
-      class={s['popover']}
-      content={Account}
-      trigger={t => {
-        const onClick = (ev?: Event): void => {
-          if (getAuthState().tag === 'Connected') {
-            t.onClick(ev);
-          } else {
-            startLogin();
+    <>
+      <TopbarItem
+        name="auth"
+        label={label()}
+        icon={UserIcon}
+        priority={TOPBAR_PRIORITY.auth}
+        activate={() => button()?.click()}
+        separated
+      >
+        {/* One element across login and logout, so the auth modal keeps its trigger. */}
+        <Button
+          ref={setButton}
+          onClick={onClick}
+          id={id('auth-button')}
+          title={label()}
+          aria-label={ariaLabel()}
+          aria-haspopup={opensPopover() ? undefined : 'dialog'}
+          aria-expanded={opensPopover() ? undefined : authModal().open ? 'true' : 'false'}
+          aria-controls={opensPopover() ? undefined : 'auth-modal-backdrop'}
+          variant={account.loggedIn() ? 'secondary' : 'primary'}
+          class={
+            account.loggedIn()
+              ? [s['chip'], shownName() === undefined ? s['avatarOnly'] : undefined].join(' ').trim()
+              : s['signIn']
           }
-        };
-        return (
-          <TopbarItem
-            name="auth"
-            label={label()}
-            icon={UserIcon}
-            priority={TOPBAR_PRIORITY.auth}
-            activate={onClick}
-            separated
+        >
+          <Show
+            when={account.loggedIn() && account.session()}
+            fallback={
+              <>
+                <UserIcon />
+                <span class={s['label']}>Sign in</span>
+              </>
+            }
           >
-            {/* One element across login and logout, so the auth modal keeps its trigger. */}
-            <Button
-              ref={el => {
-                button = el;
-                t.ref(el);
-              }}
-              onClick={onClick}
-              id={id('auth-button')}
-              title={label()}
-              aria-label={ariaLabel()}
-              aria-haspopup={t['aria-haspopup']}
-              aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
-              aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
-              variant={account.loggedIn() ? 'secondary' : 'primary'}
-              class={
-                account.loggedIn()
-                  ? [s['chip'], shownName() === undefined ? s['avatarOnly'] : undefined].join(' ').trim()
-                  : s['signIn']
-              }
-            >
-              <Show
-                when={account.loggedIn() && account.session()}
-                fallback={
-                  <>
-                    <UserIcon />
-                    <span class={s['label']}>Sign in</span>
-                  </>
-                }
-              >
-                {session => (
-                  <>
-                    <span
-                      class={s['avatar']}
-                      data-testid="user-badge"
-                      data-anon={sessionInitials(session()) === undefined ? '' : undefined}
-                    >
-                      <Show when={sessionInitials(session())} fallback={<UserIcon />}>
-                        {initials => <>{initials()}</>}
-                      </Show>
-                    </span>
-                    <Show when={shownName()}>{name => <span class={s['name']}>{name()}</span>}</Show>
-                  </>
-                )}
-              </Show>
-            </Button>
-          </TopbarItem>
-        );
-      }}
-    />
+            {session => (
+              <>
+                <span
+                  class={s['avatar']}
+                  data-testid="user-badge"
+                  data-anon={sessionInitials(session()) === undefined ? '' : undefined}
+                >
+                  <Show when={sessionInitials(session())} fallback={<UserIcon />}>
+                    {initials => <>{initials()}</>}
+                  </Show>
+                </span>
+                <Show when={shownName()}>{name => <span class={s['name']}>{name()}</span>}</Show>
+              </>
+            )}
+          </Show>
+        </Button>
+      </TopbarItem>
+      <Popover
+        id={id('user-popover')}
+        title="Account"
+        trigger={opensPopover() ? button() : undefined}
+        class={s['popover']}
+        preload={Account.preload}
+      >
+        <Account />
+      </Popover>
+    </>
   );
 }

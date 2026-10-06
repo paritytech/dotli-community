@@ -17,15 +17,7 @@ import {
 
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import {
-  pointerPress,
-  pointerPressUnfocusable,
-  renderComponent,
-  resetStores,
-  tabTo,
-  waitForContent,
-} from '../../helpers/solid.js';
+import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import {
   buildBaseDiagnosticsRows,
@@ -38,6 +30,7 @@ import { byId, byTestId, must, query } from '../../support.js';
 import { focusables } from '../../../src/components/focus.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const actions = vi.hoisted(() => ({
   applyAndReset: vi.fn(),
@@ -127,8 +120,9 @@ async function drain(): Promise<void> {
   }
 }
 
+/** Open, as the surface says; it is in the page only from its first opening. */
 function isOpen(): boolean {
-  return byId('mode-popover').hasAttribute('data-open');
+  return document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
 }
 
 function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -174,13 +168,6 @@ function infoRow(label: string): HTMLElement {
   return found;
 }
 
-/** The popover's controls that Tab reaches, in order. */
-function tabbables(): HTMLElement[] {
-  return Array.from(
-    byId('mode-popover').querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
-  ).filter(el => !(el instanceof HTMLInputElement && !el.checked));
-}
-
 async function renderPopover({ seed = true } = {}): Promise<void> {
   if (seed) {
     initSettingsStore();
@@ -204,13 +191,6 @@ async function openPopover(): Promise<void> {
   expect(isOpen()).toBe(true);
   await waitForContent('mode-popover');
   await settle();
-}
-
-/** The backdrop: the shared Popover's, open with the popover. */
-function expectBackdrop(open: boolean): void {
-  const backdrop = byId('mode-popover-backdrop');
-  expect(backdrop.getAttribute('data-testid')).toBe('popover-backdrop');
-  expect(backdrop.hasAttribute('data-open')).toBe(open);
 }
 
 /** What the popover reads from @dotli/config when it opens. */
@@ -414,10 +394,16 @@ function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
  */
 function expectPopoverMatches(settings: Settings, sheet = false): void {
   const popover = byId('mode-popover');
-  expect(popover.getAttribute('role')).toBe('dialog');
+  // A sheet is a native dialog, whose role is implicit and which labels itself
+  // by its title.
+  if (sheet) {
+    expect(popover.tagName).toBe('DIALOG');
+  } else {
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('tabindex')).toBe('-1');
+  }
   expect(popover.getAttribute('aria-label')).toBe('Settings');
-  expect(popover.getAttribute('tabindex')).toBe('-1');
-  const body = query(popover, ':scope > [data-testid="popover-body"]');
+  const body = must(popoverBody('mode-popover'), '#mode-popover');
   expect(tags(body)).toEqual(['DIV']);
   const content = nth(body.children, 0);
   expect(content.id).toBe('mode-popover-content');
@@ -465,18 +451,18 @@ function expectModeButton(open: boolean): void {
   expect(tags(button)).toEqual(['svg']);
 }
 
+useFloatingSurfaces();
+
 describe('The settings popover island', () => {
-  it('As a dotli user, the closed button, backdrop and popover have their ids, labels and ARIA state', async () => {
+  it('As a dotli user, the closed button and popover have their ids, labels and ARIA state', async () => {
     // When
     await renderPopover();
 
     // Then
     expectModeButton(false);
     expect(byId('mode-button').hasAttribute('data-badge')).toBe(false);
-    expectBackdrop(false);
-    // The surface is the shared Popover's, and holds nothing until opened.
-    expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
-    expect(query(byId('mode-popover'), ':scope > [data-testid="popover-body"]').childElementCount).toBe(0);
+    // The surface is the shared Popover's, in the page from its first opening (or idle preload).
+    expect(document.getElementById('mode-popover')).toBeNull();
   });
 
   it('As a visitor on trusted providers, the button carries the trusted-provider mark', async () => {
@@ -537,14 +523,6 @@ describe('The settings popover island', () => {
 
     // When
     await openPopover();
-    byId('mode-popover-backdrop').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-
-    // When
-    await openPopover();
     byTestId('popover-sheet-close').click();
     await settle();
 
@@ -583,7 +561,6 @@ describe('The settings popover island', () => {
 
     // Then
     expect(byId('mode-button').getAttribute('aria-expanded')).toBe('true');
-    expectBackdrop(true);
     expectPopoverMatches({
       chain: 'smoldot-direct',
       network: 'previewnet',
@@ -851,7 +828,7 @@ describe('The settings popover island', () => {
     // When: opened again, then the popover closed and reopened.
     toggle.click();
     await settle();
-    byId('mode-popover-backdrop').click();
+    press('Escape');
     await settle();
     await openPopover();
 
@@ -957,47 +934,12 @@ describe('The settings popover island', () => {
     expect(assign).toHaveBeenCalledWith('https://app.dot.li/?debug=off');
   });
 
-  it('As a keyboard user, opening it focuses its first control, Tab loops inside, and Escape closes it, handing focus back to the button', async () => {
-    // Given
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    const focusables = Array.from(
-      byId('mode-popover').querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
-    ).filter(el => !(el instanceof HTMLInputElement && !el.checked));
-    expect(document.activeElement).toBe(focusables[0]);
-    nth(focusables, focusables.length - 1).focus();
-
-    // When
-    const tab = press('Tab');
-
-    // Then: Tab loops back to the first control.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(focusables[0]);
-
-    // When
-    press('Escape');
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('mode-popover-backdrop').hasAttribute('data-open')).toBe(false);
-    expect(byId('mode-button').getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(byId('mode-button'));
-  });
-
   it('As a screen-reader user, the button announces the dialog it opens and whether it is open', async () => {
     // Given
     await renderPopover();
     const settingsButton = byId('mode-button');
-    const popover = byId('mode-popover');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Settings');
     expect(settingsButton.getAttribute('aria-haspopup')).toBe('dialog');
     expect(settingsButton.getAttribute('aria-controls')).toBe('mode-popover');
     expect(settingsButton.getAttribute('aria-expanded')).toBe('false');
@@ -1007,42 +949,9 @@ describe('The settings popover island', () => {
 
     // Then
     expect(settingsButton.getAttribute('aria-expanded')).toBe('true');
-  });
-
-  it('As a keyboard user on desktop, Tab past the last control keeps focus in the popover and leaves it open', async () => {
-    // Given
-    await renderPopover();
-    byId('mode-button').focus();
-    await openPopover();
-    expect(byId('mode-popover').contains(document.activeElement)).toBe(true);
-    const controls = byId('mode-popover').querySelectorAll<HTMLElement>('button:not([disabled])');
-    nth(controls, controls.length - 1).focus();
-    await settle();
-    expect(isOpen()).toBe(true);
-
-    // When
-    const tab = tabTo(byId('outside'));
-    await settle();
-
-    // Then
-    expect(tab.defaultPrevented).toBe(true);
-    expect(isOpen()).toBe(true);
-    expect(byId('mode-popover').contains(document.activeElement)).toBe(true);
-  });
-
-  it('As a dotli user on desktop, a press on the backdrop closes it without handing focus back to the button', async () => {
-    // Given
-    await renderPopover();
-    byId('mode-button').focus();
-    await openPopover();
-
-    // When: the backdrop covers the page, and takes no focus.
-    pointerPressUnfocusable(byId('mode-popover-backdrop'));
-    await settle();
-
-    // Then: focus follows the press.
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(document.body);
+    const popover = byId('mode-popover');
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Settings');
   });
 
   it('As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button', async () => {
@@ -1066,133 +975,12 @@ describe('The settings popover island', () => {
     expect(document.activeElement).toBe(byId('more-button'));
   });
 
-  it('As a dotli user, a click on the backdrop or outside closes it, and a click inside does not', async () => {
-    // Given
-    await renderPopover();
-    await openPopover();
-
-    // When
-    byTestId('mode-popover-columns').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When
-    byId('mode-popover-backdrop').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-
-    // When
-    await openPopover();
-    pointerPress(byId('outside'));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-  });
-
-  it('As a dotli user, a blocking modal coming up closes it', async () => {
-    // Given
-    await renderPopover();
-    await openPopover();
-
-    // When
-    setBlockingModalActive(true);
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('mode-popover-backdrop').hasAttribute('data-open')).toBe(false);
-  });
-
-  it('As a mobile user, the full-screen settings sheet is a modal dialog: it traps Tab, keeps focus, locks the page scroll and says it is modal', async () => {
-    // Given
-    stubPhoneViewport(true);
-    document.body.style.overflow = '';
-    await renderPopover();
-    byId('mode-button').focus();
-
-    // When
-    await openPopover();
-
-    // Then
-    const popover = byId('mode-popover');
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-modal')).toBe('true');
-    expect(popover.contains(document.activeElement)).toBe(true);
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
-
-    // When: Tab on the last control.
-    const controls = tabbables();
-    nth(controls, controls.length - 1).focus();
-    const tab = press('Tab');
-
-    // Then: it wraps to the first.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(controls[0]);
-
-    // When: focus lands outside, as a modal dialog never lets it.
-    byId('outside').focus();
-    await settle();
-
-    // Then: a dialog does not close on focus leaving it.
-    expect(isOpen()).toBe(true);
-
-    // When
-    byTestId('popover-sheet-close').click();
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(popover.hasAttribute('aria-modal')).toBe(false);
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
-  });
-
-  it('As a phone user, the Settings sheet going away while open unlocks the page', async () => {
-    // Given
-    stubPhoneViewport(true);
-    await renderPopover();
-    await openPopover();
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
-
-    // When
-    for (const cleanup of cleanups) {
-      cleanup();
-    }
-    cleanups = [];
-    await settle();
-
-    // Then
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
-  });
-
-  it('As a desktop user, the settings popover is not modal: no aria-modal and no scroll lock, though Tab loops inside', async () => {
-    // Given
-    stubPhoneViewport(false);
-    document.body.style.overflow = '';
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
-    const controls = tabbables();
-    nth(controls, controls.length - 1).focus();
-    expect(press('Tab').defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(controls[0]);
-  });
-
   it('As a user who resized the window, the settings open as a sheet or a popover by the width at each opening', async () => {
     // Given: opened wide, then closed.
     const viewport = stubPhoneViewport(false);
     await renderPopover();
     await openPopover();
-    expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
+    expect(byId('mode-popover').tagName).toBe('DIV');
     press('Escape');
     await settle();
 
@@ -1201,10 +989,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // Then
-    expect(byId('mode-popover').getAttribute('aria-modal')).toBe('true');
-    const controls = tabbables();
-    nth(controls, controls.length - 1).focus();
-    expect(press('Tab').defaultPrevented).toBe(true);
+    expect(byId('mode-popover').tagName).toBe('DIALOG');
 
     // When: widened while open, then closed and opened.
     viewport.set(false);
@@ -1213,7 +998,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // Then
-    expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
+    expect(byId('mode-popover').tagName).toBe('DIV');
   });
 
   it('As a phone user, the settings sheet leaves its title to the sheet header and Save and apply spans the sheet', async () => {

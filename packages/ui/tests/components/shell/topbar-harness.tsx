@@ -5,7 +5,7 @@ import { vi } from 'vitest';
 import type { JSX } from '@solidjs/web';
 import { ActionGroup } from '../../../src/components/shell/topbar/ActionGroup.js';
 import type { TopbarMorph } from '../../../src/topbar-status.js';
-import { pointerPress, renderComponent, settle } from '../../helpers/solid.js';
+import { mouseClick, pointerPress, renderComponent, settle } from '../../helpers/solid.js';
 import { byId, query } from '../../support.js';
 
 /** The width every item and the More button take, unless given. */
@@ -113,6 +113,25 @@ export async function renderTopbar(
 /** The More menu's row for the item named `name`. */
 export function moreRow(name: string): HTMLElement {
   return query(document, `#more-popover [role="menuitem"][data-item="${name}"]`);
+}
+
+/**
+ * Open the More menu, unless it is open: its rows are in the page only
+ * while it is, and the menu itself from its first opening.
+ */
+export async function openMore(): Promise<void> {
+  if (document.getElementById('more-popover')?.hasAttribute('data-open') !== true) {
+    mouseClick(byId('more-button'));
+    await settle();
+  }
+}
+
+/** The items in the More menu, in its order, opening it to read them. */
+export async function moreRowNames(): Promise<string[]> {
+  await openMore();
+  return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
+    el => el.dataset['item'] ?? '',
+  );
 }
 
 /** Open the More menu and tap the row of the item named `name`. */
