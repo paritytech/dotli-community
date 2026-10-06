@@ -120,7 +120,7 @@ describe('runtime-registered local files', () => {
     const loading = surface.querySelector<HTMLElement>('#dotli-polkavm-loading');
     expect(loading?.hidden).toBe(false);
     expect(loading?.textContent).toBe('Loading test.map…');
-    expect(surface.hasAttribute('aria-busy')).toBe(true);
+    expect(surface.getAttribute('aria-busy')).toBe('true');
     expect(menu.status.textContent).toBe('Loading test.map…');
     menu.loadingReady();
     expect(menu.status.textContent).toBe('Loading test.map… Resume to continue.');
