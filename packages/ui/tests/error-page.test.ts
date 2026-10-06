@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { showError, showErrorPage } from '../src/ui.js';
+import { showError, showErrorPage, showNoContentError, showRetryScreen } from '../src/ui.js';
+import { byId, byTestId, query } from './support.js';
 
 const XSS = '<img src=x onerror="alert(1)">';
 
@@ -16,32 +17,39 @@ describe('showErrorPage escaping', () => {
   it('As a visitor, markup in an error message is shown to me as text', () => {
     showErrorPage({ title: 't', detail: XSS });
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('.error-page-detail')?.textContent).toBe(XSS);
+    expect(byTestId('error-page-detail').textContent).toBe(XSS);
   });
 
   it('As a visitor, markup in the plain parts of a message is shown to me as text', () => {
     showErrorPage({ title: 't', detail: [XSS, ' tail'] });
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('.error-page-detail')?.textContent).toBe(`${XSS} tail`);
+    expect(byTestId('error-page-detail').textContent).toBe(`${XSS} tail`);
   });
 
   it('As a visitor, markup in the bolded parts of a message is shown to me as text', () => {
     showErrorPage({ title: 't', detail: [{ strong: XSS }] });
     expect(document.querySelector('img')).toBeNull();
-    const strong = document.querySelector('.error-page-detail strong');
-    expect(strong?.textContent).toBe(XSS);
+    const strong = query(byTestId('error-page-detail'), 'strong');
+    expect(strong.textContent).toBe(XSS);
+  });
+
+  it('As a visitor, markup in the domain of a no-content error is shown to me as text', () => {
+    showNoContentError(XSS);
+    expect(document.querySelector('img')).toBeNull();
+    expect(byTestId('error-page-domain').textContent.startsWith(XSS)).toBe(true);
   });
 
   it('As a visitor, markup in an error title is shown to me as text', () => {
     showErrorPage({ title: XSS });
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('.error-page-title')?.textContent).toBe(XSS);
+    expect(byTestId('error-page-title').textContent).toBe(XSS);
   });
 
   it('As a visitor, markup in a tip is shown to me as text', () => {
     showErrorPage({ title: 't', tips: [XSS] });
+    byTestId('error-page-tips');
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('.error-page-tips-list li')?.textContent).toBe(XSS);
+    expect(query(document, '[data-testid="error-page-tips-list"] li').textContent).toBe(XSS);
   });
 
   it('As a visitor, markup in a button label is shown to me as text', () => {
@@ -49,8 +57,9 @@ describe('showErrorPage escaping', () => {
       title: 't',
       actions: [{ label: XSS, onClick: () => undefined }],
     });
+    byTestId('error-page-actions');
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('#error-retry-btn .error-page-retry-label')?.textContent).toBe(XSS);
+    expect(query(document, '#error-retry-btn [data-testid="error-page-retry-label"]').textContent).toBe(XSS);
   });
 });
 
@@ -59,7 +68,7 @@ describe('showErrorPage primary action', () => {
 
   it('As a visitor, a lone button is the recommended one', () => {
     showErrorPage({ title: 't', actions: [{ label: 'A', onClick: noop }] });
-    expect(document.querySelector('#error-retry-btn')?.className).toContain('error-page-retry--primary');
+    expect(query(document, '#error-retry-btn').hasAttribute('data-primary')).toBe(true);
   });
 
   it('As a visitor, the first button is recommended when none is marked', () => {
@@ -70,8 +79,8 @@ describe('showErrorPage primary action', () => {
         { label: 'B', onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn')?.className).toContain('error-page-retry--primary');
-    expect(document.querySelector('#error-retry-btn-1')?.className).not.toContain('error-page-retry--primary');
+    expect(query(document, '#error-retry-btn').hasAttribute('data-primary')).toBe(true);
+    expect(query(document, '#error-retry-btn-1').hasAttribute('data-primary')).toBe(false);
   });
 
   // The gated failover screen puts `Go Back` second and marks it primary, so
@@ -84,8 +93,8 @@ describe('showErrorPage primary action', () => {
         { label: 'B', primary: true, onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn')?.className).not.toContain('error-page-retry--primary');
-    expect(document.querySelector('#error-retry-btn-1')?.className).toContain('error-page-retry--primary');
+    expect(query(document, '#error-retry-btn').hasAttribute('data-primary')).toBe(false);
+    expect(query(document, '#error-retry-btn-1').hasAttribute('data-primary')).toBe(true);
   });
 
   // Reading order, DOM order and tab order have to agree. Placing the primary
@@ -98,7 +107,7 @@ describe('showErrorPage primary action', () => {
         { label: 'Open Settings', onClick: noop },
       ],
     });
-    const labels = [...document.querySelectorAll('.error-page-retry-label')].map(n => n.textContent);
+    const labels = [...document.querySelectorAll('[data-testid="error-page-retry-label"]')].map(n => n.textContent);
     expect(labels).toEqual(['Open Settings', 'Reload']);
   });
 
@@ -107,7 +116,7 @@ describe('showErrorPage primary action', () => {
       title: 't',
       actions: [{ label: 'Only', primary: true, onClick: noop }],
     });
-    const labels = [...document.querySelectorAll('.error-page-retry-label')].map(n => n.textContent);
+    const labels = [...document.querySelectorAll('[data-testid="error-page-retry-label"]')].map(n => n.textContent);
     expect(labels).toEqual(['Only']);
   });
 
@@ -123,8 +132,10 @@ describe('showErrorPage primary action', () => {
         { label: 'Open Settings', onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn .error-page-retry-label')?.textContent).toBe('Reload');
-    expect(document.querySelector('#error-retry-btn-1 .error-page-retry-label')?.textContent).toBe('Open Settings');
+    expect(query(document, '#error-retry-btn [data-testid="error-page-retry-label"]').textContent).toBe('Reload');
+    expect(query(document, '#error-retry-btn-1 [data-testid="error-page-retry-label"]').textContent).toBe(
+      'Open Settings',
+    );
   });
 
   it('As a test author, the first action keeps its id whichever button is primary', () => {
@@ -135,19 +146,21 @@ describe('showErrorPage primary action', () => {
         { label: 'Second', primary: true, onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn .error-page-retry-label')?.textContent).toBe('First');
+    expect(query(document, '#error-retry-btn [data-testid="error-page-retry-label"]').textContent).toBe('First');
   });
 });
 
 describe('showErrorPage optional blocks', () => {
   it('As a visitor, I see no empty Try list when there is nothing to suggest', () => {
     showErrorPage({ title: 't', tips: [] });
-    expect(document.querySelector('.error-page-tips')).toBeNull();
+    byTestId('error-page');
+    expect(document.querySelector('[data-testid="error-page-tips"]')).toBeNull();
   });
 
   it('As a visitor, I see no empty button row when there is nothing to click', () => {
     showErrorPage({ title: 't', actions: [] });
-    expect(document.querySelector('.error-page-actions')).toBeNull();
+    byTestId('error-page');
+    expect(document.querySelector('[data-testid="error-page-actions"]')).toBeNull();
   });
 
   it('As a visitor, clicking a button that opens a panel leaves the panel open', () => {
@@ -163,17 +176,17 @@ describe('showErrorPage optional blocks', () => {
         },
       ],
     });
-    document.querySelector<HTMLButtonElement>('#error-retry-btn')?.click();
+    query(document, '#error-retry-btn').click();
     expect(got).not.toBeNull();
     expect(typeof (got as MouseEvent).stopPropagation).toBe('function');
   });
 
   it('As a visitor, I see the warning mark only on a screen that warns me', () => {
     showErrorPage({ title: 't', glyph: 'warning' });
-    expect(document.querySelector('.error-page-glyph--warning')).not.toBeNull();
+    expect(byTestId('error-page-glyph').hasAttribute('data-warning')).toBe(true);
 
     showErrorPage({ title: 't' });
-    expect(document.querySelector('.error-page-glyph')).toBeNull();
+    expect(byTestId('error-page-glyph').hasAttribute('data-warning')).toBe(false);
   });
 });
 
@@ -183,20 +196,21 @@ describe('showErrorPage focus', () => {
   // replaces one error screen with another in place, which is the worst case.
   it('As a screen-reader user, the new screen is announced when it replaces the old one', () => {
     showErrorPage({ title: "Your connection won't be verified" });
-    const title = document.querySelector('.error-page-title');
+    const title = byTestId('error-page-title');
     expect(document.activeElement).toBe(title);
   });
 
   it('As a keyboard user, the title does not take a tab stop', () => {
     showErrorPage({ title: 't' });
-    expect(document.querySelector('.error-page-title')?.getAttribute('tabindex')).toBe('-1');
+    expect(byTestId('error-page-title').getAttribute('tabindex')).toBe('-1');
   });
 });
 
 describe('showError shim', () => {
   it('As a visitor, tips passed to the shorthand still reach the page', () => {
     showError('t', 'd', undefined, ['Check the cable.']);
-    expect(document.querySelector('.error-page-tips-list li')?.textContent).toBe('Check the cable.');
+    byTestId('error-page-tips');
+    expect(query(document, '[data-testid="error-page-tips-list"] li').textContent).toBe('Check the cable.');
   });
 
   it('As a visitor, a bare retry callback becomes a Retry button', () => {
@@ -204,9 +218,24 @@ describe('showError shim', () => {
     showError('t', 'd', () => {
       clicked = true;
     });
-    const btn = document.querySelector<HTMLButtonElement>('#error-retry-btn');
-    expect(btn?.textContent).toContain('Retry');
-    btn?.click();
+    const btn = query(document, '#error-retry-btn');
+    expect(btn.textContent).toContain('Retry');
+    btn.click();
     expect(clicked).toBe(true);
+  });
+});
+
+describe('showRetryScreen', () => {
+  it('As a visitor whose load failed, retrying swaps the error page for the retry screen', () => {
+    // Given
+    showError('Failed to load content', 'd', () => undefined);
+
+    // When
+    showRetryScreen();
+
+    // Then
+    expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
+    byTestId('retry-screen');
+    expect(byId('status').textContent).toBe('Retrying…');
   });
 });

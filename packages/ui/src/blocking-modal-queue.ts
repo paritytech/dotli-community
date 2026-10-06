@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { setBlockingModalActive } from './state/topbar.js';
+import { setBlockingModalActive, setBlockingModalsWaiting } from './state/topbar.js';
 
 type BlockingModalTask<T> = (signal: AbortSignal) => Promise<T> | T;
 
@@ -61,6 +61,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
         settled: false,
       });
       this.drain();
+      this.emitWaiting();
     });
   }
 
@@ -76,6 +77,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
       entry.settled = true;
       entry.reject(reason);
     }
+    this.emitWaiting();
 
     if (this.active?.scope === scope) {
       this.active.controller.abort(reason);
@@ -87,6 +89,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
       return;
     }
     const entry = this.queue.shift();
+    this.emitWaiting();
     if (entry === undefined) {
       this.emitActiveChanged(false);
       return;
@@ -155,6 +158,10 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
       this.active = null;
       this.drain();
     }
+  }
+
+  private emitWaiting(): void {
+    setBlockingModalsWaiting(this.queue.length);
   }
 
   private emitActiveChanged(active: boolean): void {

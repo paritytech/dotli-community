@@ -8,6 +8,7 @@ import {
   startNetworkWatch,
   stopNetworkWatch,
   getTransfer,
+  holdNetworkWatch,
   recordChainPhase,
   recordPeerCount,
   recordTransfer,
@@ -529,3 +530,57 @@ describe('The network monitor tracks the phase of each chain', () => {
 function relayGenesis(): string {
   return nth(getActiveChainRoles(), 0).genesis;
 }
+
+describe('Several readers share the network watch', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetNetworkMonitor();
+  });
+
+  afterEach(() => {
+    resetNetworkMonitor();
+    vi.useRealTimers();
+  });
+
+  it('As a user, closing the network menu keeps the watch the status capsule holds', () => {
+    // Given
+    const fake = fakeSource();
+    setBlockSource(fake.source);
+    const capsule = holdNetworkWatch();
+    const menu = holdNetworkWatch();
+    const live = fake.liveCount();
+    expect(live).toBeGreaterThan(0);
+
+    // When
+    menu();
+    vi.advanceTimersByTime(GRACE_MS + 1000);
+
+    // Then
+    expect(fake.liveCount()).toBe(live);
+
+    // When
+    capsule();
+    vi.advanceTimersByTime(GRACE_MS + 1000);
+
+    // Then
+    expect(fake.liveCount()).toBe(0);
+  });
+
+  it('As a reader released twice by a repeated cleanup, I do not release another reader', () => {
+    // Given
+    const fake = fakeSource();
+    setBlockSource(fake.source);
+    const capsule = holdNetworkWatch();
+    const menu = holdNetworkWatch();
+    const live = fake.liveCount();
+
+    // When
+    menu();
+    menu();
+    vi.advanceTimersByTime(GRACE_MS + 1000);
+
+    // Then
+    expect(fake.liveCount()).toBe(live);
+    capsule();
+  });
+});

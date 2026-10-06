@@ -56,7 +56,11 @@ function onIslandError(ev: Event): void {
   const island = ev.target instanceof Element ? ev.target : null;
   const component = island?.getAttribute('component-export') ?? 'unknown';
   const { error } = (ev as CustomEvent<HydrationErrorDetail>).detail;
-  captureException(error, { kind: 'island_hydration_error', root: `island:${component}` });
+  captureException(error, {
+    flow: 'ui',
+    step: 'island_hydration',
+    tags: { root: `island:${component}`, kind: 'island_hydration_error' },
+  });
   switch (component) {
     case 'AuthModal':
       disableAuthModal();

@@ -21,7 +21,10 @@
 # Rate-limiting zones (only enabled on the production domains).
 #
 # /assets/ has its own zone with a larger burst: one cold page load fetches
-# more hashed chunks at once than the page burst allows. Each map leaves the
+# ~150 hashed chunks within a second or two, and the host, protocol and app
+# origins of a domain share the per-IP bucket, so the burst leaves room for a
+# hard reload or several apps opened in a row. Rejections are 429 so they read
+# as rate limiting rather than as a server fault. Each map leaves the
 # other zone's paths with an empty key, which nginx does not count, so every
 # request counts against exactly one zone. The map variables are per domain
 # because every site config shares one http block.
@@ -95,7 +98,8 @@ server {
     include /etc/nginx/snippets/dotli-ssl.conf;
 
     ${RL}limit_req zone=${ZONE} burst=30 nodelay;
-    ${RL}limit_req zone=${ZONE}_assets burst=128 nodelay;
+    ${RL}limit_req zone=${ZONE}_assets burst=512 nodelay;
+    ${RL}limit_req_status 429;
     set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN}";
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
@@ -132,7 +136,8 @@ server {
     include /etc/nginx/snippets/dotli-ssl.conf;
 
     ${RL}limit_req zone=${ZONE} burst=30 nodelay;
-    ${RL}limit_req zone=${ZONE}_assets burst=128 nodelay;
+    ${RL}limit_req zone=${ZONE}_assets burst=512 nodelay;
+    ${RL}limit_req_status 429;
     set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN} revx.dev stg.revx.dev http://localhost:*";
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
@@ -168,7 +173,8 @@ server {
     include /etc/nginx/snippets/dotli-ssl.conf;
 
     ${RL}limit_req zone=${ZONE} burst=30 nodelay;
-    ${RL}limit_req zone=${ZONE}_assets burst=128 nodelay;
+    ${RL}limit_req zone=${ZONE}_assets burst=512 nodelay;
+    ${RL}limit_req_status 429;
     include /etc/nginx/snippets/dotli-headers-host.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 

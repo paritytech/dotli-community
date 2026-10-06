@@ -33,8 +33,8 @@ export async function settle(): Promise<void> {
 export { resetAllStoresForTests as resetStores } from '../../src/state/create-store.js';
 
 /**
- * A mouse press on `el`: pointerdown, which is what dismisses a shell
- * popover pressed outside (components/shell/create-popover.ts), then the click.
+ * A mouse press on `el`: pointerdown, which is what a floating layer reads a
+ * press outside from (components/floating/FloatingLayer.tsx), then the click.
  */
 export function pointerPress(el: Element): void {
   el.dispatchEvent(
@@ -97,6 +97,18 @@ export function tabTo(next: HTMLElement): KeyboardEvent {
 }
 
 /**
+ * The content root of popover `#id`: the layer itself on a wide screen, the
+ * `data-sheet` wrapper inside a bottom sheet.
+ */
+export function popoverBody(id: string): HTMLElement | null {
+  const root = document.getElementById(id);
+  if (root === null) {
+    return null;
+  }
+  return root.querySelector<HTMLElement>('[data-sheet]') ?? root;
+}
+
+/**
  * The body of popover `#id` once its lazy content has loaded. Await Vite's
  * import barrier before polling the DOM; module compilation is not a UI timeout.
  */
@@ -105,9 +117,11 @@ export async function waitForContent(id: string): Promise<HTMLElement> {
   await vi.dynamicImportSettled();
   const body = await vi.waitFor(() => {
     flush();
-    const found = document.querySelector<HTMLElement>(`#${id} > .popover-body`);
+    const found = popoverBody(id);
     const loaded =
-      found !== null && found.firstElementChild !== null && found.querySelector('.popover-loading') === null;
+      found !== null &&
+      found.firstElementChild !== null &&
+      found.querySelector('[data-testid="popover-loading"]') === null;
     if (!loaded) {
       throw new Error(`#${id} has no content yet`);
     }

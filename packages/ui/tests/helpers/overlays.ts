@@ -21,3 +21,11 @@ export function resetOverlays(): void {
   resetToastsForTests();
   document.getElementById('overlay-root')?.remove();
 }
+
+/** Each footer answer of the open dialog: its label and how it is drawn (`data-variant`). */
+export function footerVariants(): [string, string | undefined][] {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'),
+    (button): [string, string | undefined] => [button.textContent, button.dataset['variant']],
+  );
+}

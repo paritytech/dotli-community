@@ -7,23 +7,71 @@ import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Net
 
 import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
+import { Button } from '../primitives/Button.js';
+import { Chip } from '../primitives/Chip.js';
+import { Choice } from '../primitives/Choice.js';
+import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
+import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
+import { Switch } from '../primitives/Switch.js';
+import { Row, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
-import { CacheToggle, RadioRow, SectionHeader } from './SettingsRows.js';
+import { usePopover } from '../floating/Popover.js';
+import s from './SettingsContent.module.css';
 
-const CHAIN_CHOICES: [Backend, string][] = [
-  ['smoldot-direct', 'Verified in your browser, separate per tab (recommended)'],
-  ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
-  ['rpc-gateway', 'Fetched from trusted servers, fastest but less private'],
+interface Transport {
+  value: Backend;
+  description: string;
+  recommended: boolean;
+}
+
+const TRANSPORTS: readonly Transport[] = [
+  { value: 'smoldot-direct', description: 'Verified in your browser, separate for each tab', recommended: true },
+  { value: 'smoldot-shared-worker', description: 'Verified in your browser, shared across tabs', recommended: false },
+  { value: 'rpc-gateway', description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
 ];
+
+type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
+
+/**
+ * The cache switches, each turning its cache off with its `skip` flag. Worker
+ * cache off makes the protocol iframe purge its IDB state (smoldot chain DB
+ * and polkadot-api caches) before initialisation, so every cold start boots
+ * from scratch: a deterministic baseline for a slower start.
+ */
+const CACHES: readonly [CacheKey, string][] = [
+  ['skipCidCache', 'dotNS cache'],
+  ['skipArchiveCache', 'Archive cache'],
+  ['skipWorkerCache', 'Worker cache'],
+];
+
+function TrashIcon(): JSX.Element {
+  return (
+    <svg
+      class={s['icon']}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
 
 /**
  * The popover's content for one opening. It starts from the saved settings
  * and keeps the changes in a draft: nothing is saved or reloaded until Save
- * & Apply, and the next opening starts afresh, so a closed popover drops
+ * and apply, and the next opening starts afresh, so a closed popover drops
  * its draft.
  */
 function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
+  const popover = usePopover();
   const saved = untrack(() => props.saved);
   const persisted: ModeDraft = {
     chain: saved.backend,
@@ -43,9 +91,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
     return (
       chain() !== persisted.chain ||
       network() !== persisted.network ||
-      draft.skipCidCache !== persisted.cache.skipCidCache ||
-      draft.skipArchiveCache !== persisted.cache.skipArchiveCache ||
-      draft.skipWorkerCache !== persisted.cache.skipWorkerCache ||
+      CACHES.some(([key]) => draft[key] !== persisted.cache[key]) ||
       polkaVmAppsEnabled() !== persisted.polkaVmAppsEnabled
     );
   });
@@ -80,126 +126,117 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;
 
   return (
-    <>
-      {/* Two-column grid. Left: backend / cache. Right: diagnostics. Save &
-          Apply and the footer span both columns at the bottom. Collapses to
-          a single column on narrow viewports (CSS). */}
-      <div class="mode-popover-columns">
-        <div class="mode-popover-col">
-          {networks.length > 1 && (
-            <>
-              <SectionHeader text="Network" />
-              <div role="radiogroup" aria-label="Network">
+    <Surface width="xl">
+      <SurfaceHead title="Settings" />
+      <div class={s['columns']} data-testid="mode-popover-columns">
+        <div class={s['column']}>
+          <Show when={networks.length > 1}>
+            <Stack>
+              <SectionLabel text="Network" />
+              <Stack role="radiogroup" aria-label="Network">
                 <For each={networks}>
                   {value => (
-                    <RadioRow
-                      name="dotli-network"
-                      value={value}
-                      label={NETWORK_NAME_TO_SERVICES_CONFIG[value].label}
+                    <Choice
+                      title={NETWORK_NAME_TO_SERVICES_CONFIG[value].label}
                       description={NETWORK_NAME_TO_SERVICES_CONFIG[value].description}
                       selected={network() === value}
-                      choose={() => {
-                        setNetwork(value);
+                      radio={{
+                        name: 'dotli-network',
+                        value,
+                        onChoose: () => {
+                          setNetwork(value);
+                        },
                       }}
                     />
                   )}
                 </For>
-              </div>
-            </>
-          )}
-          {/* Only separate from the Network section when there is one.
-              With a single enabled network this header leads the column and
-              must line up with Diagnostics opposite. */}
-          <SectionHeader
-            text="Network Transport"
-            modifier={networks.length > 1 ? 'mode-popover-section--spaced' : undefined}
-          />
-          <div role="radiogroup" aria-label="Network Transport">
-            <For each={CHAIN_CHOICES}>
-              {([value, description]) => (
-                <RadioRow
-                  name="dotli-backend"
-                  value={value}
-                  label={BACKEND_LABELS[value]}
-                  description={unavailable(value) ? 'Unavailable in this browser or private window' : description}
-                  selected={chain() === value}
-                  disabled={unavailable(value)}
-                  choose={() => {
-                    setChain(value);
-                  }}
-                />
-              )}
-            </For>
-          </div>
-          <SectionHeader text="Cache" modifier="mode-popover-section--bottom" />
-          <CacheToggle
-            label="dotNS cache"
-            checked={!persisted.cache.skipCidCache}
-            update={enabled => {
-              setCache(c => ({ ...c, skipCidCache: !enabled }));
-            }}
-          />
-          <CacheToggle
-            label="Archive cache"
-            checked={!persisted.cache.skipArchiveCache}
-            update={enabled => {
-              setCache(c => ({ ...c, skipArchiveCache: !enabled }));
-            }}
-          />
-          {/* Worker cache: when off, the protocol iframe purges its IDB
-              state (smoldot chain DB and polkadot-api caches) before
-              initialisation, so every cold start boots from scratch. Trades
-              startup time for a deterministic baseline. */}
-          <CacheToggle
-            label="Worker cache"
-            checked={!persisted.cache.skipWorkerCache}
-            update={enabled => {
-              setCache(c => ({ ...c, skipWorkerCache: !enabled }));
-            }}
-          />
-          {/* Manual "clear everything" escape hatch, through the same
-              full-reset pipeline as Save & Apply, so users don't have to
-              toggle a setting back and forth just to wipe state. */}
-          <div class="mode-cache-row mode-clear-all-row">
-            <button
-              onClick={clearAll}
-              class="mode-clear-btn"
-              title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
-              disabled={clearing()}
-            >
-              {clearing() ? 'Clearing…' : 'Clear all caches'}
-            </button>
-          </div>
+              </Stack>
+            </Stack>
+          </Show>
+          <Stack>
+            <SectionLabel text="Network transport" />
+            <Stack role="radiogroup" aria-label="Network transport">
+              <For each={TRANSPORTS}>
+                {transport => (
+                  <Choice
+                    title={BACKEND_LABELS[transport.value]}
+                    description={
+                      unavailable(transport.value)
+                        ? 'Unavailable in this browser or private window'
+                        : transport.description
+                    }
+                    chip={transport.recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
+                    selected={chain() === transport.value}
+                    radio={{
+                      name: 'dotli-backend',
+                      value: transport.value,
+                      disabled: unavailable(transport.value),
+                      onChoose: () => {
+                        setChain(transport.value);
+                      },
+                    }}
+                  />
+                )}
+              </For>
+            </Stack>
+          </Stack>
+          <Stack>
+            <SectionLabel text="Cache" />
+            <Well layout="controls" testId="mode-cache">
+              <For each={CACHES}>
+                {([key, label]) => (
+                  <Row label={label}>
+                    <Switch
+                      label={label}
+                      checked={!cache()[key]}
+                      onChange={enabled => {
+                        setCache(c => ({ ...c, [key]: !enabled }));
+                      }}
+                    />
+                  </Row>
+                )}
+              </For>
+            </Well>
+            {/* Manual "clear everything" escape hatch, through the same
+                full-reset pipeline as Save and apply, so users don't have to
+                toggle a setting back and forth just to wipe state. */}
+            <div data-testid="mode-clear-all-row">
+              <Button
+                block
+                onClick={clearAll}
+                title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
+                disabled={clearing()}
+              >
+                <TrashIcon />
+                {clearing() ? 'Clearing…' : 'Clear all caches'}
+              </Button>
+            </div>
+          </Stack>
+          <Stack>
+            <SectionLabel text="Experimental" />
+            <Well layout="controls" testId="mode-experimental">
+              <Row label="PolkaVM apps">
+                <Switch label="PolkaVM apps" checked={polkaVmAppsEnabled()} onChange={setPolkaVmAppsEnabled} />
+              </Row>
+            </Well>
+          </Stack>
         </div>
-        <div class="mode-popover-col">
-          <SectionHeader text="Experimental" />
-          <CacheToggle label="PolkaVM apps" checked={persisted.polkaVmAppsEnabled} update={setPolkaVmAppsEnabled} />
-          <SectionHeader text="Diagnostics" modifier="mode-popover-section--spaced" />
-          <Diagnostics backend={persisted.chain} />
-        </div>
+        <Diagnostics backend={persisted.chain} />
       </div>
-      {/* The footer wraps the divider, Save & Apply, and the warning as one
-          unit so it can pin to the bottom of the full-screen sheet on mobile
-          (CSS), keeping the primary action reachable. */}
-      <div class="mode-apply-footer">
-        <div class="mode-popover-divider" />
-        <div class="mode-cache-row mode-apply-row">
-          <button
-            onClick={apply}
-            class={`mode-clear-btn${dirty() ? ' mode-apply-dirty' : ''}`}
-            disabled={!dirty() || applying()}
-          >
-            {applying() ? 'Resetting…' : 'Save & Apply'}
-          </button>
+      <SurfaceFoot
+        hint={
+          <Hint icon={<ReloadIcon />} testId="mode-apply-warning">
+            Transport and cache changes reload the app
+          </Hint>
+        }
+      >
+        <div class={s['apply']} data-testid="mode-apply-row">
+          <Button variant="primary" block={popover.sheet()} onClick={apply} disabled={!dirty() || applying()}>
+            {applying() ? 'Resetting…' : 'Save and apply'}
+          </Button>
         </div>
-        {/* Applying reloads the app. Backend and network changes keep
-            caches warm; only caches the user turns off get cleared. Shown
-            only while the draft is dirty so the idle popover isn't noisy. */}
-        <p class={`mode-apply-warning${dirty() ? ' visible' : ''}`}>
-          Applying reloads the app. Caches you turn off are cleared.
-        </p>
-      </div>
-    </>
+      </SurfaceFoot>
+    </Surface>
   );
 }
 
@@ -210,9 +247,10 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * from what is saved; later writes to the store do not remount it mid-edit.
  */
 export function SettingsContent(): JSX.Element {
+  const popover = usePopover();
   const settings = useStore(settingsStore);
   return (
-    <div class="mode-popover-content" id="mode-popover-content">
+    <div class={s['content']} id="mode-popover-content" data-sheet={popover.sheet() ? '' : undefined}>
       {/* Not keyed: the panel mounts once the store is seeded, and reads the
           saved settings once (untracked). */}
       <Show when={settings()}>{saved => <SettingsPanel saved={saved()} />}</Show>

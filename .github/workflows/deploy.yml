@@ -105,6 +105,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.ref || github.sha }}
+          # Tags and history: the Sentry release is named from the newest
+          # vX.Y.Z tag (`git describe`), and its upload reads the commits since
+          # the previous release.
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 

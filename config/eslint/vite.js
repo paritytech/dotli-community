@@ -47,7 +47,7 @@ export const config = defineConfig([
       '@typescript-eslint/no-misused-promises': 'error',
       '@typescript-eslint/require-await': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      '@typescript-eslint/explicit-function-return-type': ['error', { allowExpressions: true }],
+      '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       '@typescript-eslint/no-import-type-side-effects': 'error',
       '@typescript-eslint/strict-boolean-expressions': 'error',
@@ -164,9 +164,6 @@ export const config = defineConfig([
     plugins: { solid: solidPlugin },
     rules: {
       ...solid.configs['flat/typescript'].rules,
-      // Components return JSX.Element by inference; annotating every one adds
-      // noise without catching anything.
-      '@typescript-eslint/explicit-function-return-type': 'off',
     },
   },
 ]);

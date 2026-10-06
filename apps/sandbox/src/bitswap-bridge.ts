@@ -12,6 +12,8 @@ interface BitswapResultMessage {
   ok: boolean;
   bytes?: Uint8Array;
   error?: string;
+  errorName?: string;
+  code?: number;
 }
 
 function isBitswapResultMessage(value: unknown): value is BitswapResultMessage {
@@ -64,9 +66,26 @@ function ensureListener(): void {
     if (reply.ok && reply.bytes instanceof Uint8Array) {
       entry.resolve(reply.bytes);
     } else {
-      entry.reject(new Error(reply.error ?? 'bitswap-relay: malformed result envelope'));
+      entry.reject(hostError(reply));
     }
   });
+}
+
+/**
+ * The host's failure, rebuilt with its class name and code.
+ *
+ * Every rebuilt error has this function's stack, so the name is what keeps a
+ * timeout, a missing block and a dead connection apart in Sentry.
+ */
+function hostError(reply: BitswapResultMessage): Error {
+  const err = new Error(reply.error ?? 'bitswap-relay: malformed result envelope');
+  if (typeof reply.errorName === 'string' && reply.errorName !== '') {
+    err.name = reply.errorName;
+  }
+  if (typeof reply.code === 'number') {
+    (err as { code?: number }).code = reply.code;
+  }
+  return err;
 }
 
 /** `BitswapBlockSource` for `@dotli/content/fetch`. */

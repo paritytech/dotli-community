@@ -94,6 +94,8 @@ export interface ProtocolErrorEnvelope {
    * substrings in `error`. Absent when the sender threw a non-`Error` value.
    */
   errorName?: string;
+  /** The sender's stack, for the report: the receiver rebuilds the error and has none of its own. */
+  errorStack?: string;
 }
 
 export interface ProtocolChainMessageEnvelope {

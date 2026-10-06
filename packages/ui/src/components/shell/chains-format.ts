@@ -3,9 +3,13 @@
 
 // What the network popover (ChainsPopover.tsx) says, as plain functions of
 // the network store's values: moved unchanged from topbar.ts, except that the
-// verdict takes the chains it judges instead of reading the monitor.
+// verdict takes the chains it judges instead of reading the monitor, and that
+// the menu's status line (describeNetworkStatus) is built from it.
 
-import type { ChainStatus } from '../../network-monitor.js';
+import type { Backend } from '@dotli/config';
+
+import type { ChainClock } from '../../network-monitor.js';
+import type { StatusTone } from '../primitives/StatusDot.js';
 
 /**
  * How the arrival of a single block reads on hover.
@@ -38,24 +42,20 @@ export function formatRate(bytesPerSecond: number): string {
     : `${(bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
 }
 
-/**
- * How many marks this strip can actually show.
- *
- * Measured rather than assumed, so the history a visitor sees is exactly the
- * history that fits: widen the panel and it lengthens, narrow it and it
- * shortens. Falls back to the full set before first layout, when the strip has
- * no width to measure and every number would be a guess.
- */
-export function stripCapacity(strip: HTMLElement, fallback: number): number {
-  const width = strip.getBoundingClientRect().width;
-  if (width <= 0) {
-    return fallback;
-  }
-  const style = getComputedStyle(strip);
-  const barWidth = Number.parseFloat(style.getPropertyValue('--chains-bar-w'));
-  const gap = Number.parseFloat(style.gap);
-  const step = (Number.isFinite(barWidth) ? barWidth : 4) + (Number.isFinite(gap) ? gap : 4);
-  return Math.max(1, Math.floor((width + (Number.isFinite(gap) ? gap : 4)) / step));
+/** Slots in a chain's history strip, filled from the right as samples arrive. */
+export const HISTORY_SLOTS = 48;
+
+/** Older slots fade: half strength at the left edge, full at the newest. */
+export function slotOpacity(slot: number): string {
+  return (0.5 + (0.5 * slot) / (HISTORY_SLOTS - 1)).toFixed(2);
+}
+
+/** The verdict describeLiveNetwork reaches: its words, and the tone of its dot. */
+export interface LiveVerdict {
+  text: string;
+  tone: Extract<StatusTone, 'ok' | 'warn' | 'idle'>;
+  /** The chains behind a warning, by label. */
+  slow?: readonly string[];
 }
 
 /**
@@ -65,10 +65,7 @@ export function stripCapacity(strip: HTMLElement, fallback: number): number {
  * verdict built from those latches at whatever the last chain to bootstrap
  * reported and keeps saying it after the connection dies.
  */
-export function describeLiveNetwork(status: readonly ChainStatus[]): {
-  text: string;
-  tone: string;
-} {
+export function describeLiveNetwork(status: readonly ChainClock[]): LiveVerdict {
   const chains = status.filter(c => c.reachable);
   if (chains.length === 0) {
     return { text: 'Starting', tone: 'idle' };
@@ -82,6 +79,7 @@ export function describeLiveNetwork(status: readonly ChainStatus[]): {
     return {
       text: `Waiting on ${overdue.map(c => c.label).join(' and ')}`,
       tone: 'warn',
+      slow: overdue.map(c => c.label),
     };
   }
   if (started.length < chains.length) {
@@ -91,4 +89,84 @@ export function describeLiveNetwork(status: readonly ChainStatus[]): {
     };
   }
   return { text: 'Your connection is good', tone: 'ok' };
+}
+
+/** The network menu's status line: a title, and the verdict's own words where they add to it. */
+export interface NetworkStatusLine {
+  tone: StatusTone;
+  title: string;
+  detail: string | null;
+}
+
+const UNSETTLED_TITLES: Record<'idle' | 'warn', string> = {
+  idle: 'Syncing',
+  warn: 'Connection is unstable',
+};
+
+const NUMBER_WORDS = ['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+/** "A", "A and B", "A, B and C". */
+function joinNames(names: readonly string[]): string {
+  return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+}
+
+/** "in sync", "in sync on both chains", "in sync on all four chains". */
+function inSync(chainCount: number): string {
+  if (chainCount < 2) {
+    return 'in sync';
+  }
+  if (chainCount === 2) {
+    return 'in sync on both chains';
+  }
+  return `in sync on all ${NUMBER_WORDS[chainCount - 2] ?? String(chainCount)} chains`;
+}
+
+/** The captions per backend: the gateway has no peers and verifies nothing, so it says neither. */
+interface Captions {
+  offline: string;
+  ok: (chainCount: number) => string;
+  slow: (names: readonly string[]) => string;
+  starting: string;
+}
+
+const LIGHT_CLIENT: Captions = {
+  offline: 'No peers on any chain. Retrying.',
+  ok: chainCount => `Light client is ${inSync(chainCount)}`,
+  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} short on peers`,
+  starting: 'Finding peers. This takes a few seconds.',
+};
+
+const GATEWAY: Captions = {
+  offline: 'Trusted providers are out of reach. Retrying.',
+  ok: () => 'Served by trusted providers',
+  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} behind`,
+  starting: 'Reaching trusted providers. This takes a few seconds.',
+};
+
+/**
+ * The network menu's status line, from the verdict, the browser's online
+ * state and the backend serving the chains.
+ *
+ * Offline wins, as it does for the capsule and the network badge, so the three
+ * never disagree: blocks that landed before the connection dropped would
+ * otherwise still read as a good connection. Every state carries a caption.
+ */
+export function describeNetworkStatus(
+  verdict: LiveVerdict,
+  offline: boolean,
+  chainCount = 0,
+  backend?: Backend,
+): NetworkStatusLine {
+  const captions = backend === 'rpc-gateway' ? GATEWAY : LIGHT_CLIENT;
+  if (offline) {
+    return { tone: 'err', title: 'You are offline', detail: captions.offline };
+  }
+  const { text, tone, slow } = verdict;
+  if (tone === 'ok') {
+    return { tone, title: text, detail: captions.ok(chainCount) };
+  }
+  if (tone === 'warn') {
+    return { tone, title: UNSETTLED_TITLES[tone], detail: captions.slow(slow ?? []) };
+  }
+  return { tone, title: UNSETTLED_TITLES[tone], detail: captions.starting };
 }

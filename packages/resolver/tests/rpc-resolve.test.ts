@@ -56,9 +56,14 @@ function stoppedRead(): Promise<never> {
 describe('rpc-resolve', () => {
   let disconnect: Mock<() => void>;
   let factory: Mock<() => JsonRpcProvider>;
+  let warn: Mock<(...args: unknown[]) => void>;
+  let event: Mock<(name: string, attrs?: Record<string, unknown>) => void>;
 
   beforeEach(() => {
-    vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    warn = vi.fn<(...args: unknown[]) => void>();
+    event = vi.fn<(name: string, attrs?: Record<string, unknown>) => void>();
+    vi.spyOn(log, 'warn').mockImplementation(warn);
+    vi.spyOn(log, 'event').mockImplementation(event);
     destroyRpcClient();
     vi.clearAllMocks();
     mocks.stops = [];
@@ -99,6 +104,8 @@ describe('rpc-resolve', () => {
     // Then
     expect(factory).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client');
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it('finishes an in-flight owner lookup on a fresh lease after its follow stops', async () => {
@@ -132,6 +139,9 @@ describe('rpc-resolve', () => {
     // Then
     expect(disconnect).toHaveBeenCalledTimes(1);
     expect(factory).toHaveBeenCalledTimes(2);
+    expect(event).toHaveBeenCalledWith('RPC chain head ready', expect.objectContaining({ flow: 'resolve' }));
+    expect(event.mock.calls.filter(([name]) => name === 'RPC chain head ready')).toHaveLength(2);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('As a dotli user, the diagnostics endpoint is the one Asset Hub is connected on', () => {

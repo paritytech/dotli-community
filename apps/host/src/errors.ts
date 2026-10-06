@@ -19,11 +19,8 @@ const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
 const API_STOPPED = 'ApiStoppedError';
 
 export {
-  ERROR_TITLES,
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
-  HOST_ERRORS,
-  HOST_UNAVAILABLE_DETAIL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
@@ -112,7 +109,7 @@ export interface ErrorDescription {
   title: string;
   message: string;
   recovery: Recovery;
-  /** What the visitor can check themselves, listed under "Try:". */
+  /** What the visitor can check themselves, listed under "Try". */
   tips: readonly string[];
   /**
    * Whether reloading should also make the protocol iframe purge its worker
@@ -128,12 +125,12 @@ const CONNECTIVITY_TIPS = ['Checking your internet connection.'] as const;
 const BITSWAP_TIPS = ['Waiting a moment as the app may still be spreading across the network.'] as const;
 
 // Quotes the option verbatim from `BACKEND_LABELS`, which is what the "Network
-// Transport" section of the Settings panel renders. Names the mode they are not
+// transport" section of the Settings panel renders. Names the mode they are not
 // already in, because a tip pointing at the mode that just failed is worse than
 // no tip. A light-client visitor is sent to the gateway. A gateway visitor is
 // sent to the per-tab light client, which is also the default.
 const switchTransportTip = (isP2p: boolean): string =>
-  `Switching Network Transport to "${
+  `Switching Network transport to "${
     isP2p ? BACKEND_LABELS['rpc-gateway'] : BACKEND_LABELS['smoldot-direct']
   }" in Settings.`;
 

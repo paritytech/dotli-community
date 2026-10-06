@@ -87,7 +87,8 @@ export function shallowEqual<T>(a: T, b: T): boolean {
 
 const registry = new Set<() => void>();
 
-export function createSyncStore<T>(initial: T, options: SyncStoreOptions<T> = {}): SyncStore<T> {
+/** `name` tags a failing listener's report, so it says which store dispatched. */
+export function createSyncStore<T>(name: string, initial: T, options: SyncStoreOptions<T> = {}): SyncStore<T> {
   let current = initial;
   const listeners = new Set<() => void>();
   const equals = options.equals ?? Object.is;
@@ -104,7 +105,11 @@ export function createSyncStore<T>(initial: T, options: SyncStoreOptions<T> = {}
         listener();
       } catch (err) {
         // A broken UI listener must not stop the producer's event dispatch.
-        captureException(err, { kind: 'store_listener_error' });
+        captureException(err, {
+          flow: 'ui',
+          step: 'store_listener',
+          tags: { store: name, kind: 'store_listener_error' },
+        });
       }
     }
   };

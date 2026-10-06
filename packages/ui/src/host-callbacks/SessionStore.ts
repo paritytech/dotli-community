@@ -525,7 +525,7 @@ async function decodeCoreStorageValue(
     if (bytes === undefined) {
       return undefined;
     }
-    log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
+    log.event('re-encrypting legacy plaintext core storage', { flow: 'wallet', slot: key.tag });
     await writeCoreStorageValue(key, bytes, experimental, generation);
     return bytes;
   }

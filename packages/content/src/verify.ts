@@ -17,7 +17,9 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { equals as bytesEqual } from 'multiformats/bytes';
 import { CID } from 'multiformats/cid';
+import { log } from '@dotli/shared';
 import type { BlockSource } from './archive.js';
+import { CONTENT_ERRORS, named } from './errors.js';
 
 // Multihash codes we can recompute. sha2-256 is IPFS's default; blake2b-256
 // (0xb220) is what dot.li's bulletin/preimage path uses (see preimage.ts).
@@ -32,7 +34,10 @@ function recomputeDigest(multihashCode: number, bytes: Uint8Array): Uint8Array {
       return blake2b(bytes, { dkLen: 32 });
     default:
       // Fail closed: a hash we can't recompute is content we can't verify.
-      throw new Error(`Cannot verify content: unsupported multihash code 0x${multihashCode.toString(16)}`);
+      throw named(
+        new Error(`Cannot verify content: unsupported multihash code 0x${multihashCode.toString(16)}`),
+        CONTENT_ERRORS.VERIFICATION,
+      );
   }
 }
 
@@ -46,7 +51,10 @@ export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
   const expected = cid.multihash.digest;
   const actual = recomputeDigest(cid.multihash.code, bytes);
   if (!bytesEqual(actual, expected)) {
-    throw new Error(`Content hash mismatch for ${cid.toString()} — refusing tampered content`);
+    throw named(
+      new Error(`Content hash mismatch for ${cid.toString()} — refusing tampered content`),
+      CONTENT_ERRORS.VERIFICATION,
+    );
   }
 }
 
@@ -85,6 +93,7 @@ export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): Blo
     const bytes = await source(cid);
     if (cid.equals(rootCid)) {
       assertBlockMatchesCid(cid, bytes);
+      log.event(`Root block ${cid.toString()} verified`, { flow: 'content', bytes: bytes.length });
     }
     return bytes;
   };
@@ -98,6 +107,9 @@ export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): Blo
  */
 export function assertSameContentId(actual: CID, expected: CID): void {
   if (actual.code !== expected.code || !bytesEqual(actual.multihash.bytes, expected.multihash.bytes)) {
-    throw new Error(`CAR root ${actual.toString()} does not match requested ${expected.toString()}`);
+    throw named(
+      new Error(`CAR root ${actual.toString()} does not match requested ${expected.toString()}`),
+      CONTENT_ERRORS.VERIFICATION,
+    );
   }
 }

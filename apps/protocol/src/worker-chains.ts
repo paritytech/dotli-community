@@ -35,7 +35,7 @@ export function createWorkerChainSessions(
   pool: ChainPool,
   isChainSupported: (genesisHash: string) => boolean,
   sendToPort: (port: MessagePort, envelope: ProtocolEnvelope) => void,
-  log: (...args: unknown[]) => void,
+  log: (message: string) => void,
 ): WorkerChainSessions {
   const sessions = new Map<string, Session>();
 
@@ -65,14 +65,16 @@ export function createWorkerChainSessions(
       }
       // The resolver and all dApp sessions share one Asset Hub chain via the
       // pool, so there is no resolver chain to release here; connect directly.
-      let chainMsgCount = 0;
+      // Only the first message is logged: it shows the chain answers, and every
+      // later one would push the load's own steps out of the breadcrumb trail.
+      let answered = false;
       const connection = pool.connectRemote(
         genesisHash,
         key,
         message => {
-          chainMsgCount++;
-          if (chainMsgCount <= 5 || chainMsgCount % 100 === 0) {
-            log(`Chain message #${String(chainMsgCount)} for ${connectionId} (${String(message.length)} bytes)`);
+          if (!answered) {
+            answered = true;
+            log(`First chain message for ${connectionId} (${String(message.length)} bytes)`);
           }
           sendToPort(port, {
             namespace: 'dotli:protocol',
