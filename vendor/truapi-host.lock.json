@@ -3,7 +3,7 @@
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
   "upstreamRevision": "674e9a8a17b3916b1eaf99a53baa71a73b2fb115",
-  "upstreamRevisionNote": "Local, unpushed: --no-ff merge of feat/media-sessions (3762b3a8f373fcbd1f27b158f125ad33458e0aba, Media at prototype wire trait 218 with the minification-safe isolation probe and handshake retry) into origin f22a9384846101a245f923fa6285572b4f20b1fb, which carries the receiving integration at e4d0a15b5b74e7636ac50f2ee1563bf734c54c81 and the Tommy blockers #1216; client, host glue, signing-host WASM and testing WASM rebuilt together at 674e9a8a17b3916b1eaf99a53baa71a73b2fb115. Push it before CI can check out this revision.",
+  "upstreamRevisionNote": "--no-ff merge of feat/media-sessions (3762b3a8f373fcbd1f27b158f125ad33458e0aba, Media at prototype wire trait 218 with the minification-safe isolation probe and handshake retry) into origin f22a9384846101a245f923fa6285572b4f20b1fb, which carries the receiving integration at e4d0a15b5b74e7636ac50f2ee1563bf734c54c81 and the Tommy blockers #1216; client, host glue, signing-host WASM and testing WASM rebuilt together at 674e9a8a17b3916b1eaf99a53baa71a73b2fb115.",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
   "baseRevision": "e4d0a15b5b74e7636ac50f2ee1563bf734c54c81",
