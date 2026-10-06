@@ -275,10 +275,9 @@ function querySwVersion(sw: ServiceWorker): Promise<string | null> {
 
 /**
  * Check whether the active SW's build matches the page's build. On mismatch
- * surface a notification with a "Reload" action, and the user decides whether
- * to take it. NO automatic reload: silently triggering `update()` followed by
- * a reload on `controllerchange` would override the user's current session
- * without consent.
+ * fetch the new SW right away, which self-promotes via `skipWaiting()` and
+ * `clients.claim()`, so any reload gets fresh assets. The page itself is not
+ * reloaded: a notification offers it, and the user decides.
  */
 async function ensureFreshServiceWorker(registration: ServiceWorkerRegistration): Promise<void> {
   const expected = import.meta.env.VITE_COMMIT_SHA;
@@ -293,7 +292,17 @@ async function ensureFreshServiceWorker(registration: ServiceWorkerRegistration)
   if (actual === null || actual === expected) {
     return;
   }
-  log.event('Service worker outdated, reload offered', { flow: 'content', active: actual, expected });
+  log.event('Service worker outdated, updating', { flow: 'content', active: actual, expected });
+  registration.update().catch((err: unknown) => {
+    // The worker script failing to download (offline, a flaky connection)
+    // rejects with a TypeError, and a registration a full reset already
+    // removed with InvalidStateError. Neither is a defect in this build.
+    if (err instanceof Error && (err.name === 'TypeError' || err.name === 'InvalidStateError')) {
+      recordExpected(err, { flow: 'content', step: 'sw_update' });
+      return;
+    }
+    captureException(err, { flow: 'content', step: 'sw_update' });
+  });
   showNotification({
     label: 'New version available',
     text: `App was updated. Reload to use the latest version.`,
@@ -301,27 +310,7 @@ async function ensureFreshServiceWorker(registration: ServiceWorkerRegistration)
     action: {
       label: 'Reload',
       onClick: () => {
-        // User-driven update then reload. The SW self-promotes via
-        // `skipWaiting()` and `clients.claim()`. When the controller flips,
-        // reload to pick up fresh assets.
-        navigator.serviceWorker.addEventListener(
-          'controllerchange',
-          () => {
-            window.location.reload();
-          },
-          { once: true },
-        );
-        registration.update().catch((err: unknown) => {
-          // The worker script failing to download (offline, a flaky
-          // connection) rejects with a TypeError, and a registration a full
-          // reset already removed with InvalidStateError. Neither is a defect
-          // in this build.
-          if (err instanceof Error && (err.name === 'TypeError' || err.name === 'InvalidStateError')) {
-            recordExpected(err, { flow: 'content', step: 'sw_update' });
-            return;
-          }
-          captureException(err, { flow: 'content', step: 'sw_update' });
-        });
+        window.location.reload();
       },
     },
   });

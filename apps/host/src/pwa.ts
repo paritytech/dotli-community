@@ -8,7 +8,9 @@
 //   2. On `waiting`, surface a notification asking the user to reload
 //   3. On confirm, message the waiting SW with SKIP_WAITING and reload
 //      once the new SW takes control
-//   4. Poll for updates every 15 min and whenever a hidden tab returns
+//   4. If a SW was already waiting when the page loaded (a plain reload),
+//      apply it at once without asking: nothing on the page is in use yet
+//   5. Poll for updates every 15 min and whenever a hidden tab returns
 //
 // Scope is the host origin only. The protocol iframe (host.dot.li) and
 // the app iframe (*.app.dot.li) are cross-origin and untouched.
@@ -23,38 +25,43 @@ const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 if ('serviceWorker' in navigator) {
   const wb = new Workbox('/host-sw.js');
 
-  wb.addEventListener('waiting', () => {
+  const applyUpdate = (): void => {
+    const reload = (): void => {
+      markContinuation('app_update');
+      window.location.reload();
+    };
+    void navigator.serviceWorker.getRegistration().then(registration => {
+      // Another tab's Reload may have applied the update already. Its
+      // activation took this page over too, so nothing waits now and no
+      // `controlling` would ever come.
+      if ((registration?.waiting ?? null) === null) {
+        reload();
+        return;
+      }
+      // Reload once the new SW is in control to avoid serving a mix of
+      // old and new chunks during the swap.
+      wb.addEventListener('controlling', reload);
+      wb.messageSkipWaiting();
+    });
+  };
+
+  wb.addEventListener('waiting', event => {
+    if (event.wasWaitingBeforeRegister === true) {
+      applyUpdate();
+      return;
+    }
     showNotification({
       label: 'Update available',
       text: 'A new version of dot.li is ready. Reload to apply.',
       dismissMs: 0,
-      action: {
-        label: 'Reload',
-        onClick: () => {
-          const reload = (): void => {
-            markContinuation('app_update');
-            window.location.reload();
-          };
-          void navigator.serviceWorker.getRegistration().then(registration => {
-            // Another tab's Reload may have applied the update already. Its
-            // activation took this page over too, so nothing waits now and no
-            // `controlling` would ever come.
-            if ((registration?.waiting ?? null) === null) {
-              reload();
-              return;
-            }
-            // Reload once the new SW is in control to avoid serving a mix of
-            // old and new chunks during the swap.
-            wb.addEventListener('controlling', reload);
-            wb.messageSkipWaiting();
-          });
-        },
-      },
+      action: { label: 'Reload', onClick: applyUpdate },
     });
   });
 
+  // Not deferred to `load`, which waits for the app iframe: a waiting
+  // update is applied before anyone starts using the page.
   void wb
-    .register()
+    .register({ immediate: true })
     .then(registration => {
       if (!registration) {
         return;
