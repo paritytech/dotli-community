@@ -77,6 +77,11 @@
     opacity: 1;
   }
 }
+/* The leaving frame of a hand-off keeps no `display` through an exit it
+   does not play. */
+.layer[data-handoff]:not([data-open]) {
+  transition: none;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .layer,

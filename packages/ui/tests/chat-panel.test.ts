@@ -203,12 +203,14 @@ describe('chat panel', () => {
     // When: a product with chat loads, with a session.
     loadProduct('chatty-more');
 
+    // When
+    byId('more-button').click();
+    flushUi();
+
     // Then
     expect(moreRow('chat').textContent).toBe('Chat');
 
     // When
-    byId('more-button').click();
-    flushUi();
     moreRow('chat').click();
     flushUi();
 

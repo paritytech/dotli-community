@@ -13,6 +13,8 @@ import s from './SheetFrame.module.css';
  * `taken` once a sheet opened in its place.
  */
 let pendingHandoff: 'pending' | 'taken' | undefined;
+/** Sheets that closed inside the pending hand-off, each still up until told how it ended. */
+const leaving = new Set<(taken: boolean) => void>();
 
 /**
  * Run `activate` (a More row's) so a sheet it opens takes the closing one's
@@ -26,9 +28,18 @@ export function handOffSheet(activate: () => void): boolean {
     // Solid 2 batches writes until a microtask: the opening sheet reads the
     // hand-off in an effect, which must run while it is still pending.
     flush();
-    return (pendingHandoff as string | undefined) === 'taken';
+    const taken = (pendingHandoff as string | undefined) === 'taken';
+    // Only now is it known whether a sheet came: a closing sheet stayed up
+    // until here, and goes at once if one did, or slides out if none did.
+    // Still in this task, so the two sheets change in the same frame.
+    for (const settle of leaving) {
+      settle(taken);
+    }
+    flush();
+    return taken;
   } finally {
     pendingHandoff = undefined;
+    leaving.clear();
   }
 }
 
@@ -38,6 +49,18 @@ export function takeHandOff(): boolean {
     return false;
   }
   pendingHandoff = 'taken';
+  return true;
+}
+
+/**
+ * For a sheet closing now: whether that is inside a hand-off. If it is, the
+ * sheet stays up until `settle` says whether another took its place.
+ */
+export function holdForHandOff(settle: (taken: boolean) => void): boolean {
+  if (pendingHandoff === undefined) {
+    return false;
+  }
+  leaving.add(settle);
   return true;
 }
 
@@ -55,6 +78,8 @@ export interface SheetFrameProps {
         testId?: string;
         /** The body's own layout (Modal's keeps its answers in view). */
         class?: string | undefined;
+        /** A menu's keys, on the `role="menu"` element that takes focus. */
+        onKeyDown?: ((ev: KeyboardEvent & { currentTarget: HTMLDivElement }) => void) | undefined;
       }
     | undefined;
   children: JSX.Element;
@@ -121,6 +146,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         aria-orientation={props.body?.orientation}
         tabindex={props.body?.role === 'menu' ? '-1' : undefined}
         data-testid={props.body?.testId}
+        onKeyDown={ev => props.body?.onKeyDown?.(ev)}
       >
         <InSheet value={() => true}>{props.children}</InSheet>
       </div>

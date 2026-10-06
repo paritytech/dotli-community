@@ -6,6 +6,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { Button } from '../primitives/Button.js';
 import { BottomSheet } from './BottomSheet.js';
+import { handOffSheet } from './SheetFrame.js';
 
 const onOpenChange = fn().mockName('onOpenChange');
 // The sheet is portalled into the body, outside the story's canvas.
@@ -105,6 +106,89 @@ export const TabStaysInside: Story = {
     });
     await step('Then focus wraps to the head close button, still in the sheet', async () => {
       await expect(close()).toHaveFocus();
+    });
+  },
+};
+
+/** What a hand-off left on both frames, read as `handOffSheet` returns, before any frame is drawn. */
+interface HandOffMarks {
+  taken: boolean;
+  leaving: { open: boolean; handoff: boolean };
+  coming: { open: boolean; handoff: boolean };
+}
+
+const marks = (id: string) => {
+  const el = document.getElementById(id) as HTMLDialogElement;
+  return { open: el.open, handoff: el.hasAttribute('data-handoff') };
+};
+
+function HandOffHarness(props: { opensNext: boolean; onMarks: (marks: HandOffMarks) => void }) {
+  const [first, setFirst] = createSignal(true);
+  const [second, setSecond] = createSignal(false);
+  return (
+    <>
+      <BottomSheet open={first()} onOpenChange={setFirst} title="More" id="first-sheet" testId="first">
+        <div style={{ padding: '0 16px' }}>
+          <Button
+            testId="hand-off"
+            onClick={() => {
+              const opensNext = props.opensNext;
+              const taken = handOffSheet(() => {
+                setFirst(false);
+                if (opensNext) {
+                  setSecond(true);
+                }
+              });
+              props.onMarks({ taken, leaving: marks('first-sheet'), coming: marks('second-sheet') });
+            }}
+          >
+            Next
+          </Button>
+        </div>
+      </BottomSheet>
+      <BottomSheet open={second()} onOpenChange={setSecond} title="Settings" id="second-sheet" testId="second">
+        <p style={{ padding: '0 16px' }}>Settings</p>
+      </BottomSheet>
+    </>
+  );
+}
+
+const onMarks = fn<(marks: HandOffMarks) => void>().mockName('onMarks');
+
+export const HandOff: Story = {
+  render: () => <HandOffHarness opensNext onMarks={onMarks} />,
+  play: async ({ userEvent, step }) => {
+    onMarks.mockClear();
+    await step('When a sheet hands off to another as it closes', async () => {
+      await waitFor(() => expect((document.getElementById('first-sheet') as HTMLDialogElement).open).toBe(true));
+      await userEvent.click(body.getByTestId('hand-off'));
+    });
+    await step('Then by the time the hand-off returns, the leaving and the coming sheet are both marked', async () => {
+      await expect(onMarks).toHaveBeenCalledWith({
+        taken: true,
+        leaving: { open: false, handoff: true },
+        coming: { open: true, handoff: true },
+      });
+      await expect(document.getElementById('first-sheet')).not.toHaveAttribute('data-open');
+      await expect(document.getElementById('second-sheet')).toHaveAttribute('data-open');
+    });
+  },
+};
+
+export const CloseWithoutHandOff: Story = {
+  render: () => <HandOffHarness opensNext={false} onMarks={onMarks} />,
+  play: async ({ userEvent, step }) => {
+    onMarks.mockClear();
+    await step('When a sheet closes in a hand-off that opens no other sheet', async () => {
+      await waitFor(() => expect((document.getElementById('first-sheet') as HTMLDialogElement).open).toBe(true));
+      await userEvent.click(body.getByTestId('hand-off'));
+    });
+    await step('Then it closed as usual, unmarked, so it slides out', async () => {
+      await expect(onMarks).toHaveBeenCalledWith({
+        taken: false,
+        leaving: { open: false, handoff: false },
+        coming: { open: false, handoff: false },
+      });
     });
   },
 };

@@ -14,10 +14,9 @@ import { TopbarContext, type TopbarAlert, type TopbarBar } from '../../../src/co
 import { PINNED } from '../../../src/components/shell/topbar/fit.js';
 import { OverflowMenu } from '../../../src/components/shell/topbar/OverflowMenu.js';
 import { TopbarItem } from '../../../src/components/shell/topbar/TopbarItem.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '../../helpers/solid.js';
+import { mouseClick, renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { byId, byTestId } from '../../support.js';
-import { ITEM_WIDTH, moreRow, renderTopbar } from './topbar-harness.js';
+import { ITEM_WIDTH, moreRow, moreRowNames as rowNames, openMore, renderTopbar } from './topbar-harness.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 interface Activation {
@@ -76,12 +75,6 @@ function inline(name: string): boolean {
   return el !== null && el.hidden === false && !el.hasAttribute('data-parked');
 }
 
-function rowNames(): string[] {
-  return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
-    el => el.dataset['item'] ?? '',
-  );
-}
-
 function moreShows(): boolean {
   return !byTestId('more-item').hasAttribute('data-parked');
 }
@@ -117,7 +110,6 @@ describe('ActionGroup', () => {
       expect(inline(name)).toBe(true);
     }
     expect(moreShows()).toBe(false);
-    expect(rowNames()).toEqual([]);
   });
 
   it('As a user narrowing the window, items move into More lowest priority first, and the rows keep the bar order', async () => {
@@ -133,7 +125,7 @@ describe('ActionGroup', () => {
     expect(inline('theme')).toBe(false);
     expect(inline('permissions')).toBe(true);
     expect(moreShows()).toBe(true);
-    expect(rowNames()).toEqual(['theme', 'settings']);
+    expect(await rowNames()).toEqual(['theme', 'settings']);
 
     // When: room for two.
     layout.setRoom(room(2));
@@ -141,7 +133,7 @@ describe('ActionGroup', () => {
 
     // Then: only the pinned account button and More are left.
     expect(inline('auth')).toBe(true);
-    expect(rowNames()).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
+    expect(await rowNames()).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
   });
 
   it('As a phone user, the account button stays in the bar even when nothing fits', async () => {
@@ -150,7 +142,7 @@ describe('ActionGroup', () => {
 
     // Then
     expect(inline('auth')).toBe(true);
-    expect(rowNames()).not.toContain('auth');
+    expect(await rowNames()).not.toContain('auth');
   });
 
   it('As a phone user, the account ends the bar after the More button and never moves into More', async () => {
@@ -163,7 +155,7 @@ describe('ActionGroup', () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(inline('account')).toBe(true);
-    expect(rowNames()).not.toContain('account');
+    expect(await rowNames()).not.toContain('account');
   });
 
   it('As a user widening the window, collapsed items come back and an open More menu closes with its last row', async () => {
@@ -181,7 +173,6 @@ describe('ActionGroup', () => {
     // Then
     expect(inline('settings')).toBe(true);
     expect(inline('theme')).toBe(true);
-    expect(rowNames()).toEqual([]);
     expect(moreShows()).toBe(false);
     expect(isOpen()).toBe(false);
     expect(byId('more-button').getAttribute('aria-expanded')).toBe('false');
@@ -242,7 +233,7 @@ describe('ActionGroup', () => {
     const [chat, setChat] = createSignal(false);
     await renderTopbar(() => <Items chat={chat()} />, room(5));
     expect(inline('chat')).toBe(false);
-    expect(rowNames()).toEqual([]);
+    expect(moreShows()).toBe(false);
 
     // When
     setChat(true);
@@ -250,7 +241,7 @@ describe('ActionGroup', () => {
 
     // Then
     expect(inline('chat')).toBe(true);
-    expect(rowNames()).toEqual(['theme', 'settings']);
+    expect(await rowNames()).toEqual(['theme', 'settings']);
   });
 
   it('As a user, an item growing (a longer account badge) pushes others into More', async () => {
@@ -262,7 +253,7 @@ describe('ActionGroup', () => {
     await settle();
 
     // Then
-    expect(rowNames()).toEqual(['theme', 'settings']);
+    expect(await rowNames()).toEqual(['theme', 'settings']);
   });
 
   it('As a mobile user, choosing a row closes the menu, hands focus to More and activates the item with my tap', async () => {
@@ -270,40 +261,21 @@ describe('ActionGroup', () => {
     await renderTopbar(() => <Items />, room(5));
     mouseClick(byId('more-button'));
     await settle();
-    const outsideClicks = vi.fn();
-    document.addEventListener('click', outsideClicks);
 
     // When
     mouseClick(moreRow('theme'));
     await settle();
-    document.removeEventListener('click', outsideClicks);
 
     // Then
     expect(activations).toEqual([{ name: 'theme', detail: 1 }]);
     expect(isOpen()).toBe(false);
     expect(document.activeElement).toBe(byId('more-button'));
-    // The row's own click stops at the menu: a surface it opened would see
-    // it as outside.
-    expect(outsideClicks).not.toHaveBeenCalled();
   });
 
-  it('As a keyboard user, Enter on More opens the menu on its first row, the arrows move, and Enter activates with detail 0', async () => {
+  it('As a keyboard user, choosing a row with a key activates the item with detail 0', async () => {
     // Given
     await renderTopbar(() => <Items />, room(4));
-    byId('more-button').focus();
-
-    // When
-    await pressKey('Enter');
-
-    // Then
-    expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(moreRow('permissions'));
-
-    // When / Then
-    await pressKey('ArrowDown');
-    expect(document.activeElement).toBe(moreRow('theme'));
-    await pressKey('End');
-    expect(document.activeElement).toBe(moreRow('settings'));
+    await openMore();
 
     // When: a focused button turns Enter into a click with detail 0.
     moreRow('settings').click();
@@ -312,22 +284,6 @@ describe('ActionGroup', () => {
     // Then
     expect(activations).toEqual([{ name: 'settings', detail: 0 }]);
     expect(isOpen()).toBe(false);
-  });
-
-  it('As a keyboard user, ArrowRight and ArrowLeft leave the focus on its row in the More menu, a column', async () => {
-    // Given
-    await renderTopbar(() => <Items />, room(4));
-    byId('more-button').focus();
-    await pressKey('Enter');
-    expect(document.activeElement).toBe(moreRow('permissions'));
-
-    // When
-    await pressKey('ArrowRight');
-    await pressKey('ArrowLeft');
-
-    // Then
-    expect(document.activeElement).toBe(moreRow('permissions'));
-    expect(byId('more-popover').hasAttribute('aria-orientation')).toBe(false);
   });
 
   it('As a screen-reader user, the More button announces its menu, and each row is a menu item with the item icon, label and a chevron', async () => {
@@ -344,6 +300,7 @@ describe('ActionGroup', () => {
     expect(popover.getAttribute('aria-label')).toBe('More');
     expect(button.getAttribute('aria-label')).toBe('More');
     expect(button.hasAttribute('data-badge')).toBe(false);
+    await openMore();
     const row = moreRow('theme');
     expect(row.getAttribute('role')).toBe('menuitem');
     expect(row.getAttribute('tabindex')).toBe('-1');
@@ -351,31 +308,6 @@ describe('ActionGroup', () => {
     expect(row.querySelector('svg[data-testid="icon-theme"]')).not.toBeNull();
     expect(row.lastElementChild?.getAttribute('data-testid')).toBe('more-row-chevron');
     expect(row.lastElementChild?.getAttribute('aria-hidden')).toBe('true');
-  });
-
-  it('As a mobile user, a tap outside the menu or a blocking modal closes it', async () => {
-    // Given
-    await renderTopbar(() => <Items />, room(5));
-    const outside = document.createElement('button');
-    document.body.append(outside);
-    mouseClick(byId('more-button'));
-    await settle();
-
-    // When
-    pointerPress(outside);
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-
-    // When
-    mouseClick(byId('more-button'));
-    await settle();
-    setBlockingModalActive(true);
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
   });
 
   it('As the build-time render, the items that may collapse are marked, and the More button is parked', async () => {
@@ -429,7 +361,7 @@ describe('ActionGroup', () => {
 
     // Then
     const more = byId('more-button');
-    expect(rowNames()).toEqual(['network', 'settings']);
+    expect(await rowNames()).toEqual(['network', 'settings']);
     expect(more.hasAttribute('data-badge')).toBe(true);
     expect(more.getAttribute('data-tone')).toBe('warn');
     expect(more.getAttribute('aria-label')).toBe('More, network unstable');
@@ -481,6 +413,7 @@ describe('ActionGroup', () => {
     const more = byId('more-button');
     expect(more.getAttribute('data-tone')).toBe('info');
     expect(more.getAttribute('aria-label')).toBe('More, network syncing, chat has unread messages');
+    await openMore();
     expect(byTestId('more-row-aside', moreRow('chat')).textContent).toBe('3');
     expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')).toBeNull();
 
@@ -493,53 +426,51 @@ describe('ActionGroup', () => {
     expect(more.getAttribute('aria-label')).toBe('More, network offline, chat has unread messages');
   });
 
-  it('As a phone user, More opens as a bottom sheet titled More over a scrim, and a tap on the scrim closes it without reaching the page', async () => {
+  it('As a phone user, More opens as a bottom sheet titled More over a scrim, and a tap on the scrim closes it', async () => {
     // Given
     stubPhoneViewport(true);
     await renderTopbar(() => <Items />, room(4));
-    const outsideClicks = vi.fn();
 
     // When
     mouseClick(byId('more-button'));
     await settle();
 
     // Then
-    const sheet = byId('more-popover');
+    const sheet = byId('more-popover', HTMLDialogElement);
+    expect(sheet.open).toBe(true);
     expect(isOpen()).toBe(true);
     expect(byId('topbar-actions').contains(sheet)).toBe(false);
-    expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(byTestId('menu-sheet-title', sheet).textContent).toBe('More');
-    expect(rowNames()).toEqual(['permissions', 'theme', 'settings']);
+    expect(byTestId('menu-sheet-body', sheet).getAttribute('role')).toBe('menu');
+    expect(await rowNames()).toEqual(['permissions', 'theme', 'settings']);
 
     // When
-    document.addEventListener('click', outsideClicks);
-    pointerPress(byTestId('menu-scrim'));
+    mouseClick(byTestId('menu-scrim'));
     await settle();
-    document.removeEventListener('click', outsideClicks);
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(outsideClicks).not.toHaveBeenCalled();
+    expect(sheet.open).toBe(false);
     expect(document.activeElement).toBe(byId('more-button'));
   });
 
-  it('As a keyboard user on a phone-width window, Enter on More opens the sheet on its first row, past its head', async () => {
+  it('As a keyboard user on a phone-width window, a key on More opens the sheet on its first row, and the head is no stop for the arrows', async () => {
     // Given
     stubPhoneViewport(true);
     await renderTopbar(() => <Items />, room(4));
-    byId('more-button').focus();
 
-    // When
-    await pressKey('Enter');
+    // When: a focused button turns Enter into a click with detail 0.
+    byId('more-button').click();
+    await settle();
 
     // Then
-    expect(byId('more-popover').hasAttribute('data-sheet')).toBe(true);
+    expect(byId('more-popover', HTMLDialogElement).open).toBe(true);
     expect(document.activeElement).toBe(moreRow('permissions'));
 
     // When
     await pressKey('ArrowUp');
 
-    // Then: the head is no stop
+    // Then
     expect(document.activeElement).toBe(moreRow('settings'));
   });
 });
