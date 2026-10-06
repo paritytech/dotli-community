@@ -360,7 +360,7 @@ export function Panel(props: {
     // Right-dock sits below the host topbar so the dock toggle and session
     // controls remain reachable. Bottom-dock pins to the viewport bottom edge.
     if (placement() === 'right') {
-      el.style.top = getTopbarState().present ? 'var(--topbar-height)' : '0';
+      el.style.top = getTopbarState().present ? 'var(--content-top)' : '0';
     } else {
       el.style.top = '';
     }

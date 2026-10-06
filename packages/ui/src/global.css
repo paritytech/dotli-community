@@ -49,18 +49,25 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   /* The pill's band: 10 px above, the 48 px pill, 10 px below. The product
-     frame runs under the floating pill, the loading screen and the docked
-     panels start below it. */
+     frame runs under the floating pill. */
   --topbar-height: calc(var(--topbar-inset) + var(--h-bar) + var(--topbar-inset) + var(--safe-top));
-  --content-height: calc(100dvh - var(--topbar-height) - var(--safe-bottom));
+  /* What the bar and the insets leave of the screen, wherever the bar is. */
+  --content-top: var(--topbar-height);
+  --content-bottom: var(--safe-bottom);
+  --content-height: calc(100dvh - var(--content-top) - var(--content-bottom));
 }
 
-/* Phones: the bar is the header's 60 px row under the top inset, with no
-   band around it (Topbar.astro), so the page and the product frame start
-   right below it. */
+/* Phones: the bar is the 60 px row at the foot of the screen, over the home
+   indicator, with no band around it (Topbar.astro), so the page and the
+   product frame end right above it. Safari's address bar never collapses
+   over the product's iframe, so the page paints the glass's bottom stop,
+   opaque: Safari tints its toolbar from it and the two read as one. */
 @media (max-width: 560px) {
   :root {
-    --topbar-height: calc(var(--h-bar) + var(--safe-top));
+    --bg-page: #18181b;
+    --topbar-height: calc(var(--h-bar) + var(--safe-bottom));
+    --content-top: var(--safe-top);
+    --content-bottom: var(--topbar-height);
   }
 }
 
@@ -218,7 +225,7 @@
   --h-tile: 72px;
   /* The desktop pill: 36 px controls with 6 px above and below, 10 px from
      the top of the window. Desktop is not touch, so its bar is smaller than
-     the phone header below. */
+     the phone bar below. */
   --h-bar: 48px;
   --h-bar-control: 36px;
   --topbar-inset: 10px;
@@ -256,7 +263,7 @@
   --fs-body: 13px;
 }
 
-/* Phones: the header's 60 px row of 44 px touch controls, the popovers and
+/* Phones: the bar's 60 px row of 44 px touch controls, the popovers and
    the chrome type at the boards' sizes. */
 @media (max-width: 560px) {
   :root {

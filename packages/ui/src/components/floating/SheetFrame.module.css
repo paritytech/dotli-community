@@ -1,15 +1,16 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's sheet: 85% of the screen at most, rounded top corners, sliding
-   up on --dur-morph (SHEET_EXIT_MS waits as long before unmounting). The
+/* The board's sheet: 85% of the screen at most, and never past the status
+   bar above the shorter layer. Rounded top corners, sliding up on
+   --dur-morph (SHEET_EXIT_MS waits as long before unmounting). The
    layer's [data-open] drives it. */
 .sheet {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   width: 100%;
-  max-height: 85dvh;
+  max-height: min(85dvh, var(--content-height));
   overflow: hidden;
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   background: var(--chrome-glass);
@@ -81,13 +82,13 @@
   overflow-wrap: anywhere;
 }
 
-/* The board's .sheet-scroll: 24 px under the content, then the home
-   indicator. */
+/* The board's .sheet-scroll: 24 px under the content. The layer already
+   ends above the bar and the home indicator. */
 .body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding-bottom: calc(var(--sp-6) + var(--safe-bottom));
+  padding-bottom: var(--sp-6);
 }
 /* A menu's body takes focus itself (tabindex -1) for a pointer opening, and
    shows no ring for it: its rows carry the ring. */
