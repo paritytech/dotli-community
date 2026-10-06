@@ -6,7 +6,7 @@
 .panel {
   display: none;
   position: fixed;
-  bottom: 0;
+  bottom: var(--content-bottom);
   left: 0;
   right: 0;
   z-index: 900;

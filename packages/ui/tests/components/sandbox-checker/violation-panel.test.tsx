@@ -10,7 +10,7 @@ import { setTopbarPresent } from '../../../src/state/topbar.js';
 import { byId, byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))';
+const CLEAR_OF_BAR_HEIGHT = 'calc(100dvh - var(--content-top, 68px) - var(--content-bottom, 0px))';
 
 let iframe: HTMLIFrameElement;
 /**
@@ -132,7 +132,7 @@ describe('sandbox checker violation panel', () => {
     // Then
     expect(toggle.getAttribute('aria-label')).toBe('Toggle panel');
     expect(toggle.textContent).toBe('▼');
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 180px)`);
 
     // When
     fireEvent.click(toggle);
@@ -141,13 +141,13 @@ describe('sandbox checker violation panel', () => {
     // Then
     expect(panel().hasAttribute('data-collapsed')).toBe(true);
     expect(toggle.textContent).toBe('▲');
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 32px)`);
 
     // When: opening chat keeps the reservation
     setChatWidth(360);
 
     // Then
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 32px)`);
 
     // When: resizing while collapsed does nothing
     const handle = byTestId('sc-resize-handle', panel());
@@ -179,7 +179,7 @@ describe('sandbox checker violation panel', () => {
       timestamp: 0,
     });
     await settle();
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 180px)`);
 
     // When
     dispose();
@@ -194,7 +194,7 @@ describe('sandbox checker violation panel', () => {
 
     // Then
     expect(document.getElementById('sandbox-checker-panel')).toBeNull();
-    expect(frame['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(frame['height']).toBe(CLEAR_OF_BAR_HEIGHT);
   });
 
   it('As a dotli developer, dragging the handle resizes the panel within 40px and 80% of the viewport, until the drag ends or is cancelled', async () => {
@@ -378,6 +378,6 @@ describe('sandbox checker violation panel', () => {
     expect(Math.max(...layouts)).toBe(1);
     expect(heightWrites).toBe(0);
     expect(top).toBe(500);
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 180px)`);
   });
 });

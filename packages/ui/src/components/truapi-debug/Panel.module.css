@@ -69,7 +69,7 @@
   --td-chain-line: #075985;
 
   position: fixed;
-  bottom: 0;
+  bottom: var(--content-bottom);
   left: 0;
   right: 0;
   box-sizing: border-box;
