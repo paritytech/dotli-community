@@ -328,10 +328,11 @@ client, host callbacks, worker bridge and WASM from the native Media layer; upda
 
 A protected product iframe has no camera, microphone, display-capture, fullscreen or picture-in-picture permission and
 no popups or top navigation; its other device grants still apply. Capture grants authorize the trusted host, not raw
-iframe capture. Host video planes are siblings of the product inside an isolated compositor that takes the frame's
-layout; neither product DOM/canvas readback nor the product's own RTC connections reach host tracks, peers, SDP, ICE or
-decoded pictures. Host occlusion hides or clips the planes, scaled, rotated or skewed layouts blank them, and the call,
-screen-picker, audio-resume and end-call controls stay above the product.
+iframe capture: a raw camera or microphone request fails with an error rather than a denial, so it never records a
+durable device denial that would block host Media. Host video planes are siblings of the product inside an isolated
+compositor that takes the frame's layout; neither product DOM/canvas readback nor the product's own RTC connections
+reach host tracks, peers, SDP, ICE or decoded pictures. Host occlusion hides or clips the planes, scaled, rotated or
+skewed layouts blank them, and the call, screen-picker, audio-resume and end-call controls stay above the product.
 
 Calling consent shows the exact product, sr25519 account and network genesis. Each prompt is cancelled with its
 operation, never reloads the product, and persists nothing in browser UI code: the core owns scoped authorization. The

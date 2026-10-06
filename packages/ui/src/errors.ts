@@ -32,4 +32,5 @@ export const ERRORS = {
   INVALID_JSON_RPC_REQUEST: 'Invalid JSON-RPC request',
   CROSS_ORIGIN_APP_URL: 'Refusing to render an app URL outside its sandbox origin',
   MISSING_MODAL_COORDINATOR: 'Top bar initialized without a blocking modal coordinator',
+  MEDIA_RAW_CAPTURE_REFUSED: 'Camera and microphone are owned by the host Media service',
 } as const;

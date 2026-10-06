@@ -53,8 +53,10 @@ export function createPromptPermission(
 ): Permissions {
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
     // A protected Media container never receives raw capture; the host owns it.
+    // Refuse by error, never `Deny`: the core would persist a durable device
+    // denial on the same key host Media consent reads, disabling calls.
     if (mediaOwnsCapture(label) && (tag === 'Camera' || tag === 'Microphone')) {
-      return 'Deny';
+      throw new Error(ERRORS.MEDIA_RAW_CAPTURE_REFUSED);
     }
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
