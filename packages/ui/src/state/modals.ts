@@ -49,6 +49,8 @@ export interface ModalView<R extends string> {
   icon?: string;
   fields: ModalField[];
   notice?: string;
+  /** The notice's glyph: the reload arrow (an app reload, the default) or info. */
+  noticeIcon?: 'reload' | 'info';
   input?: ModalPasswordInput;
   /** Host-owned choices, rendered separately from the action footer. */
   choices?: ModalChoice<R>[];

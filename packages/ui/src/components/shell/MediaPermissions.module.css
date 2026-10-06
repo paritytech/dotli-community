@@ -3,7 +3,7 @@
 
 /* A Calling scope is consented for its exact account and network, so its
    values wrap in full instead of ellipsizing. */
-.scope > * {
+.scope > div {
   align-items: flex-start;
 }
 .scope code {

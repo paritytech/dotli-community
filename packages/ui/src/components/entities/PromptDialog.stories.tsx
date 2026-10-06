@@ -107,6 +107,7 @@ export const MediaCallingPermission: Story = {
         },
       ],
       notice: MEDIA_CONSENT_NOTICE,
+      noticeIcon: 'info',
       buttons: [
         { label: 'Deny', variant: 'danger', result: 'denied' },
         { label: 'Allow', variant: 'primary', result: 'granted' },

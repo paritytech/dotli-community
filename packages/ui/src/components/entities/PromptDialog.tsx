@@ -8,7 +8,7 @@ import { Modal } from '../floating/Modal.js';
 import { Button, type ButtonVariant } from '../primitives/Button.js';
 import { Field } from '../primitives/Field.js';
 import { ReloadIcon } from '../primitives/Surface.js';
-import { Callout, Well } from '../primitives/Well.js';
+import { Callout, InfoIcon, Well } from '../primitives/Well.js';
 import s from './PromptDialog.module.css';
 
 const BUTTON_VARIANT: Record<ModalButtonVariant, ButtonVariant> = {
@@ -142,8 +142,8 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
         </Show>
         <Show when={view.notice}>
           {notice => (
-            // The one notice says the app reloads, hence the board's reload arrow.
-            <Callout icon={<ReloadIcon />} testId="permission-modal-notice">
+            // A reload notice leads with the board's reload arrow, anything else with info.
+            <Callout icon={view.noticeIcon === 'info' ? <InfoIcon /> : <ReloadIcon />} testId="permission-modal-notice">
               {notice()}
             </Callout>
           )}

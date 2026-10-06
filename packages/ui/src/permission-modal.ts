@@ -144,9 +144,7 @@ async function showPermissionPrompt(
         ...(media?.fields ?? []).map(([fieldLabel, value]) => ({ label: fieldLabel, value, mono: true })),
       ],
       ...(media !== undefined
-        ? {
-            notice: MEDIA_CONSENT_NOTICE,
-          }
+        ? { notice: MEDIA_CONSENT_NOTICE, noticeIcon: 'info' as const }
         : prompt.reloads
           ? { notice: 'Granting this permission will reload the application.' }
           : {}),
