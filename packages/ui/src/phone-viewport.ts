@@ -20,9 +20,14 @@ function phoneQuery(): MediaQueryList {
   return phoneList;
 }
 
+// The host server-renders its islands at build time, where there is no window
+// and no viewport: a Modal reads the form as it renders. The wide form is what
+// the markup ships; the browser corrects it on hydration.
+const serverRendering = (): boolean => typeof window === 'undefined';
+
 /** Whether the viewport is a phone's now. */
 export function isPhoneViewport(): boolean {
-  return phoneQuery().matches;
+  return !serverRendering() && phoneQuery().matches;
 }
 
 /**
@@ -30,6 +35,9 @@ export function isPhoneViewport(): boolean {
  * crosses PHONE_QUERY. Returns a function that stops.
  */
 export function watchPhoneViewport(onChange: (phone: boolean) => void): () => void {
+  if (serverRendering()) {
+    return () => undefined;
+  }
   const query = phoneQuery();
   const notify = (): void => {
     onChange(query.matches);
