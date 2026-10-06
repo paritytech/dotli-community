@@ -37,8 +37,8 @@ export interface FloatingLayerProps {
   /** Keys inside the surface, after the layer's own (Tab trap when trapFocus). */
   onKeyDown?: (ev: KeyboardEvent, surface: HTMLElement) => void;
   trapFocus?: boolean;
-  onPointerEnter?: () => void;
-  onPointerLeave?: () => void;
+  onPointerEnter?: (ev: PointerEvent) => void;
+  onPointerLeave?: (ev: PointerEvent) => void;
   ref?: (el: HTMLDivElement) => void;
   /** Rendered from an opening until its exit transition has played. */
   children: JSX.Element;
@@ -180,8 +180,8 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         tabindex={props.role === 'tooltip' ? undefined : '-1'}
         onBeforeToggle={onBeforeToggle}
         onKeyDown={onKeyDown}
-        onPointerEnter={() => props.onPointerEnter?.()}
-        onPointerLeave={() => props.onPointerLeave?.()}
+        onPointerEnter={ev => props.onPointerEnter?.(ev)}
+        onPointerLeave={ev => props.onPointerLeave?.(ev)}
       >
         {/* Keyed, taking the key as a parameter (Show calls only a child
             that declares one), so each opening mounts the content afresh. */}

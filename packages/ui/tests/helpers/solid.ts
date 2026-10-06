@@ -33,8 +33,8 @@ export async function settle(): Promise<void> {
 export { resetAllStoresForTests as resetStores } from '../../src/state/create-store.js';
 
 /**
- * A mouse press on `el`: pointerdown, which is what dismisses a shell
- * popover pressed outside (components/shell/create-popover.ts), then the click.
+ * A mouse press on `el`: pointerdown, which is what a floating layer reads a
+ * press outside from (components/floating/FloatingLayer.tsx), then the click.
  */
 export function pointerPress(el: Element): void {
   el.dispatchEvent(
@@ -98,19 +98,14 @@ export function tabTo(next: HTMLElement): KeyboardEvent {
 
 /**
  * The content root of popover `#id`: the layer itself on a wide screen, the
- * `data-sheet` wrapper inside a bottom sheet, or (the old Popover's) its
- * `popover-body`.
+ * `data-sheet` wrapper inside a bottom sheet.
  */
 export function popoverBody(id: string): HTMLElement | null {
   const root = document.getElementById(id);
   if (root === null) {
     return null;
   }
-  return (
-    root.querySelector<HTMLElement>(':scope > [data-testid="popover-body"]') ??
-    root.querySelector<HTMLElement>('[data-sheet]') ??
-    root
-  );
+  return root.querySelector<HTMLElement>('[data-sheet]') ?? root;
 }
 
 /**

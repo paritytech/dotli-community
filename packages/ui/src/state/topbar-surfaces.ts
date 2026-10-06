@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The topbar's surfaces (its popovers, menus and the pairing modal), as
-// createPopover registers them: the auto-hide keeps the bar on screen while
+// FloatingLayer and AuthModal register them: the auto-hide keeps the bar on screen while
 // one is open or holds the focus, wherever it renders (most portal into the
 // body, outside `#topbar`).
 

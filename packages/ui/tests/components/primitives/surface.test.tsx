@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Hint, Surface, SurfaceFoot, SurfaceHead } from '../../../src/components/primitives/Surface.js';
-import { InSheet } from '../../../src/components/sheet/in-sheet.js';
+import { InSheet } from '../../../src/components/floating/in-sheet.js';
 import { renderComponent } from '../../helpers/solid.js';
 import { byTestId } from '../../support.js';
 
