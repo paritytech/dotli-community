@@ -3,6 +3,8 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
+import { getActiveChainRoles } from '@dotli/config';
+import { recordBestBlock, recordChainActivity } from '../../network-monitor.js';
 import { resetAllStoresForTests } from '../../state/create-store.js';
 import { setProductLoaded } from '../../state/product.js';
 import { ChainsPopover } from './ChainsPopover.js';
@@ -39,6 +41,22 @@ export const OpenPhone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ctx => {
     await expectPhone(ctx.step);
+    await open(ctx);
+  },
+};
+
+export const OpenInUse: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    const [relay, hub] = getActiveChainRoles();
+    for (const genesis of [relay?.genesis, hub?.genesis, `0x${'ab'.repeat(32)}`]) {
+      if (genesis !== undefined) {
+        recordChainActivity({ genesisHash: genesis, consumers: 1, status: 'connected', following: true });
+        recordBestBlock(genesis, 100);
+      }
+    }
+  },
+  play: async ctx => {
     await open(ctx);
   },
 };

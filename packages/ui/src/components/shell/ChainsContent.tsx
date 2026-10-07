@@ -179,11 +179,12 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
 }
 
 function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
-  // Blank rather than "0 peers" until a sample lands: zero is a different claim.
-  const peers = (): number | null => (props.chain.reachable ? props.chain.peers : null);
+  const unused = (): boolean => props.chain.state === 'unused';
+  // Blank rather than "0 peers" until a sample lands: zero is a different claim. An unused chain claims none.
+  const peers = (): number | null => (props.chain.reachable && !unused() ? props.chain.peers : null);
   return (
     <Stack class={s['group']}>
-      <p class={s['groupLabel']} data-testid="chains-group-label">
+      <p class={s['groupLabel']} data-testid="chains-group-label" data-state={props.chain.state}>
         <span>{props.chain.label}</span>
         <span
           class={s['peers']}
@@ -198,9 +199,16 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
           {peers() === null ? '' : peers() === 1 ? '1 peer' : `${String(peers())} peers`}
         </span>
       </p>
-      <div class={s['cell']} data-unavailable={props.chain.reachable ? undefined : ''}>
+      <div
+        class={s['cell']}
+        data-testid="chains-cell"
+        data-state={props.chain.state}
+        data-unavailable={props.chain.reachable ? undefined : ''}
+      >
         <Show when={props.chain.reachable} fallback="no endpoint on this network">
-          <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
+          <Show when={!unused()} fallback="not in use">
+            <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
+          </Show>
         </Show>
       </div>
     </Stack>
@@ -223,6 +231,8 @@ export function ChainsContent(): JSX.Element {
       settings()?.backend,
     ),
   );
+  const knownChains = createMemo(() => network().chains.filter(chain => chain.role !== null));
+  const otherChains = createMemo(() => network().chains.filter(chain => chain.role === null));
   const networkLabel = (): string | undefined => {
     const current = settings();
     return current === null ? undefined : NETWORK_NAME_TO_SERVICES_CONFIG[current.network].label;
@@ -232,7 +242,9 @@ export function ChainsContent(): JSX.Element {
   // Once every chain has bars nothing reads `now`, so the ticker stops. A memo, as Solid 2 runs an effect's
   // function every time its compute re-runs.
   const counting = createMemo(() =>
-    network().chains.some(chain => chain.reachable && chain.bars.length === 0 && chain.sinceLast !== null),
+    network().chains.some(
+      chain => chain.reachable && chain.state !== 'unused' && chain.bars.length === 0 && chain.sinceLast !== null,
+    ),
   );
   createEffect(counting, on => {
     if (!on) {
@@ -286,9 +298,19 @@ export function ChainsContent(): JSX.Element {
           <Show when={status().detail}>{detail => <p class={s['statusDetail']}>{detail()}</p>}</Show>
         </div>
       </Well>
-      <For each={network().chains} keyed={chain => chain.key}>
+      <For each={knownChains()} keyed={chain => chain.key}>
         {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
       </For>
+      <Show when={otherChains().length > 0}>
+        <details class={s['other']} data-testid="chains-other">
+          <summary class={s['otherSummary']} data-testid="chains-other-summary">
+            Other chains ({otherChains().length})
+          </summary>
+          <For each={otherChains()} keyed={chain => chain.key}>
+            {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
+          </For>
+        </details>
+      </Show>
       <div class={s['transfer']}>
         <p class={s['transferRow']} data-testid="chains-transfer-row">
           <Show when={speed()}>

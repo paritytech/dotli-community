@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 import { flush } from 'solid-js';
+import { within } from '@solidjs/testing-library';
 import { setBackend, setNetwork } from '@dotli/config';
 import type { BlockBar, ChainStatus, TransferState } from '../../../src/network-monitor.js';
 import { ChainsPopover } from '../../../src/components/shell/ChainsPopover.js';
@@ -282,6 +283,54 @@ const PRELOAD_IDLE_MS = 2000;
 useFloatingSurfaces();
 
 describe('The network popover island', () => {
+  it('As a user, a chain nothing uses reads "not in use" and claims no peers', async () => {
+    // Given
+    monitor.status = [chain({ state: 'unused', peers: 8 })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    const cell = byTestId('chains-cell');
+    expect(cell.dataset['state']).toBe('unused');
+    expect(cell.textContent).toBe('not in use');
+    expect(byTestId('chains-group-label').dataset['state']).toBe('unused');
+    expect(byTestId('chains-group-peers').textContent).toBe('');
+  });
+
+  it('As a user of a product on another chain, it shows under Other chains while in use and goes after', async () => {
+    // Given
+    const extra = chain({
+      key: '0xabab',
+      role: null,
+      label: '0xabab…abab',
+      state: 'live',
+      latest: 5,
+      sinceLast: 100,
+    });
+    monitor.status = [chain(), extra];
+    notify();
+    await renderPopover();
+    await openPopover();
+
+    // Then
+    const other = byTestId('chains-other');
+    expect(other.tagName).toBe('DETAILS');
+    expect(other.hasAttribute('open')).toBe(false);
+    expect(byTestId('chains-other-summary').textContent).toBe('Other chains (1)');
+    expect(within(other).getByText('0xabab…abab')).toBeTruthy();
+
+    // When
+    monitor.status = [chain()];
+    notify();
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="chains-other"]')).toBeNull();
+  });
+
   it('As a dotli user, the closed button and popover carry their labels and ARIA', async () => {
     // When
     await renderPopover();
