@@ -229,16 +229,17 @@ describe('bindTopbarStatus', () => {
     document.body.replaceChildren();
   });
 
-  it('As the action group on a phone, I get no room, so every action moves into More', () => {
+  it('As the action group on a phone, my room is my own width, as I fill the bar in place of the address', () => {
     // Given: a pill row with room to spare, on a phone-wide viewport
     stubPhoneViewport(true);
     document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url" style="min-width: 160px"></div><div id="group"></div></div></header>`;
+    vi.spyOn(byId('group'), 'clientWidth', 'get').mockReturnValue(310);
 
     // When
     const room = topbarActionRoom(byId('group'));
 
     // Then
-    expect(room).toBe(0);
+    expect(room).toBe(310);
     document.body.replaceChildren();
   });
 });

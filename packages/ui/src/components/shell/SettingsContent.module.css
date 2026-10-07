@@ -1,19 +1,35 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's Settings popover (MenuSettings): the title, two columns (one in
-   a sheet) and a footer with the reload hint and Save and apply. The panel's
+/* The Surface's padding: 12 px, the boards' 16 on phones; in a sheet 4 px
+   under its head and 16 around. */
+.panel {
+  padding: var(--sp-3);
+}
+.panel[data-sheet] {
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+}
+@media (max-width: 560px) {
+  .panel:not([data-sheet]) {
+    padding: var(--sp-4);
+  }
+}
+
+/* The board's Settings popover (MenuSettings): the title, a column each for
+   the settings and, in a debug build, the diagnostics (stacked in a sheet),
+   and a footer with the reload hint and Save and apply. The panel's
    Surface is bare, inside the Popover's glass. In a sheet the footer ends
    the scrolled content, Save and apply across its width. */
 
 .columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   align-items: start;
   gap: var(--sp-4);
 }
 .content[data-sheet] .columns {
-  grid-template-columns: minmax(0, 1fr);
+  grid-auto-flow: row;
 }
 .column {
   display: flex;

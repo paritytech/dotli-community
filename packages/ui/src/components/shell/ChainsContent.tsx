@@ -317,7 +317,7 @@ export function ChainsContent(): JSX.Element {
         };
   };
   return (
-    <Surface width="md" testId="chains-content">
+    <Surface width="md" class={s['panel']} testId="chains-content">
       <SurfaceHead
         title="Network"
         aside={

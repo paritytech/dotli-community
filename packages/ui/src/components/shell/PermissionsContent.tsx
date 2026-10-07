@@ -192,7 +192,7 @@ export function PermissionsContent(): JSX.Element {
   };
 
   return (
-    <Surface width="lg">
+    <Surface width="lg" class={s['panel']}>
       <SurfaceHead
         title="Permissions"
         testId="permissions-popover-header"

@@ -1,6 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* One column, two with the diagnostics of a debug build. */
 .popover {
+  width: var(--w-pop-lg);
+}
+.wide {
   width: var(--w-pop-xl);
 }

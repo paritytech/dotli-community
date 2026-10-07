@@ -27,8 +27,7 @@
   pointer-events: none;
 }
 
-/* More shows once the bar measures. On a narrow viewport it shows from the
-   build-time render on, as the bar most likely collapses something there. */
+/* More shows once the bar measures. */
 .more {
   display: none;
   flex: none;
@@ -38,20 +37,19 @@
   display: flex;
 }
 
-/* Phones: More and the account are the header's last two controls, 8 px
-   apart like the rest of its row. The group is pinned to the right edge
-   because only the address grows there, and it is hidden until it shows. */
+/* Phones: no address, so the group fills the bar after the logo, which
+   makes its own width its room (topbarActionRoom). Its items sit 8 px apart
+   like the rest of the row, centred between the logo and the account at the
+   right end: auto margins before the first shown item and the account split
+   the free room. */
 @media (max-width: 560px) {
   .group {
+    flex: 1;
+    min-width: 0;
     gap: var(--sp-2);
+  }
+  .group > :nth-child(1 of :not([data-parked], [hidden])),
+  .group > :last-child {
     margin-inline-start: auto;
-  }
-  .more {
-    display: flex;
-  }
-  /* Until the bar has measured (its build-time render), the items it would
-     most likely collapse stay out, and More shows instead. */
-  .group:not([data-collapsible]) > [data-may-collapse] {
-    display: none;
   }
 }

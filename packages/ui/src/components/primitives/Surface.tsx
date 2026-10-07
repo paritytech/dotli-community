@@ -9,15 +9,21 @@ import s from './Surface.module.css';
 export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';
 
 /**
- * The body of a popover: its padding, gap, head and foot. The frame it sits
- * in draws the glass. In a bottom sheet the sheet's head carries the title,
- * so SurfaceHead draws none.
+ * The body of a popover: its width, gap, head and foot. Its padding is the
+ * consumer's, through `class` (`[data-sheet]` marks it in a bottom sheet).
+ * The frame it sits in draws the glass. In a bottom sheet the sheet's head
+ * carries the title, so SurfaceHead draws none.
  */
-export function Surface(props: { width?: SurfaceWidth; testId?: string; children: JSX.Element }): JSX.Element {
+export function Surface(props: {
+  width?: SurfaceWidth;
+  class?: string | undefined;
+  testId?: string;
+  children: JSX.Element;
+}): JSX.Element {
   const inSheet = useContext(InSheet);
   return (
     <section
-      class={s['surface']}
+      class={[s['surface'], props.class]}
       data-width={props.width ?? 'md'}
       data-sheet={inSheet() ? '' : undefined}
       data-testid={props.testId}

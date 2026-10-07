@@ -179,7 +179,7 @@ export const Sheet: Story = {
     });
     await step('Then a sheet titled More holds the rows as a menu, which has focus', async () => {
       await waitFor(() => expect(body.getByTestId('menu-sheet-title')).toHaveTextContent('More'));
-      await expect((menu() as HTMLDialogElement).open).toBe(true);
+      await expect(menu()).toHaveAttribute('data-open');
       const sheetBody = body.getByTestId('menu-sheet-body');
       await expect(sheetBody).toHaveAttribute('role', 'menu');
       await expect(sheetBody).toHaveAccessibleName('More');
@@ -200,18 +200,18 @@ export const SheetRowHandsOff: Story = {
   play: async ({ step }) => {
     await step('Given the More sheet is open', async () => {
       await (await input()).click(body.getByTestId('story-more'));
-      await waitFor(() => expect((menu() as HTMLDialogElement).open).toBe(true));
+      await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
     });
     await step('When I tap the Settings row, which opens a sheet', async () => {
       await (await input()).click(row('row-settings'));
     });
     await step("Then the Settings sheet took More's place: both marked as a hand-off", async () => {
       await expect(onRow).toHaveBeenCalledWith('settings');
-      const settings = document.getElementById('story-settings') as HTMLDialogElement;
-      await waitFor(() => expect(settings.open).toBe(true));
+      const settings = document.getElementById('story-settings');
+      await waitFor(() => expect(settings).toHaveAttribute('data-open'));
       await expect(settings).toHaveAttribute('data-open');
       await expect(settings).toHaveAttribute('data-handoff');
-      await expect((menu() as HTMLDialogElement).open).toBe(false);
+      await expect(menu()).not.toHaveAttribute('data-open');
       await expect(menu()).not.toHaveAttribute('data-open');
       await expect(menu()).toHaveAttribute('data-handoff');
     });
@@ -223,7 +223,7 @@ export const SheetRowHandsOff: Story = {
       await (await input()).keyboard('{Escape}');
     });
     await step('Then focus is back on More, where it was before the menu opened', async () => {
-      await waitFor(() => expect((document.getElementById('story-settings') as HTMLDialogElement).open).toBe(false));
+      await waitFor(() => expect(document.getElementById('story-settings')).not.toHaveAttribute('data-open'));
       await waitFor(() => expect(body.getByTestId('story-more')).toHaveFocus());
     });
   },
@@ -234,14 +234,14 @@ export const SheetRowWithoutSheetSlides: Story = {
   play: async ({ step }) => {
     await step('Given the More sheet is open', async () => {
       await (await input()).click(body.getByTestId('story-more'));
-      await waitFor(() => expect((menu() as HTMLDialogElement).open).toBe(true));
+      await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
     });
     await step('When I tap the Network row, which opens no sheet', async () => {
       await (await input()).click(row('row-network'));
     });
     await step('Then More closed as usual, not marked as a hand-off, and More has focus', async () => {
       await expect(onRow).toHaveBeenCalledWith('network');
-      await waitFor(() => expect((menu() as HTMLDialogElement).open).toBe(false));
+      await waitFor(() => expect(menu()).not.toHaveAttribute('data-open'));
       await expect(menu()).not.toHaveAttribute('data-handoff');
       await waitFor(() => expect(body.getByTestId('story-more')).toHaveFocus());
     });

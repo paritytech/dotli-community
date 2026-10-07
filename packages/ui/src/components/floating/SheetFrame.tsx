@@ -25,25 +25,61 @@ export function handOffSheet(activate: () => void): boolean {
   pendingHandoff = 'pending';
   try {
     activate();
-    // Solid 2 batches writes until a microtask: the opening sheet reads the
-    // hand-off in an effect, which must run while it is still pending.
-    flush();
-    const taken = (pendingHandoff as string | undefined) === 'taken';
-    // Only now is it known whether a sheet came: a closing sheet stayed up
-    // until here, and goes at once if one did, or slides out if none did.
-    // Still in this task, so the two sheets change in the same frame.
-    settleLeaving(taken);
-    flush();
-    return taken;
+    return finishHandOff();
   } finally {
-    pendingHandoff = undefined;
-    // A sheet still held here (`activate` threw, or one was held during the
-    // last flush) closes as without a hand-off, rather than stay up over an
-    // inert page.
-    if (leaving.size > 0) {
-      settleLeaving(false);
-      flush();
+    endHandOff();
+  }
+}
+
+/**
+ * For a press outside the top sheet, on a control of the bar it rests on:
+ * `dismiss` closes the sheet now, and the rest of the press's dispatch (the
+ * control's click, which may open another sheet) is the hand-off's
+ * activation. It ends once the press has reached the window, or in the next
+ * task if a listener stopped it on the way.
+ */
+export function handOffSheetOnPress(dismiss: () => void): void {
+  pendingHandoff = 'pending';
+  let ended = false;
+  const end = (): void => {
+    if (ended) {
+      return;
     }
+    ended = true;
+    window.removeEventListener('click', end);
+    clearTimeout(timer);
+    try {
+      finishHandOff();
+    } finally {
+      endHandOff();
+    }
+  };
+  window.addEventListener('click', end, { once: true });
+  const timer = setTimeout(end, 0);
+  dismiss();
+}
+
+function finishHandOff(): boolean {
+  // Solid 2 batches writes until a microtask: the opening sheet reads the
+  // hand-off in an effect, which must run while it is still pending.
+  flush();
+  const taken = (pendingHandoff as string | undefined) === 'taken';
+  // Only now is it known whether a sheet came: a closing sheet stayed up
+  // until here, and goes at once if one did, or slides out if none did.
+  // Still in this task, so the two sheets change in the same frame.
+  settleLeaving(taken);
+  flush();
+  return taken;
+}
+
+function endHandOff(): void {
+  pendingHandoff = undefined;
+  // A sheet still held here (the activation threw, or one was held during
+  // the last flush) closes as without a hand-off, rather than stay up over
+  // an inert page.
+  if (leaving.size > 0) {
+    settleLeaving(false);
+    flush();
   }
 }
 

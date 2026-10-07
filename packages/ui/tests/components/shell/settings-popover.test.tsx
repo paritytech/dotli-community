@@ -394,10 +394,9 @@ function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
  */
 function expectPopoverMatches(settings: Settings, sheet = false): void {
   const popover = byId('mode-popover');
-  // A sheet is a native dialog, whose role is implicit and which labels itself
-  // by its title.
+  // A sheet is a modal layer, which labels itself by its title.
   if (sheet) {
-    expect(popover.tagName).toBe('DIALOG');
+    expect(popover.getAttribute('aria-modal')).toBe('true');
   } else {
     expect(popover.getAttribute('role')).toBe('dialog');
     expect(popover.getAttribute('tabindex')).toBe('-1');
@@ -988,7 +987,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // Then
-    expect(byId('mode-popover').tagName).toBe('DIALOG');
+    expect(byId('mode-popover').getAttribute('aria-modal')).toBe('true');
 
     // When: widened while open, then closed and opened.
     viewport.set(false);

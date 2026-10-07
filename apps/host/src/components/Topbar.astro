@@ -5,11 +5,15 @@
 // The host's top bar (`header#topbar`, the page's banner): one element that
 // morphs between the open glass pill (the home link, the URL bar and the
 // action group) and the collapsed status capsule. At 560 px and below it is
-// the square phone bar at the foot of the screen instead (logo, address,
-// More, account), which never folds away. Only the action group is
-// interactive, a Solid island (TopbarActions: the actions, the More menu they
-// collapse into, then the account button), hydrated at load: on the landing
-// page it renders nothing.
+// the square phone bar at the foot of the screen instead (logo, actions,
+// More, account; no address), which never folds away. Only the action group
+// is interactive, a Solid island (TopbarActions: the actions, the More menu
+// they collapse into, then the account button), hydrated at load: on the
+// landing page it renders nothing.
+//
+// On a phone it is drawn over the bottom sheets that rest on it, and stays
+// live while one is open (`data-over-sheets`, modal-stack.ts in @dotli/ui):
+// a control pressed there hands the open sheet over to its own.
 //
 // Its script sets the bar's state as attributes, which its module styles:
 // `data-hidden` when the auto-hide (topbar-autohide.ts in @dotli/ui) folds it
@@ -24,7 +28,7 @@ import UrlPill from './UrlPill.astro';
 import s from './Topbar.module.css';
 ---
 
-<header id="topbar" class={s['topbar']} aria-label="dot.li browser bar" data-chrome>
+<header id="topbar" class={s['topbar']} aria-label="dot.li browser bar" data-chrome data-over-sheets>
   {/* The collapsed capsule: the health bar, led by the action dot. Decorative,
       the reveal button and the pill carry the words. */}
   <span class={s['strip']} aria-hidden="true">

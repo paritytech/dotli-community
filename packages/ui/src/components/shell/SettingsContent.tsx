@@ -3,7 +3,7 @@
 
 import { createMemo, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
+import { BACKEND_LABELS, type Backend, DEBUG, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 
 import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
@@ -122,7 +122,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;
 
   return (
-    <Surface width="xl">
+    <Surface width={DEBUG ? 'xl' : 'lg'} class={s['panel']}>
       <SurfaceHead title="Settings" />
       <div class={s['columns']} data-testid="mode-popover-columns">
         <div class={s['column']}>
@@ -209,7 +209,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             </div>
           </Stack>
         </div>
-        <Diagnostics backend={persisted.chain} />
+        {/* Debug builds only (VITE_APP_DEBUG), with the column it fills. */}
+        {DEBUG ? <Diagnostics backend={persisted.chain} /> : null}
       </div>
       <SurfaceFoot
         hint={

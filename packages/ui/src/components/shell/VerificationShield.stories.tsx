@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, waitFor, within } from 'storybook/test';
+import { expect, waitFor } from 'storybook/test';
 import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
 import { resetAllStoresForTests } from '../../state/create-store.js';
 import { setVerificationShieldState, showProductPill } from '../../state/url-pill.js';
@@ -18,11 +18,17 @@ const shown = openSurface({ surface: 'verification-tooltip' });
 const open: typeof shown = async ctx => {
   await ctx.step('When the mouse rests on the shield', async () => {
     const { userEvent } = await import('vitest/browser');
-    await userEvent.hover(within(document.body).getByRole('button', { name: /How was this site loaded/ }));
+    const shield = document.getElementById('verification-shield');
+    if (shield === null) {
+      throw new Error('no verification shield');
+    }
+    await userEvent.hover(shield);
   });
   await shown(ctx);
   await ctx.step('And its body has loaded', async () => {
-    await waitFor(() => expect(document.querySelector('[data-testid="verification-tooltip-title"]')).not.toBeNull());
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="verification-tooltip-row-verified"]')).not.toBeNull(),
+    );
   });
 };
 

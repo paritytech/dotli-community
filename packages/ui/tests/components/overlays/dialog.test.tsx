@@ -83,8 +83,10 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // Then: the frame is the modal dialog, named by the card's title.
-    const frame = byTestId('signing-modal-backdrop', document, HTMLDialogElement);
-    expect(frame.open).toBe(true);
+    const frame = byTestId('signing-modal-backdrop');
+    expect(frame.getAttribute('role')).toBe('dialog');
+    expect(frame.getAttribute('aria-modal')).toBe('true');
+    expect(frame.hasAttribute('data-open')).toBe(true);
     const modal = query(frame, ':scope > [data-testid="signing-modal"]');
     const title = query(modal, `#${frame.getAttribute('aria-labelledby') ?? ''}`);
     expect(title.tagName).toBe('H2');

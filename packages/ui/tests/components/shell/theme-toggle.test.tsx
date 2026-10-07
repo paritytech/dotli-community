@@ -180,8 +180,8 @@ describe('ThemeToggle', () => {
     await settle();
 
     // Then
-    const sheet = byId('theme-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(byTestId('popover-sheet-title', sheet).textContent).toBe('Appearance');
     expect(query(sheet, '[role="radiogroup"]').getAttribute('aria-label')).toBe('Theme');
     // The first control in the content: the checked tile, the group's only Tab stop.
@@ -192,7 +192,7 @@ describe('ThemeToggle', () => {
     await settle();
 
     // Then
-    expect(sheet.open).toBe(true);
+    expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(themeButton().getAttribute('aria-expanded')).toBe('true');
     expect(document.documentElement.getAttribute('data-theme-pref')).toBe('light');
   });

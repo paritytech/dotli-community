@@ -27,8 +27,8 @@ export interface ModalProps {
   class?: string | undefined;
   /** On the card or sheet; the frame gets -backdrop, the scrim -scrim, the sheet head -sheet-head, -sheet-title, -sheet-close. */
   testId: string;
-  /** Receives the dialog frame (AuthModal registers it as a topbar surface). */
-  frameRef?: (el: HTMLDialogElement) => void;
+  /** Receives the frame (AuthModal registers it as a topbar surface). */
+  frameRef?: (el: HTMLDivElement) => void;
   children: JSX.Element;
 }
 
@@ -39,7 +39,7 @@ export interface ModalProps {
  * value and focus survive the switch.
  */
 function ModalRoot(props: ModalProps): JSX.Element {
-  let frame: HTMLDialogElement | undefined;
+  let frame: HTMLDivElement | undefined;
   // A client mount reads the form as it mounts, so a phone opening is a sheet
   // from its first frame. Hydrating, it starts as the build-time render's wide
   // form (that markup has no viewport) and takes the real one once settled.

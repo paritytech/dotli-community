@@ -1,6 +1,20 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The Surface's padding: 12 px, the boards' 16 on phones; in a sheet 4 px
+   under its head and 16 around. */
+.panel {
+  padding: var(--sp-3);
+}
+.panel[data-sheet] {
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+}
+@media (max-width: 560px) {
+  .panel:not([data-sheet]) {
+    padding: var(--sp-4);
+  }
+}
+
 /* The mockup's sections sit in the popover's column, 10 px apart. */
 .list {
   display: flex;

@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { Tooltip } from './Tooltip.js';
@@ -9,21 +10,16 @@ import { Tooltip } from './Tooltip.js';
 const body = within(document.body);
 
 function Harness() {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
     <div style={{ display: 'flex', gap: '8px' }}>
-      <Tooltip id="story-tip">
-        <Tooltip.Trigger>
-          {t => (
-            <button {...t} type="button" data-testid="tip-trigger">
-              Shield
-            </button>
-          )}
-        </Tooltip.Trigger>
-        <Tooltip.Content>
-          <p style={{ margin: '12px' }} data-testid="tip-text">
-            Loaded through a light client.
-          </p>
-        </Tooltip.Content>
+      <button ref={setTrigger} type="button" data-testid="tip-trigger">
+        Shield
+      </button>
+      <Tooltip id="story-tip" trigger={trigger()}>
+        <p style={{ margin: 0, padding: '12px' }} data-testid="tip-text">
+          Loaded through a light client.
+        </p>
       </Tooltip>
       <button type="button" data-testid="elsewhere">
         Elsewhere

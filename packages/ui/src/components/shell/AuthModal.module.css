@@ -17,12 +17,13 @@
   overflow-y: auto;
 }
 
-/* The sheet's body already pads the content as the Surface's sheet padding
-   does (4 px over, 16 px around): the Surface gives its own up. */
-@media (max-width: 560px) {
-  .content > section[data-sheet] {
-    padding: 0;
-  }
+/* The Surface's padding on the card, 12 px. None in a sheet, whose body
+   already pads the content (4 px over, 16 px around). */
+.panel {
+  padding: var(--sp-3);
+}
+.panel[data-sheet] {
+  padding: 0;
 }
 
 /* Not SurfaceHead: that head is a row with an aside, this one stacks the
