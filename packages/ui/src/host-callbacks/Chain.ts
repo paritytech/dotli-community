@@ -31,6 +31,7 @@ import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
+import { recordBestBlock, recordChainActivity } from '../network-monitor.js';
 
 /** Every backend switch reloads the page, so a pool entry never outlives its backend. */
 export function createHostChainPool(destroyDelay?: number): ChainPool {
@@ -46,6 +47,8 @@ export function createHostChainPool(destroyDelay?: number): ChainPool {
 }
 
 const hostChainPool = createHostChainPool();
+// The network panel reads the pool's chains without leasing them, so it never opens one.
+hostChainPool.watch({ onActivity: recordChainActivity, onBestBlock: recordBestBlock });
 
 /** The rpc-gateway name resolver reads through this lease instead of dialing its own socket. */
 export function hostAssetHubProvider(): JsonRpcProvider {

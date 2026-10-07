@@ -1,11 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Live per-chain block arrivals for the network panel. Arrival time is measured, not the block
-// timestamp, because arrival is what this session actually has.
+// Live per-chain state for the network panel. The host chain pool pushes who holds each chain and its best blocks,
+// the protocol frame pushes phases and peers, and the monitor opens nothing itself. Arrival time is measured, not the
+// block timestamp, because arrival is what this session actually has.
 
-import { getActiveChainRoles, type ActiveChainRole, type ChainRole } from '@dotli/config';
-import { log } from '@dotli/shared';
+import { getActiveChainRoles, type ChainRole } from '@dotli/config';
+import { isRemoteChainConnectable, type ChainActivity } from '@dotli/protocol';
 
 export type BlockHealth = 'onTime' | 'late' | 'veryLate';
 
@@ -16,8 +17,14 @@ export interface BlockBar {
   readonly gapMs: number;
 }
 
+/** How a chain counts toward the verdict. */
+export type ChainUse = 'unused' | 'pending' | 'live';
+
 export interface ChainStatus {
-  readonly role: ChainRole;
+  /** The role of a known chain, the genesis hash of any other. */
+  readonly key: string;
+  /** Null for a chain outside the known roles. */
+  readonly role: ChainRole | null;
   readonly label: string;
   /** Oldest first. */
   readonly bars: readonly BlockBar[];
@@ -30,14 +37,16 @@ export interface ChainStatus {
   readonly phase: ChainPhase | null;
   /** Null where the backend never reports peers, such as a trusted provider. */
   readonly peers: number | null;
+  readonly state: ChainUse;
+  /** Stalled, or down again after it was up. Overdue blocks are the verdict's to judge. */
+  readonly alarm: boolean;
 }
 
 // Only a memory ceiling. The panel renders as many as its width fits, and this must never decide that.
 const MAX_BARS = 120;
 
-// Short enough that an unwatched panel holds no chain connections, which are capped across tabs in
-// shared-worker mode.
-const IDLE_GRACE_MS = 60_000;
+/** Chains outside the known roles report no block time, so they are judged against a typical parachain's. */
+const EXTRA_BLOCK_TIME_MS = 6000;
 
 export function classifyGap(gapMs: number, blockTimeMs: number): BlockHealth {
   if (gapMs <= blockTimeMs * 1.5) {
@@ -46,12 +55,23 @@ export function classifyGap(gapMs: number, blockTimeMs: number): BlockHealth {
   return gapMs <= blockTimeMs * 3 ? 'late' : 'veryLate';
 }
 
+type PoolStatus = ChainActivity['status'];
+
 interface ChainState {
-  role: ActiveChainRole;
+  readonly key: string;
+  readonly role: ChainRole | null;
+  readonly label: string;
+  readonly genesis: string;
+  readonly blockTimeMs: number;
+  readonly hasEndpoint: boolean;
   bars: BlockBar[];
   latest: number | null;
   lastAt: number | null;
-  unsubscribe: (() => void) | null;
+  consumers: number;
+  status: PoolStatus;
+  following: boolean;
+  /** The pool reported `connected` since the chain was last released. */
+  poolWasConnected: boolean;
 }
 
 /** `stalled` comes from the watchdog, alongside the light client's lifecycle phase. */
@@ -66,27 +86,18 @@ export interface TransferState {
   readonly total: number | null;
 }
 
-/** Injected so tests can drive it. */
-export interface BlockSource {
-  subscribe: (genesis: string, onBlock: (blockNumber: number) => void) => () => void;
-  isReachable: (genesis: string) => boolean;
-}
-
-let source: BlockSource | null = null;
-let chains = new Map<ChainRole, ChainState>();
-// Apart from `chains` because peer counts and phases arrive whether or not the panel is open, and
-// outlive a watch torn down after the idle grace.
+let known: Map<string, ChainState> | null = null;
+let extras = new Map<string, ChainState>();
 let peerCounts = new Map<ChainRole, number>();
 let phases = new Map<ChainRole, ChainPhase>();
+// Never cleared, because the frame's chains live on whether or not this tab holds them.
+let frameWasReady = new Set<ChainRole>();
 let transfer: TransferState = {
   bytesPerSecond: null,
   fetched: null,
   total: null,
 };
 let listeners = new Set<() => void>();
-let idleTimer: ReturnType<typeof setTimeout> | null = null;
-let watching = false;
-let holds = 0;
 
 function notify(): void {
   for (const listener of listeners) {
@@ -97,6 +108,52 @@ function notify(): void {
       // Listener threw.
     }
   }
+}
+
+function idleUse(): Pick<
+  ChainState,
+  'bars' | 'latest' | 'lastAt' | 'consumers' | 'status' | 'following' | 'poolWasConnected'
+> {
+  return {
+    bars: [],
+    latest: null,
+    lastAt: null,
+    consumers: 0,
+    status: 'disconnected',
+    following: false,
+    poolWasConnected: false,
+  };
+}
+
+/** Seeded on first use, so a network chosen before boot is the one listed. */
+function knownChains(): Map<string, ChainState> {
+  known ??= new Map(
+    getActiveChainRoles().map(role => {
+      const genesis = role.genesis.toLowerCase();
+      return [
+        genesis,
+        {
+          key: role.role,
+          role: role.role,
+          label: role.label,
+          genesis,
+          blockTimeMs: role.blockTimeMs,
+          hasEndpoint: role.hasEndpoint,
+          ...idleUse(),
+        },
+      ];
+    }),
+  );
+  return known;
+}
+
+function findChain(genesisHash: string): ChainState | undefined {
+  const genesis = genesisHash.toLowerCase();
+  return knownChains().get(genesis) ?? extras.get(genesis);
+}
+
+function shortGenesis(genesis: string): string {
+  return `${genesis.slice(0, 6)}…${genesis.slice(-4)}`;
 }
 
 function recordBlock(state: ChainState, blockNumber: number): void {
@@ -110,7 +167,7 @@ function recordBlock(state: ChainState, blockNumber: number): void {
     const gapMs = now - state.lastAt;
     state.bars.push({
       number: blockNumber,
-      health: classifyGap(gapMs, state.role.blockTimeMs),
+      health: classifyGap(gapMs, state.blockTimeMs),
       gapMs,
     });
     if (state.bars.length > MAX_BARS) {
@@ -122,26 +179,47 @@ function recordBlock(state: ChainState, blockNumber: number): void {
   notify();
 }
 
-function attach(state: ChainState): void {
-  if (state.unsubscribe !== null || source === null) {
-    return;
+/** From the host chain pool. A chain outside the known roles is listed only while something holds it. */
+export function recordChainActivity(activity: ChainActivity): void {
+  const genesis = activity.genesisHash.toLowerCase();
+  let state = findChain(genesis);
+  if (state === undefined) {
+    if (activity.consumers === 0) {
+      return;
+    }
+    state = {
+      key: genesis,
+      role: null,
+      label: shortGenesis(genesis),
+      genesis,
+      blockTimeMs: EXTRA_BLOCK_TIME_MS,
+      hasEndpoint: true,
+      ...idleUse(),
+    };
+    extras.set(genesis, state);
   }
-  if (!source.isReachable(state.role.genesis)) {
-    return;
+  const released = state.consumers > 0 && activity.consumers === 0;
+  state.consumers = activity.consumers;
+  state.status = activity.status;
+  state.following = activity.following;
+  if (activity.status === 'connected') {
+    state.poolWasConnected = true;
   }
-  try {
-    state.unsubscribe = source.subscribe(state.role.genesis, blockNumber => {
-      recordBlock(state, blockNumber);
-    });
-  } catch (err: unknown) {
-    log.warn(`[dot.li network] could not watch ${state.role.role}:`, err);
+  if (released) {
+    if (state.role === null) {
+      extras.delete(genesis);
+    } else {
+      Object.assign(state, idleUse(), { status: activity.status });
+    }
   }
+  notify();
 }
 
-function detachAll(): void {
-  for (const state of chains.values()) {
-    state.unsubscribe?.();
-    state.unsubscribe = null;
+/** Ignored for a chain nobody holds, so a late block cannot revive a released chain's history. */
+export function recordBestBlock(genesisHash: string, blockNumber: number): void {
+  const state = findChain(genesisHash);
+  if (state !== undefined && state.consumers > 0) {
+    recordBlock(state, blockNumber);
   }
 }
 
@@ -173,70 +251,14 @@ export function getTransfer(): TransferState {
 }
 
 export function recordChainPhase(role: ChainRole, phase: ChainPhase): void {
+  if (phase === 'ready') {
+    frameWasReady.add(role);
+  }
   if (phases.get(role) === phase) {
     return;
   }
   phases.set(role, phase);
   notify();
-}
-
-/** Call once, before the first watch. */
-export function setBlockSource(next: BlockSource): void {
-  source = next;
-}
-
-/** Cancels a pending teardown when already watching. */
-export function startNetworkWatch(): void {
-  if (idleTimer !== null) {
-    clearTimeout(idleTimer);
-    idleTimer = null;
-  }
-  if (!watching) {
-    chains = new Map(
-      getActiveChainRoles().map(role => [role.role, { role, bars: [], latest: null, lastAt: null, unsubscribe: null }]),
-    );
-    watching = true;
-  }
-  for (const state of chains.values()) {
-    attach(state);
-  }
-}
-
-/** After the grace, the gap is left visible rather than back-filled with guesses. */
-export function stopNetworkWatch(): void {
-  if (idleTimer !== null) {
-    return;
-  }
-  idleTimer = setTimeout(() => {
-    idleTimer = null;
-    detachAll();
-  }, IDLE_GRACE_MS);
-}
-
-export function endNetworkWatch(): void {
-  if (idleTimer !== null) {
-    clearTimeout(idleTimer);
-    idleTimer = null;
-  }
-  detachAll();
-  watching = false;
-}
-
-/** Refcounted so one reader closing does not drop another's subscriptions. Releasing twice counts once. */
-export function holdNetworkWatch(): () => void {
-  holds += 1;
-  startNetworkWatch();
-  let released = false;
-  return () => {
-    if (released) {
-      return;
-    }
-    released = true;
-    holds -= 1;
-    if (holds === 0) {
-      stopNetworkWatch();
-    }
-  };
 }
 
 export function subscribeNetwork(listener: () => void): () => void {
@@ -246,55 +268,82 @@ export function subscribeNetwork(listener: () => void): () => void {
   };
 }
 
-export type ChainClock = Pick<ChainStatus, 'label' | 'latest' | 'sinceLast' | 'blockTimeMs' | 'reachable'>;
+export type ChainClock = Pick<
+  ChainStatus,
+  'label' | 'latest' | 'sinceLast' | 'blockTimeMs' | 'reachable' | 'state' | 'alarm'
+>;
 
-function currentChains(): readonly ChainState[] {
-  return watching
-    ? [...chains.values()]
-    : getActiveChainRoles().map(role => ({
-        role,
-        bars: [],
-        latest: null,
-        lastAt: null,
-        unsubscribe: null,
-      }));
+function isReachable(state: ChainState): boolean {
+  return state.hasEndpoint && (state.role === null || isRemoteChainConnectable(state.genesis));
+}
+
+/** The spec's verdict table. Overdue blocks are left to the verdict, which also schedules the recheck. */
+function useOf(state: ChainState, sinceLast: number | null): Pick<ChainStatus, 'state' | 'alarm'> {
+  if (!isReachable(state)) {
+    return { state: 'unused', alarm: false };
+  }
+  const phase = state.role === null ? undefined : phases.get(state.role);
+  const inUse = state.consumers > 0;
+  const phaseDown = phase === 'connecting' || phase === 'syncing';
+  const poolDown = state.status !== 'connected';
+  // The frame judges the chains it reports on, the pool the rest.
+  const regressed =
+    phase === undefined
+      ? inUse && state.poolWasConnected && poolDown
+      : phaseDown && state.role !== null && frameWasReady.has(state.role);
+  if (regressed || (inUse && phase === 'stalled')) {
+    return { state: 'live', alarm: true };
+  }
+  if (!inUse) {
+    return { state: phaseDown ? 'pending' : 'unused', alarm: false };
+  }
+  if (state.following) {
+    return { state: sinceLast === null ? 'pending' : 'live', alarm: false };
+  }
+  return { state: phaseDown || poolDown ? 'pending' : 'live', alarm: false };
+}
+
+function allChains(): ChainState[] {
+  return [...knownChains().values(), ...extras.values()];
 }
 
 function clockOf(state: ChainState, now: number): ChainClock {
+  const sinceLast = state.lastAt === null ? null : now - state.lastAt;
   return {
-    label: state.role.label,
+    label: state.label,
     latest: state.latest,
-    sinceLast: state.lastAt === null ? null : now - state.lastAt,
-    blockTimeMs: state.role.blockTimeMs,
-    reachable: state.role.hasEndpoint && (source?.isReachable(state.role.genesis) ?? false),
+    sinceLast,
+    blockTimeMs: state.blockTimeMs,
+    reachable: isReachable(state),
+    ...useOf(state, sinceLast),
   };
 }
 
 /** Copies no bars, because the health judges on every notify, content chunks included. */
 export function getChainClocks(now: number = Date.now()): ChainClock[] {
-  return currentChains().map(state => clockOf(state, now));
+  return allChains().map(state => clockOf(state, now));
 }
 
 export function getNetworkStatus(): ChainStatus[] {
   const now = Date.now();
-  return currentChains().map(state => ({
+  return allChains().map(state => ({
     ...clockOf(state, now),
-    role: state.role.role,
+    key: state.key,
+    role: state.role,
     // A copy, since the monitor mutates its own array in place.
     bars: Object.freeze([...state.bars]),
-    peers: peerCounts.get(state.role.role) ?? null,
-    phase: phases.get(state.role.role) ?? null,
+    peers: state.role === null ? null : (peerCounts.get(state.role) ?? null),
+    phase: state.role === null ? null : (phases.get(state.role) ?? null),
   }));
 }
 
 /** For tests. */
 export function resetNetworkMonitor(): void {
-  endNetworkWatch();
-  holds = 0;
-  chains = new Map();
+  known = null;
+  extras = new Map();
   peerCounts = new Map();
   phases = new Map();
+  frameWasReady = new Set();
   transfer = { bytesPerSecond: null, fetched: null, total: null };
   listeners = new Set();
-  source = null;
 }

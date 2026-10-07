@@ -4,7 +4,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { getActiveChainRoles } from '@dotli/config';
 import { ChainsPopover } from '../src/components/shell/ChainsPopover.js';
-import { resetNetworkMonitor, setBlockSource } from '../src/network-monitor.js';
+import { recordBestBlock, recordChainActivity, resetNetworkMonitor } from '../src/network-monitor.js';
 import { startNetworkStore } from '../src/state/network.js';
 import { renderComponent, resetStores, settle, waitForContent } from './helpers/solid.js';
 import { query } from './support.js';
@@ -34,27 +34,14 @@ function stubLayout(): void {
 let emit: (blockNumber: number) => Promise<void>;
 let stopStore: () => void = () => undefined;
 
-/** Open the panel against a block source the test drives by hand. */
+/** Open the panel with the relay held, so the test drives its blocks by hand. */
 async function openPanel(): Promise<HTMLElement> {
   const relay = nth(getActiveChainRoles(), 0).genesis;
-  const emitters = new Map<string, (n: number) => void>();
+  recordChainActivity({ genesisHash: relay, consumers: 1, status: 'connected', following: true });
   emit = async n => {
-    const push = emitters.get(relay);
-    if (push === undefined) {
-      throw new Error('nothing subscribed to the relay');
-    }
-    push(n);
+    recordBestBlock(relay, n);
     await settle();
   };
-  setBlockSource({
-    isReachable: () => true,
-    subscribe: (genesis, onBlock) => {
-      emitters.set(genesis, onBlock);
-      return () => {
-        emitters.delete(genesis);
-      };
-    },
-  });
   stopStore = startNetworkStore();
   renderComponent(() => <ChainsPopover />);
   await settle();

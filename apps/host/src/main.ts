@@ -30,7 +30,6 @@ import {
   recordPeerCount,
   recordTransfer,
   type ChainPhase,
-  watchNetworkHealth,
   armTopbarAutoHide,
   setProductContentShown,
   setVerificationShieldState,
@@ -1238,7 +1237,6 @@ async function main(): Promise<void> {
       }
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
-        watchNetworkHealth();
         enterStep('render_chunk_load');
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
@@ -1391,7 +1389,6 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
-    watchNetworkHealth();
     enterStep('render_chunk_load');
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);

@@ -7,6 +7,7 @@ import { healthWord, judgeNetworkHealth } from '../src/network-health.js';
 
 function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
   return {
+    key: 'relay',
     role: 'relay',
     label: 'Relay',
     bars: [],
@@ -16,6 +17,8 @@ function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
     reachable: true,
     peers: 8,
     phase: 'ready',
+    state: 'live',
+    alarm: false,
     ...overrides,
   };
 }
@@ -31,9 +34,12 @@ describe('The network health verdict', () => {
 
   it('As a user while the chains start or connect, I see syncing', () => {
     expect(judgeNetworkHealth([], true)).toBe('idle');
-    expect(judgeNetworkHealth([chain({ latest: null, sinceLast: null })], true)).toBe('idle');
+    expect(judgeNetworkHealth([chain({ latest: null, sinceLast: null, state: 'pending' })], true)).toBe('idle');
     expect(
-      judgeNetworkHealth([chain(), chain({ role: 'assethub', label: 'Hub', latest: null, sinceLast: null })], true),
+      judgeNetworkHealth(
+        [chain(), chain({ role: 'assethub', label: 'Hub', latest: null, sinceLast: null, state: 'pending' })],
+        true,
+      ),
     ).toBe('idle');
   });
 

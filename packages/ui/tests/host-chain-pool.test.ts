@@ -674,6 +674,25 @@ describe('host chain pool on a light client backend', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(remote.disconnect).toHaveBeenCalledTimes(1);
   });
+
+  it('As the network panel, a lease on the host pool shows its chain in use without the panel holding it', async () => {
+    // Given
+    const monitor = await import('../src/network-monitor.js');
+    const identity = (): string | undefined => monitor.getNetworkStatus().find(chain => chain.key === 'people')?.state;
+    expect(identity()).toBe('unused');
+
+    // When
+    const connection = must(hostChainProvider(people), 'provider')(() => undefined);
+
+    // Then
+    expect(identity()).not.toBe('unused');
+
+    // When
+    connection.disconnect();
+
+    // Then
+    expect(identity()).toBe('unused');
+  });
 });
 
 describe('host chain pool over Trusted Providers', () => {

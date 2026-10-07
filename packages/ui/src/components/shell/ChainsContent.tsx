@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, For, onSettled, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { ChainStatus } from '../../network-monitor.js';
 import { shallowEqual } from '../../state/create-store.js';
-import { networkStore, watchNetwork } from '../../state/network.js';
+import { networkStore } from '../../state/network.js';
 import { networkHealthStore } from '../../state/network-health.js';
 import { productStore } from '../../state/product.js';
 import { settingsStore } from '../../state/settings.js';
@@ -209,8 +209,6 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
 
 /** The network popover's body, its own chunk. */
 export function ChainsContent(): JSX.Element {
-  // Once mounted: the watch goes with the content.
-  onSettled(() => watchNetwork());
   const network = useStore(networkStore);
   const health = useStore(networkHealthStore);
   const product = useStore(productStore);
@@ -288,7 +286,7 @@ export function ChainsContent(): JSX.Element {
           <Show when={status().detail}>{detail => <p class={s['statusDetail']}>{detail()}</p>}</Show>
         </div>
       </Well>
-      <For each={network().chains} keyed={chain => chain.role}>
+      <For each={network().chains} keyed={chain => chain.key}>
         {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
       </For>
       <div class={s['transfer']}>
