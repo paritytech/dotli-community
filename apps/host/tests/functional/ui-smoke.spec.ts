@@ -112,11 +112,34 @@ test.describe('Shell UI smoke', () => {
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
   });
 
-  test('As a phone user, the topbar keeps the account button and folds the rest into the More menu', async ({
+  test('As a phone user, the bar spans the foot of the screen with the actions in place of the address, then the account', async ({
     page,
   }) => {
     // Given
-    await page.setViewportSize({ width: 375, height: 740 });
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // When
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+    // Then
+    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 844 - 60, width: 390, height: 60 });
+    await expect(page.locator('#topbar-url')).toBeHidden();
+    await expect(page.locator('#permissions-button')).toBeVisible();
+    await expect(page.locator('#theme-toggle')).toBeVisible();
+    await expect(page.locator('#mode-button')).toBeVisible();
+    await expect(page.locator('#more-button')).toBeHidden();
+    const settings = await page.locator('#mode-button').boundingBox();
+    const account = await page.locator('#auth-button').boundingBox();
+    expect((settings?.x ?? 0) < (account?.x ?? 0)).toBe(true);
+    expect(Math.round((account?.x ?? 0) + (account?.width ?? 0))).toBe(390 - 8);
+  });
+
+  test('As a phone user on a bar too narrow for every action, the rest fold into More, which opens as a sheet above the bar that a tap on the scrim closes', async ({
+    page,
+  }) => {
+    // Given
+    await page.setViewportSize({ width: 240, height: 640 });
 
     // When
     await page.goto(LABEL_URL);
@@ -129,40 +152,12 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.locator('#more-button').click();
-    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
-
-    // Then
-    await expect(page.locator('#more-popover')).not.toHaveAttribute('data-open');
-    await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
-  });
-
-  test('As a phone user, the bar spans the foot of the screen with the address, More and then the account, and More opens as a sheet above it that a tap on the scrim closes', async ({
-    page,
-  }) => {
-    // Given
-    await page.setViewportSize({ width: 390, height: 844 });
-
-    // When
-    await page.goto(LABEL_URL);
-    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
-
-    // Then
-    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 844 - 60, width: 390, height: 60 });
-    await expect(page.locator('#theme-toggle')).toBeHidden();
-    await expect(page.locator('#permissions-button')).toBeHidden();
-    const more = await page.locator('#more-button').boundingBox();
-    const account = await page.locator('#auth-button').boundingBox();
-    expect((more?.x ?? 0) < (account?.x ?? 0)).toBe(true);
-    expect(Math.round((account?.x ?? 0) + (account?.width ?? 0))).toBe(390 - 8);
-
-    // When
-    await page.locator('#more-button').click();
 
     // Then
     const sheet = page.locator('#more-popover');
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
     await expect(sheet.getByTestId('menu-sheet-title')).toHaveText('More');
-    await expect.poll(() => sheetBottom(sheet.getByTestId('menu'))).toBe(844 - 60);
+    await expect.poll(() => sheetBottom(sheet.getByTestId('menu'))).toBe(640 - 60);
 
     // When
     await page.mouse.click(195, 100);
@@ -181,13 +176,11 @@ test.describe('Shell UI smoke', () => {
     const sheet = page.locator('#mode-popover');
 
     // When
-    await page.locator('#more-button').click();
-    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
+    await page.locator('#mode-button').click();
 
     // Then
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
-    // A <dialog> opened with showModal() is modal without an aria-modal attribute.
-    expect(await sheet.evaluate(el => el.matches(':modal'))).toBe(true);
+    await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
     // On the bar, once it has slid up.
     await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
@@ -199,8 +192,7 @@ test.describe('Shell UI smoke', () => {
     await expect(sheet).not.toHaveAttribute('data-open');
 
     // When: open it again and swipe the header down.
-    await page.locator('#more-button').click();
-    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
+    await page.locator('#mode-button').click();
     await expect(sheet).toHaveAttribute('data-open');
     await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
     const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
@@ -224,8 +216,7 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
     const sheet = page.locator('#permissions-popover');
     const open = async (): Promise<void> => {
-      await page.locator('#more-button').click();
-      await page.locator('#more-popover [role="menuitem"][data-item="permissions"]').click();
+      await page.locator('#permissions-button').click();
       await expect(sheet).toHaveAttribute('data-open');
       await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
     };
@@ -235,8 +226,7 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
-    // A <dialog> opened with showModal() is modal without an aria-modal attribute.
-    expect(await sheet.evaluate(el => el.matches(':modal'))).toBe(true);
+    await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
     await expect(sheet.locator('#permissions-popover-list')).toBeAttached();
     await expect(sheet.getByTestId('permissions-popover-header')).toHaveCount(0);

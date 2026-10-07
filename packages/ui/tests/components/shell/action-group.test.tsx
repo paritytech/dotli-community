@@ -314,7 +314,7 @@ describe('ActionGroup', () => {
     expect(row.lastElementChild?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('As the build-time render, the items that may collapse are marked, and the More button is parked', async () => {
+  it('As the build-time render, the More button is parked', async () => {
     // Given: a bar that has not measured yet, as in the host page's build-time render.
     const bar: TopbarBar = {
       register: () => () => false,
@@ -331,11 +331,7 @@ describe('ActionGroup', () => {
     ));
     await settle();
 
-    // Then: until the bar measures, a narrow viewport keeps these out and shows the More button.
-    const mayCollapse = [...document.querySelectorAll<HTMLElement>('[data-testid="topbar-item"]')]
-      .filter(item => item.hasAttribute('data-may-collapse'))
-      .map(item => item.dataset['item']);
-    expect(mayCollapse).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
+    // Then
     expect(byTestId('more-item').hasAttribute('data-parked')).toBe(true);
   });
 
@@ -440,8 +436,8 @@ describe('ActionGroup', () => {
     await settle();
 
     // Then
-    const sheet = byId('more-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('more-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(isOpen()).toBe(true);
     expect(byId('topbar-actions').contains(sheet)).toBe(false);
     expect(byTestId('menu-sheet-title', sheet).textContent).toBe('More');
@@ -454,7 +450,7 @@ describe('ActionGroup', () => {
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(sheet.open).toBe(false);
+    expect(sheet.hasAttribute('data-open')).toBe(false);
     expect(document.activeElement).toBe(byId('more-button'));
   });
 
@@ -468,7 +464,7 @@ describe('ActionGroup', () => {
     await settle();
 
     // Then
-    expect(byId('more-popover', HTMLDialogElement).open).toBe(true);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(true);
     expect(document.activeElement).toBe(moreRow('permissions'));
 
     // When

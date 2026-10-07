@@ -39,6 +39,8 @@ const MORE_ONLY = ITEM_WIDTH;
 
 async function renderIsland(): Promise<void> {
   const container = document.createElement('div');
+  // As the host page's bar, which stays live over the sheets resting on it.
+  container.setAttribute('data-over-sheets', '');
   document.body.append(container);
   renderComponent(() => <TopbarActions />, { container });
   await settle();
@@ -189,8 +191,8 @@ describe('Topbar actions island', () => {
     expect(document.getElementById('theme-toggle')).toBeNull();
   });
 
-  it('As a phone user, the header keeps only More and then the account, however much room it measures: every action is in More', async () => {
-    // Given: a phone, though the stand-in layout has room for every item
+  it('As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it', async () => {
+    // Given: a phone bar with room for every item
     stubTopbarLayout(6 * ITEM_WIDTH);
     stubPhoneViewport(true);
 
@@ -200,8 +202,8 @@ describe('Topbar actions island', () => {
     await settle();
 
     // Then
-    expect(await moreRowNames()).toEqual(['network', 'permissions', 'theme', 'settings']);
-    expect(byTestId('more-item').hasAttribute('data-parked')).toBe(false);
+    expect(await moreRowNames()).toEqual([]);
+    expect(byTestId('more-item').hasAttribute('data-parked')).toBe(true);
     const account = must(byId('auth-button').closest<HTMLElement>('[data-testid="topbar-item"]'), 'the account item');
     expect(account.hasAttribute('data-parked')).toBe(false);
     expect(byId('more-button').compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
@@ -210,8 +212,8 @@ describe('Topbar actions island', () => {
   });
 
   it('As a phone user, the Network row leads the More menu with its status dot and verdict word, and More carries the health badge', async () => {
-    // Given: the chains are still starting
-    stubTopbarLayout(6 * ITEM_WIDTH);
+    // Given: the chains are still starting, on a phone bar with room for More only
+    stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
     setChainsButtonVisible(true);
@@ -328,8 +330,8 @@ describe('Topbar actions island', () => {
     button.focus();
     button.click();
     await settle();
-    const sheet = byId('more-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('more-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
 
     // When
     const tab = tabTo(document.body);
@@ -361,8 +363,7 @@ describe('Topbar actions island', () => {
     const more = byId('more-popover');
     expect(more.hasAttribute('data-open')).toBe(false);
     expect(more.hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('theme-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('theme-popover');
     expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
     expect(sheet.contains(document.activeElement)).toBe(true);
@@ -380,10 +381,41 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byId('more-popover').hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('mode-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('mode-popover');
     expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
+  });
+
+  it('As a phone user with the Appearance sheet open, pressing Settings in the bar swaps the sheets without sliding, and pressing it again closes its sheet', async () => {
+    // Given
+    initSettingsStore();
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+    await renderIsland();
+    mouseClick(byId('theme-toggle'));
+    await settle();
+    const appearance = byId('theme-popover');
+    expect(appearance.hasAttribute('data-open')).toBe(true);
+    expect(byId('mode-button').closest('[inert]')).toBeNull();
+
+    // When
+    mouseClick(byId('mode-button'));
+    await settle();
+
+    // Then
+    expect(appearance.hasAttribute('data-open')).toBe(false);
+    expect(appearance.hasAttribute('data-handoff')).toBe(true);
+    const settings = byId('mode-popover');
+    expect(settings.hasAttribute('data-open')).toBe(true);
+    expect(settings.hasAttribute('data-handoff')).toBe(true);
+    expect(settings.contains(document.activeElement)).toBe(true);
+
+    // When
+    mouseClick(byId('mode-button'));
+    await settle();
+
+    // Then
+    expect(settings.hasAttribute('data-open')).toBe(false);
   });
 
   it("As a phone user closing a sheet that took More's place, it slides out", async () => {

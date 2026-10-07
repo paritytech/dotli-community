@@ -1,37 +1,23 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A transparent frame over the viewport. The UA's dialog box (margin auto,
-   padding, border, Canvas, max sizes) is reset, and its ::backdrop is
-   cleared: the frame draws its own scrim so it can fade out in every engine.
-   `display` is kept through the exit (allow-discrete), with the frame in the
-   body, where Firefox and Safari leave it once it drops out of the top layer. */
+/* A transparent frame over the viewport, drawing its own scrim. `display`
+   is kept through the exit (allow-discrete). */
 .layer {
   position: fixed;
   inset: 0;
   z-index: 3000;
   box-sizing: border-box;
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  max-height: none;
-  margin: 0;
-  padding: 0;
   /* Not `hidden`, which is still a scroll container: iOS Safari scrolls it to
      reveal the focus taken inside a sheet that is still below the frame at
      its starting style, and the sheet then rests that far up. */
   overflow: clip;
-  border: 0;
-  background: transparent;
   color: var(--chrome-text);
   display: none;
   transition: display var(--dur-morph) allow-discrete;
 }
 .layer[data-open] {
   display: grid;
-}
-.layer::backdrop {
-  background: transparent;
 }
 .layer:focus-visible {
   outline: none;
@@ -45,7 +31,6 @@
    clip does not reach it) stops there too. */
 .layer[data-layout='sheet'] {
   bottom: var(--content-bottom);
-  height: auto;
   place-items: end stretch;
 }
 .layer[data-layout='sheet'] .scrim {

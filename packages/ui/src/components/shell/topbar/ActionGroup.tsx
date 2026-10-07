@@ -38,9 +38,7 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  * collapsed item, or More with no row, is `data-parked`: out of flow and
  * invisible, but still measured. `data-collapsible` marks the group once it
  * is mounted and measuring. The build-time render (the Astro page) goes
- * without it, and until the group hydrates, a narrow screen hides the items
- * marked `data-may-collapse` and shows More, as the bar would most likely
- * fit them, while a wide one hides More.
+ * without it, and shows every item and no More until the group hydrates.
  */
 export function ActionGroup(props: {
   /** The group's room, when its container knows better than its own width (a content-sized pill). */

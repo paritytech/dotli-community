@@ -48,11 +48,11 @@ export interface FloatingLayerProps {
  * element in the body (in the bar, whose glass is a backdrop filter, a fixed
  * surface would be placed against the bar). The owner's `open` drives
  * showPopover() and hidePopover(); the browser's own closes (a press
- * outside, the invoker, a modal opening) come back through `beforetoggle`
- * as `onClose`. What the browser leaves out it adds: a press in the
+ * outside, the invoker) and a ModalLayer showing come back through
+ * `beforetoggle` as `onClose`. What the browser leaves out it adds: a press in the
  * product's iframe only blurs this window, and focus can leave by a script,
  * so both close an auto layer too. Escape is the layer's own, on the key:
- * inside a ModalLayer the dialog would take the key for itself.
+ * inside a ModalLayer the layer would take the key for itself.
  */
 export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   let surface: HTMLDivElement | undefined;

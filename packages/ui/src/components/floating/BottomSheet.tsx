@@ -32,8 +32,8 @@ export function BottomSheet(props: BottomSheetProps): JSX.Element {
   });
   let holds = 0;
   // A memo, not an effect writing a signal: the marks must be on the frame
-  // before ModalLayer's effect shows or hides it, since showModal() and
-  // focus() fix the sheet's starting style. A hand-off marks one opening and
+  // before ModalLayer's effect shows or hides it, since its focus() fixes
+  // the sheet's starting style. A hand-off marks one opening and
   // one closing only. A close inside a hand-off holds the sheet up until it
   // is known whether another sheet came (see handOffSheet), so the leaving
   // mark lands with the close, whichever sheet's memo runs first.

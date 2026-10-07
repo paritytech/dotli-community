@@ -13,7 +13,7 @@
   max-height: min(85dvh, var(--content-height));
   overflow: hidden;
   border-radius: var(--r-xl) var(--r-xl) 0 0;
-  background: var(--chrome-glass);
+  background: var(--chrome-top);
   -webkit-backdrop-filter: var(--chrome-blur);
   backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-sheet);
@@ -82,13 +82,11 @@
   overflow-wrap: anywhere;
 }
 
-/* The board's .sheet-scroll: 24 px under the content. The layer already
-   ends above the bar and the home indicator. */
 .body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding-bottom: var(--sp-6);
+  padding-bottom: var(--sp-4);
 }
 /* A menu's body takes focus itself (tabindex -1) for a pointer opening, and
    shows no ring for it: its rows carry the ring. */

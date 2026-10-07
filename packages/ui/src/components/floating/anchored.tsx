@@ -20,6 +20,7 @@ import { TopbarContext } from '../shell/topbar/context.js';
 import { anchorName } from './anchor-name.js';
 import { Broken } from './broken.js';
 import type { CloseReason } from './close-reason.js';
+import { modalLayerShown } from './modal-stack.js';
 
 /**
  * The open state Popover and DropdownMenu share: a surface opened from a
@@ -79,12 +80,18 @@ export function createAnchored(
       setSheet(isPhoneViewport());
       setMounted(true);
     }
-    const returnFocus =
-      !next && returnFocusOn.has(reason) && focusLostOrInside(document.getElementById(props.id) ?? undefined);
+    const surface = (): HTMLElement | undefined => document.getElementById(props.id) ?? undefined;
+    const returnFocus = !next && returnFocusOn.has(reason) && focusLostOrInside(surface());
     setOpenSignal(next);
     props.onOpenChange?.(next);
     if (returnFocus) {
-      queueMicrotask(focusBack);
+      // Unless something took it meanwhile: a sheet opening in this one's
+      // place (a press on the bar it rests on, handOffSheetOnPress).
+      queueMicrotask(() => {
+        if (focusLostOrInside(surface())) {
+          focusBack();
+        }
+      });
     }
   };
   return {
@@ -212,11 +219,6 @@ export interface SurfaceChunk {
   loaded: () => boolean;
 }
 
-/** Whether a modal dialog is open, which an anchored surface must not cover. */
-function modalOpen(): boolean {
-  return document.querySelector('dialog:modal') !== null;
-}
-
 /**
  * Loads the surface's chunk. Once the browser is idle, it loads it, which
  * puts the surface in the page, and the content's `preload`, so neither
@@ -241,7 +243,7 @@ export function createSurfaceLoad(
         return;
       }
       const moved = document.activeElement !== opening.focus && !state.focusAtTrigger();
-      if (moved || modalOpen()) {
+      if (moved || modalLayerShown()) {
         state.setOpen(false, 'focus-out');
       }
     });

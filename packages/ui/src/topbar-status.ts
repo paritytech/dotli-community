@@ -161,12 +161,12 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
  * everything else in its row, with the address counted at its minimum. The
  * same at rest and while the pill morphs (when the address is squeezed), so
  * items never pop in and out during a reveal. Undefined without the bar.
- * On a phone the header holds only More and the account, so the actions get
- * none and all move into More.
+ * On a phone the bar has no address and the group fills it after the logo,
+ * so its own width is its room.
  */
 export function topbarActionRoom(group: HTMLElement, row = layoutParent(group)): number | undefined {
   if (isPhoneViewport()) {
-    return 0;
+    return group.clientWidth;
   }
   const bar = document.getElementById('topbar');
   if (bar === null || row === null) {

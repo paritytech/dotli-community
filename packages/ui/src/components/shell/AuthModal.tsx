@@ -172,7 +172,7 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  * is waiting.
  */
 export function AuthModal(): JSX.Element {
-  let frame: HTMLDialogElement | undefined;
+  let frame: HTMLDivElement | undefined;
   let qrBox: HTMLDivElement | undefined;
   const state = useStore(authModalStore);
   // A phone's layout once hydrated: the build-time render, which has no
@@ -326,7 +326,7 @@ export function AuthModal(): JSX.Element {
       }}
     >
       <div class={s['content']}>
-        <Surface>
+        <Surface class={s['panel']}>
           <div class={s['head']}>
             <h2 class={s['title']} id="auth-modal-title">
               <Show when={state().productLabel} fallback="Login with Polkadot Mobile">

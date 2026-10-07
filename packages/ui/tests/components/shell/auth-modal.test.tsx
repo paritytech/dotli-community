@@ -209,7 +209,8 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
  */
 function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.id).toBe('auth-modal-backdrop');
-  expect(backdrop.tagName).toBe('DIALOG');
+  expect(backdrop.getAttribute('role')).toBe('dialog');
+  expect(backdrop.getAttribute('aria-modal')).toBe('true');
   expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
   // The scrim, then the card: no sheet head on a wide screen, and the card

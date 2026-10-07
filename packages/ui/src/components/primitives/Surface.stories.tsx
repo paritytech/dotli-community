@@ -8,6 +8,8 @@ import { InSheet as InSheetContext } from '../floating/in-sheet.js';
 import layer from '../floating/FloatingLayer.module.css';
 import popover from '../floating/Popover.module.css';
 import frame from '../floating/SheetFrame.module.css';
+// A consumer's padding, as the Surface sets none: the settings panel's.
+import panel from '../shell/SettingsContent.module.css';
 import { Button } from './Button.js';
 import { Chip } from './Chip.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from './Surface.js';
@@ -35,7 +37,7 @@ const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
 
 type SurfaceArgs = Parameters<typeof Surface>[0];
 const settings = (args: SurfaceArgs) => (
-  <Surface {...args}>
+  <Surface {...args} class={panel['panel']}>
     <SurfaceHead title="Settings" aside={<Chip tone="mono">Paseo</Chip>} />
     <Well>
       <Callout icon={<InfoIcon />}>Surfaces hold a popover's content.</Callout>

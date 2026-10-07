@@ -54,8 +54,8 @@ describe('The More sheet before any popover chunk is in', () => {
     const more = byId('more-popover');
     expect(more.hasAttribute('data-open')).toBe(false);
     expect(more.hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('theme-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
   });
 });
