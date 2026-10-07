@@ -185,7 +185,7 @@ function selectedRows(): HTMLElement[] {
   return rows().filter(r => r.getAttribute('data-selection') === 'selected');
 }
 
-function tab(view: 'list' | 'timeline' | 'resolution' | 'archive'): HTMLElement {
+function tab(view: 'list' | 'timeline' | 'resolution' | 'archive' | 'diagnostics'): HTMLElement {
   return q(`[data-testid="td-tab"][data-view="${view}"]`);
 }
 
@@ -313,8 +313,8 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(byTestId('td-exclude-input', panel(), HTMLInputElement).placeholder).toBe('hide by method…');
 
     const tabs = [...root.querySelectorAll<HTMLElement>('[data-testid="td-tabs"] [data-testid="td-tab"]')];
-    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive']);
-    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false']);
+    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive', 'Diagnostics']);
+    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false']);
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
     expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
       'No events match the current filter.',
@@ -322,6 +322,7 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('[data-testid="td-timeline"]').hidden).toBe(true);
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(true);
     expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
     expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
       'Select an event on the left to inspect its payload.',
@@ -1164,6 +1165,30 @@ describe('truapi debug panel: views', () => {
     // Then
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
     expect(panel().getAttribute('data-view')).toBe('list');
+  });
+
+  it('As a dotli developer, the Diagnostics tab takes the whole width and shows the diagnostics only while open', () => {
+    // Given
+    mount();
+    expect(panel().querySelector('[data-testid="td-diagnostics-rows"]')).toBeNull();
+
+    // When
+    click(tab('diagnostics'));
+
+    // Then
+    expect(tab('diagnostics').getAttribute('aria-selected')).toBe('true');
+    expect(panel().getAttribute('data-view')).toBe('diagnostics');
+    expect(q('[data-testid="td-list"]').hidden).toBe(true);
+    expect(q('[data-testid="td-detail"]').hidden).toBe(true);
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(false);
+    expect(q('[data-testid="td-diagnostics-rows"]').textContent).toContain(`Site${window.location.host}`);
+
+    // When
+    click(tab('list'));
+
+    // Then
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(true);
+    expect(panel().querySelector('[data-testid="td-diagnostics-rows"]')).toBeNull();
   });
 
   it('As a dotli developer, clicking a timeline box shows its whole group in the detail pane', () => {

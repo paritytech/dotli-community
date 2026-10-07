@@ -5,13 +5,14 @@ import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './Tabs.module.css';
 
-export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive';
+export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'diagnostics';
 
 const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'list', label: 'List' },
   { view: 'timeline', label: 'Timeline' },
   { view: 'resolution', label: 'Resolution' },
   { view: 'archive', label: 'Archive' },
+  { view: 'diagnostics', label: 'Diagnostics' },
 ];
 
 export function Tabs(props: { view: PanelView; onSelect: (view: PanelView) => void }): JSX.Element {

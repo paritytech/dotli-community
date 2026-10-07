@@ -141,14 +141,16 @@
 }
 /* The Resolution view has nothing to select, so the detail pane would only
    ever say "select an event". The chart takes the whole width instead. The
-   Archive view shows its own selection, so it takes the width too. */
+   Archive view shows its own selection, so it takes the width too, and so
+   does Diagnostics, which has nothing to select either. */
 .panel[data-view='resolution'] .body,
-.panel[data-view='archive'] .body {
+.panel[data-view='archive'] .body,
+.panel[data-view='diagnostics'] .body {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
 
-/* Views (list, timeline, resolution, archive) stacked in the same region
+/* Views (list, timeline, resolution, archive, diagnostics) stacked in the same region
    with a tab strip above. Only the active one is shown, the others carry
    `hidden`. */
 .views {

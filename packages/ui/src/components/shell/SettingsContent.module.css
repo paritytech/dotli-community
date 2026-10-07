@@ -15,29 +15,18 @@
   }
 }
 
-/* The board's Settings popover (MenuSettings): the title, a column each for
-   the settings and, in a debug build, the diagnostics (stacked in a sheet),
-   and a footer with the reload hint and Save and apply. The panel's
-   Surface is bare, inside the Popover's glass. In a sheet the footer ends
-   the scrolled content, Save and apply across its width. */
+/* The board's Settings popover (MenuSettings): the title, the settings and a
+   footer with the reload hint and Save and apply. The panel's Surface is
+   bare, inside the Popover's glass. In a sheet the footer ends the scrolled
+   content, Save and apply across its width. */
 
-.columns {
-  display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
-  align-items: start;
-  gap: var(--sp-4);
-}
-.content[data-sheet] .columns {
-  grid-auto-flow: row;
-}
-.column {
+.sections {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
   min-width: 0;
 }
-/* The clear-caches button's icon. */
+/* The clear-caches and debug buttons' icons. */
 .icon {
   width: 14px;
   height: 14px;
@@ -53,8 +42,7 @@
 
 /* Phones: the boards' 20 px column rhythm and 16 px icon. */
 @media (max-width: 560px) {
-  .columns,
-  .column {
+  .sections {
     gap: var(--sp-5);
   }
   .icon {

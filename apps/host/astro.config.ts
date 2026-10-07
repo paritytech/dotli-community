@@ -19,7 +19,7 @@ import wasmPlugin from 'vite-plugin-wasm';
 import astroSolid from '@config/astro-solid';
 import { astroLazyCss } from '@config/vite/astro-lazy-css';
 import { astroPwa } from '@config/vite/astro-pwa';
-import { buildInfo, readPackageVersion } from '@config/vite/build-info';
+import { buildInfo, readReleaseVersion } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
@@ -367,7 +367,7 @@ export default defineConfig({
       // Baked once at build time, read lazily at the declaration site so a
       // missing package (shouldn't happen given the monorepo overrides)
       // falls back to empty/"unknown" rather than failing the build.
-      __DOTLI_VERSION__: JSON.stringify(readPackageVersion(import.meta.dirname)),
+      __DOTLI_VERSION__: JSON.stringify(readReleaseVersion(import.meta.dirname)),
       __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
       __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),
       __POLKADOT_API_VERSIONS__: JSON.stringify(collectDirectScopedDeps('@polkadot-api/')),

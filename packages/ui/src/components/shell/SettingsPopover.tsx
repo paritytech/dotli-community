@@ -3,7 +3,6 @@
 
 import { createSignal, lazy, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { DEBUG } from '@dotli/config';
 import { SLIDERS_PATH } from '../../settings-glyph.js';
 import { settingsStore } from '../../state/settings.js';
 import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
@@ -99,7 +98,7 @@ export function SettingsPopover(): JSX.Element {
         trigger={button()}
         open={open()}
         onOpenChange={setSettingsOpen}
-        class={DEBUG ? s['wide'] : s['popover']}
+        class={s['popover']}
         preload={Settings.preload}
       >
         <Settings />
