@@ -107,8 +107,32 @@ export function installPolkaVmMenu(
   loading.append(spinner, loadingText);
   surface.append(toggle, dialog, loading);
   let loadingFileName: string | null = null;
+  let fileDelivered = false;
   let busy = false;
   let previousFocus: HTMLElement | null = null;
+  const renderLoading = (): void => {
+    const waitingForResume = loadingFileName !== null && fileDelivered && dialog.open;
+    loading.hidden = loadingFileName === null;
+    spinner.hidden = waitingForResume;
+    if (loadingFileName === null || waitingForResume) {
+      surface.removeAttribute('aria-busy');
+    } else {
+      surface.setAttribute('aria-busy', 'true');
+    }
+    resume.textContent = fileDelivered && loadingFileName !== null ? 'Resume and load' : 'Resume';
+    if (loadingFileName === null) {
+      loadingText.textContent = '';
+      if (options.error === undefined) {
+        message.textContent = pausedMessage;
+      }
+    } else {
+      const text = waitingForResume
+        ? `Loading paused. Select Resume and load to continue with ${loadingFileName}.`
+        : `Loading ${loadingFileName}…`;
+      loadingText.textContent = text;
+      message.textContent = text;
+    }
+  };
   const open = (): void => {
     if (dialog.open) {
       return;
@@ -117,6 +141,9 @@ export function installPolkaVmMenu(
     renderGrants();
     options.pause(true);
     dialog.showModal();
+    if (loadingFileName !== null) {
+      renderLoading();
+    }
     toggle.setAttribute('aria-expanded', 'true');
     (options.error === undefined ? resume : retry).focus();
   };
@@ -125,6 +152,9 @@ export function installPolkaVmMenu(
       return;
     }
     dialog.close();
+    if (loadingFileName !== null) {
+      renderLoading();
+    }
     toggle.setAttribute('aria-expanded', 'false');
     options.pause(false);
     (previousFocus?.isConnected === true && previousFocus !== toggle ? previousFocus : canvas).focus({
@@ -195,27 +225,13 @@ export function installPolkaVmMenu(
         return;
       }
       loadingFileName = fileName;
-      loading.hidden = fileName === null;
-      if (fileName === null) {
-        surface.removeAttribute('aria-busy');
-      } else {
-        surface.setAttribute('aria-busy', 'true');
-      }
-      resume.textContent = 'Resume';
-      if (fileName === null) {
-        loadingText.textContent = '';
-        if (options.error === undefined) {
-          message.textContent = pausedMessage;
-        }
-      } else {
-        loadingText.textContent = `Loading ${fileName}…`;
-        message.textContent = `Loading ${fileName}…`;
-      }
+      fileDelivered = false;
+      renderLoading();
     },
     loadingReady: () => {
       if (loadingFileName !== null) {
-        message.textContent = `Loading ${loadingFileName}… Resume to continue.`;
-        resume.textContent = 'Resume and load';
+        fileDelivered = true;
+        renderLoading();
       }
     },
     setFileInputAvailable: available => {

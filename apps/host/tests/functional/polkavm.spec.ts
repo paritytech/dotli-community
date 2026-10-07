@@ -174,6 +174,7 @@ test('a verified PolkaVM package translates and renders in the sandbox', async (
     element.contentWindow.postMessage(
       {
         type: 'dotli:polkavm-view-insets',
+        safeArea: { left: 0, top: 0, right: 0, bottom: 0 },
         keyboard: { left: 0, top: 0, right: 0, bottom: 180 },
       },
       'http://polkavm-fixture.app.localhost:5173',
