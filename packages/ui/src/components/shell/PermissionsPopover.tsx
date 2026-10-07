@@ -5,6 +5,8 @@ import { createEffect, createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { hasAnyGrant } from '../../permissions.js';
 import { productStore } from '../../state/product.js';
+import { authStore, getAuthState } from '../../state/auth.js';
+import type { DotliAuthState } from '../../host-callbacks/AuthState.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { Popover } from './Popover.js';
@@ -52,8 +54,15 @@ function LockIcon(props: { size: number }): JSX.Element {
  */
 export function PermissionsPopover(): JSX.Element {
   const product = useStore(productStore);
+  const auth = useStore(authStore);
   const changes = createPermissionChanges();
-  const [hasGrants, setHasGrants] = createSignal(false);
+  const [grantRead, setGrantRead] = createSignal<{ auth: DotliAuthState; label: string; granted: boolean } | null>(
+    null,
+  );
+  const hasGrants = (): boolean => {
+    const read = grantRead();
+    return read !== null && read.auth === auth() && read.label === label() && read.granted;
+  };
   const label = (): string | null => {
     const current = product();
     return current.status === 'loaded' ? current.label : null;
@@ -64,16 +73,16 @@ export function PermissionsPopover(): JSX.Element {
   // keys on a fresh object that carries the change count, so a change re-runs
   // it even when the label is the same.
   createEffect(
-    () => ({ label: label(), change: changes() }),
-    ({ label: current }) => {
+    () => ({ label: label(), auth: auth(), change: changes() }),
+    ({ label: current, auth: currentAuth }) => {
       if (current === null) {
-        setHasGrants(false);
+        setGrantRead(null);
         return;
       }
       let live = true;
       const land = (granted: boolean): void => {
-        if (live) {
-          setHasGrants(granted);
+        if (live && getAuthState() === currentAuth) {
+          setGrantRead({ auth: currentAuth, label: current, granted });
         }
       };
       hasAnyGrant(current).then(land, () => {

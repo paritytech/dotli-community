@@ -69,7 +69,13 @@ import {
 } from './page-core.js';
 import type { InspectorProduct } from '@dotli/truapi-debug';
 import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
-import { ALL_PERMISSIONS, authorizationRequest, fromAuthorizationStatus } from './permissions.js';
+import {
+  ALL_PERMISSIONS,
+  automaticPreimageAccount,
+  authorizationRequest,
+  fromAuthorizationStatus,
+} from './permissions.js';
+import { getAuthState } from './state/auth.js';
 import {
   createLocalWalletSecret,
   deleteLocalWalletSecret,
@@ -131,7 +137,10 @@ interface ActiveHost {
 type CoreProviderBase = Provider &
   Pick<
     TrUApiProductProvider,
-    'getPermissionAuthorizationStatus' | 'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
+    | 'getPermissionAuthorizationStatus'
+    | 'getPermissionAuthorizationStatuses'
+    | 'setPermissionAuthorizationStatus'
+    | 'trustedRemotePermissions'
   >;
 type CurrentProduct =
   | {
@@ -453,11 +462,19 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
   if (context === null) {
     return null;
   }
+  const auth = getAuthState();
+  const rootPublicKey = automaticPreimageAccount(auth);
+  const permissions = ALL_PERMISSIONS.filter(
+    ({ name }) => name !== 'AutomaticPreimageSubmit' || rootPublicKey !== null,
+  );
   const statuses = await context.host.core.getPermissionAuthorizationStatuses(
-    ALL_PERMISSIONS.map(({ name }) => authorizationRequest(name)),
+    permissions.map(({ name }) => authorizationRequest(name, rootPublicKey)),
   );
   context.assertCurrent();
-  if (statuses.length !== ALL_PERMISSIONS.length) {
+  if (getAuthState() !== auth) {
+    throw new Error('The account changed during the permission lookup.');
+  }
+  if (statuses.length !== permissions.length) {
     throw new Error('Native permission status response was incomplete.');
   }
   let accountPublicKey: string | undefined;
@@ -481,6 +498,9 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
     accountError = error instanceof Error ? error.message : 'Product account lookup failed.';
   }
   context.assertCurrent();
+  if (getAuthState() !== auth) {
+    throw new Error('The account changed during the permission lookup.');
+  }
   const defaults: AllocatableResource[] = [
     { tag: 'StatementStoreAllowance' },
     { tag: 'BulletinAllowance' },
@@ -496,7 +516,7 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
     accountPublicKey,
     accountError,
     derivation: `ProductAccountId: ${context.id}; derivationIndex: Index 0 (native product-scoped account, not a BIP-44 path).`,
-    permissions: ALL_PERMISSIONS.map(({ name, label }, index) => {
+    permissions: permissions.map(({ name, label }, index) => {
       const status = statuses[index];
       if (status === undefined) {
         throw new Error('Native permission status response was incomplete.');
@@ -1472,6 +1492,7 @@ function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase 
   });
 
   return {
+    trustedRemotePermissions: provider.trustedRemotePermissions === true,
     postMessage(message: Uint8Array): void {
       if (disposed) {
         return;
@@ -1496,8 +1517,12 @@ function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase 
     },
     async setPermissionAuthorizationStatus(request, status) {
       await provider.setPermissionAuthorizationStatus(request, status);
-      // Report the decision only once every live core sharing it applied it.
-      await connection.waitForPermissionRefresh(request);
+      // Live-resource permissions complete only after every sharing core
+      // applies them. Upload consent uses its own persisted revision/budget
+      // key and is re-read by the core, not the live-resource policy cache.
+      if (request.tag !== 'AutomaticPreimageSubmit') {
+        await connection.waitForPermissionRefresh(request);
+      }
     },
     dispose() {
       if (disposed) {

@@ -1107,6 +1107,7 @@
 }
 .permissions-popover-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
@@ -1122,6 +1123,11 @@
   color: #e0e0e0;
   flex: 1;
   min-width: 0;
+}
+.permissions-popover-description {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  line-height: 1.5;
 }
 /* Tri-state dropdown */
 .permissions-popover-select-wrap {

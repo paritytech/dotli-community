@@ -227,6 +227,12 @@ export function createBrowserMediaBackend(options) {
         if (rt.closed)
             return;
         if (!rt.queues.size) {
+            // A queue opens with the then-current viewport; replaying buffered
+            // viewport events after it would deliver superseded attachments (a
+            // revisionless detach after the current viewport leaves the core with
+            // none). Viewport state needs no buffering, only the other observations.
+            if (event.tag === "ViewportChanged")
+                return;
             if (rt.pendingEvents.length >= EVENT_CAPACITY - 1)
                 closeRuntime(rt, "EventOverflow");
             else

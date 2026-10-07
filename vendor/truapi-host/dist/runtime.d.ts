@@ -196,6 +196,10 @@ export interface WorkerDemandChange {
     wanted: boolean;
 }
 export interface TrUApiProductProvider extends WireProvider, CoreAdmin {
+    /** Rust-classified product trust, when the provider exposes core metadata.
+     * This is not a permission grant and never overrides stored or OS refusals.
+     */
+    readonly trustedRemotePermissions?: boolean;
     /**
      * Re-tune the wasm core's log level at runtime. Present on runtimes that
      * keep a live channel to the core (e.g. the Web Worker provider); absent on

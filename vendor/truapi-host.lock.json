@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "e1808d8856dd07e4622eb3d54e2fada13a37a9c8",
-  "upstreamRevisionNote": "--no-ff merge of feat/media-sessions (36b99e3d3853eef260033fad10bb5758b8da168a, which marks Media advertisement lookups on their own connection) into #1217 head 674e9a8a17b3916b1eaf99a53baa71a73b2fb115 (feat/media-sessions 3762b3a8f373fcbd1f27b158f125ad33458e0aba merged into origin f22a9384846101a245f923fa6285572b4f20b1fb, which carries the receiving integration at e4d0a15b5b74e7636ac50f2ee1563bf734c54c81 and the Tommy blockers #1216); client, host glue, signing-host WASM and testing WASM rebuilt together at e1808d8856dd07e4622eb3d54e2fada13a37a9c8.",
+  "upstreamRevision": "44b87fea6fbe430589bb53c31a3e38b620ad5374",
+  "upstreamRevisionNote": "Approved integration of Tommy source cf424c97d and Media integration a65736e01, with CAS-protected automatic upload reservations. Client, host glue, signing-host WASM and testing WASM rebuilt together at this revision.",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
   "baseRevision": "795a4082023abd952041c784c9f9e81714aab999",
@@ -13,19 +13,19 @@
       "name": "@parity/truapi",
       "version": "0.23.0",
       "sourceArchiveSha256": "3efbb0ecd66aafc34775b159b4ff7521f10b0439963bf10437de95fb52acc892",
-      "clientSha256": "27adb6baddd524db3a8c490ea7e32ecf9dd3fa14ba1407cf104e5a0428d94208"
+      "clientSha256": "9f2aa73c6ab058542acf13cbdc65a59f7fd9ae7f1ecc166f5aa6a46523daa132"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "e1cafec116e2c2b1d66d55d49c39dbf84ea3404393e9b0d2ab9cbabcdb901350",
+      "sourceArchiveSha256": "bdabefee8714c9a64e2e91d70f4a9de6c3a2905877b98322c513fa558b3392cb",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "abebe6235a9703f374b7c52fced369f32b0cd7712a4bf84ad567f907f221348a",
-      "testingWasmSha256": "c6f59b4bc1220344f141da155b7724accb5fb0bf029f3fbcd77457f6fb83c3a7",
+      "wasmSha256": "ff5d34f4abf320e47b2509a4e03cb97087da19960e9937d88638113fba01899d",
+      "testingWasmSha256": "7370542518d412bccd3953e6e97f866d605581f3a7a45ae4fbf3de2a76f88898",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "e1808d8856dd07e4622eb3d54e2fada13a37a9c8"
+  "wasmUpstreamRevision": "44b87fea6fbe430589bb53c31a3e38b620ad5374"
 }

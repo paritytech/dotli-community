@@ -9,7 +9,6 @@
 // change rather than a copy edit.
 
 export const ERRORS = {
-  PREIMAGE_SUBMIT_DENIED: 'User denied preimage submit',
   DECRYPTION_CANCELLED: 'User cancelled decryption',
   /**
    * @deprecated Nothing produces this since the alias permission modal was

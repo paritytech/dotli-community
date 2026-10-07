@@ -104,6 +104,8 @@ export interface WasmModuleShape {
     WasmSigningHostRuntime?: new (callbacks: unknown, hostConfig: unknown) => WorkerSigningHostRuntime;
     WasmProductRuntime: new (callbacks: unknown, runtimeConfig: unknown) => WorkerProductRuntime;
     setLogLevel?: (level: string) => void;
+    /** Canonical Rust classifier; hosts must not maintain another trusted-label list. */
+    hasTrustedRemotePermissions: (productId: string) => boolean;
     /**
      * Derive a product account public key from that product's hard-subtree
      * public key and a SCALE-encoded `DerivationIndex`. Pure: no runtime or

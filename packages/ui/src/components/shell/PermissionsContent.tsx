@@ -5,6 +5,7 @@ import { createEffect, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
+  automaticPreimageAccount,
   getPermissionStatuses,
   resetPermission,
   setPermissionStatus,
@@ -14,6 +15,8 @@ import {
 import { recordPermissionChange } from '../../state/permissions.js';
 import { callingPermissionSettings, mediaOwnsCapture, type CallingPermissionSetting } from '../../media-host.js';
 import { productStore } from '../../state/product.js';
+import { authStore, getAuthState } from '../../state/auth.js';
+import type { DotliAuthState } from '../../host-callbacks/AuthState.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { PermissionRow } from './PermissionRow.js';
@@ -26,14 +29,14 @@ const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
  * execution's host Media state: whether its container is protected and the
  * Calling scopes its core has used.
  */
-type Fetched =
+type Fetched = { label: string; auth: DotliAuthState } & (
   | {
-      label: string;
       statuses: PermissionStatus[];
       protectedMedia: boolean;
       calling: CallingPermissionSetting[];
     }
-  | { label: string; failed: true };
+  | { failed: true }
+);
 
 /** The loaded product's label, or null while none is loaded. */
 function currentLabel(): string | null {
@@ -56,6 +59,7 @@ export function PermissionsContent(): JSX.Element {
   /** Each row's select, by permission. */
   const selects = new Map<EnforceablePermissionName, HTMLButtonElement>();
   const product = useStore(productStore);
+  const auth = useStore(authStore);
   const changes = createPermissionChanges();
   const [fetched, setFetched] = createSignal<Fetched | null>(null);
   const [openRow, setOpenRow] = createSignal<EnforceablePermissionName | null>(null);
@@ -93,7 +97,7 @@ export function PermissionsContent(): JSX.Element {
   // may have changed since.
   const [retries, setRetries] = createSignal(0);
   createEffect(
-    () => (popover.open() ? { label: label(), change: changes(), retry: retries() } : undefined),
+    () => (popover.open() ? { label: label(), auth: auth(), change: changes(), retry: retries() } : undefined),
     key => {
       closeDropdown();
       if (key === undefined) {
@@ -107,16 +111,19 @@ export function PermissionsContent(): JSX.Element {
       }
       let live = true;
       const land = (read: Fetched): void => {
-        if (live && currentLabel() === current) {
+        if (live && currentLabel() === current && getAuthState() === key.auth) {
           setFetched(read);
         }
       };
-      Promise.all([getPermissionStatuses(current, PERMISSION_NAMES), callingPermissionSettings(current)]).then(
+      Promise.all([
+        getPermissionStatuses(current, PERMISSION_NAMES, automaticPreimageAccount(key.auth)),
+        callingPermissionSettings(current),
+      ]).then(
         ([statuses, calling]) => {
-          land({ label: current, statuses, protectedMedia: mediaOwnsCapture(current), calling });
+          land({ label: current, auth: key.auth, statuses, protectedMedia: mediaOwnsCapture(current), calling });
         },
         () => {
-          land({ label: current, failed: true });
+          land({ label: current, auth: key.auth, failed: true });
         },
       );
       return () => {
@@ -156,15 +163,15 @@ export function PermissionsContent(): JSX.Element {
   const choose = (name: EnforceablePermissionName, next: PermissionStatus): void => {
     closeDropdown();
     const read = untrack(fetched);
-    if (read === null) {
+    if (read?.auth !== getAuthState() || read.label !== currentLabel()) {
       return;
     }
     const { label } = read;
     void (async () => {
       if (next === 'ask') {
-        await resetPermission(label, name);
+        await resetPermission(label, name, automaticPreimageAccount(read.auth));
       } else {
-        await setPermissionStatus(label, name, next);
+        await setPermissionStatus(label, name, next, automaticPreimageAccount(read.auth));
       }
       // The core's committed-policy event owns any required iframe reload.
       recordPermissionChange({
@@ -188,7 +195,7 @@ export function PermissionsContent(): JSX.Element {
       return 'No app is loaded on this domain.';
     }
     const read = fetched();
-    return read !== null && read.label === current.label && 'failed' in read
+    return read !== null && read.label === current.label && read.auth === auth() && 'failed' in read
       ? 'Permissions are unavailable for this app.'
       : undefined;
   };
@@ -196,7 +203,11 @@ export function PermissionsContent(): JSX.Element {
   const loaded = (): Extract<Fetched, { statuses: PermissionStatus[] }> | undefined => {
     const current = product();
     const read = fetched();
-    return current.status === 'loaded' && read !== null && read.label === current.label && 'statuses' in read
+    return current.status === 'loaded' &&
+      read !== null &&
+      read.label === current.label &&
+      read.auth === auth() &&
+      'statuses' in read
       ? read
       : undefined;
   };
@@ -221,19 +232,21 @@ export function PermissionsContent(): JSX.Element {
             <>
               <For each={ALL_PERMISSIONS}>
                 {(perm, index) => (
-                  <PermissionRow
-                    perm={perm}
-                    status={read().statuses[index()] ?? 'ask'}
-                    open={openRow() === perm.name}
-                    toggleMenu={toggleDropdown}
-                    choose={choose}
-                    menuRef={el => {
-                      menu = el;
-                    }}
-                    selectRef={el => {
-                      selects.set(perm.name, el);
-                    }}
-                  />
+                  <Show when={perm.name !== 'AutomaticPreimageSubmit' || automaticPreimageAccount(auth()) !== null}>
+                    <PermissionRow
+                      perm={perm}
+                      status={read().statuses[index()] ?? 'ask'}
+                      open={openRow() === perm.name}
+                      toggleMenu={toggleDropdown}
+                      choose={choose}
+                      menuRef={el => {
+                        menu = el;
+                      }}
+                      selectRef={el => {
+                        selects.set(perm.name, el);
+                      }}
+                    />
+                  </Show>
                 )}
               </For>
               <For each={read().calling}>{setting => <CallingRow setting={setting} />}</For>

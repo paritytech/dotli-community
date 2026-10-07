@@ -414,6 +414,7 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case 'ProfileReferencesReceived':
       case 'ProfilePersonalReferencesReceived':
       case 'NotificationReceiving':
+      case 'AutomaticPreimageUploads':
         return encoded;
       case 'AuthSession':
       case 'PairingDeviceIdentity':
@@ -621,6 +622,8 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
     case 'NotificationReceiving':
       return `${CORE_LOCAL_STORAGE_PREFIX}notification-receiving`;
+    case 'AutomaticPreimageUploads':
+      return `${CORE_LOCAL_STORAGE_PREFIX}automatic-preimage-uploads:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     // Peers address this device by the public counterpart, so the slot name
     // must not move with the session.
     case 'DeviceEncryptionKey':

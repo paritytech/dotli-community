@@ -56,7 +56,7 @@ var init_host_callbacks = __esm({
     CallingReview = S.lazy(() => S.Struct({ productId: S.str, network: S.Bytes(32), account: S.Bytes(32) }));
     ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
     ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(import_truapi.Bytes32) }));
-    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NotificationReceiving: S._void }));
+    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NotificationReceiving: S._void, AutomaticPreimageUploads: S.Struct({ productId: S.str, rootPublicKey: import_truapi.Bytes32, genesisHash: import_truapi.Bytes32 }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi.ProductAccountTxPayload }), LegacyAccount: import_truapi.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
@@ -91,14 +91,14 @@ var init_host_callbacks = __esm({
     NativeCoinageResponse = S.lazy(() => S.TaggedUnion({ Denomination: S.Struct({ centsUnitRaw: S.str }), Prepared: S.Struct({ payment: import_truapi.HostNativeChatPayment, memo: S.Option(NativeCoinageMemo) }), Payments: S.Struct({ payments: S.Vector(import_truapi.HostNativeChatPayment) }), TopUp: S.Struct({ outcome: NativeCoinageTopUpOutcome }), Done: S._void, Failed: S.Struct({ reason: NativeCoinageFailure }) }));
     NativeCoinageScope = S.lazy(() => S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32) }));
     NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S._void, Partial: S.Struct({ creditedAmountRaw: S.str }), Pending: S._void, NotClaimed: S._void }));
-    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi.DerivationIndex) }), ProfileDisclosure: S._void, Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }) }));
+    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi.DerivationIndex) }), ProfileDisclosure: S._void, Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }), AutomaticPreimageSubmit: S.Struct({ rootPublicKey: import_truapi.Bytes32 }) }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
     PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: import_truapi.Bytes32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect }));
     PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
-    PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
+    PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64, productId: S.str, rootPublicKey: import_truapi.Bytes32, genesisHash: import_truapi.Bytes32, automaticMaxBytes: S.u64, automaticMaxUploads: S.u32, automaticWindowSeconds: S.u32 }));
     PresentedContactProfile = S.lazy(() => S.Struct({ shared: S.Option(SharedContactProfile), peerIdentity: S.Bytes(32), username: S.Option(S.str) }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
     ProductExecutionKind = S.lazy(() => S.Status("App", "Widget", "Worker"));
@@ -2621,7 +2621,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
         case "ready":
           break;
         case "coreReady":
-          handleCoreReady(state, msg.coreId, runtime);
+          handleCoreReady(state, msg.coreId, runtime, msg.trustedRemotePermissions);
           break;
         case "coreError":
           handleCoreError(state, msg.coreId, msg.error);
@@ -2846,7 +2846,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
     worker.addEventListener("message", onInitMessage);
   });
 }
-function handleCoreReady(state, coreId, runtime) {
+function handleCoreReady(state, coreId, runtime, trustedRemotePermissions) {
   const pending = state.pendingCores.get(coreId);
   if (!pending || !runtime)
     return;
@@ -2854,6 +2854,7 @@ function handleCoreReady(state, coreId, runtime) {
   const core = {
     coreId,
     productId: pending.productId,
+    trustedRemotePermissions,
     listeners: /* @__PURE__ */ new Set(),
     closeListeners: /* @__PURE__ */ new Set(),
     closedError: null,
@@ -3187,6 +3188,7 @@ function publishAction(state, core, kind, encode) {
 }
 function buildProvider(state, core, runtime) {
   const provider = {
+    trustedRemotePermissions: core.trustedRemotePermissions,
     postMessage(bytes2) {
       if (state.disposed || core.disposed)
         return;
@@ -4896,7 +4898,7 @@ function createMockHost(config = {}) {
         reviews.push(review);
         if (faults.confirmationError)
           throw new Error(faults.confirmationError);
-        return decision(confirmUserActions);
+        return review.tag === "PreimageSubmit" && confirmUserActions ? "AllowOnce" : decision(confirmUserActions);
       }
     },
     theme: {
