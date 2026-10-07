@@ -5,9 +5,9 @@
 
 .stack {
   position: fixed;
-  /* Clear the notch and home indicator on an edge-to-edge display. */
+  /* Clear the notch, and the home indicator or the phone bar below. */
   right: calc(var(--sp-4) + var(--safe-right));
-  bottom: calc(var(--sp-4) + var(--safe-bottom));
+  bottom: calc(var(--sp-4) + var(--content-bottom));
   /* Under the header (1000), the scrims and popovers (1400 up) and the modals
      (2000 up), so a toast never covers a prompt the user has to answer. Under
      the docked chat (900) and the debug panel (950) too, so it never covers
@@ -18,12 +18,9 @@
   margin: 0;
   padding: 0;
 }
-/* PHONE_QUERY in phone-viewport.ts, where the bar becomes the header and
-   menus become sheets. */
+/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .stack {
-    right: calc(var(--sp-4) + var(--safe-right));
-    bottom: calc(var(--sp-4) + var(--safe-bottom));
     left: calc(var(--sp-4) + var(--safe-left));
     width: auto;
   }

@@ -1797,7 +1797,8 @@ class GpuEngine {
           if (pass || computePass) {
             throw new ProtocolError("nested GPU pass", index);
           }
-          if (command.surfaceGeneration !== this.surfaceGeneration) {
+          if (command.colorView === 0 &&
+              command.surfaceGeneration !== this.surfaceGeneration) {
             throw new ProtocolError(
               `render pass surface generation ${command.surfaceGeneration} ` +
                 `does not match current generation ${this.surfaceGeneration}`,
@@ -2598,7 +2599,7 @@ class GpuEngine {
     }
     postBytes("event", makeEvent(5, batch.sequence));
     this.deliverOcclusionResults(batch.sequence, occlusionReadbacks);
-    if (!backgrounded && !this.backgrounded) {
+    if (surfaceStored && !backgrounded && !this.backgrounded) {
       postMessage({ type: "presented", sequence: batch.sequence });
     }
     if (this.testDeviceLossPending && surfaceTexture) {

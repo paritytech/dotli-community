@@ -14,7 +14,7 @@ import { productIframeBox } from '../src/product-iframe-box.js';
  */
 
 describe('product iframe box', () => {
-  it('As a user on a notched phone, the product sits below the topbar and clear of every display inset', () => {
+  it('As a user on a notched phone, the product keeps clear of the topbar and of every display inset', () => {
     // Given
     const opts = { topbarOffset: true };
 
@@ -22,10 +22,10 @@ describe('product iframe box', () => {
     const box = productIframeBox(opts);
 
     // Then
-    expect(box.top).toBe('var(--topbar-height, 68px)');
+    expect(box.top).toBe('var(--content-top, 68px)');
     expect(box.left).toBe('var(--safe-left, 0px)');
     expect(box.width).toBe('calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))');
-    expect(box.height).toBe('calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))');
+    expect(box.height).toBe('calc(100dvh - var(--content-top, 68px) - var(--content-bottom, 0px))');
   });
 
   it('As a user on a notched phone with the topbar hidden, the product still starts below the status bar', () => {
@@ -38,19 +38,6 @@ describe('product iframe box', () => {
     // Then
     expect(box.top).toBe('var(--safe-top, 0px)');
     expect(box.height).toBe('calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))');
-  });
-
-  it('As a user on a notched phone, the product never covers the home indicator in either topbar state', () => {
-    // Given
-    const states = [true, false];
-
-    // When
-    const heights = states.map(topbarOffset => productIframeBox({ topbarOffset }).height);
-
-    // Then
-    for (const height of heights) {
-      expect(height).toContain('var(--safe-bottom, 0px)');
-    }
   });
 
   it('As a user on a browser without env() support, every reserved inset falls back to zero', () => {

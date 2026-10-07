@@ -101,11 +101,15 @@
   .shield:focus-visible {
     outline: none;
   }
-  /* Under the pill, which fills the bar: centred, with the bar's gutters,
-     where from the shield's left edge it would run off the screen. */
+  /* Over the pill, which fills the bar at the foot of the screen: centred,
+     with the bar's gutters, where from the shield's left edge it would run
+     off the screen. */
   .tooltip {
     position-area: span-all;
     justify-self: center;
+    top: auto;
+    bottom: calc(var(--content-bottom) + var(--pop-gap));
+    transform-origin: bottom center;
     width: min(var(--w-pop-md), calc(100vw - 24px - var(--safe-left) - var(--safe-right)));
   }
 }

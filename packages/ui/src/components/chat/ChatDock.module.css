@@ -5,9 +5,9 @@
 
 .panel {
   position: fixed;
-  top: var(--topbar-height);
+  top: var(--content-top);
   right: 0;
-  bottom: 0;
+  bottom: var(--content-bottom);
   z-index: 900;
   display: flex;
   flex-direction: column;

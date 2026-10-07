@@ -15,7 +15,7 @@ const LABEL_URL = `http://browse.localhost:${PORT}/`;
 // not resolve *.localhost.
 const SHARED_STORE = `http://127.0.0.1:${PORT}/__dotli-mode/`;
 
-/** Where a popover's bottom edge is, rounded: a sheet's is the viewport's once it has slid up. */
+/** Where a popover's bottom edge is, rounded: a phone sheet's is the bar's top once it has slid up. */
 async function sheetBottom(sheet: Locator): Promise<number> {
   const box = await sheet.boundingBox();
   return Math.round((box?.y ?? 0) + (box?.height ?? 0));
@@ -136,7 +136,7 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
   });
 
-  test('As a phone user, the header spans the top with the address, More and then the account, and More opens as a sheet a tap on the scrim closes', async ({
+  test('As a phone user, the bar spans the foot of the screen with the address, More and then the account, and More opens as a sheet above it that a tap on the scrim closes', async ({
     page,
   }) => {
     // Given
@@ -147,7 +147,7 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
 
     // Then
-    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 60 });
+    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 844 - 60, width: 390, height: 60 });
     await expect(page.locator('#theme-toggle')).toBeHidden();
     await expect(page.locator('#permissions-button')).toBeHidden();
     const more = await page.locator('#more-button').boundingBox();
@@ -162,7 +162,7 @@ test.describe('Shell UI smoke', () => {
     const sheet = page.locator('#more-popover');
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
     await expect(sheet.getByTestId('menu-sheet-title')).toHaveText('More');
-    await expect.poll(() => sheetBottom(sheet.getByTestId('menu'))).toBe(844);
+    await expect.poll(() => sheetBottom(sheet.getByTestId('menu'))).toBe(844 - 60);
 
     // When
     await page.mouse.click(195, 100);
@@ -189,8 +189,8 @@ test.describe('Shell UI smoke', () => {
     // A <dialog> opened with showModal() is modal without an aria-modal attribute.
     expect(await sheet.evaluate(el => el.matches(':modal'))).toBe(true);
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
-    // At the bottom edge, once it has slid up.
-    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740);
+    // On the bar, once it has slid up.
+    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
 
     // When
     await sheet.getByTestId('popover-sheet-close').click();
@@ -202,7 +202,7 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#more-button').click();
     await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
     await expect(sheet).toHaveAttribute('data-open');
-    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740);
+    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
     const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
@@ -227,7 +227,7 @@ test.describe('Shell UI smoke', () => {
       await page.locator('#more-button').click();
       await page.locator('#more-popover [role="menuitem"][data-item="permissions"]').click();
       await expect(sheet).toHaveAttribute('data-open');
-      await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740);
+      await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
     };
 
     // When
@@ -432,7 +432,8 @@ test.describe('Shell UI smoke', () => {
     await page.route('**/*.css', async route => {
       const response = await route.fetch();
       const body = await response.text();
-      if (body.includes('#truapi-debug-panel')) {
+      // The panel's CSS modules are hashed; its own --td-* palette is not.
+      if (body.includes('--td-bg:')) {
         requested = true;
         await stylesheet.promise;
       }
