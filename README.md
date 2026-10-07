@@ -64,7 +64,9 @@ products stay isolated for SW/storage/security purposes.
 The iframe bridge deduplicates TrUAPI readiness retries by the SDK's public `connectionId`. Replacing an already-adopted
 port on a queued retry disconnects the product, so only a new connection identifier triggers reconnection. A genuine
 document reload supplies a new identifier. The existing source-window and origin checks still apply; the identifier is
-not an authority token.
+not an authority token. The PolkaVM sandbox creates a fresh identifier whenever it needs a new Host port, including
+in-page restarts. This reconnects even when the previous guest never used its port, rather than mistaking the new
+request for an ID-less legacy retry.
 
 ### What it does
 
@@ -242,12 +244,13 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the `0.3.2-rc.3` release candidate, including runtime-registered streamed file input, private caches,
-and translated updates resumed across bounded gas slices; this update retains the separately pinned TrUAPI host SDK.
-Synchronization verifies the package's complete checksum inventory, including its session API and type declarations, but
-serves only the host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and
-`THIRD_PARTY_LICENSES.txt` alongside those artifacts; the consolidated attribution bundle replaces the older standalone
-PolkaVM license files.
+The current pin is the `0.3.2-rc.7` release candidate, including exact binary32 add/multiply intrinsics and direct
+translated float continuation, while retaining the heap-backed fiber-stack fix, resize-safe offscreen resources,
+runtime-registered streamed file input, private caches, and gas-sliced translated updates. The TrUAPI host SDK remains
+separately pinned; these runtime changes do not replace its Chat, profile, transport, or Media APIs. Synchronization
+verifies the package's complete checksum inventory, including its session API and type declarations, but serves only the
+host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt`
+alongside those artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
 
 The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
