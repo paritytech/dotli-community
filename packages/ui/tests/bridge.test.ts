@@ -2,6 +2,10 @@
 // The product and protocol frames are never navigated in these tests, and
 // happy-dom would otherwise try to fetch their pages from a dev server.
 import 'fake-indexeddb/auto';
+import { MessageChannel as NodeMessageChannel, MessagePort as NodeMessagePort } from 'node:worker_threads';
+import type * as TruapiHostWeb from '@parity/truapi-host/web';
+import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
+import { waitForTruapiPort } from '../../../apps/sandbox/src/polkavm-runtime.js';
 import { afterEach, assert, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent } from '@solidjs/testing-library';
 import {
@@ -1195,6 +1199,64 @@ describe('bridge render lifecycle', () => {
     product.productPort.close();
     for (const port of product.inits()) {
       port.close();
+    }
+  });
+
+  it('carries sandbox frames after restarting with an unused previous Host port', async () => {
+    vi.stubGlobal('MessageChannel', NodeMessageChannel);
+    vi.stubGlobal('MessagePort', NodeMessagePort);
+    const { createIframeHost } = await vi.importActual<typeof TruapiHostWeb>('@parity/truapi-host/web');
+    const hosts: IframeHost[] = [];
+    mocks.createIframeHost.mockImplementationOnce((options: IframeHostOptions) => {
+      const host = createIframeHost(options);
+      hosts.push(host);
+      return host;
+    });
+    // beforeEach resets the module cache; load this render's bridge afterward.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('cid', 'sandbox-restart');
+    await waitForProviderRequests(1);
+    const core = makeProvider();
+    nth(mocks.coreProviderDefers, 0).resolve(core);
+    await render;
+    const host = nth(hosts, 0);
+    const sandbox = host.iframe.contentWindow;
+    assert(sandbox);
+    const parentOrigin = window.location.origin;
+    const productOrigin = new URL(host.iframe.src).origin;
+    // Supply only the cross-window delivery happy-dom lacks. Both handshake
+    // handlers and the MessageChannels carrying product frames are real.
+    const toSandbox = vi.spyOn(sandbox, 'postMessage').mockImplementation((...args: unknown[]) => {
+      const [message, , transfer] = args;
+      const ports = Array.isArray(transfer)
+        ? transfer.filter((port): port is MessagePort => port instanceof NodeMessagePort)
+        : [];
+      sandbox.dispatchEvent(
+        new MessageEvent('message', { data: message, origin: parentOrigin, source: window, ports }),
+      );
+    });
+    const toParent = vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+      window.dispatchEvent(new MessageEvent('message', { data: message, origin: productOrigin, source: sandbox }));
+    });
+    try {
+      const first = await waitForTruapiPort(sandbox, window, parentOrigin, 1_000);
+      expect(core.postMessage).not.toHaveBeenCalled();
+      // Match runtime teardown without sending any TrUAPI traffic first.
+      first.close();
+      delete sandbox.__HOST_API_PORT__;
+      const replacement = await waitForTruapiPort(sandbox, window, parentOrigin, 1_000);
+      expect(replacement).not.toBe(first);
+      const frame = new Uint8Array([9, 9]);
+      replacement.postMessage(frame);
+      await vi.waitFor(() => {
+        expect(core.postMessage).toHaveBeenCalledWith(frame);
+      });
+    } finally {
+      sandbox.__HOST_API_PORT__?.close();
+      delete sandbox.__HOST_API_PORT__;
+      toParent.mockRestore();
+      toSandbox.mockRestore();
+      host.dispose();
     }
   });
 
