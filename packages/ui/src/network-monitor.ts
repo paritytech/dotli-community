@@ -157,7 +157,7 @@ function shortGenesis(genesis: string): string {
 }
 
 function recordBlock(state: ChainState, blockNumber: number): void {
-  // `bestBlocks$` also re-emits the same head on a new descendant, a finalization or a reorg.
+  // A reorg can repeat a number or go lower, and must not add a bar.
   if (state.latest !== null && blockNumber <= state.latest) {
     return;
   }

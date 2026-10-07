@@ -717,8 +717,8 @@ export function onProtocolNetBytes(listener: (event: ProtocolNetBytesEnvelope) =
 }
 
 /**
- * Wider than the advertised `isRemoteChainSupported`, since gateway mode keeps Bulletin connectable for the network
- * panel.
+ * Wider than the advertised `isRemoteChainSupported`, since gateway mode keeps Bulletin connectable for bitswap's
+ * content fetches through the frame.
  */
 export function isRemoteChainConnectable(genesisHash: string): boolean {
   const supported =

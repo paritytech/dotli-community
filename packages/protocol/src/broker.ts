@@ -80,7 +80,10 @@ interface SharedFollow {
   blocks: Map<string, CachedBlock>;
   /** Per block hash, the local follow tokens (and the snapshot) still pinning it. */
   pins: Map<string, Set<string>>;
-  /** The newest finalized block's number, once its header arrives. Kept only by the reporting follow. */
+  /**
+   * The newest finalized block's number, once its header arrives. Only the reporting follow fetches it, and a follow
+   * that has stopped reporting keeps advancing it on each finalization it can place.
+   */
   finalizedNumber: number | null;
   baseRequested: boolean;
 }
@@ -1322,7 +1325,10 @@ export class ChainBroker {
     }
   }
 
-  /** The oldest established follow, the only one that reports, so two follows never report one block twice. */
+  /**
+   * The first follow in insertion order that has its upstream token. Only it reports, so two follows never report one
+   * block twice.
+   */
   private reportingFollow(): SharedFollow | null {
     for (const sharedFollow of this.sharedFollows.values()) {
       if (sharedFollow.upstreamToken !== null) {
