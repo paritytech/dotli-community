@@ -2,10 +2,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host page. Astro renders it at build time: the shell's markup, with
-// its Solid islands server-rendered where they hydrate (see
-// components/Shell.astro), and the loading screen. src/main.ts boots the
-// host from there.
 import { socialMetaAttributes } from '@config/vite/social-meta';
 import { ChatDock } from '@dotli/ui/islands/ChatDock';
 import { LandingPage } from '@dotli/ui/islands/LandingPage';
@@ -16,8 +12,7 @@ import s from './index.module.css';
 
 const TITLE = 'Polkadot - The decentralized web, in your browser';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
-// Blocking and classic on purpose: it sets the network config global before
-// the module bundle runs (see runtimeNetworkConfigScript in @dotli/config).
+// Its script is blocking and classic on purpose: it sets the network config global before the module bundle runs.
 const runtimeNetworkConfig = import.meta.env.VITE_RUNTIME_NETWORK_CONFIG === 'true';
 const socialMeta = socialMetaAttributes({
   title: TITLE,
@@ -38,9 +33,7 @@ const socialMeta = socialMetaAttributes({
     <title>{TITLE}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://host.dot.li" crossorigin />
-    {/* Pre-opens the shared IndexedDB during HTML parse, so it is ready
-         before main.ts runs: the open (~10-50ms) overlaps module loading.
-         src/db.ts picks it up from window.__dotliDb. */}
+    {/* Opens the shared IndexedDB during HTML parse, overlapping module loading. src/db.ts takes window.__dotliDb. */}
     <script is:inline>
       window.__dotliDb = new Promise(function (resolve, reject) {
         const req = indexedDB.open('dotli', 5);
@@ -86,8 +79,7 @@ const socialMeta = socialMetaAttributes({
           resolve(req.result);
         };
         req.onerror = function () {
-          // The name in the message, the whole DOMException as the cause:
-          // src/db.ts reports it, and only the cause keeps its message.
+          // Only the cause keeps the DOMException's message for src/db.ts to report.
           const cause = req.error;
           reject(
             new Error(
@@ -96,22 +88,16 @@ const socialMeta = socialMetaAttributes({
             ),
           );
         };
-        // A still-open tab on an older schema blocks the upgrade;
-        // reject instead of leaving the promise pending forever.
+        // A tab still open on an older schema blocks the upgrade, so reject rather than hang.
         req.onblocked = function () {
           reject(new Error('Failed to open dotli DB: blocked by another tab'));
         };
       });
       window.__dotliDb.catch(function () {
-        // src/db.ts reports a rejection once it takes the promise; a rejection
-        // before then must not also surface as an unhandled one.
+        // src/db.ts reports it once it takes the promise, so it must not also surface as unhandled.
       });
     </script>
-    {/* Keeps the islands' failures (Astro's `astro:hydration-error`) from
-         before main.ts listens: an island hydrates as soon as its module
-         arrives, which can be before main.ts has run. reportIslandErrors
-         (@dotli/ui) takes them from window.__dotliIslandErrors, then
-         listens itself. */}
+    {/* An island can hydrate before main.ts runs, so its errors queue here until reportIslandErrors listens. */}
     <script is:inline>
       window.__dotliIslandErrors = [];
       addEventListener('astro:hydration-error', function (event) {
@@ -152,18 +138,15 @@ const socialMeta = socialMetaAttributes({
     </script>
     <Shell />
 
-    {/* The docked product chat: shrinks the product frame while open. */}
     <ChatDock client:idle />
 
-    {/* Laid over the app content, outside `#app`, which the page's content replaces. */}
+    {/* Outside `#app`, whose content the product replaces. */}
     <LoadingScreen client:load />
 
-    {/* The bare host's page, beside `#app`, where the other pages go. */}
     <LandingPage client:load />
 
-    <!-- App Content -->
     <div id="app" class={s['app']}></div>
-    {/* The auto-hiding topbar's reveal control: one Tab past the app frame. */}
+    {/* After the app frame, so it is one Tab past it. */}
     <TopbarReveal client:idle />
     <script src="../main.ts"></script>
   </body>

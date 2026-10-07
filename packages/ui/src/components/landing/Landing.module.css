@@ -1,9 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Native scrollbars and form controls match the dark page. Only here: on a
-   product page the host's colour scheme would change how the browser paints
-   the product frame's backdrop. */
+/* Only here: on a product page the host's color scheme would change how the browser paints the
+   product frame's backdrop. */
 :global(:root:has(body[data-landing])) {
   color-scheme: dark;
 }
@@ -22,8 +21,7 @@
   font-family: var(--font-sans);
 }
 
-/* The landing route hides the topbar, so these buttons are the ones that would
-   sit under the status bar in an installed PWA. */
+/* The landing route hides the topbar, so these buttons sit under the status bar in an installed PWA. */
 .corner {
   position: absolute;
   top: calc(16px + var(--safe-top));
@@ -90,9 +88,7 @@
   }
 }
 
-/* The bar is hidden on this page, so the menus that drop from the corner's
-   buttons anchor to the corner instead: the bar's gap below its buttons, right
-   edges aligned. */
+/* The bar is hidden here, so menus from the corner's buttons anchor to the corner instead. */
 :global(:root:has(body[data-landing])) {
   --topbar-bottom: calc(16px + var(--h-bar-control) + var(--safe-top));
   --topbar-inline-end: calc(16px + var(--safe-right));

@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The network health the status capsule and the network badge read. From
-// boot it follows the browser's online events. Once chains exist (the
-// network button shows) it also holds the network watch, and rechecks when
-// the first chain on time would pass three block times, because a chain that
-// stops producing blocks sends no event. A hidden tab is judged when it shows.
+// Once chains exist it also holds the network watch and rechecks when the first chain would pass
+// three block times, because a stalled chain sends no event. A hidden tab is judged when it shows.
 
 import { getChainClocks, holdNetworkWatch, subscribeNetwork } from '../network-monitor.js';
 import { judgeNetworkHealth, nextOverdueAt, type NetworkHealth } from '../network-health.js';
@@ -18,7 +15,7 @@ export const networkHealthStore: ReadableStore<NetworkHealth> = health;
 let stopInit: (() => void) | null = null;
 let releaseWatch: (() => void) | null = null;
 let recheck: ReturnType<typeof setTimeout> | null = null;
-/** When `recheck` fires, so a notify that moves no deadline leaves it be. */
+/** Lets a notify that moves no deadline leave `recheck` be. */
 let recheckAt: number | null = null;
 
 function disarm(): void {
@@ -56,7 +53,7 @@ function judge(): void {
   }
 }
 
-/** Start following the network. Calling it again returns the same stop. */
+/** Calling it again returns the same stop. */
 export function initNetworkHealth(): () => void {
   if (stopInit !== null) {
     return stopInit;
@@ -78,7 +75,7 @@ export function initNetworkHealth(): () => void {
   return stop;
 }
 
-/** Chains exist (true) or are gone (false): hold or release the watch. */
+/** True while chains exist. */
 export function setNetworkHealthWatched(watched: boolean): void {
   if (watched && releaseWatch === null) {
     releaseWatch = holdNetworkWatch();

@@ -1,19 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// PWA registration for the host shell.
-//
-// Uses workbox-window so updates are prompted, not auto-applied:
-//   1. Register /host-sw.js
-//   2. On `waiting`, surface a notification asking the user to reload
-//   3. On confirm, message the waiting SW with SKIP_WAITING and reload
-//      once the new SW takes control
-//   4. If a SW was already waiting when the page loaded (a plain reload),
-//      apply it at once without asking: nothing on the page is in use yet
-//   5. Poll for updates every 15 min and whenever a hidden tab returns
-//
-// Scope is the host origin only. The protocol iframe (host.dot.li) and
-// the app iframe (*.app.dot.li) are cross-origin and untouched.
+// Updates are prompted, not auto-applied, unless one was already waiting at page load, when nothing is in use yet.
 
 import { Workbox } from 'workbox-window';
 import { captureException, recordExpected } from '@dotli/metrics';
@@ -31,15 +19,12 @@ if ('serviceWorker' in navigator) {
       window.location.reload();
     };
     void navigator.serviceWorker.getRegistration().then(registration => {
-      // Another tab's Reload may have applied the update already. Its
-      // activation took this page over too, so nothing waits now and no
-      // `controlling` would ever come.
+      // Another tab's Reload may have applied the update already, and then no `controlling` ever comes.
       if ((registration?.waiting ?? null) === null) {
         reload();
         return;
       }
-      // Reload once the new SW is in control to avoid serving a mix of
-      // old and new chunks during the swap.
+      // Reload once the new SW is in control, so old and new chunks never mix.
       wb.addEventListener('controlling', reload);
       wb.messageSkipWaiting();
     });
@@ -58,17 +43,14 @@ if ('serviceWorker' in navigator) {
     });
   });
 
-  // Not deferred to `load`, which waits for the app iframe: a waiting
-  // update is applied before anyone starts using the page.
+  // Not deferred to `load`, which waits for the app iframe, so a waiting update applies before the page is in use.
   void wb
     .register({ immediate: true })
     .then(registration => {
       if (!registration) {
         return;
       }
-      // An update check fails whenever the script cannot be fetched or the
-      // registration went away under it (offline, a deploy mid-fetch, storage
-      // cleared). The next check retries, so a failed one is only a crumb.
+      // A check fails when offline, mid-deploy or after storage is cleared. The next one retries, so it is a crumb.
       const checkForUpdate = (): void => {
         registration.update().catch((err: unknown) => {
           recordExpected(err, { flow: 'pwa', step: 'sw_update' });

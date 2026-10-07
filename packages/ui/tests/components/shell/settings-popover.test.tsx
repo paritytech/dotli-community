@@ -56,9 +56,7 @@ const DEFAULT_CACHE = {
 
 let cleanups: (() => void)[] = [];
 
-// The popover body's chunk, transformed here rather than in the first test
-// to open it: on a loaded CI runner the cold transform outlasts
-// waitForContent's wait.
+// Transformed up front: on a loaded CI runner the cold transform outlasts waitForContent's wait.
 beforeAll(async () => {
   await import('../../../src/components/shell/SettingsContent.js');
 });
@@ -88,7 +86,6 @@ async function settle(): Promise<void> {
   flush();
 }
 
-/** Open, as the surface says; it is in the page only from its first opening. */
 function isOpen(): boolean {
   return document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
 }
@@ -142,7 +139,6 @@ async function renderPopover({ seed = true } = {}): Promise<void> {
   await settle();
 }
 
-/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('mode-button').click();
   await settle();
@@ -163,14 +159,12 @@ interface Settings {
 
 const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
 
-/** A section header: a div holding only its text. */
 function expectHeader(el: Element | undefined, text: string): void {
   expect(el?.tagName).toBe('DIV');
   expect(el?.childElementCount).toBe(0);
   expect(el?.textContent).toBe(text);
 }
 
-/** A cache row: its label and a switch of the same name. */
 function expectCacheRow(row: Element | undefined, label: string, checked: boolean): void {
   expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'BUTTON']);
   expect(row?.children[0]?.textContent).toBe(label);
@@ -180,7 +174,6 @@ function expectCacheRow(row: Element | undefined, label: string, checked: boolea
   expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
 }
 
-/** A radio card: a label holding the radio (name, value, checked, disabled), its title, its chip and its description. */
 function expectChoice(
   card: Element | undefined,
   name: string,
@@ -198,7 +191,6 @@ function expectChoice(
   expect(card?.textContent).toBe(`${opts.label}${opts.chip ?? ''}${opts.description}`);
 }
 
-/** A labelled radio group: its caps label over the group of cards. Returns the group. */
 function expectRadioGroup(section: Element, label: string): Element {
   expect(tags(section)).toEqual(['DIV', 'DIV']);
   expectHeader(section.children[0], label);
@@ -208,7 +200,6 @@ function expectRadioGroup(section: Element, label: string): Element {
   return group;
 }
 
-/** The settings: network, transport and cache, then the debug button unless debug mode is on. */
 function expectSections(container: Element, settings: Settings): void {
   const sections = Array.from(container.children);
   let at = 0;
@@ -273,11 +264,7 @@ function expectSections(container: Element, settings: Settings): void {
   expect(sections).toHaveLength(at);
 }
 
-/**
- * The open popover: the shared Popover's surface, whose body holds the
- * settings panel (its title, the settings and the footer), with their
- * ids, labels and ARIA state. A sheet leaves its title to the sheet header.
- */
+/** The open popover apart from styling. A sheet leaves its title to the sheet header. */
 function expectPopoverMatches(settings: Settings, sheet = false): void {
   const popover = byId('mode-popover');
   // A sheet is a modal layer, which labels itself by its title.
@@ -324,7 +311,6 @@ function expectPopoverMatches(settings: Settings, sheet = false): void {
   ]);
 }
 
-/** The button: its label, icon and the ARIA of a popover trigger. */
 function expectModeButton(open: boolean): void {
   const button = byId('mode-button');
   expect(button.getAttribute('title')).toBe('Settings');
@@ -345,7 +331,7 @@ describe('The settings popover island', () => {
     // Then
     expectModeButton(false);
     expect(byId('mode-button').hasAttribute('data-badge')).toBe(false);
-    // The surface is the shared Popover's, in the page from its first opening (or idle preload).
+    // The shared Popover's surface is in the page only from its first opening or idle preload.
     expect(document.getElementById('mode-popover')).toBeNull();
   });
 

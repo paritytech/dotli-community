@@ -1,14 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The sign-in surface's content. The dialog, its scrim and the card (or, on a
-   phone, the sheet) are Modal's (components/floating); .surface only adds
-   the card's size cap.
+/* Modal (components/floating) draws the dialog, scrim and card. .surface only adds the card's size cap. */
 
-   Desktop sizes by default, the boards' in the phone block: the 234 px QR
-   tile in the 320 px surface is the board's 264 in 360. */
-
-/* The cap on the anchored frame's size, as Popover.module.css's. */
+/* Same cap as Popover.module.css. */
 :where(.surface) {
   max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
   max-height: calc(
@@ -17,8 +12,7 @@
   overflow-y: auto;
 }
 
-/* The Surface's padding on the card, 12 px. None in a sheet, whose body
-   already pads the content (4 px over, 16 px around). */
+/* None in a sheet, whose body already pads the content. */
 .panel {
   padding: var(--sp-3);
 }
@@ -79,9 +73,8 @@
   margin: 0;
   padding: 0;
 }
-/* The tile (--qr-size plus the tile's padding), the gap and the waiting
-   line, from the spinner on, so the surface keeps its size as the code comes
-   in and as login progress replaces it. */
+/* Sized from the spinner on, so the surface keeps its size as the code comes in and login progress
+   replaces it. */
 .qr-scan {
   min-height: calc(var(--qr-size) + 2 * var(--sp-2) + var(--qr-gap) + var(--fs-caption) * var(--lh-body));
 }
@@ -131,8 +124,7 @@
   width: 18px;
   height: 18px;
 }
-/* Not Hint: the board centres this line with a 12 px gap (10 on desktop),
-   Hint has 8 px. */
+/* Not Hint, whose 8 px gap is too tight here. */
 .waiting {
   display: flex;
   align-items: center;
@@ -154,7 +146,6 @@
   color: var(--chrome-text);
   font-size: var(--fs-small);
   text-decoration: underline;
-  /* The board's underline offset. */
   text-underline-offset: 3px;
 }
 .link:focus-visible {
@@ -190,7 +181,7 @@
   padding: 0;
   text-align: center;
 }
-/* IconTile, 4 px further from the title than the view's gap. */
+/* IconTile, a little further from the title than the view's gap. */
 .pending-icon {
   margin: 0 0 var(--sp-1);
 }
@@ -207,8 +198,7 @@
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
-/* The raw reason, kept for bug reports: mono text in the Well, on the
-   board's tighter padding and radius rather than the Well's own. */
+/* The raw reason, kept for bug reports. */
 .error {
   align-self: stretch;
   padding: 6px 10px;
@@ -224,7 +214,6 @@
   margin-top: 6px;
 }
 
-/* Phones: the boards' sizes of the parts. */
 @media (max-width: 560px) {
   .head {
     gap: var(--sp-2);

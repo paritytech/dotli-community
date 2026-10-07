@@ -2,11 +2,7 @@ import type { AuthPresenter, AuthState, LoginFailureKind } from '@parity/truapi-
 import { toSessionUiState, writeUiStateCache, type TruapiSessionUiState } from './SessionStore.js';
 import { setAuthState } from '../state/auth.js';
 
-/**
- * UI-level auth state held in `authStore`. Mirrors the core's `AuthState`
- * with byte fields already converted for rendering, plus the pairing
- * presentation context the topbar modal needs.
- */
+/** The core's `AuthState` with byte fields converted for rendering, plus the pairing context the modal needs. */
 export type DotliAuthState =
   | { tag: 'Disconnected' }
   | {
@@ -20,16 +16,11 @@ export type DotliAuthState =
   | { tag: 'Connected'; session: TruapiSessionUiState }
   | { tag: 'LoginFailed'; kind: LoginFailureKind; reason: string };
 
-/** Record the auth state in `authStore` (see `setAuthState`). */
 export function dispatchAuthState(state: DotliAuthState): void {
   setAuthState(state);
 }
 
-/**
- * Build the `authStateChanged` host callback: writes each of the core's
- * ordered auth states to `authStore` and maintains the boot-rehydration
- * UI-state cache on connect/disconnect transitions.
- */
+/** Also keeps the UI-state cache that boot rehydrates from. */
 export function createAuthStateChanged(
   label: string,
   options: {

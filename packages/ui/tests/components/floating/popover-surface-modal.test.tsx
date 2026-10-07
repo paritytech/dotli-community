@@ -8,7 +8,6 @@ import { Popover } from '../../../src/components/floating/Popover.js';
 import { mouseClick, renderComponent, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
 
-/** The surface's chunk, on its way until `release()`. */
 const chunk = vi.hoisted(() => {
   let release = (): void => undefined;
   const arrived = new Promise<void>(resolve => {

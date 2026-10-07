@@ -19,12 +19,8 @@ export interface TopbarLayout {
 }
 
 /**
- * happy-dom lays nothing out: stand in the layout the bar measures. The
- * action group (`#topbar-actions`) has `room` pixels, each item
- * (`[data-testid="topbar-item"]`) is `widths[name]` or ITEM_WIDTH wide, as is
- * the More button, and there is no gap. ResizeObservers are stubbed so a
- * change can be announced. Restored by `vi.restoreAllMocks()` and
- * `vi.unstubAllGlobals()`.
+ * Stands in the layout the bar measures, which happy-dom lacks: the group has `room` pixels, and each item
+ * and More is `widths[name]` or ITEM_WIDTH wide, with no gap.
  */
 export function stubTopbarLayout(room: number, widths: Record<string, number> = {}): TopbarLayout {
   let available = room;
@@ -80,11 +76,8 @@ export function stubTopbarLayout(room: number, widths: Record<string, number> = 
 }
 
 /**
- * Render `items` as the children of an ActionGroup in the document, as the
- * topbar island does, with `room` pixels for them (see stubTopbarLayout), or
- * the room `options.room` says, as the pill's does, and `options.end` after
- * the More button, as the account is. `options.morph` stands in the bar's.
- * Returns the layout, to change the room later.
+ * Render `items` in an ActionGroup with `room` pixels, as the topbar island does, or `options.room`, as the pill
+ * does. Returns the layout, to change the room later.
  */
 export async function renderTopbar(
   items: () => JSX.Element,
@@ -110,15 +103,11 @@ export async function renderTopbar(
   return layout;
 }
 
-/** The More menu's row for the item named `name`. */
 export function moreRow(name: string): HTMLElement {
   return query(document, `#more-popover [role="menuitem"][data-item="${name}"]`);
 }
 
-/**
- * Open the More menu, unless it is open: its rows are in the page only
- * while it is, and the menu itself from its first opening.
- */
+/** Opens the More menu unless open, since its rows are in the page only while it is. */
 export async function openMore(): Promise<void> {
   if (document.getElementById('more-popover')?.hasAttribute('data-open') !== true) {
     mouseClick(byId('more-button'));
@@ -126,7 +115,6 @@ export async function openMore(): Promise<void> {
   }
 }
 
-/** The items in the More menu, in its order, opening it to read them. */
 export async function moreRowNames(): Promise<string[]> {
   await openMore();
   return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
@@ -134,7 +122,6 @@ export async function moreRowNames(): Promise<string[]> {
   );
 }
 
-/** Open the More menu and tap the row of the item named `name`. */
 export async function tapMoreRow(name: string): Promise<void> {
   pointerPress(byId('more-button'));
   await settle();

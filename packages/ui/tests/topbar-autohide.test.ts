@@ -4,9 +4,7 @@ import type * as TopbarSurfacesModule from '../src/state/topbar-surfaces.js';
 import { byId } from './support.js';
 import { stubPhoneViewport } from './helpers/viewport.js';
 
-// happy-dom rejects var() inside calc() and drops a bare dvh length, so the
-// box helper is mocked with plain stand-in values here. The real inset math and
-// units are covered by product-iframe-box tests.
+// happy-dom rejects var() inside calc() and drops a bare dvh length. product-iframe-box tests cover the real values.
 vi.mock('../src/product-iframe-box.js', () => ({
   productIframeBox: (opts: { topbarOffset: boolean }) =>
     opts.topbarOffset
@@ -29,9 +27,7 @@ const HIDE_DELAY_MS = 2500;
 
 const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 
-// Shaped like the host page (apps/host/src/pages/index.astro): the bar
-// (components/Topbar.astro, its action group down to the account and settings buttons),
-// the app with its product frame, then the reveal control and the toasts.
+// Shaped like the host page (apps/host/src/pages/index.astro).
 function installPageDom(): void {
   document.body.innerHTML = `
     <div id="topbar">
@@ -68,7 +64,6 @@ function focusElement(el: HTMLElement): void {
   flushUi();
 }
 
-/** Let the timers run, then render what they changed. */
 function advance(ms: number): void {
   vi.advanceTimersByTime(ms);
   flushUi();
@@ -79,10 +74,8 @@ function pressShortcut(): void {
   flushUi();
 }
 
-/** The window's width: a phone's or a desktop's (see stubPhoneViewport). */
 let viewport: ReturnType<typeof stubPhoneViewport>;
 
-/** Resize the window across the phone width, then render what changed. */
 function setPhone(phone: boolean): void {
   viewport.set(phone);
   flushUi();
@@ -94,8 +87,7 @@ interface StandInSurface {
   open: boolean;
 }
 
-// Each test imports a fresh module graph, so the previous one has to drop
-// its document listeners and its islands or they keep acting on the DOM.
+// Each test imports a fresh module graph, so the previous one must drop its document listeners and islands.
 const disposers: (() => void)[] = [];
 let surfaces: typeof TopbarSurfacesModule;
 
@@ -109,30 +101,25 @@ function surface(open = false): StandInSurface {
 }
 
 async function loadAutoHide(loggedIn = true, contentShown = true): Promise<typeof TopbarAutohideModule> {
-  // As the auth controller records it (state/auth.ts).
   const { setLoggedIn } = await import('../src/state/auth.js');
   setLoggedIn(loggedIn);
-  // The host page has the topbar (initTopBar says so).
   const { setTopbarPresent } = await import('../src/state/topbar.js');
   setTopbarPresent();
-  // The bridge hands each rendered product frame to the layout module.
+  // As the bridge does with each rendered product frame.
   const { attachProductFrame } = await import('../src/product-frame-layout.js');
   attachProductFrame(appFrame());
   surfaces = await import('../src/state/topbar-surfaces.js');
   const mod = await import('../src/topbar-autohide.js');
   disposers.push(mod.disposeTopbarAutoHide);
-  // The product's content is on screen, as the host reports once the sandbox has loaded it.
   if (contentShown) {
     mod.setProductContentShown(true);
   }
 
-  // The bar registers its element, as its script does on the host page
-  // (apps/host/src/components/Topbar.astro).
   disposers.push(mod.registerTopbarElement(topbar()));
   const { getTopbarState } = await import('../src/state/topbar.js');
   isHidden = () => !getTopbarState().visible;
-  // The TopbarReveal island, from this module graph. Built without JSX: this
-  // file's JSX would bind to the Solid instance loaded before resetModules.
+  // The TopbarReveal island from this module graph. Built without JSX, which would bind to the Solid instance loaded
+  // before resetModules.
   const solid = await import('solid-js');
   const web = await import('@solidjs/web');
   const { TopbarReveal } = await import('../src/components/shell/TopbarReveal.js');

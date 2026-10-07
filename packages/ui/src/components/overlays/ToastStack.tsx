@@ -20,8 +20,7 @@ export function ToastStack(): JSX.Element {
   // Worked out once per update, not once per card.
   const active = createMemo(() => items().filter(t => !t.leaving));
   const visible = createMemo(() => (expanded() ? active() : active().slice(-MAX_STACK)));
-  // Each visible card's depth in the collapsed pile (0 = newest). A card
-  // missing from the map is hidden, and sits just behind the pile.
+  // Depth in the collapsed pile, 0 for the newest. A card missing from the map is hidden behind the pile.
   const depths = createMemo(() => {
     const shown = visible();
     const collapsed = !expanded();
@@ -33,8 +32,7 @@ export function ToastStack(): JSX.Element {
   });
   const many = createMemo(() => active().length > 1);
 
-  // While expanded, a new toast (the list grew) scrolls the newest card into
-  // view. Dismissing one, or an unrelated write, leaves the scroll alone.
+  // Only a new toast scrolls to the newest card, not a dismissal or an unrelated write.
   createEffect(
     () => items().length,
     (count, previous) => {
@@ -44,8 +42,6 @@ export function ToastStack(): JSX.Element {
     },
   );
 
-  // While expanded: scroll to the newest card, and collapse on an outside
-  // click (capture phase) or when the window loses focus.
   createEffect(expanded, isExpanded => {
     if (!isExpanded) {
       return;

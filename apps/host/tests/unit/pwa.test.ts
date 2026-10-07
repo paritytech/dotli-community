@@ -45,7 +45,7 @@ function emit(type: string, event?: { wasWaitingBeforeRegister?: boolean }): voi
   }
 }
 
-/** The service worker registration as the page sees it when Reload is pressed. */
+/** The registration's waiting worker at the moment Reload is pressed. */
 let waiting: object | null = null;
 const reload = vi.fn();
 

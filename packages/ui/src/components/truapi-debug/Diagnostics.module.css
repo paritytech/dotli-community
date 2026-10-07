@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Diagnostics view */
-
 .view {
   min-height: 0;
   overflow: auto;
@@ -33,7 +31,6 @@
   border-color: var(--td-line-hover);
 }
 
-/* Side by side on a wide dock, wrapped under each other on a narrow one. */
 .sections {
   display: flex;
   flex-wrap: wrap;
@@ -61,8 +58,7 @@
   padding: 0;
   border-top: 1px solid var(--td-line);
 }
-/* A hairline under each row, on the list's columns: the labels take the
-   longest one's width, so a value sits next to its name. */
+/* Rows share the list's columns, so labels take the longest one's width. */
 .row {
   display: grid;
   grid-column: 1 / -1;

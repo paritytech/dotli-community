@@ -1,9 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The icon follows <html data-theme>, the theme in effect, which the inline
-   bootstrap script sets before the island hydrates, so the build-time button
-   already shows it. */
+/* Follows <html data-theme>, which the inline bootstrap script sets before hydration, so the build-time
+   button already shows the theme in effect. */
 
 .sun {
   display: none;
@@ -15,9 +14,7 @@
   display: none;
 }
 
-/* The board's Appearance popover (MenuTheme): a title over three radio tiles
-   in a well. FloatingLayer draws the glass; the open rule lays it out as a
-   column (FloatingLayer's own open `display` yields to it). */
+/* FloatingLayer draws the glass. The open rule's `display` wins over FloatingLayer's own. */
 .popover {
   flex-direction: column;
   gap: 10px;
@@ -47,7 +44,6 @@
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
 }
-/* The board's .seg-tiles buttons. */
 .tiles .tile {
   display: flex;
   align-items: center;
@@ -94,7 +90,6 @@
   }
 }
 
-/* Phones: the boards' sizes. */
 @media (max-width: 560px) {
   .tiles {
     border-radius: var(--r-md);
@@ -111,8 +106,7 @@
   }
 }
 
-/* Phones: the sheet's head carries the title, and the tiles sit inset
-   under it (the board's .popover.is-sheet). */
+/* The sheet's head carries the title. */
 .tiles[data-sheet] {
   margin: var(--sp-1) var(--sp-4) 0;
 }

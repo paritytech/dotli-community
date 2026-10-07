@@ -10,14 +10,8 @@ import { NavForm } from './NavForm.js';
 import { RecentPills } from './RecentPills.js';
 
 /**
- * The landing page, shown on the bare host with no name to resolve: the
- * name form, the recently visited names, and the auth button in the corner,
- * the shell's own component outside the topbar (which the landing page
- * hides, its action group gone), with ids of its own (`#landing-auth-button`
- * and its surface's), the topbar's build-time markup still holding the
- * topbar's. The page is always dark, so it has no theme button. Rendered by
- * the LandingPage island, its own chunk. It replaces the loading screen once
- * it renders.
+ * The landing page on the bare host. Its auth button takes the `landing-` id prefix because the hidden
+ * topbar's build-time markup still holds the plain ids. Always dark, so no theme button.
  */
 export function Landing(): JSX.Element {
   onSettled(hideLoading);

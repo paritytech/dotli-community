@@ -15,16 +15,10 @@ import {
 } from '../../settings-actions.js';
 import s from './Diagnostics.module.css';
 
-/** How long a copied value reads "Copied". */
 const COPIED_MS = 1000;
 
-/** The rows a click copies. */
 const COPYABLE_ROWS = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
 
-/**
- * A diagnostics value. A copyable one is a button that copies it (unless it
- * is empty, "…" or "n/a") and reads "Copied" for a second.
- */
 function Value(props: { label: string; value: string; copyable: boolean }): JSX.Element {
   const [copied, setCopied] = createSignal(false);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -83,11 +77,7 @@ function PackageGroup(props: { title: string; packages: readonly PackageVersion[
   );
 }
 
-/**
- * The debug panel's Diagnostics view, read each time the tab opens: the page
- * and build rows (some click-to-copy), the package versions and "Share
- * diagnostic", which opens a GitHub issue prefilled with the report.
- */
+/** Read afresh each time the tab opens. */
 export function DiagnosticsView(props: { active: boolean }): JSX.Element {
   return (
     <div class={s['view']} data-testid="td-diagnostics" hidden={!props.active}>
@@ -106,11 +96,8 @@ function Diagnostics(): JSX.Element {
     disposed = true;
   });
 
-  // On trusted providers polkadot-api rotates across the candidate nodes on
-  // failure, so the configured first one may not be the node answering. Ask
-  // the live provider, and update the base rows too so the shared report
-  // agrees. Lazy so the resolver stays out of the panel's chunk; the host
-  // has already loaded it to resolve the name.
+  // polkadot-api rotates nodes on failure, so ask the live provider which one answers, and patch the base rows
+  // so the shared report agrees. Lazy to keep the resolver out of the panel's chunk.
   if (getBackend() === 'rpc-gateway') {
     void loadRpcResolve().then(({ getConnectedAssetHubRpcEndpoint }) => {
       const live = getConnectedAssetHubRpcEndpoint();
@@ -129,8 +116,7 @@ function Diagnostics(): JSX.Element {
 
   const share = (): void => {
     void (async () => {
-      // Block heights are queried only here, where a report is being made,
-      // rather than keeping four chains awake for a tab nobody opened.
+      // Queried only here, rather than keeping four chains awake for a tab nobody opened.
       const smoldotInfo = await collectSmoldotInfo();
       const report = await formatDiagnosticsReport(base, smoldotInfo, polkadotApi, parityTruapi);
       const body = [

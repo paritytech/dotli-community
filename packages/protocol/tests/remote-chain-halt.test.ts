@@ -17,8 +17,7 @@ import {
 import type { RemoteChainHalt } from '../src/chain-halted.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '../src/messages.js';
 
-// The client's protocol iframe points at a host that does not exist here; keep
-// happy-dom from fetching it (which logs ECONNREFUSED) but keep `contentWindow`.
+// The protocol iframe's host does not exist here, so happy-dom must not fetch it, but `contentWindow` must stay.
 (
   window as unknown as { happyDOM: { settings: { navigation: { disableChildFrameNavigation: boolean } } } }
 ).happyDOM.settings.navigation.disableChildFrameNavigation = true;

@@ -1,23 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency tree.
-//
-// Usage:
-//   node scripts/third-party-notices.ts
-//
-// Every package `package-lock.json` resolves and `npm install` put on disk is
-// listed under the SPDX license its lockfile entry declares, workspace
-// packages (@dotli/*) aside. A name whose installed versions carry different
-// licenses is listed under each. Platform-specific binaries are the build
-// host's, as the notice says.
-//
-// The notice's introduction speaks for the license families it lists, so a
-// license missing from SECTIONS fails the run: review what the new license
-// asks of the project, then add it (and, if need be, a sentence to INTRO).
-//
-// Run after dependency changes; the output is formatted with the repo's
-// Prettier config.
+// Regenerates THIRD_PARTY_NOTICES.md from the installed dependency tree. Run after dependency changes.
+// INTRO speaks for the license families listed, so a license missing from SECTIONS fails the run. Review what it asks
+// of the project, then add it.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

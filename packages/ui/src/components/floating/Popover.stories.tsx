@@ -29,7 +29,7 @@ function Harness(props: { content?: 'buttons' | 'failing'; handOver?: boolean })
     );
   return (
     <div style={{ display: 'flex', gap: '8px', 'justify-content': 'flex-end' }}>
-      {/* With `handOver`, as AuthButton when the session drops: the popover lets the button go, whose click then starts something else. */}
+      {/* With `handOver` the popover lets the button go, as AuthButton does when the session drops. */}
       {props.handOver === true ? (
         <Button
           testId="let-go"
@@ -79,8 +79,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Trusted input, a user's: the browser's invokers act on it only. Loaded on
- * use, so the stories still load in Storybook outside Vitest.
+ * Trusted input, which the browser's invokers require. Imported lazily so Storybook loads the stories outside Vitest.
  */
 const input = async () => (await import('vitest/browser')).userEvent;
 const press = async (testId: string) => {

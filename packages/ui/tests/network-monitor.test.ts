@@ -19,10 +19,9 @@ import {
 import { getActiveChainRoles } from '@dotli/config';
 import { nth } from './helpers/nth.js';
 
-// Mirror of IDLE_GRACE_MS and MAX_BARS in network-monitor.ts.
+// Mirror of IDLE_GRACE_MS in network-monitor.ts.
 const GRACE_MS = 60_000;
-// Mirror of MAX_BARS in network-monitor.ts. A memory ceiling only: the
-// panel decides what a visitor sees by measuring its own strip.
+// Mirror of MAX_BARS in network-monitor.ts. A memory ceiling only, as the panel measures what a visitor sees.
 const MAX_BARS = 120;
 
 /** A source the test drives by hand, one emitter per chain. */

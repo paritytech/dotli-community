@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel single-event detail */
-
 .pair {
   color: var(--td-green);
   cursor: pointer;

@@ -4,11 +4,8 @@
 import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from 'solid-js';
 
 /**
- * Which opening a surface's content belongs to: a new number at each
- * opening, kept after a close until the exit (`exitMs`) has played, then 0.
- * Content keyed on it mounts afresh at each opening, a reopening during the
- * exit included, and is in the page in the same flush as the opening, so
- * focus can move into it at once.
+ * A new number at each opening, kept through the exit (`exitMs`), then 0.
+ * Content keyed on it remounts per opening and mounts in the opening's flush, so focus can move in at once.
  */
 export function createPresence(open: Accessor<boolean>, exitMs: number): Accessor<number> {
   const opening = createMemo<{ count: number; open: boolean }>(prev => {
@@ -26,8 +23,6 @@ export function createPresence(open: Accessor<boolean>, exitMs: number): Accesso
       setLingering(true);
       return;
     }
-    // Nothing is exiting before the first opening: no timer for a surface
-    // that mounts closed.
     if (!wasOpen) {
       return;
     }

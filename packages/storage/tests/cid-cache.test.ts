@@ -9,8 +9,6 @@ import { NetworkName } from '../../config/src/network.js';
 
 const PASEO = NetworkName.PASEO;
 
-// Recent labels live in localStorage (happy-dom). CIDs live in IndexedDB (fake-indexeddb).
-
 describe('getRecentLabels', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -144,7 +142,7 @@ describe('CID IndexedDB round-trip', () => {
     const first = await readRawEntry('myapp');
     expect(first?.cid).toBe('bafy-old');
 
-    // Force a measurable timestamp delta even on fast machines / coarse clocks.
+    // Coarse clocks would otherwise give both writes the same timestamp.
     await new Promise(resolve => setTimeout(resolve, 2));
 
     await setCachedCid('myapp', PASEO, 'bafy-new', NO_MANIFESTS);

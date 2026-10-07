@@ -1,16 +1,13 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A transparent frame over the viewport, drawing its own scrim. `display`
-   is kept through the exit (allow-discrete). */
 .layer {
   position: fixed;
   inset: 0;
   z-index: 3000;
   box-sizing: border-box;
-  /* Not `hidden`, which is still a scroll container: iOS Safari scrolls it to
-     reveal the focus taken inside a sheet that is still below the frame at
-     its starting style, and the sheet then rests that far up. */
+  /* Not `hidden`, which is still a scroll container: iOS Safari scrolls it to reveal focus in a sheet still below
+     the frame, and the sheet then rests that far up. */
   overflow: clip;
   color: var(--chrome-text);
   display: none;
@@ -26,9 +23,7 @@
   place-items: center;
   padding: var(--sp-6);
 }
-/* The phone bar at the foot of the screen stays in view: a sheet rests on it
-   and slides up from behind its edge, and the scrim (fixed, so the frame's
-   clip does not reach it) stops there too. */
+/* The phone bar stays in view. The scrim is fixed, so the frame's clip misses it and it needs its own bottom. */
 .layer[data-layout='sheet'] {
   bottom: var(--content-bottom);
   place-items: end stretch;
@@ -61,8 +56,7 @@
     opacity: 0;
   }
 }
-/* A follow-up opens over the scrim the last one left up, and a hand-off
-   swaps sheets under a scrim that never lightens. */
+/* A follow-up opens over the scrim the last one left up, and a hand-off swaps sheets under a steady scrim. */
 .layer[data-follows] .scrim,
 .layer[data-handoff] .scrim {
   transition: none;
@@ -73,8 +67,7 @@
     opacity: 1;
   }
 }
-/* The leaving frame of a hand-off keeps no `display` through an exit it
-   does not play. */
+/* A hand-off's leaving frame plays no exit, so it keeps no `display` through one. */
 .layer[data-handoff]:not([data-open]) {
   transition: none;
 }

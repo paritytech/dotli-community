@@ -1,10 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's sheet: 85% of the screen at most, and never past the status
-   bar above the shorter layer. Rounded top corners, sliding up on
-   --dur-morph (SHEET_EXIT_MS waits as long before unmounting). The
-   layer's [data-open] drives it. */
+/* The slide's --dur-morph must match SHEET_EXIT_MS. */
 .sheet {
   display: flex;
   flex-direction: column;
@@ -36,8 +33,7 @@
 .sheet[data-dragging] {
   transition: none;
 }
-/* A sheet taking another's place: the leaving one goes at once, the coming
-   one starts in place. */
+/* In a hand-off the leaving sheet goes at once and the coming one starts in place. */
 :global([data-handoff]:not([data-open])) > .sheet {
   transition: none;
 }
@@ -47,8 +43,6 @@
   }
 }
 
-/* The board's .sheet-head: no glass of its own, a fixed row above the body
-   that scrolls. */
 .head {
   position: relative;
   flex: none;
@@ -60,14 +54,13 @@
   touch-action: none;
   cursor: grab;
 }
-/* The board's grabber, 36 px wide. */
 .grabber {
   position: absolute;
   top: var(--sp-2);
   left: 50%;
   width: 36px;
   height: var(--sp-1);
-  /* Half its width, to centre it on the left: 50%. */
+  /* Half its width, centring it on `left: 50%`. */
   margin-left: -18px;
   border-radius: var(--r-full);
   background: var(--chrome-ring-strong);
@@ -88,8 +81,7 @@
   overflow: auto;
   padding-bottom: var(--sp-4);
 }
-/* A menu's body takes focus itself (tabindex -1) for a pointer opening, and
-   shows no ring for it: its rows carry the ring. */
+/* A menu's body takes focus for a pointer opening. Its rows carry the ring. */
 .body:focus-visible {
   outline: none;
 }

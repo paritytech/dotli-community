@@ -1,23 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Host shell settings: cache flags and chain backend selection.
- *
- * `skipWorkerCache` is not covered. The flag triggers an IDB purge sweep
- * in `apps/protocol/src/main.ts`, but the protocol-origin IDB it targets
- * is empty in practice. Smoldot does not auto-persist, polkadot-api uses
- * no IDB, and the `chains` store has no writers.
- *
- * Cross-tab speedup, when it exists, comes from the SharedWorker's
- * in-memory state in `smoldot-shared-worker` mode. That state lives in
- * RAM as long as at least one tab is open, and `skipWorkerCache` does
- * not touch it. Coverage of the flag is deferred until snapshot
- * persistence is wired up and the keep-set is narrowed to clear just
- * the `chains` store.
- *
- * Env overrides: DOMAIN, PORT, TIMEOUT_MS.
- */
+// `skipWorkerCache` is not covered: the protocol-origin IndexedDB it purges is empty in practice.
 
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -49,10 +33,8 @@ interface ChainBackendState {
 }
 
 /**
- * The settings once boot has applied them: the stored backend is `expected`
- * and the address bar's `chainBackend` is too, or gone. Boot stores the
- * default backend (the shared-mode bootstrap reads it) before it applies and
- * rewrites the link's, so the stored value alone can match too early.
+ * Waits for the address bar too, since boot stores the default backend before it applies the link's, so the stored
+ * value alone can match too early.
  */
 async function readChainBackendState(page: Page, expected: string): Promise<ChainBackendState> {
   await page.waitForFunction(
@@ -292,8 +274,7 @@ test.describe('Settings works', () => {
     });
   }
 
-  // The gateway backend fetches from an IPFS gateway inside the sandbox, not
-  // through the host's bitswap relay, so it has no block cache to check.
+  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache.
   const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
 
   for (const backend of RELAYED_BACKENDS) {

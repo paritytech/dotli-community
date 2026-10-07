@@ -131,13 +131,13 @@ describe('network block source', () => {
       expect(clients).toHaveLength(i + 2);
     }
 
-    // And: a block resets the wait to 1000 ms.
+    // A block resets the wait.
     clients[3]?.bestBlocks$.next([{ number: 1 }]);
     halt('chain');
     await vi.advanceTimersByTimeAsync(1000);
     expect(clients).toHaveLength(5);
 
-    // And: the wait never exceeds 30 s.
+    // The wait caps at 30 s.
     for (let i = 0; i < 7; i++) {
       halt('chain');
       await vi.advanceTimersByTimeAsync(30_000);
@@ -215,7 +215,7 @@ describe('network block source', () => {
     // Then: no client is dialled.
     expect(clients).toHaveLength(1);
 
-    // And: a bar waiting for the frame releases its ready subscription.
+    // A bar waiting for the frame releases its ready subscription too.
     const stopWaiting = await start();
     halt('frame');
     stopWaiting();

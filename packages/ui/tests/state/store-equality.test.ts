@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Every store but the auth state skips a write that would not change what
-// it holds, so no reader recomputes for it. The window events some setters
-// dispatch are not the store's notification: they still fire as before.
+// Every store but the auth state skips a write that would not change it. The window events some setters dispatch
+// still fire.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,7 +38,6 @@ import {
   urlPillStore,
 } from '../../src/state/url-pill.js';
 
-/** Count the store's notifications from now on. */
 function countNotifications<T>(store: ReadableStore<T>): {
   count: () => number;
   stop: () => void;
@@ -51,7 +49,6 @@ function countNotifications<T>(store: ReadableStore<T>): {
   return { count: () => count, stop };
 }
 
-/** Count the window event `name` from now on. */
 function countEvents(name: string): { count: () => number; stop: () => void } {
   let count = 0;
   const listener = (): void => {

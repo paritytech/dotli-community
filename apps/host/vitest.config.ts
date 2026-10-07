@@ -7,16 +7,13 @@ import solid from '@solidjs/vite-plugin';
 export default defineConfig({
   plugins: [solid()],
   test: {
-    // Only unit tests. The e2e, functional and performance suites are
-    // Playwright and have their own configs and runners. Tests sitting beside
-    // the file they cover are picked up from `src` too.
+    // The Playwright suites have their own configs.
     include: ['tests/unit/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
     environment: 'happy-dom',
     globals: false,
   },
   define: {
-    // On, so the tests assert the real span tree against a fake Sentry rather
-    // than the inert no-op handles a stripped build produces.
+    // On, so tests assert the real span tree against a fake Sentry, not a stripped build's no-op handles.
     'import.meta.env.VITE_METRICS': '"true"',
     'import.meta.env.VITE_RESOLUTION_SAMPLE_RATE': '"1"',
   },

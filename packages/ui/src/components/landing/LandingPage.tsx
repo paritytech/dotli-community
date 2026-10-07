@@ -8,20 +8,10 @@ import { topbarStore } from '../../state/topbar.js';
 import { showBrokenPage } from '../../ui.js';
 import { useStore } from '../use-store.js';
 
-/** The page itself, its own chunk, so the host's other pages never load it. */
+/** Its own chunk, so the host's other pages never load it. */
 const Landing = lazy(() => import('./Landing.js'), { export: 'Landing' });
 
-/**
- * The landing page island of the host page (`@dotli/ui/islands/LandingPage`),
- * beside `#app`: it renders the page while the topbar store says the landing
- * page is up (setLandingPage, from boot on the bare host), and nothing
- * otherwise. The page's chunk loads then, and the page replaces the loading
- * screen once it renders.
- *
- * An error page takes the landing page down (it clears the flag). A chunk
- * that cannot load, or a page that throws, is reported and replaced by the
- * reload error page.
- */
+/** Island that renders the landing page while the topbar store's `landing` flag is set. An error page clears it. */
 export function LandingPage(): JSX.Element {
   const shown = useStore(topbarStore, state => state.landing);
   return (
@@ -35,7 +25,6 @@ export function LandingPage(): JSX.Element {
   );
 }
 
-/** Reports the page's failure and shows the reload error page, after it renders. */
 function Broken(props: { error: unknown }): JSX.Element {
   createEffect(
     () => props.error,

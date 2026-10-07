@@ -1,10 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* One element morphs between the open pill and the collapsed status capsule
-   (data-hidden, from the auto-hide). Open, it is as wide as its content up to
-   95% of the window. data-tone colours the capsule's bar and data-action
-   shows its pulsing dot (bindTopbarStatus). body[data-landing] hides it. */
+/* One element morphs between the open pill and the collapsed status capsule (data-hidden). */
 
 .topbar {
   position: fixed;
@@ -25,27 +22,22 @@
   color: var(--chrome-text);
   font-family: var(--font-sans);
   transform: translateX(-50%);
-  /* Lets width animate between the capsule's size and fit-content where
-     supported, elsewhere it snaps. */
+  /* Animates width to fit-content where supported, elsewhere it snaps. */
   interpolate-size: allow-keywords;
-  /* No overshoot: a spring carries the pill past its size and back, and the
-     row inside visibly lurches as it settles. */
+  /* No overshoot, or the row inside lurches as a spring settles. */
   transition:
     width var(--dur-morph) var(--ease-out),
     height var(--dur-morph) var(--ease-out),
     top var(--dur-morph) var(--ease-out),
     box-shadow var(--dur);
 }
-/* Desktop only, like the auto-hide: a data-hidden that lands on a phone
-   (between a resize across 560 px and the auto-hide reacting) must not fold
-   the phone bar. */
+/* Desktop only: a data-hidden that lands mid-resize across 560px must not fold the phone bar. */
 @media (min-width: 561px) {
   .topbar[data-hidden] {
     top: calc(var(--sp-1) + var(--safe-top));
     width: 120px;
     height: var(--sp-2);
-    /* Clip, not hidden: a hidden overflow is a scroll container, and focusing
-       a clipped control would scroll the strip out of view. */
+    /* Clip, not hidden: a hidden overflow scrolls the strip away when a clipped control takes focus. */
     overflow: clip;
     box-shadow: var(--chrome-shadow-capsule);
   }
@@ -63,8 +55,7 @@
   padding: 6px;
   transition: opacity var(--dur) var(--delay-content) ease-out;
 }
-/* Collapsed, the row stays in the DOM and keeps its tab stops (tabbing into
-   it reveals the bar), clipped by the capsule and transparent. */
+/* Collapsed, the row keeps its tab stops, so tabbing into it reveals the bar. */
 @media (min-width: 561px) {
   .topbar[data-hidden] .row {
     opacity: 0;
@@ -83,10 +74,7 @@
   padding: var(--sp-hair);
   pointer-events: none;
 }
-/* Shown at once, the bar would fill the pill while it still shrinks, a wide
-   flash of colour. It fades in over the collapse instead, slow at first while
-   the pill is large, and out quickly as the bar opens. Hidden once faded, so
-   its loops do not run behind the open bar. */
+/* Fades in over the collapse, or it flashes across the still-shrinking pill. Hidden once faded so its loops stop. */
 @media (min-width: 561px) {
   .strip {
     display: flex;
@@ -102,7 +90,7 @@
     transition: opacity var(--dur-morph) ease-in;
   }
 }
-/* The bar's --tone is the network's, from the topbar's data-tone. */
+/* --tone comes from the topbar's data-tone. */
 .bar {
   flex: 1;
   align-self: stretch;
@@ -112,9 +100,7 @@
 .topbar[data-tone='idle'] .bar {
   animation: pulse var(--loop) infinite ease-in-out;
 }
-/* Something waits on the user: a white dot leads the bar and pulses in
-   colour, not in size, so the capsule never changes shape. The colour fades
-   through an overlay's opacity, which stays on the compositor, where an
+/* Pulses colour, not size, so the capsule keeps its shape. An overlay's opacity stays on the compositor, where an
    animated background would repaint the blurred capsule every frame. */
 .action {
   position: relative;
@@ -147,12 +133,8 @@
     opacity: 1;
   }
 }
-/* Phones: the square bar across the foot of the screen, next to Safari's
-   own toolbar. The auto-hide never folds it at this width
-   (topbar-autohide.ts), and it never slides away on scroll. Fixed rather
-   than in the flow: the host page never scrolls, and the page and the frame
-   already end at --content-bottom (global.css), so the two look the same
-   and the element stays the one that morphs at desktop widths. */
+/* Phones: a bar across the foot of the screen. Fixed rather than in the flow so the same element still morphs at
+   desktop widths. */
 @media (max-width: 560px) {
   .topbar {
     top: auto;

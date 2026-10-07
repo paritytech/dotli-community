@@ -1,13 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Forwards console.* from every iframe and Web Worker to the top page.
- *
- * Playwright's `page.on("console")` only sees the top frame, so each
- * frame's logs are re-posted as `[FRAMELOG]<origin>[level]` strings the
- * top frame can echo for the test runner.
- */
+// Playwright's `page.on("console")` sees only the top frame, so every iframe and worker re-posts its logs there.
 
 export const IFRAME_FORWARDER = `
 <script>
@@ -90,14 +84,7 @@ export const WORKER_FORWARDER = `
 })();
 `;
 
-/**
- * Companion shim for the SharedWorker bundle. Unlike a regular Worker,
- * a SharedWorker cannot call `self.postMessage()`. Output is fanned out
- * across every connected MessagePort. Each `connect` event's port is
- * tracked, console.warn is hooked to broadcast a `__pw_sw_log__` envelope
- * to all ports, and a `__pw_sw_ping__/__pw_sw_pong__` round-trip lets the
- * test side verify the bridge is wired up.
- */
+/** A SharedWorker has no `self.postMessage()`, so this broadcasts to every port. Ping/pong checks the wiring. */
 export const SHARED_WORKER_FORWARDER = `
 const __pwOrigWarn = console.warn.bind(console);
 const __pwPorts = [];

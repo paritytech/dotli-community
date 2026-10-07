@@ -7,8 +7,7 @@ import s from './Button.module.css';
 export type ButtonVariant = 'secondary' | 'primary' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
-// Explicit props, not a rest spread of button attributes: splitting the rest
-// off pulls Solid's `omit` into the boot bundle.
+// Explicit props, not a rest spread: splitting the rest off pulls Solid's `omit` into the boot bundle.
 export interface ButtonProps {
   ref?: (el: HTMLButtonElement) => void;
   onClick?: (ev: MouseEvent) => void;
@@ -23,7 +22,6 @@ export interface ButtonProps {
   'aria-expanded'?: 'true' | 'false' | undefined;
   'aria-controls'?: string | undefined;
   'aria-haspopup'?: 'dialog' | 'menu' | undefined;
-  /** The id of the `popover` this button opens and closes. */
   popovertarget?: string | undefined;
   style?: JSX.CSSProperties | undefined;
   class?: string | undefined;
@@ -71,7 +69,7 @@ export interface ButtonLinkProps {
   children?: JSX.Element;
 }
 
-/** A link drawn as a Button, for an action that navigates (a deeplink). Attributes must stay in step with Button. */
+/** A link drawn as a Button, for an action that navigates. Keep its attributes in step with Button. */
 export function ButtonLink(props: ButtonLinkProps): JSX.Element {
   return (
     <a

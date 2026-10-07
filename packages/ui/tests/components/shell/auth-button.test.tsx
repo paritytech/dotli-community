@@ -21,13 +21,7 @@ async function renderButton(props: { showName?: boolean; idPrefix?: string } = {
   return byId(`${props.idPrefix ?? ''}auth-button`, HTMLButtonElement);
 }
 
-/**
- * What the button carries apart from styling: its id, label, no busy or
- * disabled state, the ARIA of a Radix-style trigger for what a click opens
- * (logged in, the user popover, and logged out, the auth modal), and its content:
- * the user icon and Sign in logged out, the avatar alone logged in (initials,
- * or the icon when the account has no username).
- */
+/** Asserts everything the button carries apart from styling, logged out or logged in. */
 function expectMarkup(button: Element, state: 'logged-out' | { initials: string | undefined }): void {
   const label = state === 'logged-out' ? 'Sign in with Polkadot Mobile' : 'Account';
   const account = state !== 'logged-out';

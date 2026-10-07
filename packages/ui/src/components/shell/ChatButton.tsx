@@ -26,7 +26,6 @@ function ChatIcon(): JSX.Element {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      // The boards' toolbar set draws every icon at a 1.75 stroke.
       stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"
@@ -37,21 +36,14 @@ function ChatIcon(): JSX.Element {
 }
 
 /**
- * The topbar's chat button (`#chat-button`), which opens and closes the
- * docked chat panel (components/chat/ChatDock.tsx). It shows while the loaded
- * product has chat and a session is active (chatButtonVisible), shows pressed
- * (`aria-expanded`) while the panel is open, and carries the unread count while
- * the panel is closed (the room rows carry their own while it is open).
- * Collapsed into More (always, on a phone), the count moves to its Chat row
- * and More raises an info badge for it. When the panel closes with focus
- * inside it (Escape, its own close button), focus comes back here, or to the
- * More button while the bar has collapsed this one.
+ * The topbar's button for the docked chat panel.
+ * The unread count shows only while the panel is closed, since the room rows carry their own. When the panel
+ * closes with focus inside it, focus returns here, or to More while the bar has collapsed this button.
  */
 export function ChatButton(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   const bar = useContext(TopbarContext);
-  // Slices: the store is written on every chat message and every move of a
-  // panel-width drag.
+  // Slices: the store is written on every chat message and every move of a panel-width drag.
   const visible = useStore(chatPanelStore, chatButtonVisible);
   const open = useStore(chatPanelStore, state => state.open);
   const unread = useStore(chatPanelStore, state => (state.open ? 0 : totalChatUnread(state)));

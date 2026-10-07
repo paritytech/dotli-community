@@ -1,13 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Protocol SharedWorker.
-//
-// Runs @parity/truapi-provider's embedded smoldot light client in-thread, via
-// `@dotli/resolver/provider`. No sub-Worker is spawned, because the `Worker`
-// constructor is not available in SharedWorkerGlobalScope. All protocol iframes
-// across every tab connect over MessagePort and share the one light client,
-// which persists as long as at least one tab is open.
+// Runs smoldot in-thread because SharedWorkerGlobalScope has no `Worker` constructor. Every tab's protocol iframe
+// shares this one light client over a MessagePort.
 
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
@@ -61,19 +56,14 @@ import { createWorkerChainSessions, type WorkerChainSessions } from './worker-ch
 
 initSentry('worker');
 installGlobalErrorHandlers('worker');
-// Only ever runs in shared-worker mode. Tag every metric emitted from this
-// context so broker/smoldot counters aggregate cleanly with the iframe's.
+// Tagged so broker and smoldot counters aggregate with the iframe's.
 m.setDefaults({ protocol_mode: 'shared-worker' });
 
 export interface SWRelayRequest {
   type: 'relay-request';
   envelope: ProtocolRequestEnvelope;
   origin: string;
-  /**
-   * The page load of the tab that sent the request. Carried per request
-   * because this worker serves every tab at once: it can only ever label the
-   * work done for one request, never its own context.
-   */
+  /** The sending tab's page load. Per request, because this worker serves every tab at once. */
   resolutionId?: string;
 }
 
@@ -101,11 +91,9 @@ function swEvent(message: string, data?: Record<string, unknown>): void {
 
 const ports = new Set<MessagePort>();
 const pendingPorts: MessagePort[] = [];
-// Each port's way out of the chain sync streams, released with the port.
 const syncForwarders = new Map<MessagePort, () => void>();
 let engineReady = false;
-// Why the engine is dead for good: pre-sync failed, or the light client could
-// not connect a chain. Every port that connects later is told, never `ready`.
+// Set once the engine is dead for good. Every later port is told this, never `ready`.
 let presyncFailureMessage: string | null = null;
 
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
@@ -120,21 +108,11 @@ if (requestedNetwork === null) {
   m.setDefaults({ network: requestedNetwork });
 }
 
-// This worker owns the light client in shared-worker mode, so it is the only
-// place the chains' sync can be observed from. Enabled before pre-sync opens
-// the first connection, which would otherwise carry no lifecycle watch. Same
-// chains as direct mode.
+// Before pre-sync opens the first connection, which would otherwise carry no lifecycle watch.
 enableSyncReporting(['relay', 'asset-hub', 'bulletin', 'people']);
 
-// Light-client death broadcast. When the light client cannot connect a chain,
-// relay a `fatal` envelope to every connected port so the host client rejects
-// every in-flight request immediately instead of waiting for a per-request
-// timeout. `onProviderFatal` is idempotent and replays to late subscribers,
-// so firing this once at module load covers the SharedWorker's lifetime.
-//
-// The light client stays dead for every tab: the engine is marked failed, so
-// a port that connects later (another tab, or this one after its retry) gets
-// the cause through the same path as a failed pre-sync, never `ready`.
+// `fatal` lets every tab reject in-flight requests at once instead of timing out. The engine stays dead, so later
+// ports get the cause like a failed pre-sync.
 onProviderFatal(message => {
   log.error(`${TAG} Light client died, broadcasting fatal to ${String(ports.size)} port(s): ${message}`);
   engineReady = false;
@@ -142,11 +120,7 @@ onProviderFatal(message => {
   broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
 });
 
-// Tell every connected tab which chains began from pre-existing state. The
-// provider replay only covers this in-worker subscriber, never MessagePorts,
-// so the record-time broadcast reaches only ports connected at that instant.
-// `latchedSmoldotDb` covers the rest: the connect handler below replays it to
-// every port that arrives later.
+// The provider replays only to this in-worker subscriber, so the connect handler replays the latch to later ports.
 const latchedSmoldotDb = new Map<SmoldotDbChain, SmoldotDbOutcome>();
 onSmoldotDbOutcome((chain, outcome) => {
   latchedSmoldotDb.set(chain, outcome);
@@ -158,7 +132,6 @@ onSmoldotDbOutcome((chain, outcome) => {
   });
 });
 
-// Created by pre-sync.
 let chainSessions: WorkerChainSessions | null = null;
 
 function requireChainSessions(): WorkerChainSessions {
@@ -168,19 +141,14 @@ function requireChainSessions(): WorkerChainSessions {
   return chainSessions;
 }
 
-// NO retries. NO cleanup-and-retry. NO backoff. The user picked
-// smoldot-shared-worker. If presync fails the actual cause is surfaced to
-// every waiting port and the engine stays dead until the user reloads.
-
+// No retries by design. A failed pre-sync leaves the engine dead until reload, with the cause sent to every port.
 async function presync(): Promise<void> {
   const t0 = performance.now();
   swEvent('Pre-sync started');
 
   try {
-    // Create the broker FIRST and route the resolver's Asset Hub reads
-    // through it as a local session, so there is one shared Asset Hub follow
-    // (never removed mid-read) instead of a separate resolver chain the first
-    // dApp connection would release — the `ChainHead disjointed` load failure.
+    // The broker comes first so the resolver shares its one Asset Hub follow. A separate resolver chain would be
+    // released by the first dApp connection mid-read (`ChainHead disjointed`).
     const pool = createChainPool({
       createTransport: createChainProvider,
       destroyDelay: Infinity,
@@ -189,22 +157,16 @@ async function presync(): Promise<void> {
     setResolverAssetHubProvider(() =>
       requireBrokerLocalProvider(pool, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
     );
-    // The People warm-keep must share this same broker follow. A separate
-    // getSmProvider on the People chain would race the broker's follow (one
-    // shared smoldot JSON-RPC queue) and have its events misrouted, so the
-    // broker drops People follow events as "unknown token" and reads hang.
+    // A separate People provider would race the broker on smoldot's one JSON-RPC queue, its events dropped as
+    // "unknown token" and reads hanging.
     setResolverPeopleProvider(() =>
       requireBrokerLocalProvider(pool, getActiveServicesConfig().people.genesis, 'People'),
     );
 
-    // Wait for Asset Hub to sync to a finalized block via the
-    // explicit presync primitive (no more overloading `resolveDotName`
-    // with a sentinel label). This now syncs the broker's shared chain.
     // The resolver records the `smoldot.presync` timing for this wait.
     await waitForAssetHubFinalized();
 
-    // A light client that failed while Asset Hub synced stays dead: the
-    // waiting ports were told by the fatal broadcast, and must not hear ready.
+    // The fatal broadcast already told the waiting ports, they must not hear ready.
     if (presyncFailureMessage !== null) {
       return;
     }
@@ -212,20 +174,14 @@ async function presync(): Promise<void> {
     swEvent('Pre-sync complete', { ms: Math.round(performance.now() - t0) });
     engineReady = true;
 
-    // Signal ready to any ports that connected during pre-sync
     for (const port of pendingPorts) {
       const readyMsg: SWReady = { type: 'ready' };
       port.postMessage(readyMsg);
     }
     pendingPorts.length = 0;
 
-    // Warm the People chain in the background. Legacy-account auth reads the
-    // username -> account map on People, and on a cold start that read races
-    // the parachain warp sync (the source of the intermittent failures). Start
-    // syncing it now so it is ready by the time auth runs. People is not needed
-    // for resolution, so this must not gate the ready signal above.
-    // Route the People warm-up through the broker's shared follow (mirrors
-    // Asset Hub above) so it doesn't open a second competing smoldot follow.
+    // Legacy-account auth reads People, which otherwise races its warp sync on a cold start. Resolution does not
+    // need People, so this must not gate ready.
     setResolverPeopleProvider(() =>
       requireBrokerLocalProvider(pool, getActiveServicesConfig().people.genesis, 'People'),
     );
@@ -240,11 +196,7 @@ async function presync(): Promise<void> {
       reason: err instanceof Error ? err.name : 'unknown',
     });
 
-    // Surface the actual cause to every waiting port. Engine remains
-    // permanently dead. The user must reload to retry. A light client that
-    // died during pre-sync is that cause, and this failure only its symptom:
-    // the fatal broadcast already told the waiting ports, and later ones hear
-    // the fatal's message.
+    // A light client that died during pre-sync is the real cause, and the fatal broadcast already reported it.
     if (presyncFailureMessage === null) {
       presyncFailureMessage = msg;
       for (const port of pendingPorts) {
@@ -273,25 +225,17 @@ function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
     const msg: SWRelayResponse = { type: 'relay-response', envelope };
     port.postMessage(msg);
   } catch (err: unknown) {
-    // Distinguish "port closed" (expected on tab navigation) from any
-    // other postMessage failure. Closed ports throw `InvalidStateError`
-    // or `DataCloneError` with `name === "InvalidStateError"`. Any other
-    // cause (a structured-clone failure on an un-transferable payload,
-    // for example) is a real bug and we want it visible instead of
-    // silently removing an otherwise-healthy port.
+    // A closed port (tab navigation) is expected. Any other failure, such as a clone error, is a real bug.
     if (errorName(err) === 'InvalidStateError') {
       removePort(port, 'closed');
       return;
     }
-    // What failed to arrive is lost for good: a response leaves the tab
-    // waiting out its timeout with no cause, and a broadcast never arrives.
-    // Nothing reaches the host to report, so this is the only report.
+    // The host never hears of this failure, so this is the only report.
     captureException(err, {
       flow: 'protocol',
       step: 'worker_port_send',
       tags: { envelope_kind: envelope.kind },
     });
-    // Remove the port regardless, since we can't deliver to it.
     removePort(port, 'send_failed');
   }
 }
@@ -306,13 +250,7 @@ function removePort(port: MessagePort, reason: PortRemoval): void {
   swEvent('Port removed', { reason, connections: cleaned, ports: ports.size });
 }
 
-/**
- * Forward what the chains report about their sync to one tab.
- *
- * The chains are shared, so every tab hears every chain's events. Each
- * subscription first replays where each chain stands, which is what a tab
- * joining a running worker needs to hear.
- */
+/** Forwards every chain's sync events to one tab, starting with a replay of where each chain stands. */
 function forwardChainSync(port: MessagePort, joinedSynced: boolean): void {
   let replaying = true;
   const stopSync = onChainSync(event => {
@@ -320,8 +258,7 @@ function forwardChainSync(port: MessagePort, joinedSynced: boolean): void {
     sendToPort(port, { namespace: 'dotli:protocol', kind: 'chain-sync', chain, syncKind: kind, ...rest });
   });
   const stopDetail = onChainDetail(detail => {
-    // A tab joining a synced worker paid no sync cost, whatever the worker's
-    // own first start found on disk: the rule `smoldot-db` follows below.
+    // A tab joining a synced worker paid no sync cost, the same rule `smoldot-db` follows below.
     const reported =
       replaying && joinedSynced && detail.dbCache !== undefined ? { ...detail, dbCache: 'hit' as const } : detail;
     sendToPort(port, { namespace: 'dotli:protocol', kind: 'chain-detail', ...reported });
@@ -354,8 +291,6 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
 
   switch (request.method) {
     case 'warmup': {
-      // Pre-sync already started smoldot, the relay chain, and periodic
-      // saves. Just confirm it's done.
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -407,9 +342,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
     case 'resolveExecutableManifest': {
       const payload = request.payload as ProtocolRequestMap['resolveExecutableManifest'];
       assertString(payload.label, 'label');
-      // postMessage payloads are untrusted strings even though TS narrows
-      // `payload.kind` to the union. Widening through a string local keeps the
-      // runtime check intact under strict TS rules.
+      // Widened to string so strict TS keeps the runtime check on this untrusted payload.
       const kind: string = payload.kind;
       if (!isExecutableKind(kind)) {
         throw new Error(`Unsupported executable kind: ${kind}`);
@@ -490,21 +423,12 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
   }
 }
 
-// Bounds what a tab can write into this worker's span attributes. The host
-// mints a UUID.
+// Bounds what a tab can write into this worker's span attributes. The host mints a UUID.
 const RESOLUTION_ID_PATTERN = /^[\w-]{1,64}$/;
 
-/**
- * A span for the work one tab's request costs this worker, labelled with the
- * page load of that tab.
- *
- * The label goes on this span alone. The worker serves every tab at once, so a
- * resolution id set on its scope or its metric defaults would label the work
- * of other tabs too.
- */
+/** The resolution id goes on this span alone, since scope or metric defaults would label other tabs' work too. */
 function openRequestSpan(envelope: ProtocolRequestEnvelope, resolutionId: unknown): SpanHandle | null {
-  // One per product JSON-RPC message: as on the host, it would swamp the
-  // resolution requests.
+  // One per product JSON-RPC message would swamp the resolution requests.
   if (envelope.method === 'chainSend') {
     return null;
   }
@@ -519,8 +443,7 @@ function openRequestSpan(envelope: ProtocolRequestEnvelope, resolutionId: unknow
   });
 }
 
-// Proactively clean up stale ports by sending a ping.
-// Posting to a closed port throws, and we catch that to detect dead ports.
+// Posting to a closed port throws, which is how dead ports are found.
 function cleanStalePorts(): void {
   for (const p of [...ports]) {
     try {
@@ -537,7 +460,6 @@ self.addEventListener('connect', event => {
     return;
   }
 
-  // Clean up any stale ports from previous iframe reloads
   cleanStalePorts();
 
   ports.add(port);
@@ -549,7 +471,7 @@ self.addEventListener('connect', event => {
   port.addEventListener('message', (msgEvent: MessageEvent) => {
     const data = msgEvent.data as { type?: string } | null;
 
-    // Handle disconnect signal from iframe beforeunload
+    // Sent from the iframe's beforeunload.
     if (data?.type === 'disconnect') {
       removePort(port, 'disconnect');
       return;
@@ -581,28 +503,21 @@ self.addEventListener('connect', event => {
 
   port.start();
 
-  // Before the ready signal, so a tab hears where the chains stand before it
-  // starts its resolution against them.
+  // Before the ready signal, so the tab hears where the chains stand before resolving.
   if (presyncFailureMessage === null) {
     forwardChainSync(port, engineReady);
   }
 
   if (presyncFailureMessage !== null) {
-    // The engine is dead: pre-sync failed, or the light client could not
-    // connect a chain. Surface the original cause immediately instead of
-    // queuing this port forever or telling it the engine is ready.
     const errorMsg: SWError = {
       type: 'error',
       message: presyncFailureMessage,
     };
     port.postMessage(errorMsg);
   } else if (engineReady) {
-    // Engine already synced, signal ready immediately.
     const readyMsg: SWReady = { type: 'ready' };
     port.postMessage(readyMsg);
-    // This tab joins a worker whose recorded chains are already live, so it
-    // pays no sync cost regardless of what the worker's own first load did.
-    // Report the state this tab got rather than the worker's disk outcomes.
+    // The chains are already live, so this tab paid no sync cost whatever the worker's first load found on disk.
     for (const chain of latchedSmoldotDb.keys()) {
       sendToPort(port, {
         namespace: 'dotli:protocol',
@@ -612,10 +527,7 @@ self.addEventListener('connect', event => {
       });
     }
   } else {
-    // Engine still syncing. Queue the port and signal when pre-sync completes.
-    // A port arriving after a store read missed that record-time broadcast
-    // and would otherwise never learn the outcome. It waits on the same sync
-    // the worker is running, so the worker's outcomes are its own.
+    // This port missed the record-time broadcast. It waits on the same sync, so the worker's outcomes are its own.
     for (const [chain, outcome] of latchedSmoldotDb) {
       sendToPort(port, {
         namespace: 'dotli:protocol',
@@ -629,8 +541,7 @@ self.addEventListener('connect', event => {
 });
 
 if (networkInitFailure !== null) {
-  // Every tab hears this as the reason the worker never became ready, and the
-  // host reports it from there.
+  // Every tab hears this as the reason the worker never became ready, and the host reports it.
   log.error(`${TAG} ${networkInitFailure}`);
   presyncFailureMessage = networkInitFailure;
 } else {

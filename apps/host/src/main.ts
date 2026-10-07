@@ -1,13 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Host entry point.
-//
-// Parses the URL, then either renders a direct preview or local target, or
-// resolves the `.dot` name via smoldot and iframes the sandbox at
-// `<label>.app.dot.li` with the resolved CID threaded through the URL contract.
-
-// Polyfill for Safari < 18.4 which lacks requestIdleCallback
+// Safari before 18.4 lacks requestIdleCallback.
 if (typeof globalThis.requestIdleCallback !== 'function') {
   globalThis.requestIdleCallback = (cb: IdleRequestCallback): number =>
     setTimeout(() => {
@@ -15,8 +9,7 @@ if (typeof globalThis.requestIdleCallback !== 'function') {
     }, 1) as unknown as number;
 }
 
-// Must stay the first import: it starts Sentry before any other module
-// evaluates (see boot.ts).
+// Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import './pwa.js';
 import '@dotli/ui/styles.css';
@@ -163,13 +156,10 @@ import {
 } from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 
-// Breadcrumbs that name their flow, so the trail of an event reads as the
-// steps of the page load rather than as one undifferentiated log.
 const bootLog = log.child({ flow: 'boot' });
 const resolveLog = log.child({ flow: 'resolve' });
 
-// Surface chunk-load failures explicitly: capture the original cause to
-// Sentry and let the user opt into a reload, instead of reloading silently.
+// The user opts into a reload rather than getting a silent one.
 window.addEventListener('vite:preloadError', event => {
   const evt = event as unknown as { payload?: unknown };
   captureException(evt.payload ?? new Error('vite:preloadError'), {
@@ -192,12 +182,9 @@ window.addEventListener('vite:preloadError', event => {
   });
 });
 
-// Fetch the toast/modal chunk while the browser is idle, so it is in memory
-// before a deploy could make later chunk loads fail.
+// In memory before a deploy could make later chunk loads fail.
 prefetchOverlays();
 
-// Respect the user's dismissal unconditionally. Once dismissed, never
-// resurface unless the dismissal flag is cleared from localStorage.
 if (!isMobileDevice()) {
   const dismissed = localStorage.getItem('desktop-banner-dismissed');
   if (dismissed === null) {
@@ -215,7 +202,6 @@ if (!isMobileDevice()) {
   }
 }
 
-// Track WASM module load times via resource timing
 if (m.enabled && typeof PerformanceObserver !== 'undefined') {
   const wasmObserver = new PerformanceObserver(list => {
     for (const entry of list.getEntries()) {
@@ -231,15 +217,11 @@ if (m.enabled && typeof PerformanceObserver !== 'undefined') {
 }
 
 const T0 = performance.now();
-// Warp progress holds one phase while the distance closes, so it is sampled
-// on this tick rather than emitted per step: a long warp would otherwise
-// crowd the debug panel ring buffer with hundreds of near-identical rows.
+// Sampled rather than emitted per step, or a long warp crowds the debug panel's ring buffer.
 const CHAIN_WARP_DEBUG_MS = 1000;
-// The byte total from the light client is posted every 500ms. Sampling every other
-// one keeps the byte series of a minute-long load well under a hundred rows while
-// still resolving the peak.
+// Every other 500ms byte total, which still resolves the peak.
 const CHAIN_BYTES_DEBUG_MS = 1000;
-/** Ceiling for a load that never renders, so the series cannot run forever. */
+/** For a load that never renders. */
 const CHAIN_BYTES_DEBUG_MAX = 300;
 const DOTLI_PRODUCT_ID_PARAM = 'dotliProductId';
 const ICON_FETCH_BUDGET_MS = 10_000;
@@ -258,20 +240,8 @@ function parseLocalProductIdOverride(): string | undefined {
 }
 
 /**
- * Parse a localhost proxy URL from the path.
- *
- * Debug-build-only affordance: proxying a visitor's localhost services into the
- * trusted host origin is dangerous on a production deploy, so it is gated behind
- * the build-time `VITE_APP_DEBUG` flag (`DEBUG`). Production builds (flag unset)
- * always return null. Only debug builds honour a `/localhost:<port>` path,
- * meaning local `npm run preview:debug` and the `*.dev` staging deploys. The
- * flag is a compile-time constant, so production never ships this code path.
- *
- * Examples (only in debug builds):
- *   "/localhost:5000"          yields "http://localhost:5000"
- *   "/localhost:5000/foo/bar"  yields "http://localhost:5000/foo/bar"
- *   "/localhost"               yields "http://localhost"
- *   "/starter-template.dot"    yields null (not a localhost URL)
+ * Debug builds only: proxying a visitor's localhost into the trusted host origin is dangerous in production, and the
+ * compile-time flag keeps this path out of production bundles.
  */
 function parseLocalhostUrl(): string | null {
   if (!DEBUG) {
@@ -286,9 +256,7 @@ function parseLocalhostUrl(): string | null {
   if (host === undefined) {
     return null;
   }
-  // Strip every reserved host-URL param so they do not leak into the
-  // proxied product. Covers the settings axes and the sandbox contract's
-  // host-only signals (`fullReset`, `v`).
+  // Reserved host params must not leak into the proxied product.
   const productSearch = new URLSearchParams(window.location.search);
   for (const k of RESERVED_HOST_PARAMS) {
     productSearch.delete(k);
@@ -309,22 +277,12 @@ const RESERVED_HOST_PARAMS = [
 ] as const;
 
 /**
- * Extract the `.dot` label from the current hostname.
- *
- * Returns `"myapp"` for `myapp.dot.li` or `myapp.localhost`. Returns `null`
- * for the bare landing pages (`dot.li`, `localhost`) and for sandbox origins
- * (`*.app.dot.li`, `*.app.localhost`), which are handled by `app-main.ts`.
- *
- * The parsed label is validated against the closed `.dot` label charset as
- * defense-in-depth before it is threaded into key derivation, origin
- * construction (`<label>.app.<root>`), and host-shell sinks. A malformed
- * label can never be a registered `.dot` name, so returning `null` (which
- * routes to the landing/preview path) is the safe outcome.
+ * `null` for landing and sandbox origins. Validated before it reaches key derivation and origin construction, since a
+ * malformed label can never be a registered name.
  */
 function parseDotLabel(): string | null {
   const hostname = window.location.hostname;
 
-  // Production: name.{BASE_DOMAIN} (but NOT *.app.{BASE_DOMAIN})
   if (hostname.endsWith(`.${BASE_DOMAIN}`)) {
     if (hostname.endsWith(`.app.${BASE_DOMAIN}`)) {
       return null;
@@ -333,7 +291,6 @@ function parseDotLabel(): string | null {
     return isValidDotLabel(label) ? label : null;
   }
 
-  // Local dev: name.localhost (but NOT *.app.localhost)
   if (hostname.endsWith('.localhost')) {
     if (hostname.endsWith('.app.localhost')) {
       return null;
@@ -345,13 +302,10 @@ function parseDotLabel(): string | null {
   return null;
 }
 
-// Set once the shield has settled on its final state for this load. Login
-// arms the topbar auto-hide only after that point.
+// Login arms the topbar auto-hide only once the shield has settled.
 let shieldVerified = false;
 
-// A login restarts the hide timer once the shield is verified, so the bar
-// folds a moment after sign-in closes. Signed out, the bar folds all the
-// same, as the board's does: sign-in stays one reveal away.
+// Signed out, the bar folds all the same: sign-in stays one reveal away.
 function bindTopbarAutoHide(): void {
   window.addEventListener('dotli:authenticated', () => {
     if (shieldVerified) {
@@ -360,17 +314,12 @@ function bindTopbarAutoHide(): void {
   });
 }
 
-/** Paint the URL pill shield for `state` and start the topbar auto-hide. */
 function setShieldState(state: ShieldState): void {
   setVerificationShieldState(state);
   shieldVerified = true;
   armTopbarAutoHide();
 }
 
-/**
- * Read the product's root manifest at `<label>.<tld>` and its app manifest at
- * `app.<label>.<tld>`, through the user's selected backend (smoldot or RPC).
- */
 async function readProductManifests(label: string, chainBackend: Backend): Promise<ProductManifests> {
   if (chainBackend === 'rpc-gateway') {
     const mod = await loadRpcResolve();
@@ -387,12 +336,7 @@ async function readProductManifests(label: string, chainBackend: Backend): Promi
   return { root, app };
 }
 
-/**
- * Apply the product's branding from its manifests, read before the app was
- * rendered. Runs after the app iframe is rendered so the icon fetch never
- * blocks first paint. The icon bytes flow through the selected backend via
- * `bitswapGet`, which dispatches through the protocol bridge.
- */
+/** Runs after the app iframe renders, so the icon fetch never blocks first paint. */
 async function applyProductBranding(
   label: string,
   { root: rootResult, app: appResult }: ProductManifests,
@@ -406,13 +350,9 @@ async function applyProductBranding(
       description: root.description,
       icon: root.icon,
     });
-    // The icon is cosmetic, so it gets a fraction of the default budget. At
-    // full budget a CID no connected peer holds would keep a retry loop open
-    // for minutes, competing for smoldot request slots against the content
-    // the user is actually waiting on.
+    // Cosmetic, so a short budget: a missing icon must not hold smoldot request slots the content needs.
     const format: string = root.icon.format;
-    // A format v1 does not define keeps the default icon: the RFC forbids
-    // sniffing or correcting it, and the product stays launchable.
+    // Any other format keeps the default icon, never sniffed or corrected, and the product stays launchable.
     if (format === 'jpeg' || format === 'png') {
       const iconAborter = new AbortController();
       const iconDeadline = setTimeout(() => {
@@ -424,8 +364,7 @@ async function applyProductBranding(
           type: `image/${format}`,
         });
         setFavicon(URL.createObjectURL(blob), format);
-        // Favicon fetch is cosmetic. A failure must not affect the tab title or
-        // the loaded app, and is logged so it stays observable in diagnostics.
+        // Cosmetic: a failure must not affect the tab title or the app.
       } catch (err: unknown) {
         resolveLog.warn(`[dot.li manifest] icon fetch failed for ${withActiveTld(label)}:`, err);
       } finally {
@@ -457,12 +396,7 @@ import type { RpcResolveModule } from '@dotli/resolver';
 
 let rpcResolveReady: Promise<RpcResolveModule> | null = null;
 
-/**
- * The gateway resolver, wired to the host pool's Asset Hub connection before
- * its first use. The resolver cannot import the pool itself; the lease comes
- * from the bridge module, which boot has already awaited by the first
- * resolution.
- */
+/** Wired to the host pool's Asset Hub connection before first use, since the resolver cannot import the pool. */
 function loadRpcResolve(): Promise<RpcResolveModule> {
   if (rpcResolveReady !== null) {
     return rpcResolveReady;
@@ -483,22 +417,8 @@ function loadRpcResolve(): Promise<RpcResolveModule> {
 type RenderChunk = RenderModule;
 
 /**
- * Resolve the TrUAPI debug panel mode for this page load.
- *
- *   - `enabled`: whether to mount the panel.
- *   - `explicit`: whether the user opted in (URL or sessionStorage).
- *     Drives the initial collapsed state. Explicit opt-ins start
- *     expanded, dev-environment auto-enables start collapsed so the
- *     panel doesn't cover content unsolicited.
- *
- * Precedence, from highest to lowest:
- *   1. `?debug=true` / `?debug=off` in the URL. Persisted to
- *      sessionStorage and stripped from `history` (so the param doesn't
- *      leak into the sandbox iframe's strict URL validator).
- *   2. Existing `sessionStorage["dotli:truapi-debug"]`. `"1"` enables,
- *      `"0"` disables.
- *   3. Build-time `DEBUG` (from `VITE_APP_DEBUG`). On in `dev-paseo` /
- *      `npm run preview:debug`, off in staging / prod.
+ * `?debug=true|off` wins and persists, stripped from the URL so the sandbox's strict validator never sees it. Then the
+ * stored choice, then the build's `DEBUG`. An `explicit` opt-in starts expanded.
  */
 function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
   try {
@@ -526,29 +446,12 @@ function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
   return { enabled: DEBUG, explicit: false };
 }
 
-// Tracks two things the system swimlane would otherwise miss.
-//
-//   1. Stalls. setInterval fires every TICK_MS. When the actual delta
-//      to the previous tick exceeds TICK_MS + STALL_THRESHOLD_MS the
-//      event loop was blocked for the excess. Emits
-//      `main:stall_detected` with the stall duration, one event
-//      per stall regardless of how long the thread was frozen.
-//
-//   2. Heartbeats. Every HEARTBEAT_INTERVAL_MS we emit a low-cost
-//      `main:heartbeat` marker so the swimlane shows a steady
-//      rhythm ("host is alive"). Gaps in the rhythm are visible
-//      even without the stall_detected event.
-//
-// Scope: only runs while debug is enabled, and only for the first
-// MAX_MONITOR_MS (120 s by default) or until the primary bridge
-// has exchanged traffic in both directions, whichever comes first.
-// After that the monitor emits `main:monitor_stopped` and clears
-// itself so it doesn't burn cycles for the rest of the session.
 type EmitFn = (e: DotliDebugEvent) => void;
 
+/** Event-loop stalls and a heartbeat for the debug panel, until the bridge handshakes or MAX_MONITOR_MS passes. */
 function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
   const TICK_MS = 50;
-  const STALL_THRESHOLD_MS = 150; // alert when loop was blocked > 150ms extra
+  const STALL_THRESHOLD_MS = 150;
   const HEARTBEAT_INTERVAL_MS = 2_000;
   const MAX_MONITOR_MS = 120_000;
 
@@ -599,8 +502,7 @@ function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
     }
   }, TICK_MS);
 
-  // Stop once the primary bridge has fully handshaken. The bridge
-  // dispatches a window event from its first-outbound emit site.
+  // The bridge dispatches this on its first outbound message.
   const onBridgeReady = (): void => {
     clearInterval(handle);
     window.removeEventListener('dotli:debug:bridge-ready', onBridgeReady);
@@ -617,18 +519,7 @@ function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
   });
 }
 
-/**
- * Accept `{ type: "dotli:debug-event", event: DotliDebugEvent }` from
- * any child iframe (specifically the sandbox at `<label>.app.dot.li`) and
- * push the payload into the local debug bus.
- *
- * The sandbox lives on a different origin and can't touch the host's
- * `emitDotliDebugEvent` directly, so it posts messages instead. We
- * validate the envelope (must be an object with a `sandbox` layer) and
- * ignore anything else. This listener sees the full `window.message`
- * stream, so non-debug TrUAPI and loading-status messages must pass
- * through cleanly.
- */
+/** The sandbox's origin cannot reach `emitDotliDebugEvent`. Sees every window message, so others must pass through. */
 function listenForSandboxDebugEvents(emit: EmitFn): void {
   window.addEventListener('message', (event: MessageEvent) => {
     const data = event.data as { type?: unknown; event?: unknown } | null | undefined;
@@ -648,12 +539,7 @@ function listenForSandboxDebugEvents(emit: EmitFn): void {
   });
 }
 
-/**
- * SWR pass after a cache hit. Re-resolves the CID and applies
- * `revalidateCachedProduct`: the cached manifests stay unless the app was
- * redeployed or its name cleared. `onScreen` is false when the cached copy was
- * refused rather than rendered, so an eviction has no page to reload.
- */
+/** `onScreen` is false when the cached copy was refused rather than rendered, so an eviction has no page to reload. */
 async function runBackgroundRevalidate(
   label: string,
   servedCid: string,
@@ -693,9 +579,7 @@ async function runBackgroundRevalidate(
       });
       return;
     }
-    // The name was cleared, or redeployed with manifests this host cannot
-    // read. Either way the cached copy is gone; reloading takes the cold path,
-    // which shows why.
+    // Cleared, or redeployed with manifests this host cannot read. Reloading takes the cold path, which shows why.
     await evictCachedCid(label);
     m.count(S.CACHE_REVALIDATE_CLEARED);
     log.event('Cached app evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
@@ -714,7 +598,7 @@ async function runBackgroundRevalidate(
   }
 }
 
-/** Best-effort `localStorage.getItem`, returning null on Safari-private-mode failure. */
+/** Null when Safari private mode throws. */
 function readRawLocalStorage(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -724,19 +608,14 @@ function readRawLocalStorage(key: string): string | null {
 }
 
 /**
- * Reconcile URL > shared > localStorage > default per axis, persist back
- * to URL, localStorage, and (for shared axes) the cross-subdomain store,
- * then wipe and reload (matching the modal Save flow) when a URL value
- * displaces a prior persisted choice.
+ * Per setting, URL beats the shared store, which beats localStorage and the default. A URL value that displaces a
+ * persisted choice wipes and reloads, as Save does.
  */
 async function applyUrlSettings(): Promise<void> {
   const search = new URLSearchParams(window.location.search);
   const parsed = parseSettingsFromSearch(search);
 
-  // Snapshot raw localStorage before bootstrap (and before `getNetwork`/
-  // `getBackend`/`getCacheSettings` below). Those calls auto-seed defaults
-  // on first read, which would make every fresh-subdomain visit look like a
-  // "change" and trigger an unnecessary wipe.
+  // Before the getters below, which seed defaults on first read and would make every fresh visit look like a change.
   const hadPriorPersisted =
     readRawLocalStorage(NETWORK_KEY) !== null ||
     readRawLocalStorage(BACKEND_KEY) !== null ||
@@ -748,11 +627,7 @@ async function applyUrlSettings(): Promise<void> {
     !isSharedWorkerAvailable() &&
     (rawUrlBackend === 'smoldot-shared-worker' || rawPersistedBackend === 'smoldot-shared-worker');
 
-  // Bootstrap shared mode BEFORE reading prior values, so `prior.chain` /
-  // `prior.cache` reflect the cross-subdomain shared store (production) or
-  // per-origin localStorage (localhost). The swapped adapter also mirrors
-  // any subsequent `setBackend` / `setCacheSettings` calls below to the
-  // shared store, so URL-driven changes propagate across subdomains.
+  // Before reading prior values, so they reflect the cross-subdomain store and the writes below mirror to it.
   try {
     const { bootstrapSharedMode } = await loadSharedMode();
     await bootstrapSharedMode();
@@ -802,18 +677,12 @@ async function applyUrlSettings(): Promise<void> {
     next.cache.skipCidCache !== prior.cache.skipCidCache ||
     next.cache.skipWorkerCache !== prior.cache.skipWorkerCache;
 
-  // On production, bootstrap loaded the protocol iframe with `prior.chain`
-  // before applyUrlSettings switched it to `next.chain`, so tear it down so
-  // the next `ensureProtocolFrame()` rebuilds it in the new sub-mode.
-  // (No-op on localhost, where the HTTP channel never loaded an iframe.)
+  // The bootstrap loaded the protocol iframe with the prior backend, so it is rebuilt in the new sub-mode.
   if (prior.chain !== next.chain) {
     resetProtocolFrame();
   }
 
-  // Same logic for the trusted-RPC path's cached `chainHead_v1_follow`. Only a
-  // gateway resolver that was loaded can hold one, and this runs at the top of
-  // boot, before anything resolved. Loading it here would fetch the resolver
-  // and the bridge ahead of the protocol frame only to find nothing to destroy.
+  // Likewise the gateway resolver's follow. Only a loaded resolver holds one, so it is not loaded just to check.
   if ((prior.chain !== next.chain || prior.network !== next.network) && rpcResolveReady !== null) {
     try {
       (await rpcResolveReady).destroyRpcClient();
@@ -823,15 +692,12 @@ async function applyUrlSettings(): Promise<void> {
     }
   }
 
-  // Fresh origins have nothing to be stale about, and no-op URLs (match
-  // localStorage) leave existing state intact.
+  // A fresh origin has nothing stale, and a URL that matches localStorage changes nothing.
   if (!changed || !hadPriorPersisted) {
     return;
   }
 
-  // Wipe host origin and signal the other two origins to purge themselves on
-  // their next boot. The wipe preserves the theme and the analytics id itself,
-  // so only the just-written settings need re-persisting here.
+  // The other two origins purge themselves on their next boot. The wipe keeps the theme and analytics id itself.
   await wipeOriginState();
   setNetwork(next.network);
   setBackend(next.chain);
@@ -849,15 +715,8 @@ async function applyUrlSettings(): Promise<void> {
 }
 
 /**
- * The error kind the visitor was shown a recovery screen for on the attempt
- * immediately before this one.
- *
- * Unlike the `dotli:pending-reset:*` signals this one is not consumed on read:
- * it has to outlive the reload it describes, so a failure that survives a
- * reload can offer a stronger remedy than one seen for the first time. Cleared
- * on every successful load, which is what keeps it meaning "this reload did not
- * help" rather than "this tab saw that error at some point". Per tab by design.
- * A fresh tab is a fresh visitor as far as this is concerned.
+ * The error kind of the previous attempt's recovery screen. Not consumed on read, so a failure that survives a reload
+ * can offer a stronger remedy. Cleared on success, so it means "this reload did not help".
  */
 const ERROR_SEEN_KEY = 'dotli:error-seen';
 
@@ -865,8 +724,7 @@ function errorAlreadySeen(kind: string): boolean {
   try {
     return sessionStorage.getItem(ERROR_SEEN_KEY) === kind;
   } catch {
-    // sessionStorage unavailable (Safari private mode): treat every failure as
-    // a first sighting, which keeps the gentler screen rather than escalating.
+    // Without sessionStorage every failure is a first sighting, which keeps the gentler screen.
     return false;
   }
 }
@@ -910,18 +768,13 @@ function switchBackendAndReload(nextBackend: Backend): void {
   window.location.reload();
 }
 
-/**
- * The boot step `main()` is in, for the report when one of them throws. Boot
- * runs before the resolution trace exists and outside its try, so without this
- * a failure here reaches Sentry as a bare rejection with nothing to say where.
- */
+/** Boot runs before the resolution trace exists, so this says where a boot failure happened. */
 let bootStep = 'start';
 
 async function main(): Promise<void> {
   const previewTargetUrl = parsePreviewTargetUrl(window.location);
 
-  // Guard: if running inside an iframe, bail out to avoid a nested
-  // dot.li instance with a duplicate topbar.
+  // No nested dot.li with a duplicate topbar.
   if (window.self !== window.top && previewTargetUrl === null) {
     return;
   }
@@ -929,14 +782,7 @@ async function main(): Promise<void> {
   performance.mark('dotli:main:start');
   log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
 
-  // Runtime-gated: the panel ships in every build but the heavy chunk
-  // is only fetched when the user opts in via `?debug=true` (set by the
-  // "Open in debug mode" Settings button) or a persisted sessionStorage
-  // entry. When disabled, the bus stays in its null-stub state and
-  // every `emitDotliDebugEvent` call throughout main() early-exits.
-  //
-  // `?debug=off` and sessionStorage still let users silence the panel
-  // on a per-tab basis after enabling it.
+  // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
   bootStep = 'debug_bus';
   const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
   const debugMode = resolveTruapiDebugMode();
@@ -945,51 +791,27 @@ async function main(): Promise<void> {
     void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
       setupTruapiDebugPanel({
         startCollapsed: !debugMode.explicit,
-        // The Archive tab reads the product's blocks the way the sandbox
-        // relay serves them: from the block cache, else over bitswap.
+        // As the sandbox relay serves blocks: from the block cache, else over bitswap.
         blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
       });
       log.event('TrUAPI debug panel enabled', { flow: 'boot' });
     });
   }
 
-  // Per-tab boot flow id. Every boot/resolve/render/bridge event from
-  // this page load carries the same id so the debug panel can group
-  // them into one box.
   const bootFlowId =
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
       : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 
-  // The same id Sentry groups a resolution by, so the debug panel swimlane
-  // and the trace of the same page load can be lined up against each other.
-  // Minting a second uuid for the identical concept would only invite the two
-  // to drift and force every query to join on both.
+  // One id for the debug panel's flow and the Sentry trace, so the two line up.
   setResolutionId(bootFlowId);
 
-  // Main-thread monitor. Polls at 50ms, and any delta > 200ms means the
-  // event loop was blocked for `durationMs - 50ms`. Heartbeats land
-  // every 2 seconds so the system swimlane shows "host still alive"
-  // even when nothing else is happening. The monitor stops once the
-  // bridge has exchanged traffic in both directions (first outbound
-  // response posted) or after MAX_MONITOR_MS, whichever comes
-  // first.
   if (debugMode.enabled) {
     startMainThreadMonitor(bootFlowId, emitDotliDebugEvent);
-    // Forward sandbox-origin debug events up to the host's debug bus so
-    // the "what is the product iframe doing?" window (SW register,
-    // cache lookup, archive fetch, decrypt, document.write) is visible
-    // in the same System swimlane as the host's own events.
     listenForSandboxDebugEvents(emitDotliDebugEvent);
   }
 
-  // Seed settings from URL params before any consumer reads them, so the
-  // protocol pre-warm and downstream getters see the resolved values.
-  // `applyUrlSettings` also runs the shared-mode bootstrap (so prior values
-  // pick up cross-subdomain state and URL writes mirror to the shared
-  // store). The await blocks if a URL-driven change forces a wipe and
-  // reload. The reload then replaces the page, so anything below it never
-  // runs.
+  // Before any consumer reads the settings. A URL-driven wipe reloads here, so nothing below runs.
   bootStep = 'url_settings';
   await applyUrlSettings();
   initSettingsStore();
@@ -1023,19 +845,11 @@ async function main(): Promise<void> {
     skip_worker_cache: String(cacheSettings.skipWorkerCache),
   });
 
-  // Pre-warm the protocol iframe for every chain backend so sandboxed apps
-  // that call `chainConnect` have a handler waiting on the other side. The
-  // submode mapping is 1:1 with the chain backend.
-  //   smoldot-shared-worker maps to "shared-worker"
-  //   smoldot-direct        maps to "direct"
-  //   rpc-gateway           maps to "rpc"
+  // On every backend, so a sandboxed app's `chainConnect` finds a handler waiting.
   {
     const subMode: 'shared-worker' | 'direct' | 'rpc' =
       chainBackend === 'smoldot-shared-worker' ? 'shared-worker' : chainBackend === 'smoldot-direct' ? 'direct' : 'rpc';
-    // One-shot full-reset signal written by the settings popover before
-    // reloading. Forces `skipWorkerCache` for this boot regardless of the
-    // persisted cache preference, so the user's explicit "Save & Apply"
-    // action guarantees a clean chain DB on the protocol origin.
+    // One-shot, from Save & Apply: forces a clean chain DB on the protocol origin whatever the cache settings say.
     let pendingProtocolReset = false;
     try {
       if (sessionStorage.getItem('dotli:pending-reset:protocol') === '1') {
@@ -1049,8 +863,7 @@ async function main(): Promise<void> {
     setProtocolSubMode(subMode, {
       skipWorkerCache: pendingProtocolReset || cacheSettings.skipWorkerCache,
     });
-    // Both are awaited again by the first request that needs the frame, and a
-    // failure there is reported with the step it broke. Here it is only a crumb.
+    // The first request that needs the frame awaits these again and reports a failure there, so here it is a crumb.
     ensureProtocolFrame().catch((err: unknown) => {
       recordExpected(err, { flow: 'protocol', step: 'frame_prewarm' });
     });
@@ -1145,7 +958,7 @@ async function main(): Promise<void> {
     bindTopbarAutoHide();
     armTopbarAutoHide();
 
-    // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
+    // The product iframe got the deep path, so the URL bar must not show it stale.
     history.replaceState(
       null,
       '',
@@ -1193,23 +1006,18 @@ async function main(): Promise<void> {
     attempt: attempt.attemptNumber,
     entry: attempt.entry,
   });
-  // On every event of this load, so an error and the resolution span can be
-  // joined into journeys without a second id to look up.
+  // On every event, so errors and the resolution span join into journeys without a second id.
   m.setDefaults({
     journey_id: attempt.journeyId,
     attempt_number: String(attempt.attemptNumber),
     entry: attempt.entry,
   });
-  // Before resolution starts, so a login clicked while the product resolves
-  // boots the product's core rather than a second one.
+  // Before resolution, so a login clicked meanwhile boots the product's core rather than a second one.
   bridgeModule.setPageProduct({ label });
 
   initScheduledNotifications({ label });
 
-  // Resolve the worker manifest's `includes.chat` in parallel with CID
-  // resolution. The bridge awaits this before creating the product's core
-  // provider (it decides the connection's execution kind), and the topbar
-  // uses the announced value to gate the chat button.
+  // In parallel with the CID. The bridge awaits it before creating the product's core, whose execution kind it decides.
   primeChatCapability(label, async () => {
     const result =
       chainBackend === 'rpc-gateway'
@@ -1218,7 +1026,6 @@ async function main(): Promise<void> {
     return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
   });
 
-  // Pre-load render chunk in parallel (overlap with CID resolution)
   const renderChunkPromise: Promise<RenderChunk> = loadBridge();
   void renderChunkPromise.catch(() => {
     /* fire-and-forget */
@@ -1226,18 +1033,10 @@ async function main(): Promise<void> {
 
   showProductPill(label, getActiveTldSuffix());
 
-  // Listen for status messages from the sandbox iframe so the loading
-  // UI continues seamlessly from resolution into content fetching.
   listenForSandboxStatus();
 
-  // Relay sandbox `bitswap_v1_get` requests to the protocol iframe's smoldot.
-  // The sandbox is on a different origin and can't postMessage the protocol
-  // iframe directly. The host bridges the two so a single warm Bulletin
-  // chain serves every sandbox load instead of cold-starting a second
-  // smoldot per page.
-  // The relay keeps every block it hands out in this origin's IndexedDB, so
-  // the next load of the same app skips the network. The sandbox can't keep
-  // them: its credentialless iframe loses its storage on every reload.
+  // One warm Bulletin chain serves every sandbox load. Blocks are kept here, since the credentialless sandbox loses
+  // its storage on every reload.
   const blockCache = cacheSettings.skipArchiveCache
     ? undefined
     : { get: getCachedBlock, put: putCachedBlock, delete: deleteCachedBlock };
@@ -1249,9 +1048,7 @@ async function main(): Promise<void> {
     },
   });
   if (blockCache !== undefined) {
-    // `onSandboxDone` callbacks are drained with `splice(0)` on the first
-    // `done` signal, so this fires once per page load: the summary event
-    // and the prune below run exactly once, after the first sandbox done.
+    // Fires once per page load, on the first sandbox done.
     onSandboxDone(() => {
       const { cache: hits, network: misses } = blocksServed;
       if (hits + misses === 0) {
@@ -1275,17 +1072,8 @@ async function main(): Promise<void> {
 
   const shieldState: ShieldState = isVerifiedSession(chainBackend) ? 'verified' : 'trusted';
 
-  // Bands reflect where load time actually goes (measured per displayed step):
-  // the Asset Hub connect+sync and the post-resolve content fetch are the two
-  // giants and own most of the bar, while relay-add and the dotNS read are
-  // small. Sync is paced to ~6.5s (good-run median) and content fetch to ~10s.
-  // Their long tails (bootnode retries shown as connection issues, slow bitswap
-  // peers) cap at the band top and let the sheen carry motion rather than
-  // inflating the pace. Both smoldot backends share one model. See
-  // `advancePhase` mapping below.
-  // Resolver status strings map onto the smoldot phase bands above.
-  // `asset-hub-connecting` is ~0ms (just createClient), so it shares the
-  // Syncing band rather than taking a slice that moves the bar for no work.
+  // Bands follow where load time goes: Asset Hub sync and the content fetch own most of the bar. Connecting takes no
+  // time, so it shares the Syncing band.
   const PHASE_INDEX: Partial<Record<ResolvePhase, number>> = {
     'relay-chain-adding': 1,
     'asset-hub-connecting': 2,
@@ -1293,11 +1081,9 @@ async function main(): Promise<void> {
     'asset-hub-ready': 2,
     'resolving-content': 3,
   };
-  // Only direct mode relays sandbox bitswap traffic through this window,
-  // so it is the only backend that can report a download percentage.
+  // Only direct mode relays bitswap through this window, so only it can report a download percentage.
   const countsContentBytes = chainBackend === 'smoldot-direct';
-  // The label names the step for us. What the visitor reads is the stage's
-  // copy, which says the same thing in words they can act on.
+  // The visitor reads the stage's copy, not the label.
   const smoldotPhases = (startLabel: string): LoadingPhase[] => [
     {
       label: startLabel,
@@ -1333,11 +1119,7 @@ async function main(): Promise<void> {
       target: 95,
       expectedMs: 10000,
       stage: 'content',
-      // The download counts its own bytes against the total the DAG root
-      // declares, so this band is driven by that rather than by the clock.
-      // Only where something is actually counting: a band that waits for a
-      // percentage nobody will send would hold the indicator at 62 for the
-      // whole fetch.
+      // Driven by counted bytes, only where something counts them, or the bar would hold at 62 for the whole fetch.
       reportsProgress: countsContentBytes,
     },
   ];
@@ -1346,8 +1128,6 @@ async function main(): Promise<void> {
   } else if (chainBackend === 'smoldot-direct') {
     initPhases(smoldotPhases('Starting'));
   } else {
-    // Gateway path resolves over RPC with no smoldot sync, then fetches
-    // content the same way every backend does.
     initPhases([
       {
         label: 'Connecting',
@@ -1369,24 +1149,16 @@ async function main(): Promise<void> {
         target: 95,
         expectedMs: 10000,
         stage: 'content',
-        // No `reportsProgress` here. Gateway mode pulls the archive over HTTP
-        // from the sandbox, so nothing counts its bytes through this window
-        // and there would be no percentage for the indicator to wait on.
+        // No `reportsProgress`: the sandbox pulls the archive over HTTP, so nothing counts its bytes here.
       },
     ]);
   }
-  // Content fetch (bitswap/IPFS) runs in the sandbox after the CID resolves and
-  // was previously unrepresented, so the bar sat parked while a 20s+ fetch ran.
-  // It is always the last phase, so advance to it just before handing off to the
-  // sandbox render.
+  // Always the last phase, entered just before handing off to the sandbox.
   const contentFetchPhase = chainBackend === 'rpc-gateway' ? 2 : 4;
   setLoadingDomain(label);
   advancePhase(0);
 
-  // Backdated to page start so the trace covers the whole load, boot
-  // included, and subscribed outside the backend gate: the gateway path
-  // produces no chain events at all, and a trace showing that is the point
-  // rather than a gap.
+  // Subscribed outside the backend gate: a gateway trace with no chain events is the point, not a gap.
   const trace = startResolutionTrace({
     domain: withActiveTld(label),
     network: getNetwork(),
@@ -1394,8 +1166,7 @@ async function main(): Promise<void> {
     attempt,
     startedAt: T0,
   });
-  // The step the resolution is in, for the trace's `loading_phase` and for the
-  // capture below when one of them throws.
+  // For the trace's `loading_phase` and the capture below.
   let step = 'resolve_setup';
   const enterStep = (next: string): void => {
     step = next;
@@ -1426,37 +1197,19 @@ async function main(): Promise<void> {
     trace.content(bytesFetched, totalBytes);
   });
 
-  // Advance the loading bar from typed smoldot lifecycle milestones instead of
-  // scraping log prose. `firstPeer` on the Asset Hub means a peer was
-  // discovered, so the sync band can start crawling. `bootstrapComplete`
-  // means the first finalized block landed, so the resolver can read
-  // storage. Health samples put a live peer count under the headline while
-  // the chain bootstraps, and stall events replace it with honest copy.
-  // Events are emitted from the protocol iframe, which owns smoldot in
-  // direct mode, and arrive through the protocol client origin- and
-  // source-gated listener. The `statusToPhase` log-text path remains as a
-  // fallback for the other backends, which forward neither.
+  // Typed lifecycle milestones from the protocol iframe drive the bar in direct mode. The other backends forward
+  // none, so `statusToPhase` reads their log text.
   if (chainBackend === 'smoldot-direct') {
-    // Peers are reported per chain rather than as one figure for whichever
-    // chain is currently being waited on. A single figure had to be blanked
-    // at every handover, which put a zero on screen at exactly the moments
-    // the load looked slowest.
-    // Warn when a chain stops making progress. Every lifecycle event re-arms
-    // the timer for that chain, so a chain warns only if it sits in one state past
-    // the threshold. Peers and throughput are recorded as they arrive, so the
-    // warning can say what is happening rather than only that it is slow.
+    // Per chain, since one figure would blank to zero at every handover. Every lifecycle event re-arms that chain's
+    // stall timer, so a chain warns only when it sits in one state past the threshold.
     const livePeers = new Map<CriticalChain, number>();
     const stallReason = new Map<CriticalChain, string | undefined>();
     const stallTimers = new Map<CriticalChain, ReturnType<typeof setTimeout>>();
     const warned = new Set<CriticalChain>();
     let liveBytesPerSecond: number | null = null;
 
-    // Once earned, the warning row stays for the rest of the load and only its
-    // text updates. Clearing it on recovery made it blink in and out as
-    // conditions wavered, which read as worse trouble than the trouble itself.
-    // Nothing may show before the load is old enough to genuinely be slow, so
-    // an early condition is parked and delivered at the eligibility mark if it
-    // still stands.
+    // Once shown, the warning stays and only its text updates, since a blinking row reads as worse trouble. An early
+    // condition is parked until the load is old enough to be slow.
     const loadStartedAt = performance.now();
     let warningShown = false;
     let pendingWarning: string | null = null;
@@ -1495,8 +1248,7 @@ async function main(): Promise<void> {
         clearTimeout(existing);
       }
       if (warned.delete(chain) && warned.size === 0) {
-        // The chain recovered, but hiding the row now would make it flash.
-        // Fall back to the general slow-load line, which is still true.
+        // Recovered, but hiding the row would flash it, so fall back to the general slow-load line.
         if (warningShown) {
           showWarning(describeProgressStall(liveBytesPerSecond));
         } else {
@@ -1525,12 +1277,8 @@ async function main(): Promise<void> {
       );
     };
 
-    // The debug panel Resolution view draws one block per phase per chain,
-    // so a transition is only worth an event when the phase actually changes.
-    // Bulletin attaches two taps, one from the warm-up connection and one from
-    // the broker's, and would otherwise contribute every block twice. Warp
-    // progress is the exception: it stays in `syncing` while the distance
-    // closes, so it is let through on a slow tick to keep the figures live.
+    // An event only when the phase changes, since Bulletin's two taps would otherwise emit every block twice. Warp
+    // progress stays in `syncing`, so it passes on a slow tick.
     const emittedPhase = new Map<ChainRole, ChainPhase>();
     const emittedWarpAt = new Map<ChainRole, number>();
     const lastWarpEmit = new Map<ChainRole, number>();
@@ -1538,16 +1286,11 @@ async function main(): Promise<void> {
 
     onProtocolChainSync(event => {
       const role = chainRoleForKey(event.chain);
-      // The watchdog clearing names no phase of its own, and claiming `ready`
-      // would be a guess, so a recovered chain goes back to syncing until the
-      // next milestone says otherwise.
+      // Recovery names no phase, and `ready` would be a guess, so a recovered chain is syncing until told otherwise.
       const phase: ChainPhase | undefined =
         PHASE_BY_MILESTONE[event.syncKind] ?? (event.syncKind === 'recovered' ? 'syncing' : undefined);
       if (event.syncKind === 'peers' && event.peers !== undefined) {
-        // The peer count of a chain moves independently of its phase, and the relay
-        // typically finds its peers only after the last phase transition. Riding
-        // along on `phase` alone leaves the panel reporting the count frozen at
-        // that transition, which for the relay is zero.
+        // Independent of the phase, since the relay usually finds its peers after its last transition.
         const changed = peersByRole.get(role) !== event.peers;
         peersByRole.set(role, event.peers);
         if (changed) {
@@ -1599,8 +1342,7 @@ async function main(): Promise<void> {
           });
         }
       }
-      // Health samples are excluded: they arrive every second and would keep
-      // re-arming the watchdog, so a stalled chain would never warn.
+      // Not health samples, which arrive every second and would keep a stalled chain from ever warning.
       if (event.syncKind !== 'peers' && isCriticalChain(event.chain)) {
         if (event.syncKind === 'stalled') {
           stallReason.set(event.chain, event.reason);
@@ -1614,26 +1356,20 @@ async function main(): Promise<void> {
           if (event.peers === undefined) {
             return;
           }
-          // The panel lists every chain of the network, including the ones the
-          // loading screen has no stall wording for.
+          // Every chain, including those the loading screen has no stall wording for.
           recordPeerCount(chainRoleForKey(event.chain), event.peers);
           if (isCriticalChain(event.chain)) {
             livePeers.set(event.chain, event.peers);
           }
           if (event.chain === 'bulletin') {
             if (event.peers > 0) {
-              // The download can start, so the clock is a fair fallback from
-              // here. Holding is only honest while there is no peer to fetch
-              // from: an archive served from the sandbox cache never
-              // asks this window for a block, and would otherwise sit at the
-              // band base until the app painted.
+              // With a peer the download can start, so the clock takes over: a cached archive never asks for a block.
               releasePhaseProgress();
             }
           }
           return;
         case 'warpSyncProgress': {
-          // The one true percentage smoldot offers. Only relays warp, and
-          // only when they have real distance to cover.
+          // The one true percentage smoldot offers.
           const { at, target } = event;
           if (event.chain === 'relay' && at !== undefined && target !== undefined && target > 0 && at <= target) {
             nudgePhaseProgress(at / target, 'relay');
@@ -1651,8 +1387,7 @@ async function main(): Promise<void> {
           }
           return;
         case 'warpSyncFinished':
-          // The last progress sample lands a little short of the target, so
-          // the band would otherwise stop just below full and stay there.
+          // The last sample lands short of the target, which would leave the band just below full.
           if (event.chain === 'relay') {
             nudgePhaseProgress(1, 'relay');
           }
@@ -1660,27 +1395,15 @@ async function main(): Promise<void> {
         case 'connecting':
         case 'stalled':
         case 'recovered':
-          // The per-chain peer counts already carry these: a stall is a
-          // chain sitting at zero, and recovery is the number climbing.
+          // The per-chain peer counts already show these.
           return;
       }
     });
 
-    // Speed is the throughput of the whole load, not of one step. The chain sync
-    // dominates the first half of a cold load and the archive download the
-    // second, so both are added up and the rate is taken over a short
-    // trailing window. Reporting only the archive left the readout at zero
-    // for the seconds the light client was working hardest.
-    // One counter, not two. The byte meter wraps the protocol frame
-    // WebSockets, and bitswap rides those same sockets, so the archive is
-    // already inside this number. Adding the content total on top counted
-    // every downloaded byte twice and reported speeds above the physical
-    // link rate.
+    // The whole load's throughput over a trailing window. Bitswap rides the protocol frame's WebSockets, so this one
+    // counter already includes the archive.
     let chainBytes = 0;
-    // Seeded at page start with nothing downloaded, which is true
-    // and means the first report from the protocol frame already has a second
-    // reading to be measured against. Without it the readout stayed blank
-    // until the second message from the frame.
+    // Seeded with page start, so the first report already has a reading to measure against.
     const samples: { at: number; total: number }[] = [{ at: 0, total: 0 }];
     const SPEED_WINDOW_MS = 3_000;
     const reportSpeed = (): void => {
@@ -1697,11 +1420,7 @@ async function main(): Promise<void> {
         recordTransfer({ bytesPerSecond: liveBytesPerSecond });
       }
     };
-    // The byte series exists to describe the resolution, so it closes once the
-    // product is on screen. Left running it posts a row a second for as long as
-    // the tab stays open, which pushes the events of the load itself out of the debug
-    // panel ring buffer. A load that never renders is bounded by the sample
-    // cap instead.
+    // Closes once the product is on screen, or it pushes the load's own events out of the debug panel's ring buffer.
     let lastBytesDebugAt = 0;
     let lastBytesDebugTotal = -1;
     let bytesDebugSamples = 0;
@@ -1742,26 +1461,16 @@ async function main(): Promise<void> {
       }
     });
 
-    // Every block the sandbox needs is fetched through this window, so the
-    // download reports itself: bytes so far against the total the DAG root
-    // declares.
+    // Every block the sandbox needs passes through this window, measured against the total the DAG root declares.
     onContentProgress(({ bytesFetched, totalBytes }) => {
       recordTransfer({ fetched: bytesFetched, total: totalBytes });
-      // The true download fraction drives the bar itself, which is where
-      // a percentage belongs. Printing the same number as text alongside it
-      // said the same thing twice.
       if (totalBytes === null) {
-        // Bytes are arriving but the DAG root declared no total, so there is
-        // no percentage to be had. Hand the indicator back to the clock.
+        // No declared total, so no percentage: the clock takes the bar back.
         releasePhaseProgress();
       }
       if (totalBytes !== null && totalBytes > 0) {
         nudgePhaseProgress(bytesFetched / totalBytes, 'content');
-        // The tail of the load is the sandbox unpacking the archive and
-        // painting, which download copy would otherwise hide while the bar
-        // crept. Only blocks relayed for the sandbox are counted here, and
-        // the sandbox is mounted after the content phase begins, so this
-        // cannot fire while an earlier step is still on screen.
+        // The tail is the sandbox unpacking and painting. Only relayed blocks count, so this cannot fire early.
         if (bytesFetched >= totalBytes) {
           setLoadingStage('preparing');
         }
@@ -1769,17 +1478,10 @@ async function main(): Promise<void> {
     });
   }
 
-  // Read in the catch below, which covers both the warm and the cold path.
-  // Without it a warm-path failure would be counted against the cold attempt
-  // total and the cold failure rate would read high.
+  // Read in the catch below, so a warm-path failure is not counted against the cold path.
   let cidCache: CidCacheResult | 'unknown' = 'unknown';
 
-  // On a CID cache hit the render never waits on the light client, and the
-  // gateway backend runs none at all, so the dimension is inapplicable on
-  // both. "n/a" keeps them out of "unknown", which is reserved for a signal
-  // that should have arrived and did not. One tag per chain: the relay and
-  // Asset Hub gate the resolve, Bulletin gates the content fetch, and their
-  // warm states vary independently.
+  // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
   const smoldotDbCacheTags = (): Record<string, string> => {
     const inapplicable = cidCache === 'hit' || chainBackend === 'rpc-gateway';
     return {
@@ -1789,14 +1491,8 @@ async function main(): Promise<void> {
     };
   };
 
-  // The content fetch outlives the render handoff `await`, and a warm load can
-  // still fail it, so the trace waits for the sandbox to report how its
-  // content load ended. A load that never reports was abandoned or hung: the
-  // trace records that on `pagehide`.
-  //
-  // Subscribed before the handoff, because a sandbox serving a cached archive
-  // can report before the handoff `await` returns. A handoff that throws has
-  // already been reported as the error it is, and its late `done` is dropped.
+  // The content fetch outlives the handoff, so the trace waits for the sandbox's report. Subscribed before the
+  // handoff, since a cached archive can report before it returns.
   let resolveFailed = false;
   const settleOnContent = (): void => {
     onSandboxDone((outcome, failedStep) => {
@@ -1840,10 +1536,7 @@ async function main(): Promise<void> {
       m.count(S.CACHE_HIT);
       log.event('CID cache hit', { flow: 'resolve', cid: cached.cid });
       trace.nameResolved(cached.cid);
-      // Judged again by today's validator, before anything renders. A copy
-      // that no longer passes is refused but kept: only a cleanup or a
-      // redeploy drops cached manifests, and the CID check below is what
-      // notices a redeploy that fixed them.
+      // A copy that no longer passes is refused but kept: only a cleanup or a redeploy drops cached manifests.
       const cachedManifests = fromCache(cached.manifests);
       enterStep('cached_launch_gate');
       try {
@@ -1854,8 +1547,6 @@ async function main(): Promise<void> {
         });
         throw err;
       }
-      // Wrap the warm-path render in a span so its duration is queryable
-      // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
         setChainsButtonVisible(true);
@@ -1885,7 +1576,7 @@ async function main(): Promise<void> {
         },
       });
       handedOff();
-      // SWR: keep the cache honest across reloads without blocking the render.
+      // Keeps the cache honest without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cached.cid, chainBackend, true);
       });
@@ -1896,16 +1587,13 @@ async function main(): Promise<void> {
     }
     log.event(cidCache === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
 
-    // Wall-clock cold-path duration, emitted as a trace_metric distribution
-    // after success. The previous m.span wrapper recorded garbage on the
-    // smoldot path (closure detachment across postMessage awaits).
+    // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
     const coldStartMs = performance.now();
     performance.mark('dotli:resolve:start');
-    // Read in parallel with the CID and awaited before anything renders, so a
-    // product whose manifests rule it out is refused before its download.
+    // In parallel with the CID, and awaited before anything renders, so a refused product is never downloaded.
     const manifestsRead = readProductManifests(label, chainBackend);
     manifestsRead.catch(() => {
-      /* awaited below; a CID failure first must not leave this unhandled */
+      /* Awaited below. A CID failure first must not leave this unhandled. */
     });
     enterStep('name_resolve');
     const resolveStart = performance.now();
@@ -1932,29 +1620,20 @@ async function main(): Promise<void> {
       });
     };
 
-    /**
-     * Try the app subname first, fall back to the base label when the
-     * subname has no contenthash.
-     */
+    // The app subname first, then the base label when the subname has no contenthash.
     let cid: string | null;
     log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend: chainBackend });
     if (chainBackend !== 'rpc-gateway') {
       const { statusToPhase } = await loadResolve();
       const onResolveProgress = (msg: string): void => {
-        // Progress events arrive as opaque strings across the iframe
-        // boundary. The resolver package owns the authoritative mapping from
-        // status text to ResolvePhase, so we defer to it instead of
-        // maintaining a parallel regex here.
+        // The resolver owns the mapping from its status text to a phase.
         const phase = statusToPhase(msg);
         const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
         if (mappedPhase !== undefined) {
           advancePhase(mappedPhase);
         }
         emitPhase(msg, phase ?? 'progress');
-        // These strings are the resolver talking to a developer, which is how
-        // "Walking dag-pb via bitswap..." reached the headline. They stay in
-        // the debug stream and move the bar. The stage messages say the same
-        // thing to the user.
+        // Developer-facing text, so it stays in the debug stream and never reaches the headline.
       };
       cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
       if (cid === null) {
@@ -1999,12 +1678,9 @@ async function main(): Promise<void> {
 
     trace.nameResolved(cid);
 
-    // A name with no contenthash has nothing to launch, whatever its
-    // manifests say, so it does not wait on them.
+    // Nothing to launch whatever the manifests say, so it does not wait on them.
     if (cid === null) {
-      // No pruning here: a name with no contenthash on the *selected* network
-      // still resolves on another, so dropping its pill would lose good
-      // entries on a network switch. The pill's remove button is the cleanup.
+      // Its recent pill stays: the name may still resolve on another network.
       showNoContentError(label);
       endJourney();
       trace.finish('no_content');
@@ -2060,17 +1736,9 @@ async function main(): Promise<void> {
   } catch (err) {
     resolveFailed = true;
     performance.mark('dotli:main:end');
-    // Classified once, here, and the same verdict drives both the report and
-    // the error page, so a dashboard of `error_kind` counts exactly the
-    // screens visitors saw.
+    // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
     const error = describeError(err, chainBackend !== 'rpc-gateway');
-    // Report before rendering so monitoring always sees the root cause, even
-    // if `showError()` itself throws (e.g. a DOM node is missing). The global
-    // unhandled-rejection handler doesn't catch this, because the try/catch
-    // here already has. Carry the active dependency as a tag so Sentry and the
-    // user-visible error both attribute the failure to the specific
-    // dependency the chosen mode dialed. Captured while the trace is still
-    // open, so the error lands inside it.
+    // Reported before rendering, in case rendering throws, and while the trace is still open, so the error lands in it.
     const dependency = chainBackend === 'rpc-gateway' ? 'asset-hub-rpc' : 'smoldot';
     captureException(err, {
       flow: 'resolve',
@@ -2089,7 +1757,6 @@ async function main(): Promise<void> {
       reason: err instanceof Error ? err.message : String(err),
       errorKind: error.kind,
     });
-    // Full cause chain to console for devs.
     log.debug(`[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`);
     emitDotliDebugEvent({
       layer: 'boot',
@@ -2123,16 +1790,11 @@ async function main(): Promise<void> {
       );
       return;
     }
-    // Tiered failover: any smoldot becomes rpc-gateway, rpc-gateway becomes smoldot-shared-worker.
     const nextBackend = chainBackend === 'rpc-gateway' ? 'smoldot-shared-worker' : 'rpc-gateway';
     const btnLabel = FAILOVER_BTN_LABELS[nextBackend];
-    // A provider that timed out will time out again, so switching to the light
-    // client becomes the recommendation. A light client that failed is usually
-    // a transient peer problem, so reloading stays the recommendation there.
+    // A failed provider will fail again, while a failed light client is usually a transient peer problem.
     const failoverIsPrimary = chainBackend === 'rpc-gateway';
-    // The protocol iframe reads this on its next boot and purges its worker
-    // caches, so the reload comes up on a fresh light client instead of the
-    // one that just lost its subscription.
+    // The reload comes up on a fresh light client instead of the one that lost its subscription.
     const reloadForRecovery = (): void => {
       if (error.resetProtocol === true) {
         try {
@@ -2161,10 +1823,7 @@ async function main(): Promise<void> {
       });
       switchBackendAndReload(nextBackend);
     };
-    // Dropping to a trusted provider trades away the guarantee the light
-    // client exists for, so it is the one failover the user confirms first.
-    // Going the other way (provider to light client) only adds verification.
-    // Staying put is the safe answer, so it is the one offered as primary.
+    // Dropping to a trusted provider gives up verification, so the user confirms it and staying put is primary.
     const showFailoverWarning = (): void => {
       showErrorPage({
         glyph: 'warning',
@@ -2180,22 +1839,11 @@ async function main(): Promise<void> {
         ],
       });
     };
-    // Offering a one-click drop to a trusted provider before the visitor has
-    // even reloaded sells the light client's guarantee too cheaply, so the
-    // first sighting points at the Settings panel that owns the choice instead.
-    // A second sighting of the same failure has earned the shortcut. Only this
-    // direction is gated: moving back toward the light client adds
-    // verification rather than removing it, so it needs no ceremony.
+    // A first sighting points at Settings rather than offering a one-click drop to a trusted provider. A repeat of
+    // the same failure earns the shortcut.
     const gateFailover = nextBackend === 'rpc-gateway' && !errorAlreadySeen(error.kind);
     function showResolutionError(): void {
-      // Only the gated direction records a sighting. Remembering a failure seen
-      // on the gateway would skip the Settings step for a visitor who later hits
-      // the same kind on the light client, where it really is their first.
-      //
-      // `unknown` is never recorded. It is the catch-all bucket, so two
-      // unrelated failures both key as `unknown` and the second would read as a
-      // repeat of the first, handing over the one-click drop to a trusted
-      // provider on what is genuinely a first sighting.
+      // Only the gated direction records a sighting. `unknown` never does, since two unrelated failures share it.
       if (nextBackend === 'rpc-gateway' && error.kind !== 'unknown') {
         rememberError(error.kind);
       }
@@ -2229,8 +1877,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  // Everything past boot catches its own failures, so what reaches here broke
-  // the shell before a load could start, and nothing else is on screen.
+  // Everything past boot catches its own failures, so this broke the shell before a load started.
   captureException(err, { flow: 'boot', step: bootStep });
   const error = describeError(err, getBackend() !== 'rpc-gateway');
   showError(error.title, error.message, {

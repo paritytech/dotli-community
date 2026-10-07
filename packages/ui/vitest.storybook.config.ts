@@ -12,15 +12,13 @@ import { playwright } from '@vitest/browser-playwright';
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 const vrt = process.env['VRT'] === '1';
 
-// Stories as tests, in a real Chromium. The happy-dom unit tests keep
-// vitest.config.ts, so `npm test` needs no browser.
+// Stories run in a real Chromium, apart from vitest.config.ts so `npm test` needs no browser.
 export default defineConfig({
   plugins: [storybookTest({ configDir: join(import.meta.dirname, '.storybook') })],
   define: { 'import.meta.env.VITE_VRT': JSON.stringify(vrt ? '1' : '0') },
   test: {
     name: 'storybook',
-    // The Settings baseline shows the page's host, so the port is part of it.
-    // Pinned for screenshots only: a plain run can take any free port.
+    // The Settings baseline shows the page's host, so screenshot runs pin the port.
     ...(vrt ? { api: { port: 63315, strictPort: true } } : {}),
     setupFiles: [join(import.meta.dirname, '.storybook/vitest.setup.ts')],
     browser: {

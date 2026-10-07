@@ -10,15 +10,13 @@ import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { byId } from '../../support.js';
 import { moreRow, renderTopbar } from './topbar-harness.js';
 
-/** Popover's surface chunk, counted as it is fetched. */
 const popoverChunk = vi.hoisted(() => ({ fetched: 0 }));
 vi.mock('../../../src/components/floating/PopoverSurface.js', async importOriginal => {
   popoverChunk.fetched += 1;
   return importOriginal();
 });
 
-// Only More's chunk is in, as before the first idle preload: no Popover has
-// loaded its own.
+// As before the first idle preload: only More's chunk is in, no Popover's.
 beforeAll(async () => {
   await preloadDropdownMenuSurface();
 });

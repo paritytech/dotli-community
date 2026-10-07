@@ -15,7 +15,7 @@ export interface TopbarItemProps {
   /** Shown in the item's More row after its label. */
   aside?: (() => JSX.Element) | undefined;
   priority: number;
-  /** Default true. A hidden item shows neither inline nor in the menu. */
+  /** A hidden item shows neither inline nor in the menu. */
   visible?: boolean;
   activate: (ev: MouseEvent) => void;
   /** Set apart from the items before it by a hairline, in a bar (the account). */
@@ -24,14 +24,7 @@ export interface TopbarItemProps {
   children: JSX.Element;
 }
 
-/**
- * One item of the topbar's action group: wraps the item's button, and tells
- * the ActionGroup it sits in how to show it as a More menu row. While the
- * bar has collapsed it, the wrapper is `data-parked`, which the group lays
- * out of flow and invisible, so it can still be measured and its button
- * still anchors its surface. Outside an ActionGroup (the landing page) it is
- * always inline.
- */
+/** Wraps an item's button and tells the ActionGroup how to show it as a More row. Outside one it is always inline. */
 export function TopbarItem(props: TopbarItemProps): JSX.Element {
   const bar = useContext(TopbarContext);
   let element: HTMLSpanElement | undefined;

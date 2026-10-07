@@ -1,14 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Ends the transaction watches a chain transport loses when it disconnects.
-//
-// polkadot-api's proxy forgets an answered request, so a reconnect drops an
-// acknowledged `transactionWatch_v1_submitAndWatch` without a word, and the
-// subscription replay above it must not resubmit a transaction. The guard
-// sends each such watch the spec's terminal `dropped` event instead, so its
-// consumer stops waiting. A submit still unanswered at the disconnect is left
-// alone: the proxy re-sends it, and the guard tracks it once it is answered.
+// Ends the transaction watches a transport loses on disconnect. polkadot-api's proxy forgets an
+// answered submit, so a reconnect silently drops the watch and the replay must not resubmit. Each such
+// watch gets a terminal `dropped` event instead. Unanswered submits are left to the proxy's resend.
 
 import type { JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ConnectionStatus } from '@dotli/resolver';
@@ -21,7 +16,7 @@ const TERMINAL_EVENTS = new Set(['finalized', 'error', 'invalid', 'dropped']);
 export interface WatchGuard {
   /** The transport, with the watches it carries tracked. */
   provider: JsonRpcProvider;
-  /** The transport's status. `disconnected` ends every tracked watch. */
+  /** `disconnected` ends every tracked watch. */
   onStatus: (status: ConnectionStatus) => void;
 }
 

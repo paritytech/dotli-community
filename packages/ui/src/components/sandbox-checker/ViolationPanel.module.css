@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — Sandbox checker violation panel */
-
 .panel {
   display: none;
   position: fixed;

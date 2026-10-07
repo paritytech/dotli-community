@@ -1,35 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * How many light clients two open tabs actually run.
- *
- * `packages/resolver/src/provider.ts` holds the client as a module singleton,
- * so a JS context has exactly 0 or 1. What varies is how many contexts exist:
- * `smoldot-direct` gives each tab its own protocol iframe, while
- * `smoldot-shared-worker` puts one SharedWorker behind every tab. The
- * `smoldot.active` gauge is only meaningful if it tells those two apart, and
- * nothing below the browser can prove that it does.
- *
- * The gauge is read off the preview server rather than through Playwright.
- * Sentry is configured with `tunnel: "/t"`, so envelopes are same-origin POSTs
- * the server can collect. Route interception would not work: it covers pages
- * and frames, and a SharedWorker's requests are neither, which would blind the
- * test to the exact case it exists to check.
- *
- * Limits. Only the startup emission is exercised, because the heartbeat
- * interval is set past the end of the run. The recurring tick is covered by
- * `packages/resolver/tests/provider-heartbeat.test.ts`. Two tabs, not N: the
- * distinction is one-versus-per-tab, and two separates them.
- *
- * The last test here asks the inverse question. Since the client only ever runs
- * on the protocol origin, the host shell's own copy of that wasm is dead weight,
- * and downloading it costs every visitor megabytes on a cold load. That one
- * needs no metrics build, so the `VITE_METRICS` guard is scoped to the two
- * gauge-reading tests rather than the file.
- *
- * Env overrides: DOMAIN, PORT, TIMEOUT_MS.
- */
+// The gauge is read off the preview server's Sentry tunnel, not by route interception, which cannot see a
+// SharedWorker's requests.
 
 import { test, expect } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -41,15 +14,10 @@ import { resetSharedMode } from './helpers/shared-mode-reset.js';
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 const HOST_SHELL_ORIGIN = `http://${DOMAIN}.localhost:${PORT}`;
 
-// Same `127.0.0.1` reasoning as `resetSharedMode`: Chromium resolves
-// `*.localhost`, Node's resolver on the CI runner does not, and these endpoints
-// gate on path rather than hostname.
+// 127.0.0.1, as in `resetSharedMode`, because Node on the CI runner does not resolve `*.localhost`.
 const METRICS_URL = `http://127.0.0.1:${PORT}/__dotli-metrics`;
 
-// Past the end of the run, so the only points collected are the one each
-// context emits at startup and the total is a count of contexts. This fixes
-// what is emitted, not when it arrives: Sentry's flush schedule is what
-// `settledGauge` below has to wait out.
+// Past the end of the run, so each context emits only its startup point and the total counts contexts.
 const HEARTBEAT_MS = 3_600_000;
 
 interface GaugePoint {
@@ -67,21 +35,12 @@ async function readGauge(request: APIRequestContext): Promise<GaugePoint[]> {
   return points.filter(p => p.name === 'dotli.smoldot.active');
 }
 
-// Long enough for a flush that lands after the last context reports, so an
-// extra light client shows up rather than being read as the expected count.
+// Long enough for a late flush to reveal an extra light client.
 const SETTLE_MS = 5_000;
 
 /**
- * Wait for every context's point to arrive, then hold to see if more follow.
- *
- * Sentry buffers metrics and flushes on its own schedule, so one tab's point
- * can land seconds after another's. Waiting for the count to merely stop
- * changing reads the gap between two flushes as "settled", which undercounts:
- * CI saw 1 in `smoldot-direct` that way while the second tab was still in the
- * buffer. Wait for the expected count instead, then keep waiting.
- *
- * Not self-fulfilling. A count that never reaches `expected` still returns
- * whatever did arrive, and the caller's assertion fails with the real number.
+ * Waits for the expected count, then holds for more. Waiting for the count to stop changing would read the gap
+ * between two Sentry flushes as settled and undercount.
  */
 async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
   const deadline = Date.now() + TIMEOUT_MS;
@@ -104,10 +63,7 @@ for (const [label, backend, expected] of [
     context,
     request,
   }) => {
-    // The gauge compiles to a no-op unless the bundle was built with metrics
-    // on, so without the flag this reads zero and fails for a reason that has
-    // nothing to do with light clients. The Functional job sets it on both the
-    // build and the run.
+    // Without a metrics build the gauge is a no-op and reads zero.
     test.skip(process.env['VITE_METRICS'] !== 'true', 'needs a VITE_METRICS=true build');
     test.setTimeout(TIMEOUT_MS * 4);
 
@@ -142,20 +98,16 @@ for (const [label, backend, expected] of [
     const total = points.reduce((sum, p) => sum + p.value, 0);
     expect(total, `expected ${String(expected)} light client(s) in ${backend}, saw ${String(total)}`).toBe(expected);
 
-    // Without this, a run that silently fell back to another backend would
-    // still report the right number and read as a pass.
+    // A run that silently fell back to another backend could still report the right number.
     const modes = [...new Set(points.map(p => p.mode))];
     expect(modes).toEqual([backend === 'smoldot-shared-worker' ? 'shared-worker' : 'direct']);
   });
 }
 
-// The light client's wasm, hashed by Vite. The protocol origin serves the same
-// filename, so the origin is what separates the legitimate fetch from the waste.
+// The protocol origin serves the same filename, so only the origin separates the legitimate fetch.
 const LIGHT_CLIENT_WASM = /truapi_provider_bg.*\.wasm$/;
 
-// Long enough for the eager fetch to happen if it is going to. Deliberately not
-// derived from TIMEOUT_MS: a fail-fast run sets that low, and a budget scaled
-// from it would expire inside this wait rather than reaching the assertion.
+// Not derived from TIMEOUT_MS, which a fail-fast run sets low enough to expire inside this wait.
 const WASM_SETTLE_MS = 20_000;
 
 test('As a dotli visitor, the host shell must not download the light client wasm it never runs', async ({ page }) => {
@@ -174,8 +126,7 @@ test('As a dotli visitor, the host shell must not download the light client wasm
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
   expect(await findAppFrame(page, TIMEOUT_MS)).not.toBeNull();
-  // The download is eager, but give a slow boot room to make it before
-  // concluding it never happens.
+  // Gives a slow boot room to make the eager download before concluding it never happens.
   await page.waitForTimeout(WASM_SETTLE_MS);
 
   // Then

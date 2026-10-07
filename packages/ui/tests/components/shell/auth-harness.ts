@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Shared setup for the auth islands' tests: the real auth controller, started
-// once per file (its window listeners have no disposer, and reloading its
-// module would load a second Solid), and window event recorders that go away
-// after each test.
+// The real auth controller, started once per file: its window listeners have no disposer, and
+// reloading its module would load a second Solid.
 
 import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
 import { flush } from 'solid-js';
@@ -16,13 +14,9 @@ import { byId, byTestId } from '../../support.js';
 let controllerListeners: Parameters<typeof window.removeEventListener>[] = [];
 let events = new AbortController();
 
-/** The coordinator the controller holds its modal lease through. */
 export const coordinator: BlockingModalCoordinator = createBlockingModalCoordinator();
 
-/**
- * Start the auth controller for this file, and after each test close the
- * modal (releasing its lease), reset the stores and drop the recorders.
- */
+/** Starts the auth controller for this file, and resets the modal, stores and recorders after each test. */
 export function useAuthController(): void {
   beforeAll(() => {
     const spy = vi.spyOn(window, 'addEventListener');
@@ -84,7 +78,6 @@ export function press(
 
 export { byId };
 
-/** The pairing modal's QR container holds the spinner and no canvas. */
 export function expectQrSpinnerView(): void {
   const qrBox = byId('auth-modal-qr');
   byTestId('auth-modal-spinner', qrBox);

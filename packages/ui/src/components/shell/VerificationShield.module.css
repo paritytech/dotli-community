@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A 26 px circle pulled into the address's 16 px end, so its glyph sits
-   where the text's end sits on the other side. */
+/* Pulled into the address's end padding, so its glyph sits where the text ends on the other side. */
 .wrap {
   position: relative;
   display: inline-flex;
@@ -59,10 +58,8 @@
   }
 }
 
-/* The explainer, as wide as the menus, from the shield's left edge. It
-   drops from the bar's bottom, as every topbar surface does, not from the
-   shield's: an area from the horizontal axis alone spans the whole height,
-   so `top` is set from the viewport's. */
+/* Drops from the bar's bottom like every topbar surface, not from the shield's. An anchored area from
+   the horizontal axis alone spans the whole height, so `top` is set from the viewport. */
 .tooltip {
   width: var(--w-pop-md);
   position-area: span-right;

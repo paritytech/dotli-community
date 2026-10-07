@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host page's chain pool end to end: Chain.ts, the pool and broker, and
-// the backend's transport, with the protocol frame's remote connections faked.
+// The host page's chain pool end to end (Chain.ts, pool, broker, backend transport), with remote connections faked.
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
@@ -23,8 +22,7 @@ interface RemoteConnection {
 }
 
 const mocks = vi.hoisted(() => {
-  // The host pool's frame gate subscribes once per module, so each test's
-  // fresh module adds its own.
+  // The frame gate subscribes once per module, so each test's fresh module adds its own.
   const readyListeners: (() => void)[] = [];
   return {
     createRemoteChainProvider: vi.fn<(genesisHash: string) => RemoteChainProvider | null>(),
@@ -52,8 +50,7 @@ vi.mock('../../protocol/src/client.js', async importOriginal => {
   };
 });
 
-// The real client's protocol iframe points at a host that does not exist here;
-// keep happy-dom from fetching it but keep `contentWindow`.
+// The protocol iframe's host does not exist here. Stop happy-dom fetching it, but keep `contentWindow`.
 (
   window as unknown as { happyDOM: { settings: { navigation: { disableChildFrameNavigation: boolean } } } }
 ).happyDOM.settings.navigation.disableChildFrameNavigation = true;
@@ -75,8 +72,7 @@ let createHostChainPool: typeof ChainModule.createHostChainPool;
 let hostChainProvider: typeof ChainModule.hostChainProvider;
 let log: typeof SharedModule.log;
 
-// Chain.ts keeps its gates at module level, so each test gets them as a fresh
-// page has them from a fresh module.
+// Chain.ts keeps its gates at module level, so a fresh module gives each test a fresh page's gates.
 beforeEach(async () => {
   vi.resetModules();
   mocks.readyListeners.length = 0;
@@ -86,12 +82,9 @@ beforeEach(async () => {
 
 describe('host chain pool on a light client backend', () => {
   let remotes: RemoteConnection[];
-  // How each new remote connection fares. `worker`: refused, as the
-  // SharedWorker after a permanent fatal refuses it. `direct`: its frame
-  // reports ready, then its light client fails, as in smoldot-direct.
-  // `answering`: its frame reports ready and answers the first request, then
-  // its light client fails 1.5 s later. `chain`: its chain halts at once, as a
-  // chain the frame's broker throws on each time does.
+  // How each new remote connection fares. `worker`: refused, as by the SharedWorker after a permanent fatal.
+  // `direct`: the frame reports ready, then its light client fails. `answering`: as `direct`, but it answers the first
+  // request and fails 1.5 s later. `chain`: the chain halts at once.
   let refuse: 'none' | 'worker' | 'direct' | 'answering' | 'chain';
 
   beforeEach(() => {

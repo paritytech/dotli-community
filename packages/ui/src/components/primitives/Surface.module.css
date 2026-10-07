@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The mockup's .popover: one gap for every popover, 10 on desktop, the
-   boards' 12 on phones. No padding: each consumer sets its own. The frame
-   around it draws the glass. */
+/* No padding or glass: each consumer sets its padding and the frame draws the glass. */
 
 :where(.surface) {
   box-sizing: border-box;
@@ -63,7 +61,6 @@
   height: 14px;
 }
 
-/* Phones: the boards' sizes. */
 @media (max-width: 560px) {
   :where(.surface) {
     gap: var(--sp-3);

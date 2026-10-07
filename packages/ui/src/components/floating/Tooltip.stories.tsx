@@ -39,19 +39,15 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Trusted input, a user's: a real mouse over the trigger, and a real Tab,
- * which `:focus-visible` tells from a click. Loaded on use, so the stories
- * still load in Storybook outside Vitest.
+ * Trusted input, so `:focus-visible` tells a real Tab from a click. Imported lazily so Storybook loads the stories
+ * outside Vitest.
  */
 const input = async () => (await import('vitest/browser')).userEvent;
 
 /**
- * A real tap (a touch start and end through the DevTools protocol, as
- * Playwright's own tap does), at the centre of `el` in the top page's
- * coordinates: the test runs in a frame, which the runner may scale. A
- * scripted touch focuses as a script does, which `:focus-visible` takes for
- * a keyboard's. Not `Input.synthesizeTapGesture`: on Linux CI its gesture
- * never reaches the page.
+ * A real tap through the DevTools protocol, in top-page coordinates since the runner may scale the test's frame.
+ * A scripted touch would read as keyboard focus to `:focus-visible`, and `Input.synthesizeTapGesture` never
+ * reaches the page on Linux CI.
  */
 const tap = async (el: Element) => {
   const { cdp } = await import('vitest/browser');

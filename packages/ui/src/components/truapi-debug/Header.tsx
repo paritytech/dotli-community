@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Header bar of the TrUAPI debug panel: title, counts and the pause, clear,
-// export, copy, dock, collapse and close controls.
-
 import { createSignal, flush, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DockPosition } from '@dotli/truapi-debug';
@@ -95,16 +92,14 @@ export function Header(props: {
   paused: boolean;
   collapsed: boolean;
   dock: DockPosition;
-  /** Where the panel sits: the picked dock, or the bottom on a phone. */
+  /** The picked dock, or the bottom on a narrow viewport. */
   placement: DockPosition;
-  /** The filtered events as export JSON: what the user currently sees. */
   exportJson: () => string;
   onTogglePause: () => void;
   onClear: () => void;
   onToggleDock: () => void;
   onToggleCollapse: () => void;
 }): JSX.Element {
-  // A flashed mark replaces the copy icon for a moment, button disabled.
   const [copyMark, setCopyMark] = createSignal<string | null>(null);
   const [copyDisabled, setCopyDisabled] = createSignal(false);
   const flashTimers = new Set<number>();
@@ -135,8 +130,7 @@ export function Header(props: {
     const a = document.createElement('a');
     a.href = url;
     a.download = exportFilename(new Date());
-    // Attach before clicking and revoke on the next tick — Safari can
-    // silently abort the download otherwise.
+    // Safari silently aborts the download unless the link is attached and the URL revoked a tick later.
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -146,11 +140,9 @@ export function Header(props: {
   };
 
   const copyToClipboard = (): void => {
-    // Disabled synchronously, so a rapid second click cannot start another
-    // write while the first one is still in flight.
+    // Synchronous, so a rapid second click cannot start another write.
     flush(() => setCopyDisabled(true));
-    // Typed as always present, but absent on non-secure origins
-    // (Clipboard API is [SecureContext]-only).
+    // Typed as always present, but absent on non-secure origins.
     const clipboard = navigator.clipboard as Clipboard | undefined;
     if (!clipboard) {
       flashCopy('✕');
@@ -167,11 +159,10 @@ export function Header(props: {
   };
 
   const exitDebugMode = (): void => {
-    // Exit debug mode entirely: the panel is bound to debug mode, and
-    // re-entry is via the host Settings "Open in debug mode" button.
+    // Re-entry is via the Settings "Open in debug mode" button.
     try {
       sessionStorage.setItem(DEBUG_SESSION_KEY, '0');
-      // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in exotic environments; fall through to plain reload.
+      // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable, so fall through to a plain reload.
     } catch {
       /* ignore */
     }

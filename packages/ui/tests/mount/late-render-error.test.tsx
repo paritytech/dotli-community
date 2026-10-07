@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A root that throws while rendering after it mounted must not stay behind
-// frozen and still running: the sandbox checker's violation panel and the
-// TrUAPI debug panel dispose themselves and leave the page.
+// A root that throws while rendering after it mounted must dispose itself and leave the page, not stay frozen.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';

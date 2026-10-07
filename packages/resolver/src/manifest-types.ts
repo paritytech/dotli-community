@@ -1,19 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Product manifest types and handwritten validators.
-//
-// Hosts read these shapes from dotNS text records. Two records exist per
-// product: a root manifest on `<id>.<tld>` (display metadata) and one
-// executable manifest per modality on `app|widget|worker.<id>.<tld>`, where
-// `<tld>` is the active network's dotNS TLD
-// (version and kind-specific fields). Bulletin CIDs live in the subname's
-// contenthash slot, not in the JSON.
-//
-// Validators are handwritten so the resolver package stays free of a
-// schema library at runtime.
+// Manifests from dotNS text records: the root on `<id>.<tld>`, one executable per kind on `<kind>.<id>.<tld>`.
+// CIDs live in each name's contenthash, not the JSON. Validators are handwritten to avoid a schema library.
 
-/** Formats v1 defines. A manifest may carry another; that only costs the icon. */
+/** Formats v1 defines. Any other value only loses the icon. */
 export type IconFormat = 'jpeg' | 'png';
 
 export type AppVersion = readonly [number, number, number] | readonly [number, number, number, string];
@@ -28,7 +19,7 @@ export interface RootManifest {
   displayName: string;
   description: string;
   icon: Icon;
-  /** `<product_id>` → what that product may do to this one. Unrecognised grants are kept, not fatal. */
+  /** Keyed by product id, listing what that product may do to this one. Unknown grants are kept. */
   trustedProducts?: Record<string, readonly string[]>;
 }
 
@@ -52,7 +43,7 @@ export interface WidgetManifest extends CommonExecutableFields {
   dimensions: WidgetDimensions;
 }
 
-/** Surfaces a worker serves. An omitted key means `false`; all off is a background-only worker. */
+/** An omitted key means `false`. All off is a background-only worker. */
 export interface WorkerIncludes {
   chat?: boolean;
   pocket?: boolean;
@@ -75,17 +66,13 @@ export interface ValidationOk<T> {
 export interface ValidationErr {
   ok: false;
   errors: string[];
-  /**
-   * Set when `$v` is not 1, the only version this host reads. The fields are
-   * not checked then: they belong to a schema this host does not know.
-   */
+  /** Set when `$v` is not 1, in which case the fields go unchecked. */
   unsupportedVersion?: unknown;
 }
 export type ValidationResult<T> = ValidationOk<T> | ValidationErr;
 
 const WORKER_SURFACES = ['chat', 'pocket', 'input'] as const;
 
-/** The `$v` check every manifest starts with. `null` when the version is 1. */
 function checkVersion(input: Record<string, unknown>, what: string): ValidationErr | null {
   const version = input['$v'];
   if (version === 1) {
@@ -184,7 +171,6 @@ function validateTrustedProducts(value: unknown): string[] {
   return errors;
 }
 
-/** Parse and validate a JSON string against the `RootManifest` schema. */
 export function parseRootManifest(json: string): ValidationResult<RootManifest> {
   let raw: unknown;
   try {
@@ -198,7 +184,6 @@ export function parseRootManifest(json: string): ValidationResult<RootManifest> 
   return validateRootManifest(raw);
 }
 
-/** Parse and validate a JSON string against the `ExecutableManifest` schema. */
 export function parseExecutableManifest(json: string): ValidationResult<ExecutableManifest> {
   let raw: unknown;
   try {
@@ -258,7 +243,7 @@ export function validateExecutableManifest(input: unknown): ValidationResult<Exe
   const kind = input['kind'];
   const p = 'executable manifest ';
   if (kind === 'app') {
-    // App has no kind-specific fields beyond the common ones.
+    // No kind-specific fields.
   } else if (kind === 'widget') {
     errors.push(...validateWidgetFields(input, p));
   } else if (kind === 'worker') {
@@ -270,14 +255,8 @@ export function validateExecutableManifest(input: unknown): ValidationResult<Exe
 }
 
 /**
- * Discriminated result so callers can tell "no manifest set" apart from
- * "manifest exists but malformed". Same shape as `decodeIpfsContenthashResult`
- *  used for legacy contenthash reads.
- *
- * Every result read from a record carries its text as `raw`, so a caller can
- * keep it and validate it again later with `toRootManifestResult` /
- * `toExecutableManifestResult`. `unsupported` is about the network (it has no
- * text records), `unsupported-version` about the manifest (a `$v` other than 1).
+ * `raw` lets a caller keep the text and revalidate it later. `unsupported` means the network has no text
+ * records, `unsupported-version` a `$v` other than 1.
  */
 export type ManifestResult<T> =
   | { kind: 'ok'; value: T; raw: string }
@@ -286,7 +265,6 @@ export type ManifestResult<T> =
   | { kind: 'unsupported-version'; version: unknown; raw: string }
   | { kind: 'invalid'; errors: string[]; raw: string };
 
-/** What a manifest record's text can come to: everything but the network-level `unsupported`. */
 export type ManifestRecordResult<T> = Exclude<ManifestResult<T>, { kind: 'unsupported' }>;
 
 function toManifestResult<T>(
@@ -306,16 +284,11 @@ function toManifestResult<T>(
   return { kind: 'invalid', errors: parsed.errors, raw };
 }
 
-/** Validate a root manifest record's text (`null` or empty: no record). */
 export function toRootManifestResult(raw: string | null): ManifestRecordResult<RootManifest> {
   return toManifestResult(raw, parseRootManifest);
 }
 
-/**
- * Validate the text of the executable manifest read from `<kind>.<label>`.
- * A manifest whose `kind` disagrees with that subname is invalid, so one
- * tagged `kind: "worker"` cannot pose as the app.
- */
+/** A `kind` that disagrees with the subname is invalid, so a worker cannot pose as the app. */
 export function toExecutableManifestResult(
   raw: string | null,
   kind: ExecutableKind,

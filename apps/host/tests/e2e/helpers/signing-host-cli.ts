@@ -28,8 +28,7 @@ export interface SigningHostProcess {
   output: () => string;
 }
 
-// Preflight so a missing binary fails with install guidance instead of a
-// spawn ENOENT buried in the pair retry loop.
+// Preflight, so a missing binary fails with install guidance, not a spawn ENOENT buried in the pair retry loop.
 export function signingHostVersion(binary: string): string | null {
   const probe = spawnSync(binary, ['--version'], { encoding: 'utf8' });
   if (probe.error || probe.status !== 0) {
@@ -42,8 +41,7 @@ export function sanitizeSigningHostOutput(text: string): string {
   return text.replace(PAIRING_DEEPLINK, '<pairing deeplink>');
 }
 
-// Spawns `truapi-host signing-host … exec "/pair <deeplink>"`: answers the
-// handshake, then keeps auto-signing SignRequests until SIGTERMed.
+// Answers the handshake, then keeps auto-signing SignRequests until SIGTERMed.
 export function startSigningHostPair(config: SigningHostConfig, deeplink: string): SigningHostProcess {
   const args = [
     'signing-host',
@@ -78,8 +76,7 @@ export function startSigningHostPair(config: SigningHostConfig, deeplink: string
     child.once('error', error => {
       resolve({ code: null, signal: null, error: error.message });
     });
-    // "close", not "exit": stdio has flushed, so output() holds the final
-    // stderr lines that usually explain the failure.
+    // "close", not "exit": stdio has flushed, so output() holds the final stderr lines that explain a failure.
     child.once('close', (code, signal) => {
       resolve({ code, signal });
     });
@@ -114,8 +111,7 @@ export async function stopSigningHost(proc: SigningHostProcess): Promise<void> {
   }
 }
 
-// Pid-based stop for crash recovery, where no ChildProcess handle survived.
-// SIGTERM, wait up to 5s for the exit, then SIGKILL.
+// For crash recovery, where no ChildProcess handle survived.
 export async function stopSigningHostPid(pid: number): Promise<void> {
   try {
     process.kill(pid, 'SIGTERM');

@@ -10,21 +10,17 @@ import { SectionLabel } from '../primitives/SectionLabel.js';
 import { dotUrl } from './dot-url.js';
 import s from './RecentPills.module.css';
 
-// Touch has no hover, so a long press on a pill reveals its remove button
-// instead of navigating.
+// Touch has no hover, so a long press on a pill reveals its remove button instead of navigating.
 const LONG_PRESS_MS = 450;
 
 /**
- * The recently visited names (`#dotli-recent`), as pills linking to their
- * sites, each with a button that forgets the name. Hidden until the list
- * loads, and again once the last name is forgotten. The list is written on
- * the subdomain that resolved, so it comes from the cross-subdomain store
- * (recent-labels.ts), not this origin's localStorage.
+ * Recently visited names as pills.
+ * The list is written on the subdomain that resolved, so it loads from the cross-subdomain store, not this
+ * origin's localStorage.
  */
 export function RecentPills(): JSX.Element {
   const suffix = getActiveTldSuffix();
   const [labels, setLabels] = createSignal<string[]>([]);
-  // The one pill whose remove button a long press revealed.
   const [revealed, setRevealed] = createSignal<string | null>(null);
   let container: HTMLDivElement | undefined;
 
@@ -38,8 +34,7 @@ export function RecentPills(): JSX.Element {
     setLabels(all => all.filter(l => l !== label));
   };
 
-  // A long press revealed the remove button, so swallow the tap that ends it
-  // rather than navigating to the site the visitor was about to forget.
+  // Swallow the tap that ends a long press rather than open the site being forgotten.
   const open = (e: MouseEvent, label: string): void => {
     if (revealed() === label) {
       e.preventDefault();
@@ -66,7 +61,6 @@ export function RecentPills(): JSX.Element {
     }, LONG_PRESS_MS);
   };
 
-  // Tapping anywhere else puts the revealed pill back.
   const onDocumentPointerDown = (e: Event): void => {
     if (container?.contains(e.target as Node) !== true) {
       setRevealed(null);
@@ -82,8 +76,7 @@ export function RecentPills(): JSX.Element {
     <div
       ref={el => {
         container = el;
-        // Passive, so a press never holds up scrolling: Solid's JSX events
-        // take no listener options.
+        // Passive so a press never holds up scrolling. Solid's JSX events take no listener options.
         el.addEventListener('touchstart', onTouchStart, { passive: true });
         el.addEventListener('touchmove', cancelPress, { passive: true });
         el.addEventListener('touchend', cancelPress, { passive: true });

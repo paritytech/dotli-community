@@ -1,13 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// One custom-message cell in the chat panel: the product's live render tree.
-//
-// The visibility gate is not a rendering optimization, it gates the
-// subscription: a tree is live and each open render is work the product
-// is doing, so a long history would otherwise hold one per row for rows
-// nobody is looking at. The observer starts the subscription when the
-// cell scrolls in and drops it when it leaves, like the desktop host.
+// Visibility gates the render subscription, not just painting: each open render is live work for the
+// product, so only rows in view hold one.
 
 import { createSignal, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -74,8 +69,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
           setPlaceholder(undefined);
           setTree(node);
         },
-        // A failed render may have delivered a partial tree, which must not
-        // stand as final; replace it with a neutral fallback.
+        // A failed render may have delivered a partial tree, which must not stand as final.
         onError: () => {
           if (!disposed) {
             setPlaceholder('This message can’t be shown right now.');

@@ -70,8 +70,6 @@ describe('assertBlockMatchesCid', () => {
   });
 
   it('fails closed on a multihash it cannot recompute', () => {
-    // CID whose multihash claims sha2-512: we can't recompute it, so we must
-    // refuse rather than wave the bytes through unverified.
     const bytes = enc('payload');
     const cid = CID.createV1(RAW, create(SHA2_512, new Uint8Array(64)));
     expect(() => {
@@ -106,9 +104,6 @@ describe('rootVerifyingBlockSource', () => {
   });
 
   it('passes interior (non-root) blocks through without verifying them', async () => {
-    // Only the root is re-checked here; interior blocks are trusted to the
-    // underlying transport (smoldot). A non-root CID whose bytes don't match
-    // must NOT throw.
     const rootCid = sha256Cid(enc('root'), DAG_PB);
     const childCid = sha256Cid(enc('child'));
     const wrapped = rootVerifyingBlockSource(rootCid, () => Promise.resolve(enc('not the child bytes')));
@@ -125,7 +120,6 @@ describe('assertSameContentId', () => {
   });
 
   it('treats CIDv0 and CIDv1 of the same content as equal', () => {
-    // CIDv0 is dag-pb + sha2-256; its v1 form has the same codec + multihash.
     const v1 = sha256Cid(enc('same content'), DAG_PB);
     const v0 = v1.toV0();
     expect(() => {

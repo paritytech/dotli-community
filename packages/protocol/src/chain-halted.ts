@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A leaf of its own, with no imports: the host's eager protocol client needs
-// only these, and importing them from the broker would pull the whole broker
-// into that chunk.
+// No imports, so the host's eager protocol client takes these without pulling the broker into its chunk.
 
 /**
  * The `error.data` of an answer to a request the chain halted under. The chain
@@ -31,9 +29,8 @@ export class ChainHaltError extends Error {
 }
 
 /**
- * Why the chain behind a halt error halted. Anything but a `ChainHaltError`
- * (a smoldot or socket death) is the chain's own halt. Matched by name, so an
- * error from another realm is read too.
+ * Why a halt happened. Anything but a `ChainHaltError` is the chain's own halt. Matched by name to read errors from
+ * another realm.
  */
 export function haltReasonOf(error: unknown): RemoteChainHalt {
   const isHaltError = error instanceof Error && error.name === 'ChainHaltError';

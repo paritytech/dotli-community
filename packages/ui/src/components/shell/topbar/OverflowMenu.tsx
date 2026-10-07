@@ -11,7 +11,7 @@ import s from './OverflowMenu.module.css';
 
 const SEVERITY: Record<StatusTone, number> = { ok: 0, idle: 1, info: 2, warn: 3, err: 4 };
 
-/** The row's trailing chevron: choosing the row opens another surface. */
+/** Choosing the row opens another surface. */
 function Chevron(): JSX.Element {
   return (
     <svg
@@ -30,39 +30,18 @@ function Chevron(): JSX.Element {
 }
 
 /**
- * The topbar's More button (`#more-button`) and its flyout (`#more-popover`,
- * rendered into the body), holding a row for each item the bar has
- * collapsed (`rows`, in bar order). The button sits in a wrapper (`class`,
- * the group's) that is `data-parked` while there is no row, so the bar
- * still knows the room it takes.
- *
- * The flyout is a DropdownMenu, with the rows as its items. It drops under
- * the bar, and on a phone it opens as a bottom sheet titled More, its rows
- * in a well. Each row is the board's menu row: the item's icon, its label
- * and a chevron. An item may add to its row after the label (the network's
- * dot and verdict word, the chat's unread count) and raise a status while it
- * is collapsed. More's badge takes the most severe tone raised, and its name
- * lists every raised status ("More, network offline, chat has unread
- * messages"). The menu is named More whatever its button says.
- *
- * Choosing a row closes the flyout and hands focus back to the More button,
- * then activates the row's item with the row click, so the surface it opens
- * takes focus as its own kind says (a keyboard choice lands on its first
- * control), and hands it back to the More button when it closes: the
- * item's own button is collapsed. On a phone, a sheet the row opens takes
- * More's place in the same frame, with no slide and no scrim fade, as the
- * board swaps the sheet's content in place. A row that opens no sheet (Chat)
- * lets More slide out.
+ * The topbar's More button and its flyout, with a row per collapsed item.
+ * The wrapper stays `data-parked` while there is no row, so the bar still knows the room it takes. Choosing a
+ * row hands focus back to More before activating the item, since the item's own button is collapsed.
  */
 export function OverflowMenu(props: {
   rows: readonly TopbarEntry[];
   buttonRef: (el: HTMLButtonElement) => void;
   class?: string | undefined;
 }): JSX.Element {
-  /** The collapsed items' raised statuses, in bar order. */
   const raised = (): TopbarAlert[] =>
     props.rows.map(entry => entry.alert()).filter((alert): alert is TopbarAlert => alert !== undefined);
-  /** More's badge: the most severe tone raised, so an offline network outranks unread chat. */
+  /** The most severe tone raised, so an offline network outranks unread chat. */
   const badgeTone = (): StatusTone | undefined =>
     raised().reduce<StatusTone | undefined>(
       (worst, alert) => (worst === undefined || SEVERITY[alert.tone] > SEVERITY[worst] ? alert.tone : worst),

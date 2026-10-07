@@ -29,7 +29,6 @@ export const WithChip: Story = {
   render: args => <Choice {...args} chip={<Chip tone="ok">Recommended</Chip>} />,
 };
 
-// The verification explainer's card for the way this site was loaded.
 export const WithIcon: Story = {
   args: {
     title: 'Verified',

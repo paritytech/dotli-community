@@ -54,7 +54,7 @@ const DEEPLINK = 'polkadotapp://pair?handshake=test';
 const DESKTOP_HINT = 'Scan with Polkadot Mobile to connect';
 const MOBILE_HINT = 'Sign in with the Polkadot app on this device';
 
-/** The modal and the auth button (focus goes back to it on close). */
+/** The modal and the auth button, which focus returns to on close. */
 async function renderModal(): Promise<HTMLElement> {
   renderComponent(() => (
     <div>
@@ -118,7 +118,6 @@ interface ModalExpectation {
 
 const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
 
-/** The drawn code on its tile: the canvas, named as an image, then the badge. */
 function expectQrTile(tile: Element, payload: string): void {
   expect(tags(tile)).toEqual(['CANVAS', 'SPAN']);
   const canvas = nth(tile.children, 0) as HTMLElement;
@@ -128,7 +127,6 @@ function expectQrTile(tile: Element, payload: string): void {
   expect(tile.children[1]?.getAttribute('aria-hidden')).toBe('true');
 }
 
-/** The QR container's content for each view the modal can show. */
 function expectQrBody(qrBox: Element, body: ModalBody): void {
   switch (body.kind) {
     case 'empty':
@@ -202,19 +200,14 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
   }
 }
 
-/**
- * The surface apart from styling: the dialog ARIA, the head and the body in
- * order with their ids and text, the visibility of the reason and the get-app
- * link, and the QR container's view.
- */
+/** Asserts the modal apart from styling. */
 function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.id).toBe('auth-modal-backdrop');
   expect(backdrop.getAttribute('role')).toBe('dialog');
   expect(backdrop.getAttribute('aria-modal')).toBe('true');
   expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
-  // The scrim, then the card: no sheet head on a wide screen, and the card
-  // holds the Surface with the parts.
+  // The scrim, then the card. No sheet head on a wide screen.
   expect(tags(backdrop)).toEqual(['DIV', 'DIV']);
   const surface = nth(backdrop.children, 1);
   expect(surface.getAttribute('data-testid')).toBe('auth-modal');
@@ -526,8 +519,7 @@ describe('AuthModal login flow', () => {
 
     // When
     await authState(pairing({ label: 'Polkadot Web', dotSuffix: false, hostGlobal: true }));
-    // A bare disconnected state (e.g. a product core clearing its session)
-    // must only update the badge, never tear down the pairing modal.
+    // A bare disconnected state, as when a product core clears its session, must not close the pairing modal.
     await authState({ tag: 'Disconnected' });
 
     // Then
@@ -1153,13 +1145,11 @@ describe('AuthModal error copy', () => {
   });
 
   it('explains statement-store slot exhaustion from the typed failure kind', async () => {
-    // Wallet wording, which this workspace does not control. The core
-    // classifies it; matching the prose here would not.
+    // The wallet's wording is not ours, so the core's typed kind classifies it, not the prose.
     const modalText = await failWith('No free slots available (limit=8)', 'NoFreeAllowanceSlots');
     expect(modalText).toContain('No Statement Store slots left');
     expect(modalText).toContain('No free slots available (limit=8)');
-    // Retrying cannot succeed until the allowance period rolls over, so the
-    // view must not offer it as the way forward.
+    // Retrying cannot succeed until the allowance period rolls over.
     expect(modalText).not.toContain('Retry');
   });
 
@@ -1195,7 +1185,7 @@ describe('AuthModal error copy', () => {
   });
 
   it('As a new user, a login runtime that fails to load reads as a page problem rather than a phone problem', async () => {
-    // Observed with the asset server down: the auth worker never booted.
+    // The auth worker never booted, as when the asset server is down.
     const modalText = await failWith('worker init failed: undefined');
     expect(modalText).toContain('The login service did not start');
     expect(modalText).toContain('Retry');

@@ -4,9 +4,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadRecentLabels, recordRecentLabel, forgetRecentLabel } from '../src/recent-labels.js';
 
-// The recent list is written on `<label>.<root>` and read on the bare root,
-// so the shared cross-subdomain store is authoritative and localStorage is
-// only a mirror. The channel stands in for that store here.
+// The list is written on `<label>.<root>` and read on the bare root, so the shared cross-subdomain store is
+// authoritative and localStorage only a mirror. The channel stands in for that store.
 
 const mocks = vi.hoisted(() => ({
   store: new Map<string, string>(),

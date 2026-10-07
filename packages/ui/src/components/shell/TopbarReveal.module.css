@@ -25,7 +25,6 @@
   outline-offset: 2px;
 }
 
-/* Phones: the boards' sizes, for a keyboard's Tab. */
 @media (max-width: 560px) {
   .reveal {
     padding: var(--sp-2) var(--sp-4);
@@ -33,10 +32,8 @@
   }
 }
 
-/* The collapsed capsule (120 x 8 px, 4 px from the top, Topbar.module.css)
-   is too small to aim at, so a transparent target sits over it, one --sp-2
-   wider on each side and below. It covers the product, so it stays that
-   small; from the screen's top edge it is still easy to reach. */
+/* The collapsed capsule is too small to aim at, so a transparent target sits over it. It covers the
+   product, so it stays small. The screen's top edge makes it easy to reach. */
 .hit {
   position: fixed;
   top: 0;

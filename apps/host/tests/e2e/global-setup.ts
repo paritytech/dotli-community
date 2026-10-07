@@ -17,31 +17,22 @@ import { extractQrPayload } from './helpers/extract-qr-payload.js';
 import { E2E_CHAIN_BACKEND, initializeChainBackend } from './helpers/chain-backend.js';
 import { STATE_FILE, SESSION_FILE, SIGNING_HOST_STATE_DIR, type PersistedSession } from './fixtures/paths.js';
 
-// Must equal the host's default network (`packages/config/src/network.ts`
-// `defaultNetwork()`, "paseo-next-v2" at time of writing). Required with no
-// default: a mismatch surfaces as "pair OK, user-badge never appears"
-// because the CLI attests on a different chain than the host listens on.
+// Must equal the host's default network, or pairing succeeds but the badge never appears: the CLI attests on another
+// chain.
 const NETWORK = requiredEnv('SIGNING_HOST_NETWORK');
-// The truapi-host CLI from paritytech/host-rust-core, on PATH by default.
 // The .env loader can hand us empty strings, so these treat "" as unset.
 const SIGNING_HOST_BIN = nonEmptyEnv('SIGNING_HOST_BIN') ?? 'truapi-host';
 const SIGNING_HOST_BASE_PATH = nonEmptyEnv('SIGNING_HOST_BASE_PATH') ?? SIGNING_HOST_STATE_DIR;
-// The product the tests exercise, mirroring fixtures/paired.ts. The CLI
-// scopes wallet-level signing (signRaw) to this id.
+// Mirrors fixtures/paired.ts. The CLI scopes wallet-level signing to this id.
 const PRODUCT_ID =
   nonEmptyEnv('SIGNING_HOST_PRODUCT_ID') ??
   (process.env['E2E_PRODUCT_URL'] === undefined
     ? `${process.env['E2E_HOST'] ?? 'host-playground'}.dot`
     : new URL(process.env['E2E_PRODUCT_URL']).host);
-// Local-dev knobs. Defaults are fine because they don't depend on
-// external services.
 const PORT = process.env['PORT'] ?? '5173';
-// Pairing only needs the host shell and protocol iframe. Loading the
-// host-playground product here can open product permission modals before the
-// auth button is clicked, so keep global auth setup on the bare host origin.
+// The bare host origin, since loading the product can open its permission modals before the auth button is clicked.
 const AUTH_HOST = process.env['E2E_AUTH_HOST'] ?? 'localhost';
 
-/** The env var `name`, or undefined when it is unset or empty. */
 function nonEmptyEnv(name: string): string | undefined {
   const value = process.env[name];
   return value === '' ? undefined : value;
@@ -74,12 +65,9 @@ function positiveIntegerEnv(name: string, fallback: number): number {
 
 const PAIR_ATTEMPTS = 3;
 const PAIR_ATTEMPT_BACKOFF_MS = 3_000;
-// First-attempt ceiling: a cold signing-host state dir registers a lite
-// username and waits for ring inclusion, which can take several minutes.
+// A cold state dir registers a lite username and waits for ring inclusion, which can take minutes.
 const USER_BADGE_TIMEOUT_MS = positiveIntegerEnv('E2E_PAIR_BADGE_TIMEOUT_MS', 600_000);
-// Retries reuse the warmed state dir, so they get a far smaller ceiling.
-// Caps the worst case under CI's 35-min job timeout so exit 99 stays
-// reachable during an outage instead of the runner hard-killing the job.
+// Retries reuse the warmed state dir. Keeps the worst case under CI's 35-min job timeout, so exit 99 stays reachable.
 const RETRY_BADGE_TIMEOUT_MS = positiveIntegerEnv('E2E_RETRY_BADGE_TIMEOUT_MS', 120_000);
 // A CLI death this soon after spawn is a deterministic tooling failure:
 // chain-side errors take multiple RPC round trips to surface.
@@ -87,14 +75,11 @@ const FAST_CLI_EXIT_MS = 5_000;
 // clap usage errors (unknown flag on a new release) exit with code 2.
 const CLI_USAGE_EXIT_CODE = 2;
 
-// Distinct exit code so CI workflow / reviewers can tell "testnet or
-// identity backend is down" apart from "dot.li tests asserted false".
+// Lets CI tell a testnet or identity backend outage from a failed assertion.
 export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
-// The CLI registers this prefix verbatim as the lite username, and a name can
-// only be claimed once, so a fixed value burns on the first run and every later
-// run fails as taken. Six lowercase letters give a ~3·10^8 namespace. Lowercase
-// ASCII only: the CLI rejects digits and separators.
+// A username can be claimed only once, so a fixed prefix fails on every later run. The CLI rejects digits and
+// separators.
 function randomLiteUsernamePrefix(): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz';
   let suffix = '';
@@ -104,10 +89,7 @@ function randomLiteUsernamePrefix(): string {
   return `dotlitest${suffix}`;
 }
 
-// Built per pair attempt, not once: a failed attempt can leave its name
-// registered but unattested, and the CLI creates a fresh account rather than
-// reusing one it has not attested. Sharing one name across attempts would make
-// every retry ask for a name the first attempt already claimed.
+// Per attempt: a failed attempt can leave its name claimed, and a retry must not ask for it again.
 function signingHostConfig(): SigningHostConfig {
   return {
     binary: SIGNING_HOST_BIN,
@@ -121,8 +103,7 @@ function signingHostConfig(): SigningHostConfig {
   };
 }
 
-// Thrown when the CLI process dies before login; elapsedMs distinguishes
-// instant deterministic failures from chain-side ones.
+// elapsedMs tells an instant deterministic failure from a chain-side one.
 class SigningHostExitError extends Error {
   readonly elapsedMs: number;
   readonly exitCode: number | null;
@@ -149,7 +130,6 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
 
   await killStaleSigningHost();
 
-  // Honor HEADED=1 here too so a local repro can watch the pair flow.
   const browser = await chromium.launch({
     headless: process.env['HEADED'] !== '1',
     slowMo: process.env['SLOWMO'] !== undefined && process.env['SLOWMO'] !== '' ? Number(process.env['SLOWMO']) : 0,
@@ -172,8 +152,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
         `[globalSetup] paired as "${result.username}" signing-host pid=${String(session.pid)} (attempt ${String(attempt)}/${String(PAIR_ATTEMPTS)})`,
       );
       await browser.close();
-      // Playwright runs this closure as the global teardown. Clearing the
-      // session file keeps the stale-kill path a crash-only affair.
+      // The global teardown. Clearing the session file leaves the stale-kill path to crashes only.
       return async () => {
         await stopSigningHost(result.signingHost);
         rmSync(SESSION_FILE, { force: true });
@@ -190,8 +169,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
 
   await browser.close();
   console.error(`[globalSetup] PAIR EXHAUSTED after ${String(PAIR_ATTEMPTS)} attempts: ${(lastErr as Error).message}`);
-  // A usage error or instant death is deterministic; hard-fail so a broken
-  // release can't soft-pass the suite forever as an "outage".
+  // A usage error or instant death is deterministic, so a broken release hard-fails rather than passing as an outage.
   const deterministic =
     lastErr instanceof SigningHostExitError &&
     (lastErr.exitCode === CLI_USAGE_EXIT_CODE || lastErr.elapsedMs < FAST_CLI_EXIT_MS);
@@ -217,7 +195,7 @@ async function killStaleSigningHost(): Promise<void> {
   rmSync(SESSION_FILE, { force: true });
 }
 
-// Login-failure detail captured in the page; see the init script below.
+// Set by the init script below.
 interface LoginFailure {
   tag?: string;
   kind?: string;
@@ -250,8 +228,7 @@ async function pairOnce(
 
   let signingHost: SigningHostProcess | null = null;
   try {
-    // Seeding ?network= pins the host to the CLI's network, so the two
-    // can't silently drift apart (the classic "badge never appears" hang).
+    // Pins the host to the CLI's network, so the two cannot drift apart.
     await page.goto(`http://${AUTH_HOST}:${PORT}/?network=${NETWORK}`, {
       timeout: 60_000,
     });
@@ -262,7 +239,6 @@ async function pairOnce(
         .catch(() => {});
     }
 
-    // The landing page's own account button.
     const authBtn = page.locator('#landing-auth-button');
     await authBtn.waitFor({ state: 'visible', timeout: 30_000 });
     await authBtn.click();
@@ -284,9 +260,7 @@ async function pairOnce(
         .catch(() => 'unknown')
     ).trim();
 
-    // Persist cookies and localStorage from every origin this context has
-    // touched (including the cross-origin shared-auth iframe on `host.<root>`).
-    // This is what lets worker fixtures skip the QR/pair flow entirely.
+    // Includes the cross-origin shared-auth iframe's storage, which lets worker fixtures skip pairing.
     await ctx.storageState({ path: STATE_FILE });
     const paired = signingHost;
     signingHost = null;

@@ -11,22 +11,12 @@ import { errorName, log, serializeError } from '@dotli/shared';
 
 import { CONTENT_ERRORS, named } from './errors.js';
 
-// JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
-// the retryable pair. Anything else, including an invalid CID, falls to the
-// terminal branch below.
+// `bitswap_v1_get` error codes. Anything else, an invalid CID included, is terminal.
 const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
 const ERR_FAIL_BACKOFF = -32812;
 
-/**
- * Byte accounting for the content download.
- *
- * Every block the sandbox needs is fetched here, so this is the one place
- * that sees the whole transfer. The first dag-pb block is the DAG root, and
- * its links carry `Tsize`, the cumulative size of each subtree. Summing them
- * gives the total up front, which turns the download into a real percentage
- * instead of a timer.
- */
+/** Every sandbox block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */
 export interface ContentProgress {
   bytesFetched: number;
   totalBytes: number | null;
@@ -34,8 +24,7 @@ export interface ContentProgress {
 }
 
 type ProgressCallback = (progress: ContentProgress) => void;
-// A set, not a slot: the resolution trace and the loading bar both listen,
-// and a slot would hand the stream to whichever registered last.
+// A set, because the resolution trace and the loading bar both listen.
 const progressCallbacks = new Set<ProgressCallback>();
 let bytesFetched = 0;
 let totalBytes: number | null = null;
@@ -50,9 +39,8 @@ export function onContentProgress(cb: ProgressCallback): () => void {
 
 function readDagTotal(bytes: Uint8Array): number | null {
   try {
-    // dag-pb links are field 2, each an embedded message carrying Hash (1),
-    // Name (2), and Tsize (3) as a varint. Reading Tsize directly keeps the
-    // 40kB `@ipld/dag-pb` decoder out of the eager host bundle.
+    // Hand-decoded so the 40kB `@ipld/dag-pb` decoder stays out of the eager host bundle.
+    // Links are field 2, and each carries Tsize as varint field 3.
     let i = 0;
     let total = 0;
     let sawLink = false;
@@ -78,7 +66,6 @@ function readDagTotal(bytes: Uint8Array): number | null {
       }
       const len = readVarint();
       if (field === 2) {
-        // A PBLink submessage. Walk it for Tsize (field 3, varint).
         const end = i + len;
         while (i < end) {
           const lk = readVarint();
@@ -91,8 +78,7 @@ function readDagTotal(bytes: Uint8Array): number | null {
               sawLink = true;
             }
           } else if (lw === 2) {
-            // Read the length first: `i += readVarint()` would capture the
-            // old `i` before the call advanced it past the varint itself.
+            // `i += readVarint()` would read `i` before the call advanced it.
             const skip = readVarint();
             i += skip;
           } else {
@@ -126,8 +112,7 @@ function noteBlock(bytes: Uint8Array): void {
     cb(progress);
   }
 }
-/** Marks a local abort. A numeric code could collide: JSON-RPC reserves only
- *  -32768..-32000, so the rest of the space belongs to the chain. */
+/** Marks a local abort by name, since any numeric code outside the JSON-RPC reserved range could be the chain's. */
 const ABORT_ERROR_NAME = 'AbortError';
 
 const PER_CALL_TIMEOUT_MS = 60_000;
@@ -135,11 +120,8 @@ const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
 
-// smoldot calls -32810 permanent, but it only means every peer connected at
-// that instant answered DONT_HAVE: it never adds later peers and never looks up
-// providers, so a retry gets a fresh, larger set. Bounded by attempts and not a
-// clock, which anything slow in between drains, including the -32812 runs this
-// exists to survive. Eight buys 27.5s against the 3 to 15 observed live.
+// smoldot calls -32810 permanent, but it only means the peers connected at that instant lacked the block,
+// so a retry meets a larger set. Counted in attempts, not time, which slow -32812 runs would drain.
 const DISCOVERY_RETRIES = 8;
 
 interface PendingResolver {
@@ -182,9 +164,7 @@ function ensureConnection(): JsonRpcConnection {
           new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
           CONTENT_ERRORS.BITSWAP_RPC,
         );
-        // The chain halted under this request. The pool answers it before the
-        // connection hears `onHalt`, which then drops it, so the retry loop's
-        // next attempt redials a rebuilt chain.
+        // A halt answer arrives before `onHalt` drops the connection, so the retry redials a rebuilt chain.
         const halted = message.error.data === CHAIN_HALTED_ERROR_DATA;
         (err as { code?: number }).code = halted ? ERR_FAIL_RETRY : message.error.code;
         entry.reject(err);
@@ -199,19 +179,14 @@ function ensureConnection(): JsonRpcConnection {
         );
         return;
       }
-      // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
-      // transferred zero-copy via postMessage instead of cloning an 8 MB
-      // hex string and re-parsing on the other side.
+      // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
       const hex = message.result;
       const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
       entry.resolve(hexToBytes(stripped));
     },
     reason => {
-      // The next attempt dials again. After a dead frame that only happens
-      // because a fetch is running, so nothing reconnects on its own. What
-      // the halt answers did not reach (a dead frame answers nothing already
-      // sent) is rejected here. A halt from a connection already replaced
-      // must not touch the one that replaced it.
+      // The next attempt redials. Requests the halt never answered are rejected here, and a halt from a
+      // replaced connection must not touch its successor.
       if (connection !== opened) {
         return;
       }
@@ -219,8 +194,7 @@ function ensureConnection(): JsonRpcConnection {
       for (const [id, entry] of pending) {
         pending.delete(id);
         const err = named(new Error('Bulletin connection halted'), CONTENT_ERRORS.BITSWAP_CONNECTION);
-        // A halted chain is rebuilt on the next connect, so the retry loop
-        // redials. A dead frame is fatal and is never retried inside a fetch.
+        // A halted chain is rebuilt on reconnect, so it is retried. A dead frame is fatal.
         if (reason === 'chain') {
           (err as { code?: number }).code = ERR_FAIL_RETRY;
         }
@@ -268,11 +242,8 @@ function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
 }
 
 /**
- * Fetch one CID block via the protocol iframe's smoldot.
- *
- * Pass `signal` from anything that can be torn down while a fetch is open. A
- * retrying call can now run for the full budget, so without one an abandoned
- * caller leaves it firing into a light client nobody is listening to.
+ * Fetch one block via the protocol iframe's smoldot.
+ * Pass `signal` from anything that can be torn down, since a retrying call runs for the full budget.
  */
 export async function bitswapGet(cid: string, signal?: AbortSignal): Promise<Uint8Array> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
@@ -296,9 +267,7 @@ export async function bitswapGet(cid: string, signal?: AbortSignal): Promise<Uin
     } catch (err) {
       const code = errorCode(err);
 
-      // Each kind of failure ramps on its own counter. Sharing one means a
-      // couple of -32812s arrive first and pin the discovery retries at the
-      // 5s cap, spending the allowance on two or three tries instead of eight.
+      // Separate counters, so early -32812s cannot pin discovery retries at the backoff cap.
       let backoffAttempt: number;
       if (code === ERR_FAIL) {
         discoveryAttempts += 1;
@@ -321,9 +290,7 @@ export async function bitswapGet(cid: string, signal?: AbortSignal): Promise<Uin
         throw err;
       }
 
-      // Each counter is incremented before it is read, so both are >= 1 here.
-      // The floor of 1ms keeps the loop off a zero delay once the budget is
-      // nearly spent. The next iteration's deadline check ends the call.
+      // The 1ms floor keeps a nearly spent budget off a zero delay. The deadline check then ends the call.
       const delay = Math.min(
         BACKOFF_CAP_MS,
         BACKOFF_BASE_MS * 2 ** Math.min(backoffAttempt - 1, 4),
@@ -345,15 +312,12 @@ function sendOnce(cid: string, timeoutMs: number, signal?: AbortSignal): Promise
   const id = nextId++;
   const conn = ensureConnection();
   return new Promise<Uint8Array>((resolve, reject) => {
-    // Same reason as in `sleep`, and the cost of missing it is larger here:
-    // the fallback is the 60s per-call timeout rather than one backoff.
+    // `addEventListener` never fires on a signal that is already aborted.
     if (signal?.aborted === true) {
       reject(abortError(cid));
       return;
     }
-    // Every exit runs the same teardown. Doing it per-path leaked an abort
-    // listener on the timeout path, and the caller's signal outlives the call
-    // (one per subscription), so they accumulated for as long as it lived.
+    // Every exit shares one teardown, since the caller's signal outlives the call and would collect listeners.
     const cleanup = (): void => {
       clearTimeout(timer);
       pending.delete(id);
@@ -368,9 +332,7 @@ function sendOnce(cid: string, timeoutMs: number, signal?: AbortSignal): Promise
       cleanup();
       reject(err);
     }, timeoutMs);
-    // Abort has to reach the in-flight call, not just the gap between
-    // retries. smoldot has no cancel for a request already issued, so the
-    // entry is dropped and its late reply lands on an empty slot.
+    // smoldot cannot cancel an issued request, so the entry is dropped and its late reply finds no slot.
     function onAbort(): void {
       cleanup();
       reject(abortError(cid));
@@ -418,9 +380,8 @@ interface BitswapResultErr {
   id: string;
   ok: false;
   error: string;
-  /** The failure's class, so the sandbox rebuilds it as the same exception type. */
+  /** So the sandbox rebuilds the same exception type. */
   errorName?: string;
-  /** The JSON-RPC code, when the failure carried one. */
   code?: number;
 }
 
@@ -448,24 +409,15 @@ function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
   );
 }
 
-/** Where the relay keeps blocks between page loads. */
 export interface BlockCache {
-  /**
-   * The cached bytes for `cid`, or `null` on a miss.
-   *
-   * Must return a fresh copy the caller owns: the relay transfers the
-   * returned buffer to the sandbox, which detaches it, so a shared backing
-   * buffer would corrupt the cache's own copy.
-   */
+  /** Must return a fresh copy, since the relay transfers the buffer to the sandbox and detaches it. */
   get: (cid: string) => Promise<Uint8Array | null>;
   put: (cid: string, bytes: Uint8Array) => Promise<void>;
   delete: (cid: string) => Promise<void>;
 }
 
 export interface SandboxBitswapOptions {
-  /** Answer repeat requests from here. Leave it out to always use the network. */
   blockCache?: BlockCache;
-  /** Called once for every block sent to a sandbox, with where it came from. */
   onBlockServed?: (from: 'cache' | 'network') => void;
 }
 
@@ -479,17 +431,13 @@ async function blockMatches(cid: string, bytes: Uint8Array): Promise<boolean> {
   try {
     ({ blockMatchesCid } = await import('./verify.js'));
   } catch (err) {
-    // Fail closed: a verifier we couldn't even load can't vouch for this
-    // block. The caller treats `false` as "not verified" either way, so a
-    // cached block falls back to the network and a freshly fetched one is
-    // served but never cached.
+    // Fail closed. A cached block then falls back to the network, and a fetched one is served but not cached.
     log.warn(`[dot.li bitswap-relay] verifier import failed for ${cid}: ${serializeError(err)}`);
     return false;
   }
   return blockMatchesCid(cid, bytes);
 }
 
-/** The cached block for `cid` if it is still the block that CID names. */
 async function readCachedBlock(cache: BlockCache, cid: string): Promise<Uint8Array | null> {
   let bytes: Uint8Array | null;
   try {
@@ -520,8 +468,7 @@ async function serveBlock(cid: string, signal: AbortSignal, cache: BlockCache | 
   }
   const bytes = await bitswapGet(cid, signal);
   if (cache !== undefined && (await blockMatches(cid, bytes))) {
-    // The reply transfers `bytes.buffer` to the sandbox, which detaches it
-    // before the IndexedDB write gets to clone it, so keep a copy.
+    // The reply detaches `bytes.buffer` before the IndexedDB write clones it.
     void cache.put(cid, bytes.slice()).catch((err: unknown) => {
       log.warn(`[dot.li bitswap-relay] block cache write failed: ${serializeError(err)}`);
     });
@@ -530,28 +477,13 @@ async function serveBlock(cid: string, signal: AbortSignal, cache: BlockCache | 
 }
 
 /**
- * Live relayed fetches, per requesting frame and then per request id.
- *
- * The relay outlives the sandbox it serves, so a fetch started for a page the
- * user has navigated away from keeps retrying and posts its result into a dead
- * frame. Nothing in the DOM tells us the frame went: the sandbox has to say so,
- * which it does on `pagehide`.
- *
- * The frame is the outer key for two reasons. Origin alone does not identify
- * one, and every product runs at a sandbox origin, so origin-only gating would
- * let any product cancel another's fetches with ids that are sequential and so
- * guessable in bulk. And ids restart at 1 in every frame, so a flat map lets a
- * second frame's entry overwrite a first frame's and strand it unabortable —
- * `renderIframe` keeps the outgoing product alive while its replacement boots,
- * so two frames really do coexist.
+ * Live fetches per frame, then per id, so a sandbox can abort its own on `pagehide`.
+ * Keyed by frame because every product shares the sandbox origin and ids restart at 1 in each frame.
  */
 const inFlight = new Map<MessageEventSource, Map<string, AbortController>>();
 let relayInstalled = false;
 
-/**
- * Idempotent. Call once at host startup. Returns a function that removes the
- * relay again.
- */
+/** Idempotent. Returns a function that removes the relay. */
 export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): () => void {
   if (relayInstalled) {
     return () => {
@@ -560,7 +492,6 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
   }
   relayInstalled = true;
   if (getBackend() === 'rpc-gateway') {
-    // The gateway backend fetches archives over HTTP, so no bitswap request is expected.
     log.debug('[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.');
   } else if (!isRemoteChainSupported(getActiveServicesConfig().bulletin.genesis)) {
     log.warn('[dot.li bitswap-relay] Bulletin not in supported chain set; sandbox bitswap requests will fail.');
@@ -571,8 +502,7 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
       if (!isSandboxOrigin(event.origin) || event.source === null) {
         return;
       }
-      // Reaching only this frame's own fetches is what stops one product
-      // cancelling another's.
+      // Only this frame's own fetches, so one product cannot cancel another's.
       const own = inFlight.get(event.source);
       if (own === undefined) {
         return;
@@ -606,8 +536,7 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
     own.set(data.id, aborter);
     void serveBlock(data.cid, aborter.signal, options.blockCache)
       .finally(() => {
-        // A frame reusing an id while its earlier fetch is still open would
-        // otherwise have that earlier fetch's cleanup drop the newer entry.
+        // A reused id must not have the earlier fetch's cleanup drop the newer entry.
         if (own.get(data.id) === aborter) {
           own.delete(data.id);
         }
@@ -624,9 +553,6 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
           ok: true,
           bytes,
         };
-        // Transfer the underlying buffer zero-copy. The hex was already
-        // parsed to bytes once host-side, so the sandbox gets the buffer
-        // directly without another structured-clone of an 8 MB string.
         source.postMessage(reply, {
           targetOrigin: event.origin,
           transfer: [bytes.buffer as ArrayBuffer],
@@ -653,5 +579,4 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
   };
 }
 
-/** Internal seams for unit tests. Not part of the module API. */
 export const __testing = { noteBlock };

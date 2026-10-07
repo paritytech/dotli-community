@@ -6,10 +6,8 @@ import { render } from '@solidjs/web';
 import { Landing } from '../../src/components/landing/Landing.js';
 
 /**
- * Render the real landing page into a fresh `#app-view` at the end of
- * `document.body`. The caller mocks `@dotli/ui/recent-labels`, whose shared
- * storage frame happy-dom would try to fetch. `dispose` unmounts the page and
- * removes `#app-view`.
+ * Renders the real landing page into a fresh `#app-view`. The caller mocks `@dotli/ui/recent-labels`, whose storage
+ * frame happy-dom would try to fetch.
  */
 export function mountLandingPage(): {
   view: HTMLElement;

@@ -3,10 +3,7 @@
 
 const OVERLAY_ROOT_ID = 'overlay-root';
 
-/**
- * The container for toasts and modals. Created on first use as the last child
- * of `body`, so overlays stack above the shell and `#app`.
- */
+/** The toast and modal container, appended last to `body` so overlays stack above the shell and `#app`. */
 export function ensureOverlayRoot(): HTMLElement {
   const existing = document.getElementById(OVERLAY_ROOT_ID);
   if (existing !== null) {

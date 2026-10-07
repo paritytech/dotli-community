@@ -25,7 +25,6 @@ import { useFloatingSurfaces } from '../../helpers/floating.js';
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
 
-/** The verdict, counted as the popover computes it. */
 const format = vi.hoisted(() => ({ describeLiveNetwork: vi.fn() }));
 vi.mock('../../../src/components/shell/chains-format.js', async importOriginal => {
   const actual = await importOriginal<typeof ChainsFormatModule>();
@@ -33,7 +32,6 @@ vi.mock('../../../src/components/shell/chains-format.js', async importOriginal =
   return { ...actual, describeLiveNetwork: format.describeLiveNetwork };
 });
 
-/** The network monitor, as a test drives it. */
 const monitor = vi.hoisted(() => {
   const transfer: TransferState = {
     bytesPerSecond: null,
@@ -103,7 +101,6 @@ function bars(from: number, count: number, gapMs = 6000): BlockBar[] {
   }));
 }
 
-/** The monitor changed: tell whoever listens, as it does. */
 function notify(): void {
   for (const listener of [...monitor.listeners]) {
     listener();
@@ -169,7 +166,6 @@ async function renderPopover(): Promise<void> {
   await settle();
 }
 
-/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   // The content's idle preload is a timer of its own, not the countdown's.
   vi.advanceTimersByTime(PRELOAD_IDLE_MS);
@@ -179,7 +175,6 @@ async function openPopover(): Promise<void> {
   await waitForContent('chains-popover');
 }
 
-/** Close the popover with Escape, past the exit transition. */
 async function closePopover(): Promise<void> {
   press('Escape');
   await settle();
@@ -191,12 +186,10 @@ function body(): HTMLElement {
   return must(popoverBody('chains-popover'), '#chains-popover');
 }
 
-/** The open popover's content, inside its body. */
 function content(): HTMLElement {
   return query(body(), ':scope > [data-testid="chains-content"]');
 }
 
-/** What the open popover's body shows for one chain. */
 interface ExpectedChain {
   label: string;
   peers?: { text: string; aria: string };
@@ -206,13 +199,9 @@ interface ExpectedChain {
     | { kind: 'bars'; titles: string[]; health: string[]; firstBlock: number };
 }
 
-/** What the open popover's body shows, apart from styling. */
 interface ExpectedBody {
-  /** The status line's title. */
   title: string;
-  /** The caption under it. */
   detail: string;
-  /** The status dot's tone. */
   tone: 'idle' | 'warn' | 'ok' | 'err';
   chains: ExpectedChain[];
   speed?: [string, string];
@@ -221,11 +210,7 @@ interface ExpectedBody {
 
 const texts = (el: Element): (string | null)[] => Array.from(el.children).map(child => child.textContent);
 
-/**
- * The button: its ARIA as a popover trigger, its label and its icon. Whether
- * it shows at all (its topbar item's `hidden`) is left to the visibility
- * test.
- */
+/** The button apart from styling. Whether it shows at all is left to the visibility test. */
 function expectChainsButton(open: boolean): void {
   const button = byId('chains-button');
   expect(button.getAttribute('title')).toBe('Network');
@@ -236,7 +221,7 @@ function expectChainsButton(open: boolean): void {
   expect(Array.from(button.children).map(child => child.tagName)).toEqual(['svg']);
 }
 
-/** The popover body: head, status well, a group per chain, the transfer rows and the tips, in order. */
+/** The body in order: head, status well, a group per chain, transfer rows, tips. */
 function expectBody(expected: ExpectedBody): void {
   const sections = Array.from(content().children);
   expect(sections).toHaveLength(2 + expected.chains.length + 2);
@@ -316,7 +301,7 @@ describe('The network popover island', () => {
 
     // Then
     expectChainsButton(false);
-    // The surface is the shared Popover's, in the page from its first opening (or idle preload).
+    // The shared Popover's surface is in the page only from its first opening or idle preload.
     expect(document.getElementById('chains-popover')).toBeNull();
   });
 
@@ -825,7 +810,6 @@ describe('The network popover island', () => {
 });
 
 describe('The network popover island, on network updates', () => {
-  /** The width the bar strips lay out at. */
   let stripWidth = 0;
 
   beforeEach(() => {
@@ -836,7 +820,7 @@ describe('The network popover island, on network updates', () => {
     vi.unstubAllGlobals();
   });
 
-  /** Strips lay out `stripWidth` wide; 4px bars with 4px gaps. */
+  /** Strips lay out `stripWidth` wide, with 4px bars and 4px gaps. */
   function spyStripLayout(): {
     rects: MockInstance<HTMLElement['getBoundingClientRect']>;
     styles: MockInstance<typeof window.getComputedStyle>;

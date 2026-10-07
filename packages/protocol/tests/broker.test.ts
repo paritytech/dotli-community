@@ -803,7 +803,7 @@ describe('chain pool brokering', () => {
       messagesB.push(message);
     });
 
-    // Both tabs follow with identical params -> coalesced to ONE upstream follow.
+    // Identical follows from both tabs coalesce into one upstream follow.
     connectionA?.send(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -829,8 +829,7 @@ describe('chain pool brokering', () => {
     const localTokenB = (JSON.parse(messagesB[0] ?? '{}') as { result: string }).result;
     expect(localTokenA).not.toBe(localTokenB);
 
-    // The upstream reports a block; it fans out to both sessions, so both now
-    // hold a pin on it.
+    // The block fans out to both sessions, so both pin it.
     harness.emit({
       jsonrpc: '2.0',
       method: 'chainHead_v1_followEvent',
@@ -839,8 +838,7 @@ describe('chain pool brokering', () => {
         result: { event: 'newBlock', blockHash: '0xblock' },
       },
     });
-    // A newer block is finalized over it, so a later joiner is no longer
-    // replayed it and only the sessions hold it.
+    // Finalizing past it leaves the sessions as its only holders.
     harness.emit({
       jsonrpc: '2.0',
       method: 'chainHead_v1_followEvent',
@@ -850,7 +848,7 @@ describe('chain pool brokering', () => {
       },
     });
 
-    // First tab unpins: still held by the second tab, so nothing forwarded.
+    // Still held by the second tab, so nothing is forwarded.
     connectionA?.send(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -860,14 +858,14 @@ describe('chain pool brokering', () => {
       }),
     );
     expect(harness.sent.filter(message => message.method === 'chainHead_v1_unpin')).toHaveLength(0);
-    // ...but the tab still gets a success response immediately.
+    // The tab still gets a success response at once.
     expect(JSON.parse(messagesA.at(-1) ?? '{}')).toEqual({
       jsonrpc: '2.0',
       id: 10,
       result: null,
     });
 
-    // Second (last) tab unpins: now no session holds the block -> forward once.
+    // The last holder unpins, so the unpin goes upstream once.
     connectionB?.send(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -919,7 +917,7 @@ describe('chain pool brokering', () => {
     });
     const localTokenB = (JSON.parse(messagesB[0] ?? '{}') as { result: string }).result;
 
-    // Both sessions hold the block.
+    // The block fans out to both sessions, so both pin it.
     harness.emit({
       jsonrpc: '2.0',
       method: 'chainHead_v1_followEvent',
@@ -928,7 +926,7 @@ describe('chain pool brokering', () => {
         result: { event: 'newBlock', blockHash: '0xblock' },
       },
     });
-    // A newer block is finalized over it, so only the sessions hold it.
+    // Finalizing past it leaves the sessions as its only holders.
     harness.emit({
       jsonrpc: '2.0',
       method: 'chainHead_v1_followEvent',
@@ -938,7 +936,7 @@ describe('chain pool brokering', () => {
       },
     });
 
-    // Session B unpins via its own token; A is still a holder -> no forward.
+    // A still holds the block, so nothing is forwarded.
     connectionB?.send(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -949,8 +947,7 @@ describe('chain pool brokering', () => {
     );
     expect(harness.sent.filter(m => m.method === 'chainHead_v1_unpin')).toHaveLength(0);
 
-    // A is now the sole holder. A disconnects while B is still following, so
-    // the block is orphaned and the broker unpins it upstream exactly once.
+    // The sole holder disconnects while B still follows, so the broker unpins upstream once.
     connectionA?.disconnect();
 
     const unpins = harness.sent.filter(m => m.method === 'chainHead_v1_unpin');

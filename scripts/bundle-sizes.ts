@@ -1,18 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The bundle size workflow's numbers: every file the apps' builds emit, by
-// name with its content hash stripped, and each app's eager path. Main's
-// build is saved as the baseline; a pull request's build is compared with it.
-//
-//   node scripts/bundle-sizes.ts baseline host sandbox
-//   → {"host/assets/index.js":{"raw":…,"br":…,"gz":…},…,"host/(eager path)":{…}}
-//
-//   node scripts/bundle-sizes.ts compare /tmp/baseline/bundle-baseline.json host sandbox
-//   → tab-separated lines, `kind name count raw br gz base_raw base_br base_gz`,
-//     kind `file`, `eager` or `total`. count is `-` but for files, and the
-//     base fields, last so that a shell `read` keeps the others in place,
-//     are empty without a baseline entry.
+// Sizes for the bundle size workflow: every emitted file by hash-stripped name, plus each app's eager path.
+// `compare` prints tab-separated `kind name count raw br gz base_raw base_br base_gz`. The base fields come last so a
+// shell `read` keeps the others in place when they are empty.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -33,16 +24,12 @@ export type Baseline = Record<string, Size>;
 
 const EAGER_SUFFIX = '/(eager path)';
 
-/** "assets/fetch-CMRV9u5T.js" → "assets/fetch.js". */
+/** `assets/fetch-CMRV9u5T.js` becomes `assets/fetch.js`. */
 export function stripHash(path: string): string {
   return path.replace(/[.-][A-Za-z0-9_-]{8}\./, '.');
 }
 
-/**
- * Sum sizes by name. Several files can share a name once their hashes are
- * stripped (two `client.js`, from different entries), and keeping only one
- * of them under the name would miscount both the row and the total.
- */
+/** Sums sizes by name, since several files can share one once their hashes are stripped. */
 export function sumByName(files: readonly (Size & { name: string })[]): Map<string, NamedSize> {
   const sums = new Map<string, NamedSize>();
   for (const { name, raw, br, gz } of files) {

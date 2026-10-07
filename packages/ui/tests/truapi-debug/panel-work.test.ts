@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// How much work the TrUAPI debug panel does per animation frame, click and
-// tick at its 2000-event capacity. The pure helpers the panel calls are
-// wrapped (`vi.mock`) so a test can count how often each runs, and Solid's
-// dev diagnostics are read off `console.warn`.
+// Counts the panel's work per frame, click and tick at its 2000-event capacity, through wrapped pure
+// helpers and Solid's dev warnings on `console.warn`.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
@@ -20,9 +18,7 @@ import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.j
 import { byTestId, query } from '../support.js';
 import { nth } from '../helpers/nth.js';
 
-// Each test renders up to 2000 rows: a few hundred milliseconds here, but
-// several seconds on a loaded CI runner, past Vitest's 5 s default. The
-// tests count work, not time.
+// Rendering 2000 rows takes seconds on a loaded CI runner. The tests count work, not time.
 vi.setConfig({ testTimeout: 20_000 });
 
 const calls = vi.hoisted(() => ({
@@ -90,7 +86,6 @@ vi.mock('../../../truapi-debug/src/resolution-view.js', async importOriginal => 
   };
 });
 
-/** Every keyed-signal map the list creates, in creation order. */
 const keyedMaps = vi.hoisted(() => [] as { subscribedKeys: () => IterableIterator<unknown> }[]);
 vi.mock('../../src/components/truapi-debug/keyed-signals.js', async importOriginal => {
   const real = await importOriginal<typeof KeyedSignalsModule>();
@@ -141,8 +136,6 @@ afterEach(() => {
   document.head.replaceChildren();
   document.body.replaceChildren();
 });
-
-// Helpers
 
 function mount(options?: { capacity?: number; startCollapsed?: boolean }): void {
   disposers.push(panelModule.setupTruapiDebugPanel(options));
@@ -212,7 +205,6 @@ function pointer(target: EventTarget, type: string, x = 0, y = 0): void {
   );
 }
 
-/** A stand-in product frame counting how often its height is written. */
 function attachCountingFrame(): {
   style: Record<string, string>;
   writes: () => number;
@@ -234,12 +226,10 @@ function attachCountingFrame(): {
   return { style, writes: () => writes };
 }
 
-/** Solid's HUGE_FAN_OUT dev warnings logged since the last clear. */
 function fanOutWarnings(): string[] {
   return warn.mock.calls.map(c => String(c[0])).filter(m => m.includes('HUGE_FAN_OUT'));
 }
 
-/** Fill the store to capacity with unanswered requests, and render them. */
 function fillWithPendingRequests(): void {
   for (let i = 0; i < 2000; i++) {
     truapi('host_sign_request', `r${String(i)}`);
@@ -247,8 +237,6 @@ function fillWithPendingRequests(): void {
   frame();
 }
 
-/** Fill the store (to capacity by default) with answered request/response
- *  pairs. */
 function fillWithAnsweredPairs(pairs = 1000): void {
   for (let i = 0; i < pairs; i++) {
     truapi('host_sign_request', `q${String(i)}`);
@@ -256,8 +244,6 @@ function fillWithAnsweredPairs(pairs = 1000): void {
   }
   frame();
 }
-
-// Tests
 
 describe('truapi debug panel work: collapsed and hidden views', () => {
   it('As a dotli developer, a collapsed panel only keeps its header count per frame, and catches up once on expand', () => {

@@ -11,20 +11,19 @@ import s from './ModalLayer.module.css';
 
 export interface ModalLayerProps {
   open: boolean;
-  /** Escape, a press on the scrim. */
+  /** On Escape or a press on the scrim. */
   onDismiss: () => void;
   id?: string | undefined;
   testId: string;
-  /** The surface's accessible name, when no element labels it. */
+  /** Accessible name when no element labels the surface. */
   label?: string | undefined;
   labelledBy?: string | undefined;
   initialFocus?: (() => HTMLElement | undefined) | undefined;
-  /** Where focus returns on close, when it returns a connected element; else where it was at opening. */
+  /** Used when it returns a connected element, else focus returns where it was at opening. */
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
   scrim?: 'dark' | 'light' | undefined;
-  /** How the frame lays the surface out: centred card, sheet at the foot, under the topbar's end. */
   layout: 'center' | 'sheet' | 'topbar-end';
-  /** A sheet taking another's place: no fade, no slide (see handOffSheet). */
+  /** A sheet taking another's place, so no fade or slide. */
   handedOff?: boolean | undefined;
   /** Receives the frame. */
   ref?: (el: HTMLDivElement) => void;
@@ -32,13 +31,11 @@ export interface ModalLayerProps {
   children: JSX.Element;
 }
 
-/** Where each open layer returns focus when it closes. */
 const restoreTargets = new WeakMap<Element, HTMLElement | null>();
 
 /**
- * Where a layer opening now returns focus. A queued follow-up opens while
- * the last layer is still in the page, and inherits its target, so the
- * queue as a whole returns focus to where it was before the first.
+ * A queued follow-up opens while the last layer is still in the page and inherits its target, so the queue as a
+ * whole returns focus to where it was before the first.
  */
 function restoreTargetNow(): HTMLElement | null {
   const active = document.activeElement;
@@ -53,11 +50,7 @@ function restoreTargetNow(): HTMLElement | null {
   return active instanceof HTMLElement ? active : null;
 }
 
-/**
- * Put focus back on `target`, or, when it left the page meanwhile, on the
- * product frame the layer was most likely raised from. Nothing to restore
- * (focus was on the body) leaves focus alone.
- */
+/** Falls back to the product frame the layer was most likely raised from when `target` left the page. */
 function restoreFocus(target: HTMLElement | null): void {
   if (target === null) {
     return;
@@ -70,22 +63,17 @@ function restoreFocus(target: HTMLElement | null): void {
 }
 
 /**
- * The modal base of Modal and BottomSheet: a transparent full-viewport frame
- * holding its own scrim, which does what showModal() would (the rest of the
- * page inert, open popovers closed, Escape) itself. Not a `<dialog>`: Safari
- * takes one out of the top layer at once on close() (no `overlay`), and
- * then draws a closing sheet over the phone bar, unclipped by the frame.
+ * The modal base of Modal and BottomSheet, doing what showModal() would itself. Not a `<dialog>` because Safari
+ * takes one out of the top layer at once on close() and draws a closing sheet over the phone bar.
  */
 export function ModalLayer(props: ModalLayerProps): JSX.Element {
   let frame: HTMLDivElement | undefined;
   let unlockScroll: (() => void) | undefined;
   let restoreTo: HTMLElement | null = null;
-  /** Whether this layer is shown and has not let go yet. */
   let shown = false;
 
   const onDocumentKeyDown = (ev: KeyboardEvent): void => {
-    // On the document, so a press that left focus on the body still reaches
-    // the topmost layer; a surface inside that took the key prevents it.
+    // On the document so a key with focus on the body still reaches the top layer. A surface that took it prevents it.
     if (ev.key === 'Escape' && !ev.defaultPrevented && !ev.isComposing && topLayer() === frame) {
       ev.preventDefault();
       props.onDismiss();
@@ -93,9 +81,8 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
   };
 
   const onDocumentClick = (ev: MouseEvent): void => {
-    // Captured, ahead of the control's own click: a press on the bar a sheet
-    // rests on (all that answers outside it) closes the sheet, and a sheet
-    // the control opens takes its place. Its own trigger just closes it.
+    // Captured ahead of the control's click: a press on the bar a sheet rests on closes the sheet, and a sheet the
+    // control opens takes its place. Its own trigger just closes it.
     const target = ev.target;
     if (
       frame === undefined ||
@@ -132,9 +119,8 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     restoreTo: restoreTargetNow(),
   });
   /**
-   * A layer created open reads its opening as it is created. The next of a
-   * queue is created in the update that removes the answered one, and that
-   * one has closed by the time effects run, so a read there would miss it.
+   * A queue's next layer is created in the update that removes the answered one, which has closed by the time
+   * effects run, so it reads its opening at creation.
    */
   let openingAtCreation = untrack(() => props.open) ? opening() : undefined;
 
@@ -199,8 +185,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
         aria-labelledby={props.labelledBy}
         onKeyDown={onKeyDown}
         onClick={ev => {
-          // The scrim covers the frame, so only a programmatic click lands on
-          // the frame itself: tests and assistive tech pressing "the backdrop".
+          // The scrim covers the frame, so only a programmatic click (tests, assistive tech) lands here.
           if (ev.target === ev.currentTarget) {
             props.onDismiss();
           }

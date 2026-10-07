@@ -22,11 +22,6 @@ const SOURCES: readonly { state: ShieldState; title: string; description: string
   },
 ];
 
-/**
- * The verification explainer's body (VerificationShield), its own chunk: how
- * this site was loaded, the pill's current state's glyph beside its title
- * and description, and nothing until the host knows it.
- */
 export function VerificationContent(): JSX.Element {
   const state = useStore(urlPillStore, pill => pillShield(pill) ?? null);
   const selected = (): (typeof SOURCES)[number] | undefined => SOURCES.find(source => source.state === state());

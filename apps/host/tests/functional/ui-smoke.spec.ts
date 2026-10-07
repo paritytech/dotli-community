@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Smoke checks for the shell UI that the Solid migration rewrites piece by
-// piece. None of these wait for a chain: they stop at what the shell renders
-// by itself. End-to-end resolution lives in resolution.spec.ts.
+// None of these wait for a chain: they stop at what the shell renders by itself.
 
 import { expect, type Locator } from '@playwright/test';
 import { PORT } from '../env.js';
@@ -11,11 +9,10 @@ import { test } from './helpers/shared-mode-reset.js';
 
 const LANDING_URL = `http://localhost:${PORT}/`;
 const LABEL_URL = `http://browse.localhost:${PORT}/`;
-// Same endpoint shared-mode-reset uses; 127.0.0.1 because Node on Linux does
-// not resolve *.localhost.
+// 127.0.0.1 because Node on Linux does not resolve *.localhost.
 const SHARED_STORE = `http://127.0.0.1:${PORT}/__dotli-mode/`;
 
-/** Where a popover's bottom edge is, rounded: a phone sheet's is the bar's top once it has slid up. */
+/** A phone sheet's bottom is the bar's top once it has slid up. */
 async function sheetBottom(sheet: Locator): Promise<number> {
   const box = await sheet.boundingBox();
   return Math.round((box?.y ?? 0) + (box?.height ?? 0));
@@ -182,7 +179,6 @@ test.describe('Shell UI smoke', () => {
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
-    // On the bar, once it has slid up.
     await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
 
     // When
