@@ -128,36 +128,48 @@ describe('PolkaVM pointer input', () => {
   });
 });
 describe('PolkaVM viewport inset messages', () => {
-  it('accepts bounded integer keyboard insets from the authenticated host', () => {
+  it('accepts bounded physical safe-area and keyboard insets atomically', () => {
+    const safeArea = { left: 0, top: 136, right: 65_535, bottom: 0 };
+    const keyboard = { left: 2, top: 4, right: 6, bottom: 800 };
     expect(
       validatedPolkaVmViewInsets({
         type: 'dotli:polkavm-view-insets',
-        keyboard: { left: 2, top: 4, right: 6, bottom: 800 },
+        safeArea,
+        keyboard,
       }),
-    ).toEqual({ left: 2, top: 4, right: 6, bottom: 800 });
+    ).toEqual({ safeArea, keyboard });
   });
 
   it('rejects malformed or out-of-range host insets', () => {
-    const messages = [
+    const zero = { left: 0, top: 0, right: 0, bottom: 0 };
+    const messages: unknown[] = [
       null,
       { type: 'dotli:polkavm-view-insets' },
-      {
-        type: 'dotli:polkavm-view-insets',
-        keyboard: { left: -1, top: 0, right: 0, bottom: 0 },
-      },
-      {
-        type: 'dotli:polkavm-view-insets',
-        keyboard: { left: 0, top: 0.5, right: 0, bottom: 0 },
-      },
-      {
-        type: 'dotli:polkavm-view-insets',
-        keyboard: { left: 0, top: 0, right: 65_536, bottom: 0 },
-      },
-      {
-        type: 'dotli:polkavm-view-insets',
-        keyboard: { left: 0, top: 0, right: 0, bottom: '20' },
-      },
+      { type: 'dotli:polkavm-view-insets', safeArea: zero },
+      { type: 'dotli:polkavm-view-insets', keyboard: zero },
+      { type: 'untrusted-type', safeArea: zero, keyboard: zero },
     ];
+    for (const field of ['safeArea', 'keyboard']) {
+      for (const insets of [
+        null,
+        [],
+        {},
+        { left: 0, top: 0, right: 0 },
+        { left: -1, top: 0, right: 0, bottom: 0 },
+        { left: 0, top: 0.5, right: 0, bottom: 0 },
+        { left: 0, top: 0, right: 65_536, bottom: 0 },
+        { left: 0, top: 0, right: 0, bottom: '20' },
+        { left: 0, top: Number.NaN, right: 0, bottom: 0 },
+        { left: 0, top: Number.POSITIVE_INFINITY, right: 0, bottom: 0 },
+      ]) {
+        messages.push({
+          type: 'dotli:polkavm-view-insets',
+          safeArea: zero,
+          keyboard: zero,
+          [field]: insets,
+        });
+      }
+    }
     for (const message of messages) {
       expect(validatedPolkaVmViewInsets(message)).toBeNull();
     }
