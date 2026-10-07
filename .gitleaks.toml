@@ -48,3 +48,15 @@ regexTarget = "secret"
 regexes = [
   '''^0x(?:1234567890abcdef){4}$''',
 ]
+
+[[allowlists]]
+description = "A removed TURN minting test used this synthetic descending-hex credential as a response-shape fixture. Scope the historical exception to that exact value and path."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^scripts/mint-media-turn\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^e9f8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8$''',
+]
