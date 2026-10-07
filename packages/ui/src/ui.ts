@@ -10,7 +10,6 @@ import s from './ErrorPage.module.css';
 import retry from './RetryScreen.module.css';
 import { PETAL_PATHS } from './petal-mark.js';
 import { setProductError } from './state/product.js';
-import { setLandingPage } from './state/topbar.js';
 import { disposeAppRoots } from './mount/app-roots.js';
 
 function appElement(): HTMLElement {
@@ -19,7 +18,6 @@ function appElement(): HTMLElement {
 
 function clearPage(): void {
   disposeAppRoots();
-  setLandingPage(false);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(

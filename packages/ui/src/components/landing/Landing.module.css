@@ -21,7 +21,7 @@
   font-family: var(--font-sans);
 }
 
-/* The landing route hides the topbar, so these buttons sit under the status bar in an installed PWA. */
+/* The landing page has no topbar, so these buttons sit under the status bar in an installed PWA. */
 .corner {
   position: absolute;
   top: calc(16px + var(--safe-top));
@@ -88,7 +88,7 @@
   }
 }
 
-/* The bar is hidden here, so menus from the corner's buttons anchor to the corner instead. */
+/* No bar here, so menus from the corner's buttons anchor to the corner instead. */
 :global(:root:has(body[data-landing])) {
   --topbar-bottom: calc(16px + var(--h-bar-control) + var(--safe-top));
   --topbar-inline-end: calc(16px + var(--safe-right));

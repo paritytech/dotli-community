@@ -45,7 +45,7 @@ export function eagerChunkPaths(html: string): string[] {
     }
   }
   if (!hasEntry) {
-    throw new Error('index.html has no <script type="module" src>');
+    throw new Error('the page has no <script type="module" src>');
   }
   return paths;
 }
@@ -75,13 +75,16 @@ export function staticImports(code: string): string[] {
   return [...code.matchAll(STATIC_IMPORT)].map(m => m[1] ?? '').filter(spec => spec.startsWith('.'));
 }
 
-export function measureEagerPath(distDir: string): {
+export function measureEagerPath(
+  distDir: string,
+  page = 'index.html',
+): {
   files: string[];
   raw: number;
   gz: number;
   br: number;
 } {
-  const html = readFileSync(join(distDir, 'index.html'), 'utf8');
+  const html = readFileSync(join(distDir, page), 'utf8');
   const files = [...eagerChunkPaths(html), ...loadIslandModules(html)].map(p => p.replace(/^\.?\//, ''));
   // Transitive, since the loop reaches what it appends. The entry's imports are already modulepreloaded.
   for (const file of files) {
@@ -106,13 +109,13 @@ export function measureEagerPath(distDir: string): {
 }
 
 if (import.meta.main) {
-  const distDir = process.argv[2];
+  const [distDir, page] = process.argv.slice(2);
   if (distDir === undefined) {
-    console.error('usage: node scripts/eager-path-size.ts <distDir>');
+    console.error('usage: node scripts/eager-path-size.ts <distDir> [page.html]');
     process.exit(1);
   }
   try {
-    console.log(JSON.stringify(measureEagerPath(distDir)));
+    console.log(JSON.stringify(measureEagerPath(distDir, page)));
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);

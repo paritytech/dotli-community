@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { compare, measureApp, stripHash, sumByName } from './bundle-sizes.ts';
+import { compare, eagerPages, measureApp, stripHash, sumByName } from './bundle-sizes.ts';
 
 const size = (raw: number): { raw: number; br: number; gz: number } => ({ raw, br: raw / 2, gz: raw / 2 });
 
@@ -82,6 +82,25 @@ describe('measureApp', () => {
       assert.deepEqual(measureApp('host', dist), [
         { name: 'host/assets/app.js', raw: 100, br: 30, gz: 40 },
         { name: 'host/index.html', raw: 10, br: 10, gz: 10 },
+      ]);
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('eagerPages', () => {
+  it("names each root page's eager path, the index page under the app's own name", () => {
+    const dist = mkdtempSync(join(tmpdir(), 'bundle-sizes-'));
+    try {
+      mkdirSync(join(dist, 'assets'));
+      writeFileSync(join(dist, 'index.html'), '');
+      writeFileSync(join(dist, 'landing.html'), '');
+      writeFileSync(join(dist, 'assets', 'nested.html'), '');
+      writeFileSync(join(dist, 'manifest.webmanifest'), '');
+      assert.deepEqual(eagerPages('host', dist), [
+        { name: 'host/(eager path)', page: 'index.html' },
+        { name: 'host/landing/(eager path)', page: 'landing.html' },
       ]);
     } finally {
       rmSync(dist, { recursive: true, force: true });

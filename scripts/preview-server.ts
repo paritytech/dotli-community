@@ -8,6 +8,7 @@ import { createServer } from 'node:http';
 import { join, extname } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
+import { MODE_SYNC_CORS, MODE_SYNC_PREFIX, handleModeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
 
 // Node's types have no global `BodyInit`, so take it from `Response` itself.
@@ -79,67 +80,6 @@ function serveFile(filePath: string, coep: boolean): Response | null {
   }
   const body = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
   return new Response(body as BodyInit, { headers });
-}
-
-// Production shares mode preferences through the `host.<BASE_DOMAIN>` iframe's localStorage, but on localhost every
-// subdomain is its own site and Chrome partitions that storage per embedder.
-const modeStore = new Map<string, string>();
-const MODE_SYNC_PREFIX = '/__dotli-mode/';
-const MODE_SYNC_CORS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  // Private Network Access rejects cross-subdomain loopback requests without it, and the host then cannot read its
-  // own settings.
-  'Access-Control-Allow-Private-Network': 'true',
-  'Access-Control-Max-Age': '600',
-  'Cache-Control': 'no-store',
-};
-
-// Raw text both ways, with 204 for no value so GET and PUT agree on encoding. DELETE on the bare prefix is the
-// per-test reset.
-async function handleModeSync(req: Request, key: string): Promise<Response> {
-  const ok = (body: BodyInit | null, contentType?: string): Response => {
-    const headers: Record<string, string> = { ...MODE_SYNC_CORS };
-    if (contentType !== undefined) {
-      headers['Content-Type'] = contentType;
-    }
-    return new Response(body, { status: body === null ? 204 : 200, headers });
-  };
-  const empty = (status: number): Response => new Response(null, { status, headers: MODE_SYNC_CORS });
-
-  if (req.method === 'OPTIONS') {
-    return empty(204);
-  }
-
-  if (req.method === 'DELETE') {
-    if (key === '') {
-      modeStore.clear();
-    } else {
-      modeStore.delete(key);
-    }
-    return empty(204);
-  }
-
-  if (key === '') {
-    return new Response('Missing key', {
-      status: 400,
-      headers: MODE_SYNC_CORS,
-    });
-  }
-
-  if (req.method === 'GET') {
-    const value = modeStore.get(key);
-    return value === undefined ? empty(204) : ok(value, MIME['.txt']);
-  }
-  if (req.method === 'PUT') {
-    modeStore.set(key, await req.text());
-    return empty(204);
-  }
-  return new Response('Method not allowed', {
-    status: 405,
-    headers: MODE_SYNC_CORS,
-  });
 }
 
 // The Sentry tunnel sink, the only way a test can observe what the SharedWorker reports. Playwright route
@@ -226,9 +166,11 @@ async function handle(req: Request): Promise<Response> {
   const baseDir = isProtocol ? PROTOCOL_DIR : isApp ? APP_DIR : HOST_DIR;
   const fallback = 'index.html';
 
+  // As nginx does, the bare host's root is the landing page.
+  const isBare = !isProtocol && !isApp && !url.hostname.endsWith('.localhost');
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/') {
-    pathname = `/${fallback}`;
+    pathname = isBare ? '/landing.html' : `/${fallback}`;
   }
 
   // As nginx does. COEP on the rest of the host build would block the /localhost:<port> proxy iframe.

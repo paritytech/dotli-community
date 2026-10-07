@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Sizes for the bundle size workflow: every emitted file by hash-stripped name, plus each app's eager path.
+// Sizes for the bundle size workflow: every emitted file by hash-stripped name, plus the eager path of each app's pages.
 // `compare` prints tab-separated `kind name count raw br gz base_raw base_br base_gz`. The base fields come last so a
 // shell `read` keeps the others in place when they are empty.
 
@@ -94,14 +94,30 @@ function measureApps(apps: readonly string[]): Map<string, NamedSize> {
   return sumByName(apps.filter(app => existsSync(distOf(app))).flatMap(app => measureApp(app, distOf(app))));
 }
 
-function eagerSize(app: string): Size | null {
-  try {
-    const { raw, br, gz } = measureEagerPath(distOf(app));
-    return { raw, br, gz };
-  } catch (err) {
-    console.error(`${app}: could not measure the eager path: ${err instanceof Error ? err.message : String(err)}`);
-    return null;
+/** Each HTML page at the app's root. `index.html` keeps the app's own name, so its baseline carries over. */
+export function eagerPages(app: string, distDir: string): { name: string; page: string }[] {
+  return readdirSync(distDir)
+    .filter(file => file.endsWith('.html'))
+    .sort()
+    .map(page => ({
+      name: page === 'index.html' ? `${app}${EAGER_SUFFIX}` : `${app}/${page.slice(0, -'.html'.length)}${EAGER_SUFFIX}`,
+      page,
+    }));
+}
+
+function eagerSizes(app: string): { name: string; size: Size }[] {
+  if (!existsSync(distOf(app))) {
+    return [];
   }
+  return eagerPages(app, distOf(app)).flatMap(({ name, page }) => {
+    try {
+      const { raw, br, gz } = measureEagerPath(distOf(app), page);
+      return [{ name, size: { raw, br, gz } }];
+    } catch (err) {
+      console.error(`${name}: could not measure the eager path: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
+  });
 }
 
 function line(kind: string, name: string, count: number | '-', size: Size, base: Size | null): string {
@@ -115,11 +131,8 @@ if (import.meta.main) {
     for (const [name, { raw, br, gz }] of measureApps(rest)) {
       baseline[name] = { raw, br, gz };
     }
-    for (const app of rest) {
-      const eager = eagerSize(app);
-      if (eager !== null) {
-        baseline[`${app}${EAGER_SUFFIX}`] = eager;
-      }
+    for (const { name, size } of rest.flatMap(eagerSizes)) {
+      baseline[name] = size;
     }
     console.log(JSON.stringify(baseline, null, 2));
   } else if (mode === 'compare' && rest.length > 1) {
@@ -129,12 +142,8 @@ if (import.meta.main) {
     for (const { name, size, base } of comparison.files) {
       console.log(line('file', name, size.count, size, base));
     }
-    for (const app of apps) {
-      const eager = eagerSize(app);
-      if (eager !== null) {
-        const name = `${app}${EAGER_SUFFIX}`;
-        console.log(line('eager', name, '-', eager, baseline?.[name] ?? null));
-      }
+    for (const { name, size } of apps.flatMap(eagerSizes)) {
+      console.log(line('eager', name, '-', size, baseline?.[name] ?? null));
     }
     console.log(line('total', 'total', '-', comparison.total, comparison.baseTotal));
   } else {

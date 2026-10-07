@@ -41,6 +41,11 @@ server {
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
+    # The landing page. Every other path gets the shell, which sends a URL with no product back here.
+    location = / {
+        try_files /landing.html =404;
+    }
+
     location = /__preview {
         set $csp_ancestors "revx.dev stg.revx.dev http://localhost:*";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;

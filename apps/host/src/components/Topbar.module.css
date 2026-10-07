@@ -42,10 +42,6 @@
     box-shadow: var(--chrome-shadow-capsule);
   }
 }
-:global(body[data-landing]) .topbar {
-  display: none;
-}
-
 .row {
   display: flex;
   align-items: center;

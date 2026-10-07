@@ -43,14 +43,13 @@ import s from './Topbar.module.css';
     bar.addEventListener('mouseleave', scheduleTopbarHide);
 
     const render = (): void => {
-      const { visible, autoHide, landing } = topbarStore.get();
+      const { visible, autoHide } = topbarStore.get();
       bar.toggleAttribute('data-hidden', !visible);
       if (autoHide) {
         bar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
       } else {
         bar.removeAttribute('aria-keyshortcuts');
       }
-      document.body.toggleAttribute('data-landing', landing);
     };
     render();
     topbarStore.subscribe(render);

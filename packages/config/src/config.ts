@@ -65,6 +65,13 @@ export const isLocalhost = isLocalEnv;
 export const SITE_ID: SiteId = isLocalhost ? 'local.li' : BASE_DOMAIN;
 
 /**
+ * Under `npm run dev` each origin is its own dev server, where a build serves all three from one port. Must match
+ * `server.port` in apps/sandbox and apps/protocol.
+ */
+export const DEV_SANDBOX_PORT = '4322';
+export const DEV_PROTOCOL_PORT = '4323';
+
+/**
  * Whether `origin` is a sandbox origin, so only the embedded sandbox and not an arbitrary frame drives host services.
  */
 export function isSandboxOrigin(origin: string): boolean {

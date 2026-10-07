@@ -95,13 +95,16 @@ function animatePlaceholder(input: HTMLInputElement): { resume: () => void; stop
  * the recents.
  */
 export function NavForm(): JSX.Element {
-  const suffix = getActiveTldSuffix();
+  // The visitor's network decides it, so the browser reads it and the build renders none. Null until then, and the
+  // form stays disabled, as the build renders it and a submit before hydration would reload with the name lost.
+  const [suffix, setSuffix] = createSignal<string | null>(null);
   let input: HTMLInputElement | undefined;
   const [invalid, setInvalid] = createSignal(false);
   const [message, setMessage] = createSignal('');
 
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
+    setSuffix(getActiveTldSuffix());
     if (input !== undefined) {
       placeholder = animatePlaceholder(input);
     }
@@ -117,7 +120,8 @@ export function NavForm(): JSX.Element {
     }
     // The TLD shows beside the input, so a visitor may type it too, and `validateDotLabel` rejects any dot.
     const typed = input.value.trim().toLowerCase();
-    const name = typed.endsWith(suffix) ? typed.slice(0, -suffix.length) : typed;
+    const tld = suffix() ?? '';
+    const name = typed.endsWith(tld) ? typed.slice(0, -tld.length) : typed;
     const result = validateDotLabel(name);
     if (!result.ok) {
       setMessage(NAME_ERROR_COPY[result.reason]);
@@ -146,12 +150,13 @@ export function NavForm(): JSX.Element {
           placeholder={PLACEHOLDER_NAMES[0]}
           spellcheck="false"
           autocomplete="off"
-          aria-label={`Search a ${suffix} name`}
+          aria-label={`Search a ${suffix() ?? ''} name`}
           aria-describedby="dotli-nav-error"
           aria-invalid={invalid() ? 'true' : undefined}
+          disabled={suffix() === null}
         />
-        <span class={s['suffix']}>{suffix}</span>
-        <button type="submit" class={s['go']} aria-label="Go">
+        <span class={s['suffix']}>{suffix()}</span>
+        <button type="submit" class={s['go']} aria-label="Go" disabled={suffix() === null}>
           <svg
             width="16"
             height="16"

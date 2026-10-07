@@ -1,20 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { hideLoading } from '../../loading-controller.js';
 import { AuthButton } from '../shell/AuthButton.js';
 import s from './Landing.module.css';
 import { NavForm } from './NavForm.js';
 import { RecentPills } from './RecentPills.js';
 
 /**
- * The landing page on the bare host. Its auth button takes the `landing-` id prefix because the hidden
- * topbar's build-time markup still holds the plain ids. Always dark, so no theme button.
+ * The landing page on the bare host. Its auth button keeps the `landing-` id prefix the end-to-end sign-in addresses.
+ * Always dark, so no theme button.
  */
 export function Landing(): JSX.Element {
-  onSettled(hideLoading);
   return (
     <div class={s['landing']} data-testid="landing">
       <div class={s['corner']} id="landing-auth">
