@@ -26,6 +26,16 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
+      - name: Cache Turbo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .turbo
+          # Per job: jobs sharing one key would race to save it and only the
+          # first job's task results would be kept.
+          key: ${{ runner.os }}-turbo-${{ github.workflow }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ github.workflow }}-${{ github.job }}-
+
       # With metrics on, as the deploys build: with them off the Sentry SDK
       # is swapped for a no-op (stripAnalytics), and the sizes would leave it
       # out.
