@@ -50,7 +50,7 @@ describe('buildInfo', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('reports the build, the package version and a content hash', () => {
+  it('outside a git checkout, reports the build, the package version and a content hash', () => {
     writeFileSync(join(dir, 'package.json'), '{"version":"1.2.3"}');
     expect(emit(dir, BUNDLE)).toEqual({
       build: 'host',

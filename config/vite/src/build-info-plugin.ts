@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Build-time plugin: write the build name, package version and a hash of the
+// Build-time plugin: write the build name, release version and a hash of the
 // bundle's contents to `host_version.json` at the bundle root, so each origin's
 // deploy can be checked with curl. The root, not /assets/, which nginx caches
 // as immutable.
@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-export function readPackageVersion(dir: string): string {
+function readPackageVersion(dir: string): string {
   try {
     const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8')) as { version?: string };
     return pkg.version ?? '0.0.0';
@@ -64,7 +64,7 @@ export function buildInfo(build: 'host' | 'app' | 'protocol'): Plugin {
         }
         const info = {
           build,
-          version: readPackageVersion(root),
+          version: readReleaseVersion(root),
           hash: hash.digest('hex'),
         };
         this.emitFile({
