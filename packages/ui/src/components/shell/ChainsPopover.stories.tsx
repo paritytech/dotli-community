@@ -4,7 +4,7 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
 import { getActiveChainRoles } from '@dotli/config';
-import { recordBestBlock, recordChainActivity } from '../../network-monitor.js';
+import { recordBestBlock, recordChainActivity, resetNetworkMonitor } from '../../network-monitor.js';
 import { resetAllStoresForTests } from '../../state/create-store.js';
 import { setProductLoaded } from '../../state/product.js';
 import { ChainsPopover } from './ChainsPopover.js';
@@ -55,6 +55,7 @@ export const OpenInUse: Story = {
         recordBestBlock(genesis, 100);
       }
     }
+    return resetNetworkMonitor;
   },
   play: async ctx => {
     await open(ctx);
