@@ -43,6 +43,7 @@ export function VerificationShield(): JSX.Element {
         type="button"
         id={VERIFICATION_SHIELD_ID}
         class={s['shield']}
+        aria-label="Site verification"
         data-state={state() ?? undefined}
       >
         <VerifiedShieldIcon class={[s['glyph'], s['verifiedGlyph']]} testId="verification-shield-icon" />
