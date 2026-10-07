@@ -12,7 +12,12 @@ export {
   isValidSharedAuthKey,
   isValidSharedModeKey,
 } from './auth-storage.js';
-export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
+export {
+  requireBrokerLocalProvider,
+  type BrokerObserver,
+  type ChainBrokerManager,
+  type StringJsonRpcConnection,
+} from './broker.js';
 export {
   CHAIN_HALTED_ERROR_DATA,
   chainHaltedError,

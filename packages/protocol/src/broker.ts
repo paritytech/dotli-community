@@ -8,11 +8,20 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { log } from '@dotli/shared';
 import { chainHaltedError } from './chain-halted.js';
+import { decodeHeaderNumber } from './header-number.js';
 
 /** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
 export interface StringJsonRpcConnection {
   send: (message: string) => void;
   disconnect: () => void;
+}
+
+/** Watches a broker's shared follows without being a session, so it holds nothing open. */
+export interface BrokerObserver {
+  /** The broker went from no established shared follow to one, or back. */
+  onFollowing(following: boolean): void;
+  /** A new best block on the reporting follow. A reorg can repeat a number or go lower. */
+  onBestBlock(blockNumber: number): void;
 }
 
 type JsonRpcId = string | number | null;
@@ -71,6 +80,9 @@ interface SharedFollow {
   blocks: Map<string, CachedBlock>;
   /** Per block hash, the local follow tokens (and the snapshot) still pinning it. */
   pins: Map<string, Set<string>>;
+  /** The newest finalized block's number, once its header arrives. Kept only by the reporting follow. */
+  finalizedNumber: number | null;
+  baseRequested: boolean;
 }
 
 /**
@@ -234,10 +246,19 @@ export class ChainBroker {
   private readonly upstreamFollowTokens = new Map<string, SharedFollow>();
   private requestCounter = 0;
   private tokenCounter = 0;
+  private observer: BrokerObserver | null = null;
+  private following = false;
+  /** Header requests the broker sends itself for a follow's base number, by upstream id. */
+  private readonly baseRequests = new Map<string, { follow: SharedFollow; hash: string }>();
 
   constructor(provider: JsonRpcProvider, onEmpty: () => void) {
     this.provider = provider;
     this.onEmpty = onEmpty;
+  }
+
+  /** One observer per broker. The pool sets it when it builds the chain. */
+  observe(observer: BrokerObserver | null): void {
+    this.observer = observer;
   }
 
   private sendToSession(session: Session, obj: unknown): void {
@@ -671,6 +692,12 @@ export class ChainBroker {
   }
 
   private handleUpstreamResponse(response: JsonRpcResponse): void {
+    const base = this.baseRequests.get(String(response.id));
+    if (base !== undefined) {
+      this.baseRequests.delete(String(response.id));
+      this.settleBase(base.follow, base.hash, response);
+      return;
+    }
     const pending = this.pending.get(String(response.id));
     if (!pending) {
       brokerWarn('response_unknown_id', `← upstream response for unknown id=${String(response.id)}`);
@@ -697,6 +724,7 @@ export class ChainBroker {
       sharedFollow.requestInFlight = false;
       sharedFollow.upstreamToken = response.result;
       this.upstreamFollowTokens.set(response.result, sharedFollow);
+      this.syncFollowing();
       for (const pendingLocal of sharedFollow.pendingLocals.splice(0)) {
         const pendingSession = this.sessions.get(pendingLocal.sessionId);
         if (pendingSession?.connected !== true) {
@@ -959,8 +987,10 @@ export class ChainBroker {
     this.localFollowTokens.clear();
     this.sharedFollows.clear();
     this.upstreamFollowTokens.clear();
+    this.baseRequests.clear();
     this.upstream?.disconnect();
     this.upstream = null;
+    this.syncFollowing();
   }
 
   private handleLocalFollowRequest(session: Session, request: JsonRpcRequest): void {
@@ -978,6 +1008,8 @@ export class ChainBroker {
         bestBlockHash: null,
         blocks: new Map<string, CachedBlock>(),
         pins: new Map<string, Set<string>>(),
+        finalizedNumber: null,
+        baseRequested: false,
       };
       this.sharedFollows.set(followKey, sharedFollow);
     }
@@ -1070,6 +1102,7 @@ export class ChainBroker {
     );
     this.upstreamFollowTokens.delete(upstreamToken);
     this.sharedFollows.delete(sharedFollow.key);
+    this.syncFollowing();
     const recipients: { session: Session; localToken: string }[] = [];
     for (const localToken of sharedFollow.localTokens) {
       const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
@@ -1128,6 +1161,7 @@ export class ChainBroker {
     }
 
     this.sharedFollows.delete(followToken.followKey);
+    this.syncFollowing();
   }
 
   private cacheSharedFollowEvent(sharedFollow: SharedFollow, eventResult: unknown): void {
@@ -1148,6 +1182,7 @@ export class ChainBroker {
       if (newest !== undefined) {
         this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
       }
+      this.ensureBase();
       return;
     }
 
@@ -1167,6 +1202,7 @@ export class ChainBroker {
     if (eventType === 'bestBlockChanged') {
       sharedFollow.bestBlockHash =
         typeof eventResult['bestBlockHash'] === 'string' ? eventResult['bestBlockHash'] : null;
+      this.reportBest(sharedFollow);
       return;
     }
 
@@ -1178,6 +1214,7 @@ export class ChainBroker {
       if (newest === undefined) {
         return;
       }
+      const newestNumber = sharedFollow.finalizedNumber === null ? null : this.blockNumberOf(sharedFollow, newest);
       for (const hash of hashes) {
         const newRuntime = sharedFollow.blocks.get(hash)?.result['newRuntime'];
         if (newRuntime !== undefined && newRuntime !== null) {
@@ -1193,6 +1230,14 @@ export class ChainBroker {
       }
       this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
       sharedFollow.finalizedBlockHashes = [newest];
+      if (sharedFollow.finalizedNumber !== null) {
+        sharedFollow.finalizedNumber = newestNumber;
+        if (newestNumber === null) {
+          // A finalized block the cache cannot place, so its number is fetched again.
+          sharedFollow.baseRequested = false;
+          this.ensureBase();
+        }
+      }
       const orphaned = this.releasePins(sharedFollow, SNAPSHOT_HOLDER, dropped);
       if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
         this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
@@ -1260,6 +1305,107 @@ export class ChainBroker {
           },
         },
       });
+    }
+  }
+
+  /** The oldest established follow, the only one that reports, so two follows never report one block twice. */
+  private reportingFollow(): SharedFollow | null {
+    for (const sharedFollow of this.sharedFollows.values()) {
+      if (sharedFollow.upstreamToken !== null) {
+        return sharedFollow;
+      }
+    }
+    return null;
+  }
+
+  private syncFollowing(): void {
+    const following = this.reportingFollow() !== null;
+    if (following !== this.following) {
+      this.following = following;
+      this.observer?.onFollowing(following);
+    }
+    this.ensureBase();
+  }
+
+  private ensureBase(): void {
+    const sharedFollow = this.reportingFollow();
+    const hash = sharedFollow?.finalizedBlockHashes.at(-1);
+    const token = sharedFollow?.upstreamToken;
+    if (
+      this.observer === null ||
+      sharedFollow === null ||
+      token === undefined ||
+      token === null ||
+      sharedFollow.baseRequested ||
+      hash === undefined
+    ) {
+      return;
+    }
+    sharedFollow.baseRequested = true;
+    const id = `broker-base:${this.requestCounter.toString(36)}`;
+    this.requestCounter += 1;
+    this.baseRequests.set(id, { follow: sharedFollow, hash });
+    this.sendUpstream({
+      jsonrpc: '2.0',
+      id,
+      method: 'chainHead_v1_header',
+      params: [token, hash],
+    });
+  }
+
+  private settleBase(sharedFollow: SharedFollow, hash: string, response: JsonRpcResponse): void {
+    // A follow that ended meanwhile, replaced or not, is not this one.
+    if (this.sharedFollows.get(sharedFollow.key) !== sharedFollow) {
+      return;
+    }
+    const blockNumber = typeof response.result === 'string' ? decodeHeaderNumber(response.result) : null;
+    if (blockNumber === null) {
+      brokerWarn(
+        'base_header_unreadable',
+        `base header for ${hash.slice(0, 18)}… unreadable, best blocks go unreported`,
+      );
+      return;
+    }
+    if (sharedFollow.finalizedBlockHashes.at(-1) !== hash) {
+      sharedFollow.baseRequested = false;
+      this.ensureBase();
+      return;
+    }
+    sharedFollow.finalizedNumber = blockNumber;
+    this.reportBest(sharedFollow);
+  }
+
+  /** Walks parent links down to the newest finalized block. Null when the cache cannot place the block. */
+  private blockNumberOf(sharedFollow: SharedFollow, hash: string): number | null {
+    const finalized = sharedFollow.finalizedBlockHashes.at(-1);
+    if (sharedFollow.finalizedNumber === null || finalized === undefined) {
+      return null;
+    }
+    let depth = 0;
+    let cursor: string | null = hash;
+    const seen = new Set<string>();
+    while (cursor !== null && cursor !== finalized) {
+      if (seen.has(cursor)) {
+        return null;
+      }
+      seen.add(cursor);
+      const cached = sharedFollow.blocks.get(cursor);
+      if (cached === undefined) {
+        return null;
+      }
+      depth += 1;
+      cursor = cached.parentBlockHash;
+    }
+    return cursor === finalized ? sharedFollow.finalizedNumber + depth : null;
+  }
+
+  private reportBest(sharedFollow: SharedFollow): void {
+    if (this.observer === null || sharedFollow !== this.reportingFollow() || sharedFollow.bestBlockHash === null) {
+      return;
+    }
+    const blockNumber = this.blockNumberOf(sharedFollow, sharedFollow.bestBlockHash);
+    if (blockNumber !== null) {
+      this.observer.onBestBlock(blockNumber);
     }
   }
 }

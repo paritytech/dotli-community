@@ -10,6 +10,14 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { ChainBroker } from '../src/broker.js';
 import { createChainPool } from '../src/chain-pool.js';
+import { headerHex } from './header-hex.js';
+
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(`missing ${what}`);
+  }
+  return value;
+}
 
 /** The broker suites' manager: a pool that keeps its chains, with transports built without hooks. */
 function createManager(
@@ -1265,5 +1273,208 @@ describe('upstream follow stop', () => {
     expect(ack?.result).not.toBe(oldToken);
     const best = session.messages.filter(m => m.params?.result?.event === 'bestBlockChanged');
     expect(best.map(m => m.params?.subscription)).toEqual([ack?.result]);
+  });
+});
+
+describe('broker observer', () => {
+  const isBase = (message: JsonRpcRequest): boolean => String(message.id).startsWith('broker-base:');
+
+  function setup(withObserver = true): {
+    broker: ChainBroker;
+    harness: ReturnType<typeof createProviderHarness>;
+    seen: { following: boolean[]; best: number[] };
+    connection: { send: (message: unknown) => void; disconnect: () => void };
+    messages: unknown[];
+  } {
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider, () => undefined);
+    const seen = { following: [] as boolean[], best: [] as number[] };
+    if (withObserver) {
+      broker.observe({
+        onFollowing: following => {
+          seen.following.push(following);
+        },
+        onBestBlock: blockNumber => {
+          seen.best.push(blockNumber);
+        },
+      });
+    }
+    const messages: unknown[] = [];
+    const connection = broker.connect(
+      'a',
+      message => {
+        messages.push(message);
+      },
+      'object',
+    );
+    return { broker, harness, seen, connection, messages };
+  }
+
+  function follow(harness: ReturnType<typeof createProviderHarness>, connection: { send: (m: unknown) => void }): void {
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [false] });
+    const request = harness.sent.at(-1) as { id: string };
+    harness.emit({ jsonrpc: '2.0', id: request.id, result: 'up-1' });
+  }
+
+  function event(harness: ReturnType<typeof createProviderHarness>, result: Record<string, unknown>): void {
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-1', result },
+    } as unknown as JsonRpcMessage);
+  }
+
+  function bases(harness: ReturnType<typeof createProviderHarness>): JsonRpcRequest[] {
+    return harness.sent.filter(isBase);
+  }
+
+  it('As the network panel, a follow reports its best block by number once its base header arrives', () => {
+    // Given
+    const { harness, seen, connection } = setup();
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event(harness, { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+    expect(seen.best).toEqual([]);
+
+    // When
+    const base = must(bases(harness)[0], 'base request');
+    harness.emit({ jsonrpc: '2.0', id: base.id, result: headerHex(100) } as JsonRpcMessage);
+
+    // Then
+    expect(base.method).toBe('chainHead_v1_header');
+    expect(base.params).toEqual(['up-1', '0xf0']);
+    expect(seen.best).toEqual([101]);
+
+    // When: a block, a finalization, then a fork at the same height wins
+    event(harness, { event: 'newBlock', blockHash: '0xb2', parentBlockHash: '0xb1' });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xb2' });
+    event(harness, { event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+    event(harness, { event: 'newBlock', blockHash: '0xb3', parentBlockHash: '0xb2' });
+    event(harness, { event: 'newBlock', blockHash: '0xc3', parentBlockHash: '0xb2' });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xc3' });
+
+    // Then
+    expect(seen.best).toEqual([101, 102, 103]);
+    expect(bases(harness)).toHaveLength(1);
+  });
+
+  it('As the network panel, a finalization during the base request asks again for the new base', () => {
+    // Given
+    const { harness, seen, connection } = setup();
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event(harness, { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event(harness, { event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+
+    // When
+    harness.emit({ jsonrpc: '2.0', id: must(bases(harness)[0], 'first').id, result: headerHex(100) } as JsonRpcMessage);
+    const second = must(bases(harness)[1], 'second base request');
+    harness.emit({ jsonrpc: '2.0', id: second.id, result: headerHex(101) } as JsonRpcMessage);
+
+    // Then
+    expect(second.params).toEqual(['up-1', '0xb1']);
+    expect(seen.best).toEqual([101]);
+  });
+
+  it('As the network panel, I hear when the chain gains its first follow and loses its last', () => {
+    // Given
+    const { harness, seen, connection, messages } = setup();
+
+    // When
+    follow(harness, connection);
+
+    // Then
+    expect(seen.following).toEqual([true]);
+
+    // When
+    const token = (messages[0] as { result: string }).result;
+    connection.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_unfollow', params: [token] });
+
+    // Then
+    expect(seen.following).toEqual([true, false]);
+  });
+
+  it('As the network panel, a follow the node stops counts as no follow', () => {
+    // Given
+    const { harness, seen, connection } = setup();
+    follow(harness, connection);
+
+    // When
+    event(harness, { event: 'stop' });
+
+    // Then
+    expect(seen.following).toEqual([true, false]);
+  });
+
+  it('As the network panel, an unreadable base header reports no blocks and is not retried', () => {
+    // Given
+    const { harness, seen, connection } = setup();
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+
+    // When
+    const base = must(bases(harness)[0], 'base request');
+    harness.emit({
+      jsonrpc: '2.0',
+      id: base.id,
+      error: { code: -32801, message: 'Block not pinned' },
+    } as JsonRpcMessage);
+    event(harness, { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+
+    // Then
+    expect(seen.best).toEqual([]);
+    expect(bases(harness)).toHaveLength(1);
+  });
+
+  it('As the network panel, a best block the cache cannot place is not reported', () => {
+    // Given
+    const { harness, seen, connection } = setup();
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    harness.emit({ jsonrpc: '2.0', id: must(bases(harness)[0], 'base').id, result: headerHex(100) } as JsonRpcMessage);
+
+    // When
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xunknown' });
+
+    // Then
+    expect(seen.best).toEqual([]);
+  });
+
+  it('As a dotli integrator, a halt with a base request in flight answers no session for it', () => {
+    // Given
+    const { broker, harness, seen, connection, messages } = setup();
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    const token = (messages[0] as { result: string }).result;
+    const before = messages.length;
+
+    // When
+    broker.halt();
+
+    // Then
+    expect(messages.slice(before)).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: token, result: { event: 'stop' } },
+      },
+    ]);
+    expect(seen.following.at(-1)).toBe(false);
+  });
+
+  it('As a dotli integrator, a broker nobody observes sends nothing of its own', () => {
+    // Given
+    const { harness, connection } = setup(false);
+
+    // When
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xf0' });
+
+    // Then
+    expect(harness.sent.map(message => message.method)).toEqual(['chainHead_v1_follow']);
   });
 });
