@@ -18,7 +18,7 @@ import { stripAnalytics } from '@dotli/metrics/vite';
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
 
-// Falls back to git HEAD, as the host does, so the SW's baked `__SW_VERSION__` is a real commit in local builds too.
+// Falls back to git HEAD, as the host does, so the SW's baked version is a real commit in local builds too.
 if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
   try {
     process.env['VITE_COMMIT_SHA'] = execSync('git rev-parse HEAD', {
@@ -62,17 +62,12 @@ function buildServiceWorker(): Plugin {
     name: 'build-service-worker',
     apply: 'build',
     async closeBundle() {
-      // The page compares this stamp to detect a stale SW. Inlined as a literal, so the SW bytes change between
-      // releases and the browser never skips the update as byte-identical.
-      const swVersion = process.env['VITE_COMMIT_SHA'] ?? 'dev';
       // eslint-disable-next-line no-console -- build progress for the terminal.
-      console.log(`\nBuilding Service Worker (app-sw) @ ${swVersion}...`);
+      console.log(`\nBuilding Service Worker (app-sw) @ ${process.env['VITE_COMMIT_SHA'] ?? 'dev'}...`);
+      // Takes VITE_COMMIT_SHA from the process environment, as the page does.
       await viteBuild({
         configFile: false,
         plugins: [wasm()],
-        define: {
-          __SW_VERSION__: JSON.stringify(swVersion),
-        },
         build: {
           ...appBuildOptions({ codeSplitting: false }),
           emptyOutDir: false,
@@ -166,9 +161,16 @@ export default defineConfig({
     sourcemap: 'hidden',
   },
   server: {
+    // Must match DEV_SANDBOX_PORT in @dotli/config.
+    port: 4322,
+    strictPort: true,
     headers: {
       'Service-Worker-Allowed': '/',
       'Access-Control-Allow-Origin': '*',
+      // As nginx sends, so a product breaks under dev exactly as it would deployed.
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      'Cross-Origin-Opener-Policy': 'same-origin',
     },
   },
 });

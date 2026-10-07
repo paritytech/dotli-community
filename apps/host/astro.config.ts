@@ -19,6 +19,7 @@ import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
+import { spaFallback } from '@config/vite/spa-fallback';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
@@ -131,8 +132,8 @@ function readPolkadotApiVersion(): string {
 }
 
 /**
- * The modulepreloads Vite writes for an HTML entry and Astro does not, plus, on subdomain pages, the `resolve` chunk a
- * product load imports first.
+ * The modulepreloads Vite writes for an HTML entry and Astro does not, plus, on the shell's subdomain pages, the `resolve`
+ * chunk a product load imports first.
  */
 function pagePreloads(): AstroIntegration {
   let base = '/';
@@ -150,6 +151,45 @@ function pagePreloads(): AstroIntegration {
       }
     },
   };
+
+  async function addPreloads(page: string, shell: boolean): Promise<void> {
+    let html = await readFile(page, 'utf8');
+
+    const strip = (url: string): string => (url.startsWith(base) ? url.slice(base.length) : url);
+    const scripts = [...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
+    const preload = new Set<string>();
+    const visit = (file: string): void => {
+      for (const dependency of imports.get(file) ?? []) {
+        if (!preload.has(dependency)) {
+          preload.add(dependency);
+          visit(dependency);
+        }
+      }
+    };
+    for (const file of scripts) {
+      visit(file);
+    }
+    for (const script of scripts) {
+      preload.delete(script);
+    }
+    const links = [...preload].map(file => `<link rel="modulepreload" crossorigin href="${base}${file}">`).join('');
+
+    const resolveChunk = byName.get('resolve');
+    const critical =
+      !shell || resolveChunk === undefined
+        ? ''
+        : `<script>${[
+            '(function(){',
+            'var h=location.hostname,l;',
+            'if(h==="dot.li"||h==="localhost")return;',
+            'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
+            `l=document.createElement("link");l.rel="modulepreload";l.href="${base}${resolveChunk}";document.head.appendChild(l);`,
+            '})()',
+          ].join('')}</script>`;
+    html = html.replace('</head>', `${links}${critical}</head>`);
+    await writeFile(page, html);
+  }
+
   return {
     name: 'page-preloads',
     hooks: {
@@ -160,42 +200,9 @@ function pagePreloads(): AstroIntegration {
         base = config.base.endsWith('/') ? config.base : `${config.base}/`;
       },
       'astro:build:done': async ({ dir }) => {
-        const page = join(fileURLToPath(dir), 'index.html');
-        let html = await readFile(page, 'utf8');
-
-        const strip = (url: string): string => (url.startsWith(base) ? url.slice(base.length) : url);
-        const scripts = [...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
-        const preload = new Set<string>();
-        const visit = (file: string): void => {
-          for (const dependency of imports.get(file) ?? []) {
-            if (!preload.has(dependency)) {
-              preload.add(dependency);
-              visit(dependency);
-            }
-          }
-        };
-        for (const file of scripts) {
-          visit(file);
+        for (const name of ['index.html', 'landing.html']) {
+          await addPreloads(join(fileURLToPath(dir), name), name === 'index.html');
         }
-        for (const script of scripts) {
-          preload.delete(script);
-        }
-        const links = [...preload].map(file => `<link rel="modulepreload" crossorigin href="${base}${file}">`).join('');
-
-        const resolveChunk = byName.get('resolve');
-        const critical =
-          resolveChunk === undefined
-            ? ''
-            : `<script>${[
-                '(function(){',
-                'var h=location.hostname,l;',
-                'if(h==="dot.li"||h==="localhost")return;',
-                'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
-                `l=document.createElement("link");l.rel="modulepreload";l.href="${base}${resolveChunk}";document.head.appendChild(l);`,
-                '})()',
-              ].join('')}</script>`;
-        html = html.replace('</head>', `${links}${critical}</head>`);
-        await writeFile(page, html);
       },
     },
   };
@@ -238,9 +245,13 @@ function sentry(): PluginOption {
 
 export default defineConfig({
   outDir: OUT_DIR,
+  // Apart from the preview server's 5173, so a preview build's precaching service worker never serves this origin.
+  server: { port: 4321 },
+  // Its floating bar covers the phone bar.
+  devToolbar: { enabled: false },
   base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
-  // nginx rate-limits and caches /assets/.
-  build: { assets: 'assets' },
+  // nginx rate-limits and caches /assets/. `file` writes landing.html beside index.html, for the servers to pick by host.
+  build: { assets: 'assets', format: 'file' },
   integrations: [
     astroSolid(),
     // An on-demand chunk's CSS loads with that chunk, not at boot.
@@ -273,8 +284,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
-        // Loaded only on demand. Precaching would make every installed shell download them after each release.
-        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm'],
+        // Loaded only on demand. Precaching would make every installed shell download them after each release. The
+        // worker lives on product hosts only, which never show the landing page.
+        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm', 'landing.html'],
         cleanupOutdatedCaches: true,
         // Prompted updates need the waiting SW to sit idle until the user opts in.
         skipWaiting: false,
@@ -297,6 +309,8 @@ export default defineConfig({
       runtimeNetworkConfigScript(),
       buildInfo('host'),
       previewCoepHeaders(),
+      // After previewCoepHeaders, which needs the `/__preview` path this rewrites to `/`.
+      spaFallback({ landing: '/landing' }),
       sentry(),
     ],
     worker: {
@@ -315,11 +329,15 @@ export default defineConfig({
     optimizeDeps: {
       exclude: ['@polkadot-api/wasm-executor'],
     },
+    // Node would load the workspace sources to render the page, and cannot map their `.js` imports to `.ts` files.
+    ssr: { noExternal: [/^@dotli\//] },
     build: {
       ...appBuildOptions(),
       sourcemap: 'hidden',
     },
     server: {
+      // The sandbox and protocol dev servers take the next ports, so this one must not drift onto them.
+      strictPort: true,
       headers: {
         'Service-Worker-Allowed': '/',
         'Access-Control-Allow-Origin': '*',

@@ -7,7 +7,6 @@ import { captureException } from '@dotli/metrics';
 import { disableAuthModal } from '../auth-controller.js';
 import type { ReadableStore } from '../state/create-store.js';
 import { loadingStore } from '../state/loading.js';
-import { topbarStore } from '../state/topbar.js';
 import { showBrokenPage } from '../ui.js';
 
 declare global {
@@ -64,7 +63,8 @@ function onIslandError(ev: Event): void {
       );
       break;
     case 'LandingPage':
-      once(topbarStore, state => state.landing, showBrokenPage);
+      // The page is nothing else, so it fails whole.
+      showBrokenPage();
       break;
   }
 }

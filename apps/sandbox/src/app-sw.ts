@@ -7,10 +7,11 @@
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
 
-// The page reads it through `GET_SW_VERSION` to detect a stale worker.
-declare const __SW_VERSION__: string;
-
 import { getMimeType } from '@dotli/shared';
+
+// The page reads it through `GET_SW_VERSION` to detect a stale worker. A build inlines it as a literal, so the worker's
+// bytes change between releases and the browser never skips the update as byte-identical.
+const SW_VERSION = import.meta.env.VITE_COMMIT_SHA ?? 'dev';
 
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 const DOTLI_APP_PREFIX = `${BASE}dotli-app/`;
@@ -168,7 +169,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 
   if (data.type === 'GET_SW_VERSION') {
     // On the caller's MessageChannel port, so it needs no global listener. Older callers send no port.
-    const reply = { type: 'SW_VERSION', version: __SW_VERSION__ } as const;
+    const reply = { type: 'SW_VERSION', version: SW_VERSION } as const;
     const [port] = event.ports;
     if (port !== undefined) {
       port.postMessage(reply);

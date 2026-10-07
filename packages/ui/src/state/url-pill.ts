@@ -5,7 +5,7 @@ import type { ShieldState } from '../verification-shield.js';
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 /**
- * `none` hides the URL bar, on the landing page and until main.ts knows the product.
+ * `none` hides the URL bar until main.ts knows the product.
  * `shield` is null until the host knows how the product was loaded.
  */
 export type UrlPillState =

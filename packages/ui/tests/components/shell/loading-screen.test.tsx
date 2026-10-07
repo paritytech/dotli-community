@@ -26,8 +26,6 @@ import { disposeAppRoot, disposeAppRoots } from '../../../src/mount/app-roots.js
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { getLoadingState, updateLoading } from '../../../src/state/loading.js';
 import { showErrorPage } from '../../../src/ui.js';
-import { LandingPage } from '../../../src/islands/LandingPage.js';
-import { setLandingPage } from '../../../src/state/topbar.js';
 import { byId, byTestId, query } from '../../support.js';
 
 const mounted: (() => void)[] = [];
@@ -234,29 +232,6 @@ describe('Loading screen island', () => {
     expect(getLoadingState().progress).toBe(frozen);
     expect(frames.size).toBe(0);
     expect(byTestId('error-page-title').textContent).toBe('Failed');
-  });
-
-  it('As a visitor, the landing page disposes a loading screen mounted before it', async () => {
-    // Given: a load underway, which makes the screen the loading root.
-    await mountScreen();
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    const screen = byId('app-loading');
-    runFrames(100);
-
-    // When
-    const landing = document.createElement('div');
-    app().before(landing);
-    mounted.push(render(() => <LandingPage />, landing));
-    setLandingPage(true);
-    await vi.waitFor(() => {
-      expect(document.querySelector('[data-testid="landing"]')).not.toBeNull();
-    });
-    await settle();
-
-    // Then
-    expect(screen.isConnected).toBe(false);
-    expect(getLoadingState().phase).toBe('gone');
-    expect(frames.size).toBe(0);
   });
 
   it('As a visitor, the petals are animated by the stylesheet alone, with no frames or inline styles', async () => {

@@ -7,10 +7,13 @@ import { Workbox } from 'workbox-window';
 import { captureException, recordExpected } from '@dotli/metrics';
 import { showNotification } from '@dotli/ui';
 import { markContinuation } from '@dotli/shared';
+import { parseDotLabel } from './dot-label.js';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
-if ('serviceWorker' in navigator) {
+// Only on a product host. On the bare host its fallback would answer the root with the shell rather than the landing
+// page. The dev server builds no worker, and a precache would serve stale modules over its live ones.
+if (import.meta.env.PROD && 'serviceWorker' in navigator && parseDotLabel() !== null) {
   const wb = new Workbox('/host-sw.js');
 
   const applyUpdate = (): void => {

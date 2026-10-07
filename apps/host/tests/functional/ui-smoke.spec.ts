@@ -393,21 +393,35 @@ test.describe('Shell UI smoke', () => {
   });
 
   test('As a user with JavaScript disabled, the server-rendered shell still shows the topbar', async ({ browser }) => {
-    // Given
-    // The topbar is hidden on the landing page by JS (topbar-autohide.ts),
-    // so with JS off it stays present instead: this proves the shell is
-    // rendered at build time, not painted in by a script.
+    // Given: with JS off nothing can paint the bar in, so finding it proves it is rendered at build time.
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
 
     // When
-    await page.goto(LANDING_URL);
+    await page.goto(LABEL_URL);
 
     // Then: the bar is the page's banner landmark.
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveAttribute('id', 'topbar');
     // The hydrated islands' build-time renders.
     await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Sign in with Polkadot Mobile');
     await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Appearance: System');
+
+    await context.close();
+  });
+
+  test('As a visitor, the landing page is the first paint, with no browser bar, before any script runs', async ({
+    browser,
+  }) => {
+    // Given: with JS off the page stays as the server sent it.
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+
+    // When
+    await page.goto(LANDING_URL);
+
+    // Then
+    await expect(page.getByTestId('landing')).toBeVisible();
+    await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveCount(0);
 
     await context.close();
   });

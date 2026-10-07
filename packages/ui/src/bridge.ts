@@ -20,6 +20,7 @@ import {
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import {
   BASE_DOMAIN,
+  DEV_SANDBOX_PORT,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
   getBackend,
@@ -828,7 +829,7 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
 function getAppOrigin(label: string): string {
   const hostname = window.location.hostname;
   if (hostname.endsWith('.localhost') || hostname === 'localhost') {
-    const port = import.meta.env.DEV ? '5174' : window.location.port;
+    const port = import.meta.env.DEV ? DEV_SANDBOX_PORT : window.location.port;
     return `http://${label}.app.localhost:${port}`;
   }
   return `https://${label}.app.${BASE_DOMAIN}`;

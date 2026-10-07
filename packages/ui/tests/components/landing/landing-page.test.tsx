@@ -1,14 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page island beside `#app`: it holds the loading screen until its chunk arrives, and
-// shows the reload error page if the chunk cannot load or the page throws.
+// The landing page island, the page's root: an error page disposes it, and it shows the reload error page if it
+// throws.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as AppRootsModule from '../../../src/mount/app-roots.js';
 import type * as UiModule from '../../../src/ui.js';
-import type * as LoadingModule from '../../../src/state/loading.js';
-import type * as TopbarModule from '../../../src/state/topbar.js';
 import { byTestId, must } from '../../support.js';
 import { stubIdleBrowser } from '../../helpers/idle.js';
 
@@ -19,45 +17,26 @@ vi.mock('../../../src/recent-labels.js', () => ({
   forgetRecentLabel: () => Promise.resolve(),
 }));
 
-const CHUNK = '../../../src/components/landing/Landing.js';
+const LANDING = '../../../src/components/landing/Landing.js';
 
 let roots: typeof AppRootsModule;
 let ui: typeof UiModule;
-let loading: typeof LoadingModule;
-let topbar: typeof TopbarModule;
 let unmount: (() => void) | undefined;
 
-/**
- * Fresh modules and the island. The loading controller loads too, as the startup bundle does on every path,
- * which makes the screen a root.
- */
+/** Fresh modules and the island, settled as hydration leaves it. */
 async function mountIsland(): Promise<void> {
   const [solid, web, island] = await Promise.all([
     import('solid-js'),
     import('@solidjs/web'),
     import('../../../src/islands/LandingPage.js'),
   ]);
-  [roots, ui, loading, topbar] = await Promise.all([
-    import('../../../src/mount/app-roots.js'),
-    import('../../../src/ui.js'),
-    import('../../../src/state/loading.js'),
-    import('../../../src/state/topbar.js'),
-    import('../../../src/loading-controller.js'),
-  ]);
+  [roots, ui] = await Promise.all([import('../../../src/mount/app-roots.js'), import('../../../src/ui.js')]);
   unmount = web.render(() => solid.createComponent(island.LandingPage, {}), must(byId('landing-slot'), 'slot'));
   solid.flush();
-}
-
-function gateChunk(): () => void {
-  let release = (): void => {};
-  const gate = new Promise<void>(resolve => {
-    release = resolve;
+  await vi.waitFor(() => {
+    expect(document.querySelector('[data-testid="landing"], [data-testid="error-page"]')).not.toBeNull();
   });
-  vi.doMock(CHUNK, async () => {
-    await gate;
-    return vi.importActual(CHUNK);
-  });
-  return release;
+  await settle();
 }
 
 function byId(id: string): HTMLElement | null {
@@ -70,64 +49,32 @@ async function settle(): Promise<void> {
   }
 }
 
-async function showLanding(): Promise<void> {
-  topbar.setLandingPage(true);
-  await vi.waitFor(() => {
-    expect(document.querySelector('[data-testid="landing"], [data-testid="error-page"]')).not.toBeNull();
-  });
-  await settle();
-}
-
 beforeEach(() => {
   vi.resetModules();
   sentry.captureException.mockReset();
-  // Shaped like the host page (apps/host/src/pages/index.astro).
-  document.body.innerHTML = '<div id="app-loading"></div><div id="landing-slot"></div><div id="app"></div>';
+  // Shaped like the landing page (apps/host/src/pages/landing.astro), which has no `#app`.
+  document.body.innerHTML = '<div id="landing-slot"></div>';
 });
 
 afterEach(() => {
   roots.disposeAppRoots();
   unmount?.();
   unmount = undefined;
-  vi.doUnmock(CHUNK);
+  vi.doUnmock(LANDING);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
 });
 
 describe('landing page island', () => {
-  it('As a visitor on another page, it renders nothing', async () => {
-    // When
-    await mountIsland();
-    await settle();
-
-    // Then
-    expect(must(byId('landing-slot'), 'slot').childElementCount).toBe(0);
-    expect(loading.getLoadingState().phase).toBe('active');
-  });
-
-  it('As a visitor, the loading screen stays up until the landing page is ready, then the page replaces it', async () => {
+  it('As a visitor, the landing page shows its own account button', async () => {
     // Given: an idle browser, whose preload puts the account surface in the page.
     stubIdleBrowser();
-    const release = gateChunk();
+
+    // When
     await mountIsland();
 
-    // When
-    topbar.setLandingPage(true);
-    await settle();
-
-    // Then: the topbar is in landing mode, and the screen stays while the
-    // chunk downloads.
-    expect(topbar.getTopbarState().landing).toBe(true);
-    expect(loading.getLoadingState().phase).toBe('active');
-    expect(document.querySelector('[data-testid="landing"]')).toBeNull();
-
-    // When
-    release();
-    await showLanding();
-
-    // Then the loading screen is gone
-    expect(loading.getLoadingState().phase).toBe('gone');
+    // Then
     expect(must(byId('landing-slot'), 'slot').firstElementChild?.getAttribute('data-testid')).toBe('landing');
     expect(
       [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
@@ -139,39 +86,7 @@ describe('landing page island', () => {
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it('As a visitor, the landing page shows once however often it is asked for', async () => {
-    // Given
-    await mountIsland();
-
-    // When
-    await showLanding();
-    topbar.setLandingPage(true);
-    await settle();
-
-    // Then
-    expect(document.querySelectorAll('[data-testid="landing"]')).toHaveLength(1);
-  });
-
-  it("As a visitor, the landing page renders beside the topbar's build-time buttons, with ids of its own", async () => {
-    // Given: the topbar's action group as the build renders it, before it
-    // hydrates.
-    document.body.insertAdjacentHTML(
-      'afterbegin',
-      '<header id="topbar"><button id="auth-button"></button><button id="theme-toggle"></button></header>',
-    );
-    await mountIsland();
-
-    // When
-    await showLanding();
-
-    // Then
-    expect(document.querySelector('[data-testid="landing"]')).not.toBeNull();
-    for (const id of ['auth-button', 'theme-toggle', 'landing-auth-button']) {
-      expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
-    }
-  });
-
-  it('As a visitor, an error page disposes the landing page, typing placeholder and all', async () => {
+  it('As a visitor, an error page takes over the landing page and disposes it, typing placeholder and all', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     // The account popover's idle preload is not one of the page's timers.
     vi.stubGlobal('requestIdleCallback', () => 1);
@@ -179,7 +94,6 @@ describe('landing page island', () => {
     try {
       // Given
       await mountIsland();
-      await showLanding();
       expect(vi.getTimerCount()).toBe(1);
 
       // When
@@ -188,7 +102,6 @@ describe('landing page island', () => {
 
       // Then
       expect(document.querySelector('[data-testid="landing"]')).toBeNull();
-      expect(topbar.getTopbarState().landing).toBe(false);
       expect(vi.getTimerCount()).toBe(0);
       expect(byTestId('error-page-title').textContent).toBe('Failed');
     } finally {
@@ -196,55 +109,17 @@ describe('landing page island', () => {
     }
   });
 
-  it('As a visitor, when the landing page cannot load, I see an error page with a reload button, and it is reported once', async () => {
-    // Given
-    vi.doMock(CHUNK, () => {
-      throw new Error('chunk failed');
-    });
-    await mountIsland();
-    const reload = vi.fn();
-    vi.stubGlobal('location', { reload });
-
-    // When
-    await showLanding();
-
-    // Then
-    expect(sentry.captureException).toHaveBeenCalledTimes(1);
-    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      flow: 'ui',
-      step: 'root_render',
-      tags: { root: 'page' },
-    });
-    expect(loading.getLoadingState().phase).toBe('gone');
-    expect(document.querySelector('[data-testid="landing"]')).toBeNull();
-    expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
-    expect(byTestId('error-page-detail').textContent).toBe(
-      "This page didn't load properly. Reloading usually fixes it.",
-    );
-    const button = byId('error-retry-btn') as HTMLButtonElement;
-    expect(button.textContent).toBe('Reload');
-
-    // When
-    button.click();
-
-    // Then
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
-
   it('As a visitor, when the landing page fails to render, I see an error page with a reload button, and it is reported once', async () => {
     // Given
     const failure = new Error('landing render failed');
-    vi.doMock(CHUNK, () => ({
+    vi.doMock(LANDING, () => ({
       Landing: () => {
         throw failure;
       },
     }));
-    await mountIsland();
-    const reload = vi.fn();
-    vi.stubGlobal('location', { reload });
 
     // When
-    await showLanding();
+    await mountIsland();
 
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
@@ -257,6 +132,8 @@ describe('landing page island', () => {
     expect(document.querySelectorAll('[data-testid="error-page"]')).toHaveLength(1);
 
     // When
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload });
     (byId('error-retry-btn') as HTMLButtonElement).click();
 
     // Then

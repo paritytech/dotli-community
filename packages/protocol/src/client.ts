@@ -7,6 +7,7 @@ import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError, ProtocolR
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
   BASE_DOMAIN,
+  DEV_PROTOCOL_PORT,
   type SiteId,
   getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
@@ -116,6 +117,9 @@ export function setProtocolSubMode(mode: ProtocolSubMode, opts: { skipWorkerCach
 export function getProtocolOrigin(): string {
   const hostname = window.location.hostname;
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+    if (import.meta.env.DEV) {
+      return `http://host.localhost:${DEV_PROTOCOL_PORT}`;
+    }
     const port = window.location.port.length > 0 ? window.location.port : '5173';
     return `http://host.localhost:${port}`;
   }

@@ -1,19 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Safari before 18.4 lacks requestIdleCallback.
-if (typeof globalThis.requestIdleCallback !== 'function') {
-  globalThis.requestIdleCallback = (cb: IdleRequestCallback): number =>
-    setTimeout(() => {
-      cb({ didTimeout: false, timeRemaining: () => 50 });
-    }, 1) as unknown as number;
-}
-
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import './pwa.js';
-import '@dotli/ui/styles.css';
-import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
+import { boot, reportBootFailure, startHost, T0, type EmitFn } from './startup.js';
+import { parseDotLabel } from './dot-label.js';
+import { captureException, m, spans as S } from '@dotli/metrics';
 import {
   SETTINGS_GLYPH,
   RELOAD_GLYPH,
@@ -21,7 +14,6 @@ import {
   showError,
   showErrorPage,
   showNoContentError,
-  setLandingPage,
   initPhases,
   advancePhase,
   nudgePhaseProgress,
@@ -38,22 +30,15 @@ import {
   recordPeerCount,
   recordTransfer,
   type ChainPhase,
-  initTopBar,
   setChainsButtonVisible,
-  wipeOriginState,
   armTopbarAutoHide,
   setProductContentShown,
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
-  createBlockingModalCoordinator,
-  initSettingsStore,
   recordRecentLabel,
   showNotification,
-  prefetchOverlays,
   initScheduledNotifications,
-  loadSharedMode,
-  loadTruapiDebugMount,
   loadBridge,
 } from '@dotli/ui';
 
@@ -75,17 +60,13 @@ import {
 
 import { bitswapGet, listenForSandboxBitswap, onContentProgress } from '@dotli/content';
 import {
-  ensureProtocolFrame,
   getSmoldotDbOutcome,
   onProtocolChainDetail,
   onProtocolChainSync,
   onProtocolNetBytes,
-  resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
   resolveRootManifestRemote,
-  setProtocolSubMode,
-  warmupProtocol,
 } from '@dotli/protocol';
 import {
   evictCachedCid,
@@ -108,8 +89,6 @@ import {
   markContinuation,
   serializeError,
   dotNsUrl,
-  isValidDotLabel,
-  isMobileDevice,
 } from '@dotli/shared';
 
 import {
@@ -118,21 +97,13 @@ import {
   DEBUG,
   SITE_ID,
   isLocalhost,
-  BACKEND_KEY,
-  CACHE_KEY,
-  getBackend,
   setBackend,
-  isSharedWorkerAvailable,
   isVerifiedSession,
   getCacheSettings,
-  setCacheSettings,
   type Backend,
-  NETWORK_KEY,
   getActiveTldSuffix,
   getNetwork,
-  setNetwork,
   withActiveTld,
-  parseSettingsFromSearch,
   writeSettingsToSearch,
 } from '@dotli/config';
 
@@ -156,67 +127,8 @@ import {
 } from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 
-const bootLog = log.child({ flow: 'boot' });
 const resolveLog = log.child({ flow: 'resolve' });
 
-// The user opts into a reload rather than getting a silent one.
-window.addEventListener('vite:preloadError', event => {
-  const evt = event as unknown as { payload?: unknown };
-  captureException(evt.payload ?? new Error('vite:preloadError'), {
-    flow: 'boot',
-    step: 'chunk_preload',
-    tags: { kind: 'chunk_preload_error' },
-  });
-  showNotification({
-    label: 'Asset failed to load',
-    text: 'A new version may have been deployed. Reload to get the latest.',
-    tone: 'err',
-    dismissMs: 0,
-    action: {
-      label: 'Reload',
-      onClick: () => {
-        markContinuation('app_update');
-        window.location.reload();
-      },
-    },
-  });
-});
-
-// In memory before a deploy could make later chunk loads fail.
-prefetchOverlays();
-
-if (!isMobileDevice()) {
-  const dismissed = localStorage.getItem('desktop-banner-dismissed');
-  if (dismissed === null) {
-    showNotification({
-      label: 'Get Polkadot Desktop',
-      text: 'Full experience with native performance',
-      deeplink: import.meta.env.VITE_DESKTOP_DOWNLOAD_URL ?? 'https://polkadot.com/get-started/polkadot-for-desktop',
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M8 21h8m-4-4v4"/></svg>',
-      dismissMs: 0,
-      browserNotification: false,
-      onDismiss: () => {
-        localStorage.setItem('desktop-banner-dismissed', '1');
-      },
-    });
-  }
-}
-
-if (m.enabled && typeof PerformanceObserver !== 'undefined') {
-  const wasmObserver = new PerformanceObserver(list => {
-    for (const entry of list.getEntries()) {
-      if (entry.name.endsWith('.wasm')) {
-        const name = entry.name.split('/').pop() ?? 'unknown';
-        m.distribution(S.WASM_LOAD, entry.duration, 'millisecond', {
-          module: name,
-        });
-      }
-    }
-  });
-  wasmObserver.observe({ type: 'resource', buffered: true });
-}
-
-const T0 = performance.now();
 // Sampled rather than emitted per step, or a long warp crowds the debug panel's ring buffer.
 const CHAIN_WARP_DEBUG_MS = 1000;
 // Every other 500ms byte total, which still resolves the peak.
@@ -225,7 +137,6 @@ const CHAIN_BYTES_DEBUG_MS = 1000;
 const CHAIN_BYTES_DEBUG_MAX = 300;
 const DOTLI_PRODUCT_ID_PARAM = 'dotliProductId';
 const ICON_FETCH_BUDGET_MS = 10_000;
-const blockingModalCoordinator = createBlockingModalCoordinator();
 
 function parseLocalProductIdOverride(): string | undefined {
   if (!isLocalhost) {
@@ -275,32 +186,6 @@ const RESERVED_HOST_PARAMS = [
   'v',
   DOTLI_PRODUCT_ID_PARAM,
 ] as const;
-
-/**
- * `null` for landing and sandbox origins. Validated before it reaches key derivation and origin construction, since a
- * malformed label can never be a registered name.
- */
-function parseDotLabel(): string | null {
-  const hostname = window.location.hostname;
-
-  if (hostname.endsWith(`.${BASE_DOMAIN}`)) {
-    if (hostname.endsWith(`.app.${BASE_DOMAIN}`)) {
-      return null;
-    }
-    const label = hostname.slice(0, -(BASE_DOMAIN.length + 1));
-    return isValidDotLabel(label) ? label : null;
-  }
-
-  if (hostname.endsWith('.localhost')) {
-    if (hostname.endsWith('.app.localhost')) {
-      return null;
-    }
-    const label = hostname.slice(0, -'.localhost'.length);
-    return isValidDotLabel(label) ? label : null;
-  }
-
-  return null;
-}
 
 // Login arms the topbar auto-hide only once the shield has settled.
 let shieldVerified = false;
@@ -390,7 +275,6 @@ function setFavicon(href: string, format: 'jpeg' | 'png'): void {
     document.head.appendChild(link);
   }
 }
-import { loadDotliDebugBus } from '@dotli/truapi-debug';
 import { loadRpcResolve as loadRpcResolveModule, loadResolve } from '@dotli/resolver';
 import type { RpcResolveModule } from '@dotli/resolver';
 
@@ -415,109 +299,6 @@ function loadRpcResolve(): Promise<RpcResolveModule> {
   return ready;
 }
 type RenderChunk = RenderModule;
-
-/**
- * `?debug=true|off` wins and persists, stripped from the URL so the sandbox's strict validator never sees it. Then the
- * stored choice, then the build's `DEBUG`. An `explicit` opt-in starts expanded.
- */
-function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
-  try {
-    const url = new URL(window.location.href);
-    const param = url.searchParams.get('debug');
-    if (param === 'true' || param === 'off') {
-      sessionStorage.setItem('dotli:truapi-debug', param === 'off' ? '0' : '1');
-      url.searchParams.delete('debug');
-      const rewritten =
-        url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash;
-      history.replaceState(null, '', rewritten);
-    }
-    const persisted = sessionStorage.getItem('dotli:truapi-debug');
-    if (persisted === '1') {
-      return { enabled: true, explicit: true };
-    }
-    if (persisted === '0') {
-      return { enabled: false, explicit: true };
-    }
-    return { enabled: DEBUG, explicit: false };
-    // eslint-disable-next-line no-restricted-syntax -- URL or sessionStorage may be unavailable in exotic environments such as Safari private mode, so fall through to the build-time default.
-  } catch {
-    /* ignore */
-  }
-  return { enabled: DEBUG, explicit: false };
-}
-
-type EmitFn = (e: DotliDebugEvent) => void;
-
-/** Event-loop stalls and a heartbeat for the debug panel, until the bridge handshakes or MAX_MONITOR_MS passes. */
-function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
-  const TICK_MS = 50;
-  const STALL_THRESHOLD_MS = 150;
-  const HEARTBEAT_INTERVAL_MS = 2_000;
-  const MAX_MONITOR_MS = 120_000;
-
-  const startedAt = performance.now();
-  let lastTick = performance.now();
-  let lastHeartbeat = startedAt;
-
-  const handle = setInterval(() => {
-    const now = performance.now();
-    const delta = now - lastTick;
-    const lag = delta - TICK_MS;
-
-    if (lag > STALL_THRESHOLD_MS) {
-      emit({
-        layer: 'main',
-        event: 'stall_detected',
-        flowId,
-        timestamp: Date.now(),
-        payload: { durationMs: Math.round(lag) },
-      });
-    }
-
-    if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-      lastHeartbeat = now;
-      emit({
-        layer: 'main',
-        event: 'heartbeat',
-        flowId,
-        timestamp: Date.now(),
-        payload: {
-          uptimeSec: Math.round((now - startedAt) / 1000),
-        },
-      });
-    }
-
-    lastTick = now;
-
-    if (now - startedAt > MAX_MONITOR_MS) {
-      clearInterval(handle);
-      window.removeEventListener('dotli:debug:bridge-ready', onBridgeReady);
-      emit({
-        layer: 'main',
-        event: 'monitor_stopped',
-        flowId,
-        timestamp: Date.now(),
-        payload: { reason: 'max_duration' },
-      });
-    }
-  }, TICK_MS);
-
-  // The bridge dispatches this on its first outbound message.
-  const onBridgeReady = (): void => {
-    clearInterval(handle);
-    window.removeEventListener('dotli:debug:bridge-ready', onBridgeReady);
-    emit({
-      layer: 'main',
-      event: 'monitor_stopped',
-      flowId,
-      timestamp: Date.now(),
-      payload: { reason: 'bridge_ready' },
-    });
-  };
-  window.addEventListener('dotli:debug:bridge-ready', onBridgeReady, {
-    once: true,
-  });
-}
 
 /** The sandbox's origin cannot reach `emitDotliDebugEvent`. Sees every window message, so others must pass through. */
 function listenForSandboxDebugEvents(emit: EmitFn): void {
@@ -598,122 +379,6 @@ async function runBackgroundRevalidate(
   }
 }
 
-/** Null when Safari private mode throws. */
-function readRawLocalStorage(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Per setting, URL beats the shared store, which beats localStorage and the default. A URL value that displaces a
- * persisted choice wipes and reloads, as Save does.
- */
-async function applyUrlSettings(): Promise<void> {
-  const search = new URLSearchParams(window.location.search);
-  const parsed = parseSettingsFromSearch(search);
-
-  // Before the getters below, which seed defaults on first read and would make every fresh visit look like a change.
-  const hadPriorPersisted =
-    readRawLocalStorage(NETWORK_KEY) !== null ||
-    readRawLocalStorage(BACKEND_KEY) !== null ||
-    readRawLocalStorage(CACHE_KEY) !== null;
-
-  const rawUrlBackend = search.get('chainBackend');
-  const rawPersistedBackend = readRawLocalStorage(BACKEND_KEY);
-  const sharedWorkerFallback =
-    !isSharedWorkerAvailable() &&
-    (rawUrlBackend === 'smoldot-shared-worker' || rawPersistedBackend === 'smoldot-shared-worker');
-
-  // Before reading prior values, so they reflect the cross-subdomain store and the writes below mirror to it.
-  try {
-    const { bootstrapSharedMode } = await loadSharedMode();
-    await bootstrapSharedMode();
-  } catch (err: unknown) {
-    bootLog.warn('[dot.li] Shared mode bootstrap failed; continuing with per-origin localStorage:', err);
-  }
-
-  const prior = {
-    network: getNetwork(),
-    chain: getBackend(),
-    cache: getCacheSettings(),
-  };
-
-  const next = {
-    network: parsed.network ?? prior.network,
-    chain: parsed.chainBackend ?? prior.chain,
-    cache: {
-      skipArchiveCache: parsed.skipArchiveCache ?? prior.cache.skipArchiveCache,
-      skipCidCache: parsed.skipCidCache ?? prior.cache.skipCidCache,
-      skipWorkerCache: parsed.skipWorkerCache ?? prior.cache.skipWorkerCache,
-    },
-  };
-
-  setNetwork(next.network);
-  setBackend(next.chain);
-  setCacheSettings(next.cache);
-
-  if (writeSettingsToSearch({ network: next.network, chainBackend: next.chain, cache: next.cache }, search)) {
-    const query = search.toString();
-    const newUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
-    window.history.replaceState(null, '', newUrl);
-  }
-
-  if (sharedWorkerFallback) {
-    showNotification({
-      label: 'Light client shared unavailable',
-      text: "This browser doesn't support Light client shared. Falling back to Light client per tab.",
-      tone: 'warn',
-      dismissMs: 5_000,
-    });
-  }
-
-  const changed =
-    next.network !== prior.network ||
-    next.chain !== prior.chain ||
-    next.cache.skipArchiveCache !== prior.cache.skipArchiveCache ||
-    next.cache.skipCidCache !== prior.cache.skipCidCache ||
-    next.cache.skipWorkerCache !== prior.cache.skipWorkerCache;
-
-  // The bootstrap loaded the protocol iframe with the prior backend, so it is rebuilt in the new sub-mode.
-  if (prior.chain !== next.chain) {
-    resetProtocolFrame();
-  }
-
-  // Likewise the gateway resolver's follow. Only a loaded resolver holds one, so it is not loaded just to check.
-  if ((prior.chain !== next.chain || prior.network !== next.network) && rpcResolveReady !== null) {
-    try {
-      (await rpcResolveReady).destroyRpcClient();
-      // eslint-disable-next-line no-restricted-syntax -- defensive teardown: a load that failed has no client to destroy.
-    } catch {
-      /* the load failed: nothing to destroy */
-    }
-  }
-
-  // A fresh origin has nothing stale, and a URL that matches localStorage changes nothing.
-  if (!changed || !hadPriorPersisted) {
-    return;
-  }
-
-  // The other two origins purge themselves on their next boot. The wipe keeps the theme and analytics id itself.
-  await wipeOriginState();
-  setNetwork(next.network);
-  setBackend(next.chain);
-  setCacheSettings(next.cache);
-  try {
-    sessionStorage.setItem('dotli:pending-reset:protocol', '1');
-    sessionStorage.setItem('dotli:pending-reset:sandbox', '1');
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so cross-origin purges are best-effort while the reload below is unconditional.
-  } catch {
-    /* sessionStorage unavailable */
-  }
-  // After the wipe, which clears sessionStorage and would take the mark with it.
-  markContinuation('settings_change');
-  window.location.reload();
-}
-
 /**
  * The error kind of the previous attempt's recovery screen. Not consumed on read, so a failure that survives a reload
  * can offer a stronger remedy. Cleared on success, so it means "this reload did not help".
@@ -768,8 +433,22 @@ function switchBackendAndReload(nextBackend: Backend): void {
   window.location.reload();
 }
 
-/** Boot runs before the resolution trace exists, so this says where a boot failure happened. */
-let bootStep = 'start';
+/**
+ * The server answers the bare host's root with the landing page, so the shell gets a URL with no product only from a
+ * service worker an older release registered there, or from a host or path that names none. Fails rather than reloads
+ * when neither applies, as a server serving the shell for the landing URL would loop.
+ */
+async function leaveForLanding(): Promise<void> {
+  const { protocol, port, pathname, search } = window.location;
+  const origin = isLocalhost ? `${protocol}//localhost${port === '' ? '' : `:${port}`}` : `${protocol}//${BASE_DOMAIN}`;
+  const registrations = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+  if (registrations.length === 0 && origin === window.location.origin && pathname === '/') {
+    throw new Error('the server answered the landing page URL with the shell');
+  }
+  await Promise.all(registrations.map(registration => registration.unregister()));
+  log.event('Route: landing page elsewhere', { flow: 'boot', stale_workers: registrations.length });
+  window.location.replace(`${origin}/${search}`);
+}
 
 async function main(): Promise<void> {
   const previewTargetUrl = parsePreviewTargetUrl(window.location);
@@ -779,129 +458,18 @@ async function main(): Promise<void> {
     return;
   }
 
-  performance.mark('dotli:main:start');
-  log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
-
-  // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
-  bootStep = 'debug_bus';
-  const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
-  const debugMode = resolveTruapiDebugMode();
-  if (debugMode.enabled) {
-    enableDotliDebugBuffering();
-    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
-      setupTruapiDebugPanel({
-        startCollapsed: !debugMode.explicit,
-        // As the sandbox relay serves blocks: from the block cache, else over bitswap.
-        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
-      });
-      log.event('TrUAPI debug panel enabled', { flow: 'boot' });
-    });
-  }
-
-  const bootFlowId =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
-
-  // One id for the debug panel's flow and the Sentry trace, so the two line up.
-  setResolutionId(bootFlowId);
-
-  if (debugMode.enabled) {
-    startMainThreadMonitor(bootFlowId, emitDotliDebugEvent);
+  const { bootFlowId, debugEnabled, emitDotliDebugEvent, chainBackend, cacheSettings, bridgeModule } =
+    await startHost();
+  if (debugEnabled) {
     listenForSandboxDebugEvents(emitDotliDebugEvent);
   }
-
-  // Before any consumer reads the settings. A URL-driven wipe reloads here, so nothing below runs.
-  bootStep = 'url_settings';
-  await applyUrlSettings();
-  initSettingsStore();
-
-  const chainBackend = getBackend();
-  const cacheSettings = getCacheSettings();
-  emitDotliDebugEvent({
-    layer: 'boot',
-    event: 'started',
-    flowId: bootFlowId,
-    timestamp: Date.now(),
-    payload: {
-      chainBackend,
-      skipCidCache: cacheSettings.skipCidCache,
-      skipArchiveCache: cacheSettings.skipArchiveCache,
-    },
-  });
-  log.event('Settings applied', {
-    flow: 'boot',
-    network: getNetwork(),
-    backend: chainBackend,
-    skip_cid_cache: cacheSettings.skipCidCache,
-    skip_archive_cache: cacheSettings.skipArchiveCache,
-    skip_worker_cache: cacheSettings.skipWorkerCache,
-  });
-  m.setDefaults({
-    network: getNetwork(),
-    chain_backend: chainBackend,
-    skip_cid_cache: String(cacheSettings.skipCidCache),
-    skip_archive_cache: String(cacheSettings.skipArchiveCache),
-    skip_worker_cache: String(cacheSettings.skipWorkerCache),
-  });
-
-  // On every backend, so a sandboxed app's `chainConnect` finds a handler waiting.
-  {
-    const subMode: 'shared-worker' | 'direct' | 'rpc' =
-      chainBackend === 'smoldot-shared-worker' ? 'shared-worker' : chainBackend === 'smoldot-direct' ? 'direct' : 'rpc';
-    // One-shot, from Save & Apply: forces a clean chain DB on the protocol origin whatever the cache settings say.
-    let pendingProtocolReset = false;
-    try {
-      if (sessionStorage.getItem('dotli:pending-reset:protocol') === '1') {
-        pendingProtocolReset = true;
-        sessionStorage.removeItem('dotli:pending-reset:protocol');
-      }
-      // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag falls back to false which is the safe default.
-    } catch {
-      /* sessionStorage unavailable: skip pending-reset pick up */
-    }
-    setProtocolSubMode(subMode, {
-      skipWorkerCache: pendingProtocolReset || cacheSettings.skipWorkerCache,
-    });
-    // The first request that needs the frame awaits these again and reports a failure there, so here it is a crumb.
-    ensureProtocolFrame().catch((err: unknown) => {
-      recordExpected(err, { flow: 'protocol', step: 'frame_prewarm' });
-    });
-    warmupProtocol().catch((err: unknown) => {
-      recordExpected(err, { flow: 'protocol', step: 'warmup' });
-    });
-    emitDotliDebugEvent({
-      layer: 'boot',
-      event: 'protocol_warmup_started',
-      flowId: bootFlowId,
-      timestamp: Date.now(),
-      payload: { subMode },
-    });
-  }
-
-  bootStep = 'bridge_load';
-  const bridgeModulePromise = loadBridge();
-  const bridgeModule = await bridgeModulePromise;
-  bridgeModule.initBridgeEventListeners(blockingModalCoordinator);
-
-  bootStep = 'topbar';
-  const t0 = performance.now();
-  initTopBar(blockingModalCoordinator);
-  log.debug(`[dot.li perf] initTopBar() done (${dur(t0)})`);
-  emitDotliDebugEvent({
-    layer: 'boot',
-    event: 'topbar_ready',
-    flowId: bootFlowId,
-    timestamp: Date.now(),
-    payload: {},
-  });
 
   const label = parseDotLabel();
   const productIdOverride = parseLocalProductIdOverride();
 
   if (label === null && previewTargetUrl !== null) {
     const host = new URL(previewTargetUrl).host;
-    bootStep = 'preview_render';
+    boot.step = 'preview_render';
     log.event('Route: preview', { flow: 'boot', host });
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
@@ -912,8 +480,11 @@ async function main(): Promise<void> {
     // Local products carry no worker manifest to read the chat flag from,
     // so the debug paths enable chat unconditionally for product testing.
     setChatCapability(host, true);
-    const { renderIframe } = await bridgeModulePromise;
-    await renderIframe(previewTargetUrl, host, productIdOverride !== undefined ? { productId: productIdOverride } : {});
+    await bridgeModule.renderIframe(
+      previewTargetUrl,
+      host,
+      productIdOverride !== undefined ? { productId: productIdOverride } : {},
+    );
     setProductContentShown(true);
     const nextSearch = new URLSearchParams({
       url: previewTargetUrl,
@@ -941,7 +512,7 @@ async function main(): Promise<void> {
   });
   if (label === null && localhostUrl !== null) {
     const host = new URL(localhostUrl).host;
-    bootStep = 'localhost_render';
+    boot.step = 'localhost_render';
     log.event('Route: localhost proxy', { flow: 'boot', host });
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
@@ -950,8 +521,11 @@ async function main(): Promise<void> {
     showLocalhostPill(host);
 
     setChatCapability(host, true);
-    const { renderIframe } = await bridgeModulePromise;
-    await renderIframe(localhostUrl, host, productIdOverride !== undefined ? { productId: productIdOverride } : {});
+    await bridgeModule.renderIframe(
+      localhostUrl,
+      host,
+      productIdOverride !== undefined ? { productId: productIdOverride } : {},
+    );
     setProductContentShown(true);
 
     shieldVerified = true;
@@ -983,22 +557,13 @@ async function main(): Promise<void> {
   }
 
   if (label === null) {
-    log.event('Route: landing page', { flow: 'boot' });
-    setLandingPage(true);
-    performance.mark('dotli:main:end');
-    emitDotliDebugEvent({
-      layer: 'boot',
-      event: 'landing_page_shown',
-      flowId: bootFlowId,
-      timestamp: Date.now(),
-      payload: {},
-    });
+    await leaveForLanding();
     return;
   }
 
   bindTopbarAutoHide();
 
-  bootStep = 'resolve_setup';
+  boot.step = 'resolve_setup';
   const attempt = beginAttempt(label);
   log.event('Route: app', {
     flow: 'boot',
@@ -1876,16 +1441,5 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  // Everything past boot catches its own failures, so this broke the shell before a load started.
-  captureException(err, { flow: 'boot', step: bootStep });
-  const error = describeError(err, getBackend() !== 'rpc-gateway');
-  showError(error.title, error.message, {
-    label: RELOAD_BTN_LABEL,
-    icon: RELOAD_GLYPH,
-    onClick: () => {
-      markContinuation('reload_button');
-      window.location.reload();
-    },
-  });
-});
+// Everything past boot catches its own failures, so this broke the shell before a load started.
+main().catch(reportBootFailure);

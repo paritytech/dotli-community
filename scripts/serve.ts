@@ -34,15 +34,17 @@ const MIME: Record<string, string> = {
 };
 
 /** Mirrors the nginx profile's server blocks. */
-function routeFor(hostHeader: string): { dir: string; iframeable: boolean } {
+function routeFor(hostHeader: string): { dir: string; iframeable: boolean; root: string } {
   const hostname = (hostHeader.split(':')[0] ?? '').toLowerCase();
   if (hostname === 'host.localhost') {
-    return { dir: join(DIST, 'protocol'), iframeable: true };
+    return { dir: join(DIST, 'protocol'), iframeable: true, root: 'index.html' };
   }
   if (hostname.includes('.app.')) {
-    return { dir: join(DIST, 'app'), iframeable: true };
+    return { dir: join(DIST, 'app'), iframeable: true, root: 'index.html' };
   }
-  return { dir: join(DIST, 'host'), iframeable: false };
+  // The bare host's root is the landing page, as nginx's `location = /` serves it.
+  const bare = !hostname.endsWith('.localhost');
+  return { dir: join(DIST, 'host'), iframeable: false, root: bare ? 'landing.html' : 'index.html' };
 }
 
 /** Split as nginx/snippets/dotli-headers-*.conf does. */
@@ -141,7 +143,7 @@ for (const sub of ['host', 'app', 'protocol']) {
 }
 
 createServer((req, res) => {
-  const { dir, iframeable } = routeFor(req.headers.host ?? '');
+  const { dir, iframeable, root } = routeFor(req.headers.host ?? '');
   const url = new URL(req.url ?? '/', 'http://placeholder');
   const acceptEncoding = req.headers['accept-encoding'] ?? '';
   const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
@@ -171,9 +173,10 @@ createServer((req, res) => {
     return;
   }
 
-  const index = join(dir, 'index.html');
+  const page = requested === '/' ? root : 'index.html';
+  const index = join(dir, page);
   if (isFile(index)) {
-    send(res, index, '/index.html', iframeable, accept);
+    send(res, index, `/${page}`, iframeable, accept);
     return;
   }
   res.writeHead(404).end('Not Found');

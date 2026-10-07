@@ -9,8 +9,6 @@ export interface TopbarState {
   visible: boolean;
   /** The bar carries the reveal shortcut and the reveal control shows. */
   autoHide: boolean;
-  /** The topbar hides and its action group renders nothing, as the landing page has its own buttons. */
-  landing: boolean;
   blockingModalActive: boolean;
   /** Prompts queued behind the one on screen. */
   blockingModalsWaiting: number;
@@ -25,7 +23,6 @@ const topbar = createSyncStore<TopbarState>(
     present: false,
     visible: true,
     autoHide: false,
-    landing: false,
     blockingModalActive: false,
     blockingModalsWaiting: 0,
     chainsButtonVisible: false,
@@ -48,10 +45,6 @@ export function setTopbarVisible(visible: boolean): void {
 
 export function setTopbarAutoHide(autoHide: boolean): void {
   topbar.set({ ...topbar.get(), autoHide });
-}
-
-export function setLandingPage(landing: boolean): void {
-  topbar.set({ ...topbar.get(), landing });
 }
 
 export function setBlockingModalActive(active: boolean): void {

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, For, onCleanup, Show } from 'solid-js';
+import { createSignal, For, onCleanup, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getActiveTldSuffix } from '@dotli/config';
 import { forgetRecentLabel, loadRecentLabels } from '../../recent-labels.js';
@@ -23,10 +23,6 @@ export function RecentPills(): JSX.Element {
   const [labels, setLabels] = createSignal<string[]>([]);
   const [revealed, setRevealed] = createSignal<string | null>(null);
   let container: HTMLDivElement | undefined;
-
-  void loadRecentLabels().then(loaded => {
-    setLabels(loaded);
-  });
 
   const forget = (e: MouseEvent, label: string): void => {
     e.preventDefault();
@@ -66,11 +62,17 @@ export function RecentPills(): JSX.Element {
       setRevealed(null);
     }
   };
-  document.addEventListener('pointerdown', onDocumentPointerDown);
-  onCleanup(() => {
-    document.removeEventListener('pointerdown', onDocumentPointerDown);
-    cancelPress();
+  // Once in the browser, as the build renders this too.
+  onSettled(() => {
+    void loadRecentLabels().then(loaded => {
+      setLabels(loaded);
+    });
+    document.addEventListener('pointerdown', onDocumentPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', onDocumentPointerDown);
+    };
   });
+  onCleanup(cancelPress);
 
   return (
     <div

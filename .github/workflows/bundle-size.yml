@@ -71,11 +71,11 @@ jobs:
 
           # Each eager path budget is about 10% over its measured gzip size.
           check_eager() {
-            local label=$1 dist=$2 max=$3
+            local label=$1 dist=$2 max=$3 page=${4:-index.html}
             local json gz
-            if ! json=$(node scripts/eager-path-size.ts "$dist"); then
-              echo "::warning::${label}: could not measure the eager path in ${dist}"
-              echo "- \`${label}\`: could not measure the eager path in \`${dist}\`" >> /tmp/budget-warnings.md
+            if ! json=$(node scripts/eager-path-size.ts "$dist" "$page"); then
+              echo "::warning::${label}: could not measure the eager path of ${dist}/${page}"
+              echo "- \`${label}\`: could not measure the eager path of \`${dist}/${page}\`" >> /tmp/budget-warnings.md
               return
             fi
             gz=$(echo "$json" | python3 -c "import json,sys; print(json.load(sys.stdin)['gz'])")
@@ -87,6 +87,7 @@ jobs:
             fi
           }
           check_eager "host-eager-path" apps/host/dist 168000
+          check_eager "landing-eager-path" apps/host/dist 152000 landing.html
           check_eager "sandbox-eager-path" apps/sandbox/dist 87000
 
       - name: Download baseline from main

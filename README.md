@@ -36,7 +36,8 @@ When visiting the root (`paseo.li`), a landing page is shown with:
 - **Recently visited** apps shown as pill-shaped shortcuts (persisted in localStorage)
 - A **login** button in the top-right corner
 
-The topbar is hidden on the landing page and only appears when viewing an app.
+It is its own page (`landing.html`), with no topbar and no service worker. The topbar and the offline shell belong to
+the app pages (`index.html`) on each app's subdomain.
 
 ## Architecture
 
@@ -192,8 +193,14 @@ The project uses npm workspaces and [Turborepo](https://turbo.build).
 nvm use                  # or any Node 26 install
 npm install -g npm@latest
 npm install
-npm run preview          # Build + serve both apps on localhost:5173
+export VITE_NETWORKS=paseo-next-v2,previewnet
+npm run dev              # Dev servers with hot reload on localhost:4321
+npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
 ```
+
+`npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
+protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
+such as the shell's offline service worker.
 
 The TrUAPI packages are installed from their published `@parity` packages. To iterate against a local truapi checkout
 instead, run:
@@ -216,7 +223,8 @@ npm run unlink:truapi
 
 Local development uses wildcard subdomains:
 
-- `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
+- `host-playground.localhost:4321` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
+  via the host
 
 ### Running the host-playground E2E locally
 

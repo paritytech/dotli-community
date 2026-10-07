@@ -2,37 +2,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { socialMetaAttributes } from '@config/vite/social-meta';
+// The shell around a product, on its `<label>.<BASE_DOMAIN>` host. The bare host's root serves landing.astro instead.
 import { ChatDock } from '@dotli/ui/islands/ChatDock';
-import { LandingPage } from '@dotli/ui/islands/LandingPage';
 import { LoadingScreen } from '@dotli/ui/islands/LoadingScreen';
 import { TopbarReveal } from '@dotli/ui/islands/TopbarReveal';
+import PageHead from '../components/PageHead.astro';
 import Shell from '../components/Shell.astro';
 import s from './index.module.css';
-
-const TITLE = 'Polkadot - The decentralized web, in your browser';
-const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
-// Its script is blocking and classic on purpose: it sets the network config global before the module bundle runs.
-const runtimeNetworkConfig = import.meta.env.VITE_RUNTIME_NETWORK_CONFIG === 'true';
-const socialMeta = socialMetaAttributes({
-  title: TITLE,
-  description:
-    'A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.',
-  siteName: 'Polkadot Web',
-  image: '/icon-512.png',
-  imageAlt: 'Polkadot logo',
-});
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
-    {runtimeNetworkConfig && <script is:inline src="/dotli-network.js"></script>}
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>{TITLE}</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preconnect" href="https://host.dot.li" crossorigin />
+    <PageHead />
     {/* Opens the shared IndexedDB during HTML parse, overlapping module loading. src/db.ts takes window.__dotliDb. */}
     <script is:inline>
       window.__dotliDb = new Promise(function (resolve, reject) {
@@ -97,53 +79,20 @@ const socialMeta = socialMetaAttributes({
         // src/db.ts reports it once it takes the promise, so it must not also surface as unhandled.
       });
     </script>
-    {/* An island can hydrate before main.ts runs, so its errors queue here until reportIslandErrors listens. */}
-    <script is:inline>
-      window.__dotliIslandErrors = [];
-      addEventListener('astro:hydration-error', function (event) {
-        window.__dotliIslandErrors?.push(event);
-      });
-    </script>
     <link rel="preconnect" href="https://paseo-bulletin-collator-node-0.parity-testnet.parity.io" />
     <link rel="preconnect" href="https://paseo-bulletin-collator-node-1.parity-testnet.parity.io" />
     <link rel="preconnect" href="https://paseo-bulletin-rpc-node-0.polkadot.io" />
     <link rel="preconnect" href="https://paseo-bulletin-rpc-node-1.polkadot.io" />
     <link rel="preconnect" href="https://paseo-ipfs.polkadot.io" />
     <link rel="preconnect" href="https://sys.ibp.network" />
-    {socialMeta.map(attrs => (
-      <meta {...attrs} />
-    ))}
-    <link rel="manifest" href={`${base}manifest.webmanifest`} />
   </head>
   <body>
-    <script is:inline>
-      (function () {
-        let pref = 'system';
-        try {
-          const stored = localStorage.getItem('dotli-theme');
-          if (stored === 'light' || stored === 'dark' || stored === 'system') {
-            pref = stored;
-          }
-          // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, disabled cookies): fall back to the system theme.
-        } catch {
-          /* localStorage unavailable: fall back to system */
-        }
-        let theme = pref;
-        if (theme === 'system') {
-          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-        }
-        document.documentElement.setAttribute('data-theme-pref', pref);
-        document.documentElement.setAttribute('data-theme', theme);
-      })();
-    </script>
     <Shell />
 
     <ChatDock client:idle />
 
     {/* Outside `#app`, whose content the product replaces. */}
     <LoadingScreen client:load />
-
-    <LandingPage client:load />
 
     <div id="app" class={s['app']}></div>
     {/* After the app frame, so it is one Tab past it. */}

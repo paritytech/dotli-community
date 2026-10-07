@@ -1,25 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, Errored, lazy, Loading, Show } from 'solid-js';
+import { createEffect, createSignal, Errored, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
-import { topbarStore } from '../../state/topbar.js';
+import { registerAppRoot } from '../../mount/app-roots.js';
 import { showBrokenPage } from '../../ui.js';
-import { useStore } from '../use-store.js';
+import { Landing } from './Landing.js';
 
-/** Its own chunk, so the host's other pages never load it. */
-const Landing = lazy(() => import('./Landing.js'), { export: 'Landing' });
-
-/** Island that renders the landing page while the topbar store's `landing` flag is set. An error page clears it. */
+/** Island for the landing page. It is the page's root, so an error page disposes it to take the page over. */
 export function LandingPage(): JSX.Element {
-  const shown = useStore(topbarStore, state => state.landing);
+  const [shown, setShown] = createSignal(true);
+  onSettled(() => {
+    registerAppRoot('page', () => setShown(false));
+  });
   return (
     <Show when={shown()}>
       <Errored fallback={err => <Broken error={err()} />}>
-        <Loading>
-          <Landing />
-        </Loading>
+        <Landing />
       </Errored>
     </Show>
   );

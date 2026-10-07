@@ -12,7 +12,6 @@ import { registerPermissionAuthorizationProvider } from '../../../src/permission
 import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
-import { setLandingPage } from '../../../src/state/topbar.js';
 import { initChatPanelState } from '../../../src/state/chat-panel.js';
 import { setLoggedIn } from '../../../src/state/auth.js';
 import { CHAT_MESSAGE_EVENT } from '../../../src/chat/service.js';
@@ -169,22 +168,6 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byId('topbar-actions').hasAttribute('data-collapsible')).toBe(true);
-  });
-
-  it("As a visitor on the landing page, the group renders nothing, so the page's own account and appearance buttons are the only ones", async () => {
-    // Given
-    stubTopbarLayout(6 * ITEM_WIDTH);
-    await renderIsland();
-    expect(document.getElementById('auth-button')).not.toBeNull();
-
-    // When
-    setLandingPage(true);
-    await settle();
-
-    // Then
-    expect(document.getElementById('topbar-actions')).toBeNull();
-    expect(document.getElementById('auth-button')).toBeNull();
-    expect(document.getElementById('theme-toggle')).toBeNull();
   });
 
   it('As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it', async () => {
