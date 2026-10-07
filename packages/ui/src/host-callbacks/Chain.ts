@@ -45,6 +45,7 @@ import { createFrameChainTransport } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
 import { withTrustedSubmitFallback } from './light-client-submit-fallback.js';
 import { createMediaAdvertisementLookupRoute } from './media-advertisement-lookup.js';
+import { createVoxPresenceSnapshotRoute } from './vox-presence-snapshot.js';
 
 // This explicit submit-only fallback is independent of the selected light
 // client. Its lazy RPC leases use the same canonical replay/watch policy.
@@ -181,9 +182,11 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     wake?.();
     wake = null;
   };
-  // TEMPORARY: the light client returns no stored statements, so Media's
-  // marked advertisement lookups go to the trusted RPC node instead.
+  // TEMPORARY: the light client returns no stored statements. Media's
+  // marked advertisement lookups and the exact vox.paseo presence snapshot
+  // use the trusted RPC node instead.
   const mediaLookup = getBackend() === 'rpc-gateway' ? null : createMediaAdvertisementLookupRoute(genesisHash, deliver);
+  const voxPresence = getBackend() === 'rpc-gateway' ? null : createVoxPresenceSnapshotRoute(genesisHash, deliver);
   // A halt drops the lease, and the stream stays open: truapi-host 0.23.0
   // ignores its end and keeps sending on this connection. The broker has
   // answered the requests in flight and stopped the follows, so the next send
@@ -240,6 +243,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     }
     closed = true;
     mediaLookup?.close();
+    voxPresence?.close();
     lease?.disconnect();
     lease = null;
     wake?.();
@@ -256,6 +260,9 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
         throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST);
       }
       if (mediaLookup?.send(parsed) === true) {
+        return;
+      }
+      if (voxPresence?.send(parsed) === true) {
         return;
       }
       const connection = lease ?? reopen();

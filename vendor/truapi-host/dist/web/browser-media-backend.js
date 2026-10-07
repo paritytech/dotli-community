@@ -1287,12 +1287,25 @@ export function createBrowserMediaBackend(options) {
         scheduleFrame();
         updateIndicator(peer.session);
     }
-    function clearVideos(root) {
-        root.querySelectorAll("video").forEach((video) => {
-            video.pause();
-            video.srcObject = null;
-            video.remove();
-        });
+    function releasePlane(plane) {
+        plane.video.pause();
+        plane.video.srcObject = null;
+        plane.wrapper.remove();
+    }
+    /** Leave `wanted` as the container's children, in order, moving nothing already in place. */
+    function arrangePlanes(container, wanted) {
+        let cursor = container.firstChild;
+        for (const node of wanted) {
+            if (node === cursor)
+                cursor = cursor.nextSibling;
+            else
+                container.insertBefore(node, cursor);
+        }
+        while (cursor) {
+            const next = cursor.nextSibling;
+            cursor.remove();
+            cursor = next;
+        }
     }
     function clearLayouts(rt) {
         for (const session of rt.sessions.values()) {
@@ -1301,8 +1314,9 @@ export function createBrowserMediaBackend(options) {
             // Layout counters never restart, even when attachments change.
         }
         if (rt.attachment) {
-            clearVideos(rt.attachment.below);
-            clearVideos(rt.attachment.above);
+            for (const plane of rt.attachment.planes.values())
+                releasePlane(plane);
+            rt.attachment.planes.clear();
             rt.attachment.below.replaceChildren();
             rt.attachment.above.replaceChildren();
         }
@@ -1587,6 +1601,7 @@ export function createBrowserMediaBackend(options) {
             mount,
             below: plane(0),
             above: plane(2),
+            planes: new Map(),
             signature: "",
         };
         refreshViewport(rt);
@@ -1628,8 +1643,9 @@ export function createBrowserMediaBackend(options) {
         const geometry = attachment?.geometry;
         if (!attachment || !geometry || !rt.viewport)
             return;
-        const below = doc.createDocumentFragment();
-        const above = doc.createDocumentFragment();
+        const below = [];
+        const above = [];
+        const planes = new Map();
         const entries = [];
         for (const session of rt.sessions.values()) {
             if (session.closed)
@@ -1677,32 +1693,52 @@ export function createBrowserMediaBackend(options) {
             const y = Math.floor(surface.rect.y * scale) / scale;
             const width = Math.ceil((surface.rect.x + surface.rect.width) * scale) / scale - x;
             const height = Math.ceil((surface.rect.y + surface.rect.height) * scale) / scale - y;
-            const wrapper = html("div");
-            wrapper.style.cssText = `position:absolute;pointer-events:none;overflow:hidden;left:${geometry.left + left * geometry.scale}px;top:${geometry.top + top * geometry.scale}px;width:${(right - left) * geometry.scale}px;height:${(bottom - top) * geometry.scale}px;`;
-            const rounded = html("div");
             const radius = Math.min(surface.cornerRadius, surface.rect.width / 2, surface.rect.height / 2);
-            rounded.style.cssText = `position:absolute;overflow:hidden;left:${(x - left) * geometry.scale}px;top:${(y - top) * geometry.scale}px;width:${width * geometry.scale}px;height:${height * geometry.scale}px;border-radius:${radius * geometry.scale}px;`;
-            const video = html("video");
-            video.muted = true;
-            video.autoplay = true;
-            video.playsInline = true;
-            video.disablePictureInPicture = true;
-            video.setAttribute("disableRemotePlayback", "");
-            video.style.cssText = `display:block;width:100%;height:100%;object-fit:${surface.fit === "Contain" ? "contain" : "cover"};transform:${surface.mirrored ? "scaleX(-1)" : "none"};pointer-events:none;`;
-            video.srcObject = trackStream(track);
-            rounded.append(video);
-            wrapper.append(rounded);
-            (surface.placement === "BelowProduct" ? below : above).append(wrapper);
-            void video.play().catch(() => {
-                video.srcObject = null;
-            });
+            const wrapperStyle = `position:absolute;pointer-events:none;overflow:hidden;left:${geometry.left + left * geometry.scale}px;top:${geometry.top + top * geometry.scale}px;width:${(right - left) * geometry.scale}px;height:${(bottom - top) * geometry.scale}px;`;
+            const roundedStyle = `position:absolute;overflow:hidden;left:${(x - left) * geometry.scale}px;top:${(y - top) * geometry.scale}px;width:${width * geometry.scale}px;height:${height * geometry.scale}px;border-radius:${radius * geometry.scale}px;`;
+            const videoStyle = `display:block;width:100%;height:100%;object-fit:${surface.fit === "Contain" ? "contain" : "cover"};transform:${surface.mirrored ? "scaleX(-1)" : "none"};pointer-events:none;`;
+            // A picture whose track is unchanged keeps its <video>: a fresh element
+            // shows nothing until its first decoded frame, which blanks a picture on
+            // every layout a scrolling product submits.
+            const key = `${surface.placement}:${session.key}:${surface.surfaceId}`;
+            let plane = attachment.planes.get(key);
+            if (!plane ||
+                plane.track !== track ||
+                !plane.video.srcObject ||
+                planes.has(key)) {
+                const wrapper = html("div");
+                const rounded = html("div");
+                const video = html("video");
+                video.muted = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.disablePictureInPicture = true;
+                video.setAttribute("disableRemotePlayback", "");
+                video.srcObject = trackStream(track);
+                rounded.append(video);
+                wrapper.append(rounded);
+                plane = { wrapper, rounded, video, track };
+                void video.play().catch(() => {
+                    video.srcObject = null;
+                });
+            }
+            if (plane.wrapper.style.cssText !== wrapperStyle)
+                plane.wrapper.style.cssText = wrapperStyle;
+            if (plane.rounded.style.cssText !== roundedStyle)
+                plane.rounded.style.cssText = roundedStyle;
+            if (plane.video.style.cssText !== videoStyle)
+                plane.video.style.cssText = videoStyle;
+            planes.set(key, plane);
+            (surface.placement === "BelowProduct" ? below : above).push(plane.wrapper);
         }
-        // Both replacements run synchronously within the same animation callback;
-        // the browser cannot paint a partly replaced session set between them.
-        clearVideos(attachment.below);
-        clearVideos(attachment.above);
-        attachment.below.replaceChildren(below);
-        attachment.above.replaceChildren(above);
+        // Everything below runs synchronously within the same animation callback;
+        // the browser cannot paint a partly replaced session set in between.
+        for (const [key, plane] of attachment.planes)
+            if (planes.get(key) !== plane)
+                releasePlane(plane);
+        attachment.planes = planes;
+        arrangePlanes(attachment.below, below);
+        arrangePlanes(attachment.above, above);
         rt.dirty = false;
     }
     function setSurfaces(session, viewportRevision, layoutRevision, surfaces) {

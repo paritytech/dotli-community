@@ -190,22 +190,22 @@ installed proxy.
 ## Qualify and deploy Chat on paseo.fyi
 
 Chat-specific browser integration belongs to `paritytech/dotli-community#255`, head `feat/chat-v2-host-runtime`, base
-`feat/pvm-wasm`. Keep that base and forward changes through Seity #287 into the deploy integration #291,
-`feat/jam-peer-transport-on-seity` (base `feat/chat-seity-profile`). Only #291 carries `deploy: paseo.fyi`; never put
-that label on #238, #185, #255, #287, or #290. Updating these branches does not merge their feature PRs into their
-bases.
+`feat/pvm-wasm`. Keep that base and forward changes through Seity #287 into #291, `feat/jam-peer-transport-on-seity`
+(base `feat/chat-seity-profile`). The current deployment layer is Media integration #335, `feat/media-on-jam-seity`,
+based on #291. Only #335 carries `deploy: paseo.fyi`; never put that label on its parent or feature layers. Updating
+these branches does not merge their feature PRs into their bases.
 
 Each browser layer must vendor a matching client/host package set from its corresponding native layer:
 
-| Browser layer           | Native host source                                        |
-| ----------------------- | --------------------------------------------------------- |
-| #185 PolkaVM runtime    | `host-rust-core#540`, `feat/pvm-app-runtime`              |
-| #255 Chat               | `host-rust-core#709`, `feat/chat-v2-product-authority`    |
-| Media (on #255)         | `host-rust-core#1258`, `feat/media-sessions` (on #709)    |
-| #287 Seity profiles     | `host-rust-core#1001`, `feat/chat-seity-profile`          |
-| #290 JAM PeerTransport  | `host-rust-core#1010`, `feat/pvm-peer-transport`          |
-| #291 Deploy integration | `host-rust-core#1011`, `feat/jam-peer-transport-on-seity` |
-| Media integration       | `feat/media-on-jam-seity` (#1011 + `feat/media-sessions`) |
+| Browser layer                     | Native host source                                        |
+| --------------------------------- | --------------------------------------------------------- |
+| #185 PolkaVM runtime              | `host-rust-core#540`, `feat/pvm-app-runtime`              |
+| #255 Chat                         | `host-rust-core#709`, `feat/chat-v2-product-authority`    |
+| Media (on #255)                   | `host-rust-core#1258`, `feat/media-sessions` (on #709)    |
+| #287 Seity profiles               | `host-rust-core#1001`, `feat/chat-seity-profile`          |
+| #290 JAM PeerTransport            | `host-rust-core#1010`, `feat/pvm-peer-transport`          |
+| #291 Peer/Seity integration       | `host-rust-core#1011`, `feat/jam-peer-transport-on-seity` |
+| #335 Media deployment integration | `host-rust-core#1217`, `feat/media-on-jam-seity`          |
 
 Keep #291 and native #1011 integration-only: merge their refreshed Seity and PeerTransport parents with `--no-ff`, then
 refresh the matching vendored packages. Never copy Chat, Seity, PeerTransport, or Media APIs into a lower layer.
@@ -243,13 +243,13 @@ Before publishing the Chat layer:
    but are not encrypted at rest, matching the SDK source store's existing policy.
 
 After qualifying each source layer, forward both #287 and #290 into #291 and rebuild its matching native #1011 package
-set. Run the quality gate and browser qualification again on the final #291 candidate. Verify the repository, PR number,
-head, base, vendor provenance, and deployment label before publishing the approved candidate to **#291's existing head
-branch**. Its `pull_request/synchronize` event selects `paseo.fyi` from that label and deploys the PR head SHA after the
-quality gate. Confirm that no other deployment label is present before triggering a synchronization. Observe both
-published-product and TrUAPI smoke jobs, then repeat the Chat surface checks on paseo.fyi with the separately qualified,
-payment-capable `echat.paseo` product release. An older `egui-chat` build is not a substitute for the current product or
-evidence that payments work.
+set. Then integrate the refreshed parents into Media #1217/#335 and rebuild the matching package set. Run the quality
+gate and browser qualification on the final #335 candidate. Verify the repository, PR number, head, base, vendor
+provenance, and deployment label before publishing to **#335's existing head branch**. Its `pull_request/synchronize`
+event selects `paseo.fyi` from that label and deploys the PR head SHA after the quality gate. Confirm that no other
+deployment label is present before triggering a synchronization. Observe both published-product and TrUAPI smoke jobs,
+then repeat the Chat surface checks on paseo.fyi with the separately qualified, payment-capable `echat.paseo` product
+release. An older `egui-chat` build is not a substitute for the current product or evidence that payments work.
 
 Do not use `workflow_dispatch` for this operation: this workflow routes manual dispatch to **westendli.dev**, not
 paseo.fyi. Do not fall back to another environment if paseo.fyi qualification or deployment fails. The wallet's

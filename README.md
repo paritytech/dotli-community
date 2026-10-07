@@ -124,8 +124,8 @@ resubmitting a transaction. The provider's heartbeat owns reconnection; there is
 Smoldot terminal loss retires the pool entry, errors pending requests, stops follows, and ends subscriptions before
 notifying each lease. The protocol iframe and SharedWorker use the same transport hooks while retaining their long-lived
 chain pools. The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing
-dropped legacy-extrinsic case (see ADR 0002). The other temporary trusted-RPC use is the Media advertisement lookup (see
-[Protected browser Media](#protected-browser-media)).
+dropped legacy-extrinsic case (see ADR 0002). The other temporary trusted-RPC uses are the Media advertisement lookup
+and exact `vox.paseo` presence snapshot (see [Protected browser Media](#protected-browser-media)).
 
 The native connection stays open across a halt: queued requests receive terminal errors, existing follows stop, and the
 same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
@@ -244,12 +244,13 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the `0.3.2-rc.3` release candidate, including runtime-registered streamed file input, private caches,
-and translated updates resumed across bounded gas slices; this update retains the separately pinned TrUAPI host SDK.
-Synchronization verifies the package's complete checksum inventory, including its session API and type declarations, but
-serves only the host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and
-`THIRD_PARTY_LICENSES.txt` alongside those artifacts; the consolidated attribution bundle replaces the older standalone
-PolkaVM license files.
+The current pin is the `0.3.2-rc.6` release candidate. Its compiler maps heap-backed fiber stacks correctly, allowing
+OpenHV's original managed client to use the compiled backend. It retains the rc.5 surface-resize fixes,
+runtime-registered streamed file input, private caches, and translated updates resumed across bounded gas slices. This
+runtime-only update retains the separately pinned TrUAPI host SDK. Synchronization verifies the package's complete
+checksum inventory, including its session API and type declarations, but serves only the host's selected runtime
+artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt` alongside those
+artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
 
 The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
@@ -329,13 +330,13 @@ After a committed permission change, the bridge matches the canonical product id
 Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps the
 requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
 
-Automatic preimage uploads require separate, explicit consent in addition to the ordinary preimage permission.
-The inline **Automatic preimage uploads** controls apply only to the selected product, active root account and
-configured Bulletin network: at most 256 KiB per upload and four automatic attempts per rolling hour. Larger uploads
-and exhausted budgets still require per-upload review. **Ask per upload** and **Revoke automatic uploads** stop
-automatic approval without preventing individually reviewed uploads; granting again does not reset the rolling budget.
-Changing this consent does not replace the product iframe. Resetting permissions retains the account selected when
-the reset began, rather than applying a delayed result to a newly selected account.
+Automatic preimage uploads require separate, explicit consent in addition to the ordinary preimage permission. The
+inline **Automatic preimage uploads** controls apply only to the selected product, active root account and configured
+Bulletin network: at most 256 KiB per upload and four automatic attempts per rolling hour. Larger uploads and exhausted
+budgets still require per-upload review. **Ask per upload** and **Revoke automatic uploads** stop automatic approval
+without preventing individually reviewed uploads; granting again does not reset the rolling budget. Changing this
+consent does not replace the product iframe. Resetting permissions retains the account selected when the reset began,
+rather than applying a delayed result to a newly selected account.
 
 ### Ordinary notification activation
 
@@ -460,16 +461,22 @@ with `Media:NoTurnRelay` in the console, and the next peer retries. Products nev
 and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
 
 Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
-client (smoldot, `@parity/truapi-provider` 0.3.1) answers a statement subscription with no stored statements, only later
-gossip, so on the light client backends the host TEMPORARILY sends these advertisement lookups, and nothing else, to the
-People chain's trusted RPC node (`packages/ui/src/host-callbacks/media-advertisement-lookup.ts`). The core opens a
-separate connection per lookup and marks its requests with the id prefix `truapi:media-advertisement-lookup:`; only
-statement subscribe/unsubscribe requests carrying it leave the light client. Chat, product statement subscriptions, live
-call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator sees which callee
-advertisement topics are looked up and when (the topic derives from the callee's account and product), and can withhold
-advertisements; it cannot forge one, since the core verifies each statement proof and advertisement signature. Remove
-the module and its single use in `Chain.ts` once the light client serves stored statements. On Trusted Providers every
-request already uses RPC.
+client (smoldot) completes a new statement subscription with an empty retained snapshot and relays only later gossip. On
+light-client backends the host therefore TEMPORARILY routes two exact Statement Store reads to the People chain's
+trusted RPC node:
+
+- Media callee-advertisement lookups. The core opens a separate connection per lookup and marks its subscribe and
+  unsubscribe requests with `truapi:media-advertisement-lookup:`.
+- The `vox.paseo` public presence snapshot, only when the subscription is an exact single-topic `MatchAll` for
+  `blake2b-256("vox.paseo/lobby/v1")`. The route tracks that trusted subscription so only its matching unsubscribe
+  follows it to the node. `MatchAny`, multi-topic filters, other Vox builds and every other product topic stay on the
+  light client.
+
+Chat, live call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator sees which callee
+advertisement topics are looked up and when, plus when a device reads the one public `vox.paseo` presence topic. It can
+withhold statements but cannot forge one: the Media core verifies each advertisement proof and signature, while Vox
+accepts only signed self-announcements that have not expired. Remove both route modules and their uses in `Chain.ts`
+once the light client can retrieve retained statements. On Trusted Providers every request already uses RPC.
 
 ## Development
 
@@ -564,6 +571,10 @@ Gateway CAR requests select their representation with `?format=car`, leaving the
 A media-specific Accept header bypasses the Paseo gateway's immutable-content cache despite returning the same archive.
 URL-based format selection follows [IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block
 verification remain unchanged.
+
+The canonical App v2 smoke (`DOTLI_DOOM_V2_CAR`) serves its archive from a temporary loopback HTTP server, avoiding
+Chromium's DevTools message-size limit for large CARs. It waits for initial host service-worker activation before
+mounting the product, so fixture startup does not overlap the host's compatibility probe.
 
 ### Qualifying a PolkaVM runtime update locally
 

@@ -13,10 +13,12 @@ import type * as ClientModule from '../../protocol/src/client.js';
 import { FakeWebSocket } from '../../resolver/tests/fake-websocket.js';
 import { createChainConnect, createHostChainPool } from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
+import { VOX_PASEO_LOBBY_TOPIC } from '../src/host-callbacks/vox-presence-snapshot.js';
 
 const ADVERTISEMENT = '0xad';
 const FILTER = [{ matchAll: [`0x${'ab'.repeat(32)}`] }];
 const LOOKUP_ID = 'truapi:media-advertisement-lookup:1';
+const PRESENCE = '0xbe';
 
 const mocks = vi.hoisted(() => ({
   lightClient: [] as JsonRpcRequest[],
@@ -123,6 +125,92 @@ describe('Media advertisement lookups on a light client backend', () => {
       ['srv-1'],
     ]);
     expect(trusted.readyState).toBe(FakeWebSocket.CLOSED);
+  });
+
+  it('As a newly opened Vox device, the host reads the retained public presence snapshot from the trusted node', async () => {
+    // Given: Vox subscribes to its one exact public lobby topic.
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    const next = async (): Promise<unknown> => JSON.parse(yielded(await responses.next())) as unknown;
+    const filter = [{ matchAll: [VOX_PASEO_LOBBY_TOPIC] }];
+
+    // When: the trusted node already holds another device's presence note.
+    connection.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'truapi:presence:1',
+        method: 'statement_subscribeStatement',
+        params: filter,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const trusted = must(FakeWebSocket.instances[0], 'trusted RPC socket');
+    trusted.open();
+    const subscribe = must(trusted.requests('statement_subscribeStatement')[0], 'subscribe');
+    trusted.deliver({ jsonrpc: '2.0', id: subscribe.id, result: 'vox-presence-1' });
+    trusted.deliver({
+      jsonrpc: '2.0',
+      method: 'statement_statement',
+      params: {
+        subscription: 'vox-presence-1',
+        result: { event: 'newStatements', data: { statements: [PRESENCE], remaining: 0 } },
+      },
+    });
+    const ack = (await next()) as { id: string; result: string };
+    const snapshot = (await next()) as Notification;
+
+    // Then: the retained note reaches Vox without exposing any other product subscription to RPC.
+    expect(ack.id).toBe('truapi:presence:1');
+    expect(subscribe.params).toEqual(filter);
+    expect(snapshot.params.subscription).toBe(ack.result);
+    expect(snapshot.params.result.data.statements).toEqual([PRESENCE]);
+    expect(mocks.lightClient).toEqual([]);
+
+    // And: only this trusted subscription's stop follows it to the node.
+    connection.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'truapi:presence:2',
+        method: 'statement_unsubscribeStatement',
+        params: [ack.result],
+      }),
+    );
+    expect(trusted.requests('statement_unsubscribeStatement').map((request): unknown => request.params)).toEqual([
+      ['vox-presence-1'],
+    ]);
+    connection.close();
+  });
+
+  it('keeps broader filters containing the Vox topic on the light client', async () => {
+    // Given
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+
+    // When: a product requests the topic through a broader or different filter.
+    connection.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'truapi:1',
+        method: 'statement_subscribeStatement',
+        params: [{ matchAny: [VOX_PASEO_LOBBY_TOPIC] }],
+      }),
+    );
+    connection.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'truapi:2',
+        method: 'statement_subscribeStatement',
+        params: [{ matchAll: [VOX_PASEO_LOBBY_TOPIC, `0x${'ef'.repeat(32)}`] }],
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Then: exact matching cannot expand what the trusted node observes.
+    expect(mocks.lightClient.map(request => request.method)).toEqual([
+      'statement_subscribeStatement',
+      'statement_subscribeStatement',
+    ]);
+    expect(FakeWebSocket.instances).toEqual([]);
+    connection.close();
   });
 
   it('As a chat user on the light client, other statement traffic stays on the light client', async () => {
