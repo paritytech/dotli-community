@@ -1,6 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { productIframeBox } from './product-iframe-box.js';
+import { topbarStore } from './state/topbar.js';
+
 const MAX_INSET_PIXELS = 65_535;
 const UNIT_SCALE_EPSILON = 0.01;
 
@@ -74,23 +77,65 @@ export function keyboardInsetsForFrame(
   };
 }
 
-/** Relay top-level visual-viewport occlusion to one authenticated product. */
+/** Only reserve safe/content edges that the host has not already excluded from the frame. */
+export function safeAreaInsetsForFrame(frame: FrameRect, content: FrameRect, devicePixelRatio: number): ViewInsets {
+  const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  return {
+    left: physicalInset(content.left - frame.left, frame.width, ratio),
+    top: physicalInset(content.top - frame.top, frame.height, ratio),
+    right: physicalInset(frame.right - content.right, frame.width, ratio),
+    bottom: physicalInset(frame.bottom - content.bottom, frame.height, ratio),
+  };
+}
+
+/** Relay host safe-area and visual-viewport occlusion to one authenticated product. */
 export function installPolkaVmViewInsetsRelay(iframe: HTMLIFrameElement, targetOrigin: string): () => void {
+  // Resolve the same calc/env expressions as frame layout without moving the
+  // product. Reserve the expanded band even while the floating bar is folded.
+  const probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.inert = true;
+  Object.assign(probe.style, {
+    position: 'fixed',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+  });
+  let topbarOffset: boolean | null = null;
+  const updateProbe = (): void => {
+    const state = topbarStore.get();
+    const reserve = state.present && !state.landing;
+    if (reserve === topbarOffset) {
+      return;
+    }
+    topbarOffset = reserve;
+    Object.assign(probe.style, productIframeBox({ topbarOffset: reserve }));
+  };
+  updateProbe();
+  document.body.appendChild(probe);
+  const viewport = window.visualViewport;
+  let lastSafeArea: ViewInsets | null = null;
   let lastKeyboard: ViewInsets | null = null;
+  let lastPixelRatio: number | null = null;
   let scheduledFrame: number | null = null;
   const send = (force = false): void => {
     const target = iframe.contentWindow;
     if (target === null) {
       return;
     }
-    const keyboard = keyboardInsetsForFrame(
-      iframe.getBoundingClientRect(),
-      window.visualViewport,
-      window.devicePixelRatio,
-    );
+    const frame = iframe.getBoundingClientRect();
+    const pixelRatio =
+      Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+    const safeArea = safeAreaInsetsForFrame(frame, probe.getBoundingClientRect(), pixelRatio);
+    const keyboard = keyboardInsetsForFrame(frame, viewport, pixelRatio);
     if (
       !force &&
+      lastPixelRatio === pixelRatio &&
+      lastSafeArea !== null &&
       lastKeyboard !== null &&
+      safeArea.left === lastSafeArea.left &&
+      safeArea.top === lastSafeArea.top &&
+      safeArea.right === lastSafeArea.right &&
+      safeArea.bottom === lastSafeArea.bottom &&
       keyboard.left === lastKeyboard.left &&
       keyboard.top === lastKeyboard.top &&
       keyboard.right === lastKeyboard.right &&
@@ -98,8 +143,10 @@ export function installPolkaVmViewInsetsRelay(iframe: HTMLIFrameElement, targetO
     ) {
       return;
     }
+    lastSafeArea = safeArea;
     lastKeyboard = keyboard;
-    target.postMessage({ type: POLKAVM_VIEW_INSETS, keyboard }, targetOrigin);
+    lastPixelRatio = pixelRatio;
+    target.postMessage({ type: POLKAVM_VIEW_INSETS, safeArea, keyboard }, targetOrigin);
   };
   const schedule = (): void => {
     if (scheduledFrame !== null) {
@@ -124,22 +171,42 @@ export function installPolkaVmViewInsetsRelay(iframe: HTMLIFrameElement, targetO
     send(true);
   };
 
+  const unsubscribeTopbar = topbarStore.subscribe(() => {
+    updateProbe();
+    schedule();
+  });
+  // Moving between screens can change physical units without resizing CSS pixels.
+  let resolution: MediaQueryList | null = null;
+  const watchResolution = (): void => {
+    resolution?.removeEventListener('change', onResolutionChange);
+    resolution = window.matchMedia(`(resolution: ${String(window.devicePixelRatio)}dppx)`);
+    resolution.addEventListener('change', onResolutionChange);
+  };
+  const onResolutionChange = (): void => {
+    watchResolution();
+    schedule();
+  };
+  watchResolution();
   window.addEventListener('message', onMessage);
   window.addEventListener('resize', schedule);
-  window.visualViewport?.addEventListener('resize', schedule);
-  window.visualViewport?.addEventListener('scroll', schedule);
+  viewport?.addEventListener('resize', schedule);
+  viewport?.addEventListener('scroll', schedule);
   iframe.addEventListener('load', onLoad);
   const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
   observer?.observe(iframe);
+  observer?.observe(probe);
 
   return () => {
     if (scheduledFrame !== null) {
       window.cancelAnimationFrame(scheduledFrame);
     }
     observer?.disconnect();
+    unsubscribeTopbar();
+    resolution?.removeEventListener('change', onResolutionChange);
+    probe.remove();
     iframe.removeEventListener('load', onLoad);
-    window.visualViewport?.removeEventListener('scroll', schedule);
-    window.visualViewport?.removeEventListener('resize', schedule);
+    viewport?.removeEventListener('scroll', schedule);
+    viewport?.removeEventListener('resize', schedule);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('message', onMessage);
   };
