@@ -130,6 +130,13 @@ function isJsonRpcObject(value: unknown): value is Record<string, unknown> & { j
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function describeUpstreamError(error: unknown): string {
+  if (!isJsonRpcObject(error)) {
+    return 'malformed header';
+  }
+  return `${String(error['code'])} ${String(error['message'])}`;
+}
+
 function buildJsonRpcError(
   id: JsonRpcId,
   error: string | ReturnType<typeof chainHaltedError>,
@@ -1365,17 +1372,18 @@ export class ChainBroker {
     if (this.sharedFollows.get(sharedFollow.key) !== sharedFollow) {
       return;
     }
+    // First, since the node may refuse the old base only because it was unpinned. One retry per finalization.
+    if (sharedFollow.finalizedBlockHashes.at(-1) !== hash) {
+      sharedFollow.baseRequested = false;
+      this.ensureBase();
+      return;
+    }
     const blockNumber = typeof response.result === 'string' ? decodeHeaderNumber(response.result) : null;
     if (blockNumber === null) {
       brokerWarn(
         'base_header_unreadable',
-        `base header for ${hash.slice(0, 18)}… unreadable, best blocks go unreported`,
+        `base header for ${hash.slice(0, 18)}… unreadable (${describeUpstreamError(response.error)}), best blocks go unreported`,
       );
-      return;
-    }
-    if (sharedFollow.finalizedBlockHashes.at(-1) !== hash) {
-      sharedFollow.baseRequested = false;
-      this.ensureBase();
       return;
     }
     sharedFollow.finalizedNumber = blockNumber;

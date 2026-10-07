@@ -1290,7 +1290,10 @@ describe('broker observer', () => {
     };
   }
 
-  function setup(withObserver = true): {
+  function setup(
+    withObserver = true,
+    Broker: typeof ChainBroker = ChainBroker,
+  ): {
     broker: ChainBroker;
     harness: ReturnType<typeof createProviderHarness>;
     seen: { following: boolean[]; best: number[] };
@@ -1298,7 +1301,7 @@ describe('broker observer', () => {
     messages: unknown[];
   } {
     const harness = createProviderHarness();
-    const broker = new ChainBroker(harness.provider, () => undefined);
+    const broker = new Broker(harness.provider, () => undefined);
     const seen = { following: [] as boolean[], best: [] as number[] };
     if (withObserver) {
       broker.observe(observer(seen));
@@ -1412,9 +1415,13 @@ describe('broker observer', () => {
     expect(seen.following).toEqual([true, false]);
   });
 
-  it('As the network panel, an unreadable base header reports no blocks and is not retried', () => {
-    // Given
-    const { harness, seen, connection } = setup();
+  it('As the network panel, an unreadable base header reports no blocks, is not retried and is logged once with its cause', async () => {
+    // Given: a fresh module, so no earlier suite's warnings count against this one.
+    vi.resetModules();
+    const { log } = await import('@dotli/shared');
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const { ChainBroker: FreshBroker } = await import('../src/broker.js');
+    const { harness, seen, connection } = setup(true, FreshBroker);
     follow(harness, connection);
     event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
 
@@ -1431,6 +1438,34 @@ describe('broker observer', () => {
     // Then
     expect(seen.best).toEqual([]);
     expect(bases(harness)).toHaveLength(1);
+    const lines = warn.mock.calls.map(([line]) => String(line));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('base header for 0xf0');
+    expect(lines[0]).toContain('-32801 Block not pinned');
+    warn.mockRestore();
+  });
+
+  it('As the network panel, a base header refused after a finalization moved the base is asked again for the new one', () => {
+    // Given
+    const { harness, seen, connection } = setup();
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event(harness, { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event(harness, { event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+
+    // When: the old base was unpinned before the node read it
+    harness.emit({
+      jsonrpc: '2.0',
+      id: must(bases(harness)[0], 'first').id,
+      error: { code: -32801, message: 'Block not pinned' },
+    } as JsonRpcMessage);
+    const second = must(bases(harness)[1], 'second base request');
+    harness.emit({ jsonrpc: '2.0', id: second.id, result: headerHex(101) } as JsonRpcMessage);
+
+    // Then
+    expect(second.params).toEqual(['up-1', '0xb1']);
+    expect(seen.best).toEqual([101]);
   });
 
   it('As the network panel observing late, I hear the established follow and get its best block once the base arrives', () => {
@@ -1455,6 +1490,53 @@ describe('broker observer', () => {
 
     // Then
     expect(seen.best).toEqual([101]);
+  });
+
+  it('As the network panel, only the first established follow reports, and the next one takes over with its own base when it ends', () => {
+    // Given: two sessions following with different params, so two upstream follows
+    const { broker, harness, seen, connection, messages } = setup();
+    const other = broker.connect('b', () => undefined, 'object');
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent.at(-1) as { id: string }).id, result: 'up-1' });
+    other.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [false] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent.at(-1) as { id: string }).id, result: 'up-2' });
+    const eventOn = (subscription: string, result: Record<string, unknown>): void => {
+      harness.emit({
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription, result },
+      } as unknown as JsonRpcMessage);
+    };
+    for (const token of ['up-1', 'up-2']) {
+      eventOn(token, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+      eventOn(token, { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+      eventOn(token, { event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+    }
+    const first = must(bases(harness)[0], 'first base request');
+    harness.emit({ jsonrpc: '2.0', id: first.id, result: headerHex(100) } as JsonRpcMessage);
+    eventOn('up-2', { event: 'newBlock', blockHash: '0xb2', parentBlockHash: '0xb1' });
+    eventOn('up-2', { event: 'bestBlockChanged', bestBlockHash: '0xb2' });
+
+    // Then
+    expect(first.params).toEqual(['up-1', '0xf0']);
+    expect(bases(harness)).toHaveLength(1);
+    expect(seen.best).toEqual([101]);
+
+    // When
+    const token = (messages[0] as { result: string }).result;
+    connection.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_unfollow', params: [token] });
+
+    // Then
+    expect(seen.following).toEqual([true]);
+    const second = must(bases(harness)[1], 'second base request');
+    expect(second.params).toEqual(['up-2', '0xf0']);
+    expect(seen.best).toEqual([101]);
+
+    // When
+    harness.emit({ jsonrpc: '2.0', id: second.id, result: headerHex(100) } as JsonRpcMessage);
+
+    // Then
+    expect(seen.best).toEqual([101, 102]);
   });
 
   it('As the network panel, a best block the cache cannot place is not reported', () => {
