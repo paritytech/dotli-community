@@ -13,9 +13,6 @@ export default defineConfig({
     // getEnabledNetworks() requires VITE_NETWORKS (no default by design); the
     // test build supplies it the same way a deployment does.
     'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
-    // A debug build, as the other packages test: the settings show their
-    // diagnostics (settings-no-debug.test.tsx covers a build without).
-    'import.meta.env.VITE_APP_DEBUG': '"true"',
   },
   // `npm run link:truapi` points @parity/truapi-provider at a checkout outside
   // this workspace, and its `?url` wasm import would be refused by Vite's

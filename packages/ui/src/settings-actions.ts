@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // What the settings popover (components/shell/SettingsPopover.tsx) does
-// besides rendering: persist the chosen settings and reload, wipe this
-// origin's state, and gather the diagnostics it shows and shares. Solid-free
-// and eager: the host's boot calls wipeOriginState when a URL changes the
-// settings, before any island has loaded.
+// besides rendering: persist the chosen settings and reload, and wipe this
+// origin's state. Also gathers the diagnostics the debug panel shows and
+// shares. Solid-free and eager: the host's boot calls wipeOriginState when a
+// URL changes the settings, before any island has loaded.
 
 import { formatAppVersion, getActiveAppManifest, getActiveRootManifest, log, markContinuation } from '@dotli/shared';
 import { isRemoteChainSupported } from '@dotli/protocol';
@@ -227,7 +227,6 @@ async function unregisterAllServiceWorkers(): Promise<void> {
 // topbar only ever renders in the host shell so these will always be
 // present in practice. `undefined` fallbacks are defensive for tests and
 // for any future caller that imports this module from a different bundle.
-declare const __DOTLI_VERSION__: string | undefined;
 declare const __LIGHT_CLIENT_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__: { name: string; version: string }[] | undefined;
@@ -254,7 +253,7 @@ export function isTruapiDebugEnabled(): boolean {
  *                    a scoped label to query.
  *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi,
  *                 with the block heights queried at share time. They are
- *                 not rendered in this popover any more, they live in the
+ *                 not rendered in the Diagnostics tab, they live in the
  *                 network panel where they can be read live. */
 export async function formatDiagnosticsReport(
   base: [label: string, value: string][],
@@ -304,8 +303,15 @@ export async function formatDiagnosticsReport(
   return lines.join('\n');
 }
 
+/**
+ * The build this page runs: its commit, short. The package version is not
+ * bumped on release, so the commit is what identifies the build.
+ */
+export function buildLabel(): string {
+  return shortSha(import.meta.env.VITE_COMMIT_SHA ?? 'dev');
+}
+
 export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
-  const version = typeof __DOTLI_VERSION__ === 'string' ? __DOTLI_VERSION__ : '0.0.0';
   const sha = import.meta.env.VITE_COMMIT_SHA ?? 'dev';
 
   const backend = getBackend();
@@ -316,7 +322,7 @@ export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
     // localhost (`hackme3.localhost:5173`), transparent on production
     // (`hackme3.dot.li`).
     ['Site', window.location.host],
-    ['Build', `${version} (${shortSha(sha)})`],
+    ['Build', buildLabel()],
     ['Network', NETWORK_NAME_TO_SERVICES_CONFIG[network].label],
     ['Transport', backendLabel(backend)],
   ];

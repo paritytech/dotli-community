@@ -19,42 +19,23 @@ import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.j
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
-import {
-  buildBaseDiagnosticsRows,
-  buildLightClientVersionLabel,
-  packageVersions,
-} from '../../../src/settings-actions.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
 import { byId, byTestId, must, query } from '../../support.js';
-import { focusables } from '../../../src/components/focus.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const actions = vi.hoisted(() => ({
   applyAndReset: vi.fn(),
-  extraRows: [] as [label: string, value: string][],
 }));
 vi.mock('../../../src/settings-actions.js', async importOriginal => {
   const actual = await importOriginal<typeof SettingsActionsModule>();
   return {
     ...actual,
     applyAndReset: actions.applyAndReset,
-    // Lets a test add a row the default backend does not produce, such as a node reading "n/a".
-    buildBaseDiagnosticsRows: () => [...actual.buildBaseDiagnosticsRows(), ...actions.extraRows],
   };
 });
-
-// No chain answers here: the share report's block heights read "n/a".
-vi.mock('../../../../protocol/src/client.js', () => ({
-  isRemoteChainSupported: () => false,
-}));
-
-const rpc = vi.hoisted(() => ({ live: null as string | null }));
-vi.mock('../../../../resolver/src/rpc-resolve.js', () => ({
-  getConnectedAssetHubRpcEndpoint: () => rpc.live,
-}));
 
 const networks = vi.hoisted(() => ({
   enabled: null as ReturnType<typeof NetworkModule.getEnabledNetworks> | null,
@@ -86,9 +67,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   actions.applyAndReset.mockReset();
-  actions.extraRows = [];
   actions.applyAndReset.mockResolvedValue(undefined);
-  rpc.live = null;
   networks.enabled = null;
 });
 
@@ -98,9 +77,6 @@ afterEach(() => {
   }
   cleanups = [];
   resetStores();
-  // The copy test's clipboard.
-  Reflect.deleteProperty(navigator, 'clipboard');
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
@@ -110,14 +86,6 @@ async function settle(): Promise<void> {
   flush();
   await Promise.resolve();
   flush();
-}
-
-/** Let the lazy imports and promise chains a click starts finish. */
-async function drain(): Promise<void> {
-  for (let i = 0; i < 10; i++) {
-    await new Promise(resolve => setTimeout(resolve, 0));
-    flush();
-  }
 }
 
 /** Open, as the surface says; it is in the page only from its first opening. */
@@ -156,16 +124,6 @@ function toggle(label: string): HTMLButtonElement {
 
 function radio(name: string, value: string): HTMLInputElement {
   return query(document, `input[name="${name}"][value="${value}"]`, HTMLInputElement);
-}
-
-function infoRow(label: string): HTMLElement {
-  const found = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mode-info-row"]')).find(
-    row => row.firstElementChild?.textContent === label,
-  );
-  if (found === undefined) {
-    throw new Error(`no "${label}" row`);
-  }
-  return found;
 }
 
 async function renderPopover({ seed = true } = {}): Promise<void> {
@@ -222,30 +180,6 @@ function expectCacheRow(row: Element | undefined, label: string, checked: boolea
   expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
 }
 
-/**
- * A diagnostics row: label and value, the copy hint on the copyable ones,
- * dense in the package list with the full name as its tooltip.
- */
-function expectInfoRow(
-  row: Element | undefined,
-  label: string,
-  value: string,
-  opts: { copyable?: boolean; dense?: boolean } = {},
-): void {
-  expect(tags(must(row, 'a row'))).toEqual(opts.copyable === true ? ['SPAN', 'BUTTON', 'SPAN'] : ['SPAN', 'CODE']);
-  expect(row?.children[0]?.textContent).toBe(label);
-  expect(row?.querySelector('code')?.textContent).toBe(value);
-  expect(row?.hasAttribute('data-copyable')).toBe(opts.copyable === true);
-  expect(row?.hasAttribute('data-dense')).toBe(opts.dense === true);
-  let title: string | null = null;
-  if (opts.copyable === true) {
-    title = `Click to copy ${label}`;
-  } else if (opts.dense === true) {
-    title = label;
-  }
-  expect(row?.getAttribute('title')).toBe(title);
-}
-
 /** A radio card: a label holding the radio (name, value, checked, disabled), its title, its chip and its description. */
 function expectChoice(
   card: Element | undefined,
@@ -274,9 +208,9 @@ function expectRadioGroup(section: Element, label: string): Element {
   return group;
 }
 
-/** The left column: network, transport and cache settings. */
-function expectSettingsColumn(left: Element, settings: Settings): void {
-  const sections = Array.from(left.children);
+/** The settings: network, transport and cache, then the debug button unless debug mode is on. */
+function expectSections(container: Element, settings: Settings): void {
+  const sections = Array.from(container.children);
   let at = 0;
   if (settings.enabledNetworks.length > 1) {
     const group = expectRadioGroup(nth(sections, at++), 'Network');
@@ -327,69 +261,21 @@ function expectSettingsColumn(left: Element, settings: Settings): void {
   expect(clearRow.children[0]?.getAttribute('title')).toBe(
     'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
   );
+  if (!settings.debugOn) {
+    const debugRow = nth(sections, at++);
+    expect(debugRow.getAttribute('data-testid')).toBe('mode-debug-row');
+    expect(tags(debugRow)).toEqual(['BUTTON']);
+    expect(debugRow.children[0]?.textContent).toBe('Open in debug mode');
+    expect(debugRow.children[0]?.getAttribute('title')).toBe(
+      'Reload this tab with the debug panel and its diagnostics',
+    );
+  }
   expect(sections).toHaveLength(at);
-}
-
-/** The right column: the diagnostics well, the closed Packages disclosure and the share and debug buttons. */
-function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
-  expect(tags(right)).toEqual(['DIV', 'DIV', 'DIV', 'DIV']);
-  const [header, diagnostics, packages, actions] = Array.from(right.children) as [Element, Element, Element, Element];
-  expectHeader(header, 'Diagnostics');
-
-  expect(diagnostics.getAttribute('data-testid')).toBe('mode-diagnostics');
-  const copyable = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
-  const base = buildBaseDiagnosticsRows();
-  expect(diagnostics.childElementCount).toBe(base.length);
-  base.forEach(([label, value], i) => {
-    expectInfoRow(diagnostics.children[i], label, value, { copyable: copyable.has(label) });
-  });
-
-  expect(packages.getAttribute('data-testid')).toBe('mode-packages-well');
-  const { polkadotApi, parityTruapi } = packageVersions();
-  const toggle = byTestId('mode-packages-toggle', packages, HTMLButtonElement);
-  expect(toggle.type).toBe('button');
-  expect(toggle.getAttribute('aria-expanded')).toBe('false');
-  expect(toggle.getAttribute('aria-controls')).toBe('mode-packages');
-  expect(toggle.textContent).toBe(`Packages${String(1 + polkadotApi.length + parityTruapi.length)}`);
-  const list = byId('mode-packages');
-  expect(list.parentElement).toBe(packages);
-  expect(list.hidden).toBe(true);
-  const items = Array.from(list.children);
-  let at = 0;
-  expectHeader(items[at++], 'Light client');
-  expectInfoRow(items[at++], '@parity/truapi-provider', buildLightClientVersionLabel(), { dense: true });
-  if (polkadotApi.length > 0) {
-    expectHeader(items[at++], '@polkadot-api');
-    for (const pkg of polkadotApi) {
-      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
-    }
-  }
-  if (parityTruapi.length > 0) {
-    expectHeader(items[at++], '@parity/truapi');
-    for (const pkg of parityTruapi) {
-      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
-    }
-  }
-  expect(items).toHaveLength(at);
-
-  expect(actions.getAttribute('data-testid')).toBe('mode-diagnostic-actions');
-  expect(tags(actions)).toEqual(['BUTTON', 'BUTTON']);
-  const [share, debug] = Array.from(actions.children) as [HTMLButtonElement, HTMLButtonElement];
-  expect(share.type).toBe('button');
-  expect(share.textContent).toBe('Share diagnostic');
-  expect(share.title).toBe('Open a new issue on paritytech/dotli pre-filled with these diagnostics');
-  expect(debug.type).toBe('button');
-  expect(debug.textContent).toBe(debugOn ? 'Exit debug mode' : 'Debug mode');
-  expect(debug.title).toBe(
-    debugOn
-      ? 'Reload this tab with the TrUAPI debug panel disabled'
-      : 'Reload this tab with the TrUAPI debug panel enabled (off again on tab close)',
-  );
 }
 
 /**
  * The open popover: the shared Popover's surface, whose body holds the
- * settings panel (its title, the two columns and the footer), with their
+ * settings panel (its title, the settings and the footer), with their
  * ids, labels and ARIA state. A sheet leaves its title to the sheet header.
  */
 function expectPopoverMatches(settings: Settings, sheet = false): void {
@@ -409,16 +295,15 @@ function expectPopoverMatches(settings: Settings, sheet = false): void {
   expect(tags(content)).toEqual(['SECTION']);
   const panel = nth(content.children, 0);
   expect(tags(panel)).toEqual(sheet ? ['DIV', 'DIV'] : ['DIV', 'DIV', 'DIV']);
-  const [head, columns, footer] = (sheet ? [undefined, ...panel.children] : Array.from(panel.children)) as [
+  const [head, sections, footer] = (sheet ? [undefined, ...panel.children] : Array.from(panel.children)) as [
     Element | undefined,
     Element,
     Element,
   ];
   expect(head?.querySelector('h2')?.textContent).toBe(sheet ? undefined : 'Settings');
-  expect(columns.getAttribute('data-testid')).toBe('mode-popover-columns');
-  expect(tags(columns)).toEqual(['DIV', 'DIV']);
-  expectSettingsColumn(nth(columns.children, 0), settings);
-  expectDiagnosticsColumn(nth(columns.children, 1), settings.debugOn);
+  expect(head?.querySelector('[data-testid="mode-version"]')?.textContent).toBe(sheet ? undefined : 'dev');
+  expect(sections.getAttribute('data-testid')).toBe('mode-popover-sections');
+  expectSections(sections, settings);
 
   expect(footer.contains(byTestId('mode-apply-row'))).toBe(true);
   expect(byTestId('mode-apply-row').childElementCount).toBe(1);
@@ -509,7 +394,7 @@ describe('The settings popover island', () => {
 
     // Then: no settings yet, but the sheet header and its close button are
     // there.
-    expect(document.querySelector('[data-testid="mode-popover-columns"]')).toBeNull();
+    expect(document.querySelector('[data-testid="mode-popover-sections"]')).toBeNull();
     expect(document.querySelector('[data-testid="popover-sheet-close"]')).not.toBeNull();
     expect(byId('mode-popover-content').hasAttribute('data-sheet')).toBe(true);
 
@@ -570,16 +455,13 @@ describe('The settings popover island', () => {
     });
   });
 
-  it('As a dotli user opening it with one network, in debug mode, on trusted providers, without shared workers and with package versions, it shows its ids, labels and ARIA state', async () => {
+  it('As a dotli user opening it with one network, in debug mode, on trusted providers and without shared workers, it shows its ids, labels and ARIA state', async () => {
     // Given
     networks.enabled = ['previewnet'];
     setNetwork('previewnet');
     setBackend('rpc-gateway');
     sessionStorage.setItem('dotli:truapi-debug', '1');
     vi.stubGlobal('SharedWorker', undefined);
-    vi.stubGlobal('__POLKADOT_API_VERSION__', '1.2.3');
-    vi.stubGlobal('__POLKADOT_API_VERSIONS__', [{ name: '@polkadot-api/ws-provider', version: '0.4.0' }]);
-    vi.stubGlobal('__PARITY_TRUAPI_VERSIONS__', [{ name: '@parity/truapi-host', version: '0.9.0' }]);
     await renderPopover();
 
     // When
@@ -712,195 +594,7 @@ describe('The settings popover island', () => {
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli user, clicking a copyable diagnostics row copies it and flashes Copied for a second', async () => {
-    // Given
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-    await renderPopover();
-    await openPopover();
-    vi.useFakeTimers();
-    const site = infoRow('Site');
-    const value = query(site, 'code');
-
-    // When
-    site.click();
-    await Promise.resolve();
-    await Promise.resolve();
-    flush();
-
-    // Then
-    expect(writeText).toHaveBeenCalledWith(window.location.host);
-    expect(value.textContent).toBe('Copied');
-
-    // When
-    vi.advanceTimersByTime(1000);
-    flush();
-
-    // Then
-    expect(value.textContent).toBe(window.location.host);
-
-    // When: a row that is not copyable.
-    infoRow('Build').click();
-    await Promise.resolve();
-
-    // Then
-    expect(writeText).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a keyboard user, a copyable diagnostics row is a focusable Copy Site button, and activating it copies and announces', async () => {
-    // Given
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-    await renderPopover();
-    await openPopover();
-    const site = infoRow('Site');
-    const button = query(site, 'button', HTMLButtonElement);
-    const status = query(site, '[role="status"]');
-    expect(button.textContent).toBe(`Copy Site ${window.location.host}`);
-    expect(focusables(byId('mode-popover'))).toContain(button);
-    expect(infoRow('Build').querySelector('button')).toBeNull();
-
-    // When
-    button.click();
-    await Promise.resolve();
-    await Promise.resolve();
-    flush();
-
-    // Then
-    expect(writeText).toHaveBeenCalledWith(window.location.host);
-    expect(status.textContent).toBe('Copied');
-  });
-
-  it('As a dotli user, clicking a copyable row that reads n/a copies nothing', async () => {
-    // Given
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-    actions.extraRows = [['Relay node', 'n/a']];
-    await renderPopover();
-    await openPopover();
-    const row = infoRow('Relay node');
-    const button = query(row, 'button', HTMLButtonElement);
-    expect(query(row, 'code').textContent).toBe('n/a');
-
-    // When
-    button.click();
-    await Promise.resolve();
-
-    // Then
-    expect(writeText).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli user, I open Packages to read the package versions and close it again', async () => {
-    // Given
-    vi.stubGlobal('__POLKADOT_API_VERSIONS__', [{ name: '@polkadot-api/ws-provider', version: '0.4.0' }]);
-    await renderPopover();
-    await openPopover();
-    const toggle = byTestId('mode-packages-toggle');
-
-    // When
-    toggle.click();
-    await settle();
-
-    // Then
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(byId('mode-packages').hidden).toBe(false);
-    expect(infoRow('@polkadot-api/ws-provider').children[1]?.textContent).toBe('0.4.0');
-
-    // When
-    toggle.click();
-    await settle();
-
-    // Then
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(byId('mode-packages').hidden).toBe(true);
-
-    // When: opened again, then the popover closed and reopened.
-    toggle.click();
-    await settle();
-    press('Escape');
-    await settle();
-    await openPopover();
-
-    // Then
-    expect(byTestId('mode-packages-toggle').getAttribute('aria-expanded')).toBe('false');
-    expect(byId('mode-packages').hidden).toBe(true);
-  });
-
-  it('As a dotli user on trusted providers, the AssetHub row shows the node the client is connected to, in the popover and the shared report', async () => {
-    // Given
-    setBackend('rpc-gateway');
-    rpc.live = 'wss://live.example';
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-    await renderPopover();
-
-    // When
-    await openPopover();
-    await drain();
-
-    // Then
-    expect(infoRow('AssetHub node').querySelector('code')?.textContent).toBe('wss://live.example');
-
-    // When
-    button('Share diagnostic').click();
-    await drain();
-
-    // Then
-    const url = new URL(nth(open.mock.calls, 0)[0] as string);
-    expect(url.searchParams.get('body')).toContain('AssetHub node: wss://live.example');
-  });
-
-  it('As a dotli user, Share diagnostic opens a GitHub issue prefilled with the diagnostics', async () => {
-    // Given
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-    await renderPopover();
-    await openPopover();
-
-    // When
-    button('Share diagnostic').click();
-    await drain();
-
-    // Then
-    expect(open).toHaveBeenCalledTimes(1);
-    const [href, target, features] = nth(open.mock.calls, 0);
-    const url = new URL(href as string);
-    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/paritytech/dotli/issues/new');
-    expect(target).toBe('_blank');
-    expect(features).toBe('noopener,noreferrer');
-    expect(url.searchParams.get('body')).toBe(
-      [
-        '<!-- Describe the issue above this line; the diagnostics below are auto-filled. -->',
-        '',
-        '## Diagnostics',
-        '',
-        '```',
-        `Site: ${window.location.host}`,
-        'Build: 0.0.0 (dev)',
-        'Network: ' + (infoRow('Network').querySelector('code')?.textContent ?? ''),
-        'Transport: Light client per tab',
-        `Browser: ${infoRow('Browser').querySelector('code')?.textContent ?? ''}`,
-        '',
-        'Cache:',
-        '  dotNS cache: on',
-        '  Archive cache: on',
-        '  Worker cache: on',
-        '',
-        'Packages:',
-        '  smoldot: unknown',
-        '```',
-      ].join('\n'),
-    );
-  });
-
-  it('As a developer, the debug button reloads the tab with debug mode on, or off when it is on', async () => {
+  it('As a developer, Open in debug mode reloads the tab with the debug panel on', async () => {
     // Given
     const assign = vi.fn();
     vi.stubGlobal('location', {
@@ -911,25 +605,10 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // When
-    button('Debug mode').click();
+    button('Open in debug mode').click();
 
     // Then
     expect(assign).toHaveBeenCalledWith('https://app.dot.li/path?x=1&debug=true');
-  });
-
-  it('As a developer in debug mode, the debug button reloads the tab with debug mode off', async () => {
-    // Given
-    sessionStorage.setItem('dotli:truapi-debug', '1');
-    const assign = vi.fn();
-    vi.stubGlobal('location', { href: 'https://app.dot.li/', assign });
-    await renderPopover();
-    await openPopover();
-
-    // When
-    button('Exit debug mode').click();
-
-    // Then
-    expect(assign).toHaveBeenCalledWith('https://app.dot.li/?debug=off');
   });
 
   it('As a screen-reader user, the button announces the dialog it opens and whether it is open', async () => {

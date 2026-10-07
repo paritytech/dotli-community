@@ -43,6 +43,7 @@ import {
 import type { ResolutionRecorder } from '@dotli/truapi-debug';
 import { setDockInset } from '../../product-frame-layout.js';
 import { getTopbarState } from '../../state/topbar.js';
+import { DiagnosticsView } from './Diagnostics.js';
 import { DetailPane } from './DetailPane.js';
 import { EventList, type Selection } from './EventList.js';
 import { Filters } from './Filters.js';
@@ -403,6 +404,9 @@ export function Panel(props: {
     }
   };
 
+  /** Only the list and the timeline select events for the detail pane. */
+  const splitView = (): boolean => view() === 'list' || view() === 'timeline';
+
   const selectView = (next: PanelView): void => {
     if (next === view()) {
       return;
@@ -541,18 +545,15 @@ export function Panel(props: {
             panel={() => panelEl}
           />
           <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
+          <DiagnosticsView active={view() === 'diagnostics'} />
         </div>
-        <BodySplitter
-          panel={() => panelEl}
-          stacked={stacked()}
-          hidden={view() === 'resolution' || view() === 'archive'}
-        />
+        <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!splitView()} />
         <DetailPane
           revision={detailRevision()}
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
-          hidden={view() === 'resolution' || view() === 'archive'}
+          hidden={!splitView()}
           onSelectPair={seq => {
             select(seq);
             listEl?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });
