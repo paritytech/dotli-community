@@ -158,6 +158,10 @@
 [data-tone='idle'] {
   --tone: var(--chrome-idle);
 }
+/* Nothing in use: white, apart from every tone that judges a connection. */
+[data-tone='quiet'] {
+  --tone: var(--text-strong);
+}
 
 /* 44 px is the touch minimum. */
 :root {

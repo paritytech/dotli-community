@@ -4,12 +4,14 @@
 import { presentToast } from './overlays/load.js';
 import type { StatusTone } from './components/primitives/StatusDot.js';
 
+type NoticeTone = Exclude<StatusTone, 'quiet'>;
+
 export const NOTIFICATION_DISMISS_MS = 10_000;
 
 const ALERT_PATHS =
   '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01"/>';
 
-const TONE_ICON_PATHS: Record<StatusTone, string> = {
+const TONE_ICON_PATHS: Record<NoticeTone, string> = {
   info: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9m4.3 13a1.94 1.94 0 0 0 3.4 0"/>',
   ok: '<path d="M20 6 9 17l-5-5"/>',
   warn: ALERT_PATHS,
@@ -18,7 +20,7 @@ const TONE_ICON_PATHS: Record<StatusTone, string> = {
 };
 
 /** Stroked in currentColor so the tile's tone colours it. */
-function toneIcon(tone: StatusTone): string {
+function toneIcon(tone: NoticeTone): string {
   return (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     TONE_ICON_PATHS[tone] +
@@ -32,7 +34,7 @@ export interface NotificationParams {
   deeplink?: string | undefined;
   /** SVG stroked in currentColor to take the tone. */
   icon?: string;
-  tone?: StatusTone;
+  tone?: NoticeTone;
   /** 0 keeps it until closed. */
   dismissMs?: number;
   /** Also fire a browser Notification when the tab is hidden. Default true. */

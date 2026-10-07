@@ -172,6 +172,23 @@ describe('describeNetworkStatus under trusted providers', () => {
   });
 });
 
+describe('describeNetworkStatus with nothing in use', () => {
+  it('As a user whose app holds no chain, the menu says none is in use', () => {
+    // Given
+    const verdict: LiveVerdict = { text: 'Not in use', tone: 'quiet' };
+
+    // When
+    const line = describeNetworkStatus(verdict, false, 0, 'smoldot-direct');
+
+    // Then
+    expect(line).toEqual({
+      tone: 'quiet',
+      title: 'No chains in use',
+      detail: 'Chains appear here once the app connects to them.',
+    });
+  });
+});
+
 describe('slotOpacity', () => {
   it('As a user reading the history, the oldest slot is half strength and the newest full', () => {
     // When / Then

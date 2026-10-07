@@ -140,8 +140,8 @@ describe('Topbar actions island', () => {
     await openMore();
 
     // Then
-    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Syncing');
-    expect(moreRow('network').textContent).toBe('NetworkSyncing');
+    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Not in use');
+    expect(moreRow('network').textContent).toBe('NetworkNot in use');
 
     // When
     await tapMoreRow('network');
@@ -183,7 +183,7 @@ describe('Topbar actions island', () => {
   });
 
   it('As a phone user, the Network row leads the More menu with its status dot and verdict word, and More carries the health badge', async () => {
-    // Given: the chains are still starting, on a phone bar with room for More only
+    // Given: no chain in use, on a phone bar with room for More only
     stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
@@ -191,9 +191,8 @@ describe('Topbar actions island', () => {
     // Then
     const more = byId('more-button');
     expect((await moreRowNames())[0]).toBe('network');
-    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
-    expect(more.getAttribute('data-tone')).toBe('idle');
-    expect(more.getAttribute('aria-label')).toBe('More, network syncing');
+    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Not in use');
+    expect(more.getAttribute('aria-label')).toBe('More');
 
     // When
     initNetworkHealth();
@@ -207,7 +206,7 @@ describe('Topbar actions island', () => {
     expect(more.getAttribute('aria-label')).toBe('More, network offline');
   });
 
-  it('As a phone user with a grant and an unverified session, I see the Permissions and Settings rows keep their badges, and More raise only the network alert', async () => {
+  it('As a phone user with a grant and an unverified session, I see the Permissions and Settings rows keep their badges, and More raise none', async () => {
     // Given: the trusted gateway backend, which is not a verified session
     localStorage.setItem(BACKEND_KEY, 'rpc-gateway');
     initSettingsStore();
@@ -232,8 +231,7 @@ describe('Topbar actions island', () => {
       expect(byTestId('more-row-aside', moreRow('settings'))).toBeTruthy();
       expect(within(moreRow('permissions')).getByRole('img').getAttribute('aria-label')).toBe('Has permissions');
       expect(within(moreRow('settings')).getByRole('img').getAttribute('aria-label')).toBe('Unverified session');
-      // The chains are still starting, which is the only alert More carries.
-      expect(byId('more-button').getAttribute('aria-label')).toBe('More, network syncing');
+      expect(byId('more-button').getAttribute('aria-label')).toBe('More');
     } finally {
       unregister();
     }

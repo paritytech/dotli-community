@@ -219,7 +219,7 @@ export function ChainsContent(): JSX.Element {
     describeNetworkStatus(
       describeLiveNetwork(network().chains),
       health() === 'err',
-      network().chains.filter(chain => chain.reachable).length,
+      network().chains.filter(chain => chain.state === 'live').length,
       settings()?.backend,
     ),
   );

@@ -3,7 +3,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveChainRoles } from '@dotli/config';
-import { recordBestBlock, recordChainActivity, resetNetworkMonitor } from '../../src/network-monitor.js';
+import {
+  recordBestBlock,
+  recordChainActivity,
+  recordChainPhase,
+  resetNetworkMonitor,
+} from '../../src/network-monitor.js';
 import { initNetworkHealth, networkHealthStore } from '../../src/state/network-health.js';
 import { resetStores } from '../helpers/solid.js';
 import type * as ProtocolModule from '@dotli/protocol';
@@ -12,6 +17,8 @@ vi.mock('@dotli/protocol', async importOriginal => ({
   ...(await importOriginal<typeof ProtocolModule>()),
   isRemoteChainConnectable: () => true,
 }));
+
+const relay = (): string => getActiveChainRoles()[0]?.genesis ?? '';
 
 function useAll(): void {
   for (const role of getActiveChainRoles()) {
@@ -136,6 +143,59 @@ describe('The network health store', () => {
     window.dispatchEvent(new Event('online'));
 
     // Then
+    expect(networkHealthStore.get()).toBe('quiet');
+  });
+
+  it('As a user before any app holds a chain, I see quiet', () => {
+    // When
+    stop = initNetworkHealth();
+
+    // Then
+    expect(networkHealthStore.get()).toBe('quiet');
+  });
+
+  it('As a user loading a product, the frame syncing a chain shows syncing, and ready with nothing in use shows quiet', () => {
+    // Given
+    stop = initNetworkHealth();
+
+    // When
+    recordChainPhase('relay', 'syncing');
+
+    // Then
     expect(networkHealthStore.get()).toBe('idle');
+
+    // When
+    recordChainPhase('relay', 'ready');
+
+    // Then
+    expect(networkHealthStore.get()).toBe('quiet');
+  });
+
+  it('As a user, a frame chain that was ready and drops back to connecting shows unstable', () => {
+    // Given
+    stop = initNetworkHealth();
+    recordChainPhase('relay', 'ready');
+
+    // When
+    recordChainPhase('relay', 'connecting');
+
+    // Then
+    expect(networkHealthStore.get()).toBe('warn');
+  });
+
+  it('As a user whose only live chain is released, an armed recheck never turns the indicator unstable', () => {
+    // Given
+    stop = initNetworkHealth();
+    recordChainActivity({ genesisHash: relay(), consumers: 1, status: 'connected', following: true });
+    recordBestBlock(relay(), 100);
+    expect(networkHealthStore.get()).toBe('ok');
+
+    // When
+    recordChainActivity({ genesisHash: relay(), consumers: 0, status: 'connected', following: false });
+    vi.advanceTimersByTime(60_000);
+
+    // Then
+    expect(networkHealthStore.get()).toBe('quiet');
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

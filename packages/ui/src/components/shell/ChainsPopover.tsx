@@ -42,7 +42,9 @@ export function ChainsPopover(): JSX.Element {
         label="Network"
         icon={GlobeIcon}
         alert={
-          health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
+          health() === 'ok' || health() === 'quiet'
+            ? undefined
+            : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
         }
         aside={() => (
           <>

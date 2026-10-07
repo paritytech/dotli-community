@@ -8,7 +8,7 @@ import { getChainClocks, subscribeNetwork } from '../network-monitor.js';
 import { judgeNetworkHealth, nextOverdueAt, type NetworkHealth } from '../network-health.js';
 import { createSyncStore, registerStoreStateReset, type ReadableStore } from './create-store.js';
 
-const health = createSyncStore<NetworkHealth>('network-health', 'idle');
+const health = createSyncStore<NetworkHealth>('network-health', 'quiet');
 
 export const networkHealthStore: ReadableStore<NetworkHealth> = health;
 
@@ -77,5 +77,5 @@ export function initNetworkHealth(): () => void {
 registerStoreStateReset(() => {
   stopInit?.();
   disarm();
-  health.set('idle');
+  health.set('quiet');
 });

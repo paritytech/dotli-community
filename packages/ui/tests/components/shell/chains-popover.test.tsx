@@ -189,7 +189,7 @@ interface ExpectedChain {
 interface ExpectedBody {
   title: string;
   detail: string;
-  tone: 'idle' | 'warn' | 'ok' | 'err';
+  tone: 'idle' | 'warn' | 'ok' | 'err' | 'quiet';
   chains: ExpectedChain[];
   speed?: [string, string];
   size?: [string, string];
@@ -296,10 +296,10 @@ describe('The network popover island', () => {
     // When
     await renderPopover();
 
-    // Then: the health starts at syncing, whose tone is idle
+    // Then: with no chain in use the health is quiet
     const button = byId('chains-button');
     expect(button.hasAttribute('data-badge')).toBe(true);
-    expect(button.dataset['tone']).toBe('idle');
+    expect(button.dataset['tone']).toBe('quiet');
   });
 
   const statuses: {
@@ -309,6 +309,16 @@ describe('The network popover island', () => {
     productLoaded?: boolean;
     expected: ExpectedBody;
   }[] = [
+    {
+      name: 'nothing in use',
+      expected: {
+        title: 'No chains in use',
+        detail: 'Chains appear here once the app connects to them.',
+        tone: 'quiet',
+        chains: [],
+      },
+      chains: [],
+    },
     {
       name: 'starting, with no chain reachable',
       expected: {
