@@ -462,21 +462,21 @@ and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#me
 
 Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
 client (smoldot) completes a new statement subscription with an empty retained snapshot and relays only later gossip. On
-light-client backends the host therefore TEMPORARILY routes two exact Statement Store reads to the People chain's
+light-client backends the host therefore TEMPORARILY routes two narrow Statement Store flows to the People chain's
 trusted RPC node:
 
 - Media callee-advertisement lookups. The core opens a separate connection per lookup and marks its subscribe and
   unsubscribe requests with `truapi:media-advertisement-lookup:`.
-- The `vox.paseo` public presence snapshot, only when the subscription is an exact single-topic `MatchAll` for
-  `blake2b-256("vox.paseo/lobby/v1")`. The route tracks that trusted subscription so only its matching unsubscribe
-  follows it to the node. `MatchAny`, multi-topic filters, other Vox builds and every other product topic stay on the
-  light client.
+- The `vox.paseo` public presence lifecycle: an exact single-topic `MatchAll` subscription for
+  `blake2b-256("vox.paseo/lobby/v1")`, its matching unsubscribe, and submissions whose decoded Statement Store fields
+  carry only that topic. Reading and posting use the same trusted transport so different light-client peers cannot miss
+  each other. `MatchAny`, multi-topic filters, other Vox builds and every other product topic stay on the light client.
 
 Chat, live call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator sees which callee
-advertisement topics are looked up and when, plus when a device reads the one public `vox.paseo` presence topic. It can
-withhold statements but cannot forge one: the Media core verifies each advertisement proof and signature, while Vox
-accepts only signed self-announcements that have not expired. Remove both route modules and their uses in `Chain.ts`
-once the light client can retrieve retained statements. On Trusted Providers every request already uses RPC.
+advertisement topics are looked up and when, plus when a device reads or posts to the one public `vox.paseo` presence
+topic. It can withhold statements but cannot forge one: the Media core verifies each advertisement proof and signature,
+while Vox accepts only signed self-announcements that have not expired. Remove both route modules and their uses in
+`Chain.ts` once the light client can retrieve retained statements. On Trusted Providers every request already uses RPC.
 
 ## Development
 

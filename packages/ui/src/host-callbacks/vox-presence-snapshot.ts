@@ -1,16 +1,19 @@
 // dot.li — TEMPORARY trusted-RPC route for the vox.paseo presence snapshot
 //
-// Smoldot has no retained Statement Store snapshot: it completes a new
-// subscription with an empty batch and only relays later gossip. Vox presence
-// notes last three minutes, so a newly opened device otherwise cannot list a
-// device that posted before it subscribed.
+// Smoldot completes a new Statement Store subscription with an empty batch.
+// Vox presence notes last three minutes, so a newly opened device otherwise
+// cannot list a device that posted before it subscribed. A light-client
+// submit can also land on a different node than another device's trusted
+// subscription, so the exact Vox lobby submissions follow it to that node.
 //
-// This route recognizes only the exact MatchAll filter for
-// blake2b-256("vox.paseo/lobby/v1"). Other product topics and broader filters
-// stay on the light client. The trusted node learns when somebody reads the
-// public Vox lobby topic and can omit notes, but it cannot forge a valid note.
+// This route recognizes only the exact MatchAll filter and statements carrying
+// exactly one Topic field equal to blake2b-256("vox.paseo/lobby/v1"). Other
+// product topics, broader filters and unrelated submissions stay on the light
+// client. The trusted node learns when somebody reads or posts to the public
+// Vox lobby topic and can omit notes, but it cannot forge a valid note.
 // Remove this route once the light client can retrieve retained statements.
 
+import { scale, StatementProof } from '@parity/truapi';
 import type { JsonRpcConnection, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool } from '@dotli/protocol';
 import { createCoreRpcChainProvider } from '@dotli/resolver';
@@ -18,6 +21,18 @@ import { log } from '@dotli/shared';
 
 /** blake2b-256("vox.paseo/lobby/v1"), derived by the Vox product. */
 export const VOX_PASEO_LOBBY_TOPIC = '0x5ed77c17f1588a282b87eeaf44c116e501e9206038121f5804aec08dd1e7fe24';
+const StatementField = scale.TaggedUnion({
+  Proof: StatementProof,
+  DecryptionKey: scale.Hex(32),
+  Expiry: scale.u64,
+  Channel: scale.Hex(32),
+  Topic1: scale.Hex(32),
+  Topic2: scale.Hex(32),
+  Topic3: scale.Hex(32),
+  Topic4: scale.Hex(32),
+  Data: scale.Hex(),
+});
+const StatementFields = scale.Vector(StatementField);
 
 type RpcId = string | number;
 type SubscriptionId = string | number;
@@ -48,6 +63,43 @@ function isVoxPresenceSubscribe(request: JsonRpcRequest<unknown>): boolean {
   const topics: unknown = filter.matchAll;
   return Array.isArray(topics) && topics.length === 1 && String(topics[0]).toLowerCase() === VOX_PASEO_LOBBY_TOPIC;
 }
+function isVoxPresenceSubmit(request: JsonRpcRequest<unknown>): boolean {
+  const params: unknown = request.params;
+  if (request.method !== 'statement_submit' || !Array.isArray(params) || params.length !== 1) {
+    return false;
+  }
+  const encoded: unknown = params[0];
+  if (typeof encoded !== 'string' || !/^0x(?:[0-9a-fA-F]{2})+$/.test(encoded)) {
+    return false;
+  }
+  try {
+    const bytes = Uint8Array.from(encoded.slice(2).match(/../g) ?? [], byte => Number.parseInt(byte, 16));
+    const fields = StatementFields.dec(bytes);
+    let topic: string | null = null;
+    for (const field of fields) {
+      switch (field.tag) {
+        case 'Topic1':
+        case 'Topic2':
+        case 'Topic3':
+        case 'Topic4':
+          if (topic !== null) {
+            return false;
+          }
+          topic = field.value.toLowerCase();
+          break;
+        case 'Proof':
+        case 'DecryptionKey':
+        case 'Expiry':
+        case 'Channel':
+        case 'Data':
+          break;
+      }
+    }
+    return topic === VOX_PASEO_LOBBY_TOPIC;
+  } catch {
+    return false;
+  }
+}
 
 function unsubscribeTarget(request: JsonRpcRequest<unknown>): SubscriptionId | null {
   const params: unknown = request.params;
@@ -58,7 +110,7 @@ function unsubscribeTarget(request: JsonRpcRequest<unknown>): SubscriptionId | n
 }
 
 export interface VoxPresenceSnapshotRoute {
-  /** Send an exact Vox presence subscription lifecycle to the trusted node; whether this route owns it. */
+  /** Send the exact Vox presence subscription, submit and unsubscribe lifecycle to the trusted node. */
   send: (request: JsonRpcRequest<unknown>) => boolean;
   close: () => void;
 }
@@ -103,14 +155,14 @@ export function createVoxPresenceSnapshotRoute(
     const provider = pool.getLocalProvider(genesisHash);
     if (provider === null) {
       log.warn(
-        `[dot.li] TEMPORARY: no trusted RPC node for ${genesisHash}; the Vox presence snapshot stays on the light client, which returns no stored statements.`,
+        `[dot.li] TEMPORARY: no trusted RPC node for ${genesisHash}; Vox presence stays on the light client, which can miss other devices.`,
       );
       return null;
     }
     if (!announced) {
       announced = true;
       log.warn(
-        '[dot.li] TEMPORARY: the vox.paseo presence snapshot uses the trusted People RPC node; the light client returns no stored statements.',
+        '[dot.li] TEMPORARY: vox.paseo presence subscriptions and submissions use the trusted People RPC node; light-client peers can miss each other.',
       );
     }
     const slot = { connection: null as JsonRpcConnection | null, halted: false };
@@ -148,6 +200,14 @@ export function createVoxPresenceSnapshotRoute(
           pendingSubscribes.delete(id);
           throw error;
         }
+        return true;
+      }
+      if (id !== null && isVoxPresenceSubmit(request)) {
+        const connection = open();
+        if (connection === null) {
+          return false;
+        }
+        connection.send(request);
         return true;
       }
 

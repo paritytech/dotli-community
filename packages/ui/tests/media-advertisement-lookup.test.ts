@@ -14,6 +14,7 @@ import { FakeWebSocket } from '../../resolver/tests/fake-websocket.js';
 import { createChainConnect, createHostChainPool } from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 import { VOX_PASEO_LOBBY_TOPIC } from '../src/host-callbacks/vox-presence-snapshot.js';
+import { encodeStatement } from '../../../vendor/truapi-host/dist/web/loopback-statements.js';
 
 const ADVERTISEMENT = '0xad';
 const FILTER = [{ matchAll: [`0x${'ab'.repeat(32)}`] }];
@@ -178,6 +179,45 @@ describe('Media advertisement lookups on a light client backend', () => {
     expect(trusted.requests('statement_unsubscribeStatement').map((request): unknown => request.params)).toEqual([
       ['vox-presence-1'],
     ]);
+    connection.close();
+  });
+  it('routes only exact Vox lobby statement submissions to the trusted node', async () => {
+    // Given: Vox has opened its exact public lobby subscription.
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    connection.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'truapi:presence:1',
+        method: 'statement_subscribeStatement',
+        params: [{ matchAll: [VOX_PASEO_LOBBY_TOPIC] }],
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const trusted = must(FakeWebSocket.instances[0], 'trusted RPC socket');
+    trusted.open();
+    const subscribe = must(trusted.requests('statement_subscribeStatement')[0], 'subscribe');
+    trusted.deliver({ jsonrpc: '2.0', id: subscribe.id, result: 'vox-presence-1' });
+
+    const presence = encodeStatement({ topics: [VOX_PASEO_LOBBY_TOPIC], data: '0x01' });
+    const anotherTopic = `0x${'ef'.repeat(32)}`;
+    const disguised = encodeStatement({ topics: [anotherTopic], data: VOX_PASEO_LOBBY_TOPIC });
+    const broader = encodeStatement({ topics: [VOX_PASEO_LOBBY_TOPIC, anotherTopic], data: '0x02' });
+
+    // When: the product submits one presence note and two statements that only resemble it.
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'submit:1', method: 'statement_submit', params: [presence] }));
+    connection.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 'submit:2', method: 'statement_submit', params: [disguised] }),
+    );
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'submit:3', method: 'statement_submit', params: [broader] }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Then: only the exact single-topic presence note leaves through trusted RPC.
+    expect(trusted.requests('statement_submit').map((request): unknown => request.params)).toEqual([[presence]]);
+    expect(
+      mocks.lightClient
+        .filter(request => request.method === 'statement_submit')
+        .map((request): unknown => request.params),
+    ).toEqual([[disguised], [broader]]);
     connection.close();
   });
 
