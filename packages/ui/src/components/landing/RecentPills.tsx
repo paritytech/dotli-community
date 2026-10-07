@@ -19,7 +19,8 @@ const LONG_PRESS_MS = 450;
  * origin's localStorage.
  */
 export function RecentPills(): JSX.Element {
-  const suffix = getActiveTldSuffix();
+  // The visitor's network decides it, so the browser reads it and the build renders none.
+  const [suffix, setSuffix] = createSignal('');
   const [labels, setLabels] = createSignal<string[]>([]);
   const [revealed, setRevealed] = createSignal<string | null>(null);
   let container: HTMLDivElement | undefined;
@@ -64,6 +65,7 @@ export function RecentPills(): JSX.Element {
   };
   // Once in the browser, as the build renders this too.
   onSettled(() => {
+    setSuffix(getActiveTldSuffix());
     void loadRecentLabels().then(loaded => {
       setLabels(loaded);
     });
@@ -110,7 +112,7 @@ export function RecentPills(): JSX.Element {
                   <span class={s['label']} data-testid="landing-recent-label">
                     {label}
                     <span class={s['tld']} data-testid="landing-tld">
-                      {suffix}
+                      {suffix()}
                     </span>
                   </span>
                 </a>
@@ -118,7 +120,7 @@ export function RecentPills(): JSX.Element {
                   type="button"
                   class={s['remove']}
                   data-testid="landing-recent-remove"
-                  aria-label={`Remove ${label}${suffix} from recently visited`}
+                  aria-label={`Remove ${label}${suffix()} from recently visited`}
                   title="Remove"
                   onClick={e => {
                     forget(e, label);

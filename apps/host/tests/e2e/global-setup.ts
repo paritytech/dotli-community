@@ -239,8 +239,11 @@ async function pairOnce(
         .catch(() => {});
     }
 
+    // The button is in the built page, so it is visible before its island hydrates.
     const authBtn = page.locator('#landing-auth-button');
-    await authBtn.waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0, undefined, {
+      timeout: 30_000,
+    });
     await authBtn.click();
 
     const qrCanvas = page.locator('#auth-modal-qr canvas');

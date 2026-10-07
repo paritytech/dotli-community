@@ -75,7 +75,8 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
 
-    // When
+    // When: the idle-hydrated sign-in island has taken over its markup.
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
     await page.locator('#landing-auth-button').click();
 
     // Then
@@ -282,8 +283,9 @@ test.describe('Shell UI smoke', () => {
   });
 
   test('As a user, I can open the login QR modal and close it again', async ({ page }) => {
-    // Given
+    // Given: the idle-hydrated sign-in island has taken over its markup.
     await page.goto(LANDING_URL);
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
     const backdrop = page.locator('#auth-modal-backdrop');
 
     // When
