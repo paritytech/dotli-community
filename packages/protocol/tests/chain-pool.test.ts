@@ -12,7 +12,8 @@ import type { ChainTransportHooks } from '@dotli/resolver';
 import { getActiveServicesConfig } from '@dotli/config';
 import { createCoreRpcChainProvider } from '../../resolver/src/rpc-chain.js';
 import { FakeWebSocket } from '../../resolver/tests/fake-websocket.js';
-import { createChainPool, type ChainPool } from '../src/chain-pool.js';
+import { createChainPool, type ChainActivity, type ChainPool, type ChainPoolWatcher } from '../src/chain-pool.js';
+import { headerHex } from './header-hex.js';
 
 interface TransportRecord {
   genesisHash: string;
@@ -581,5 +582,185 @@ describe('createChainPool pausing', () => {
         result: { event: 'newStatements', data: { statements: ['0x01'], remaining: 0 } },
       },
     });
+  });
+});
+
+describe('createChainPool watch', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function recorder(): { watcher: ChainPoolWatcher; activity: ChainActivity[]; best: [string, number][] } {
+    const activity: ChainActivity[] = [];
+    const best: [string, number][] = [];
+    return {
+      watcher: {
+        onActivity: next => {
+          activity.push(next);
+        },
+        onBestBlock: (genesisHash, blockNumber) => {
+          best.push([genesisHash, blockNumber]);
+        },
+      },
+      activity,
+      best,
+    };
+  }
+
+  it('As the network panel, watching builds no chain and keeps none past its destroy delay', async () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    const seen = recorder();
+
+    // When
+    pool.watch(seen.watcher);
+
+    // Then
+    expect(built).toEqual([]);
+    expect(seen.activity).toEqual([]);
+
+    // When
+    lease(pool, '0xaa').disconnect();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+    expect(seen.activity.at(-1)).toEqual({
+      genesisHash: '0xaa',
+      consumers: 0,
+      status: 'disconnected',
+      following: false,
+    });
+  });
+
+  it('As the network panel, I hear each lease, release and status change', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const seen = recorder();
+    pool.watch(seen.watcher);
+
+    // When
+    const first = lease(pool, '0xAA');
+    must(built[0], 'transport').hooks.onStatus('connected');
+    first.disconnect();
+
+    // Then
+    expect(seen.activity.map(a => [a.genesisHash, a.consumers, a.status])).toEqual([
+      ['0xaa', 0, 'connecting'],
+      ['0xaa', 1, 'connecting'],
+      ['0xaa', 1, 'connected'],
+      ['0xaa', 0, 'connected'],
+    ]);
+  });
+
+  it('As the network panel opening late, I hear every chain already held', () => {
+    // Given
+    const pool = createChainPool({ createTransport: createTransports().createTransport });
+    lease(pool, '0xaa');
+    const seen = recorder();
+
+    // When
+    pool.watch(seen.watcher);
+
+    // Then
+    expect(seen.activity).toEqual([{ genesisHash: '0xaa', consumers: 1, status: 'connecting', following: false }]);
+  });
+
+  it('As the network panel, best blocks and the follow reach me without a lease of my own', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const seen = recorder();
+    pool.watch(seen.watcher);
+    const connection = lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    const followEvent = (result: Record<string, unknown>): JsonRpcMessage =>
+      ({
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: 'up-1', result },
+      }) as unknown as JsonRpcMessage;
+
+    // When
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [false] });
+    transport.emit({
+      jsonrpc: '2.0',
+      id: (transport.sent.at(-1) as { id: string }).id,
+      result: 'up-1',
+    } as JsonRpcMessage);
+    transport.emit(followEvent({ event: 'initialized', finalizedBlockHashes: ['0xf0'] }));
+    transport.emit(followEvent({ event: 'bestBlockChanged', bestBlockHash: '0xf0' }));
+    const base = must(
+      transport.sent.find(message => String(message.id).startsWith('broker-base:')),
+      'base request',
+    );
+    transport.emit({ jsonrpc: '2.0', id: base.id, result: headerHex(7) } as JsonRpcMessage);
+
+    // Then
+    expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1, following: true });
+    expect(seen.best).toEqual([['0xaa', 7]]);
+  });
+
+  it('As the network panel, a chain rebuilt inside its halt ends on the rebuilt chain, not the dead one', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const seen = recorder();
+    pool.watch(seen.watcher);
+    lease(
+      pool,
+      '0xaa',
+      () => undefined,
+      () => {
+        lease(pool, '0xaa');
+      },
+    );
+
+    // When
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1 });
+  });
+
+  it('As a dotli integrator, a throwing watcher keeps neither the others nor the pool from the change', () => {
+    // Given
+    const pool = createChainPool({ createTransport: createTransports().createTransport });
+    pool.watch({
+      onActivity: () => {
+        throw new Error('panel bug');
+      },
+      onBestBlock: () => undefined,
+    });
+    const seen = recorder();
+    pool.watch(seen.watcher);
+
+    // When
+    const connection = lease(pool, '0xaa');
+
+    // Then
+    expect(seen.activity.at(-1)).toMatchObject({ consumers: 1 });
+    expect(connection).toBeDefined();
+  });
+
+  it('As the network panel, unwatching stops the reports', () => {
+    // Given
+    const pool = createChainPool({ createTransport: createTransports().createTransport });
+    const seen = recorder();
+    const unwatch = pool.watch(seen.watcher);
+
+    // When
+    unwatch();
+    lease(pool, '0xaa');
+
+    // Then
+    expect(seen.activity).toEqual([]);
   });
 });

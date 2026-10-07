@@ -16,6 +16,21 @@ export type LeaseProvider = (
   onHalt?: (error?: unknown) => void,
 ) => JsonRpcConnection;
 
+/** One chain as the pool holds it, for an observer that must not hold it too. */
+export interface ChainActivity {
+  /** Lowercase. */
+  readonly genesisHash: string;
+  /** Leases held. 0 once the last is released, while the chain waits out its destroy delay. */
+  readonly consumers: number;
+  readonly status: ConnectionStatus;
+  readonly following: boolean;
+}
+
+export interface ChainPoolWatcher {
+  onActivity(activity: ChainActivity): void;
+  onBestBlock(genesisHash: string, blockNumber: number): void;
+}
+
 export interface ChainPoolOptions {
   /** Build a chain's transport, or `null` when this context cannot reach it. */
   createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
@@ -40,6 +55,11 @@ export interface ChainPool extends ChainBrokerManager {
   pauseAll(): void;
   /** Tracked statement subscriptions are replayed. */
   resumeAll(): void;
+  /**
+   * Reports each chain's leases, status, follow and best blocks without leasing or keeping any chain. The chains held
+   * now are replayed first.
+   */
+  watch(watcher: ChainPoolWatcher): () => void;
 }
 
 interface Entry {
@@ -50,6 +70,7 @@ interface Entry {
   leases: number;
   destroyTimer: ReturnType<typeof setTimeout> | null;
   live: boolean;
+  following: boolean;
 }
 
 const DEFAULT_DESTROY_DELAY_MS = 60_000;
@@ -75,6 +96,34 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
   let sessionCounter = 0;
   // Survives every entry: a chain first leased while paused comes up paused.
   let paused = false;
+  const watchers = new Set<ChainPoolWatcher>();
+
+  function activityOf(entry: Entry): ChainActivity {
+    return {
+      genesisHash: entry.key,
+      consumers: entry.live ? entry.leases : 0,
+      status: statuses.get(entry.key) ?? 'disconnected',
+      following: entry.live && entry.following,
+    };
+  }
+
+  function tellWatchers(tell: (watcher: ChainPoolWatcher) => void): void {
+    for (const watcher of [...watchers]) {
+      try {
+        tell(watcher);
+        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one watcher's throw must not keep the others from the change, nor reach the pool.
+      } catch {
+        /* the other watchers still hear it */
+      }
+    }
+  }
+
+  function report(entry: Entry): void {
+    const activity = activityOf(entry);
+    tellWatchers(watcher => {
+      watcher.onActivity(activity);
+    });
+  }
 
   function setStatus(key: string, status: ConnectionStatus): void {
     if (statuses.get(key) === status) {
@@ -105,6 +154,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     // Before the broker call: a halt handler may lease the chain again, and
     // the rebuilt entry's status must not be overwritten afterwards.
     setStatus(entry.key, 'disconnected');
+    report(entry);
     if (halt === null) {
       entry.broker.disconnectAll();
     } else {
@@ -122,6 +172,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
         }
         entry.guard.onStatus(status);
         setStatus(key, status);
+        report(entry);
       },
       onHalt: error => {
         if (entry?.live === true) {
@@ -140,7 +191,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       transport.pause();
     }
     const guard = createWatchGuard(transport);
-    entry = {
+    const created: Entry = {
       key,
       transport,
       guard,
@@ -149,10 +200,29 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       leases: 0,
       destroyTimer: null,
       live: true,
+      following: false,
     };
-    entries.set(key, entry);
+    entry = created;
+    entries.set(key, created);
     setStatus(key, builtPaused ? 'disconnected' : 'connecting');
-    return entry;
+    created.broker.observe({
+      onFollowing: following => {
+        if (!created.live) {
+          return;
+        }
+        created.following = following;
+        report(created);
+      },
+      onBestBlock: blockNumber => {
+        if (created.live) {
+          tellWatchers(watcher => {
+            watcher.onBestBlock(key, blockNumber);
+          });
+        }
+      },
+    });
+    report(created);
+    return created;
   }
 
   function acquire(genesisHash: string): Entry | null {
@@ -187,6 +257,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
   /** Count `connection` as a lease on `entry`, released once by its first `disconnect()`. */
   function lease<C extends { disconnect: () => void }>(entry: Entry, connection: C): C {
     entry.leases += 1;
+    report(entry);
     let released = false;
     return {
       ...connection,
@@ -201,6 +272,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           return;
         }
         entry.leases -= 1;
+        report(entry);
         idle(entry);
       },
     };
@@ -288,6 +360,16 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           entry.transport.pause();
         }
       }
+    },
+
+    watch(watcher) {
+      watchers.add(watcher);
+      for (const entry of entries.values()) {
+        watcher.onActivity(activityOf(entry));
+      }
+      return () => {
+        watchers.delete(watcher);
+      };
     },
 
     resumeAll() {
