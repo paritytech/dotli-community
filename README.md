@@ -558,6 +558,10 @@ A media-specific Accept header bypasses the Paseo gateway's immutable-content ca
 URL-based format selection follows [IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block
 verification remain unchanged.
 
+The canonical App v2 smoke (`DOTLI_DOOM_V2_CAR`) serves its archive from a temporary loopback HTTP server, avoiding
+Chromium's DevTools message-size limit for large CARs. It waits for initial host service-worker activation before
+mounting the product, so fixture startup does not overlap the host's compatibility probe.
+
 ### Qualifying a PolkaVM runtime update locally
 
 Keep `vendor/truapi-host.lock.json` and the vendored host SDK unchanged when qualifying a runtime-only update. The
