@@ -18,7 +18,7 @@ import { MessageBubble } from '../../../src/components/chat/MessageBubble.js';
 import { ContactIcon } from '../../../src/components/chat/ContactIcon.js';
 import { contactEntries, relativeTime } from '../../../src/components/chat/contacts.js';
 import { renderComponent, settle } from '../../helpers/solid.js';
-import { query } from '../../support.js';
+import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const NOW = 1_700_000_000_000;
@@ -44,7 +44,7 @@ async function show(
     <MessageBubble record={record(content, author)} now={NOW} onActionError={onActionError} />
   ));
   await settle();
-  return query(view.container, '.chat-msg');
+  return byTestId('chat-msg', view.container);
 }
 
 afterEach(() => {
@@ -61,11 +61,11 @@ describe('message bubble', () => {
     });
 
     // Then
-    expect(row.className).toBe('chat-msg chat-msg-product');
-    const bubble = query(row, '.chat-msg-bubble', Element);
+    expect(row.dataset['author']).toBe('product');
+    const bubble = byTestId('chat-msg-bubble', row, Element);
     expect(bubble.querySelector('b')).toBeNull();
     expect(bubble.textContent).toContain('hello <b>there</b>');
-    const time = query(bubble, 'time.chat-msg-time', HTMLTimeElement);
+    const time = byTestId('chat-msg-time', bubble, HTMLTimeElement);
     expect(time.textContent).toBe('5 mins ago');
     expect(time.dataset['timestamp']).toBe(String(NOW - 5 * 60_000));
     expect(time.title).not.toBe('');
@@ -76,7 +76,7 @@ describe('message bubble', () => {
     const row = await show({ tag: 'Text', value: { text: 'me' } }, 'user');
 
     // Then
-    expect(row.className).toBe('chat-msg chat-msg-user');
+    expect(row.dataset['author']).toBe('user');
   });
 
   it('As a user, rich text, reactions, files and unknown messages read as today', async () => {
@@ -87,29 +87,29 @@ describe('message bubble', () => {
     });
 
     // Then
-    expect(rich.querySelector('.chat-msg-bubble')?.textContent).toContain('pics');
-    expect(rich.querySelector('.chat-msg-meta')?.textContent).toBe(' [2 attachments]');
+    expect(byTestId('chat-msg-bubble', rich).textContent).toContain('pics');
+    expect(byTestId('chat-msg-meta', rich).textContent).toBe(' [2 attachments]');
     document.body.replaceChildren();
 
     const reaction = await show({ tag: 'Reaction', value: { emoji: '👍' } });
-    expect(reaction.querySelector('.chat-msg-bubble')?.className).toBe('chat-msg-bubble chat-msg-event');
-    expect(reaction.querySelector('.chat-msg-bubble')?.textContent).toContain('reacted 👍');
+    expect(byTestId('chat-msg-bubble', reaction).hasAttribute('data-event')).toBe(true);
+    expect(byTestId('chat-msg-bubble', reaction).textContent).toContain('reacted 👍');
     document.body.replaceChildren();
 
     const removed = await show({
       tag: 'ReactionRemoved',
       value: { emoji: '👍' },
     });
-    expect(removed.querySelector('.chat-msg-bubble')?.textContent).toContain('removed reaction 👍');
+    expect(byTestId('chat-msg-bubble', removed).textContent).toContain('removed reaction 👍');
     document.body.replaceChildren();
 
     const file = await show({ tag: 'File', value: { fileName: 'a.pdf' } });
-    expect(file.querySelector('.chat-msg-bubble')?.textContent).toContain('[file] a.pdf');
+    expect(byTestId('chat-msg-bubble', file).textContent).toContain('[file] a.pdf');
     document.body.replaceChildren();
 
     const unknown = await show({ tag: 'Hologram', value: {} });
-    expect(unknown.querySelector('.chat-msg-bubble')?.className).toBe('chat-msg-bubble chat-msg-event');
-    expect(unknown.querySelector('.chat-msg-bubble')?.textContent).toContain('[unsupported message]');
+    expect(byTestId('chat-msg-bubble', unknown).hasAttribute('data-event')).toBe(true);
+    expect(byTestId('chat-msg-bubble', unknown).textContent).toContain('[unsupported message]');
   });
 
   it('As a user, action buttons reach the app, and a failure is reported', async () => {
@@ -133,11 +133,11 @@ describe('message bubble', () => {
     );
 
     // Then
-    expect(row.querySelector('.chat-msg-actions')?.className).toBe('chat-msg-actions chat-msg-actions-grid');
-    const buttons = [...row.querySelectorAll<HTMLButtonElement>('.chat-msg-actions button')];
-    expect(buttons.map(b => [b.textContent, b.className])).toEqual([
-      ['Yes', 'chat-custom-btn chat-custom-btn-secondary'],
-      ['No', 'chat-custom-btn chat-custom-btn-secondary'],
+    expect(row.querySelector<HTMLElement>('[data-testid="chat-msg-actions"]')?.dataset['layout']).toBe('grid');
+    const buttons = [...row.querySelectorAll<HTMLButtonElement>('[data-testid="chat-msg-actions"] button')];
+    expect(buttons.map(b => [b.textContent, b.dataset['variant']])).toEqual([
+      ['Yes', 'secondary'],
+      ['No', 'secondary'],
     ]);
 
     // When
@@ -171,9 +171,9 @@ describe('message bubble', () => {
     await settle();
 
     // Then
-    const bubble = query(view.container, '.chat-msg-bubble');
-    expect(bubble.className).toBe('chat-msg-bubble chat-msg-custom');
-    expect(bubble.firstElementChild?.className).toBe('chat-custom-root');
+    const bubble = byTestId('chat-msg-bubble', view.container);
+    expect(bubble.hasAttribute('data-custom')).toBe(true);
+    expect(bubble.firstElementChild?.getAttribute('data-testid')).toBe('chat-custom-root');
     expect(bubble.lastElementChild?.tagName).toBe('TIME');
     expect(service.render).toHaveBeenCalledTimes(1);
 
@@ -189,17 +189,17 @@ describe('message bubble', () => {
     // When
     const view = renderComponent(() => (
       <>
-        <ContactIcon name="general" icon="" iconClass="chat-room-icon" />
-        <ContactIcon name="Support" icon="https://example.invalid/x.png" iconClass="chat-room-icon" />
+        <ContactIcon name="general" icon="" />
+        <ContactIcon name="Support" icon="https://example.invalid/x.png" />
       </>
     ));
     await settle();
 
     // Then
-    const fallback = query(view.container, '.chat-room-icon-fallback', Element);
+    const fallback = query(view.container, '[data-testid="chat-room-icon"][data-fallback]', Element);
     expect(fallback.textContent).toBe('G');
     expect(fallback.getAttribute('aria-hidden')).toBe('true');
-    const img = query(view.container, 'img.chat-room-icon', HTMLImageElement);
+    const img = query(view.container, 'img[data-testid="chat-room-icon"]', HTMLImageElement);
     expect(img.alt).toBe('');
 
     // When: the image fails to load
@@ -207,15 +207,15 @@ describe('message bubble', () => {
     await settle();
 
     // Then
-    expect(view.container.querySelectorAll('.chat-room-icon-fallback')).toHaveLength(2);
+    expect(view.container.querySelectorAll('[data-testid="chat-room-icon"][data-fallback]')).toHaveLength(2);
   });
 
   it('As a user, a contact whose broken icon the product replaces shows the new icon', async () => {
     // Given: the first icon failed to load.
     const [icon, setIcon] = createSignal('https://example.invalid/old.png');
-    const view = renderComponent(() => <ContactIcon name="Support" icon={icon()} iconClass="chat-room-icon" />);
+    const view = renderComponent(() => <ContactIcon name="Support" icon={icon()} />);
     await settle();
-    fireEvent.error(query(view.container, 'img.chat-room-icon', Element));
+    fireEvent.error(query(view.container, 'img[data-testid="chat-room-icon"]', Element));
     await settle();
     expect(view.container.querySelector('img')).toBeNull();
 
@@ -224,10 +224,10 @@ describe('message bubble', () => {
     await settle();
 
     // Then
-    expect(view.container.querySelector<HTMLImageElement>('img.chat-room-icon')?.src).toBe(
+    expect(view.container.querySelector<HTMLImageElement>('img[data-testid="chat-room-icon"]')?.src).toBe(
       'https://example.invalid/new.png',
     );
-    expect(view.container.querySelector('.chat-room-icon-fallback')).toBeNull();
+    expect(view.container.querySelector('[data-testid="chat-room-icon"][data-fallback]')).toBeNull();
   });
 
   it('As a user, contacts are ordered by last message, falling back to creation time', () => {

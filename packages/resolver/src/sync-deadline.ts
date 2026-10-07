@@ -76,8 +76,12 @@ function isChainHalt(err: unknown): boolean {
 }
 
 /**
- * A resumed light client can reset its follow twice while catching up.
- * Bound recovery so a chain that keeps halting cannot spin indefinitely.
+ * Attempts a read gets on chains that halt under it. A light client resuming
+ * from a recent stored database sends `stop` on the follows it opened at the
+ * stale head once it catches up, and can do so twice in one catch-up (DOTLI-BY),
+ * so one retry is not enough. Bounded so a chain that dies instantly cannot spin
+ * a caller without a deadline; one that keeps dying fails its next connect
+ * instead, which the protocol context reports as fatal.
  */
 const MAX_HALT_ATTEMPTS = 4;
 
@@ -101,6 +105,7 @@ export async function withHaltRetry<T>(opts: ResolveOptions, read: (opts: Resolv
       }
       log.warn(
         `[dot.li resolve] Chain halted mid-resolution, retrying on a rebuilt chain (attempt ${String(attempt + 1)}/${String(MAX_HALT_ATTEMPTS)}): ${err instanceof Error ? err.message : String(err)}`,
+        err,
       );
     }
   }

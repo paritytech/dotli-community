@@ -1,0 +1,271 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* It sits outside `#app`, so whatever replaces `#app`'s content never takes it
+   along. The column is centred a little above the middle, where the error
+   pages put theirs, so a failed load swaps one for the other in place. */
+.screen {
+  position: absolute;
+  top: var(--content-top);
+  right: 0;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--content-height);
+  margin: 0;
+  padding: 0 calc(32px + var(--safe-right)) 80px calc(32px + var(--safe-left));
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  text-align: center;
+  color-scheme: dark;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 400px;
+  margin: 0;
+  padding: 0;
+}
+
+@media (max-width: 560px) {
+  .screen {
+    padding: 0 calc(16px + var(--safe-right)) 60px calc(16px + var(--safe-left));
+  }
+}
+
+:global(body[data-landing]) .screen {
+  top: 0;
+}
+
+/* loading-controller.ts dismisses the screen. */
+.screen[data-dismissing] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.logo {
+  display: flex;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.mark {
+  overflow: visible;
+}
+
+.petal {
+  fill: var(--text-strong);
+  transform-origin: 128px 128px;
+}
+
+/* The petals light up in turn, one 1.4 s cycle for all six: each jumps to
+   full opacity and scale 1 on its turn, then eases down to its 0.15 floor
+   (scale 0.932) over the next 24.5% of the cycle, along
+   (1 - 2.5 * elapsed)², which this cubic-bezier reproduces exactly.
+   Negative delays put each petal at its place in the cycle from the start:
+   petal i peaks i/6 of a turn after petal 0. Still under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .petal {
+    animation: petal-pulse 1.4s linear infinite;
+  }
+  .petal:nth-child(2) {
+    animation-delay: -1166.667ms;
+  }
+  .petal:nth-child(3) {
+    animation-delay: -933.333ms;
+  }
+  .petal:nth-child(4) {
+    animation-delay: -700ms;
+  }
+  .petal:nth-child(5) {
+    animation-delay: -466.667ms;
+  }
+  .petal:nth-child(6) {
+    animation-delay: -233.333ms;
+  }
+}
+
+@keyframes petal-pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.3333, 0.4806, 0.6667, 0.8139);
+  }
+  24.508%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.932);
+  }
+}
+
+.text {
+  box-sizing: border-box;
+  width: 100%;
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+}
+
+.status {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-title-lg);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.host {
+  font-weight: var(--fw-semibold);
+}
+
+.tld {
+  color: var(--text-secondary);
+}
+
+.line {
+  box-sizing: border-box;
+  width: 100%;
+  /* Two lines reserved, so the bar below does not shift as an explanation
+     wraps or empties. */
+  min-height: 3em;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-body);
+  text-wrap: balance;
+  color: var(--text-secondary);
+}
+
+/* Off-screen but still announced. `display: none` and `visibility: hidden`
+   would take it out of the accessibility tree too. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.progress {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  box-sizing: border-box;
+  width: 240px;
+  max-width: 100%;
+  margin: var(--sp-5) 0 0;
+  padding: 0;
+}
+
+.bar {
+  flex: 1;
+  box-sizing: border-box;
+  height: 4px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-full);
+  background: var(--border-subtle);
+}
+
+.fill {
+  position: relative;
+  box-sizing: border-box;
+  width: 0%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-full);
+  background: var(--text-strong);
+  transition: width 0.4s ease-out;
+}
+
+/* Continuous sheen sweeping the filled portion. The simulated crawl can sit
+   near a band's top during a long sync with no real progress to report. The
+   sheen keeps visible motion so the bar never reads as frozen. */
+@media (prefers-reduced-motion: no-preference) {
+  .fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    transform: translateX(-100%);
+    animation: sheen 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}
+
+.pct {
+  min-width: 4ch;
+  font: var(--fw-medium) var(--fs-caption) / 1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+/* Shown only while a chain has stopped making progress, so it must read as
+   information rather than failure. Always laid out and shown by visibility,
+   with two lines of text reserved: the column is centred, so a notice that
+   took up room as it appeared would shift the logo, lines and bar above it,
+   which is exactly when the screen must look calm. */
+.warning {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: calc(2 * var(--sp-3) + 3em);
+  margin: var(--sp-8) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--chrome-warn) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chrome-warn) 28%, transparent);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  text-align: left;
+  color: var(--text-strong);
+  visibility: hidden;
+}
+
+.warning[data-visible] {
+  visibility: visible;
+}
+
+.warning-icon {
+  flex: none;
+  /* Centred on the first line of text. */
+  margin: var(--sp-hair) 0 0;
+  color: var(--chrome-warn);
+}

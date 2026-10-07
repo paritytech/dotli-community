@@ -15,7 +15,7 @@ describe('createSyncStore', () => {
 
   it('As non-UI code, the getter returns the value just set', () => {
     // Given
-    const store = createSyncStore<{ n: number }>({ n: 0 });
+    const store = createSyncStore<{ n: number }>('test', { n: 0 });
 
     // When
     store.set({ n: 1 });
@@ -26,7 +26,7 @@ describe('createSyncStore', () => {
 
   it('As a subscriber, I am notified synchronously after each set, and the getter is already current', () => {
     // Given
-    const store = createSyncStore(0);
+    const store = createSyncStore('test', 0);
     const seen: number[] = [];
     store.subscribe(() => {
       seen.push(store.get());
@@ -42,7 +42,7 @@ describe('createSyncStore', () => {
 
   it('As a subscriber, after unsubscribing I am no longer notified', () => {
     // Given
-    const store = createSyncStore('a');
+    const store = createSyncStore('test', 'a');
     const listener = vi.fn();
     const unsubscribe = store.subscribe(listener);
 
@@ -56,7 +56,7 @@ describe('createSyncStore', () => {
 
   it('As a subscriber, unsubscribing during notify neither skips nor repeats other listeners', () => {
     // Given
-    const store = createSyncStore(0);
+    const store = createSyncStore('test', 0);
     const calls: string[] = [];
     const unsubscribeFirst = store.subscribe(() => {
       calls.push('first');
@@ -76,7 +76,7 @@ describe('createSyncStore', () => {
 
   it('As a setter, a throwing listener is reported and the rest still run', () => {
     // Given
-    const store = createSyncStore(0);
+    const store = createSyncStore('counter', 0);
     const after = vi.fn();
     store.subscribe(() => {
       throw new Error('listener boom');
@@ -90,14 +90,16 @@ describe('createSyncStore', () => {
     expect(store.get()).toBe(1);
     expect(after).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'listener boom' }), {
-      kind: 'store_listener_error',
+      flow: 'ui',
+      step: 'store_listener',
+      tags: { store: 'counter', kind: 'store_listener_error' },
     });
   });
 
   it('As a test author, resetAllStoresForTests restores every store and notifies its subscribers', () => {
     // Given
-    const a = createSyncStore('a');
-    const b = createSyncStore<string[]>([]);
+    const a = createSyncStore('test', 'a');
+    const b = createSyncStore<string[]>('test', []);
     const onA = vi.fn();
     a.subscribe(onA);
     a.set('changed');
@@ -116,7 +118,7 @@ describe('createSyncStore', () => {
   it('As a producer, setting the value the store already holds notifies nobody', () => {
     // Given
     const value = { n: 1 };
-    const store = createSyncStore(value);
+    const store = createSyncStore('test', value);
     const listener = vi.fn();
     store.subscribe(listener);
 
@@ -131,7 +133,7 @@ describe('createSyncStore', () => {
 
   it('As a producer, a new object with equal contents still notifies under the default equality', () => {
     // Given
-    const store = createSyncStore({ n: 1 });
+    const store = createSyncStore('test', { n: 1 });
     const listener = vi.fn();
     store.subscribe(listener);
 
@@ -145,7 +147,7 @@ describe('createSyncStore', () => {
   it('As a producer with shallow equality, rebuilding equal contents notifies nobody and keeps the old value', () => {
     // Given
     const first = { n: 1, s: 'a' };
-    const store = createSyncStore(first, { equals: shallowEqual });
+    const store = createSyncStore('test', first, { equals: shallowEqual });
     const listener = vi.fn();
     store.subscribe(listener);
 
@@ -167,7 +169,7 @@ describe('createSyncStore', () => {
 
   it('As a producer with a custom equality, it decides which writes notify', () => {
     // Given
-    const store = createSyncStore({ id: 1, label: 'a' }, { equals: (a, b) => a.id === b.id });
+    const store = createSyncStore('test', { id: 1, label: 'a' }, { equals: (a, b) => a.id === b.id });
     const listener = vi.fn();
     store.subscribe(listener);
 
@@ -182,7 +184,7 @@ describe('createSyncStore', () => {
 
   it('As a test author, resetting a store that already holds its initial value notifies nobody', () => {
     // Given
-    const store = createSyncStore('a');
+    const store = createSyncStore('test', 'a');
     const listener = vi.fn();
     store.subscribe(listener);
 

@@ -36,7 +36,7 @@ it('keeps the unavailable test wallet reachable without authenticating or enteri
   const walletOpens = recordEvents('dotli:wallet-open');
   const logins = recordEvents('dotli:truapi-login-request');
   const button = byId('auth-button', HTMLButtonElement);
-  expect(button.querySelector('.user-badge-experimental')).not.toBeNull();
+  expect(button.querySelector('[data-testid="user-badge-experimental"]')).not.toBeNull();
   expect(button.getAttribute('aria-controls')).toBe('td-wallet-view');
   button.click();
   await settleAll();
@@ -52,7 +52,7 @@ it('ignores a persisted browser-wallet opt-in in production and keeps normal Mob
   await settleAll();
   const walletOpens = recordEvents('dotli:wallet-open');
   const button = byId('auth-button', HTMLButtonElement);
-  expect(button.querySelector('.user-badge-experimental')).toBeNull();
+  expect(button.querySelector('[data-testid="user-badge-experimental"]')).toBeNull();
   button.click();
   await settleAll();
   expect(walletOpens.details).toEqual([]);

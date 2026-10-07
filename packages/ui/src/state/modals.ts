@@ -8,7 +8,15 @@
 import { blockingModalAbortError } from '../blocking-modal-queue.js';
 import { createSyncStore, type ReadableStore } from './create-store.js';
 
-export type ModalButtonVariant = 'cancel' | 'secondary' | 'primary';
+/**
+ * What an answer means, which decides how it is drawn. `danger` rejects the
+ * request (Deny, Cancel on a signing prompt) and is drawn destructive.
+ * `cancel` backs out of a prompt that is not a request to reject (Cancel on
+ * a password prompt) and is drawn plain. `secondary` is the
+ * lesser approval ("Always allow" beside "Allow once"). `primary` is the main
+ * approval: Enter submits it, and a password must be typed before it.
+ */
+export type ModalButtonVariant = 'cancel' | 'danger' | 'secondary' | 'primary';
 
 export interface ModalField {
   label: string;
@@ -37,10 +45,12 @@ export interface ModalPasswordInput {
 
 export interface ModalView<R extends string> {
   title: string;
-  /** SVG markup, rendered in `.permission-modal-icon`. */
+  /** SVG markup, rendered in the dialog's icon tile. */
   icon?: string;
   fields: ModalField[];
   notice?: string;
+  /** The notice's glyph: the reload arrow (an app reload, the default) or info. */
+  noticeIcon?: 'reload' | 'info';
   input?: ModalPasswordInput;
   /** Host-owned choices, rendered separately from the action footer. */
   choices?: ModalChoice<R>[];
@@ -74,7 +84,7 @@ interface Pending {
   detach: () => void;
 }
 
-const modals = createSyncStore<readonly ModalEntry[]>([]);
+const modals = createSyncStore<readonly ModalEntry[]>('modals', []);
 export const modalsStore: ReadableStore<readonly ModalEntry[]> = modals;
 
 const pending = new Map<number, Pending>();

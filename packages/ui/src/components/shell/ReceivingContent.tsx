@@ -1,18 +1,124 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { enableReceivingPush, receivingStatus, revokeReceiving, type ReceivingStatus } from '../../receiving.js';
-import { usePopover } from './Popover.js';
-import { SectionHeader } from './SettingsRows.js';
+import { usePopover } from '../floating/Popover.js';
+import { Button } from '../primitives/Button.js';
+import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
+import { StatusDot, type StatusTone } from '../primitives/StatusDot.js';
+import { Callout, InfoIcon, Row, Well } from '../primitives/Well.js';
+import s from './ReceivingContent.module.css';
 
-/** Host-wide receiving controls take effect immediately, not on Save & Apply. */
+export type ReceivingAction = 'enable' | 'revoke';
+
+/** What the receiving section shows: the last status read and any work under way. */
+export interface ReceivingView {
+  /** Null until a read succeeds, or after one failed. */
+  status: ReceivingStatus | null;
+  loading: boolean;
+  pending: ReceivingAction | null;
+  /** The failed read or action, empty when none. */
+  error: string;
+}
+
+function headline(view: ReceivingView): [StatusTone, string] {
+  if (view.loading) {
+    return ['info', 'Checking receiving status…'];
+  }
+  if (view.status === null) {
+    return ['err', 'Receiving status unavailable'];
+  }
+  if (!view.status.supported) {
+    return ['warn', 'Background receiving unavailable'];
+  }
+  return view.status.enabled ? ['ok', 'Web Push enabled'] : ['idle', 'Web Push not enabled'];
+}
+
+/**
+ * The Settings section for host-wide background receiving, drawn from a
+ * view: the explanation, the status with its refresh, and the enable and
+ * revoke actions.
+ */
+export function ReceivingSection(props: {
+  view: ReceivingView;
+  onEnable: () => void;
+  onRevoke: () => void;
+  onRefresh: () => void;
+}): JSX.Element {
+  const state = createMemo(() => headline(props.view));
+  const busy = createMemo(() => props.view.loading || props.view.pending !== null);
+  const detail = createMemo(() => {
+    const status = props.view.status;
+    if (status === null) {
+      return '';
+    }
+    return status.message || (status.supported ? '' : 'Web Push is not supported by this host or browser.');
+  });
+  return (
+    <Stack role="group" aria-labelledby="mode-receiving-label" testId="mode-receiving">
+      <SectionLabel text="Background receiving" id="mode-receiving-label" />
+      <Callout icon={<InfoIcon />}>
+        Web Push lets this host receive updates in the background. Browser or operating-system notification permission
+        only allows alerts; it does not grant a product consent to receive in the background. Product receiving consent
+        is separate. These controls apply immediately to this host, not only the selected product. Revoke all receiving
+        removes all locally known receiving registrations. It does not reset browser or operating-system notification
+        permission.
+      </Callout>
+      <Well layout="controls" testId="mode-receiving-status">
+        <Row
+          label={
+            <span class={s['state']} role="status" aria-live="polite" aria-busy={busy() ? 'true' : 'false'}>
+              <StatusDot tone={state()[0]} pulse={busy()} />
+              {state()[1]}
+            </span>
+          }
+        >
+          <Button size="sm" disabled={busy()} onClick={props.onRefresh} testId="mode-receiving-refresh">
+            Refresh
+          </Button>
+        </Row>
+      </Well>
+      <Show when={detail()}>
+        <p class={s['detail']} aria-live="polite" data-testid="mode-receiving-detail">
+          {detail()}
+        </p>
+      </Show>
+      <Show when={props.view.error}>
+        <p class={s['error']} role="alert" data-testid="mode-receiving-error">
+          {props.view.error}
+        </p>
+      </Show>
+      <div class={s['actions']}>
+        <Button
+          block
+          disabled={busy() || props.view.status?.supported !== true || props.view.status.enabled}
+          onClick={props.onEnable}
+          testId="mode-receiving-enable"
+        >
+          {props.view.pending === 'enable' ? 'Enabling Web Push…' : 'Enable Web Push'}
+        </Button>
+        <Button
+          block
+          variant="danger"
+          disabled={props.view.pending !== null}
+          onClick={props.onRevoke}
+          testId="mode-receiving-revoke"
+        >
+          {props.view.pending === 'revoke' ? 'Revoking receiving…' : 'Revoke all receiving'}
+        </Button>
+      </div>
+    </Stack>
+  );
+}
+
+/** Host-wide receiving controls take effect immediately, not on Save and apply. */
 export function ReceivingContent(): JSX.Element {
   const popover = usePopover();
   const [status, setStatus] = createSignal<ReceivingStatus | null>(null);
   const [loading, setLoading] = createSignal(false);
-  const [pending, setPending] = createSignal<'enable' | 'revoke' | null>(null);
+  const [pending, setPending] = createSignal<ReceivingAction | null>(null);
   const [statusError, setStatusError] = createSignal('');
   const [actionError, setActionError] = createSignal('');
   let active = false;
@@ -64,7 +170,7 @@ export function ReceivingContent(): JSX.Element {
     };
   });
 
-  const change = async (action: 'enable' | 'revoke'): Promise<void> => {
+  const change = async (action: ReceivingAction): Promise<void> => {
     if (untrack(pending) !== null) {
       return;
     }
@@ -96,76 +202,30 @@ export function ReceivingContent(): JSX.Element {
   };
 
   return (
-    <section aria-label="Background receiving">
-      <SectionHeader text="Background receiving" modifier="mode-popover-section--spaced" />
-      <p class="mode-radio-desc">
-        Web Push lets this host receive updates in the background. Browser or operating-system notification permission
-        only allows alerts; it does not grant a product consent to receive in the background. Product receiving consent
-        is separate.
-      </p>
-      <p class="mode-radio-desc">
-        These controls apply immediately to this host, not only the selected product. Revoke all receiving removes all
-        locally known receiving registrations. It does not reset browser or operating-system notification permission.
-      </p>
-      <div role="status" aria-live="polite" aria-busy={loading() || pending() !== null ? 'true' : 'false'}>
-        <p class="mode-cache-label">
-          {loading()
-            ? 'Checking receiving status…'
-            : status() === null
-              ? 'Receiving status unavailable'
-              : status()?.supported === false
-                ? 'Background receiving unavailable'
-                : status()?.enabled === true
-                  ? 'Web Push enabled'
-                  : 'Web Push not enabled'}
-        </p>
-        <Show when={status()}>
-          {current => (
-            <p class="mode-radio-desc">
-              {current().message || (current().supported ? '' : 'Web Push is not supported by this host or browser.')}
-            </p>
-          )}
-        </Show>
-      </div>
-      <Show when={statusError() || actionError()}>
-        <p class="mode-radio-desc" role="alert">
-          {[actionError(), statusError()].filter(Boolean).join(' ')}
-        </p>
-      </Show>
-      <div class="mode-cache-row">
-        <button
-          type="button"
-          class="mode-clear-btn"
-          disabled={loading() || pending() !== null || status()?.supported !== true || status()?.enabled === true}
-          onClick={() => {
-            void change('enable');
-          }}
-        >
-          {pending() === 'enable' ? 'Enabling Web Push…' : 'Enable Web Push'}
-        </button>
-      </div>
-      <div class="mode-cache-row">
-        <button
-          type="button"
-          class="mode-clear-btn"
-          disabled={pending() !== null}
-          onClick={() => {
-            void change('revoke');
-          }}
-        >
-          {pending() === 'revoke' ? 'Revoking receiving…' : 'Revoke all receiving'}
-        </button>
-        <button
-          type="button"
-          class="mode-clear-btn"
-          disabled={loading() || pending() !== null}
-          onClick={() => {
-            void refresh();
-          }}
-        >
-          Refresh status
-        </button>
-      </div>
-    </section>
+    <ReceivingSection
+      view={{
+        get status() {
+          return status();
+        },
+        get loading() {
+          return loading();
+        },
+        get pending() {
+          return pending();
+        },
+        get error() {
+          return [actionError(), statusError()].filter(Boolean).join(' ');
+        },
+      }}
+      onEnable={() => {
+        void change('enable');
+      }}
+      onRevoke={() => {
+        void change('revoke');
+      }}
+      onRefresh={() => {
+        void refresh();
+      }}
+    />
   );
 }

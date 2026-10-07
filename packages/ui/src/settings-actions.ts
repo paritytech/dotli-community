@@ -7,7 +7,7 @@
 // and eager: the host's boot calls wipeOriginState when a URL changes the
 // settings, before any island has loaded.
 
-import { formatAppVersion, getActiveAppManifest, getActiveRootManifest } from '@dotli/shared';
+import { formatAppVersion, getActiveAppManifest, getActiveRootManifest, log, markContinuation } from '@dotli/shared';
 import { isRemoteChainSupported } from '@dotli/protocol';
 import {
   getCacheSettings,
@@ -132,6 +132,7 @@ export async function applyAndReset(
     }
   } finally {
     await flushSharedModeWrites();
+    markContinuation('settings_change');
     window.location.reload();
   }
 }
@@ -205,9 +206,10 @@ async function deleteAllIndexedDBs(): Promise<void> {
           }),
       ),
     );
-    // eslint-disable-next-line no-restricted-syntax -- full-reset is best-effort; any surviving IDB just means partial baseline. Next boot will still see the new mode settings.
-  } catch {
-    /* best-effort IDB wipe */
+    // Best-effort: any surviving IDB just means a partial baseline. Next boot
+    // will still see the new mode settings.
+  } catch (err) {
+    log.warn('[dot.li settings] IndexedDB wipe failed:', err);
   }
 }
 
@@ -218,9 +220,9 @@ async function deleteAllCacheStorage(): Promise<void> {
     }
     const keys = await caches.keys();
     await Promise.all(keys.map(k => caches.delete(k)));
-    // eslint-disable-next-line no-restricted-syntax -- full-reset is best-effort; partial CacheStorage survival is acceptable.
-  } catch {
-    /* best-effort CacheStorage wipe */
+    // Best-effort: partial CacheStorage survival is acceptable.
+  } catch (err) {
+    log.warn('[dot.li settings] CacheStorage wipe failed:', err);
   }
 }
 
@@ -231,9 +233,9 @@ async function unregisterAllServiceWorkers(): Promise<void> {
     }
     const regs = await navigator.serviceWorker.getRegistrations();
     await Promise.all(regs.map(r => r.unregister()));
-    // eslint-disable-next-line no-restricted-syntax -- full-reset is best-effort; surviving SW registration will be replaced on next install.
-  } catch {
-    /* best-effort SW unregister */
+    // Best-effort: a surviving registration is replaced on next install.
+  } catch (err) {
+    log.warn('[dot.li settings] service worker unregister failed:', err);
   }
 }
 
@@ -332,10 +334,10 @@ export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
     ['Site', window.location.host],
     ['Build', `${version} (${shortSha(sha)})`],
     ['Network', NETWORK_NAME_TO_SERVICES_CONFIG[network].label],
-    ['Network Transport', backendLabel(backend)],
+    ['Transport', backendLabel(backend)],
   ];
 
-  // Sub-row attached to the Network Transport row:
+  // Sub-row attached to the Transport row:
   //   - smoldot-shared-worker: "Worker" label and build SHA. The SharedWorker
   //     is a cached script. If it's running an older bundle than the current
   //     page, this SHA diverges from Build, which is the tell-tale for a stale
@@ -455,7 +457,8 @@ export async function queryFinalizedBlock(genesisHash: string): Promise<number |
     } finally {
       client.destroy();
     }
-  } catch {
+  } catch (err) {
+    log.warn('[dot.li settings] finalized block query failed:', err);
     return null;
   }
 }

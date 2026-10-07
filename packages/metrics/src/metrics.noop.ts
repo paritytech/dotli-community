@@ -46,6 +46,10 @@ function open(_name: string, _opts?: OpenSpanOptions): SpanHandle {
   return inertSpan;
 }
 
+export function sentrySpanOf(_handle: SpanHandle): unknown {
+  return undefined;
+}
+
 let resolutionId: string | null = null;
 
 // Storage is kept even here: the host reads the id back to build the protocol

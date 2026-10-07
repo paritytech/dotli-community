@@ -8,7 +8,8 @@
 // retained as raw text so the current validator can gate every launch.
 
 import type { Network } from '@dotli/config';
-import { m, captureException, spans as S } from '@dotli/metrics';
+import { isExpectedDbError } from './db.js';
+import { m, captureException, recordExpected, spans as S } from '@dotli/metrics';
 import { isValidDotLabel, log } from '@dotli/shared';
 
 const DB_NAME = 'dotli-installed-executables';
@@ -100,6 +101,26 @@ function transactionCompletion(tx: IDBTransaction, action: string): Promise<void
   });
 }
 
+type CacheAction = 'write' | 'clear' | 'evict';
+
+// Sentry capture is throttled to once per action per page: a cache stuck in
+// one failure reports identically on every access.
+const reportedActions = new Set<CacheAction>();
+
+function report(action: CacheAction, err: unknown): void {
+  const step = `installed_executable_cache_${action}`;
+  if (isExpectedDbError(err)) {
+    recordExpected(err, { flow: 'storage', step });
+    return;
+  }
+  log.error(`[dot.li installed-executable-cache] ${action} error:`, err);
+  if (reportedActions.has(action)) {
+    return;
+  }
+  reportedActions.add(action);
+  captureException(err, { flow: 'storage', step, tags: { kind: `${step}_error` } });
+}
+
 export async function getCachedInstalledExecutable(
   label: string,
   network: Network,
@@ -183,28 +204,6 @@ export function getRecentLabels(): string[] {
   }
 }
 
-/**
- * Record a label as recently visited in this origin's mirror.
- *
- * Call this only once a label has actually resolved. Writing on navigation
- * intent persisted typos as pills that reproduce "can't be reached" forever.
- */
-export function addRecentLabel(label: string): void {
-  if (!isValidDotLabel(label)) {
-    return;
-  }
-  writeRecentLabels(withRecentLabel(getRecentLabels(), label));
-}
-
-/** Drop a label from the recent list. Used by the pill's remove affordance. */
-export function removeRecentLabel(label: string): void {
-  const recent = getRecentLabels();
-  if (!recent.includes(label)) {
-    return;
-  }
-  writeRecentLabels(recent.filter(l => l !== label));
-}
-
 export function writeRecentLabels(labels: string[]): void {
   try {
     localStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));
@@ -239,8 +238,7 @@ export async function setCachedInstalledExecutable(
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li installed-executable-cache] write error:', err);
-    captureException(err, { kind: 'installed_executable_cache_write_error' });
+    report('write', err);
   }
 }
 
@@ -262,8 +260,7 @@ export async function clearInstalledExecutableCache(): Promise<void> {
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li installed-executable-cache] clear error:', err);
-    captureException(err, { kind: 'installed_executable_cache_clear_error' });
+    report('clear', err);
   }
 }
 
@@ -283,8 +280,7 @@ export async function evictCachedInstalledExecutable(
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li installed-executable-cache] evict error:', err);
-    captureException(err, { kind: 'installed_executable_cache_evict_error' });
+    report('evict', err);
   }
 }
 

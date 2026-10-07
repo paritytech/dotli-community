@@ -11,7 +11,7 @@
  * position from this box.
  *
  * Every value carries a px fallback because these are set as inline styles.
- * Unlike the rules in `styles.css`, they do not ship with the file that defines
+ * Unlike the rules in `global.css`, they do not ship with the file that defines
  * the tokens, so a stylesheet that has not applied yet must not break layout.
  */
 
@@ -19,7 +19,8 @@ const SAFE_TOP = 'var(--safe-top, 0px)';
 const SAFE_BOTTOM = 'var(--safe-bottom, 0px)';
 const SAFE_LEFT = 'var(--safe-left, 0px)';
 const SAFE_RIGHT = 'var(--safe-right, 0px)';
-const TOPBAR_HEIGHT = 'var(--topbar-height, 56px)';
+const CONTENT_TOP = 'var(--content-top, 68px)';
+const CONTENT_BOTTOM = 'var(--content-bottom, 0px)';
 
 export interface ProductIframeBox {
   top: string;
@@ -30,12 +31,14 @@ export interface ProductIframeBox {
 
 /** Build the product iframe's box, reserving the space it must not cover. */
 export function productIframeBox(opts: { topbarOffset: boolean }): ProductIframeBox {
-  // `--topbar-height` already includes the top inset, so one term covers both.
-  const top = opts.topbarOffset ? TOPBAR_HEIGHT : SAFE_TOP;
+  // The content edges already include the insets on the bar's side (the top
+  // on desktop, the bottom on phones), so one term per edge covers both.
+  const top = opts.topbarOffset ? CONTENT_TOP : SAFE_TOP;
+  const bottom = opts.topbarOffset ? CONTENT_BOTTOM : SAFE_BOTTOM;
   return {
     top,
     left: SAFE_LEFT,
     width: `calc(100% - ${SAFE_LEFT} - ${SAFE_RIGHT})`,
-    height: `calc(100dvh - ${top} - ${SAFE_BOTTOM})`,
+    height: `calc(100dvh - ${top} - ${bottom})`,
   };
 }

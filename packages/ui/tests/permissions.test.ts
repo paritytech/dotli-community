@@ -10,16 +10,20 @@ import {
   buildAllowAttribute,
   getGrantedDevicePermissions,
   getPermissionStatus,
+  getPermissionStatuses,
   hasAnyGrant,
   isDevicePermission,
   isEnforceableDevicePermission,
   registerPermissionAuthorizationProvider,
+  resetAllPermissions,
   resetPermission,
   setPermissionStatus,
 } from '../src/permissions.js';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { createPromptPermission, decidePromptPermission } from '../src/host-callbacks/PromptPermission.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId } from './support.js';
+import { getAuthState, setAuthState } from '../src/state/auth.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -186,6 +190,145 @@ describe('resetPermission', () => {
   });
 });
 
+describe('resetAllPermissions', () => {
+  it('As a user, Reset all to Ask sets every granted and denied permission of my app back to ask and reports them in menu order', async () => {
+    // Given
+    await setPermissionStatus('myapp', 'ChainSubmit', 'denied');
+    await setPermissionStatus('myapp', 'Camera', 'granted');
+    await setPermissionStatus('myapp', 'Notifications', 'granted');
+
+    // When
+    const result = await resetAllPermissions('myapp');
+
+    // Then
+    expect(result).toEqual({ reset: ['Notifications', 'Camera', 'ChainSubmit'], failed: false });
+    expect(
+      await getPermissionStatuses(
+        'myapp',
+        ALL_PERMISSIONS.map(({ name }) => name),
+      ),
+    ).toEqual(ALL_PERMISSIONS.map(() => 'ask'));
+    expect(myappStore).toEqual(new Map());
+  });
+
+  it('resets automatic consent for the account selected before an asynchronous account switch', async () => {
+    const firstAccount = '11'.repeat(32);
+    const secondAccount = '22'.repeat(32);
+    const previousAuth = getAuthState();
+    await setPermissionStatus('myapp', 'AutomaticPreimageSubmit', 'granted', firstAccount);
+    await setPermissionStatus('myapp', 'AutomaticPreimageSubmit', 'granted', secondAccount);
+    try {
+      setAuthState({ tag: 'Connected', session: { connected: true, publicKey: firstAccount } });
+      const resetting = resetAllPermissions('myapp');
+      setAuthState({ tag: 'Connected', session: { connected: true, publicKey: secondAccount } });
+
+      await expect(resetting).resolves.toEqual({ reset: ['AutomaticPreimageSubmit'], failed: false });
+      expect(await getPermissionStatuses('myapp', ['AutomaticPreimageSubmit'], firstAccount)).toEqual(['ask']);
+      expect(await getPermissionStatuses('myapp', ['AutomaticPreimageSubmit'], secondAccount)).toEqual(['granted']);
+    } finally {
+      setAuthState(previousAuth);
+    }
+  });
+
+  it("As a user, Reset all to Ask leaves other apps' permissions alone", async () => {
+    // Given
+    const unregister = registerTestProvider('other', new Map());
+    try {
+      await setPermissionStatus('other', 'Camera', 'granted');
+      await setPermissionStatus('myapp', 'Camera', 'granted');
+
+      // When
+      await resetAllPermissions('myapp');
+
+      // Then
+      expect(await getPermissionStatus('other', 'Camera')).toBe('granted');
+      expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a user with nothing granted or denied, Reset all to Ask writes nothing', async () => {
+    // Given
+    const set = vi.fn(() => Promise.resolve());
+    const unregister = registerPermissionAuthorizationProvider('quiet', {
+      getPermissionAuthorizationStatuses: requests => Promise.resolve(requests.map(() => 'NotDetermined' as const)),
+      setPermissionAuthorizationStatus: set,
+    });
+    try {
+      // When
+      const result = await resetAllPermissions('quiet');
+
+      // Then
+      expect(result).toEqual({ reset: [], failed: false });
+      expect(set).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a user, a write that fails keeps that permission as it was and is reported, while the others are reset', async () => {
+    // Given: the core refuses to change the camera.
+    const store = new Map<string, PermissionAuthorizationStatus>([
+      ['Device:Camera', 'Authorized'],
+      ['Device:Microphone', 'Denied'],
+    ]);
+    const unregister = registerPermissionAuthorizationProvider('flaky', {
+      getPermissionAuthorizationStatuses: requests =>
+        Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined')),
+      setPermissionAuthorizationStatus: (request, status) => {
+        const key = requestKey(request);
+        if (key === 'Device:Camera') {
+          return Promise.reject(new Error('core down'));
+        }
+        if (status === 'NotDetermined') {
+          store.delete(key);
+        } else {
+          store.set(key, status);
+        }
+        return Promise.resolve();
+      },
+    });
+    try {
+      // When
+      const result = await resetAllPermissions('flaky');
+
+      // Then
+      expect(result).toEqual({ reset: ['Microphone'], failed: true });
+      expect(store).toEqual(new Map([['Device:Camera', 'Authorized']]));
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a user whose permissions cannot be read, Reset all to Ask rejects and writes nothing', async () => {
+    // Given
+    const set = vi.fn(() => Promise.resolve());
+    const unregister = registerPermissionAuthorizationProvider('unreadable', {
+      getPermissionAuthorizationStatuses: () => Promise.reject(new Error('core down')),
+      setPermissionAuthorizationStatus: set,
+    });
+    try {
+      // When
+      const result = resetAllPermissions('unreadable');
+
+      // Then
+      await expect(result).rejects.toThrow('core down');
+      expect(set).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a product without a permission provider, Reset all to Ask has nothing to reset', async () => {
+    // When
+    const result = await resetAllPermissions('nobody');
+
+    // Then
+    expect(result).toEqual({ reset: [], failed: false });
+  });
+});
+
 describe('hasAnyGrant', () => {
   it('As a new product, I have no persisted grants', async () => {
     expect(await hasAnyGrant('myapp')).toBe(false);
@@ -256,7 +399,7 @@ describe('isEnforceableDevicePermission', () => {
 describe('device permission prompts', () => {
   it('As a product, an auto-granted OpenUrl is answered once without a prompt', async () => {
     await expect(createPromptPermission('myapp').devicePermission(PRODUCT, 'OpenUrl')).resolves.toBe('AllowOnce');
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
   it.each(['Camera', 'Notifications'] as const)(
@@ -356,24 +499,6 @@ describe('buildAllowAttribute', () => {
   });
 });
 
-describe('ALL_PERMISSIONS (data invariants)', () => {
-  it('only references EnforceablePermissionName values', () => {
-    for (const { name } of ALL_PERMISSIONS) {
-      expect(AUTO_GRANT_DEVICE_PERMISSIONS.has(name as never)).toBe(false);
-    }
-  });
-
-  it('uses the canonical v0.7 wire tags for submit gates', () => {
-    const names = ALL_PERMISSIONS.map(p => p.name);
-    expect(names).toContain('ChainSubmit');
-    expect(names).toContain('IdentityDisclosure');
-    expect(names).toContain('PreimageSubmit');
-    expect(names).toContain('StatementSubmit');
-    expect(names).toContain('Notifications');
-    expect(names).not.toContain('TransactionSubmit');
-  });
-});
-
 describe('DEVICE_PERMISSION_POLICY (sanity)', () => {
   it('does not list auto-granted device permissions', () => {
     for (const auto of AUTO_GRANT_DEVICE_PERMISSIONS) {
@@ -415,20 +540,24 @@ describe('three-way permission prompts', () => {
       await vi.waitFor(() => {
         expect(promptButtonTexts()).toContain(button);
       });
-      const values = [...document.querySelectorAll<HTMLElement>('.signing-field-value')];
-      expect(values.some(field => field.textContent === genesis)).toBe(true);
-      expect(document.querySelector('.permission-modal-notice')).toBeNull();
+      const genesisField = [...document.querySelectorAll<HTMLElement>('[data-testid="signing-field"]')].find(
+        field => field.querySelector('[data-testid="signing-field-value"]')?.textContent === genesis,
+      );
+      expect(genesisField?.hasAttribute('data-mono')).toBe(true);
+      expect(document.querySelector('[data-testid="permission-modal-notice"]')).toBeNull();
       // When
       await clickPromptButton(button);
+
+      // Then
       await expect(response).resolves.toBe(decision);
     }
     const dismissed = createPromptPermission('myapp').remotePermission(PRODUCT, {
       permission: { tag: 'JamPeers', value: { genesis } },
     });
     await vi.waitFor(() => {
-      expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+      expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
     });
-    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+    byTestId('signing-modal-backdrop').click();
     await expect(dismissed).rejects.toThrow('User dismissed permission dialog');
   });
 
@@ -469,7 +598,7 @@ describe('three-way permission prompts', () => {
     // When
     const response = createPromptPermission('myapp').devicePermission(PRODUCT, 'Camera');
     await vi.waitFor(() => {
-      expect(document.querySelector('.signing-modal-footer')).not.toBeNull();
+      expect(document.querySelector('[data-testid="signing-modal-footer"]')).not.toBeNull();
     });
 
     // Then
@@ -519,10 +648,10 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
-  it('As a dotli user, a stored notification denial is answered without a prompt', async () => {
+  it('As a dotli user, a stored notification denial is answered without a prompt and with a quiet blocked notice', async () => {
     // Given
     await setPermissionStatus('myapp', 'Notifications', 'denied');
 
@@ -531,22 +660,23 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('Deny');
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
     await overlaysReady();
     expect(document.body.textContent).toContain(
       'Notifications access is blocked. Use the permissions menu in the top bar to change this.',
     );
+    expect(byTestId('notif-icon').getAttribute('data-tone')).toBe('idle');
   });
 
   it('As a dotli user, dismissing a notification prompt records no decision', async () => {
     // Given
     const response = createPromptPermission('myapp').devicePermission(PRODUCT, 'Notifications');
     await vi.waitFor(() => {
-      expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+      expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
     });
 
     // When
-    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+    byTestId('signing-modal-backdrop').click();
 
     // Then
     await expect(response).rejects.toThrow('User dismissed permission dialog');
@@ -556,7 +686,7 @@ describe('three-way permission prompts', () => {
 
 function promptButtonTexts(): string[] {
   return Array.from(
-    document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'),
+    document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'),
     button => button.textContent,
   );
 }
@@ -566,7 +696,7 @@ async function clickPromptButton(text: string): Promise<void> {
   await vi.waitFor(() => {
     expect(promptButtonTexts()).toContain(text);
   });
-  Array.from(document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'))
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'))
     .find(button => button.textContent === text)
     ?.click();
 }

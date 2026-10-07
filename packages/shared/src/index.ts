@@ -18,13 +18,14 @@ export {
   setChatCapability,
   type ChatAvailabilityDetail,
 } from './chat-capability.js';
+export { markContinuation, peekContinuation, takeContinuation, type Continuation } from './continuation.js';
 export { isMobileDevice } from './device.js';
 export { dotNsUrl } from './dotns-url.js';
 export { endpointHost, gatewayUnreachable } from './error-copy.js';
 export { errorName, fullErrorChain, serializeError } from './errors.js';
 export { isExecutableKind } from './executables.js';
 export { fromHex, toHex } from './hex.js';
-export { escapeHtml, isValidDotLabel, validateDotLabel, type DotLabelResult } from './html.js';
+export { isValidDotLabel, validateDotLabel, type DotLabelResult } from './html.js';
 export { bindLogSink, log, type LogLevel } from './log.js';
 export { getMimeType } from './mime.js';
 export { dur, elapsed } from './perf.js';

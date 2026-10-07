@@ -4,8 +4,9 @@
 // IPFS gateway utilities.
 
 import { getActiveServicesConfig } from '@dotli/config';
+import { endpointHost } from '@dotli/shared';
 
-function defaultGateway(): string {
+export function defaultGateway(): string {
   const [gateway] = getActiveServicesConfig().bulletin.ipfsGateways;
   if (gateway === undefined) {
     throw new Error('No IPFS gateway configured for the active network.');
@@ -32,7 +33,7 @@ export async function fetchFromIpfs(
   });
 
   if (!response.ok) {
-    throw new Error(`IPFS fetch failed: HTTP ${String(response.status)} ${response.statusText}`);
+    throw new Error(`IPFS fetch failed: HTTP ${httpStatus(response)} from ${gatewayHost(gateway)} for ${cid}`);
   }
 
   const contentType = response.headers.get('content-type') ?? undefined;
@@ -56,8 +57,17 @@ export async function fetchCarFromIpfs(cid: string, gateway: string = defaultGat
   const response = await fetch(url);
 
   if (!response.ok) {
-    throw new Error(`IPFS CAR fetch failed: HTTP ${String(response.status)} ${response.statusText}`);
+    throw new Error(`IPFS CAR fetch failed: HTTP ${httpStatus(response)} from ${gatewayHost(gateway)} for ${cid}`);
   }
 
   return new Uint8Array(await response.arrayBuffer());
+}
+
+/** The host part of a gateway URL, which is what tells two gateways apart in a report. */
+export function gatewayHost(gateway: string): string {
+  return endpointHost(gateway) ?? gateway;
+}
+
+function httpStatus(response: Response): string {
+  return response.statusText === '' ? String(response.status) : `${String(response.status)} ${response.statusText}`;
 }

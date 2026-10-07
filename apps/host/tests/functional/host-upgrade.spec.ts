@@ -243,7 +243,7 @@ test.describe('host service worker contract upgrades', () => {
 
       fixture.publishWorker();
       await updateWorker(page);
-      await expect(page.locator('.landing')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('landing')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('#legacy-host')).toHaveCount(0);
       expect(page.url()).toBe(url);
       expect(navigations).toBe(1);
@@ -282,7 +282,7 @@ test.describe('host service worker contract upgrades', () => {
       });
       await page.goto(fixture.origin);
       await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
-      await expect(page.locator('.landing')).toBeVisible();
+      await expect(page.getByTestId('landing')).toBeVisible();
       expect(navigations).toBe(1); // Fresh installation must not reload the page.
       await page.reload(); // Begin the update with a controlled, current host.
       await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
@@ -324,7 +324,7 @@ test.describe('host service worker contract upgrades', () => {
       await expectUserData(page);
 
       await Promise.all([page.waitForEvent('framenavigated', frame => frame === page.mainFrame()), reload.click()]);
-      await expect(page.locator('.landing')).toBeVisible();
+      await expect(page.getByTestId('landing')).toBeVisible();
       expect(navigations).toBe(beforeUpdate + 1);
       await expect
         .poll(() =>

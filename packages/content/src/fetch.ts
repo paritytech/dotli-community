@@ -27,7 +27,7 @@ export type StatusCallback = (status: string) => void;
 export type BitswapBlockSource = (cid: string) => Promise<Uint8Array>;
 
 import { isCarFile, parseIpfsResponse, walkUnixFsDag, type ArchiveFiles, type BlockSource } from './archive.js';
-import { fetchFromIpfs, fetchCarFromIpfs } from './ipfs.js';
+import { defaultGateway, fetchFromIpfs, fetchCarFromIpfs, gatewayHost } from './ipfs.js';
 import { assertBlockMatchesCid, rootVerifyingBlockSource } from './verify.js';
 
 // CID codec constants
@@ -44,9 +44,12 @@ async function fetchViaBitswapRpc(
   onStatus?: StatusCallback,
 ): Promise<FetchResult> {
   const rootCid = CID.parse(cidString);
-  log.warn(
-    `[dot.li fetch] bitswap-rpc: codec=0x${rootCid.code.toString(16)}, hash=0x${rootCid.multihash.code.toString(16)}, version=${String(rootCid.version)}`,
-  );
+  log.event(`Fetching ${cidString} via bitswap`, {
+    flow: 'content',
+    codec: `0x${rootCid.code.toString(16)}`,
+    hash: `0x${rootCid.multihash.code.toString(16)}`,
+    version: rootCid.version,
+  });
 
   let blockCount = 0;
   const tracedSource: BlockSource = async (cid: CID) => {
@@ -141,14 +144,18 @@ async function fetchViaGateway(cidString: string, onStatus?: StatusCallback): Pr
 /** The gateway read itself, without metrics. */
 async function readViaGateway(cidString: string, onStatus?: StatusCallback): Promise<FetchResult> {
   const cid = CID.parse(cidString);
+  const gateway = defaultGateway();
+  const host = gatewayHost(gateway);
   if (cid.code === CODEC_DAG_PB) {
     onStatus?.('Fetching archive from IPFS gateway...');
-    log.warn(`[dot.li fetch] Gateway: requesting CAR (codec dag-pb)...`);
+    log.event(`Requesting CAR of ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();
-    const carBuffer = await fetchCarFromIpfs(cidString);
-    log.warn(
-      `[dot.li fetch] Gateway CAR: fetched ${String(Math.round(carBuffer.length / 1024))} KB in ${dur(gatewayStart)}`,
-    );
+    const carBuffer = await fetchCarFromIpfs(cidString, gateway);
+    log.event(`Fetched ${String(Math.round(carBuffer.length / 1024))} KB CAR from ${host} in ${dur(gatewayStart)}`, {
+      flow: 'content',
+      gateway: host,
+      bytes: carBuffer.length,
+    });
     onStatus?.('Parsing content...');
     // Untrusted transport: bind the CAR to the on-chain CID — its declared
     // root must match `cid` and every block is hash-verified.
@@ -157,12 +164,17 @@ async function readViaGateway(cidString: string, onStatus?: StatusCallback): Pro
   }
   if (cid.code === CODEC_RAW) {
     onStatus?.('Fetching content via IPFS gateway...');
-    log.warn(`[dot.li fetch] Gateway: plain GET (codec raw)...`);
+    log.event(`Requesting raw block ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();
-    const { data } = await fetchFromIpfs(cidString);
-    log.warn(`[dot.li fetch] Gateway: fetched ${String(Math.round(data.length / 1024))} KB in ${dur(gatewayStart)}`);
+    const { data } = await fetchFromIpfs(cidString, gateway);
+    log.event(`Fetched ${String(Math.round(data.length / 1024))} KB from ${host} in ${dur(gatewayStart)}`, {
+      flow: 'content',
+      gateway: host,
+      bytes: data.length,
+    });
     // Untrusted transport: the bytes must hash to the requested raw CID.
     assertBlockMatchesCid(cid, data);
+    log.event(`Block ${cidString} verified`, { flow: 'content', bytes: data.length });
     return { type: 'single', content: data };
   }
   throw new Error(`Unsupported CID codec for gateway fetch: 0x${cid.code.toString(16)} (cid=${cidString})`);
@@ -207,7 +219,6 @@ export async function fetchArchive(
         ? await fetchViaBitswapRpc(cidString, blockSource, onStatus)
         : await fetchViaGateway(cidString, onStatus);
     performance.mark('dotli:fetch:end');
-    log.warn(`[dot.li fetch] Content fetched via ${method}`);
     measureContentSize(result);
     stopFetch();
     const root = CID.parse(cidString).multihash;
@@ -217,9 +228,7 @@ export async function fetchArchive(
   } catch (err) {
     performance.mark('dotli:fetch:end');
     stopFetch();
-    if (err instanceof Error) {
-      log.error(`[dot.li fetch] ${method} failed: ${err.message}`);
-    }
+    log.child({ flow: 'content' }).error(`[dot.li fetch] ${method} failed for ${cidString}:`, err);
     throw err;
   }
 }
@@ -256,6 +265,6 @@ function toFetchResult(files: ArchiveFiles): FetchResult {
   if (keys.length === 1 && index !== undefined) {
     return { type: 'single', content: index };
   }
-  log.warn(`[dot.li] Loaded archive with ${String(keys.length)} file(s):`, keys);
+  log.event(`Archive has ${String(keys.length)} files`, { flow: 'content', files: keys.length });
   return { type: 'archive', files };
 }

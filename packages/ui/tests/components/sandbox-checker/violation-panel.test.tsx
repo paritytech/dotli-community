@@ -7,9 +7,10 @@ import { mountViolationPanel } from '../../../src/components/sandbox-checker/mou
 import { attachProductFrame, resetProductFrameLayout, setChatWidth } from '../../../src/product-frame-layout.js';
 import { resetStores, settle } from '../../helpers/solid.js';
 import { setTopbarPresent } from '../../../src/state/topbar.js';
-import { byId, query } from '../../support.js';
+import { byId, byTestId } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
 
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))';
+const CLEAR_OF_BAR_HEIGHT = 'calc(100dvh - var(--content-top, 68px) - var(--content-bottom, 0px))';
 
 let iframe: HTMLIFrameElement;
 /**
@@ -54,9 +55,9 @@ describe('sandbox checker violation panel', () => {
     await settle();
 
     // Then
-    expect(panel().classList.contains('visible')).toBe(false);
-    expect(panel().querySelector('.sc-badge')?.textContent).toBe('0');
-    expect(panel().querySelector('.sc-label')?.textContent).toBe('API Violations');
+    expect(panel().hasAttribute('data-visible')).toBe(false);
+    expect(byTestId('sc-badge', panel()).textContent).toBe('0');
+    expect(byTestId('sc-label', panel()).textContent).toBe('API Violations');
 
     // When
     violation({
@@ -74,14 +75,14 @@ describe('sandbox checker violation panel', () => {
     await settle();
 
     // Then
-    expect(panel().classList.contains('visible')).toBe(true);
-    expect(panel().querySelector('.sc-badge')?.textContent).toBe('2');
-    const entries = [...panel().querySelectorAll('.sc-entry')];
+    expect(panel().hasAttribute('data-visible')).toBe(true);
+    expect(byTestId('sc-badge', panel()).textContent).toBe('2');
+    const entries = [...panel().querySelectorAll('[data-testid="sc-entry"]')];
     expect(entries).toHaveLength(2);
-    expect(entries[0]?.querySelector('.sc-api')?.textContent).toBe('localStorage.getItem');
-    expect(entries[0]?.querySelector('.sc-details')?.textContent).toBe('key=x n=1');
-    expect(entries[0]?.querySelector('.sc-time')?.textContent).toBe(new Date(0).toLocaleTimeString());
-    expect(entries[1]?.querySelector('.sc-details')).toBeNull();
+    expect(byTestId('sc-api', nth(entries, 0)).textContent).toBe('localStorage.getItem');
+    expect(byTestId('sc-details', nth(entries, 0)).textContent).toBe('key=x n=1');
+    expect(byTestId('sc-time', nth(entries, 0)).textContent).toBe(new Date(0).toLocaleTimeString());
+    expect(entries[1]?.querySelector('[data-testid="sc-details"]')).toBeNull();
   });
 
   it('As a dotli developer, markup in a violation shows as text', async () => {
@@ -95,11 +96,11 @@ describe('sandbox checker violation panel', () => {
     await settle();
 
     // Then
-    const entry = query(panel(), '.sc-entry', Element);
+    const entry = byTestId('sc-entry', panel(), Element);
     expect(entry.querySelector('img')).toBeNull();
     expect(entry.querySelector('b')).toBeNull();
-    expect(entry.querySelector('.sc-api')?.textContent).toBe('<img src=x onerror=alert(1)>');
-    expect(entry.querySelector('.sc-details')?.textContent).toBe('a=<b>bold</b>');
+    expect(byTestId('sc-api', entry).textContent).toBe('<img src=x onerror=alert(1)>');
+    expect(byTestId('sc-details', entry).textContent).toBe('a=<b>bold</b>');
   });
 
   it('As a dotli developer, messages from other windows or of other types are ignored', async () => {
@@ -110,8 +111,8 @@ describe('sandbox checker violation panel', () => {
     await settle();
 
     // Then
-    expect(panel().querySelectorAll('.sc-entry')).toHaveLength(0);
-    expect(panel().classList.contains('visible')).toBe(false);
+    expect(panel().querySelectorAll('[data-testid="sc-entry"]')).toHaveLength(0);
+    expect(panel().hasAttribute('data-visible')).toBe(false);
   });
 
   it('As a dotli developer, showing, collapsing and expanding the panel resizes the app frame', async () => {
@@ -126,30 +127,30 @@ describe('sandbox checker violation panel', () => {
       timestamp: 0,
     });
     await settle();
-    const toggle = query(panel(), '.sc-toggle', HTMLButtonElement);
+    const toggle = byTestId('sc-toggle', panel(), HTMLButtonElement);
 
     // Then
     expect(toggle.getAttribute('aria-label')).toBe('Toggle panel');
     expect(toggle.textContent).toBe('▼');
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 180px)`);
 
     // When
     fireEvent.click(toggle);
     await settle();
 
     // Then
-    expect(panel().classList.contains('collapsed')).toBe(true);
+    expect(panel().hasAttribute('data-collapsed')).toBe(true);
     expect(toggle.textContent).toBe('▲');
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 32px)`);
 
     // When: opening chat keeps the reservation
     setChatWidth(360);
 
     // Then
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 32px)`);
 
     // When: resizing while collapsed does nothing
-    const handle = query(panel(), '.sc-resize-handle');
+    const handle = byTestId('sc-resize-handle', panel());
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 100 });
     fireEvent.pointerMove(handle, { pointerId: 1, clientY: 100 });
     await settle();
@@ -162,7 +163,7 @@ describe('sandbox checker violation panel', () => {
     await settle();
 
     // Then
-    expect(panel().classList.contains('collapsed')).toBe(false);
+    expect(panel().hasAttribute('data-collapsed')).toBe(false);
     expect(toggle.textContent).toBe('▼');
   });
 
@@ -178,7 +179,7 @@ describe('sandbox checker violation panel', () => {
       timestamp: 0,
     });
     await settle();
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 180px)`);
 
     // When
     dispose();
@@ -193,7 +194,7 @@ describe('sandbox checker violation panel', () => {
 
     // Then
     expect(document.getElementById('sandbox-checker-panel')).toBeNull();
-    expect(frame['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(frame['height']).toBe(CLEAR_OF_BAR_HEIGHT);
   });
 
   it('As a dotli developer, dragging the handle resizes the panel within 40px and 80% of the viewport, until the drag ends or is cancelled', async () => {
@@ -205,7 +206,7 @@ describe('sandbox checker violation panel', () => {
       timestamp: 0,
     });
     await settle();
-    const handle = query(panel(), '.sc-resize-handle');
+    const handle = byTestId('sc-resize-handle', panel());
 
     // When
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 600 });
@@ -260,7 +261,7 @@ describe('sandbox checker violation panel', () => {
       timestamp: 0,
     });
     await settle();
-    const handle = query(panel(), '.sc-resize-handle');
+    const handle = byTestId('sc-resize-handle', panel());
 
     // When
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 100 });
@@ -291,11 +292,11 @@ describe('sandbox checker violation panel', () => {
     await settle();
 
     // Then
-    const entries = [...panel().querySelectorAll('.sc-entry')];
+    const entries = [...panel().querySelectorAll('[data-testid="sc-entry"]')];
     expect(entries).toHaveLength(500);
-    expect(entries[0]?.querySelector('.sc-api')?.textContent).toBe('api100');
-    expect(entries[499]?.querySelector('.sc-api')?.textContent).toBe('api599');
-    expect(panel().querySelector('.sc-badge')?.textContent).toBe('600');
+    expect(byTestId('sc-api', nth(entries, 0)).textContent).toBe('api100');
+    expect(byTestId('sc-api', nth(entries, 499)).textContent).toBe('api599');
+    expect(byTestId('sc-badge', panel()).textContent).toBe('600');
   });
 
   it('As a dotli developer, each new violation forces at most one layout and leaves an unchanged app frame alone', async () => {
@@ -309,7 +310,7 @@ describe('sandbox checker violation panel', () => {
       return 180;
     });
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) {
-      if (!this.classList.contains('sc-log')) {
+      if (this.dataset['testid'] !== 'sc-log') {
         return 0;
       }
       log.push('read');
@@ -342,7 +343,7 @@ describe('sandbox checker violation panel', () => {
       await settle();
     };
     await send(0);
-    const logEl = query(panel(), '.sc-log');
+    const logEl = byTestId('sc-log', panel());
     let top = 0;
     Object.defineProperty(logEl, 'scrollTop', {
       configurable: true,
@@ -377,6 +378,6 @@ describe('sandbox checker violation panel', () => {
     expect(Math.max(...layouts)).toBe(1);
     expect(heightWrites).toBe(0);
     expect(top).toBe(500);
-    expect(style['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 180px)`);
   });
 });

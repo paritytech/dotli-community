@@ -12,11 +12,12 @@
 import { setBlockSource } from './network-monitor.js';
 import { createBlockSource } from './block-source.js';
 import { startNetworkStore } from './state/network.js';
+import { initNetworkHealth, setNetworkHealthWatched } from './state/network-health.js';
 import { initChatPanelState } from './state/chat-panel.js';
 import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
-import { recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
+import { getTopbarState, recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
 import { initTheme } from './theme-controller.js';
 
 export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator()): void {
@@ -28,10 +29,11 @@ export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBl
   // Theme preference (the toggle itself is components/shell/ThemeToggle.tsx)
   initTheme();
 
-  // The chains the network popover (an island) watches, and the store it
-  // renders, from boot on.
+  // The chains the network popover (an island) watches, the store it
+  // renders, and the health the status capsule shows, from boot on.
   setBlockSource(createBlockSource());
   startNetworkStore();
+  initNetworkHealth();
 
   // The product chat's state: its button and docked panel are islands.
   initChatPanelState();
@@ -54,11 +56,22 @@ function scheduleIdle(callback: () => void): void {
 }
 
 /**
-
  * Reveal the network button. The host calls this once a product is on
  * screen, so the icon appears with the app rather than during the load.
- * Writes the store the chains island renders.
+ * Writes the store the chains island renders, and starts or stops the
+ * health watch the status capsule reads.
  */
 export function setChainsButtonVisible(visible: boolean): void {
   recordChainsButtonVisible(visible);
+  if (!visible) {
+    setNetworkHealthWatched(false);
+    return;
+  }
+  // The watch loads the block-watch chunk and a client per chain, so it waits
+  // until the product has rendered and the page is idle.
+  scheduleIdle(() => {
+    if (getTopbarState().chainsButtonVisible) {
+      setNetworkHealthWatched(true);
+    }
+  });
 }

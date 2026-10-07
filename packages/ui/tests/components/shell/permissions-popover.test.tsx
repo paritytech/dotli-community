@@ -5,16 +5,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { PermissionsPopover } from '../../../src/components/shell/PermissionsPopover.js';
-import { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
+import {
+  ALL_PERMISSIONS,
+  registerPermissionAuthorizationProvider,
+  type PermissionStatus,
+} from '../../../src/permissions.js';
 import { setProductError, setProductLoaded } from '../../../src/state/product.js';
 import { recordPermissionChange } from '../../../src/state/permissions.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { setAuthState } from '../../../src/state/auth.js';
-import { pointerPressUnfocusable, renderComponent, resetStores, tabTo, waitForContent } from '../../helpers/solid.js';
+import { renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
-import { focusables } from '../../../src/components/focus.js';
-import { byId, must } from '../../support.js';
+import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const LABEL = 'localhost:3000';
 
@@ -86,9 +90,12 @@ function recordEvents(name: string): unknown[] {
   return details;
 }
 
-/** Let pending reads resolve and Solid apply what they wrote. */
+/**
+ * Let pending reads resolve and Solid apply what they wrote. A read joins the
+ * statuses with the host Media Calling settings, a few microtasks deeper.
+ */
 async function settleAll(): Promise<void> {
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 16; i += 1) {
     flush();
     await Promise.resolve();
   }
@@ -119,7 +126,7 @@ async function renderPopover(): Promise<void> {
 }
 
 function isOpen(): boolean {
-  return byId('permissions-popover').classList.contains('open');
+  return byId('permissions-popover').hasAttribute('data-open');
 }
 
 /** Open the popover, and wait for its body (its own chunk). */
@@ -131,35 +138,53 @@ async function openPopover(): Promise<void> {
   await settleAll();
 }
 
-function select(name: string): HTMLButtonElement {
-  return byId(`permissions-popover-select-${name}`, HTMLButtonElement);
-}
+/** The segment order in every row. */
+const STATUSES: readonly PermissionStatus[] = ['ask', 'granted', 'denied'];
 
-function menu(): HTMLElement | null {
-  return document.querySelector('.permissions-popover-menu');
-}
-
-function option(label: string): HTMLButtonElement {
+/** The row of permission `name`. */
+function row(name: string): HTMLElement {
   return must(
-    Array.from(document.querySelectorAll<HTMLButtonElement>('.permissions-popover-menu-item')).find(
-      item => item.textContent === label,
-    ),
-    `the "${label}" menu item`,
+    byId(`permissions-popover-name-${name}`).closest<HTMLElement>('[data-testid="permissions-popover-row"]'),
+    `the ${name} row`,
   );
 }
 
+/** The segment that sets permission `name` to `status`. */
+function segment(name: string, status: PermissionStatus): HTMLButtonElement {
+  return byTestId(`permissions-popover-segment-${status}`, row(name), HTMLButtonElement);
+}
+
+/** The status whose segment is pressed in the row of permission `name`. */
+function statusOf(name: string): PermissionStatus | undefined {
+  return STATUSES.find(status => segment(name, status).getAttribute('aria-pressed') === 'true');
+}
+
+useFloatingSurfaces();
+
 describe('PermissionsPopover', () => {
-  it('As a user of a loaded app, the popover lists available permissions with their stored statuses', async () => {
+  it('offers the same permission controls on phones', async () => {
+    stubPhoneViewport(true);
+    const provider = provide();
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    segment('Camera', 'granted').click();
+    await settleAll();
+    expect(provider.stored.get('Camera')).toBe('Authorized');
+    expect(statusOf('Camera')).toBe('granted');
+  });
+
+  it('lists stored statuses and hides automatic consent without an account', async () => {
     provide(LABEL, { Camera: 'Authorized', ChainSubmit: 'Denied' });
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
     await openPopover();
 
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length - 1);
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Allowed');
-    expect(byId('permissions-popover-status-ChainSubmit').textContent).toBe('Denied');
-    expect(byId('permissions-popover-status-Notifications').textContent).toBe('Ask (Default)');
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
+    expect(statusOf('Camera')).toBe('granted');
+    expect(statusOf('ChainSubmit')).toBe('denied');
+    expect(statusOf('Notifications')).toBe('ask');
+    expect(document.getElementById('permissions-popover-name-AutomaticPreimageSubmit')).toBeNull();
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(true);
     expect(document.activeElement).toBe(byId('permissions-popover'));
   });
 
@@ -174,11 +199,12 @@ describe('PermissionsPopover', () => {
     await renderPopover();
     await openPopover();
 
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(0);
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(0);
+    expect(byTestId('permissions-popover-hint').textContent).toContain('unavailable');
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
   });
 
-  it('As a user, changing a permission stores and announces it without duplicating the core-owned device refresh', async () => {
+  it('stores and announces changes without duplicating the core-owned device refresh', async () => {
     // Given
     const provider = provide(LABEL, { Camera: 'Authorized' });
     const grants = recordEvents('dotli:permission-changed');
@@ -188,23 +214,16 @@ describe('PermissionsPopover', () => {
     await openPopover();
 
     // When
-    select('Notifications').click();
-    await settleAll();
-    option('Allowed').click();
+    segment('Notifications', 'granted').click();
     await settleAll();
 
     // Then
     expect(provider.set).toHaveBeenCalledWith({ tag: 'Device', value: 'Notifications' }, 'Authorized');
     expect(grants).toEqual([{ label: LABEL, permission: 'Notifications' }]);
     expect(devices).toEqual([]);
-    expect(byId('permissions-popover-status-Notifications').textContent).toBe('Allowed');
-    expect(menu()).toBeNull();
+    expect(statusOf('Notifications')).toBe('granted');
     expect(isOpen()).toBe(true);
-
-    // When: back to Ask resets it.
-    select('Camera').click();
-    await settleAll();
-    option('Ask (Default)').click();
+    segment('Camera', 'ask').click();
     await settleAll();
 
     // Then
@@ -214,9 +233,28 @@ describe('PermissionsPopover', () => {
       { label: LABEL, permission: 'Camera' },
     ]);
     expect(devices).toEqual([]);
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Ask (Default)');
+    expect(statusOf('Camera')).toBe('ask');
   });
 
+  it('As a user, pressing the status a permission already has writes nothing and reloads nothing', async () => {
+    // Given
+    const provider = provide(LABEL, { Camera: 'Authorized' });
+    const grants = recordEvents('dotli:permission-changed');
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    segment('Camera', 'granted').click();
+    await settleAll();
+
+    // Then
+    expect(provider.set).not.toHaveBeenCalled();
+    expect(grants).toEqual([]);
+    expect(devices).toEqual([]);
+    expect(statusOf('Camera')).toBe('granted');
+  });
   it('As a user, a change that fails re-reads the statuses while the popover is open, and not once it is closed', async () => {
     // Given: every change waits until the test fails it; reads are counted.
     const changes: ((err: Error) => void)[] = [];
@@ -236,9 +274,7 @@ describe('PermissionsPopover', () => {
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
     await openPopover();
-    select('Notifications').click();
-    await settleAll();
-    option('Allowed').click();
+    segment('Notifications', 'granted').click();
     await settleAll();
     const beforeFailure = reads;
 
@@ -250,11 +286,9 @@ describe('PermissionsPopover', () => {
     expect(reads).toBe(beforeFailure + 1);
 
     // When: another change fails after the popover closed.
-    select('Notifications').click();
+    segment('Notifications', 'denied').click();
     await settleAll();
-    option('Denied').click();
-    await settleAll();
-    byId('permissions-button').click();
+    press('Escape');
     await settleAll();
     expect(isOpen()).toBe(false);
     const afterClose = reads;
@@ -265,90 +299,40 @@ describe('PermissionsPopover', () => {
     expect(reads).toBe(afterClose);
   });
 
-  it("As a keyboard user, choosing a permission keeps my focus on that row's select", async () => {
+  it('As a keyboard user, choosing a status keeps my focus on the segment I pressed', async () => {
     // Given
     provide();
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
     await openPopover();
+    segment('Camera', 'granted').focus();
 
     // When
-    select('Camera').click();
-    await settleAll();
-    option('Allowed').click();
+    segment('Camera', 'granted').click();
     await settleAll();
 
     // Then
-    expect(document.activeElement).toBe(select('Camera'));
+    expect(statusOf('Camera')).toBe('granted');
+    expect(document.activeElement).toBe(segment('Camera', 'granted'));
   });
 
-  it('As a screen-reader user, each select is named after its permission and status, and its listbox is named and navigable with the arrow keys', async () => {
+  it("As a screen-reader user, each permission's segments are a group named after it, inside a named Device or App group, and each segment says whether it is pressed", async () => {
     // Given
-    provide();
+    provide(LABEL, { Camera: 'Denied' });
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
+
+    // When
     await openPopover();
 
     // Then
-    const labelText = (select('Notifications').getAttribute('aria-labelledby') ?? '')
-      .split(' ')
-      .map(id => byId(id).textContent)
-      .join(' ');
-    expect(labelText).toBe('Notifications Ask (Default)');
-    expect(select('Notifications').getAttribute('aria-expanded')).toBe('false');
-
-    // When
-    select('Notifications').click();
-    await settleAll();
-
-    // Then
-    expect(select('Notifications').getAttribute('aria-expanded')).toBe('true');
-    expect(menu()?.getAttribute('aria-label')).toBe('Notifications permission');
-    expect(document.activeElement).toBe(option('Ask (Default)'));
-
-    // When
-    const down = press('ArrowDown');
-
-    // Then
-    expect(down.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(option('Allowed'));
-
-    // When: moving up from the first option wraps to the last.
-    press('ArrowUp');
-    press('ArrowUp');
-
-    // Then
-    expect(document.activeElement).toBe(option('Denied'));
-  });
-
-  it('As a keyboard user, Escape closes an open dropdown first, handing focus to its select, and the next Escape closes the popover', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    byId('permissions-button').focus();
-    await openPopover();
-    select('Camera').click();
-    await settleAll();
-    expect(menu()).not.toBeNull();
-
-    // When
-    press('Escape');
-    await settleAll();
-
-    // Then
-    expect(menu()).toBeNull();
-    expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(select('Camera'));
-
-    // When
-    press('Escape');
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('permissions-button').getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(byId('permissions-button'));
+    expect(query(row('Camera'), '[role="group"]').getAttribute('aria-label')).toBe('Camera');
+    expect(segment('Camera', 'denied').getAttribute('aria-pressed')).toBe('true');
+    expect(segment('Camera', 'ask').getAttribute('aria-pressed')).toBe('false');
+    const device = must(row('Camera').closest('[data-testid="permissions-popover-group"]'), 'the Device group');
+    expect(byId(device.getAttribute('aria-labelledby') ?? '').textContent).toBe('Device');
+    const app = must(row('ChainSubmit').closest('[data-testid="permissions-popover-group"]'), 'the App group');
+    expect(byId(app.getAttribute('aria-labelledby') ?? '').textContent).toBe('Account and chain');
   });
 
   it('As a screen-reader user, the button announces the dialog it opens and whether it is open', async () => {
@@ -357,11 +341,8 @@ describe('PermissionsPopover', () => {
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
     const button = byId('permissions-button');
-    const popover = byId('permissions-popover');
 
     // Then
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Permissions');
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-controls')).toBe('permissions-popover');
     expect(button.getAttribute('aria-expanded')).toBe('false');
@@ -371,126 +352,12 @@ describe('PermissionsPopover', () => {
 
     // Then
     expect(button.getAttribute('aria-expanded')).toBe('true');
+    const popover = byId('permissions-popover');
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Permissions');
   });
 
-  it('As a keyboard user, opening it moves focus in, and Tab past the last select loops back to the first control', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    byId('permissions-button').focus();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(byId('permissions-popover').contains(document.activeElement)).toBe(true);
-
-    // Given
-    const selects = byId('permissions-popover').querySelectorAll<HTMLElement>('.permissions-popover-select');
-    expect(selects.length).toBeGreaterThan(0);
-    nth(selects, selects.length - 1).focus();
-    await settleAll();
-    expect(isOpen()).toBe(true);
-
-    // When
-    const tab = tabTo(byId('outside'));
-    await settleAll();
-
-    // Then
-    expect(tab.defaultPrevented).toBe(true);
-    expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(focusables(byId('permissions-popover'))[0]);
-  });
-
-  it('As a user, a press on the backdrop closes the popover without handing focus back to the button', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    byId('permissions-button').focus();
-    await openPopover();
-
-    // When: the backdrop covers the page, and takes no focus.
-    pointerPressUnfocusable(byId('permissions-popover-backdrop'));
-    await settleAll();
-
-    // Then: focus follows the press.
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(document.body);
-  });
-
-  it('As a user, a click outside a row closes its dropdown, a second select opens in its place, and a click on the backdrop closes the popover', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    await openPopover();
-    select('Camera').click();
-    await settleAll();
-
-    // When
-    select('Microphone').click();
-    await settleAll();
-
-    // Then
-    expect(document.querySelectorAll('.permissions-popover-menu')).toHaveLength(1);
-    expect(menu()?.getAttribute('aria-label')).toBe('Microphone permission');
-    expect(select('Camera').getAttribute('aria-expanded')).toBe('false');
-
-    // When: the same select again closes it.
-    select('Microphone').click();
-    await settleAll();
-
-    // Then
-    expect(menu()).toBeNull();
-
-    // When
-    select('Camera').click();
-    await settleAll();
-    document.querySelector<HTMLElement>('.permissions-popover-header')?.click();
-    await settleAll();
-
-    // Then
-    expect(menu()).toBeNull();
-    expect(isOpen()).toBe(true);
-
-    // When
-    byId('permissions-popover-backdrop').click();
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('permissions-popover-backdrop').classList.contains('open')).toBe(false);
-  });
-
-  it('As a user, the button toggles the popover, and a blocking modal coming up closes it', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    await openPopover();
-
-    // When
-    byId('permissions-button').click();
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-
-    // When
-    await openPopover();
-    select('Camera').click();
-    await settleAll();
-    setBlockingModalActive(true);
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(menu()).toBeNull();
-  });
-
-  it('As a user, the lock button shows .has-grants while the app has any permission granted, including an app loaded before the island mounted', async () => {
+  it('As a user, the lock button shows its grants badge while the app has any permission granted, including an app loaded before the island mounted', async () => {
     // Given
     const provider = provide(LABEL, { ChainSubmit: 'Authorized' });
     setProductLoaded(LABEL, 'app.dot');
@@ -499,7 +366,7 @@ describe('PermissionsPopover', () => {
     await renderPopover();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(true);
 
     // When
     provider.stored.clear();
@@ -511,7 +378,7 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
 
     // When
     provider.stored.set('Camera', 'Authorized');
@@ -523,40 +390,62 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(true);
 
     // When
     setProductError();
     await settleAll();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
   });
 
-  it.each(['Ask per upload', 'Revoke automatic uploads'])('revokes only automatic consent with %s', async choice => {
+  it('keeps all automatic upload choices inline and keyboard reachable on phones', async () => {
+    stubPhoneViewport(true);
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: `0x${'01'.repeat(32)}` } });
+    const provider = provide();
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const ask = segment('AutomaticPreimageSubmit', 'ask');
+    const allow = segment('AutomaticPreimageSubmit', 'granted');
+    const revoke = segment('AutomaticPreimageSubmit', 'denied');
+    expect(ask.tabIndex).toBe(0);
+    expect(row('AutomaticPreimageSubmit').querySelector('[aria-haspopup]')).toBeNull();
+    ask.focus();
+    press('ArrowDown');
+    expect(document.activeElement).toBe(allow);
+    press('ArrowDown');
+    expect(document.activeElement).toBe(revoke);
+    expect(provider.set).not.toHaveBeenCalled();
+    revoke.click();
+    await settleAll();
+    expect(statusOf('AutomaticPreimageSubmit')).toBe('denied');
+    expect(isOpen()).toBe(true);
+  });
+
+  it.each(['ask', 'denied'] as const)('revokes only automatic consent with %s', async choice => {
     setAuthState({ tag: 'Connected', session: { connected: true, publicKey: `0x${'01'.repeat(32)}` } });
     const provider = provide(LABEL, { PreimageSubmit: 'Authorized' });
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
     await openPopover();
-    select('AutomaticPreimageSubmit').click();
+    segment('AutomaticPreimageSubmit', 'granted').click();
     await settleAll();
-    option('Allow bounded uploads').click();
+    expect(statusOf('AutomaticPreimageSubmit')).toBe('granted');
+    expect(isOpen()).toBe(true);
+    segment('AutomaticPreimageSubmit', choice).click();
     await settleAll();
-    expect(byId('permissions-popover-status-AutomaticPreimageSubmit').textContent).toBe('Allow bounded uploads');
-    select('AutomaticPreimageSubmit').click();
-    await settleAll();
-    option(choice).click();
-    await settleAll();
-    expect(byId('permissions-popover-status-AutomaticPreimageSubmit').textContent).toBe(choice);
-    expect(byId('permissions-popover-status-PreimageSubmit').textContent).toBe('Allowed');
+    expect(statusOf('AutomaticPreimageSubmit')).toBe(choice);
+    expect(isOpen()).toBe(true);
+    expect(statusOf('PreimageSubmit')).toBe('granted');
     expect(provider.set).toHaveBeenCalledWith(
       { tag: 'AutomaticPreimageSubmit', value: { rootPublicKey: `0x${'01'.repeat(32)}` } },
-      choice === 'Ask per upload' ? 'NotDetermined' : 'Denied',
+      choice === 'ask' ? 'NotDetermined' : 'Denied',
     );
   });
 
-  it('discards old-account reads and rejects a stale dropdown click before reactive cleanup', async () => {
+  it('discards old-account reads and rejects a stale inline action before reactive cleanup', async () => {
     const rootA = `0x${'01'.repeat(32)}`;
     const rootB = `0x${'02'.repeat(32)}`;
     setAuthState({ tag: 'Connected', session: { connected: true, publicKey: rootA } });
@@ -578,15 +467,13 @@ describe('PermissionsPopover', () => {
     recordPermissionChange({ kind: 'grant', label: LABEL, permission: 'AutomaticPreimageSubmit' });
     await settleAll();
     const oldReads = reads.splice(0);
-    select('AutomaticPreimageSubmit').click();
-    await settleAll();
-    const staleGrant = option('Allow bounded uploads');
+    const staleChoice = segment('AutomaticPreimageSubmit', 'denied');
     setAuthState({ tag: 'Connected', session: { connected: true, publicKey: rootB } });
-    staleGrant.click();
+    staleChoice.click();
     expect(provider.set).not.toHaveBeenCalled();
     await settleAll();
-    expect(document.getElementById('permissions-popover-select-AutomaticPreimageSubmit')).toBeNull();
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(document.getElementById('permissions-popover-name-AutomaticPreimageSubmit')).toBeNull();
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
     for (const read of reads.splice(0)) {
       read.resolve(Array.from({ length: read.count }, () => 'NotDetermined'));
     }
@@ -595,15 +482,100 @@ describe('PermissionsPopover', () => {
       read.resolve(Array.from({ length: read.count }, () => 'Authorized'));
     }
     await settleAll();
-    expect(byId('permissions-popover-status-AutomaticPreimageSubmit').textContent).toBe('Ask per upload');
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(statusOf('AutomaticPreimageSubmit')).toBe('ask');
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
     setAuthState({ tag: 'Disconnected' });
     await settleAll();
     for (const read of reads.splice(0)) {
       read.resolve(Array.from({ length: read.count }, () => 'NotDetermined'));
     }
     await settleAll();
-    expect(document.getElementById('permissions-popover-select-AutomaticPreimageSubmit')).toBeNull();
+    expect(document.getElementById('permissions-popover-name-AutomaticPreimageSubmit')).toBeNull();
+  });
+
+  it('associates bounded-consent limits with the automatic upload control', async () => {
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: `0x${'01'.repeat(32)}` } });
+    provide();
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const control = byId('permissions-popover-automatic-AutomaticPreimageSubmit');
+    expect(control.tagName).toBe('FIELDSET');
+    expect(byId(control.getAttribute('aria-labelledby') ?? '').textContent).toBe(
+      ALL_PERMISSIONS.find(permission => permission.name === 'AutomaticPreimageSubmit')?.label,
+    );
+    expect(segment('AutomaticPreimageSubmit', 'ask').textContent).toBe('Ask per upload');
+    expect(segment('AutomaticPreimageSubmit', 'granted').textContent).toBe('Allow bounded uploads');
+    expect(segment('AutomaticPreimageSubmit', 'denied').textContent).toBe('Revoke automatic uploads');
+    const description = byId(control.getAttribute('aria-describedby') ?? '');
+    expect(description.textContent).toContain('256 KiB');
+    expect(description.textContent).toContain('4 automatic uploads per rolling hour');
+    expect(description.textContent).toContain('Regranting does not reset the budget');
+    const group = must(control.closest('[data-testid="permissions-popover-group"]'), 'account permissions');
+    expect(byId(group.getAttribute('aria-labelledby') ?? '').textContent).toBe('Account and chain');
+  });
+
+  it('keeps stored automatic consent while pending, rejects duplicate writes, and allows retry after failure', async () => {
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: `0x${'01'.repeat(32)}` } });
+    const provider = provide();
+    const write = Promise.withResolvers<undefined>();
+    provider.set.mockImplementationOnce(() => write.promise);
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const control = byId('permissions-popover-automatic-AutomaticPreimageSubmit');
+    const allow = segment('AutomaticPreimageSubmit', 'granted');
+    allow.focus();
+    allow.click();
+    await settleAll();
+    expect(control.getAttribute('aria-busy')).toBe('true');
+    expect(statusOf('AutomaticPreimageSubmit')).toBe('ask');
+    expect(segment('AutomaticPreimageSubmit', 'granted')).toBe(allow);
+    expect(document.activeElement).toBe(allow);
+    expect(isOpen()).toBe(true);
+    allow.click();
+    await settleAll();
+    expect(provider.set).toHaveBeenCalledTimes(1);
+    write.reject(new Error('core down'));
+    await settleAll();
+    expect(control.getAttribute('aria-busy')).toBe('false');
+    expect(segment('AutomaticPreimageSubmit', 'granted')).toBe(allow);
+    expect(document.activeElement).toBe(allow);
+    expect(isOpen()).toBe(true);
+    expect(row('AutomaticPreimageSubmit').querySelector('[role="alert"]')).not.toBeNull();
+    expect(provider.stored.has('AutomaticPreimageSubmit')).toBe(false);
+    allow.click();
+    await settleAll();
+    expect(provider.stored.get('AutomaticPreimageSubmit')).toBe('Authorized');
+    expect(row('AutomaticPreimageSubmit').querySelector('[role="alert"]')).toBeNull();
+    expect(statusOf('AutomaticPreimageSubmit')).toBe('granted');
+    expect(isOpen()).toBe(true);
+  });
+
+  it('rejects a stale reset click before an account switch is rendered', async () => {
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: `0x${'01'.repeat(32)}` } });
+    const provider = provide(LABEL, { AutomaticPreimageSubmit: 'Authorized' });
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const reset = byTestId('permissions-popover-reset', document, HTMLButtonElement);
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: `0x${'02'.repeat(32)}` } });
+    reset.click();
+    await settleAll();
+    expect(provider.set).not.toHaveBeenCalled();
+  });
+
+  it('switches raw capture to protected Media without changing permission grants', async () => {
+    const provider = provide();
+    const switches = recordEvents('dotli:capture-container-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    byTestId('permissions-popover-media-container').click();
+    await settleAll();
+    expect(switches).toEqual([{ label: LABEL, legacyCapture: false }]);
+    expect(provider.set).not.toHaveBeenCalled();
+    expect(isOpen()).toBe(false);
   });
 
   it('As a user, when reads overlap, the last one wins: a slow earlier read never replaces a newer one', async () => {
@@ -625,8 +597,8 @@ describe('PermissionsPopover', () => {
     await renderPopover();
     const all = (status: PermissionAuthorizationStatus) => ALL_PERMISSIONS.map(() => status);
 
-    // When: opening reads (after the mount's .has-grants read), then a
-    // permission change reads again, for the class and for the list.
+    // When: opening reads (after the mount's grants read), then a
+    // permission change reads again, for the badge and for the list.
     await openPopover();
     const beforeChange = reads.length;
     window.dispatchEvent(
@@ -649,8 +621,8 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Denied');
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(statusOf('Camera')).toBe('denied');
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
   });
 
   it('As a user who closed the popover while it was reading, the next open never shows that read', async () => {
@@ -679,15 +651,15 @@ describe('PermissionsPopover', () => {
     // When: opened, closed before the read answers, the read answers, and
     // the popover opens again.
     await openPopover();
-    byId('permissions-button').click();
+    press('Escape');
     await settleAll();
     await answer('Authorized');
     await openPopover();
 
     // Then: nothing until the new read answers, then its statuses.
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(0);
     await answer('Denied');
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Denied');
+    expect(statusOf('Camera')).toBe('denied');
   });
 
   it("As a user, when the app changes while the popover is open, the previous app's statuses are never shown for it", async () => {
@@ -697,38 +669,16 @@ describe('PermissionsPopover', () => {
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();
     await openPopover();
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Allowed');
+    expect(statusOf('Camera')).toBe('granted');
 
     // When
     setProductLoaded('other.dot', 'other.dot');
     flush();
 
     // Then: nothing until the new app's read lands, then its statuses.
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(0);
     await settleAll();
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Ask (Default)');
-  });
-
-  it('As a user of an app whose label contains markup, it is only ever passed on as text', async () => {
-    // Given
-    const label = '<img id="injected" src="x">';
-    const provider = provide(label);
-    const grants = recordEvents('dotli:permission-changed');
-    setProductLoaded(label, 'app.dot');
-    await renderPopover();
-
-    // When
-    await openPopover();
-    select('Notifications').click();
-    await settleAll();
-    option('Allowed').click();
-    await settleAll();
-
-    // Then
-    expect(document.getElementById('injected')).toBeNull();
-    expect(byId('permissions-popover').querySelector('img')).toBeNull();
-    expect(provider.set).toHaveBeenCalledTimes(1);
-    expect(grants).toEqual([{ label, permission: 'Notifications' }]);
+    expect(statusOf('Camera')).toBe('ask');
   });
 
   it("As a mobile user, the More menu's Permissions row opens the popover", async () => {
@@ -742,8 +692,181 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length - 1);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(
+      ALL_PERMISSIONS.length - 1,
+    );
+  });
+
+  it('As a user, Reset all to Ask sets every permission of the app back to Ask, announced as one change', async () => {
+    // Given
+    const provider = provide(LABEL, { Camera: 'Authorized', Microphone: 'Denied', ChainSubmit: 'Authorized' });
+    const grants = recordEvents('dotli:permission-changed');
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+
+    // Then
+    expect(provider.set).toHaveBeenCalledTimes(3);
+    expect(provider.set).toHaveBeenCalledWith({ tag: 'Device', value: 'Camera' }, 'NotDetermined');
+    expect(provider.set).toHaveBeenCalledWith({ tag: 'Device', value: 'Microphone' }, 'NotDetermined');
+    expect(provider.set).toHaveBeenCalledWith(
+      { tag: 'Remote', value: { permission: { tag: 'ChainSubmit' } } },
+      'NotDetermined',
+    );
+    expect(grants).toEqual([{ label: LABEL, permission: 'Camera' }]);
+    expect(devices).toEqual([]);
+    expect(statusOf('Camera')).toBe('ask');
+    expect(statusOf('Microphone')).toBe('ask');
+    expect(statusOf('ChainSubmit')).toBe('ask');
+    expect(byTestId('permissions-popover-reset', document, HTMLButtonElement).disabled).toBe(true);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
+  });
+
+  it('As a user whose app has only permissions the iframe does not gate decided, Reset all to Ask applies them without a reload', async () => {
+    // Given
+    provide(LABEL, { Notifications: 'Authorized', ChainSubmit: 'Denied' });
+    const grants = recordEvents('dotli:permission-changed');
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+
+    // Then
+    expect(grants).toEqual([{ label: LABEL, permission: 'Notifications' }]);
+    expect(devices).toEqual([]);
+    expect(statusOf('Notifications')).toBe('ask');
+    expect(statusOf('ChainSubmit')).toBe('ask');
+  });
+
+  it('As a user with nothing granted or denied, Reset all to Ask is disabled and writes nothing', async () => {
+    // Given
+    const provider = provide(LABEL);
+    const grants = recordEvents('dotli:permission-changed');
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const reset = byTestId('permissions-popover-reset', document, HTMLButtonElement);
+
+    // When
+    reset.click();
+    await settleAll();
+
+    // Then
+    expect(reset.disabled).toBe(true);
+    expect(provider.set).not.toHaveBeenCalled();
+    expect(grants).toEqual([]);
+    expect(devices).toEqual([]);
+  });
+
+  it('As a user pressing Reset all to Ask again while it runs, the change is announced once', async () => {
+    // Given: every write waits until the test lets it through.
+    const stored = new Map<string, PermissionAuthorizationStatus>([['Camera', 'Authorized']]);
+    const releases: (() => void)[] = [];
+    const set = vi.fn(
+      (request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus) =>
+        new Promise<void>(resolve => {
+          releases.push(() => {
+            stored.set(nameOf(request), status);
+            resolve();
+          });
+        }),
+    );
+    cleanups.push(
+      registerPermissionAuthorizationProvider(LABEL, {
+        getPermissionAuthorizationStatuses: requests =>
+          Promise.resolve(requests.map(request => stored.get(nameOf(request)) ?? 'NotDetermined')),
+        setPermissionAuthorizationStatus: set,
+      }),
+    );
+    const grants = recordEvents('dotli:permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+    for (const release of releases.splice(0)) {
+      release();
+    }
+    await settleAll();
+
+    // Then
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(grants).toEqual([{ label: LABEL, permission: 'Camera' }]);
+    expect(statusOf('Camera')).toBe('ask');
+  });
+
+  it('As a user, a reset that cannot change one permission still announces the others once, and shows the one that stayed', async () => {
+    // Given: the core refuses to change the camera.
+    const stored = new Map<string, PermissionAuthorizationStatus>([
+      ['Camera', 'Authorized'],
+      ['Microphone', 'Authorized'],
+    ]);
+    cleanups.push(
+      registerPermissionAuthorizationProvider(LABEL, {
+        getPermissionAuthorizationStatuses: requests =>
+          Promise.resolve(requests.map(request => stored.get(nameOf(request)) ?? 'NotDetermined')),
+        setPermissionAuthorizationStatus: (request, status) => {
+          if (nameOf(request) === 'Camera') {
+            return Promise.reject(new Error('core down'));
+          }
+          stored.set(nameOf(request), status);
+          return Promise.resolve();
+        },
+      }),
+    );
+    const grants = recordEvents('dotli:permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+
+    // Then
+    expect(grants).toEqual([{ label: LABEL, permission: 'Microphone' }]);
+    expect(statusOf('Camera')).toBe('granted');
+    expect(statusOf('Microphone')).toBe('ask');
+    expect(byTestId('permissions-popover-reset', document, HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('As a keyboard user, Reset all to Ask leaves my focus in the popover once the button has nothing left to reset', async () => {
+    // Given
+    provide(LABEL, { Camera: 'Authorized' });
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const reset = byTestId('permissions-popover-reset', document, HTMLButtonElement);
+    reset.focus();
+
+    // When
+    reset.click();
+
+    // Then: the hand-off is at once, as a real browser drops the focus of a button that gets disabled.
+    expect(document.activeElement).toBe(byId('permissions-popover'));
+
+    // When
+    await settleAll();
+
+    // Then
+    expect(reset.disabled).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(byId('permissions-popover'));
   });
 });

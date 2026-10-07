@@ -29,14 +29,14 @@ describe('URL pill shield', () => {
     await settle();
 
     // Then
-    expect(byId('verification-shield').classList.contains('verified')).toBe(true);
+    expect(byId('verification-shield').getAttribute('data-state')).toBe('verified');
 
     // When
     setVerificationShieldState('trusted');
     await settle();
 
     // Then
-    expect(byId('verification-shield').classList.contains('trusted')).toBe(true);
+    expect(byId('verification-shield').getAttribute('data-state')).toBe('trusted');
   });
 
   it('As a developer on a localhost proxy, or before a product loads, there is no shield', async () => {
@@ -59,7 +59,6 @@ describe('URL pill shield', () => {
     await settle();
 
     // Then: the state is not known yet.
-    expect(byId('verification-shield').classList.contains('verified')).toBe(false);
-    expect(byId('verification-shield').classList.contains('trusted')).toBe(false);
+    expect(byId('verification-shield').hasAttribute('data-state')).toBe(false);
   });
 });

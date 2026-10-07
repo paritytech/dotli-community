@@ -7,10 +7,10 @@
 // the startup path without Solid. It touches no DOM: the island renders
 // nothing once the loading root is disposed.
 
-import { isSandboxOrigin, withActiveTld } from '@dotli/config';
+import { getActiveTldSuffix, isSandboxOrigin } from '@dotli/config';
 
 import { disposeAppRoot, registerAppRoot } from './mount/app-roots.js';
-import { getLoadingState, updateLoading } from './state/loading.js';
+import { getLoadingState, updateLoading, type StepPart } from './state/loading.js';
 
 // Phase-based loading indicator.
 //
@@ -205,12 +205,12 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   trackLoadingRoot();
 
   // Not on the first `advancePhase`, which lands seconds later once the
-  // protocol frame is up. The markup already shows this stage's opening line,
-  // so the rotation clock has to start from when that line became visible.
+  // protocol frame is up. The markup already shows this stage's step line,
+  // so the explanation clock has to start from when that line became visible.
   setLoadingStage('starting');
 }
 
-// How often the line turns over. Most of this window is the turnover
+// How often the explanation turns over. Most of this window is the turnover
 // animation, so the finished sentence itself is only still for the last ~4s.
 const MESSAGE_ROTATE_MS = 9_000;
 
@@ -228,9 +228,10 @@ export type LoadingStage = (typeof LOADING_STAGES)[number];
 /**
  * What the shell is doing, in the user's terms.
  *
- * The first line of each stage names the step. The rest explain what a light
- * client is doing, and only a slow load reaches them. List lengths follow how
- * long each step runs, so the long ones do not repeat.
+ * The first line of each stage is its step line, which names the step and
+ * stays up for the whole stage. The rest are its explanations, which say what
+ * a light client is doing, and only a slow load reaches them. List lengths
+ * follow how long each step runs, so the long ones do not repeat.
  */
 const STAGE_MESSAGES: Record<LoadingStage, readonly [string, ...string[]]> = {
   starting: [
@@ -273,13 +274,30 @@ export function setLoadingDomain(domain: string): void {
   loadingDomain = domain;
 }
 
+/**
+ * A step line's parts, the domain split into host and TLD. Falls back to
+ * "the name" when no domain has been set, which is the preview and
+ * local-target paths where there is no dotNS name to show.
+ */
+function stepParts(message: string): StepPart[] {
+  const at = message.indexOf(DOMAIN_TOKEN);
+  if (at === -1) {
+    return [message];
+  }
+  const name: StepPart = loadingDomain === '' ? 'the name' : { host: loadingDomain, tld: getActiveTldSuffix() };
+  return [message.slice(0, at), name, message.slice(at + DOMAIN_TOKEN.length)].filter(part => part !== '');
+}
+
+function stepSentence(parts: readonly StepPart[]): string {
+  return parts.map(part => (typeof part === 'string' ? part : `${part.host}${part.tld}`)).join('');
+}
+
 // A fixed budget rather than a per-character delay, so a long sentence
 // animates at the same pace as a short one and always lands inside the
 // rotation interval.
 const ERASE_MS = 1_400;
 const TYPE_MS = 3_600;
 let typingFrame: number | null = null;
-let pendingMessage: string | null = null;
 
 /** Slow at both ends, quickest in the middle. */
 function easeInOut(t: number): number {
@@ -287,65 +305,50 @@ function easeInOut(t: number): number {
 }
 
 function cancelTyping(): void {
-  pendingMessage = null;
   if (typingFrame !== null) {
     cancelAnimationFrame(typingFrame);
     typingFrame = null;
     // An interrupted fade would otherwise leave the line stranded dim.
-    updateLoading({ statusOpacity: 1 });
+    updateLoading({ explanationOpacity: 1 });
   }
 }
 
-function writeStatus(message: string): void {
-  // Falls back to "the name" when no domain has been set, which is the
-  // preview and local-target paths where there is no dotNS name to show.
-  const next = message.replace(DOMAIN_TOKEN, loadingDomain === '' ? 'the name' : withActiveTld(loadingDomain));
+function writeExplanation(next: string): void {
+  cancelTyping();
   // Screen readers get the whole sentence once, from an element the typing
   // never touches.
   updateLoading({ srText: next });
-  // A sentence already being typed is left to finish. Stages turn over faster
-  // than a line takes to render on a quick load, and cutting one off mid-word
-  // meant a step's opening line was never actually read: the screen went
-  // straight from "Reaching out" to the download copy. Only the newest
-  // waiting sentence is kept, so the queue can never fall behind by more
-  // than one.
-  if (typingFrame !== null) {
-    pendingMessage = next;
-    return;
-  }
-  const previous = getLoadingState().statusText;
+  const previous = getLoadingState().explanation;
   if (next === previous || prefersReducedMotion() || !trackLoadingRoot()) {
-    updateLoading({ statusText: next });
+    updateLoading({ explanation: next });
     return;
   }
+  // A stage's first explanation has no line before it to erase.
+  const eraseMs = previous === '' ? 0 : ERASE_MS;
   const start = performance.now();
   const step = (now: number): void => {
     const elapsedMs = now - start;
-    if (elapsedMs < ERASE_MS) {
-      const gone = easeInOut(elapsedMs / ERASE_MS);
+    // The frame clock can start a little before `start`, so an erase of no
+    // length is skipped outright rather than divided by.
+    if (eraseMs > 0 && elapsedMs < eraseMs) {
+      const gone = easeInOut(elapsedMs / eraseMs);
       // Dims as it empties and brightens as the new line arrives, so the
       // turnover reads as one settling motion rather than a text scramble.
       // Only a shallow dip: the contrast of this block is built on solid colours
-      // precisely because opacity once sank it below AA, and 0.75 of #d4d4d4
-      // is still 7.5:1 against the page.
+      // precisely because opacity once sank it below AA.
       updateLoading({
-        statusText: previous.slice(0, Math.ceil(previous.length * (1 - gone))),
-        statusOpacity: 1 - 0.25 * gone,
+        explanation: previous.slice(0, Math.ceil(previous.length * (1 - gone))),
+        explanationOpacity: 1 - 0.25 * gone,
       });
-    } else if (elapsedMs < ERASE_MS + TYPE_MS) {
-      const shown = easeInOut((elapsedMs - ERASE_MS) / TYPE_MS);
+    } else if (elapsedMs < eraseMs + TYPE_MS) {
+      const shown = easeInOut((elapsedMs - eraseMs) / TYPE_MS);
       updateLoading({
-        statusText: next.slice(0, Math.ceil(next.length * shown)),
-        statusOpacity: 0.75 + 0.25 * shown,
+        explanation: next.slice(0, Math.ceil(next.length * shown)),
+        explanationOpacity: 0.75 + 0.25 * shown,
       });
     } else {
-      updateLoading({ statusText: next, statusOpacity: 1 });
+      updateLoading({ explanation: next, explanationOpacity: 1 });
       typingFrame = null;
-      if (pendingMessage !== null) {
-        const queued = pendingMessage;
-        pendingMessage = null;
-        writeStatus(queued);
-      }
       return;
     }
     typingFrame = requestAnimationFrame(step);
@@ -354,7 +357,7 @@ function writeStatus(message: string): void {
 }
 
 /**
- * Move to a stage and start cycling its messages.
+ * Move to a stage: show its step line, then cycle its explanations.
  *
  * Only ever moves forward. Re-entering the running stage is ignored so the
  * copy does not restart on every signal for a step already underway, and an
@@ -366,29 +369,26 @@ export function setLoadingStage(stage: LoadingStage): void {
     return;
   }
   currentStageIndex = stageIndex;
-  const messages = STAGE_MESSAGES[stage];
-  let line = 0;
-  // Only the rotation clock is stopped here. Cancelling the typing as well
-  // would kill the animation this very line was just queued behind and drop
-  // the queue with it, stranding the headline on a half-typed word.
-  stopStageTimer();
-  writeStatus(messages[0]);
-  // Cycle back to the second line rather than the first: the opener names
-  // the step, and showing it again would read as the load starting over.
-  const loopFrom = messages.length > 2 ? 1 : 0;
-  // The opening line has been on screen since the page painted, so its turn
-  // is due relative to that, not to whenever this ran. Later turns get the
-  // full interval.
+  const [opening, ...explanations] = STAGE_MESSAGES[stage];
+  stopStageMessages();
+  // The last stage's explanation is about a step that is over, so it goes at
+  // once with the step line it explained.
+  const step = stepParts(opening);
+  updateLoading({ step, explanation: '', explanationOpacity: 1, srText: stepSentence(step) });
+  // The opening step line has been on screen since the page painted, so the
+  // first explanation is due relative to that, not to whenever this ran.
+  // Later turns get the full interval.
   const firstDelay = openingLine ? Math.max(500, MESSAGE_ROTATE_MS - performance.now()) : MESSAGE_ROTATE_MS;
   openingLine = false;
-  const turn = (): void => {
-    line = line + 1 >= messages.length ? loopFrom : line + 1;
-    writeStatus(messages[line] ?? messages[0]);
-    stageTimer = setTimeout(turn, MESSAGE_ROTATE_MS);
-  };
-  if (!trackLoadingRoot()) {
+  if (explanations.length === 0 || !trackLoadingRoot()) {
     return;
   }
+  let line = -1;
+  const turn = (): void => {
+    line = (line + 1) % explanations.length;
+    writeExplanation(explanations[line] ?? '');
+    stageTimer = setTimeout(turn, MESSAGE_ROTATE_MS);
+  };
   stageTimer = setTimeout(turn, firstDelay);
 }
 
@@ -408,7 +408,7 @@ function stopStageMessages(): void {
 /**
  * Advance to a specific phase (0-indexed).
  * Jumps the indicator to the base percentage of the phase and begins crawling
- * toward its target. Updates the headline text.
+ * toward its target. Moves the step line to the phase's stage.
  * No-ops if the phase is already active or past.
  */
 export function advancePhase(index: number): void {
@@ -443,7 +443,7 @@ export function advancePhase(index: number): void {
   creepStep = (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) / Math.max(CREEP_MS, CRAWL_TICK_MS);
   startProgressCrawl();
 
-  // The headline is the stage's, not the phase label's: the label names the
+  // The step line is the stage's, not the phase label's: the label names the
   // step for us, the stage says it in words the visitor can act on. Adjacent
   // phases can share one stage, and re-entering a running stage is a no-op.
   setLoadingStage(phase.stage);
@@ -550,7 +550,7 @@ export function hideLoading(): void {
 }
 
 /**
- * Show or clear the stall warning under the sentences.
+ * Show or clear the stall warning under the bar.
  *
  * Passing null hides it. The host decides when a chain has stopped moving and
  * what to say, this only renders it.
@@ -591,12 +591,25 @@ export function dismissLoading(): void {
  * nested cross-origin frame or browser extension) could spoof the status
  * text or prematurely dismiss the overlay while content is still loading.
  */
+/** How the sandbox's content load ended. */
+export type SandboxOutcome = 'loaded' | 'failed';
+
+/**
+ * The sandbox step a failed content load stopped at (`content_fetch`,
+ * `verify`, ...), when it says. It becomes a Sentry tag, so anything that is
+ * not a short snake_case token is dropped rather than trusted: the message
+ * comes from another origin.
+ */
+export type SandboxFailedStep = string | undefined;
+
+const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
+
 // One-shot subscribers for the sandbox's terminal `done` signal. The host
 // uses it to time telemetry that must not be captured before the content
 // fetch has run (the bulletin chain is only dialed during that fetch).
-const sandboxDoneCallbacks: (() => void)[] = [];
+const sandboxDoneCallbacks: ((outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void)[] = [];
 
-export function onSandboxDone(cb: () => void): void {
+export function onSandboxDone(cb: (outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void): void {
   sandboxDoneCallbacks.push(cb);
 }
 
@@ -616,10 +629,19 @@ export function listenForSandboxStatus(): void {
     // The progress prose the sandbox writes is written for a developer reading
     // the console, so it is left there. The stage messages narrate this step
     // to the user, and `done` is the part the loading screen acts on.
+    // A `done` without an outcome only clears the overlay for a prompt the
+    // sandbox shows before its content has loaded (the archive password), so
+    // the callbacks wait for the outcome that ends the load.
     if (data['done'] === true) {
       dismissLoading();
-      for (const cb of sandboxDoneCallbacks.splice(0)) {
-        cb();
+      const outcome = data['outcome'];
+      if (outcome === 'loaded' || outcome === 'failed') {
+        const step = data['failedStep'];
+        const failedStep =
+          outcome === 'failed' && typeof step === 'string' && FAILED_STEP_RE.test(step) ? step : undefined;
+        for (const cb of sandboxDoneCallbacks.splice(0)) {
+          cb(outcome, failedStep);
+        }
       }
     }
   });

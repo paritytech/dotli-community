@@ -1,0 +1,15 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's sections sit in the popover's column, 10 px apart. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* Phones: the boards' 12. */
+@media (max-width: 560px) {
+  .list {
+    gap: var(--sp-3);
+  }
+}

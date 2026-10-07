@@ -15,7 +15,7 @@ const LABEL_URL = `http://browse.localhost:${PORT}/`;
 // not resolve *.localhost.
 const SHARED_STORE = `http://127.0.0.1:${PORT}/__dotli-mode/`;
 
-/** Where a popover's bottom edge is, rounded: a sheet's is the viewport's once it has slid up. */
+/** Where a popover's bottom edge is, rounded: a phone sheet's is the bar's top once it has slid up. */
 async function sheetBottom(sheet: Locator): Promise<number> {
   const box = await sheet.boundingBox();
   return Math.round((box?.y ?? 0) + (box?.height ?? 0));
@@ -34,7 +34,8 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#dotli-nav-form')).toBeVisible();
-    const pills = page.locator('#dotli-recent .landing-recent-pill');
+    await expect(page.locator('body')).toHaveAttribute('data-landing', '');
+    const pills = page.locator('#dotli-recent').getByTestId('landing-recent-pill');
     await expect(pills).toHaveCount(2);
     await expect(pills.first()).toHaveAttribute('href', /browse/);
   });
@@ -68,9 +69,11 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LANDING_URL);
 
-    // Then: the landing page renders its own theme button, and the topbar's
-    // action group, More button included, is gone.
-    await expect(page.locator('#landing-theme-toggle')).toHaveAttribute('title', /^Theme: /);
+    // Then: the landing page renders its own auth button and no theme button
+    // (it is always dark), and the topbar's action group, More button
+    // included, is gone.
+    await expect(page.locator('#landing-auth-button')).toBeVisible();
+    await expect(page.locator('#landing-theme-toggle')).toHaveCount(0);
     await expect(page.locator('#theme-toggle')).toHaveCount(0);
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
@@ -79,8 +82,34 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#landing-auth-button').click();
 
     // Then
-    await expect(page.locator('#auth-modal-backdrop')).toHaveClass(/\bopen\b/);
+    await expect(page.locator('#auth-modal-backdrop')).toHaveAttribute('data-open');
     await expect(page.locator('#auth-modal-title')).toBeVisible();
+  });
+
+  test('As a phone user, the sign-in opens as a sheet and the shell hydrates without warnings', async ({ page }) => {
+    // Given
+    const problems: string[] = [];
+    page.on('console', message => {
+      if (message.type() === 'error' || message.type() === 'warning') {
+        problems.push(message.text());
+      }
+    });
+    page.on('pageerror', err => {
+      problems.push(err.message);
+    });
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    // When: the idle-hydrated sign-in island has taken over its markup.
+    await page.goto(LANDING_URL);
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
+    await page.locator('#landing-auth-button').click();
+
+    // Then
+    const frame = page.locator('#auth-modal-backdrop');
+    await expect(frame).toHaveAttribute('data-open');
+    await expect(frame).toHaveAttribute('data-layout', 'sheet');
+    await expect(page.getByTestId('auth-modal-sheet-head')).toBeVisible();
+    expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
   });
 
   test('As a phone user, the topbar keeps the account button and folds the rest into the More menu', async ({
@@ -100,11 +129,46 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
 
     // Then
-    await expect(page.locator('#more-popover')).not.toHaveClass(/\bopen\b/);
-    await expect(page.locator('#mode-popover')).toHaveClass(/\bopen\b/);
+    await expect(page.locator('#more-popover')).not.toHaveAttribute('data-open');
+    await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
+  });
+
+  test('As a phone user, the bar spans the foot of the screen with the address, More and then the account, and More opens as a sheet above it that a tap on the scrim closes', async ({
+    page,
+  }) => {
+    // Given
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // When
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+    // Then
+    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 844 - 60, width: 390, height: 60 });
+    await expect(page.locator('#theme-toggle')).toBeHidden();
+    await expect(page.locator('#permissions-button')).toBeHidden();
+    const more = await page.locator('#more-button').boundingBox();
+    const account = await page.locator('#auth-button').boundingBox();
+    expect((more?.x ?? 0) < (account?.x ?? 0)).toBe(true);
+    expect(Math.round((account?.x ?? 0) + (account?.width ?? 0))).toBe(390 - 8);
+
+    // When
+    await page.locator('#more-button').click();
+
+    // Then
+    const sheet = page.locator('#more-popover');
+    await expect(sheet).toHaveAttribute('data-layout', 'sheet');
+    await expect(sheet.getByTestId('menu-sheet-title')).toHaveText('More');
+    await expect.poll(() => sheetBottom(sheet.getByTestId('menu'))).toBe(844 - 60);
+
+    // When
+    await page.mouse.click(195, 100);
+
+    // Then
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a phone user, Settings opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
@@ -118,27 +182,28 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
 
     // Then
-    await expect(sheet).toHaveClass(/\bsheet\b/);
-    await expect(sheet).toHaveAttribute('aria-modal', 'true');
-    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Settings');
-    // At the bottom edge, once it has slid up.
-    await expect.poll(() => sheetBottom(sheet)).toBe(740);
+    await expect(sheet).toHaveAttribute('data-layout', 'sheet');
+    // A <dialog> opened with showModal() is modal without an aria-modal attribute.
+    expect(await sheet.evaluate(el => el.matches(':modal'))).toBe(true);
+    await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
+    // On the bar, once it has slid up.
+    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
 
     // When
-    await sheet.locator('.popover-sheet-close').click();
+    await sheet.getByTestId('popover-sheet-close').click();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
 
     // When: open it again and swipe the header down.
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
-    await expect(sheet).toHaveClass(/\bopen\b/);
-    await expect.poll(() => sheetBottom(sheet)).toBe(740);
-    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
+    await expect(sheet).toHaveAttribute('data-open');
+    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
+    const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
@@ -147,7 +212,7 @@ test.describe('Shell UI smoke', () => {
     await page.mouse.up();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a phone user, Permissions opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
@@ -160,28 +225,31 @@ test.describe('Shell UI smoke', () => {
     const sheet = page.locator('#permissions-popover');
     const open = async (): Promise<void> => {
       await page.locator('#more-button').click();
-      await page.locator('#more-popover .more-row[data-item="permissions"]').click();
-      await expect(sheet).toHaveClass(/\bopen\b/);
-      await expect.poll(() => sheetBottom(sheet)).toBe(740);
+      await page.locator('#more-popover [role="menuitem"][data-item="permissions"]').click();
+      await expect(sheet).toHaveAttribute('data-open');
+      await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
     };
 
     // When
     await open();
 
     // Then
-    await expect(sheet).toHaveClass(/\bsheet\b/);
-    await expect(sheet).toHaveAttribute('aria-modal', 'true');
-    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Permissions');
+    await expect(sheet).toHaveAttribute('data-layout', 'sheet');
+    // A <dialog> opened with showModal() is modal without an aria-modal attribute.
+    expect(await sheet.evaluate(el => el.matches(':modal'))).toBe(true);
+    await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
+    await expect(sheet.locator('#permissions-popover-list')).toBeAttached();
+    await expect(sheet.getByTestId('permissions-popover-header')).toHaveCount(0);
 
     // When
-    await sheet.locator('.popover-sheet-close').click();
+    await sheet.getByTestId('popover-sheet-close').click();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
 
     // When: open it again and swipe the header down.
     await open();
-    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
@@ -190,7 +258,7 @@ test.describe('Shell UI smoke', () => {
     await page.mouse.up();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a desktop user, Permissions opens anchored under the topbar', async ({ page }) => {
@@ -204,8 +272,9 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     const popover = page.locator('#permissions-popover');
-    await expect(popover).toHaveClass(/\bopen\b/);
-    await expect(popover).not.toHaveClass(/\bsheet\b/);
+    await expect(popover).toHaveAttribute('data-open');
+    // The anchored form: a shown popover element, not the sheet's dialog.
+    await expect(page.locator('#permissions-popover:popover-open')).toBeAttached();
     const box = await popover.boundingBox();
     expect(box?.y ?? 0).toBeLessThan(100);
   });
@@ -217,6 +286,7 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LABEL_URL);
     await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+    await expect(page.locator('body')).not.toHaveAttribute('data-landing');
 
     // Then
     await expect(page.locator('#mode-button')).toBeVisible();
@@ -234,24 +304,24 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#landing-auth-button').click();
 
     // Then
-    await expect(backdrop).toHaveClass(/\bopen\b/);
+    await expect(backdrop).toHaveAttribute('data-open');
     await expect(page.locator('#auth-modal-title')).toBeVisible();
 
     // When
     await page.locator('#auth-modal-close').click();
 
     // Then
-    await expect(backdrop).not.toHaveClass(/\bopen\b/);
+    await expect(backdrop).not.toHaveAttribute('data-open');
   });
 
   test('As a user, the theme I pick applies at once and survives a reload', async ({ page }) => {
     // Given
-    await page.goto(LANDING_URL);
+    await page.goto(LABEL_URL);
 
     // When
-    await page.locator('#landing-theme-toggle').click();
-    await expect(page.locator('#landing-theme-popover')).toBeVisible();
-    await page.locator('[data-theme-option="dark"]').click();
+    await page.locator('#topbar #theme-toggle').click();
+    await expect(page.locator('#theme-popover')).toBeVisible();
+    await page.getByTestId('theme-option-dark').click();
 
     // Then
     const html = page.locator('html');
@@ -275,48 +345,65 @@ test.describe('Shell UI smoke', () => {
     await page.goto(LABEL_URL);
 
     // Then
-    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Theme: Light');
+    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Appearance: Light');
   });
 
-  test("As a user who loses the connection, I see an offline banner that goes away when I'm back", async ({
+  test("As a user who loses the connection, the bar's status turns red and recovers when I'm back", async ({
     page,
     context,
   }) => {
     // Given
     await page.goto(LABEL_URL);
-    await expect(page.locator('#topbar')).toBeVisible();
-    const banner = page.locator('#offline-banner');
+    const bar = page.locator('#topbar');
+    await expect(bar).toBeVisible();
 
     // When
     await context.setOffline(true);
 
     // Then
-    await expect(banner).toBeVisible();
-    await expect(banner).toHaveText('You are offline');
+    await expect(bar).toHaveAttribute('data-tone', 'err');
 
     // When
     await context.setOffline(false);
 
     // Then
-    await expect(banner).toBeHidden();
+    await expect(bar).not.toHaveAttribute('data-tone', 'err');
   });
 
   test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
-    const card = page.locator('.notif-card', {
-      has: page.locator('.notif-title', { hasText: 'Get Polkadot Desktop' }),
+    const card = page.getByTestId('notif-card').filter({
+      has: page.getByTestId('notif-title').filter({ hasText: 'Get Polkadot Desktop' }),
     });
 
     // Then
     await expect(card).toBeVisible();
+    await expect(card.getByTestId('notif-icon')).toHaveAttribute('data-tone', 'info');
 
     // When
-    await card.locator('.notif-card-close').click();
+    await card.getByTestId('notif-card-close').click();
 
     // Then
     await expect(card).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('desktop-banner-dismissed'))).toBe('1');
+  });
+
+  test('As a desktop user, a part of the app that fails to load offers a reload in an error toast', async ({
+    page,
+  }) => {
+    // Given
+    await page.goto(LANDING_URL);
+
+    // When
+    await page.evaluate(() => window.dispatchEvent(new Event('vite:preloadError')));
+
+    // Then
+    const card = page.getByTestId('notif-card').filter({
+      has: page.getByTestId('notif-title').filter({ hasText: 'Asset failed to load' }),
+    });
+    await expect(card.getByTestId('notif-icon')).toHaveAttribute('data-tone', 'err');
+    await expect(card.getByTestId('notif-action')).toHaveText('Reload');
   });
 
   test('As a user with JavaScript disabled, the server-rendered shell still shows the topbar', async ({ browser }) => {
@@ -333,8 +420,8 @@ test.describe('Shell UI smoke', () => {
     // Then: the bar is the page's banner landmark.
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveAttribute('id', 'topbar');
     // The hydrated islands' build-time renders.
-    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Login with Polkadot Mobile');
-    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme: System');
+    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Sign in with Polkadot Mobile');
+    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Appearance: System');
 
     await context.close();
   });
@@ -345,7 +432,8 @@ test.describe('Shell UI smoke', () => {
     await page.route('**/*.css', async route => {
       const response = await route.fetch();
       const body = await response.text();
-      if (body.includes('#truapi-debug-panel')) {
+      // The panel's CSS modules are hashed; its own --td-* palette is not.
+      if (body.includes('--td-bg:')) {
         requested = true;
         await stylesheet.promise;
       }

@@ -21,10 +21,9 @@
 // - The detail pane is rebuilt only on user actions (`detailRevision`), never
 //   because traffic arrived.
 
-import { createEffect, createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, flush, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import { DEBUG } from '@dotli/config';
 import type { ExperimentalWalletControls } from '@dotli/truapi-debug';
-import { createWalletControls } from './wallet-controls.js';
 import type { JSX } from '@solidjs/web';
 import {
   readStoredDock,
@@ -60,13 +59,16 @@ import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
 import { RuntimeBadge, RuntimeView } from './RuntimeView.js';
+import { createWalletController } from './wallet/controller.js';
+import { WalletView } from './wallet/WalletView.js';
+import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
 
 /**
  * The viewport where the panel docks at the bottom with its panes stacked,
  * whatever dock was picked: side by side or docked right, each pane is too
- * narrow to read. The breakpoint of the matching rules in styles.css.
+ * narrow to read. The breakpoint of the matching rule in Header.module.css.
  */
 const NARROW_QUERY = '(max-width: 560px)';
 
@@ -279,7 +281,7 @@ export function Panel(props: {
     const anchor = list !== undefined && !wasAtBottom ? topRow(list, prevScrollTop) : null;
     const anchorTop = anchor?.offsetTop ?? 0;
     flush(update);
-    if (list !== undefined && view() === 'list' && list.querySelector('.td-row') !== null) {
+    if (list !== undefined && view() === 'list' && list.querySelector('[data-seq]') !== null) {
       if (wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       } else if (anchor?.isConnected === true) {
@@ -363,7 +365,7 @@ export function Panel(props: {
     // Right-dock sits below the host topbar so the dock toggle and session
     // controls remain reachable. Bottom-dock pins to the viewport bottom edge.
     if (placement() === 'right') {
-      el.style.top = getTopbarState().present ? 'var(--topbar-height)' : '0';
+      el.style.top = getTopbarState().present ? 'var(--content-top)' : '0';
     } else {
       el.style.top = '';
     }
@@ -417,7 +419,7 @@ export function Panel(props: {
     }
     // `display: none` on the pane under the cursor is not guaranteed to fire
     // a boundary event, which would strand the tooltip over the page.
-    tooltipEl?.classList.remove('visible');
+    tooltipEl?.removeAttribute('data-visible');
     commit(() => {
       setView(next);
       refreshSnapshot();
@@ -459,10 +461,11 @@ export function Panel(props: {
     return buildExport(events, meta);
   };
 
-  // Like ResolutionView, the renderer's DOM is owned by this Solid root.
+  // Like ResolutionView, the Wallet view's DOM is owned by this Solid root.
   // Keep the safety-sensitive controller across tab swaps; visibility clears
   // secrets and invalidates late reads, while disposal removes all listeners.
   const wallet = untrack(() => (DEBUG ? props.wallet : undefined));
+  const walletController = wallet === undefined ? undefined : createWalletController(wallet, store);
   const openView = (next: 'wallet' | 'runtime'): void => {
     if (collapsed()) {
       if (panelEl !== undefined && expandedHeight !== '') {
@@ -478,46 +481,51 @@ export function Panel(props: {
     refit();
   };
   const openWallet = (): void => {
-    if (wallet === undefined) {
+    if (walletController === undefined) {
       return;
     }
     openView('wallet');
-    walletView?.content.focus();
+    walletController.focus();
   };
-  const walletView = wallet === undefined ? undefined : createWalletControls(wallet, store, openWallet);
   createEffect(
     () => view() === 'wallet' && !collapsed(),
-    visible => walletView?.setVisible(visible),
+    visible => walletController?.setVisible(visible),
   );
-  if (walletView !== undefined) {
+  if (walletController !== undefined) {
     window.addEventListener('dotli:wallet-open', openWallet);
   }
   onCleanup(() => {
     window.removeEventListener('dotli:wallet-open', openWallet);
-    walletView?.dispose();
+    walletController?.dispose();
   });
 
   return (
     <div
       id={PANEL_ID}
-      class={{
-        collapsed: collapsed(),
-        'docked-right': placement() === 'right',
-        stacked: stacked(),
-        'res-view': view() === 'resolution',
-        'wallet-view': view() === 'wallet',
-        'archive-view': view() === 'archive',
-      }}
+      class={s['panel']}
+      data-dock={placement()}
+      data-layout={stacked() ? 'stacked' : undefined}
+      data-view={view()}
+      data-collapsed={collapsed() ? '' : undefined}
       ref={el => {
         panelEl = el;
       }}
     >
       <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
-        walletEntry={walletView?.entry}
+        wallet={
+          walletController === undefined
+            ? undefined
+            : {
+                name: walletController.ui().entryName,
+                expanded: walletController.ui().opened,
+                onOpen: openWallet,
+              }
+        }
         runtimeEntry={
           <RuntimeBadge
             snapshot={runtimeSnapshot()}
+            dock={placement()}
             onOpen={() => {
               openView('runtime');
             }}
@@ -527,6 +535,7 @@ export function Panel(props: {
         paused={paused()}
         collapsed={collapsed()}
         dock={dock()}
+        placement={placement()}
         exportJson={exportJson}
         onTogglePause={() => {
           const next = !store.isPaused();
@@ -574,17 +583,24 @@ export function Panel(props: {
           refit();
         }}
       />
-      <Filters filters={filters()} products={snapshot().products} onChange={changeFilters} />
-      <div class={view() === 'runtime' ? 'td-body runtime-only' : 'td-body'}>
-        <div class="td-views">
+      <Filters
+        filters={filters()}
+        products={snapshot().products}
+        placement={placement()}
+        collapsed={collapsed()}
+        hidden={view() === 'wallet'}
+        onChange={changeFilters}
+      />
+      <div class={s['body']} data-testid="td-body">
+        <div class={s['views']} data-testid="td-views">
           <Tabs
             view={view()}
-            wallet={wallet !== undefined}
+            wallet={walletController !== undefined}
             runtime={runtimeSnapshot() !== null}
             onSelect={selectView}
           />
           <RuntimeView snapshot={runtimeSnapshot()} active={view() === 'runtime' && !collapsed()} />
-          {walletView?.content}
+          <Show when={walletController}>{controller => <WalletView controller={controller()} />}</Show>
           <EventList
             events={visible()}
             allEvents={snapshot().events}
@@ -616,22 +632,26 @@ export function Panel(props: {
           />
           <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
         </div>
-        <BodySplitter panel={() => panelEl} stacked={stacked()} />
+        <BodySplitter
+          panel={() => panelEl}
+          stacked={stacked()}
+          hidden={view() === 'resolution' || view() === 'archive' || view() === 'wallet' || view() === 'runtime'}
+        />
         <DetailPane
           revision={detailRevision()}
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
+          hidden={view() === 'resolution' || view() === 'archive' || view() === 'wallet' || view() === 'runtime'}
           onSelectPair={seq => {
             select(seq);
-            listEl
-              ?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`)
-              ?.scrollIntoView({ block: 'nearest' });
+            listEl?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });
           }}
         />
       </div>
       <div
-        class="td-tooltip"
+        class={s['tooltip']}
+        data-testid="td-tooltip"
         aria-hidden="true"
         ref={el => {
           tooltipEl = el;

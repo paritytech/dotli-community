@@ -7,22 +7,37 @@ import {
   ALL_PERMISSIONS,
   automaticPreimageAccount,
   getPermissionStatuses,
+  resetAllPermissions,
   resetPermission,
   setPermissionStatus,
   type EnforceablePermissionName,
+  type PermissionGroup,
   type PermissionStatus,
 } from '../../permissions.js';
-import { recordPermissionChange } from '../../state/permissions.js';
+import { recordPermissionsChanged } from '../../state/permissions.js';
 import { callingPermissionSettings, mediaOwnsCapture, type CallingPermissionSetting } from '../../media-host.js';
 import { productStore } from '../../state/product.js';
 import { authStore, getAuthState } from '../../state/auth.js';
 import type { DotliAuthState } from '../../host-callbacks/AuthState.js';
+import { Button } from '../primitives/Button.js';
+import { Chip } from '../primitives/Chip.js';
+import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
+import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
+import { Callout, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
+import { MediaPermissions } from './MediaPermissions.js';
 import { PermissionRow } from './PermissionRow.js';
-import { usePopover } from './Popover.js';
+import { usePopover } from '../floating/Popover.js';
+import s from './PermissionsContent.module.css';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
+
+/** The menu's groups, each a labelled well of rows. */
+const MENU_GROUPS: readonly { id: PermissionGroup; label: string; permissions: typeof ALL_PERMISSIONS }[] = [
+  { id: 'device', label: 'Device', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'device') },
+  { id: 'app', label: 'Account and chain', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'app') },
+];
 
 /**
  * The last statuses read, for the product they were read for, with the
@@ -44,47 +59,26 @@ function currentLabel(): string | null {
   return product.status === 'loaded' ? product.label : null;
 }
 
+/** The status read for `name`, Ask when the read has none. */
+function statusIn(statuses: readonly PermissionStatus[], name: EnforceablePermissionName): PermissionStatus {
+  return statuses[PERMISSION_NAMES.indexOf(name)] ?? 'ask';
+}
+
 /**
  * The permissions popover's body (PermissionsPopover), its own chunk: every
- * permission of the loaded product (productStore) with a dropdown to allow,
- * deny or reset it, through the async API in permissions.ts. It reads the
- * statuses as it mounts (the popover opening), and again on a product
- * loading or failing and on a permission change, the last read winning. An
- * open row dropdown takes Escape first: the first Escape closes the
- * dropdown, the next the popover.
+ * permission of the loaded product (productStore) in a Device and an App
+ * group, each with Ask, Allow and Deny segments, and Reset all to Ask,
+ * through the async API in permissions.ts. It reads the statuses as it
+ * mounts (the popover opening), and again on a product loading or failing
+ * and on a permission change, the last read winning. In a bottom sheet the
+ * sheet draws the title, so the surface leaves out its head and the host chip.
  */
 export function PermissionsContent(): JSX.Element {
-  /** The open row dropdown's listbox. */
-  let menu: HTMLDivElement | undefined;
-  /** Each row's select, by permission. */
-  const selects = new Map<EnforceablePermissionName, HTMLButtonElement>();
   const product = useStore(productStore);
   const auth = useStore(authStore);
   const changes = createPermissionChanges();
-  const [fetched, setFetched] = createSignal<Fetched | null>(null);
-  const [openRow, setOpenRow] = createSignal<EnforceablePermissionName | null>(null);
-
-  /** Close the open dropdown, handing focus to its select if it had it. */
-  const closeDropdown = (): void => {
-    const name = untrack(openRow);
-    if (name === null) {
-      return;
-    }
-    const hadFocus = menu?.contains(document.activeElement) === true;
-    setOpenRow(null);
-    if (hadFocus) {
-      selects.get(name)?.focus();
-    }
-  };
-
   const popover = usePopover();
-  popover.onEscape(() => {
-    if (untrack(openRow) === null) {
-      return false;
-    }
-    closeDropdown();
-    return true;
-  });
+  const [fetched, setFetched] = createSignal<Fetched | null>(null);
 
   const label = (): string | null => {
     const current = product();
@@ -99,7 +93,6 @@ export function PermissionsContent(): JSX.Element {
   createEffect(
     () => (popover.open() ? { label: label(), auth: auth(), change: changes(), retry: retries() } : undefined),
     key => {
-      closeDropdown();
       if (key === undefined) {
         setFetched(null);
         return;
@@ -132,58 +125,24 @@ export function PermissionsContent(): JSX.Element {
     },
   );
 
-  // While a dropdown is open: its selected option has the focus, and a click
-  // outside its select closes it. Escape closes it too, before the popover
-  // (onEscape below).
-  createEffect(openRow, name => {
-    if (name === null) {
-      return;
-    }
-    menu?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
-    const wrap = menu?.parentElement;
-    const onClick = (ev: MouseEvent): void => {
-      if (wrap?.contains(ev.target as Node) !== true) {
-        closeDropdown();
-      }
-    };
-    document.addEventListener('click', onClick);
-    return () => {
-      document.removeEventListener('click', onClick);
-    };
-  });
-
-  const toggleDropdown = (name: EnforceablePermissionName): void => {
-    const wasOpen = untrack(openRow) === name;
-    closeDropdown();
-    if (!wasOpen) {
-      setOpenRow(name);
-    }
-  };
-
-  const choose = (name: EnforceablePermissionName, next: PermissionStatus): void => {
-    closeDropdown();
+  const choose = async (name: EnforceablePermissionName, next: PermissionStatus): Promise<void> => {
     const read = untrack(fetched);
-    if (read?.auth !== getAuthState() || read.label !== currentLabel()) {
+    if (read === null || 'failed' in read || read.auth !== getAuthState() || read.label !== currentLabel()) {
       return;
     }
     const { label } = read;
-    void (async () => {
+    try {
       if (next === 'ask') {
         await resetPermission(label, name, automaticPreimageAccount(read.auth));
       } else {
         await setPermissionStatus(label, name, next, automaticPreimageAccount(read.auth));
       }
-      // The core's committed-policy event owns any required iframe reload.
-      recordPermissionChange({
-        kind: 'grant',
-        label,
-        permission: name,
-      });
-    })().catch(() => {
-      // Re-read the list (only while open: a closed popover reads afresh on
-      // its next open).
+      recordPermissionsChanged(label, [name]);
+    } catch (error) {
+      // Only an open popover re-reads; the row keeps its stored status.
       setRetries(n => n + 1);
-    });
+      throw error;
+    }
   };
 
   const hint = (): string | undefined => {
@@ -212,6 +171,9 @@ export function PermissionsContent(): JSX.Element {
       : undefined;
   };
 
+  /** The loaded statuses alone, for the rows and the reset. */
+  const statuses = (): PermissionStatus[] | undefined => loaded()?.statuses;
+
   /** Switch this execution between protected host Media and raw capture. */
   const switchContainer = (label: string, protectedMedia: boolean): void => {
     popover.close();
@@ -222,88 +184,124 @@ export function PermissionsContent(): JSX.Element {
     );
   };
 
+  /** Receives the focus handed back once a reset disables it. */
+  let resetButton: HTMLButtonElement | undefined;
+  const [resetting, setResetting] = createSignal(false);
+
+  /** Something to reset, and no reset running. */
+  const canReset = (): boolean => !resetting() && (statuses()?.some(status => status !== 'ask') ?? false);
+
+  // One reset at a time, announced as one change, so the committed policy
+  // reloads the app at most once. A failed write re-reads the list.
+  const resetAll = (): void => {
+    const read = untrack(fetched);
+    if (
+      read === null ||
+      'failed' in read ||
+      read.auth !== getAuthState() ||
+      read.label !== currentLabel() ||
+      untrack(resetting)
+    ) {
+      return;
+    }
+    const { label } = read;
+    // Starting a reset disables the button under a keyboard user's focus, and
+    // a browser then drops that focus to the body, closing the popover.
+    if (document.activeElement === resetButton) {
+      document.getElementById(popover.id)?.focus();
+    }
+    setResetting(true);
+    void resetAllPermissions(label, automaticPreimageAccount(read.auth))
+      .then(
+        ({ reset, failed }) => {
+          recordPermissionsChanged(label, reset);
+          if (failed) {
+            setRetries(n => n + 1);
+          }
+        },
+        () => {
+          setRetries(n => n + 1);
+        },
+      )
+      .finally(() => {
+        setResetting(false);
+      });
+  };
+
+  /** The loaded product's host, for the head's chip. */
+  const host = (): string | undefined => {
+    const current = product();
+    return current.status === 'loaded' ? current.productId : undefined;
+  };
+
   return (
-    <>
-      <div class="permissions-popover-header">Permissions</div>
-      <div class="permissions-popover-list" id="permissions-popover-list">
-        <Show when={hint()}>{text => <div class="permissions-popover-footer">{text()}</div>}</Show>
+    <Surface width="lg">
+      <SurfaceHead
+        title="Permissions"
+        testId="permissions-popover-header"
+        aside={
+          <Show when={host()}>
+            {id => (
+              <Chip tone="mono" testId="permissions-popover-host">
+                {id()}
+              </Chip>
+            )}
+          </Show>
+        }
+      />
+      <div class={s['list']} id="permissions-popover-list">
+        <Show when={hint()}>{text => <Callout testId="permissions-popover-hint">{text()}</Callout>}</Show>
         <Show when={loaded()}>
           {read => (
             <>
-              <For each={ALL_PERMISSIONS}>
-                {(perm, index) => (
-                  <Show when={perm.name !== 'AutomaticPreimageSubmit' || automaticPreimageAccount(auth()) !== null}>
-                    <PermissionRow
-                      perm={perm}
-                      status={read().statuses[index()] ?? 'ask'}
-                      open={openRow() === perm.name}
-                      toggleMenu={toggleDropdown}
-                      choose={choose}
-                      menuRef={el => {
-                        menu = el;
-                      }}
-                      selectRef={el => {
-                        selects.set(perm.name, el);
-                      }}
-                    />
-                  </Show>
+              <For each={MENU_GROUPS}>
+                {group => (
+                  <Stack
+                    role="group"
+                    aria-labelledby={`permissions-popover-group-${group.id}`}
+                    testId="permissions-popover-group"
+                  >
+                    <SectionLabel as="h3" text={group.label} id={`permissions-popover-group-${group.id}`} />
+                    <Well layout="controls">
+                      <For each={group.permissions}>
+                        {perm => (
+                          <Show
+                            when={perm.name !== 'AutomaticPreimageSubmit' || automaticPreimageAccount(auth()) !== null}
+                          >
+                            <PermissionRow perm={perm} status={statusIn(read().statuses, perm.name)} choose={choose} />
+                          </Show>
+                        )}
+                      </For>
+                    </Well>
+                  </Stack>
                 )}
               </For>
-              <For each={read().calling}>{setting => <CallingRow setting={setting} />}</For>
-              <div class="permissions-popover-footer">
-                {read().protectedMedia
-                  ? 'Calling is scoped to the exact account and network shown. Revoking call, microphone, or camera authority ends active calls. Products never receive raw browser capture access.'
-                  : 'Changing permissions will reload the app.'}
-              </div>
-              <button
-                type="button"
-                class="permissions-popover-select"
-                title={
-                  read().protectedMedia
-                    ? 'Media becomes Unsupported. Existing camera/microphone grants then allow the product to access raw media directly. This choice applies to this execution only.'
-                    : "The product's raw capture and fullscreen access is removed. Calling and capture are handled only by the trusted host."
-                }
-                onClick={() => {
+              <MediaPermissions
+                protectedMedia={read().protectedMedia}
+                calling={read().calling}
+                onSwitchContainer={() => {
                   switchContainer(read().label, read().protectedMedia);
                 }}
-              >
-                {read().protectedMedia
-                  ? 'Use legacy raw capture (ends calls and reloads)'
-                  : 'Use protected host Media (reloads)'}
-              </button>
+              />
             </>
           )}
         </Show>
       </div>
-    </>
-  );
-}
-
-/** One Calling scope the core has used, with a trusted revocation control. */
-function CallingRow(props: { setting: CallingPermissionSetting }): JSX.Element {
-  const [failed, setFailed] = createSignal(false);
-  const [pending, setPending] = createSignal(false);
-  const revoke = (): void => {
-    setPending(true);
-    setFailed(false);
-    props.setting.revoke().then(
-      () => {
-        setPending(false);
-      },
-      () => {
-        setPending(false);
-        setFailed(true);
-      },
-    );
-  };
-  return (
-    <div class="permissions-popover-row">
-      <div class="permissions-popover-name" style={{ 'overflow-wrap': 'anywhere', 'white-space': 'pre-line' }}>
-        {`Calling — ${props.setting.status}\nProduct: ${props.setting.productId}\nAccount (sr25519): ${props.setting.account}\nNetwork genesis: ${props.setting.network}`}
-      </div>
-      <button type="button" class="permissions-popover-select" disabled={pending()} onClick={revoke}>
-        {failed() ? 'Revocation failed — retry' : 'Revoke / ask again'}
-      </button>
-    </div>
+      <Show when={statuses() !== undefined}>
+        <SurfaceFoot testId="permissions-popover-foot" hint={<Hint icon={<ReloadIcon />}>Changes reload the app</Hint>}>
+          <Button
+            ref={el => {
+              resetButton = el;
+            }}
+            size="sm"
+            disabled={!canReset()}
+            onClick={resetAll}
+            testId="permissions-popover-reset"
+          >
+            Reset all to Ask
+          </Button>
+        </SurfaceFoot>
+      </Show>
+    </Surface>
   );
 }

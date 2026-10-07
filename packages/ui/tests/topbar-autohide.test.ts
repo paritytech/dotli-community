@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as TopbarAutohideModule from '../src/topbar-autohide.js';
 import type * as TopbarSurfacesModule from '../src/state/topbar-surfaces.js';
 import { byId } from './support.js';
+import { stubPhoneViewport } from './helpers/viewport.js';
 
 // happy-dom rejects var() inside calc() and drops a bare dvh length, so the
 // box helper is mocked with plain stand-in values here. The real inset math and
@@ -18,7 +19,13 @@ vi.mock('../src/product-iframe-box.js', () => ({
       : { top: '0px', left: '0px', width: '100%', height: '100vh' },
 }));
 
-const HIDE_DELAY_MS = 5000;
+const device = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock('../../shared/src/device.js', () => ({
+  isMobileDevice: () => device.mobile,
+}));
+
+const HIDE_DELAY_MS = 2500;
 
 const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 
@@ -28,9 +35,9 @@ const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 function installPageDom(): void {
   document.body.innerHTML = `
     <div id="topbar">
-      <a class="topbar-left" id="topbar-home" href="/">Home</a>
-      <div class="topbar-url" id="topbar-url" hidden></div>
-      <div class="topbar-right" id="topbar-actions"><button id="auth-button">Login</button><button id="mode-button">Settings</button></div>
+      <a id="topbar-home" href="/">Home</a>
+      <div id="topbar-url" hidden></div>
+      <div id="topbar-actions"><button id="auth-button">Login</button><button id="mode-button">Settings</button></div>
     </div>
     <div id="app">
       <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>
@@ -72,16 +79,16 @@ function pressShortcut(): void {
   flushUi();
 }
 
-function stubReducedMotion(reduce: boolean): void {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: reduce && query.includes('prefers-reduced-motion'),
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
+/** The window's width: a phone's or a desktop's (see stubPhoneViewport). */
+let viewport: ReturnType<typeof stubPhoneViewport>;
+
+/** Resize the window across the phone width, then render what changed. */
+function setPhone(phone: boolean): void {
+  viewport.set(phone);
+  flushUi();
 }
 
-/** A popover of the bar, as createPopover registers it, open or not. */
+/** A popover of the bar, as FloatingLayer registers it, open or not. */
 interface StandInSurface {
   element: HTMLElement;
   open: boolean;
@@ -101,10 +108,10 @@ function surface(open = false): StandInSurface {
   return stand;
 }
 
-async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
-  // Logged in, as the auth controller records it (state/auth.ts).
+async function loadAutoHide(loggedIn = true, contentShown = true): Promise<typeof TopbarAutohideModule> {
+  // As the auth controller records it (state/auth.ts).
   const { setLoggedIn } = await import('../src/state/auth.js');
-  setLoggedIn(true);
+  setLoggedIn(loggedIn);
   // The host page has the topbar (initTopBar says so).
   const { setTopbarPresent } = await import('../src/state/topbar.js');
   setTopbarPresent();
@@ -114,6 +121,10 @@ async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
   surfaces = await import('../src/state/topbar-surfaces.js');
   const mod = await import('../src/topbar-autohide.js');
   disposers.push(mod.disposeTopbarAutoHide);
+  // The product's content is on screen, as the host reports once the sandbox has loaded it.
+  if (contentShown) {
+    mod.setProductContentShown(true);
+  }
 
   // The bar registers its element, as its script does on the host page
   // (apps/host/src/components/Topbar.astro).
@@ -132,9 +143,10 @@ async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
 }
 
 beforeEach(() => {
+  device.mobile = false;
   vi.resetModules();
   vi.unstubAllGlobals();
-  stubReducedMotion(false);
+  viewport = stubPhoneViewport(false);
   vi.useFakeTimers();
   installPageDom();
 });
@@ -295,9 +307,9 @@ describe('topbar auto-hide reveal', () => {
     expect(isHidden()).toBe(false);
   });
 
-  it('As a dotli integrator, pinning the bar drops a queued focus check', async () => {
+  it('As a dotli integrator, disposing the auto-hide drops a queued focus check', async () => {
     // Given a focusout has queued its next-tick focus check
-    const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
+    const { armTopbarAutoHide, disposeTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
     // Armed: the hide timer is pending, alongside timers owned by other modules.
@@ -306,7 +318,7 @@ describe('topbar auto-hide reveal', () => {
     expect(vi.getTimerCount()).toBe(armedTimers + 1);
 
     // When
-    pinTopbarVisible();
+    disposeTopbarAutoHide();
 
     // Then both the hide timer and the queued focus check are gone
     expect(vi.getTimerCount()).toBe(armedTimers - 1);
@@ -368,7 +380,7 @@ describe('topbar auto-hide reveal', () => {
 
   it('As a dotli integrator, the reveal button shows only while the bar auto-hides', async () => {
     // Given
-    const { armTopbarAutoHide, pinTopbarVisible, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
+    const { armTopbarAutoHide, disposeTopbarAutoHide, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
 
     // When
     armTopbarAutoHide();
@@ -378,7 +390,7 @@ describe('topbar auto-hide reveal', () => {
     expect(byId(TOPBAR_REVEAL_BUTTON_ID).hidden).toBe(false);
 
     // When
-    pinTopbarVisible();
+    disposeTopbarAutoHide();
     flushUi();
 
     // Then
@@ -386,102 +398,40 @@ describe('topbar auto-hide reveal', () => {
   });
 });
 
-describe('topbar auto-hide motion and layout', () => {
-  it('As a dApp user, revealing the bar slides the app down with it, then fits the app below it so its bottom stays reachable', async () => {
+describe('topbar auto-hide layout', () => {
+  it('As a dApp user, once the bar folds into the capsule the app takes the full height and stays there when the pill comes back', async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
-    advance(HIDE_DELAY_MS);
-    const hiddenTop = appFrame().style.top;
-    const hiddenHeight = appFrame().style.height;
-    expect(appFrame().style.transform).toBe('translateY(0)');
 
     // When
-    focusElement(byId('topbar-home'));
-
-    // Then: while the bar slides in, a transform moves the frame with it, so
-    // the app's top is never covered
-    expect(isHidden()).toBe(false);
-    expect(appFrame().style.top).toBe(hiddenTop);
-    expect(appFrame().style.height).toBe(hiddenHeight);
-    expect(hiddenTop).toBe('0px');
-    expect(hiddenHeight).toBe('100vh');
-    expect(appFrame().style.transform).toBe('translateY(calc(var(--topbar-height, 56px) - var(--safe-top, 0px)))');
-
-    // When: the slide is over
-    advance(300);
-
-    // Then: the frame sits below the bar at its size, nothing off-screen
-    expect(appFrame().style.top).toBe('56px');
-    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
-    expect(appFrame().style.transform).toBe('');
-  });
-
-  it('As a dApp user, hovering the bar while it is up leaves the app where it sits', async () => {
-    // Given: revealed and settled below the bar
-    const { armTopbarAutoHide, revealTopbar } = await loadAutoHide();
-    armTopbarAutoHide();
-    flushUi();
-    advance(HIDE_DELAY_MS);
-    focusElement(byId('topbar-home'));
-    advance(300);
-
-    // When: the pointer enters the bar again
-    revealTopbar();
-
-    // Then: no second slide, the frame stays below the bar
-    expect(appFrame().style.top).toBe('56px');
-    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
-    expect(appFrame().style.transform).toBe('');
-  });
-
-  it('As a dApp user, the bar hiding again slides the app back up from where it sits', async () => {
-    // Given: revealed and settled below the bar
-    const { armTopbarAutoHide } = await loadAutoHide();
-    armTopbarAutoHide();
-    flushUi();
-    advance(HIDE_DELAY_MS);
-    focusElement(byId('topbar-home'));
-    advance(300);
-    expect(appFrame().style.top).toBe('56px');
-
-    // When: focus leaves the bar, and the hide delay passes
-    focusElement(byId('toast'));
-    advance(0);
-    advance(HIDE_DELAY_MS);
-
-    // Then: the full box again, sliding up with the bar
-    expect(isHidden()).toBe(true);
-    expect(appFrame().style.top).toBe('0px');
-    expect(appFrame().style.height).toBe('100vh');
-    expect(appFrame().style.transform).toBe('translateY(0)');
-    expect(appFrame().style.transition).toContain('transform');
-  });
-
-  it('As a reduced-motion user, the app frame follows the bar without a slide', async () => {
-    // Given
-    stubReducedMotion(true);
-    const { armTopbarAutoHide } = await loadAutoHide();
-
-    // When
-    armTopbarAutoHide();
-    flushUi();
     advance(HIDE_DELAY_MS);
 
     // Then
-    expect(appFrame().style.transform).toBe('translateY(0)');
-    expect(appFrame().style.transition).toBe('none');
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+
+    // When
+    focusElement(byId('topbar-home'));
+    advance(300);
+
+    // Then: the pill floats over the app, which does not move
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+    expect(appFrame().style.transform).toBe('');
   });
 
-  it('As a dotli integrator, a re-rendered product frame keeps the hidden-bar geometry', async () => {
+  it('As a dotli integrator, a re-rendered product frame keeps the full-height geometry', async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
     advance(HIDE_DELAY_MS);
 
-    // When a new render hands the layout module a fresh frame
+    // When
     const { attachProductFrame } = await import('../src/product-frame-layout.js');
     const frame = document.createElement('iframe');
     appFrame().replaceWith(frame);
@@ -491,29 +441,241 @@ describe('topbar auto-hide motion and layout', () => {
     // Then
     expect(appFrame().style.top).toBe('0px');
     expect(appFrame().style.height).toBe('100vh');
-    expect(appFrame().style.transform).toBe('translateY(0)');
-    expect(appFrame().style.transition).toContain('transform');
+    expect(appFrame().style.transform).toBe('');
   });
 
-  it('As a logged-out user, the bar is pinned and the app frame makes room for it', async () => {
+  it("As a logged-out user, the bar folds into the capsule as anyone else's does, over the full-height app", async () => {
     // Given
-    const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
+    const { armTopbarAutoHide } = await loadAutoHide(false);
+
+    // When
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+  });
+
+  it('As a dApp user, the app takes the full height under the pill before the bar first folds', async () => {
+    // Given: the bar is up and not armed yet (the shield still settling)
+    await loadAutoHide();
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+  });
+});
+
+describe('topbar auto-hide over the product', () => {
+  it("As a user on the loading screen, the bar stays up until the app's content shows, then folds", async () => {
+    // Given
+    const { armTopbarAutoHide, setProductContentShown } = await loadAutoHide(true, false);
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When
+    setProductContentShown(true);
+    flushUi();
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it('As a user whose app fails to load, the folded bar comes back and stays over the error page', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
     advance(HIDE_DELAY_MS);
     expect(isHidden()).toBe(true);
 
     // When
-    const { setLoggedIn } = await import('../src/state/auth.js');
-    setLoggedIn(false);
-    pinTopbarVisible();
+    const { setProductError } = await import('../src/state/product.js');
+    setProductError();
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+  });
+
+  it('As a user whose app reports its own failure in the frame, the folded bar comes back and stays', async () => {
+    // Given
+    const { armTopbarAutoHide, setProductContentShown } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+    expect(isHidden()).toBe(true);
+
+    // When
+    setProductContentShown(false);
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+  });
+});
+
+describe('topbar auto-hide on use of the app', () => {
+  /** A press or a Tab into the cross-origin frame: focus moves to it and this window blurs. */
+  function pressIntoApp(): void {
+    appFrame().focus();
+    window.dispatchEvent(new FocusEvent('blur'));
+    flushUi();
+  }
+
+  it('As a dApp user, pressing into the app folds the bar at once', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    pressIntoApp();
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it('As a dApp user, pressing into the app while a popover of the bar is open leaves the bar up until it closes', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    const settings = surface(true);
+
+    // When
+    pressIntoApp();
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When
+    settings.open = false;
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it('As a user on the loading screen, pressing into the frame leaves the bar up', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide(true, false);
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    pressIntoApp();
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(false);
+  });
+
+  it('As a user switching to another window, the bar folds only after the usual delay', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    window.dispatchEvent(new FocusEvent('blur'));
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+});
+
+describe('topbar auto-hide on a phone', () => {
+  it('As a tablet user, the bar never folds and the app starts below it, so the bar never covers the app', async () => {
+    // Given: a touch device at a desktop width, where auto-hide never arms
+    device.mobile = true;
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
     flushUi();
     advance(HIDE_DELAY_MS * 2);
 
     // Then
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe('56px');
-    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
-    expect(appFrame().style.transform).toBe('');
+  });
+
+  it('As a phone user, the bar never folds away, and the app keeps clear of it', async () => {
+    // Given
+    viewport.set(true);
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('56px');
+  });
+
+  it('As a user narrowing the window to a phone width, the folded bar comes back as the phone bar, the app keeps clear of it, and widening folds it again', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+
+    // When
+    setPhone(true);
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('56px');
+
+    // When
+    setPhone(false);
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+  });
+
+  it('As a keyboard user on a phone-width window, Alt+Shift+T leaves the header where it is', async () => {
+    // Given
+    viewport.set(true);
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    pressShortcut();
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(false);
   });
 });

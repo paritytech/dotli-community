@@ -1,0 +1,78 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The camera scan's parts: a wider card for the preview, the preview, the
+   camera picker and its captions. floating/Modal.module.css draws the modal
+   around them. */
+
+.card {
+  width: min(680px, 100%);
+}
+
+.caption {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  text-align: center;
+}
+
+/* The camera is asked for 16:9 (1920x1080), so the frame keeps that shape
+   before the first frame arrives instead of collapsing to the element's
+   150 px default; `cover` crops a camera that answers otherwise. */
+.video {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 60dvh;
+  aspect-ratio: 16 / 9;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--r-md);
+  background: #050505;
+  object-fit: cover;
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+}
+
+.pickerLabel {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.select {
+  flex: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  height: var(--h-control-sm);
+  margin: 0;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+  color: var(--chrome-text);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.select:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 0;
+}

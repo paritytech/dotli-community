@@ -2,25 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Escape a string for safe interpolation into innerHTML.
- *
- * Covers all five HTML-significant characters: & < > " '
- *
- * The single quote is necessary because interpolations like
- * `<a onclick='...${value}...'>` land inside a single-quoted attribute.
- * Without escaping it, a contributor using this helper for a
- * single-quoted attribute would have no indication the output was unsafe.
- */
-export function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/**
  * dotNS label validator.
  *
  * Contract (closed set, no silent acceptance):

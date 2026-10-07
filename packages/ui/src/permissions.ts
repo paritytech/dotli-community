@@ -88,32 +88,40 @@ export function isEnforceableDevicePermission(name: DevicePermissionName): name 
   return !(AUTO_GRANT_DEVICE_PERMISSIONS as ReadonlySet<string>).has(name);
 }
 
+/**
+ * Where a permission sits in the menu: what the device lets the app use, or
+ * what the app does with the user's account and the network.
+ */
+export type PermissionGroup = 'device' | 'app';
+
 /** All permissions shown in the topbar menu, in display order. */
 export const ALL_PERMISSIONS: readonly {
   name: EnforceablePermissionName;
   label: string;
   description?: string;
+  group: PermissionGroup;
 }[] = [
-  { name: 'Notifications', label: 'Notifications' },
-  { name: 'Camera', label: 'Camera' },
-  { name: 'Microphone', label: 'Microphone' },
-  { name: 'Location', label: 'Location' },
-  { name: 'Bluetooth', label: 'Bluetooth' },
-  { name: 'NFC', label: 'NFC' },
-  { name: 'Clipboard', label: 'Clipboard' },
-  { name: 'Biometrics', label: 'Biometrics' },
-  { name: 'ChatAuthority', label: 'Chat Identity Authority' },
-  { name: 'IdentityDisclosure', label: 'Identity Disclosure' },
-  { name: 'ProfileDisclosure', label: 'Profile Disclosure' },
-  { name: 'ChainSubmit', label: 'Sign Transactions' },
-  { name: 'PreimageSubmit', label: 'Submit Preimages' },
+  { name: 'Notifications', label: 'Notifications', group: 'device' },
+  { name: 'Camera', label: 'Camera', group: 'device' },
+  { name: 'Microphone', label: 'Microphone', group: 'device' },
+  { name: 'Location', label: 'Location', group: 'device' },
+  { name: 'Bluetooth', label: 'Bluetooth', group: 'device' },
+  { name: 'NFC', label: 'NFC', group: 'device' },
+  { name: 'Clipboard', label: 'Clipboard', group: 'device' },
+  { name: 'Biometrics', label: 'Biometrics', group: 'device' },
+  { name: 'ChatAuthority', label: 'Chat identity authority', group: 'app' },
+  { name: 'IdentityDisclosure', label: 'Identity disclosure', group: 'app' },
+  { name: 'ProfileDisclosure', label: 'Profile disclosure', group: 'app' },
+  { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
+  { name: 'PreimageSubmit', label: 'Submit preimages', group: 'app' },
   {
     name: 'AutomaticPreimageSubmit',
-    label: 'Automatic Preimage Uploads',
+    label: 'Automatic preimage uploads',
+    group: 'app',
     description:
       'Separate consent for this app, the active root account and configured Bulletin network: at most 256 KiB per upload and 4 automatic uploads per rolling hour. Larger uploads or an exhausted budget always ask. Ask or Revoke stops automatic approval, not individual upload requests. Regranting does not reset the budget.',
   },
-  { name: 'StatementSubmit', label: 'Submit Statements' },
+  { name: 'StatementSubmit', label: 'Submit statements', group: 'app' },
 ];
 
 /** Returns true if the permission name maps to an iframe `allow` directive. */
@@ -262,6 +270,35 @@ export async function resetPermission(
   rootPublicKey: string | null = null,
 ): Promise<void> {
   await setPermissionStatus(label, permission, 'ask', rootPublicKey);
+}
+
+/** What resetAllPermissions changed. */
+export interface ResetAllResult {
+  /** The permissions set back to ask, in menu order. */
+  reset: EnforceablePermissionName[];
+  /** Whether any write failed. Those permissions keep their status. */
+  failed: boolean;
+}
+
+/**
+ * Set every granted or denied permission of `label` back to ask.
+ *
+ * The writes run together and each may fail on its own, so the caller learns
+ * which ones landed and can announce them as one change. A status read that
+ * fails rejects, before anything is written.
+ */
+export async function resetAllPermissions(
+  label: string,
+  rootPublicKey: string | null = automaticPreimageAccount(getAuthState()),
+): Promise<ResetAllResult> {
+  const names = ALL_PERMISSIONS.map(({ name }) => name);
+  const statuses = await getPermissionStatuses(label, names, rootPublicKey);
+  const decided = names.filter((_, index) => (statuses[index] ?? 'ask') !== 'ask');
+  const writes = await Promise.allSettled(decided.map(name => setPermissionStatus(label, name, 'ask', rootPublicKey)));
+  return {
+    reset: decided.filter((_, index) => writes[index]?.status === 'fulfilled'),
+    failed: writes.some(write => write.status === 'rejected'),
+  };
 }
 
 /** Returns the list of device permission names that have been granted. */

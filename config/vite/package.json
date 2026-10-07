@@ -6,10 +6,13 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./astro-lazy-css": "./src/astro-lazy-css.ts",
     "./astro-pwa": "./src/astro-pwa.ts",
     "./build-info": "./src/build-info-plugin.ts",
     "./build-options": "./src/build-options.ts",
+    "./css-modules": "./src/css-modules.ts",
     "./runtime-network-config": "./src/runtime-network-config-plugin.ts",
+    "./sentry-release": "./src/sentry-release.ts",
     "./social-meta": "./src/social-meta-plugin.ts",
     "./package.json": "./package.json"
   },
@@ -21,7 +24,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "astro": "^7.3.5",
-    "vite-plugin-pwa": "^1.3.0"
+    "astro": "^7.3.6",
+    "vite-plugin-pwa": "^2.0.0"
   }
 }

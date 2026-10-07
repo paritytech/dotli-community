@@ -1,0 +1,66 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's .switch: a 38 x 22 track with a 16 px knob inset 3 px on
+   desktop, the boards' 44 x 26 with a 20 px knob on phones. On, the track
+   turns white and the knob dark, the same pair as the primary button. */
+
+:where(.switch) {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill-strong);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+  /* No text: only so it holds no UA 13.333 px font size. */
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.switch::after {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--chrome-text);
+  box-shadow: var(--chrome-shadow-knob);
+  transition:
+    transform var(--dur) var(--ease-spring),
+    background var(--dur-fast);
+}
+.switch[aria-checked='true'] {
+  background: var(--chrome-text);
+  box-shadow: none;
+}
+.switch[aria-checked='true']::after {
+  background: var(--chrome-on-primary);
+  transform: translateX(16px);
+}
+.switch:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+@media (max-width: 560px) {
+  :where(.switch) {
+    width: 44px;
+    height: 26px;
+  }
+  .switch::after {
+    width: 20px;
+    height: 20px;
+  }
+  .switch[aria-checked='true']::after {
+    transform: translateX(18px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch::after {
+    transition: none;
+  }
+}

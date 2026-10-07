@@ -11,7 +11,7 @@ import {
   wordToBigInt,
   extractAddress,
   decodeBytesSlot,
-  decodeIpfsContenthash,
+  decodeIpfsContenthashResult,
 } from '../src/abi.js';
 
 describe('namehash', () => {
@@ -192,33 +192,34 @@ describe('decodeBytesSlot', () => {
   });
 });
 
-describe('decodeIpfsContenthash', () => {
-  it('returns null for empty hex', () => {
-    expect(decodeIpfsContenthash('')).toBeNull();
-    expect(decodeIpfsContenthash('0x')).toBeNull();
-    expect(decodeIpfsContenthash('0x0')).toBeNull();
+describe('decodeIpfsContenthashResult', () => {
+  it('reads empty hex as no record', () => {
+    expect(decodeIpfsContenthashResult('')).toEqual({ kind: 'empty' });
+    expect(decodeIpfsContenthashResult('0x')).toEqual({ kind: 'empty' });
+    expect(decodeIpfsContenthashResult('0x0')).toEqual({ kind: 'empty' });
   });
 
-  it('returns null for too-short hex', () => {
-    expect(decodeIpfsContenthash('0xab')).toBeNull();
+  it('reads too-short hex as no record', () => {
+    expect(decodeIpfsContenthashResult('0xab')).toEqual({ kind: 'empty' });
   });
 
-  it('returns null for non-IPFS codec', () => {
+  it('reports a non-IPFS codec', () => {
     // Swarm codec prefix
-    expect(decodeIpfsContenthash('0xe40101')).toBeNull();
+    expect(decodeIpfsContenthashResult('0xe40101')).toMatchObject({ kind: 'unsupported-codec' });
   });
 
   it('decodes valid IPFS CIDv1 contenthash', () => {
     // Real ENS-encoded IPFS CIDv1: encode('ipfs', 'bafybeibj6lixxzqtsb45ysdjnupvqkufgdvzqbnvmhw2kf7cfkesy7r7d4')
     const validIpfsContenthash = 'e3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f';
-    const result = decodeIpfsContenthash(validIpfsContenthash);
-    expect(result).not.toBeNull();
-    expect(result).toBe('bafybeibj6lixxzqtsb45ysdjnupvqkufgdvzqbnvmhw2kf7cfkesy7r7d4');
+    expect(decodeIpfsContenthashResult(validIpfsContenthash)).toEqual({
+      kind: 'ok',
+      cid: 'bafybeibj6lixxzqtsb45ysdjnupvqkufgdvzqbnvmhw2kf7cfkesy7r7d4',
+    });
   });
 
   it('handles 0x prefix', () => {
     const hex = '0xe3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f';
     const hexWithout = 'e3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f';
-    expect(decodeIpfsContenthash(hex)).toBe(decodeIpfsContenthash(hexWithout));
+    expect(decodeIpfsContenthashResult(hex)).toEqual(decodeIpfsContenthashResult(hexWithout));
   });
 });

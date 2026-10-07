@@ -1,0 +1,103 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board's sheet: 85% of the screen at most, and never past the status
+   bar above the shorter layer. Rounded top corners, sliding up on
+   --dur-morph (SHEET_EXIT_MS waits as long before unmounting). The
+   layer's [data-open] drives it. */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: min(85dvh, var(--content-height));
+  overflow: hidden;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-sheet);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+  transform: translateY(100%);
+  transition: transform var(--dur-morph) var(--ease-out);
+}
+:global([data-open]) > .sheet {
+  transform: translateY(0);
+}
+@starting-style {
+  :global([data-open]) > .sheet {
+    transform: translateY(100%);
+  }
+}
+.sheet:focus-visible {
+  outline: none;
+}
+.sheet[data-dragging] {
+  transition: none;
+}
+/* A sheet taking another's place: the leaving one goes at once, the coming
+   one starts in place. */
+:global([data-handoff]:not([data-open])) > .sheet {
+  transition: none;
+}
+@starting-style {
+  :global([data-open][data-handoff]) > .sheet {
+    transform: translateY(0);
+  }
+}
+
+/* The board's .sheet-head: no glass of its own, a fixed row above the body
+   that scrolls. */
+.head {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-3);
+  padding: var(--sp-6) var(--sp-4) var(--sp-3) var(--sp-5);
+  touch-action: none;
+  cursor: grab;
+}
+/* The board's grabber, 36 px wide. */
+.grabber {
+  position: absolute;
+  top: var(--sp-2);
+  left: 50%;
+  width: 36px;
+  height: var(--sp-1);
+  /* Half its width, to centre it on the left: 50%. */
+  margin-left: -18px;
+  border-radius: var(--r-full);
+  background: var(--chrome-ring-strong);
+}
+.title {
+  min-width: 0;
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-title-lg);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+
+/* The board's .sheet-scroll: 24 px under the content. The layer already
+   ends above the bar and the home indicator. */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: var(--sp-6);
+}
+/* A menu's body takes focus itself (tabindex -1) for a pointer opening, and
+   shows no ring for it: its rows carry the ring. */
+.body:focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    transition: none !important;
+  }
+}

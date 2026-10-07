@@ -1,0 +1,240 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A centred column, lifted above the middle like the loading screen's, so a
+   failed load swaps one for the other in place. */
+
+.page {
+  /* `#app` is a centring flex container, so claim the full row and stretch
+     instead of collapsing to the width of the longest line. */
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--content-height);
+  margin: 0;
+  padding: 0 calc(32px + var(--safe-right)) 80px calc(32px + var(--safe-left));
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  text-align: center;
+  color-scheme: dark;
+}
+
+/* The sandbox has no `#app`, so the page fills its transparent body itself. */
+.standalone {
+  min-height: 100dvh;
+  background: var(--bg-page);
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 440px;
+  margin: 0;
+  padding: 0;
+}
+
+.glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--sp-14);
+  height: var(--sp-14);
+  margin: 0;
+  padding: 0;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.glyph[data-warning] {
+  background: color-mix(in srgb, var(--chrome-warn) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chrome-warn) 30%, transparent);
+  color: var(--chrome-warn);
+}
+
+.glyph svg {
+  display: block;
+}
+
+.title {
+  margin: var(--sp-6) 0 0;
+  padding: 0;
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  line-height: var(--lh-tight);
+  color: var(--text-strong);
+}
+
+/* Focused by script to name the new screen, never by Tab, so a ring there
+   would mark nothing the user can act on. */
+.title:focus {
+  outline: none;
+}
+
+.detail {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-body);
+  text-wrap: balance;
+  color: var(--text-secondary);
+}
+
+.detail strong {
+  font-weight: var(--fw-semibold);
+  color: var(--text-strong);
+}
+
+.tips {
+  box-sizing: border-box;
+  width: 100%;
+  margin: var(--sp-6) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  text-align: left;
+}
+
+.tips-label {
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.tips-list {
+  margin: var(--sp-2) 0 0;
+  padding: 0 0 0 20px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-strong);
+}
+
+.actions {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: stretch;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+}
+
+.retry {
+  display: inline-flex;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--h-control);
+  margin: 0;
+  padding: 0 var(--sp-5);
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--text-strong);
+  font: var(--fw-semibold) var(--fs-title) / 1 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+
+.retry:hover {
+  background: var(--fill);
+}
+
+.retry:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* After the hover rule, so it keeps its fill under the pointer. */
+.retry[data-primary] {
+  background: var(--inverse-bg);
+  box-shadow: none;
+  color: var(--inverse-fg);
+}
+
+.retry[data-primary]:hover {
+  background: var(--inverse-bg-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retry {
+    transition: none;
+  }
+}
+
+.retry-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+/* A caller's icon may carry its own size. */
+.retry-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* The domain chip sits in the sentence for screen readers, on its own row for the eye. */
+.unreached .detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: center;
+  margin-top: var(--sp-3);
+}
+
+.domain {
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: var(--h-row-sm);
+  padding: 6px var(--sp-3);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  font-size: var(--fs-small);
+  line-height: 20px;
+  /* A name runs up to 63 characters, so a long one wraps rather than
+     overflow a phone. The whole name stays readable for spotting a typo. */
+  overflow-wrap: anywhere;
+}
+
+.domain-host {
+  font-weight: var(--fw-medium);
+  color: var(--text-strong);
+}
+
+.domain-tld {
+  color: var(--text-secondary);
+}
+
+/* Phones put the recommended button on top, full width, under the thumb. */
+@media (max-width: 560px) {
+  .page {
+    padding: 0 calc(16px + var(--safe-right)) 60px calc(16px + var(--safe-left));
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+    width: 100%;
+  }
+}

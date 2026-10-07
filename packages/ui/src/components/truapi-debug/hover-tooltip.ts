@@ -7,8 +7,8 @@
  * position, `pointerleave` hides it. Bypasses the browser-native `<title>`
  * delay so the information appears the instant the cursor lands.
  *
- * Delegated from `root` rather than bound per element, so a pane that rebuilds
- * its `innerHTML` on a timer keeps working without re-wiring. The tooltip is
+ * Delegated from `root` rather than bound per element, so a view whose
+ * elements come and go keeps working without re-wiring. The tooltip is
  * positioned on every pointer move, so it is driven directly rather than
  * through signals.
  *
@@ -41,15 +41,15 @@ export function wireHoverTooltips(
     if (tooltip === undefined || panel === undefined) {
       return;
     }
-    const fresh = el !== shownFor || panelRect === null || !tooltip.classList.contains('visible');
+    const fresh = el !== shownFor || panelRect === null || !tooltip.hasAttribute('data-visible');
     if (fresh) {
       // Measured before any write, so this read finds layout clean.
       panelRect = panel.getBoundingClientRect();
     }
     if (fresh || tooltip.textContent !== text) {
       tooltip.textContent = text;
-      tooltip.classList.toggle('is-prose', el.hasAttribute('data-tooltip-prose'));
-      tooltip.classList.add('visible');
+      tooltip.toggleAttribute('data-prose', el.hasAttribute('data-tooltip-prose'));
+      tooltip.setAttribute('data-visible', '');
       size = null;
     }
     shownFor = el;
@@ -88,7 +88,7 @@ export function wireHoverTooltips(
     }
   };
   const hide = (): void => {
-    tooltipEl()?.classList.remove('visible');
+    tooltipEl()?.removeAttribute('data-visible');
   };
   const onPointerOver = (e: PointerEvent): void => {
     const target = e.target as Element | null;
@@ -103,7 +103,7 @@ export function wireHoverTooltips(
     showAt(el, text, e.clientX, e.clientY);
   };
   const onPointerMove = (e: PointerEvent): void => {
-    if (tooltipEl()?.classList.contains('visible') !== true) {
+    if (tooltipEl()?.hasAttribute('data-visible') !== true) {
       return;
     }
     const target = e.target as Element | null;

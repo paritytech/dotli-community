@@ -321,6 +321,14 @@ After a committed permission change, the bridge matches the canonical product id
 Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps the
 requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
 
+Automatic preimage uploads require separate, explicit consent in addition to the ordinary preimage permission.
+The inline **Automatic preimage uploads** controls apply only to the selected product, active root account and
+configured Bulletin network: at most 256 KiB per upload and four automatic attempts per rolling hour. Larger uploads
+and exhausted budgets still require per-upload review. **Ask per upload** and **Revoke automatic uploads** stop
+automatic approval without preventing individually reviewed uploads; granting again does not reset the rolling budget.
+Changing this consent does not replace the product iframe. Resetting permissions retains the account selected when
+the reset began, rather than applying a delayed result to a newly selected account.
+
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in

@@ -70,7 +70,14 @@ const BLOBS_BY_CID = new Map(
 );
 
 function drawer(): HTMLElement | null {
-  return document.querySelector('.profile-drawer');
+  return document.querySelector('[data-testid="profile-drawer"]');
+}
+
+/** Escape on the drawer's modal layer, where a key reaches it. */
+function pressEscape(): void {
+  document
+    .querySelector('[data-testid="profile-drawer-backdrop"]')
+    ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 }
 
 /**
@@ -81,7 +88,7 @@ function drawer(): HTMLElement | null {
 async function settle(): Promise<void> {
   await vi.waitFor(
     () => {
-      expect(drawer()?.querySelector('.spinner')).toBeNull();
+      expect(drawer()?.querySelector('[data-testid="profile-drawer-spinner"]')).toBeNull();
     },
     { timeout: 10_000, interval: 50 },
   );
@@ -118,7 +125,7 @@ describe('Seity contacts references', () => {
   });
 
   afterEach(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    pressEscape();
     resetOverlays();
     vi.useRealTimers();
   });
@@ -135,8 +142,10 @@ describe('Seity contacts references', () => {
 
     expect(mocks.resolveSeitySlotRemote).toHaveBeenCalledWith(VECTOR.registry.lookupKey);
     expect(drawer()?.querySelector('img')?.getAttribute('src')).toMatch(/^blob:/);
-    expect(drawer()?.querySelector('.profile-drawer-mood')?.textContent).toBe('Hyped · loud · 23 h left');
-    expect(drawer()?.querySelector('.profile-mood-ring')).not.toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-mood"]')?.textContent).toBe(
+      'Hyped · loud · 23 h left',
+    );
+    expect(drawer()?.querySelector('[data-testid="mood-ring"]')).not.toBeNull();
   });
 
   it('hides a lapsed mood but still draws the avatar', async () => {
@@ -147,7 +156,7 @@ describe('Seity contacts references', () => {
     await settle();
 
     expect(drawer()?.querySelector('img')).not.toBeNull();
-    expect(drawer()?.querySelector('.profile-mood-ring')).toBeNull();
+    expect(drawer()?.querySelector('[data-testid="mood-ring"]')).toBeNull();
   });
 
   it('reads the slot over the gateway RPC on the Trusted Providers backend', async () => {
@@ -165,7 +174,7 @@ describe('Seity contacts references', () => {
     expect(mocks.resolveSeitySlotViaRpc).toHaveBeenCalledWith(VECTOR.registry.lookupKey);
     expect(mocks.resolveSeitySlotRemote).not.toHaveBeenCalled();
     expect(drawer()?.querySelector('img')).not.toBeNull();
-    expect(drawer()?.querySelector('.profile-mood-ring')).not.toBeNull();
+    expect(drawer()?.querySelector('[data-testid="mood-ring"]')).not.toBeNull();
   });
 
   it('keeps the mood when the avatar cannot be opened', async () => {
@@ -189,8 +198,10 @@ describe('Seity contacts references', () => {
 
     expect(calls).toBe(2);
     expect(drawer()?.querySelector('img')).toBeNull();
-    expect(drawer()?.querySelector('.profile-mood-ring')).not.toBeNull();
-    expect(drawer()?.querySelector('.profile-drawer-mood')?.textContent).toBe('Hyped · loud · 23 h left');
+    expect(drawer()?.querySelector('[data-testid="mood-ring"]')).not.toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-mood"]')?.textContent).toBe(
+      'Hyped · loud · 23 h left',
+    );
   });
 
   it('accepts a contacts reference spelled in uppercase hex', () => {

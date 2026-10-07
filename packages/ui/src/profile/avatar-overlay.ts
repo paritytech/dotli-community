@@ -16,6 +16,7 @@ import { log } from '@dotli/shared';
 import { createComponent, createSignal, type Accessor } from 'solid-js';
 import { mountRoot } from '../mount/root.js';
 import { ContactAvatars } from '../components/overlays/ContactAvatars.js';
+import avatarStyles from '../components/overlays/ContactAvatars.module.css';
 import { rasterImageType, type LoadedProfile } from './drawer.js';
 import { moodIsCurrent, type Mood } from './profile-record.js';
 
@@ -325,7 +326,8 @@ function setMoving(view: AvatarSlotView, moving: boolean): void {
 
 export function createContactAvatarOverlay(cache: AvatarProfileCache): ContactAvatarOverlay {
   const layer = document.createElement('div');
-  layer.className = 'contact-avatar-overlay';
+  layer.className = avatarStyles['overlay'] ?? '';
+  layer.setAttribute('data-testid', 'contact-avatar-overlay');
   layer.setAttribute('aria-hidden', 'true');
 
   const views = new Map<number, AvatarSlotView>();
