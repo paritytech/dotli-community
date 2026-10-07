@@ -530,6 +530,19 @@ describe('The network monitor judges how each chain is used', () => {
     expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
   });
 
+  it('As a user on trusted providers, a chain that reconnected while nothing held it starts afresh when held again', () => {
+    // Given
+    use(relayGenesis(), { following: false, status: 'connecting' });
+    release(relayGenesis());
+    recordChainActivity({ genesisHash: relayGenesis(), consumers: 0, status: 'connected', following: false });
+
+    // When
+    use(relayGenesis(), { following: false, status: 'connecting' });
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+  });
+
   it('As a user loading a product, the frame syncing an unused chain counts as pending', () => {
     // When
     recordChainPhase('relay', 'syncing');

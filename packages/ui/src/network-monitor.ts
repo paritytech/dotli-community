@@ -70,7 +70,7 @@ interface ChainState {
   consumers: number;
   status: PoolStatus;
   following: boolean;
-  /** The pool reported `connected` since the chain was last released. */
+  /** The pool reported `connected` while something held the chain, since it was last released. */
   poolWasConnected: boolean;
 }
 
@@ -202,7 +202,7 @@ export function recordChainActivity(activity: ChainActivity): void {
   state.consumers = activity.consumers;
   state.status = activity.status;
   state.following = activity.following;
-  if (activity.status === 'connected') {
+  if (activity.consumers > 0 && activity.status === 'connected') {
     state.poolWasConnected = true;
   }
   if (released) {
@@ -277,7 +277,10 @@ function isReachable(state: ChainState): boolean {
   return state.hasEndpoint && (state.role === null || isRemoteChainConnectable(state.genesis));
 }
 
-/** The spec's verdict table. Overdue blocks are left to the verdict, which also schedules the recheck. */
+/**
+ * How a chain counts toward the verdict, and whether it is stalled or down again after it was up. Overdue blocks are
+ * left to the verdict, which also schedules the recheck.
+ */
 function useOf(state: ChainState, sinceLast: number | null): Pick<ChainStatus, 'state' | 'alarm'> {
   if (!isReachable(state)) {
     return { state: 'unused', alarm: false };
