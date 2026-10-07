@@ -101,6 +101,12 @@ const runtimeFailure =
 async function counter(canvas: Locator, name: string): Promise<number> {
   return Number((await canvas.getAttribute(name)) ?? 0);
 }
+async function clickGuest(canvas: Locator, position: { readonly x: number; readonly y: number }): Promise<void> {
+  const insets = (await canvas.getAttribute('data-polkavm-safe-area-insets'))?.split(',').map(value => Number(value));
+  const parsedTop = insets?.length === 4 ? insets[1] : undefined;
+  const safeTop = parsedTop !== undefined && Number.isFinite(parsedTop) ? parsedTop : 0;
+  await canvas.click({ position: { x: position.x, y: position.y + safeTop }, force: true });
+}
 
 async function waitForRuntimeReady(page: Page, body: Locator, canvas: Locator, label: string): Promise<void> {
   const deadline = Date.now() + 180_000;
@@ -250,7 +256,8 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
   if (product.profile === 'webgpu-raster') {
     await expect(canvas).toHaveAttribute('data-polkavm-gpu', 'ready');
   }
-  if (product.interaction === 'host-sign-in') {
+  if (product.interaction === 'host-sign-in' && (await page.locator('#auth-modal-backdrop').isVisible())) {
+    // Older echat builds prompt on startup; current builds wait for Retry.
     await cancelSignIn(page, canvas);
   }
 
@@ -280,9 +287,7 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
   const updatesBefore = await counter(canvas, 'data-polkavm-updates');
   const audioBefore = await counter(canvas, 'data-polkavm-audio-samples');
 
-  await canvas.click({
-    position: product.clickPosition ?? { x: 160, y: 100 },
-  });
+  await clickGuest(canvas, product.clickPosition ?? { x: 160, y: 100 });
   for (const key of product.keys) {
     await page.keyboard.press(key);
   }
