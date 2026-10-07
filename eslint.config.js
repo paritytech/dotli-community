@@ -6,8 +6,7 @@
 import { defineConfig } from 'eslint/config';
 import { config } from '@config/eslint/vite';
 
-// The repository root holds only the Node scripts under scripts/. Every
-// workspace lints itself through its own config.
+// The root lints only scripts/. Every workspace lints itself.
 export default defineConfig([
   { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**'] },
   ...config,
@@ -19,9 +18,8 @@ export default defineConfig([
     },
   },
   {
-    // Node runs these directly, so they import `.ts` paths. They are CLI
-    // tools whose stdout is their output, started from the shell rather than
-    // through a turbo task, so turbo has no env inputs to declare for them.
+    // Node runs these CLI tools directly from the shell, so they import `.ts` paths, print to stdout and have no turbo
+    // env inputs to declare.
     files: ['scripts/**/*.ts'],
     rules: {
       'no-console': 'off',

@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The QR pairing modal's state machine, free of Solid and eager: login and
-// auth-state events arrive from boot onwards, before any modal view mounts.
-// It owns the login and disconnect requests, the blocking-modal lease, and
-// the auth-state to modal-view mapping, and writes state/auth-modal.ts. The
-// view renders that store and calls back in here (closeAuthModal, retryLogin).
+// The QR pairing modal's state machine. Solid-free and eager because auth events arrive from boot,
+// before any modal view mounts.
 
 import { withActiveTld } from '@dotli/config';
 import { log } from '@dotli/shared';
@@ -18,13 +15,9 @@ import { resetAuthModal, updateAuthModal } from './state/auth-modal.js';
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
 let releaseAuthModal: (() => void) | null = null;
-/** Set by disableAuthModal: no modal view can ever show. */
 let authModalDisabled = false;
 
-/**
- * Wire the login request and auth-state listeners and report the initial
- * logged-out state. Called once, from initTopBar.
- */
+/** Called once, from initTopBar. */
 export function initAuthController(modalCoordinator: BlockingModalCoordinator): void {
   blockingModalCoordinator = modalCoordinator;
 
@@ -35,27 +28,15 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
     }
   });
 
-  // Single ordered auth-state stream owned by the Rust core (plus the boot
-  // rehydration and bridge transport-failure synthetics). The store never
-  // drops a set as equal, so every step reaches here. The modal closes only on `Connected`
-  // or explicit user action; a `Disconnected` can never tear down an
-  // in-flight pairing presentation.
+  // The store never drops a set as equal, so every step of the ordered stream reaches here.
   authStore.subscribe(() => {
     applyAuthState(authStore.get());
   });
 
-  // Default logged-out state until the core or the boot rehydration says
-  // otherwise.
   setLoggedIn(false);
 }
 
-/**
- * Apply one auth state. The modal lifecycle is state-driven: `Pairing`
- * opens it with the QR, `Authenticating` replaces the QR with progress,
- * `Connected` closes it, `LoginFailed` shows a retryable error, and
- * `Disconnected` only updates the session so an unrelated disconnect signal
- * can never close an active pairing modal.
- */
+/** `Disconnected` only updates the session, so an unrelated disconnect never closes an active pairing. */
 function applyAuthState(state: DotliAuthState): void {
   // The tag and failure kind only: a failure's reason can carry wallet text.
   log.event('auth state', {
@@ -69,7 +50,6 @@ function applyAuthState(state: DotliAuthState): void {
       break;
     case 'Pairing':
       openAuthModal(undefined, state.hostGlobal === true ? undefined : state.label, { dotSuffix: state.dotSuffix });
-      // No deeplink yet: openAuthModal already shows the spinner.
       if (state.deeplink) {
         updateAuthModal({
           view: { kind: 'pairing', payload: state.deeplink },
@@ -117,8 +97,7 @@ interface AuthErrorRule {
   hideDetail?: boolean;
 }
 
-// First match wins, so chain-specific wording and runtime boot failures sit
-// above the broad declined, timeout, and transport buckets.
+// First match wins, so specific rules sit above the broad buckets.
 const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
   {
     match: /Invalid Transaction|rejected by the node|re-broadcast rejected/,
@@ -188,13 +167,11 @@ export function exhaustedAllowanceError(message: string): FriendlyAuthError {
     subtitle:
       'Polkadot Mobile has no free slot to register this browser. Try again once the current allowance period rolls over.',
     detail: message,
-    // Retrying cannot succeed until the allowance period rolls over.
     retryable: false,
   };
 }
 
-// Map a wallet or transport failure to copy a first-time user can act on.
-// Unknown reasons keep the raw text as a detail line for bug reports.
+/** Unknown reasons keep the raw text as a detail line for bug reports. */
 export function friendlyAuthError(message: string): FriendlyAuthError {
   const rule = AUTH_ERROR_RULES.find(candidate => candidate.match.test(message));
   if (rule === undefined) {
@@ -213,7 +190,6 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
   };
 }
 
-/** The login button while logged out, and the error view's Retry. */
 export function startLogin(): void {
   if (openAuthModal()) {
     requestTruapiLogin();
@@ -235,11 +211,7 @@ export function requestTruapiLogin(reason?: string): void {
   );
 }
 
-/**
- * Present the modal (spinner view) and take the blocking-modal lease.
- * Returns false when the modal is disabled: the login is cancelled instead,
- * and nothing is presented.
- */
+/** Returns false when the modal is disabled, having cancelled the login instead. */
 export function openAuthModal(
   reason?: string,
   label?: string,
@@ -249,11 +221,7 @@ export function openAuthModal(
     cancelTruapiLogin();
     return false;
   }
-  // A bare "localhost:<port>" label means dotli is in localhost-proxy
-  // mode rendering a local dev server directly (apps/host/src/main.ts
-  // localhost-proxy branch). Show it as-is. Deployed dotNs products
-  // served via `<label>.localhost:<port>` still pass through as the bare
-  // label and get the active network's TLD suffix.
+  // A "localhost:<port>" label is a local dev server in localhost-proxy mode, shown as-is.
   let productLabel: string | null = null;
   if (label !== undefined && label.length > 0) {
     productLabel = label.startsWith('localhost:') || options.dotSuffix === false ? label : withActiveTld(label);
@@ -268,11 +236,8 @@ export function openAuthModal(
 }
 
 /**
- * The modal view can never show (the auth-modal island failed to load or
- * render, see reportIslandErrors). A login would hold the blocking-modal
- * lease for a modal nobody can see or close, stalling every later blocking
- * prompt, so release any lease held now and, from here on, cancel each login
- * that would open the modal instead of taking the lease.
+ * For when the auth-modal island failed. A login would otherwise hold the blocking-modal lease for a
+ * modal nobody can close, stalling every later prompt.
  */
 export function disableAuthModal(): void {
   authModalDisabled = true;
@@ -291,8 +256,7 @@ export function closeAuthModal(opts: { skipTruapiCancel?: boolean } = {}): void 
   scope?.dispose('Authentication modal closed');
 
   if (opts.skipTruapiCancel !== true) {
-    // User-initiated close: cancel any in-flight login in the core so the
-    // pairing flow stops polling and resolves as Rejected.
+    // A user close stops the core's pairing poll, which then resolves as Rejected.
     cancelTruapiLogin();
   }
 }
@@ -333,8 +297,7 @@ function ensureAuthModalLease(): void {
         }),
     )
     .catch((error: unknown) => {
-      // Closing a pending or active authentication modal disposes its lease,
-      // which rejects with an AbortError.
+      // Closing the modal disposes its lease, which rejects with an AbortError.
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         log.warn('[dot.li auth] authentication modal lease failed:', error);
       }

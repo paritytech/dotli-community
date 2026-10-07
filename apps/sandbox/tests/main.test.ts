@@ -37,7 +37,7 @@ vi.mock('@dotli/content', async importOriginal => ({
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 
-/** Load the sandbox as the host frames it, at `search`, and collect what it tells the host. */
+/** Boots the sandbox framed as the host frames it, and returns what it posts to the host. */
 async function bootSandbox(search: Record<string, string>): Promise<unknown[]> {
   const posted: unknown[] = [];
   vi.spyOn(window, 'top', 'get').mockReturnValue({} as Window);

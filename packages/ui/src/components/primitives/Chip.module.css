@@ -32,7 +32,6 @@
   text-overflow: ellipsis;
   text-transform: none;
 }
-/* Phones: the boards' 20 px chip. */
 @media (max-width: 560px) {
   :where(.chip) {
     height: var(--h-chip);

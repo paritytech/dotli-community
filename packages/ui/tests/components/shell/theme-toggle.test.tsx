@@ -37,12 +37,10 @@ function themeOption(pref: string): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>(`[data-testid="theme-option-${pref}"]`);
 }
 
-/** Open, as the surface says; it is in the page only from its first opening. */
 function isOpen(): boolean {
   return document.getElementById('theme-popover')?.hasAttribute('data-open') === true;
 }
 
-/** The toggle, with a known stored theme and OS. */
 async function renderToggle(
   stored: 'light' | 'dark' | 'system' | null,
   os: 'light' | 'dark',
@@ -58,11 +56,7 @@ async function renderToggle(
   return { os: scheme };
 }
 
-/**
- * The toggle in a topbar with no room for it, so the bar has collapsed it
- * into the More menu. A collapsed button cannot take focus (CSS hides it),
- * which happy-dom, without the stylesheet, has to be told.
- */
+/** The toggle collapsed into More. happy-dom must be told the hidden button cannot take focus. */
 async function renderCollapsedToggle(stored: 'light' | 'dark' | 'system', os: 'light' | 'dark'): Promise<void> {
   stubColorScheme(os);
   localStorage.setItem('dotli-theme', stored);
@@ -125,7 +119,6 @@ describe('ThemeToggle', () => {
     ]);
     expect(options.map(o => o.textContent)).toEqual(['Light', 'Dark', 'System']);
     expect(options.map(o => o.getAttribute('role'))).toEqual(['radio', 'radio', 'radio']);
-    // Only the checked radio is in the Tab order.
     expect(options.map(o => o.getAttribute('tabindex'))).toEqual(['-1', '0', '-1']);
   });
 
@@ -184,7 +177,7 @@ describe('ThemeToggle', () => {
     expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(byTestId('popover-sheet-title', sheet).textContent).toBe('Appearance');
     expect(query(sheet, '[role="radiogroup"]').getAttribute('aria-label')).toBe('Theme');
-    // The first control in the content: the checked tile, the group's only Tab stop.
+    // The checked tile is the content's first Tab stop.
     expect(document.activeElement).toBe(themeOption('dark'));
 
     // When

@@ -7,13 +7,7 @@ import { markContinuation } from '@dotli/shared';
 import { updateLoading } from '../../../../packages/ui/src/state/loading.js';
 import { startResolutionTrace } from '../../src/resolution-trace.js';
 
-/**
- * A Sentry stand-in that records the span tree instead of sending it.
- *
- * The tests assert what a resolution actually produces, so a no-op metrics
- * build would prove nothing: `vitest.config.ts` turns metrics on for this
- * suite and binds this in their place.
- */
+/** Records the span tree instead of sending it. `vitest.config.ts` turns metrics on so the real tree is built. */
 interface RecordedSpan {
   name: string;
   parent: RecordedSpan | null;
@@ -66,7 +60,6 @@ function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {
 
 let spans: RecordedSpan[];
 
-/** The span named `dotli.<name>`, or undefined. */
 function span(name: string): RecordedSpan | undefined {
   return spans.find(s => s.name === `dotli.${name}`);
 }

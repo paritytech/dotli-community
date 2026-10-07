@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page (components/landing/Landing.tsx): the name form, the typing placeholder, the recently visited
-// pills, and the auth and theme buttons it renders in its corner.
+// The landing page component itself (components/landing/Landing.tsx), not its island.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
@@ -34,7 +33,6 @@ function mount(): ReturnType<typeof mountLandingPage> {
   return page;
 }
 
-/** Let the recents load and render. */
 async function settle(): Promise<void> {
   flush();
   await Promise.resolve();
@@ -474,7 +472,6 @@ describe('landing page', () => {
     expect(document.getElementById('landing-theme-toggle')).toBeNull();
     expect(corner.querySelector('[data-parked]')).toBeNull();
     expect(document.getElementById('more-button')).toBeNull();
-    // The menu renders through a portal, outside the page.
     expect(byId('landing-user-popover').parentElement).toBe(document.body);
     for (const id of ['landing-auth-button', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);

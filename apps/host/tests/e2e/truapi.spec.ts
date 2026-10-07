@@ -5,10 +5,7 @@ import { test, expect, openHostPlayground } from './fixtures/paired.js';
 import { waitForPlaygroundReady, runTestExpectSuccess } from './helpers/run-test.js';
 import { runWebSignedTest } from './helpers/signing.js';
 
-// Playwright destroys the worker process after a test failure, so the
-// worker-scoped pairing fixture re-pairs from scratch on every failed test
-// (~10-30s extra). Acceptable trade-off, preferred over `describe.serial`
-// which would skip every test after the first failure.
+// Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.
 
 test.describe('dot.li > host-playground.dot', () => {
   test('Product is ready', async ({ productFrame }) => {
@@ -29,8 +26,7 @@ test.describe('dot.li > host-playground.dot', () => {
       await runTestExpectSuccess(productFrame, 'accounts-provider-connection-status');
     });
 
-    // Red on main since before the CLI swap: the product-side
-    // accounts-provider-alias check itself reports FAILED.
+    // The product-side alias check itself reports FAILED.
     test.fixme('Product Account Alias', async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, 'accounts-provider-alias');
     });
@@ -69,8 +65,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Each allocation triggers an "Always allow" / "Allow" modal on the host that the user
-  // approves. The signing host is paired so the test only drives the modal.
+  // Each allocation opens a host permission modal, which is all these tests drive.
 
   test.describe('Allowances', () => {
     test('StatementStore Allowance', async ({ pairedPage, productFrame }) => {
@@ -124,8 +119,7 @@ test.describe('dot.li > host-playground.dot', () => {
       expect(status).toBe('success');
     });
 
-    // Red on main since before the CLI swap: the combined allocation
-    // times out at 30s while the individual allowance tests pass.
+    // The combined allocation times out at 30s while the individual ones pass.
     test.fixme('All Allowances', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
@@ -162,8 +156,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Remote-permission tests trigger an "Always allow" modal on the host the
-  // first time a given capability is requested in a session.
+  // The first request for a capability in a session opens a host permission modal.
 
   test.describe('Permissions', () => {
     test('Feature Check', async ({ productFrame }) => {
@@ -307,13 +300,11 @@ test.describe('dot.li > host-playground.dot', () => {
       // Then
       await pairedPage.waitForURL(/^http:\/\/truapi-playground\.localhost:\d+\//, { timeout: 15_000 });
 
-      // The page is shared by the worker, so put host-playground back for
-      // the tests that follow.
+      // The worker shares the page, so the following tests need host-playground back.
       await openHostPlayground(pairedPage);
     });
 
-    // Red on main since before the CLI swap: the iframe lands on
-    // /navigation?id=… while the assertion expects /page?id=….
+    // The iframe lands on /navigation?id= while the assertion expects /page?id=.
     test.fixme('As a product user, I can navigate within the current product', async ({ productFrame }) => {
       // Given
       const button = productFrame.locator('[data-testid="run-navigate-internal"]');
@@ -412,8 +403,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Placed after read-only tests so a signing failure doesn't cascade-
-  // affect Storage, Chain, Contract, etc. via fixture restarts.
+  // After the read-only tests, so a signing failure's fixture restart doesn't affect them.
 
   test.describe('Signing', () => {
     test('Sign Raw Message', async ({ pairedPage, productFrame }) => {
@@ -434,9 +424,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Funded operations (skipped, needs a faucet-funded account). Funded paths
-  // exercise transaction submission. Out of scope until we wire a faucet step
-  // into the fixture.
+  // Skipped until the fixture funds its account from a faucet.
   test.describe('Funded operations', () => {
     test.skip('Sign Batch Payload', async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, 'sign-batch-payload');
@@ -464,10 +452,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Device Permissions (skipped, mobile/system-level prompts). These hit
-  // native system permission prompts on iOS/Android. In headless Chromium
-  // they have no host-side equivalent. Listed for coverage parity with
-  // host-playground.
+  // Native mobile prompts with no headless Chromium equivalent, listed for parity with host-playground.
 
   test.describe('Device permissions', () => {
     test.skip('Camera', async ({ productFrame }) => {

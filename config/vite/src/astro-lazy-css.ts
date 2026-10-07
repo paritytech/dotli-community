@@ -1,21 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Lazy chunks' CSS under Astro. Astro links or inlines at boot every stylesheet
-// it finds walking up from each CSS module to the page, through dynamic imports
-// too, so a chunk imported on demand has its CSS loaded up front. Astro has no
-// option for this. Under plain Vite such a chunk loads its own CSS with it, and
-// this brings that back.
-//
-// It leans on three Astro internals, and the build fails if one stops holding:
-// - The plugin `astro:rollup-plugin-build-css` exists, with a plain
-//   `generateBundle` (checked when the config resolves).
-// - That plugin reads the module graph through `this.getModuleInfo`. If it
-//   stops, the lazy sheets are linked or inlined at boot again.
-// - Its orphan rule keeps a sheet a chunk lists in `importedAssets`. If it
-//   stops, the lazy sheets are dropped.
-// The build also fails when a class the prerendered pages use is defined only
-// in a lazy sheet, which would paint unstyled until that chunk loads.
+// Astro loads every stylesheet reachable from a page at boot, through dynamic imports too. This restores Vite's
+// behaviour of loading a lazy chunk's CSS with the chunk. It leans on three Astro internals, and the build fails if
+// one stops holding:
+// - `astro:rollup-plugin-build-css` exists with a plain `generateBundle`.
+// - It reads the module graph through `this.getModuleInfo`.
+// - Its orphan rule keeps a sheet a chunk lists in `importedAssets`.
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -132,13 +123,8 @@ function staticImportsOnly(context: ContextLike): ContextLike {
 }
 
 /**
- * Pages link the CSS of what they import statically, and a chunk imported
- * on demand loads its CSS with it (Vite's preload of a dynamic import):
- * - Astro's walk from a CSS module to the pages follows static imports.
- * - Astro drops a stylesheet that no page links unless a chunk lists it
- *   among its assets, so each client chunk the page loads only on demand
- *   lists its CSS there too. A chunk the page loads up front keeps Astro's
- *   handling: the page's stylesheets hold its CSS, and its own copy goes.
+ * Pages link the CSS of what they import statically, and a lazy chunk loads its CSS with it.
+ * Each lazy client chunk lists its CSS among its assets, or Astro would drop a sheet no page links.
  */
 export function astroLazyCss(): AstroIntegration {
   const lazy = new Set<string>();
@@ -207,9 +193,8 @@ export function astroLazyCss(): AstroIntegration {
       if (this.environment.name !== 'client') {
         return;
       }
-      // The page loads its overlays, chat and debug panel on demand, so
-      // finding no lazy sheet means Astro stripped them before this ran,
-      // and the checks below would pass without checking anything.
+      // Overlays, chat and the debug panel load on demand, so no lazy sheet means Astro stripped them and the checks
+      // below would check nothing.
       if (lazy.size === 0) {
         throw new Error('astroLazyCss: found no lazy sheet: check astroLazyCss against this Astro version');
       }

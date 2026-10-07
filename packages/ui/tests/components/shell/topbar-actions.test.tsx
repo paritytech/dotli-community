@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The topbar's action group (components/shell/TopbarActions.tsx), with its
-// real items: what the More menu's rows open. The group's fitting is covered
-// with stand-in items in action-group.test.tsx, and each item on its own in
-// its own test.
+// The action group island with its real items. action-group.test.tsx covers the fitting.
 
 import { cleanup, within } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -96,7 +93,6 @@ describe('Topbar actions island', () => {
         byId('permissions-popover').contains(document.activeElement) ||
           document.activeElement === byId('permissions-popover'),
       ).toBe(true);
-      // The list is the popover's body, its own chunk.
       await waitForContent('permissions-popover');
       await settle();
       const camera = must(

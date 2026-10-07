@@ -63,7 +63,7 @@ function must<T>(value: T | null | undefined, what: string): T {
 
 let requestCounter = 0;
 
-/** Sends one request; every envelope the engine answers with lands in the returned array, including later ones. */
+/** Collects every envelope the engine answers with, including later ones. */
 async function call<M extends keyof ProtocolRequestMap>(
   engine: ProtocolEngine,
   method: M,
@@ -201,7 +201,7 @@ describe('createEngine halts', () => {
 
     // Then
     await expect(send).rejects.toThrow('Unknown chain connection: c1');
-    // The halted connection's slot is free: the whole quota can be filled again.
+    // The freed slot lets the whole quota fill again.
     for (let i = 0; i < MAX_CONNS; i += 1) {
       await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: `n${String(i)}` });
     }

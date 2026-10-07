@@ -1,26 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Resolution view: the recorder and the model
-//
-// One page load drawn as four rows, one per chain: Relay, Hub, Identity and
-// Storage. Each row is a run of blocks, one block per lifecycle phase the
-// chain passed through, block width proportional to the time spent in it. Above them, the figures that
-// describe the load as a whole: what it resolved, how fast the link was, and
-// which caches answered.
-//
-// Distinct from the Timeline view, which is event-shaped and swimlaned by
-// genesis hash. This one is state-shaped and keyed by chain role, so the
-// question it answers is "where did the time go", not "what was said".
-//
-// The model is built from the debug events alone, and deliberately not shared
-// with `resolution-trace.ts`: that one samples a fraction of loads and keeps
-// only aggregates, where a debug panel has to show every load in full.
+// One page load as a row of phase blocks per chain role, plus whole-load figures.
+// Not shared with `resolution-trace.ts`, which samples loads and keeps only aggregates.
 
 import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole } from '@dotli/config';
 import type { DotliDebugEvent } from './dotli-debug-types.js';
 
-/** One phase a chain sat in. `endMs` is null while it is still sitting there. */
+/** `endMs` is null while the chain is still in the phase. */
 export interface ResolutionBlock {
   phase: string;
   startMs: number;
@@ -33,13 +20,11 @@ export interface ResolutionRow {
   label: string;
   blocks: ResolutionBlock[];
   peers: number | null;
-  /** The count when the chain became usable, which is what the row shows. */
   peersAtReady: number | null;
-  /** Best seen, for a chain that never reported a `ready` phase. */
+  /** For a chain that never reported `ready`. */
   peersMax: number | null;
   warpAt: number | null;
   warpTarget: number | null;
-  /** Whether the light client resumed this chain from its stored database. */
   dbCache: 'hit' | 'miss' | null;
 }
 
@@ -71,25 +56,14 @@ export interface ResolutionModel {
   summary: ResolutionSummary;
 }
 
-/** Layers the view reads. Everything else belongs to the Timeline. */
 const KEPT_LAYERS = new Set(['boot', 'resolve', 'render', 'chain', 'sandbox', 'failover']);
 
-/**
- * Retained copy of the events the view needs.
- *
- * The event store is a ring buffer, so on a busy session the early phase
- * transitions of the load being looked at are the first thing evicted.
- * Silently losing the head of every row is worse than not drawing it. The
- * kept layers are a small fraction of the traffic (TrUAPI wire frames are the
- * bulk of it), so retaining them separately costs little.
- */
+/** Kept apart from the event store, whose ring buffer evicts a busy load's early phases first. */
 export interface ResolutionRecorder {
   record(ev: DotliDebugEvent): void;
   clear(): void;
-  /** Oldest first. The same array for the recorder's lifetime, trimmed in
-   *  place: read it, do not keep it. */
+  /** Oldest first. The same array for the recorder's lifetime, trimmed in place, so do not keep it. */
   events(): readonly DotliDebugEvent[];
-  /** Bumped whenever `events()` changes, so a view can skip a rebuild. */
   version(): number;
 }
 
@@ -104,8 +78,7 @@ export function createResolutionRecorder(): ResolutionRecorder {
         return;
       }
       kept.push(ev);
-      // One at a time, as the event store does: a slice here would copy
-      // every retained event on every record once full.
+      // A slice would copy every retained event on each record once full.
       if (kept.length > RECORDER_CAP) {
         kept.shift();
       }
@@ -137,15 +110,7 @@ function num(v: unknown): number | null {
 }
 
 /**
- * Build the model for the newest page load present in `events`.
- *
- * Anchored on the newest `boot:started` rather than on one `flowId`: the boot,
- * resolve and render layers each mint their own flow, so a single id covers
- * only part of a load. Everything recorded from that boot onward belongs to
- * it, because a page load is the lifetime of the realm this panel lives in.
- *
- * Pure: `now` is passed in so the open block of an in-flight load can be drawn to
- * the current moment without the builder reaching for a clock.
+ * Anchored on the newest `boot:started`, not one `flowId`, because boot, resolve and render each mint their own flow.
  */
 export function buildResolution(events: readonly DotliDebugEvent[], now: number): ResolutionModel {
   let bootAt = -1;
@@ -169,15 +134,10 @@ export function buildResolution(events: readonly DotliDebugEvent[], now: number)
   }
   const startedAt = first.timestamp;
   const endedAt = loadEnd(load, now);
-  // Chains keep reporting long after the app is on screen. Bounding the window
-  // at the moment the load finished keeps this a picture of the resolution
-  // rather than a chart that grows for as long as the tab stays open.
+  // Chains keep reporting after the app is on screen, so bound the window at the load's end.
   const mine = load.filter(e => e.timestamp <= endedAt);
   const summary = buildSummary(mine, startedAt);
-  // The product being on screen ends the load, whatever the resolve events
-  // said. A resolution served from cache emits no `resolve:completed`, and a
-  // recorder that started mid-load may not hold one. Without this the view
-  // sits on "still running" for ever with its bars animating.
+  // A cached resolution emits no `resolve:completed`, so the product being on screen ends the load.
   if (summary.outcome === 'running' && isFinished(mine)) {
     summary.outcome = summary.cid === null ? 'empty' : 'resolved';
   }
@@ -191,14 +151,7 @@ export function buildResolution(events: readonly DotliDebugEvent[], now: number)
   };
 }
 
-/**
- * Fill in the peer count of each row from the bounded load window.
- *
- * A chain reports its phases in the first moments and finds its peers a beat
- * later, so the count is taken from any peer event inside the window rather
- * than only the ones riding phase changes. Events after the window are the
- * network panel to report: this view freezes once the resolution is over.
- */
+/** Peers arrive a beat after the phases, so any peer event inside the window counts. */
 function withLatestPeers(rows: ResolutionRow[], load: readonly DotliDebugEvent[]): ResolutionRow[] {
   const best = new Map<string, number>();
   for (const ev of load) {
@@ -222,7 +175,6 @@ function withLatestPeers(rows: ResolutionRow[], load: readonly DotliDebugEvent[]
   return rows;
 }
 
-/** Whether anything in the window says the product reached the screen. */
 function isFinished(mine: readonly DotliDebugEvent[]): boolean {
   return mine.some(
     ev =>
@@ -232,10 +184,6 @@ function isFinished(mine: readonly DotliDebugEvent[]): boolean {
   );
 }
 
-/**
- * Where the axis ends: the moment the product was on screen, or now while the
- * load is still in flight.
- */
 function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   let last = 0;
   let lastChainPhase = 0;
@@ -258,21 +206,12 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   if (last === 0) {
     return now;
   }
-  // The chains outlive the paint on a cached load. A CID-cache hit puts the
-  // product on screen in ~50ms while every chain is still `connecting`, so
-  // ending the window at the paint dropped every chain event and left four
-  // empty rows. The sandbox reports its cache answer just after the paint for
-  // the same reason. Both extensions are capped: a stall or a phase change
-  // minutes later belongs to the network panel, not to this picture of the
-  // resolution, and following it would grow the chart for as long as the tab
-  // stays open.
+  // A cached load paints while every chain is still connecting and before the sandbox reports its cache
+  // answer, so both may extend the window, capped so the chart settles.
   const grace = last + LOAD_END_GRACE_MS;
   return Math.max(last, Math.min(lastChainPhase, grace), Math.min(lastSandbox, grace));
 }
 
-// How long after the paint a chain phase or sandbox report may still extend
-// the window. Long enough for a cached load to catch its chains going ready,
-// short enough that the view settles and never moves again.
 const LOAD_END_GRACE_MS = 30_000;
 
 function buildRows(mine: readonly DotliDebugEvent[], startedAt: number, endedAt: number): ResolutionRow[] {
@@ -313,8 +252,7 @@ function buildRows(mine: readonly DotliDebugEvent[], startedAt: number, endedAt:
       continue;
     }
     if (ev.event === 'peers') {
-      // A peer change never opens a block of its own: the chain is still in
-      // whatever phase it was already drawing.
+      // A peer change never opens a block of its own.
       const open = row.blocks.length === 0 ? null : row.blocks[row.blocks.length - 1];
       notePeers(row, num(p['peers']), open?.phase ?? 'unknown');
       continue;
@@ -325,8 +263,7 @@ function buildRows(mine: readonly DotliDebugEvent[], startedAt: number, endedAt:
     if (previous !== undefined) {
       previous.endMs = at;
       if (previous.phase === phase) {
-        // A warp update: the chain never left the phase, so the block it is
-        // already drawing simply keeps running rather than being cut in two.
+        // A warp update within the same phase keeps the block running instead of splitting it.
         previous.endMs = null;
         notePeers(row, num(p['peers']), phase);
         row.warpAt = num(p['warpAt']) ?? row.warpAt;
@@ -346,9 +283,7 @@ function buildRows(mine: readonly DotliDebugEvent[], startedAt: number, endedAt:
   }
 
   for (const row of byRole.values()) {
-    // Prefer the count at the moment the chain became usable. A chain that
-    // goes ready with 4 peers and later drops to 0 is not a zero-peer chain
-    // for the purposes of describing the load that just happened.
+    // A chain that went ready with peers and later dropped them was not a zero-peer chain for this load.
     row.peers = row.peersAtReady ?? row.peersMax ?? row.peers;
   }
 
@@ -363,7 +298,6 @@ function buildRows(mine: readonly DotliDebugEvent[], startedAt: number, endedAt:
   return CHAIN_ROLES.map(role => byRole.get(role)).filter((row): row is ResolutionRow => row !== undefined);
 }
 
-/** Records a peer sample against the phase it arrived in. */
 function notePeers(row: ResolutionRow, peers: number | null, phase: string): void {
   if (peers === null) {
     return;
@@ -371,9 +305,7 @@ function notePeers(row: ResolutionRow, peers: number | null, phase: string): voi
   row.peers = peers;
   row.peersMax = Math.max(row.peersMax ?? 0, peers);
   if (phase === 'ready') {
-    // Best seen while usable, not the newest. A chain reports `ready` with no
-    // peers and gains them a moment later, and it also drops peers long after
-    // the load finished. Neither should make the row read "0 peers".
+    // Best seen, not newest: a chain reports `ready` with no peers and gains them a moment later.
     row.peersAtReady = Math.max(row.peersAtReady ?? 0, peers);
   }
 }
@@ -402,9 +334,7 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
   const summary = emptySummary();
 
   let previousBytes: { at: number; total: number } | null = null;
-  // The sandbox writing its document is the app actually on screen.
-  // `render:iframe_ready` is only the frame attach, which on a cold load
-  // lands seconds earlier, so the more honest mark wins at the end.
+  // The sandbox writing its document is the real paint. `render:iframe_ready` is only the frame attach.
   let paintedMs: number | null = null;
 
   for (const ev of mine) {
@@ -444,23 +374,17 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
         break;
       case 'boot:ready':
         // Fallback for a load whose render event never reached the recorder.
-        // `??=` so the render event, which is the more precise mark, wins.
         summary.renderedMs ??= Math.max(0, ev.timestamp - startedAt);
         break;
       case 'boot:started': {
-        // The authoritative backend for the load. `resolve:started` also
-        // carries one, but a load served from the CID cache never emits a
-        // resolve event at all, and without this the gateway rows rendered as
-        // four chains that "never started" when no light client had ever run.
+        // Authoritative, because a load served from the CID cache emits no resolve event.
         const backend = str(p['chainBackend']);
         if (backend === 'rpc-gateway') {
           summary.backend = 'rpc-gateway';
         } else if (backend?.startsWith('smoldot') === true) {
           summary.backend = 'smoldot';
         }
-        // A cache the user turned off never reports a result. Seed the fields
-        // here so the panel says so instead of "not reported", which reads as
-        // a missing instrumentation hook.
+        // A cache the user turned off never reports a result.
         if (p['skipCidCache'] === true) {
           summary.cidCache = 'skipped';
         }
@@ -472,12 +396,9 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
       case 'boot:cid_cache_checked':
         summary.cidCache = p['hit'] === true ? 'hit' : 'miss';
         // A cache hit resolves the name without a `resolve:completed` event.
-        // `??=` so a later real resolve still wins if both somehow appear.
         if (p['hit'] === true) {
           summary.cid ??= str(p['cid']);
           summary.label ??= str(p['label']);
-          // The moment the CID was known, which is what "resolved in" means on
-          // this path. Without it the field read "—" beside outcome "resolved".
           summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
         }
         break;

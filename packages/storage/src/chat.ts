@@ -1,18 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Persistent IDB store for product chat rooms and messages.
- *
- * Product chat is a local conversation between the user and the loaded
- * product; nothing here leaves the device. Records live on the product
- * origin, so each product's rooms and messages are isolated by the
- * browser's same-origin storage boundary, same as the CID cache.
- *
- * The message `content` is the decoded TrUAPI `ChatMessageContent` value
- * stored as structured-clone data. Storage stays codec-agnostic so a wire
- * bump does not require a migration; readers must tolerate unknown tags.
- */
+// Local product chat. Records live on the product origin, so the browser isolates each product's rooms.
 
 import { getDb } from './db.js';
 
@@ -42,13 +31,12 @@ export interface ChatBotRecord {
 export type ChatMessageAuthor = 'product' | 'user';
 
 export interface ChatMessageRecord {
-  /** Auto-incremented insertion order, assigned by IDB. */
   seq: number;
   productId: string;
   roomId: string;
   messageId: string;
   author: ChatMessageAuthor;
-  /** Decoded TrUAPI `ChatMessageContent`, stored as structured-clone data. */
+  /** Decoded TrUAPI `ChatMessageContent`, kept codec-agnostic so readers must tolerate unknown tags. */
   content: unknown;
   timestamp: number;
 }
@@ -66,12 +54,7 @@ function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-/**
- * Create the room if it does not exist yet, mirroring the TrUAPI
- * `ChatRoomRegistrationStatus` values. A re-creation answers `"Exists"`
- * and refreshes the stored name and icon, so a product can rename a room
- * without a new id, same as bot re-registration.
- */
+/** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon. */
 export async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
   const db = await getDb();
   return new Promise((resolve, reject) => {
@@ -100,12 +83,7 @@ export async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promi
   });
 }
 
-/**
- * Register the bot if it does not exist yet, mirroring the TrUAPI
- * `ChatBotRegistrationStatus` values. A re-registration answers `"Exists"`
- * and refreshes the stored name and icon, so a product can update its bot
- * identity without a new id.
- */
+/** Answers TrUAPI `ChatBotRegistrationStatus`. A re-registration refreshes the name and icon. */
 export async function registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
   const db = await getDb();
   return new Promise((resolve, reject) => {
@@ -134,7 +112,6 @@ export async function registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promis
   });
 }
 
-/** All bots of a product, in registration order. */
 export async function listBots(productId: string): Promise<ChatBotRecord[]> {
   const db = await getDb();
   const store = db.transaction(BOT_STORE, 'readonly').objectStore(BOT_STORE);
@@ -143,7 +120,6 @@ export async function listBots(productId: string): Promise<ChatBotRecord[]> {
   return bots.sort((a, b) => a.createdAt - b.createdAt);
 }
 
-/** All rooms of a product, in creation order. */
 export async function listRooms(productId: string): Promise<ChatRoomRecord[]> {
   const db = await getDb();
   const store = db.transaction(ROOM_STORE, 'readonly').objectStore(ROOM_STORE);
@@ -152,7 +128,6 @@ export async function listRooms(productId: string): Promise<ChatRoomRecord[]> {
   return rooms.sort((a, b) => a.createdAt - b.createdAt);
 }
 
-/** Append one message. Resolves with the assigned insertion sequence. */
 export async function appendMessage(message: NewChatMessage): Promise<number> {
   const db = await getDb();
   const store = db.transaction(MESSAGE_STORE, 'readwrite').objectStore(MESSAGE_STORE);
@@ -160,7 +135,6 @@ export async function appendMessage(message: NewChatMessage): Promise<number> {
   return seq as number;
 }
 
-/** Latest message timestamp per room of one product. */
 export async function latestMessageTimestamps(productId: string): Promise<Map<string, number>> {
   const db = await getDb();
   const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
@@ -175,7 +149,7 @@ export async function latestMessageTimestamps(productId: string): Promise<Map<st
   return latest;
 }
 
-/** Messages of one room in insertion order, capped at `limit` latest. */
+/** The latest `limit` messages, in insertion order. */
 export async function listMessages(productId: string, roomId: string, limit = 200): Promise<ChatMessageRecord[]> {
   const db = await getDb();
   const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);

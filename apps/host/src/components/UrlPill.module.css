@@ -1,11 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The address: a sunken well with 16 px ends, so the shield's glyph and
-   the end of the text sit the same distance from the edges. In a pill at
-   its max-width it shrinks first (a large flex-shrink), down to 136 px,
-   before any action collapses into More. A local product (data-localhost,
-   set by bindUrlPill) gets a terminal icon instead of the shield. */
+/* At the pill's max-width the address shrinks first, down to 136px, before any action collapses into More. */
 .url {
   display: flex;
   flex: 0 100 auto;
@@ -35,9 +31,7 @@
 .pill:hover {
   background: var(--chrome-well-strong);
 }
-/* The board's address keeps the name's head and ellipsizes its end. Its
-   clip is the line box, so the line is tall enough for the descenders the
-   pill's `line-height: 1` would cut. */
+/* The clip is the line box, so it is tall enough for descenders the pill's `line-height: 1` would cut. */
 .text {
   min-width: 0;
   overflow: hidden;
@@ -66,7 +60,7 @@
   font-size: 11px;
 }
 
-/* Phones: no address, the actions take its place. */
+/* Phones: the actions take the address's place. */
 @media (max-width: 560px) {
   .url {
     display: none;

@@ -1,10 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* In the pill's row: icons 4 px apart, at their own width. The address is
-   what shrinks when the pill reaches its max-width (UrlPill.module.css), and
-   topbarActionRoom says how much room the group has, so items collapse into
-   More only once the address is at its minimum. */
+/* The address shrinks first (UrlPill.module.css), so items collapse into More only once it is at its
+   minimum (topbarActionRoom). */
 .group {
   display: flex;
   flex: none;
@@ -16,9 +14,7 @@
   justify-content: flex-end;
 }
 
-/* A collapsed item, or More with nothing in it: out of flow and invisible,
-   but still laid out, so the bar can measure it and an item's button still
-   anchors its surface. */
+/* Still laid out, so the bar can measure it and an item's button still anchors its surface. */
 .group[data-collapsible] > [data-parked] {
   position: absolute;
   top: 0;
@@ -37,11 +33,8 @@
   display: flex;
 }
 
-/* Phones: no address, so the group fills the bar after the logo, which
-   makes its own width its room (topbarActionRoom). Its items sit 8 px apart
-   like the rest of the row, centred between the logo and the account at the
-   right end: auto margins before the first shown item and the account split
-   the free room. */
+/* Phones: no address, so the group fills the bar and its own width is its room (topbarActionRoom). Auto
+   margins before the first shown item and the account centre the items. */
 @media (max-width: 560px) {
   .group {
     flex: 1;

@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The Surface's padding: 12 px, the boards' 16 on phones; in a sheet 4 px
-   under its head and 16 around. */
 .panel {
   padding: var(--sp-3);
 }
@@ -15,10 +13,7 @@
   }
 }
 
-/* The board's Settings popover (MenuSettings): the title, the settings and a
-   footer with the reload hint and Save and apply. The panel's Surface is
-   bare, inside the Popover's glass. In a sheet the footer ends the scrolled
-   content, Save and apply across its width. */
+/* The panel's Surface is bare, inside the Popover's glass. */
 
 .sections {
   display: flex;
@@ -26,7 +21,6 @@
   gap: var(--sp-4);
   min-width: 0;
 }
-/* The clear-caches and debug buttons' icons. */
 .icon {
   width: 14px;
   height: 14px;
@@ -40,7 +34,6 @@
   margin-left: 0;
 }
 
-/* Phones: the boards' 20 px column rhythm and 16 px icon. */
 @media (max-width: 560px) {
   .sections {
     gap: var(--sp-5);

@@ -33,11 +33,7 @@ function rowFor(state: string): HTMLElement {
   return byTestId(`verification-tooltip-row-${state}`, panel());
 }
 
-/**
- * Open the explainer as Enter or Space does (a click with `detail` 0; its
- * hover, focus and dismissal are the Tooltip stories'), and wait for its
- * body (its own chunk).
- */
+/** Opens the explainer as Enter or Space does, with a click of `detail` 0, and waits for its lazy body. */
 async function openShield(): Promise<void> {
   await showShield();
   await waitForContent(VERIFICATION_TOOLTIP_ID);

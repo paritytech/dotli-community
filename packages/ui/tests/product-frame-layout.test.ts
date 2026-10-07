@@ -13,13 +13,7 @@ import {
   setTopbarLayout,
 } from '../src/product-frame-layout.js';
 
-/**
- * These assert the declared style, not the resolved pixels.
- *
- * happy-dom's CSS parser discards a `calc()` that holds a `var()`, so a real
- * iframe would read back empty strings for the inset-aware values. The frame
- * here is a stand-in whose style records each declaration as written.
- */
+/** happy-dom drops a `calc()` holding a `var()`, so the frame is a stand-in recording each declaration as written. */
 type RecordedStyle = Record<string, string>;
 
 function recordingFrame(): {
@@ -37,7 +31,6 @@ const HIDDEN_BAR_TOP = 'var(--safe-top, 0px)';
 const HIDDEN_BAR_HEIGHT = 'calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))';
 
 beforeEach(() => {
-  // The host page, which has the topbar.
   setTopbarPresent();
 });
 
@@ -145,7 +138,7 @@ describe('product frame layout', () => {
     expect(second.style['top']).toBe(HIDDEN_BAR_TOP);
     expect(second.style['transform']).toBe('');
 
-    // And later writes go to the latest frame only
+    // Later writes go to the latest frame only.
     setChatWidth(0);
     expect(second.style['width']).toBe(SAFE_WIDTH);
     expect(first.style['width']).toBe(`calc(${SAFE_WIDTH} - 360px)`);

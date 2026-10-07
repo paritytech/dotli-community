@@ -1,17 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// One page load, recorded as one Sentry trace.
-//
-// Everything a resolution does happens somewhere else: the chains run in the
-// protocol iframe, the archive unpacks in the sandbox, and both report back
-// over postMessage. This module is the one place that collects those reports
-// into a single tree, so `resolution_id:<uuid>` in Sentry returns the whole
-// load rather than three unrelated fragments.
-//
-// The tree is built live rather than assembled at the end, because a load that
-// never finishes is the one worth looking at, and a tree assembled at the end
-// is exactly the tree such a load never produces.
+// Collects the protocol iframe's and the sandbox's reports into one Sentry trace per page load. Built live, since a
+// load that never finishes is the one worth looking at.
 
 import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
 import type { ChainPhase } from '@dotli/ui';
@@ -21,40 +12,29 @@ import { getLoadingState } from '@dotli/ui';
 import type { Attempt } from './journey.js';
 
 /**
- * How a resolution ended, judged by what the visitor got.
- *
- * `rendered` is the sandbox reporting its content on screen, not the iframe
- * being mounted: a load that fails or is left during the download is not a
- * success. `no_content` is a name with nothing published on this network, and
- * `content_error` a sandbox that could not load what is. `abandoned` means the
- * tab left before any of these.
+ * Judged by what the visitor got: `rendered` is content on screen, not a mounted iframe. `no_content` is a name with
+ * nothing published on this network, `content_error` a sandbox that could not load what is.
  */
 export type ResolutionOutcome = 'rendered' | 'no_content' | 'error' | 'content_error' | 'abandoned';
 
 export type CacheResult = 'hit' | 'miss';
 
-/** What a CID cache lookup found. `skipped` is a lookup the settings turned off. */
+/** `skipped` is a lookup the settings turned off. */
 export type CidCacheResult = CacheResult | 'skipped';
 
 export interface FinishDetails {
-  /** Short failure description, for reading. Never grouped on. */
+  /** For reading, never grouped on. */
   reason?: string;
   /** The stable classification the error page was chosen from. */
   errorKind?: string;
-  /** The sandbox step a content load stopped at. */
   failedStep?: string;
 }
 
-/** The phases a chain moves through, as the light client reports them. */
 type Phase = 'connecting' | 'syncing' | 'ready';
 
 /**
- * Which phase each sync milestone lands a chain in.
- *
- * The one map for every consumer, so the loading screen and this trace can
- * never classify the same chain state differently. Milestones that name no
- * phase (peers, firstPeer, recovered) are absent, so a peer count arriving on
- * its own never rewrites where the chain says it is.
+ * Shared with the loading screen so the two never classify a chain differently. Milestones that name no phase are
+ * absent, so a lone peer count never moves the chain.
  */
 export const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
   connecting: 'connecting',
@@ -64,15 +44,7 @@ export const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
   stalled: 'stalled',
 };
 
-/**
- * Fraction of successful resolutions that get the full per-chain span tree.
- *
- * The root span is always emitted and always carries every measurement, so
- * nothing is lost at any rate: sampling decides whether the ~16 child spans
- * come with it. Successes are near-identical to one another and cheap to
- * characterise from the root alone, so a fifth of them is plenty to watch a
- * distribution move. Failures ignore this entirely. See `sampleFor`.
- */
+/** Share of loads that get child spans. The root always carries every measurement, so nothing is lost. */
 const DEFAULT_SAMPLE_RATE = 0.2;
 
 function sampleRate(): number {
@@ -80,13 +52,7 @@ function sampleRate(): number {
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_SAMPLE_RATE;
 }
 
-/**
- * Whether this load records child spans.
- *
- * Decided at the start, because Sentry fixes the sampling of a trace when its root
- * opens and a failure discovered 30 seconds later cannot retroactively add
- * children.
- */
+/** Decided at the start, since Sentry fixes a trace's sampling when its root opens. */
 function sampleFor(): boolean {
   return Math.random() < sampleRate();
 }
@@ -135,26 +101,22 @@ export interface ChainSyncFacts {
 }
 
 export interface ResolutionTrace {
-  /** A milestone from the light client. */
   chainSync: (event: ChainSyncFacts) => void;
   /** A telemetry-only fact about one chain. */
   chainDetail: (event: { chain: ChainKey; dbCache?: CacheResult; peers?: ChainPeer[] }) => void;
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
-  /** Archive download progress, from the sandbox reports. */
   content: (fetched: number, total: number | null) => void;
-  /** The name resolved, or did not. */
   nameResolved: (cid: string | null) => void;
   cidCache: (result: CidCacheResult) => void;
-  /** The step the load is in now, reported as `loading_phase` wherever it ends. */
+  /** Reported as `loading_phase` wherever the load ends. */
   step: (name: string) => void;
   /** The sandbox iframe is mounted and the download is its to run. */
   handedOff: () => void;
-  /** The loading screen showed the visitor a slow-load warning. */
   warningShown: () => void;
-  /** Close the trace. Idempotent: the first outcome wins. */
+  /** Idempotent: the first outcome wins. */
   finish: (outcome: ResolutionOutcome, details?: FinishDetails) => void;
-  /** The root span, for linking the errors of this load to its trace. */
+  /** For linking this load's errors to its trace. */
   span: SpanHandle;
 }
 
@@ -163,25 +125,13 @@ export interface ResolutionTraceOptions {
   network: string;
   backend: string;
   attempt: Attempt;
-  /**
-   * `performance.now()` at which the page load began. The trace opens once the
-   * label is known, which is after boot work that takes real time, so its root
-   * is backdated to here to cover it.
-   */
+  /** `performance.now()` at page load. The root is backdated here to cover boot work before the label is known. */
   startedAt: number;
 }
 
-/**
- * Begin tracing this page load.
- *
- * Safe to call when metrics are stripped: every span handle is inert and the
- * bookkeeping below costs a few numbers.
- */
+/** Safe when metrics are stripped: every span handle is inert. */
 export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTrace {
-  // Sentry wants wall-clock, the rest of the host measures with the monotonic
-  // clock. Both are captured once here so every span time is the monotonic
-  // delta projected onto the wall clock, and a system clock that steps mid-load
-  // cannot reorder the tree.
+  // Monotonic deltas from one wall-clock start, so a system clock that steps mid-load cannot reorder the tree.
   const perfStart = opts.startedAt;
   const epochStart = Date.now() - (performance.now() - perfStart);
   const at = (): number => epochStart + (performance.now() - perfStart);
@@ -208,16 +158,14 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
     let state = chains.get(key);
     if (state === undefined) {
       state = newChainState();
-      // The chain span opens when the chain is first heard from, not at boot:
-      // Bulletin is created only once the content phase starts, and a span
-      // opened earlier would claim it was idle rather than absent.
+      // Opens when the chain is first heard from, or Bulletin, created only for content, would look idle, not absent.
       state.span = sampled ? root.child(`chain.${key}`, { startTime: at() }) : null;
       chains.set(key, state);
     }
     return state;
   };
 
-  // Last bar reading taken while the loading screen was still being driven.
+  // Taken while the loading screen was still being driven.
   let lastBarPercent: number | null = null;
   const sampleBar = (): void => {
     const seen = readBarPercent();
@@ -248,9 +196,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
     }
     state.phaseSpan?.end(at());
     state.phase = phase;
-    // Named in full rather than just the phase: `child` does not inherit the
-    // name of the parent, so four chains would otherwise all report `dotli.ready`
-    // and only be separable by walking to their parent.
+    // Named in full, since `child` does not inherit the parent's name and every chain would report `dotli.ready`.
     state.phaseSpan = state.span === null ? null : state.span.child(`chain.${key}.${phase}`, { startTime: at() });
   };
 
@@ -261,8 +207,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
       }
       const state = chainOf(event.chain);
       const phase = PHASE_BY_MILESTONE[event.syncKind];
-      // Stalls are recorded as attributes below, not as phase spans: a stall
-      // interrupts a phase rather than being one the chain moves through.
+      // A stall interrupts a phase rather than being one, so it is an attribute, not a span.
       if (phase !== undefined && phase !== 'stalled') {
         enterPhase(event.chain, state, phase);
       }
@@ -296,7 +241,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
         case 'connecting':
         case 'recovered':
         case 'warpSyncFinished':
-          // Fully handled by the phase mapping above.
+          // The phase mapping above handles these.
           break;
       }
     },
@@ -323,8 +268,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
       sampleBar();
       const now = performance.now();
       const elapsed = now - lastBytesAt;
-      // A rate needs two readings. The seed reading is page start
-      // with nothing downloaded, so the first report already has a partner.
+      // The seed reading is page start with nothing downloaded, so the first report already has a partner.
       if (elapsed > 0) {
         const rate = ((received - lastBytes) / elapsed) * 1000;
         peakBytesPerSecond = Math.max(peakBytesPerSecond, rate);
@@ -412,22 +356,15 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
         ...(details?.reason !== undefined ? { failure_reason: details.reason.slice(0, 200) } : {}),
         ...(details?.errorKind !== undefined ? { error_kind: details.errorKind } : {}),
         ...(details?.failedStep !== undefined ? { failed_step: details.failedStep } : {}),
-        // Flattened onto the root as well as the chain spans, so an unsampled
-        // load still answers "which chain was slow" without any children.
+        // An unsampled load still answers "which chain was slow".
         ...chainSummary(chains),
       });
       root.end(endedAt);
     },
   };
 
-  // A load that never finishes is the one worth having. Without this the tab
-  // closes mid-resolution and the root span is never sent at all, so the
-  // failures are exactly the traces Sentry never sees.
-  //
-  // How the visitor left is recorded where the page can know it: a page kept
-  // in the back/forward cache says so, and a reload this app started marked
-  // its reason first. A browser reload, a typed URL and a closed tab all look
-  // the same from here; the next attempt's `entry` tells a reload apart.
+  // Otherwise a tab closed mid-resolution never sends its root span. A browser reload, a typed URL and a closed tab
+  // all read "unload" here, and the next attempt's `entry` tells a reload apart.
   window.addEventListener('pagehide', (event: PageTransitionEvent) => {
     if (finished) {
       return;
@@ -439,12 +376,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
   return trace;
 }
 
-/**
- * The percentage the loading bar stands at, which is what the visitor was
- * shown. Read from the loading store rather than the bar's markup, which only
- * the loading island renders, so a load whose island had not mounted (or
- * failed to) still reports where its bar got to.
- */
+/** From the loading store, not the bar's markup, so a load whose loading island never mounted still reports it. */
 function readBarPercent(): number {
   return getLoadingState().progress;
 }
@@ -484,22 +416,20 @@ function chainAttributes(key: ChainKey, state: ChainState): Record<string, SpanV
     attrs['peers_count'] = peers.length;
     attrs['peers_authority'] = peers.filter(peer => peer.roles === 'AUTHORITY').length;
     attrs['peers_best_median'] = median;
-    // Peer ids are the public libp2p identities of infrastructure nodes,
-    // published in chain specs. They name a remote server, never the visitor.
+    // Public identities of infrastructure nodes from the chain specs, never the visitor's.
     attrs['peers_ids'] = peers
       .map(peer => peer.peerId)
       .join(',')
       .slice(0, 1000);
     if (state.warpTarget !== null) {
-      // How far behind the peers of the chain were. A lag near zero says the
-      // network was fine and the time went somewhere else.
+      // A lag near zero says the network was fine and the time went elsewhere.
       attrs['peer_best_lag'] = state.warpTarget - median;
     }
   }
   return attrs;
 }
 
-/** Per-chain timings flattened for the root, so an unsampled load still has them. */
+/** Flattened for the root, so an unsampled load still has them. */
 function chainSummary(chains: ReadonlyMap<ChainKey, ChainState>): Record<string, SpanValue> {
   const out: Record<string, SpanValue> = {};
   for (const [key, state] of chains) {

@@ -1,19 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Shared Playwright settings for every host test suite.
- *
- * Each suite (functional, e2e, performance) extends this via
- * `defineConfig({ ...base, ... })` and overrides `testDir`, `reporter`,
- * timeouts, and globalSetup as needed.
- */
-
 import type { PlaywrightTestConfig } from '@playwright/test';
 
 const PORT = '5173';
 
-/** The unified preview server (scripts/preview-server.ts) on `PORT`. */
 export const previewServer = {
   command: 'node ../../../../scripts/preview-server.ts',
   url: `http://localhost:${PORT}`,

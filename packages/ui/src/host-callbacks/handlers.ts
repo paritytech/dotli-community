@@ -1,12 +1,6 @@
-// Composes the typed host callback surface consumed by
-// `createWasmRawCallbacks`. Each callback lives in its own file so the
-// dotli-specific UI and storage behavior stays outside the Rust core.
-//
-// Scoping:
-// - `label` identifies the dApp, used in topbar notifications, permission
-//   storage keys, and sign modal titles.
-// - product storage keys are opaque; Rust core owns product namespacing.
-//
+// Each callback lives in its own file so dotli's UI and storage behaviour stays outside the Rust core.
+// Product storage keys are opaque because the core owns product namespacing.
+
 import type { RequiredHostCallbacks } from '@parity/truapi-host';
 import { createNavigateTo } from './OpenUrl.js';
 import { createNotificationAdapters } from './PushNotification.js';
@@ -73,8 +67,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
-    // Always served; the core itself denies chat calls on non-Chat
-    // executions and without an active session.
+    // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),
   };
 }

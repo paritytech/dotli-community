@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page island (components/landing/LandingPage.tsx), beside `#app`
-// as the host page has it: it keeps the loading screen until the landing
-// chunk arrives, then shows the page until an error page takes it down, and
+// The landing page island beside `#app`: it holds the loading screen until its chunk arrives, and
 // shows the reload error page if the chunk cannot load or the page throws.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,9 +28,8 @@ let topbar: typeof TopbarModule;
 let unmount: (() => void) | undefined;
 
 /**
- * Fresh modules, and the island rendered beside `#app`. The loading
- * controller loads too, over the static screen, as the host's startup bundle
- * loads it on every path: that is what makes the screen a root.
+ * Fresh modules and the island. The loading controller loads too, as the startup bundle does on every path,
+ * which makes the screen a root.
  */
 async function mountIsland(): Promise<void> {
   const [solid, web, island] = await Promise.all([
@@ -51,7 +48,6 @@ async function mountIsland(): Promise<void> {
   solid.flush();
 }
 
-/** Hold the landing chunk back until the returned function is called. */
 function gateChunk(): () => void {
   let release = (): void => {};
   const gate = new Promise<void>(resolve => {
@@ -68,14 +64,12 @@ function byId(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
-/** Let queued microtasks run, Solid's batched updates among them. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await Promise.resolve();
   }
 }
 
-/** Show the landing page, as boot does on the bare host, and wait for it. */
 async function showLanding(): Promise<void> {
   topbar.setLandingPage(true);
   await vi.waitFor(() => {
@@ -87,8 +81,7 @@ async function showLanding(): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   sentry.captureException.mockReset();
-  // Shaped like the host page (apps/host/src/pages/index.astro): the
-  // loading screen and the island beside `#app`.
+  // Shaped like the host page (apps/host/src/pages/index.astro).
   document.body.innerHTML = '<div id="app-loading"></div><div id="landing-slot"></div><div id="app"></div>';
 });
 
@@ -136,8 +129,6 @@ describe('landing page island', () => {
     // Then the loading screen is gone
     expect(loading.getLoadingState().phase).toBe('gone');
     expect(must(byId('landing-slot'), 'slot').firstElementChild?.getAttribute('data-testid')).toBe('landing');
-    // The page renders its own auth button, whose menu it portals into the
-    // body, so every id is there once.
     expect(
       [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
     ).toEqual(['auth']);

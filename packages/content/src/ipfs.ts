@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// IPFS gateway utilities.
-
 import { getActiveServicesConfig } from '@dotli/config';
 import { endpointHost } from '@dotli/shared';
 
@@ -14,9 +12,6 @@ export function defaultGateway(): string {
   return gateway;
 }
 
-/**
- * Fetch content from IPFS by CID via HTTP gateway.
- */
 export async function fetchFromIpfs(
   cid: string,
   gateway: string = defaultGateway(),
@@ -24,8 +19,7 @@ export async function fetchFromIpfs(
   data: Uint8Array;
   contentType?: string;
 }> {
-  // Request the raw block: a bare GET lets the gateway content-negotiate and
-  // mutate the body (e.g. serve it as text/html), breaking CID verification.
+  // A bare GET lets the gateway content-negotiate and mutate the body, which breaks CID verification.
   const url = `${gateway}/ipfs/${cid}?format=raw`;
 
   const response = await fetch(url, {
@@ -45,10 +39,6 @@ export async function fetchFromIpfs(
   };
 }
 
-/**
- * Fetch content as CAR archive from the IPFS gateway.
- * The gateway's ?format=car returns the entire directory tree in one response.
- */
 export async function fetchCarFromIpfs(cid: string, gateway: string = defaultGateway()): Promise<Uint8Array> {
   const url = `${gateway}/ipfs/${cid}?format=car`;
 
@@ -63,7 +53,6 @@ export async function fetchCarFromIpfs(cid: string, gateway: string = defaultGat
   return new Uint8Array(await response.arrayBuffer());
 }
 
-/** The host part of a gateway URL, which is what tells two gateways apart in a report. */
 export function gatewayHost(gateway: string): string {
   return endpointHost(gateway) ?? gateway;
 }

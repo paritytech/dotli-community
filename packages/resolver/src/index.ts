@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Public API of @dotli/resolver. Other workspace packages import only from here.
-// Every other module under src/ is private to the package.
-
 export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
 export {
@@ -15,9 +12,7 @@ export {
   type ChainSyncKind,
 } from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
-// From the schema module, not `./manifest.js`: the host validates cached
-// manifests on its eager path, and the reader would drag the chain-storage
-// code (namehash, storage reads, hashers) in with it.
+// From the schema module, not `./manifest.js`, which would drag the chain-storage code onto the eager path.
 export {
   toExecutableManifestResult,
   toRootManifestResult,

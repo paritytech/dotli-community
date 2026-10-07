@@ -1,12 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// TrUAPI debug formatters
-//
-// Pure helpers that turn decoded MessagePayloadSchema values into strings
-// suitable for the debug panel. Handles Uint8Array (hex, truncated) and
-// cycles. No DOM or SDK imports here, kept pure for easy testing.
-
 import { toHex } from '@dotli/shared';
 
 const MAX_UINT8_PREVIEW_BYTES = 32;
@@ -27,13 +21,6 @@ export function isUint8ArrayLike(v: unknown): v is Uint8Array {
   return (v as { constructor?: { name?: string } }).constructor?.name === 'Uint8Array';
 }
 
-/**
- * JSON.stringify replacer that keeps output readable:
- * - Uint8Array becomes { __type: "Uint8Array", length, hex }
- * - bigint becomes a string with trailing "n"
- * - cycles become "[Circular]"
- * - long strings are truncated
- */
 export function makeReplacer(): (this: unknown, k: string, v: unknown) => unknown {
   const seen = new WeakSet();
   return function replacer(_k, v) {
@@ -60,7 +47,6 @@ export function makeReplacer(): (this: unknown, k: string, v: unknown) => unknow
   };
 }
 
-/** Full, pretty-printed JSON for the detail pane. */
 export function formatPayloadDetail(payload: unknown): string {
   try {
     return JSON.stringify(payload, makeReplacer(), 2);
@@ -69,10 +55,6 @@ export function formatPayloadDetail(payload: unknown): string {
   }
 }
 
-/**
- * Compact one-line summary for the event list. Picks a few keys or hex
- * prefix depending on payload shape. Never exceeds ~80 chars.
- */
 export function formatPayloadSummary(payload: unknown): string {
   if (payload === null || payload === undefined) {
     return '';
@@ -132,7 +114,7 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
-/** Safe string coercion that refuses to fall back to `[object Object]`. */
+/** Refuses to fall back to `[object Object]`. */
 function stringifyPrimitive(v: unknown): string {
   if (v === null) {
     return 'null';

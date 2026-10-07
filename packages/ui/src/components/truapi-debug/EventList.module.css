@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel list view */
-
 .list {
   min-height: 0;
   overflow: auto;
@@ -25,8 +23,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A system row has a layer badge in place of the arrow and product, and a
-   subtle left edge. */
+/* A layer badge replaces the arrow and product. */
 .row[data-system] {
   grid-template-columns: 72px max-content 90px minmax(0, 1fr);
   border-left: 2px solid var(--td-system-edge);
@@ -159,9 +156,6 @@
   border-color: var(--td-chain-line);
 }
 
-/* Sits beside the tag on a request row until its reply arrives, counting up
-   on its own timer. Without it an unanswered call is indistinguishable from
-   an instant one, because the `+Xs` latency needs both halves of the pair. */
 .pending {
   margin-left: 6px;
   padding: 0 5px;

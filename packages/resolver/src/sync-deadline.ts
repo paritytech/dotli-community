@@ -1,18 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Bounded waits for chain synchronization.
- *
- * `api.whenReady()` never settles when the peer set is unreachable, so every
- * caller has to race a timer. The rejection carries `NetworkSyncTimeoutError`
- * so the host can name the real cause rather than whichever generic timer
- * fired first.
- */
+// `api.whenReady()` never settles without reachable peers, so callers race a timer that names the cause.
 
 import { NetworkSyncTimeoutError } from './errors.js';
 
-/** Race `work` against a `NetworkSyncTimeoutError` naming `chain`. */
 export function raceSyncTimeout<T>(work: Promise<T>, chain: string, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
@@ -27,13 +19,7 @@ export function raceSyncTimeout<T>(work: Promise<T>, chain: string, timeoutMs: n
   });
 }
 
-/**
- * Apply a caller's remaining budget to an already-bounded wait.
- *
- * Returns `work` untouched when the caller has no budget, or when its budget
- * is no tighter than the cap `work` already enforces. No protocol method
- * budget reaches the cap today, so that second arm is an invariant.
- */
+/** Apply a caller's budget to a wait already bounded by `capMs`, only when it is tighter. */
 export function withSyncBudget<T>(
   work: Promise<T>,
   chain: string,

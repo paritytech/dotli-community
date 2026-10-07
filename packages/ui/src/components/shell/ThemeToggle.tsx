@@ -80,11 +80,7 @@ function MonitorGlyph(props: GlyphProps): JSX.Element {
   );
 }
 
-/**
- * The sun and moon, of which CSS shows the theme in effect,
- * `<html data-theme>`, so System shows what it resolved to: on the button or
- * a More menu row.
- */
+/** CSS shows the glyph for `<html data-theme>`, so System shows what it resolved to. */
 function ThemeIcons(): JSX.Element {
   return (
     <>
@@ -96,7 +92,6 @@ function ThemeIcons(): JSX.Element {
 
 const PREFS: readonly ThemePref[] = ['light', 'dark', 'system'];
 
-/** One radio of the group: its glyph over its label. */
 function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element }): JSX.Element {
   return (
     <button
@@ -117,7 +112,6 @@ function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element 
   );
 }
 
-/** A radio group's arrows: the next or previous choice, wrapping, chosen and focused. */
 function onTilesKeyDown(ev: KeyboardEvent, current: ThemePref): void {
   const step =
     ev.key === 'ArrowRight' || ev.key === 'ArrowDown' ? 1 : ev.key === 'ArrowLeft' || ev.key === 'ArrowUp' ? -1 : 0;
@@ -131,30 +125,9 @@ function onTilesKeyDown(ev: KeyboardEvent, current: ThemePref): void {
 }
 
 /**
- * The shell's appearance button (`#theme-toggle`) and its popover
- * (`#theme-popover`, rendered into the body), an item of the topbar's action
- * group island (see src/islands/): rendered with the host page from the theme
- * store's default ("Appearance: System"), then hydrated, which brings the
- * stored preference.
- *
- * The popover is the board's Appearance popover: a title over three tiles
- * (Light, Dark, System), a radio group (`role="radio"`, `aria-checked` on
- * the current one, which alone is in the Tab order). Opening focuses the
- * current tile. The arrows (Left and Right along the row, Up and Down too,
- * all wrapping) choose the next or previous tile and focus it, as a radio
- * group does. Picking a tile applies it through theme-controller.ts and
- * leaves the popover open, so the user sees the page in the new theme and
- * can pick again. On a phone it opens as a bottom sheet whose head carries
- * the title. The title is hidden from assistive technology, as the dialog's
- * own name already says it. Closing is Popover's: a press outside, Escape,
- * the button again.
- *
- * The button's icon comes from CSS on `<html data-theme>`, which the inline
- * bootstrap script and theme-controller.ts own, never this component: the
- * script sets it before the island hydrates, so the build-time button already
- * shows the theme in effect, and the controller follows the OS while the
- * choice is System.
- * The More menu's Appearance row opens this popover with the row click.
+ * The appearance button and its popover.
+ * Picking a tile leaves the popover open, so the user sees the new theme and can pick again. `<html data-theme>`
+ * belongs to the bootstrap script and theme-controller.ts, never this component.
  */
 export function ThemeToggle(): JSX.Element {
   const theme = useStore(themeStore);

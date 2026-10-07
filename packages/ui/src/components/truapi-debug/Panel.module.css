@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel. The panel is dark whatever the page theme, so
-   it carries its own palette as --td-* properties on its root, which the other
-   modules of the panel read. */
+/* The panel's own palette, as --td-* properties read by its other modules. */
 
 .panel {
   --td-bg: #0b0b0b;
@@ -49,8 +47,7 @@
   --td-teal-pale: #99f6e4;
   --td-teal-bg: #0b1410;
   --td-teal-tint: rgba(45, 212, 191, 0.08);
-  /* The network panel's block-health colours: the Resolution phase blocks
-     and its outcome and cache values. */
+  /* The network panel's block-health colours, shared by the Resolution view. */
   --td-health-ok: #22c55e;
   --td-health-warn: #eab308;
   --td-health-bad: #f87171;
@@ -81,9 +78,7 @@
   font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
   font-size: 12px;
   display: grid;
-  /* `minmax(0, …)`: an `auto` column grows to its widest child's
-     min-content, so a header that does not fit would widen the whole panel
-     past the viewport instead of the header scrolling. */
+  /* An `auto` column would grow to the header's min-content and widen the panel past the viewport. */
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 5px 32px auto 1fr;
   height: 360px;
@@ -95,9 +90,6 @@
   height: 32px;
 }
 
-/* Docked right: pinned to the right edge spanning full viewport height.
-   Events list on top, inspector on the bottom. The resize handle moves from
-   the top edge to a 5px column on the left. */
 .panel[data-dock='right'] {
   top: 0;
   right: 0;
@@ -139,10 +131,7 @@
 .panel[data-collapsed] .body {
   display: none;
 }
-/* The Resolution view has nothing to select, so the detail pane would only
-   ever say "select an event". The chart takes the whole width instead. The
-   Archive view shows its own selection, so it takes the width too, and so
-   does Diagnostics, which has nothing to select either. */
+/* Views with nothing to select for the detail pane take the whole width. */
 .panel[data-view='resolution'] .body,
 .panel[data-view='archive'] .body,
 .panel[data-view='diagnostics'] .body {
@@ -150,9 +139,6 @@
   grid-template-rows: 1fr;
 }
 
-/* Views (list, timeline, resolution, archive, diagnostics) stacked in the same region
-   with a tab strip above. Only the active one is shown, the others carry
-   `hidden`. */
 .views {
   display: grid;
   grid-template-rows: 26px 1fr;
@@ -184,8 +170,6 @@
 .tooltip[data-visible] {
   opacity: 1;
 }
-/* A sentence needs to wrap; the short timeline strings do not, so the
-   single-line default stays put and this is opt-in per element. */
 .tooltip[data-prose] {
   white-space: normal;
   max-width: 46ch;

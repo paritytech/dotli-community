@@ -72,7 +72,6 @@ function fakeFrame(): {
   };
 }
 
-/** An in-memory block cache whose methods are spies. */
 interface MemoryCache {
   blocks: Map<string, Uint8Array>;
   get: Mock<(cid: string) => Promise<Uint8Array | null>>;
@@ -84,9 +83,7 @@ function memoryCache(initial: [string, Uint8Array][] = []): MemoryCache {
   const blocks = new Map(initial);
   return {
     blocks,
-    // A real cache backs onto storage the caller doesn't share a buffer
-    // with, so hand back a copy: the relay transfers the returned buffer to
-    // the sandbox, which would otherwise detach this map's own copy.
+    // A copy, since the relay transfers the returned buffer and would detach this map's own.
     get: vi.fn((cid: string) => Promise.resolve(blocks.get(cid)?.slice() ?? null)),
     put: vi.fn((cid: string, bytes: Uint8Array) => {
       blocks.set(cid, bytes);
@@ -119,9 +116,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
 
   afterEach(() => {
     stop();
-    // Unconditional, not just at the end of the tests that mock it: an
-    // assertion failure inside one of those tests would otherwise skip the
-    // unmock and leak a throwing "./verify" into every test after it.
+    // Unconditional, so a failed assertion cannot leak a throwing "./verify" into later tests.
     vi.doUnmock('../src/verify.js');
   });
 

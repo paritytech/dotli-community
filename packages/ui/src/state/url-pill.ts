@@ -5,9 +5,7 @@ import type { ShieldState } from '../verification-shield.js';
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 /**
- * What the topbar's URL pill shows (bindUrlPill, url-pill.ts, and the
- * UrlPillShield island). `none` is the landing page, and the host page
- * until main.ts knows the product: the URL bar hidden.
+ * `none` hides the URL bar, on the landing page and until main.ts knows the product.
  * `shield` is null until the host knows how the product was loaded.
  */
 export type UrlPillState =
@@ -24,16 +22,12 @@ const urlPill = createSyncStore<UrlPillState>('url_pill', { kind: 'none' }, { eq
 
 export const urlPillStore: ReadableStore<UrlPillState> = urlPill;
 
-/**
- * The pill's shield: undefined for a pill with none (not a product's), null
- * while the host does not know how the product was loaded. The shield, its
- * explainer and their island read it from here, so they agree.
- */
+/** The shield, its explainer and their island all read it here, so they agree. */
 export function pillShield(state: UrlPillState): ShieldState | null | undefined {
   return state.kind === 'product' ? state.shield : undefined;
 }
 
-/** A local product (localhost proxy or preview route) served from `host`. */
+/** A local product, from the localhost proxy or a preview route. */
 export function showLocalhostPill(host: string): void {
   urlPill.set({ kind: 'localhost', host });
 }
@@ -43,10 +37,6 @@ export function showProductPill(domain: string, tld: string): void {
   urlPill.set({ kind: 'product', domain, tld, shield: null });
 }
 
-/**
- * Swap the shield's glyph, colour, label and "This site" row to match
- * `state`. Only a product pill has a shield; otherwise this does nothing.
- */
 export function setVerificationShieldState(state: ShieldState): void {
   const current = urlPill.get();
   if (current.kind === 'product') {

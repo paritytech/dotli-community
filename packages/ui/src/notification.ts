@@ -1,17 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li Notification display
-//
-// Stackable toasts, rendered by the overlays root (components/overlays/
-// ToastStack.tsx) from the toast store. Auto-dismiss pauses while the tab is
-// hidden or the stack is expanded. Optionally fires the browser Notification
-// API when the tab is hidden; that part does not depend on the overlays.
-
 import { presentToast } from './overlays/load.js';
 import type { StatusTone } from './components/primitives/StatusDot.js';
 
-/** Default auto-dismiss delay in ms. */
 export const NOTIFICATION_DISMISS_MS = 10_000;
 
 const ALERT_PATHS =
@@ -25,7 +17,7 @@ const TONE_ICON_PATHS: Record<StatusTone, string> = {
   idle: '<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/>',
 };
 
-/** The tone's own icon, stroked in currentColor so the tile's tone colours it. */
+/** Stroked in currentColor so the tile's tone colours it. */
 function toneIcon(tone: StatusTone): string {
   return (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -38,17 +30,14 @@ export interface NotificationParams {
   text: string;
   label: string;
   deeplink?: string | undefined;
-  /** SVG string for the icon, stroked in currentColor to take the tone. Default: the tone's own icon. */
+  /** SVG stroked in currentColor to take the tone. */
   icon?: string;
-  /** What the notification reports, which tints its icon tile. Default: info. */
   tone?: StatusTone;
-  /** Auto-dismiss in ms. 0 = persistent (manual close only). Default: NOTIFICATION_DISMISS_MS. */
+  /** 0 keeps it until closed. */
   dismissMs?: number;
-  /** Send browser Notification API when the tab is hidden. Default: true. */
+  /** Also fire a browser Notification when the tab is hidden. Default true. */
   browserNotification?: boolean;
-  /** Called when the notification is dismissed (user close or auto-dismiss). */
   onDismiss?: () => void;
-  /** Optional action button rendered next to the text area. */
   action?: { label: string; onClick: () => void };
 }
 
@@ -68,7 +57,6 @@ function validateDeeplink(dl: string | undefined): string | undefined {
   }
 }
 
-// Browser Notification, used as a supplement when the tab is hidden.
 function fireBrowserNotification(text: string, deeplink: string | undefined, label: string): void {
   if (!('Notification' in window)) {
     return;

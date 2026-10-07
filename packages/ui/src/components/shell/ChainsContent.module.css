@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The Surface's padding: 12 px, the boards' 16 on phones; in a sheet 4 px
-   under its head and 16 around. */
 .panel {
   padding: var(--sp-3);
 }
@@ -15,9 +13,7 @@
   }
 }
 
-/* The board's network menu: the status well, then per chain its name and
-   peers over a strip of block bars, the download rows and the tips. The
-   Surface around them sets the rhythm between them. */
+/* The Surface around these parts sets the rhythm between them. */
 
 .status {
   flex-direction: row;
@@ -93,20 +89,17 @@
 .bars {
   position: relative;
   display: flex;
-  /* 48 slots share the width. The newest is at the right edge. */
+  /* 48 slots share the width, the newest at the right edge. */
   flex-direction: row;
   align-items: flex-end;
   gap: var(--sp-hair);
   box-sizing: border-box;
-  /* A flex item defaults to `min-width: auto`, which lets its content set
-     the floor and defeats the clipping. */
+  /* A flex item's default `min-width: auto` would let its content defeat the clipping. */
   min-width: 0;
   height: var(--sp-3);
   overflow: hidden;
 }
-/* Set for one frame after a block lands (slideStrip): the strip starts
-   shifted right by the room the new bar took, then settles to zero, so the
-   row glides left together instead of the bars jumping a step. */
+/* Set for one frame after a block lands (slideStrip), so the row glides left instead of jumping a step. */
 .bars[data-sliding] {
   transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -141,7 +134,6 @@
 .bar[data-health='onTime'] {
   background: var(--chrome-ok);
 }
-/* 8 and 5 of the strip's 12 px (the board's 10 and 6 of 16). */
 .bar[data-health='late'] {
   height: 8px;
   background: var(--chrome-warn);
@@ -150,9 +142,7 @@
   height: 5px;
   background: var(--chrome-err);
 }
-/* Its inline height is the elapsed share of the chain's block time once a first
-   head anchors the estimate. Searching before that, full and pulsing once the
-   block is due. */
+/* Inline height is the elapsed share of the block time once a first head anchors the estimate. */
 .pending {
   height: 20%;
   background: var(--chrome-idle);
@@ -219,7 +209,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Phones: the boards' sizes. */
 @media (max-width: 560px) {
   .status {
     gap: var(--sp-3);

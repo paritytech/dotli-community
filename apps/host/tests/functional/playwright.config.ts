@@ -4,11 +4,8 @@
 import { defineConfig } from '@playwright/test';
 import { baseConfig, previewServer } from '../playwright.base.config.js';
 
-// One by default: every cold load downloads host-playground's ~14 MB CAR
-// from paseo-bulletin-next-ipfs, which Cloudflare doesn't cache, so parallel
-// workers only add concurrent downloads to the same bottleneck. On CI,
-// 2 workers took as long as 1 and failed 11 tests when the gateway slowed
-// down. Raise FUNCTIONAL_WORKERS once paritytech/devops#5734 is fixed.
+// One by default: every cold load downloads a ~14 MB CAR from an uncached gateway, so parallel workers only
+// contend for it. Raise once paritytech/devops#5734 is fixed.
 const WORKERS = Number(process.env['FUNCTIONAL_WORKERS'] ?? '1');
 
 export default defineConfig({
@@ -16,11 +13,8 @@ export default defineConfig({
   testDir: '.',
   timeout: 900_000,
   retries: 0,
-  // Each worker gets its own preview server (`PORT` in ../env.ts picks it by
-  // TEST_PARALLEL_INDEX). The server holds process-wide state that tests must
-  // not share: `network-transport.spec.ts` counts `smoldot.active` points out
-  // of its metrics buffer, where nothing identifies the test that produced a
-  // point, and every test wipes and reseeds its mode-sync store.
+  // One preview server per worker: its metrics buffer and mode-sync store are process-wide, and tests must not
+  // share them.
   workers: WORKERS,
   fullyParallel: true,
   webServer: Array.from({ length: WORKERS }, (_, i) => {

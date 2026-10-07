@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Timeline view. It carries `hidden` while another
-   view shows, so it sets no display of its own. */
+/* Carries `hidden` while another view shows, so it sets no display of its own. */
 
 .timeline {
   min-height: 0;

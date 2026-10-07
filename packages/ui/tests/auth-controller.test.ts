@@ -14,12 +14,10 @@ type Modules = typeof AuthControllerModule &
   typeof AuthModule &
   typeof BlockingModalQueueModule;
 
-// Window listeners the controller under test added; removed after each test
-// so an earlier test's controller never reacts to a later test's events.
+// Removed after each test so an earlier test's controller never hears a later test's events.
 let controllerListeners: Parameters<typeof window.removeEventListener>[] = [];
 
-// A fresh module graph per test: the controller keeps its lease and session
-// flags at module scope, and the stores start from their defaults.
+// A fresh module graph per test, as the controller keeps its lease and session flags at module scope.
 async function load(
   coordinator?: BlockingModalCoordinator,
 ): Promise<Modules & { coordinator: BlockingModalCoordinator }> {
@@ -47,9 +45,8 @@ function countEvents(name: string): { count: number; details: unknown[] } {
 }
 
 /**
- * Holds each enqueued task until the test runs it, to force races. Dispose
- * is only recorded, never aborts: the task sees a live signal, as when a
- * queue starts a task before it processes that scope's disposal.
+ * Holds each task until the test runs it, to force races. Dispose never aborts, as when a queue
+ * starts a task before it processes that scope's disposal.
  */
 function manualCoordinator(): {
   coordinator: BlockingModalCoordinator;

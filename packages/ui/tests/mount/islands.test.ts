@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host page's island failures (mount/islands.ts): an island that fails to
-// load or hydrate keeps its build-time markup, and what it would have done is
-// stood in for.
+// An island that fails to load or hydrate keeps its build-time markup, and what it would have done is stood in for.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as IslandsModule from '../../src/mount/islands.js';
@@ -22,7 +20,6 @@ let roots: typeof AppRootsModule;
 /** Stops the test's reportIslandErrors listening. */
 let stop: () => void;
 
-/** An island of the page, as the build rendered it. */
 function island(component: string): HTMLElement {
   const element = document.createElement('astro-island');
   element.setAttribute('component-export', component);

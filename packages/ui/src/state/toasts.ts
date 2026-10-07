@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The toasts on screen, as plain data, plus their auto-dismiss timers. A
-// countdown pauses while the tab is hidden or the stack is expanded and
-// resumes from what was left. The overlays root renders this store.
+// A countdown pauses while the tab is hidden or the stack is expanded and resumes from what was left.
 
 import { captureException } from '@dotli/metrics';
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
@@ -19,9 +17,9 @@ export interface ToastInput {
   label: string;
   deeplink?: string;
   icon: string;
-  /** What the toast reports, which tints its icon tile. Default: info. */
+  /** Tints the icon tile. */
   tone?: StatusTone;
-  /** 0 = persistent. */
+  /** 0 is persistent. */
   dismissMs: number;
   onDismiss?: () => void;
   action?: ToastAction;
@@ -114,7 +112,6 @@ function bindVisibility(): void {
   });
 }
 
-/** Stop a toast's countdown for good and run its onDismiss. */
 function finishTimer(id: number): void {
   const timer = timers.get(id);
   pause(id);
@@ -155,7 +152,6 @@ export function pushToast(input: ToastInput): number {
   return id;
 }
 
-/** Start a toast's exit: run onDismiss and mark it leaving. */
 export function dismissToast(id: number): void {
   const state = toasts.get();
   const entry = state.items.find(t => t.id === id);
@@ -169,7 +165,7 @@ export function dismissToast(id: number): void {
   });
 }
 
-/** Drop a toast once its exit animation has finished. */
+/** Called once the exit animation has finished. */
 export function removeToast(id: number): void {
   const state = toasts.get();
   if (!state.items.some(t => t.id === id)) {
@@ -213,14 +209,13 @@ export function setToastsExpanded(expanded: boolean): void {
   }
 }
 
-/** Drop every toast without running callbacks. Used when overlays cannot render. */
+/** Skips callbacks, for when overlays cannot render. */
 export function clearToasts(): void {
   pauseAll();
   timers.clear();
   toasts.set(INITIAL);
 }
 
-/** Tests only. */
 export function resetToastsForTests(): void {
   clearToasts();
   nextId = 0;

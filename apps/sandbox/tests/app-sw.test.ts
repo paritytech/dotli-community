@@ -10,14 +10,10 @@ const ORIGIN = 'https://coffer.app.dot.li';
 
 type WorkerScope = EventTarget;
 
-/** What the sandbox pages the worker controls were sent, across every page. */
+/** Every message the worker posted to the pages it controls. */
 let pageInbox: unknown[] = [];
 
-/**
- * Start a worker instance the way the browser does: fresh module state over
- * the origin's existing storage. Calling it a second time is the restart
- * Chrome performs after stopping an idle worker.
- */
+/** Fresh module state over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
 async function startWorker(): Promise<WorkerScope> {
   vi.resetModules();
   const scope = Object.assign(new EventTarget(), {
@@ -40,7 +36,7 @@ async function startWorker(): Promise<WorkerScope> {
   return scope;
 }
 
-/** Hand the worker an archive as the sandbox page does, and wait for every write it keeps alive. */
+/** Hands over an archive as the sandbox page does, and waits for every write the worker keeps alive. */
 async function setArchive(scope: WorkerScope, files: Record<string, string>): Promise<unknown[]> {
   const encoder = new TextEncoder();
   const { packed, index } = packArchive(
@@ -79,7 +75,7 @@ function brokenIndexedDb(): unknown {
   };
 }
 
-/** Issue a fetch through the worker. `undefined` means it let the request go to the network. */
+/** `undefined` means the worker let the request through to the network. */
 async function request(scope: WorkerScope, path: string): Promise<Response | undefined> {
   let answer: Response | Promise<Response> | undefined;
   const event = Object.assign(new Event('fetch'), {

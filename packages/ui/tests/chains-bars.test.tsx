@@ -12,11 +12,7 @@ import { nth } from './helpers/nth.js';
 
 const BAR = '[data-block]';
 
-/**
- * happy-dom does no layout, so every box measures zero and the slide would be
- * skipped for having no distance to travel. Give the marks the width the
- * module gives them.
- */
+/** happy-dom measures every box as zero, which would skip the slide, so give the marks their module width. */
 function stubLayout(): void {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
     const isBar = this instanceof HTMLElement && this.dataset['block'] !== undefined;

@@ -8,14 +8,14 @@ import { InSheet as InSheetContext } from '../floating/in-sheet.js';
 import layer from '../floating/FloatingLayer.module.css';
 import popover from '../floating/Popover.module.css';
 import frame from '../floating/SheetFrame.module.css';
-// A consumer's padding, as the Surface sets none: the settings panel's.
+// Surface sets no padding, so the stories borrow the settings panel's.
 import panel from '../shell/SettingsContent.module.css';
 import { Button } from './Button.js';
 import { Chip } from './Chip.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from './Surface.js';
 import { Callout, InfoIcon, Well } from './Well.js';
 
-/** A Popover's open surface, the glass around its content, as a bottom sheet with `sheet`. */
+/** A Popover's glass frame around its content, as a bottom sheet with `sheet`. */
 const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
   <Show
     when={props.sheet === true}

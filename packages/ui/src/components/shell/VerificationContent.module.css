@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* How this site was loaded: the shield's glyph beside a title over its
-   description, laid out and set as Choice is (primitives/Choice.module.css)
-   without its card, inset 16 px in the tooltip's surface. */
+/* Laid out as Choice (primitives/Choice.module.css), without its card. */
 .source {
   display: flex;
   align-items: flex-start;
@@ -12,8 +10,6 @@
   color: var(--chrome-text);
   font-family: var(--font-sans);
 }
-/* The pill shield's own glyphs, 16 px (the board's 20 on phones), in the
-   shield's colours. */
 .icon {
   flex: none;
   width: 16px;

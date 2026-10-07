@@ -1,13 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// ChatPlatform host callbacks: the product side of product chat.
-//
-// The core forwards `chat.create_room` / `chat.post_message` /
-// `chat.list_subscribe` here after enforcing its own access policy (the
-// connection must be a Chat-kind execution with an active session). The
-// user side of the conversation flows the other way, through
-// `publishChatAction` on the worker host runtime; see `../chat/service`.
+// The product side of chat, which the core forwards after its own access check. The user side flows
+// the other way, through `publishChatAction` on the worker host runtime.
 
 import type { ChatPlatform } from '@parity/truapi-host';
 import type { HostChatListSubscribeItem } from '@parity/truapi';
@@ -54,8 +49,7 @@ export function createChatPlatform(): Required<ChatPlatform> {
       });
       return createResultStream<HostChatListSubscribeItem>([], (push, pushError) => {
         let live = true;
-        // Snapshot reads are independent transactions and can settle out
-        // of order; only the newest may push or the list goes stale.
+        // Snapshot reads can settle out of order, so only the newest may push or the list goes stale.
         let latest = 0;
         const emitSnapshot = (): void => {
           const generation = ++latest;

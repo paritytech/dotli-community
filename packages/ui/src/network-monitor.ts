@@ -1,75 +1,44 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Live per-chain block arrivals for the network panel.
-//
-// A poll cannot say whether a 2 second block arrived on time, so this holds
-// one subscription per chain and stamps each new best block as it lands. The
-// metadata each client fetches is then paid once for the session.
-//
-// Arrival time is deliberately what gets measured, not the block
-// timestamp. Under a light client a parachain head is learned through relay
-// inclusion, so arrivals are burstier than authoring, but arrival is what this
-// session actually has and so it is what an honest indicator should show.
+// Live per-chain block arrivals for the network panel. Arrival time is measured, not the block
+// timestamp, because arrival is what this session actually has.
 
 import { getActiveChainRoles, type ActiveChainRole, type ChainRole } from '@dotli/config';
 import { log } from '@dotli/shared';
 
-/** How the arrival of a single block compares to what the chain promises. */
 export type BlockHealth = 'onTime' | 'late' | 'veryLate';
 
 export interface BlockBar {
   readonly number: number;
   readonly health: BlockHealth;
-  /** How long after the previous block this one arrived. */
+  /** Since the previous block arrived. */
   readonly gapMs: number;
 }
 
 export interface ChainStatus {
   readonly role: ChainRole;
   readonly label: string;
-  /** Bars oldest first, so a renderer can append without reversing. */
+  /** Oldest first. */
   readonly bars: readonly BlockBar[];
   readonly latest: number | null;
-  /** Milliseconds since the last block landed, or null before the first. */
   readonly sinceLast: number | null;
   readonly blockTimeMs: number;
   /** False when the active network offers no endpoint for this chain. */
   readonly reachable: boolean;
-  /**
-   * What the light client says this chain is doing, or null before it has
-   * said anything. Distinct from `bars`, which only shows up once blocks
-   * start arriving: a chain can be `ready` with no block yet observed.
-   */
+  /** A chain can be `ready` before any block is observed. */
   readonly phase: ChainPhase | null;
-  /**
-   * Peers the light client currently holds for this chain, or null where the
-   * backend never reports one (a trusted provider, or a chain the shell did
-   * not opt into sampling).
-   */
+  /** Null where the backend never reports peers, such as a trusted provider. */
   readonly peers: number | null;
 }
 
-/**
- * Bars kept per chain.
- *
- * Deliberately larger than any strip can show. The panel measures how many
- * marks its own width fits and renders that many, so this is only a ceiling on
- * memory: it must never be the thing that decides what a visitor sees, or the
- * history silently ends at a number nobody chose.
- */
+// Only a memory ceiling. The panel renders as many as its width fits, and this must never decide that.
 const MAX_BARS = 120;
 
-/**
- * How long follows outlive a closed panel.
- *
- * Long enough that closing and reopening feels continuous, short enough that a
- * panel nobody looks at is not holding chain connections. That matters most in
- * shared-worker mode, where the cap of 10 is shared across every open tab.
- */
+// Short enough that an unwatched panel holds no chain connections, which are capped across tabs in
+// shared-worker mode.
 const IDLE_GRACE_MS = 60_000;
 
-/** Late past 1.5x the promised time, very late past 3x. */
 export function classifyGap(gapMs: number, blockTimeMs: number): BlockHealth {
   if (gapMs <= blockTimeMs * 1.5) {
     return 'onTime';
@@ -85,46 +54,28 @@ interface ChainState {
   unsubscribe: (() => void) | null;
 }
 
-/**
- * What the light client is moving right now, for the panel footer.
- *
- * `total` is what the DAG root declares for the product archive, so it is
- * known only once the content phase starts, and null on a load served from
- * cache that never fetched anything.
- */
-/**
- * Where a chain is in its own bootstrap, as the light client reports it.
- *
- * Mirrors `LifecyclePhase` from `lifecycle_unstable_follow`, plus `stalled`,
- * which the watchdog reports alongside the phase rather than instead of it.
- */
+/** `stalled` comes from the watchdog, alongside the light client's lifecycle phase. */
 export type ChainPhase = 'connecting' | 'syncing' | 'ready' | 'stalled';
 
 export interface TransferState {
-  /** Bytes per second across every chain socket, over a short window. */
+  /** Across every chain socket, over a short window. */
   readonly bytesPerSecond: number | null;
   /** Bytes of the product archive fetched so far. */
   readonly fetched: number | null;
-  /** Size the archive declares, or null when it declared none. */
+  /** Known once the content phase starts, null on a load served from cache. */
   readonly total: number | null;
 }
 
-/** Everything needed to watch one chain, injected so tests can drive it. */
+/** Injected so tests can drive it. */
 export interface BlockSource {
-  /**
-   * Subscribe to the best block of one chain. Calls back with a block number each
-   * time the head changes. Returns an unsubscribe.
-   */
   subscribe: (genesis: string, onBlock: (blockNumber: number) => void) => () => void;
-  /** Whether the active backend can reach this chain at all. */
   isReachable: (genesis: string) => boolean;
 }
 
 let source: BlockSource | null = null;
 let chains = new Map<ChainRole, ChainState>();
-// Held apart from `chains` because peer samples arrive on the protocol sync
-// stream whether or not the panel is open, and outlive a watch that was torn
-// down after the idle grace.
+// Apart from `chains` because peer counts and phases arrive whether or not the panel is open, and
+// outlive a watch torn down after the idle grace.
 let peerCounts = new Map<ChainRole, number>();
 let phases = new Map<ChainRole, ChainPhase>();
 let transfer: TransferState = {
@@ -143,21 +94,18 @@ function notify(): void {
       listener();
       // eslint-disable-next-line no-restricted-syntax -- one bad renderer must not stop the others.
     } catch {
-      /* listener threw */
+      // Listener threw.
     }
   }
 }
 
 function recordBlock(state: ChainState, blockNumber: number): void {
-  // `bestBlocks$` re-emits whenever the best-block chain changes shape, not
-  // only when the head advances: a new descendant, a finalization or a reorg
-  // all republish a list whose first entry is the block already recorded.
+  // `bestBlocks$` also re-emits the same head on a new descendant, a finalization or a reorg.
   if (state.latest !== null && blockNumber <= state.latest) {
     return;
   }
   const now = Date.now();
-  // The first block of a session has no gap to judge, so it is not coloured
-  // against a guess. It still anchors the next one.
+  // The first block has no gap to judge, so it only anchors the next one.
   if (state.lastAt !== null) {
     const gapMs = now - state.lastAt;
     state.bars.push({
@@ -197,13 +145,7 @@ function detachAll(): void {
   }
 }
 
-/**
- * Record what the light client reports about the peers of one chain.
- *
- * Fed from the protocol sync stream rather than polled here, so it costs the
- * panel nothing. Unchanged counts are dropped: a steady connection reports the
- * same number every second and would repaint for nothing.
- */
+/** Unchanged counts are dropped, since a steady connection reports the same number every second. */
 export function recordPeerCount(role: ChainRole, peers: number): void {
   if (peerCounts.get(role) === peers) {
     return;
@@ -212,14 +154,7 @@ export function recordPeerCount(role: ChainRole, peers: number): void {
   notify();
 }
 
-/**
- * Record what the network is moving. Fed from the host byte meter and
- * the content download, so the panel neither samples nor counts anything of
- * its own.
- *
- * Merges rather than replaces: the speed and the download report on different
- * schedules, and an update from one must not blank the other.
- */
+/** Merges, because speed and download report on different schedules and one must not blank the other. */
 export function recordTransfer(next: Partial<TransferState>): void {
   const merged = { ...transfer, ...next };
   if (
@@ -233,17 +168,10 @@ export function recordTransfer(next: Partial<TransferState>): void {
   notify();
 }
 
-/** What the network is moving right now. */
 export function getTransfer(): TransferState {
   return transfer;
 }
 
-/**
- * Record the bootstrap phase of a chain, as reported by the light client.
- *
- * Held apart from `chains` for the same reason peer counts are: it arrives on
- * the protocol sync stream whether or not anyone has opened the panel.
- */
 export function recordChainPhase(role: ChainRole, phase: ChainPhase): void {
   if (phases.get(role) === phase) {
     return;
@@ -252,18 +180,12 @@ export function recordChainPhase(role: ChainRole, phase: ChainPhase): void {
   notify();
 }
 
-/** Provide the transport. Call once, before the first watch. */
+/** Call once, before the first watch. */
 export function setBlockSource(next: BlockSource): void {
   source = next;
 }
 
-/**
- * Start watching, or cancel a pending teardown if already watching.
- *
- * Called when the panel opens. Chains already exist by then, because the globe
- * only appears once a product has loaded, so this adds subscriptions rather
- * than waking chains.
- */
+/** Cancels a pending teardown when already watching. */
 export function startNetworkWatch(): void {
   if (idleTimer !== null) {
     clearTimeout(idleTimer);
@@ -280,13 +202,7 @@ export function startNetworkWatch(): void {
   }
 }
 
-/**
- * Stop watching after a grace period.
- *
- * History keeps accruing during the grace, so closing and reopening the panel
- * looks continuous. After it, subscriptions are dropped and the gap is left
- * visible rather than back-filled with guesses.
- */
+/** After the grace, the gap is left visible rather than back-filled with guesses. */
 export function stopNetworkWatch(): void {
   if (idleTimer !== null) {
     return;
@@ -297,7 +213,6 @@ export function stopNetworkWatch(): void {
   }, IDLE_GRACE_MS);
 }
 
-/** Drop everything at once, for teardown. */
 export function endNetworkWatch(): void {
   if (idleTimer !== null) {
     clearTimeout(idleTimer);
@@ -307,12 +222,7 @@ export function endNetworkWatch(): void {
   watching = false;
 }
 
-/**
- * Keep the watch running until the returned release is called. The status
- * capsule and the network menu each hold it, so one closing does not drop
- * the subscriptions the other reads. The idle grace starts when the last
- * hold goes. Releasing twice counts once.
- */
+/** Refcounted so one reader closing does not drop another's subscriptions. Releasing twice counts once. */
 export function holdNetworkWatch(): () => void {
   holds += 1;
   startNetworkWatch();
@@ -329,7 +239,6 @@ export function holdNetworkWatch(): () => void {
   };
 }
 
-/** Subscribe to any change in the tracked state. Returns an unsubscribe. */
 export function subscribeNetwork(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -337,7 +246,6 @@ export function subscribeNetwork(listener: () => void): () => void {
   };
 }
 
-/** What the health verdict reads of a chain, without the bars, peers and phase. */
 export type ChainClock = Pick<ChainStatus, 'label' | 'latest' | 'sinceLast' | 'blockTimeMs' | 'reachable'>;
 
 function currentChains(): readonly ChainState[] {
@@ -362,29 +270,24 @@ function clockOf(state: ChainState, now: number): ChainClock {
   };
 }
 
-/**
- * Every chain's clock as of `now`, in reading order. The health judges on
- * every notify, a content chunk included, so this copies no bars.
- */
+/** Copies no bars, because the health judges on every notify, content chunks included. */
 export function getChainClocks(now: number = Date.now()): ChainClock[] {
   return currentChains().map(state => clockOf(state, now));
 }
 
-/** A snapshot of every chain of the active network, in reading order. */
 export function getNetworkStatus(): ChainStatus[] {
   const now = Date.now();
   return currentChains().map(state => ({
     ...clockOf(state, now),
     role: state.role.role,
-    // A frozen copy: the monitor pushes and shifts its own array in place,
-    // which would change a snapshot a reader still holds.
+    // A copy, since the monitor mutates its own array in place.
     bars: Object.freeze([...state.bars]),
     peers: peerCounts.get(state.role.role) ?? null,
     phase: phases.get(state.role.role) ?? null,
   }));
 }
 
-/** For tests. Drops all state and listeners. */
+/** For tests. */
 export function resetNetworkMonitor(): void {
   endNetworkWatch();
   holds = 0;

@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The URL pill shield's glyphs, shared by the shield (VerificationShield) and
-// its explainer (VerificationContent): the board's outlined shields, with a
-// check for verified and an exclamation mark for "protected, but take note".
-// Paths as svgo optimises them.
+// Shared by VerificationShield and VerificationContent. Paths as svgo optimises them.
 
 import type { JSX } from '@solidjs/web';
 
@@ -13,11 +10,9 @@ interface ShieldIconProps {
   testId?: string | undefined;
   /** In pixels; unset, the stylesheet sizes it. */
   size?: number | undefined;
-  /** 2 unless set: the explainer draws them at 1.75. */
   strokeWidth?: string | undefined;
 }
 
-/** The verified shield: a check inside the outline. */
 export function VerifiedShieldIcon(props: ShieldIconProps): JSX.Element {
   return (
     <svg
@@ -39,7 +34,6 @@ export function VerifiedShieldIcon(props: ShieldIconProps): JSX.Element {
   );
 }
 
-/** The trusted shield: an exclamation mark inside the outline. */
 export function TrustedShieldIcon(props: ShieldIconProps): JSX.Element {
   return (
     <svg

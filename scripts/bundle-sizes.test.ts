@@ -48,7 +48,7 @@ describe('compare', () => {
       'host/(eager path)': size(70),
     });
     assert.deepEqual(total, size(150));
-    // a.js + gone.js; the eager path is a subset of the files, not a file.
+    // a.js and gone.js. The eager path is a subset of the files, not a file.
     assert.deepEqual(baseTotal, size(130));
   });
 

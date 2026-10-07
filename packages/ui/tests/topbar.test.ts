@@ -55,14 +55,6 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 
-// The auth button, the user popover and the pairing modal are islands now:
-// their tests are tests/components/shell/auth-button, user-popover and
-// auth-modal, and the controller's are tests/auth-controller.test.ts. The
-// permissions popover is an island too: tests/components/shell/
-// permissions-popover.test.tsx. So are the network popover
-// (chains-popover.test.tsx), the settings popover (settings-popover.test.tsx)
-// and the mobile "More" flyout (more-menu.test.tsx).
-
 describe('topbar boot rehydration', () => {
   it('As a dotli integrator, the host renders the persisted session badge on idle after init', async () => {
     // Given
@@ -74,8 +66,7 @@ describe('topbar boot rehydration', () => {
 
     const { SHARED_CORE_SESSION_KEY } = await import('../../protocol/src/auth-storage.js');
     const { SITE_ID } = await import('../../config/src/config.js');
-    // Opaque session blob plus the JSON UI-state cache the core-driven
-    // authStateChanged callback persists alongside it in shared auth storage.
+    // The opaque session blob and the UI-state cache the core's authStateChanged persists beside it.
     sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, '0x0102');
     sharedAuth.storage.set(
       `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`,
@@ -126,10 +117,6 @@ describe('topbar boot rehydration', () => {
   });
 });
 
-// The theme menu itself is components/shell/ThemeToggle.tsx (tested in
-// tests/components/shell/theme-toggle.test.tsx) and the preference logic is
-// theme-controller.ts (tests/theme-controller.test.ts). The topbar keeps
-// applying the stored preference at initTopBar(), as before.
 describe('topbar theme', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');

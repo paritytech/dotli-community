@@ -1,15 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li Sandbox Checker panel (dev builds with VITE_SANDBOX_CHECKER).
-//
-// Listens for DOTLI_API_VIOLATION messages from the product iframe and lists
-// them in a collapsible panel at the bottom of the viewport. Violation fields
-// come from the product, so they only ever render as text.
-//
-// A product that trips a guarded API in a loop posts at frame rate, so the
-// log keeps only the newest MAX_ENTRIES (the badge still counts them all),
-// and each update forces at most one layout.
+// Violation fields come from the product, so they only ever render as text. A product tripping a guarded API
+// in a loop posts at frame rate, so the log is capped and each update forces at most one layout.
 
 import { createEffect, createSignal, For, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -28,7 +21,7 @@ const COLLAPSED_HEIGHT = 32;
 const HEADER_AND_HANDLE = 32 + 5;
 const MIN_HEIGHT = 40;
 const MAX_VIEWPORT_SHARE = 0.8;
-/** Entries kept in the log; older ones are dropped. */
+/** Older entries are dropped, but the badge still counts them. */
 const MAX_ENTRIES = 500;
 
 function parseViolation(raw: unknown): { api: string; details: string; timestamp: number } | null {
@@ -58,18 +51,14 @@ function parseViolation(raw: unknown): { api: string; details: string; timestamp
 }
 
 export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Element {
-  // One array for the panel's lifetime, trimmed in place: copying it on
-  // every violation made a looping product O(n²). `equals: false` makes
-  // each in-place update notify.
+  // One array trimmed in place, since copying it per violation makes a looping product quadratic.
+  // `equals: false` makes each in-place update notify.
   const entries: Violation[] = [];
   const [violations, setViolations] = createSignal<readonly Violation[]>(entries, { equals: false });
   const [total, setTotal] = createSignal(0);
   const [collapsed, setCollapsed] = createSignal(false);
   const [height, setHeight] = createSignal<number | null>(null);
-  // Read once: the iframe never changes for the panel's lifetime. The read
-  // happens here, in the component body, which is where Solid's
-  // `STRICT_READ_UNTRACKED` check applies (the `message` listener runs later,
-  // outside it), so it goes through `untrack`.
+  // The iframe never changes, and the component body is under Solid's `STRICT_READ_UNTRACKED` check.
   const iframe = untrack(() => props.iframe);
   let panel: HTMLDivElement | undefined;
   let log: HTMLDivElement | undefined;
@@ -115,10 +104,8 @@ export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Elemen
     reserve(0);
   });
 
-  // New entry: scroll to it. Visible, collapsed or resized: refit the frame
-  // (the log grows until its max-height, so a new entry can move it too).
-  // Both measures are read before either write, so one update forces one
-  // layout, and an unchanged inset is not reported again.
+  // A new entry can grow the log, so it refits the frame too. Both measures are read before either
+  // write, so one update forces one layout.
   let reserved: number | null = null;
   let scrolledAt = 0;
   createEffect(
@@ -177,7 +164,6 @@ export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Elemen
           data-testid="sc-toggle"
           aria-label="Toggle panel"
           onClick={() => {
-            // Collapsing clears any custom height.
             if (!collapsed()) {
               setHeight(null);
             }

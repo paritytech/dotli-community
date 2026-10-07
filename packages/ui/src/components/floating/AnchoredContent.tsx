@@ -8,13 +8,7 @@ import { BottomSheet, SHEET_EXIT_MS, type BottomSheetProps } from './BottomSheet
 import { FloatingLayer, type Placement } from './FloatingLayer.js';
 import { createPresence } from './presence.js';
 
-/**
- * The surface: a FloatingLayer named by the title, or a BottomSheet titled
- * with it for an opening on a phone. The anchored content is `children`; the
- * sheet's is `sheetChildren`, in a wrapper marked `data-sheet` that renders
- * it from an opening until the sheet's slide out has played, as the layer
- * does for its exit.
- */
+/** A FloatingLayer, or a BottomSheet on a phone whose content stays mounted until its slide out has played. */
 export function AnchoredContent(props: {
   state: Anchored;
   role: 'dialog' | 'menu';
@@ -29,7 +23,6 @@ export function AnchoredContent(props: {
   sheetBody?: BottomSheetProps['body'];
   sheetClass?: string | undefined;
   onSheetPointerMove?: ((ev: PointerEvent) => void) | undefined;
-  /** Where focus goes as the sheet opens, given the wrapper. */
   sheetFocus: (wrapper: HTMLDivElement) => HTMLElement | undefined;
   sheetChildren: (wrapper: () => HTMLDivElement | undefined) => JSX.Element;
 }): JSX.Element {

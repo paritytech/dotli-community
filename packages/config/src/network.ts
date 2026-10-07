@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Network Configuration
-
 export const NetworkName = {
   PASEO: 'paseo-next-v2',
   PREVIEWNET: 'previewnet',
@@ -30,14 +28,8 @@ export interface ChainService {
   readonly genesis: string;
   readonly rpcs: readonly string[];
   /**
-   * How often this chain is expected to produce a block, in milliseconds.
-   *
-   * Measured rather than assumed, and not derivable at runtime: no single
-   * constant yields it for a parachain. `Timestamp.MinimumPeriod` is 0 on all
-   * three here, and `Aura.SlotDuration` reads 12000 or 24000 because it is the
-   * async-backing slot, not the block time. The rate of a parachain is its relay
-   * slot divided by its `BLOCK_PROCESSING_VELOCITY`, which is a Rust generic
-   * absent from metadata.
+   * Expected block interval. Measured, because no runtime constant yields it for a parachain: `Aura.SlotDuration` is
+   * the async-backing slot, and `BLOCK_PROCESSING_VELOCITY` is absent from metadata.
    */
   readonly blockTimeMs: number;
 }
@@ -127,66 +119,27 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
 };
 
 /**
- * Runtime overrides for the tables above, so a deployment can point a network at
- * a locally forked chain without a source edit or a rebuild:
- *
- *   {"enabled":["paseo-next-v2"],
- *    "networks":{"paseo-next-v2":{"label":"My Fork",
- *                "assethub":{"rpcs":["ws://localhost:9944"]}}}}
- *
- * Delivered as `globalThis.__DOTLI_NETWORK__`, set by a blocking classic script
- * that runs before the deferred module bundle, so every reader here stays
- * synchronous and the table can still be built once at module init.
- *
- * Three deliberate limits keep this small and safe:
- *
- *   * **Endpoints only** — `label`, `rpcs` and `ipfsGateways`. Never `genesis` or
- *     `dotns`, which are the trust root for name resolution: an override that
- *     could repoint the DotNS registry would let anything running in the page
- *     redirect every dotNS lookup while `isVerifiedSession()` still reported
- *     "verified". Limiting it to endpoints means the worst an override can do is
- *     move you to a different node for the *same* chain identity, which the light
- *     client verifies against the compiled-in genesis anyway. It is also why only
- *     documents need this: the protocol SharedWorker reads solely `genesis` and
- *     `dotns`, so it needs no runtime config and none is plumbed to it.
- *   * **Patches existing networks** — no new names, so `NetworkName` stays a
- *     closed union. Use `label` to say what a repointed network really is.
- *   * **Arrays replace, never concatenate.** Appending would leave the fork's
- *     endpoint in a pool alongside the public ones, the client would pick
- *     whichever, and the result works intermittently in a way that is very hard
- *     to diagnose.
- *
- * Suits forked dev chains (zombie-bite and friends): a bitten fork preserves the
- * upstream genesis hash and contract addresses, so endpoints are the only axis
- * that needs to move. Note the smoldot backends sync from chain specs and ignore
- * `rpcs` entirely — overrides take effect under `rpc-gateway`.
- *
- * Anything unrecognised throws rather than being skipped: a silently ignored
- * override means running against the public chain while believing otherwise,
- * which is the failure this exists to prevent. See docs/docker.md.
+ * Runtime overrides for the tables above, set by a blocking script so every reader stays synchronous.
+ * - Endpoints only. `genesis` and `dotns` are the trust root for name resolution, so an override can only move to
+ *   another node of the same chain.
+ * - Patches existing networks, so `NetworkName` stays a closed union.
+ * - Arrays replace, never concatenate, so a fork's endpoint is never pooled with public ones.
+ * The smoldot backends sync from chain specs and ignore `rpcs`. Anything unrecognised throws, because a silently
+ * ignored override means running against the public chain.
  */
 export interface RuntimeNetworkConfig {
   /** Networks offered in the selector. Overrides `VITE_NETWORKS` when present. */
   readonly enabled?: readonly string[];
   /** Per-network endpoint overrides, merged over the built-in entry. */
   readonly networks?: Record<string, unknown>;
-  /**
-   * Explicit base domain, for hosts with more than two hostname segments where
-   * deriving the registrable root would pick the wrong one. Consumed by
-   * `BASE_DOMAIN` in ./config, not here — it is declared on this interface
-   * because it travels in the same document.
-   */
+  /** Consumed by `BASE_DOMAIN` in ./config, declared here because it travels in the same document. */
   readonly baseDomain?: string;
 }
 
 const RUNTIME_GLOBAL_KEY = '__DOTLI_NETWORK__';
 
 /**
- * Whether this build accepts runtime config at all. **Off unless explicitly
- * built for it**, which in practice means the Docker image — the hosted
- * deployments have no use for it, so they do not ship the hook. The injecting
- * side is gated separately in `runtime-network-config-plugin.ts`, so neither half
- * alone turns it on.
+ * Off unless built for it (the Docker image). The injecting side is gated separately, so neither half alone enables it.
  */
 const RUNTIME_CONFIG_ENABLED =
   ((import.meta as { env?: Partial<ImportMetaEnv> }).env?.VITE_RUNTIME_NETWORK_CONFIG ?? '') === 'true';
@@ -207,7 +160,6 @@ function readRuntimeConfig(): RuntimeNetworkConfig | null {
   return raw;
 }
 
-/** Reject anything outside `allowed`, naming the valid fields. */
 function checkFields(patch: Record<string, unknown>, allowed: readonly string[], path: string): void {
   for (const key of Object.keys(patch)) {
     if (!allowed.includes(key)) {
@@ -243,11 +195,8 @@ function asString(value: unknown, path: string): string {
   return value;
 }
 
-// The merges below are written out field by field rather than as a generic deep
-// merge. With this few fields it is shorter, it cannot walk the prototype chain,
-// and the exact set of things an override may reach is legible at a glance —
-// note `genesis` and `blockTimeMs` are copied from the built-in and never read
-// from the patch.
+// Field by field rather than a deep merge, so nothing walks the prototype chain and what an override can reach stays
+// legible. `genesis` and `blockTimeMs` are never read from the patch.
 
 function mergeChain(base: ChainService, patch: unknown, path: string): ChainService {
   const p = asObject(patch, path);
@@ -318,11 +267,8 @@ export const NETWORK_KEY = 'dotli:network';
 const VALID_NETWORKS: ReadonlySet<string> = new Set<Network>([NetworkName.PASEO, NetworkName.PREVIEWNET]);
 
 /**
- * Networks this deployment offers in the selector.
- *
- * Runtime config's `enabled` list wins when present, so one image can be
- * narrowed to a single network without a rebuild; otherwise the build-time
- * `VITE_NETWORKS` applies. The first entry is the default network.
+ * Networks offered in the selector, from runtime `enabled` when present, else `VITE_NETWORKS`. The first is the
+ * default.
  */
 export function getEnabledNetworks(): Network[] {
   const runtimeEnabled = readRuntimeConfig()?.enabled;
@@ -406,18 +352,15 @@ export function getNetwork(): Network {
 export function setNetwork(network: Network): void {
   try {
     localStorage.setItem(NETWORK_KEY, network);
-    // eslint-disable-next-line no-restricted-syntax
+    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable, and the write is best effort.
   } catch {
     /* localStorage unavailable */
   }
 }
 
 /**
- * The active TLD with its leading dot, e.g. `".paseo"`.
- *
- * Each TLD must also be in `DOTNS_TLDS` in truapi's `truapi-platform`, which
- * gates `productId` with its own hardcoded list. A network whose TLD the core
- * does not know cannot load a product until the core ships it.
+ * The active TLD with its leading dot.
+ * Each TLD must also be in truapi-platform's `DOTNS_TLDS`, or the core cannot load a product under it.
  */
 export function getActiveTldSuffix(): string {
   return `.${getActiveServicesConfig().dotns.TLD}`;
@@ -428,15 +371,11 @@ export function withActiveTld(label: string): string {
   return `${label}${getActiveTldSuffix()}`;
 }
 
-/** Full service config for the active network. */
 export function getActiveServicesConfig(): ServicesConfig {
   return NETWORK_NAME_TO_SERVICES_CONFIG[getNetwork()];
 }
 
-/**
- * Genesis hashes that dApps may target on the active network. Used by the
- * protocol bridge to reject unknown chains before dispatching to smoldot.
- */
+/** Genesis hashes dApps may target on the active network. */
 export function getActiveSupportedGenesisHashes(): Set<string> {
   const cfg = getActiveServicesConfig();
   return new Set(
@@ -445,13 +384,8 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
 }
 
 /**
- * The four chains this app runs, named by what they do for the visitor.
- *
- * `ServicesConfig` already implies exactly this set by having exactly these
- * four fields. Naming it lets a popover row, its status and its block history
- * share one key, where today rows are keyed by genesis hash and sync state by
- * the resolver `ChainKey`. Config cannot import the resolver, so
- * `ChainKey` deliberately stays out of here.
+ * The four chains, named by what they do for the visitor, so a popover row, its status and block history share a key.
+ * Config cannot import the resolver, so its `ChainKey` stays out of here.
  */
 export const CHAIN_ROLES = ['relay', 'assethub', 'bulletin', 'people'] as const;
 export type ChainRole = (typeof CHAIN_ROLES)[number];
@@ -496,14 +430,8 @@ export function chainRoleForGenesis(genesisHash: string): ChainRole | null {
 }
 
 /**
- * Chains advertised to sandboxed dApps in **RPC-gateway** mode: the curated
- * system chains that have configured WSS RPC endpoints. The Bulletin chain is
- * intentionally excluded because its content is served through IPFS gateways.
- * This list controls feature advertisement, not access control: the shared
- * Rust-core connection callback also serves core-owned Bulletin operations.
- *
- * Single source of truth for the host's chain-support advertisement
- * (`isRemoteChainSupported`).
+ * Chains advertised to dApps in rpc-gateway mode. Bulletin is excluded because its content is served through IPFS
+ * gateways. This is advertisement, not access control.
  */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();

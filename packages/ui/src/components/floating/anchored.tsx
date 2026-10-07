@@ -22,13 +22,7 @@ import { Broken } from './broken.js';
 import type { CloseReason } from './close-reason.js';
 import { modalLayerShown } from './modal-stack.js';
 
-/**
- * The open state Popover and DropdownMenu share: a surface opened from a
- * button, anchored glass on wide screens and a bottom sheet when it opens on
- * a phone's. The state and the trigger's wiring are on the first visit's
- * path; the surface is a lazy chunk (AnchoredContent and the components'
- * own surfaces), in the page from the first opening or idle preload.
- */
+/** The open state Popover and DropdownMenu share. It stays on the first visit's path, the surface is a lazy chunk. */
 export interface Anchored {
   readonly id: string;
   readonly title: string;
@@ -37,22 +31,18 @@ export interface Anchored {
   sheet: Accessor<boolean>;
   setOpen: (open: boolean, reason?: CloseReason) => void;
   trigger: () => HTMLElement | undefined;
-  /** Focus to the trigger, or to More while the topbar has collapsed it. */
+  /** To the trigger, or to More while the topbar has collapsed it. */
   focusBack: () => void;
-  /** Focus is nowhere (the body), or where focusBack puts it. */
+  /** Focus is on the body, or where focusBack puts it. */
   focusAtTrigger: () => boolean;
-  /** Whether the surface is in the page: from the first opening or preload on. */
+  /** From the first opening or preload on. */
   mounted: Accessor<boolean>;
   mount: () => void;
-  /** The surface failed: out of the page, so the next opening loads it again. */
+  /** Unmounts the surface so the next opening loads it again. */
   fail: () => void;
 }
 
-/**
- * The open state, given the closes after which focus goes back to the
- * trigger (when it was lost or still inside); after any other it stays
- * where the user put it.
- */
+/** Focus returns to the trigger after a close in `returnFocusOn`, if it was lost or still inside. */
 export function createAnchored(
   props: { id: string; title: string; onOpenChange?: ((open: boolean) => void) | undefined },
   returnFocusOn: ReadonlySet<CloseReason>,
@@ -62,8 +52,7 @@ export function createAnchored(
   const [sheet, setSheet] = createSignal(false, { ownedWrite: true });
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
   /**
-   * Open as last set. Not `open()`: a read in the same tick as the write
-   * still sees the old value, and one user action can close twice (focus
+   * Not `open()`: a read in the same tick still sees the old value, and one user action can close twice (focus
    * moving into the product's iframe, then the window's blur).
    */
   let current = false;
@@ -85,8 +74,7 @@ export function createAnchored(
     setOpenSignal(next);
     props.onOpenChange?.(next);
     if (returnFocus) {
-      // Unless something took it meanwhile: a sheet opening in this one's
-      // place (a press on the bar it rests on, handOffSheetOnPress).
+      // Unless something took it meanwhile, like a sheet opening in this one's place (handOffSheetOnPress).
       queueMicrotask(() => {
         if (focusLostOrInside(surface())) {
           focusBack();
@@ -125,16 +113,9 @@ export function createAnchored(
 }
 
 /**
- * Make `trigger()` the surface's button while it holds one: the invoker
- * (`popovertarget`, absent while the opening is a sheet), its ARIA, the
- * anchor name and the click that opens. A trigger let go (another element,
- * none, or the surface gone) loses the invoker, the anchor name and the
- * listeners, and keeps its ARIA: AuthButton hands its one button to the
- * auth modal, whose ARIA it has just written through JSX, which runs ahead
- * of this effect. A trigger let go while open closes the surface first,
- * with focus back on it if it was inside: there would be no trigger to
- * return it to afterwards. `opening` sees the click that opens the surface;
- * `onKeyDown` the trigger's keys.
+ * Wires `trigger()` as the surface's button while it holds one. A released trigger keeps its ARIA, because
+ * AuthButton hands its one button to the auth modal, whose JSX wrote that ARIA ahead of this effect. A trigger
+ * released while open closes the surface first and takes focus back, as there is no trigger to return it to after.
  */
 export function createTriggerWiring(
   state: Anchored & { setTrigger: (el: HTMLElement | undefined) => void },
@@ -161,16 +142,10 @@ export function createTriggerWiring(
     el.setAttribute('aria-controls', id);
     el.style.setProperty('anchor-name', anchorName(id));
     const onClick = (ev: MouseEvent): void => {
-      // The closing is the invoker's: it comes back through the layer's
-      // `beforetoggle`. The opening is the signal's, and the invoker's is
-      // cancelled: Solid flushes at the microtask checkpoint after this
-      // listener, so the layer is already shown when the invoker's toggle
-      // runs, which would hide it again; and on a phone a sheet opens
-      // instead of the layer.
+      // The invoker closes (back through `beforetoggle`), but the opening is the signal's. Solid flushes after this
+      // listener, so the invoker's toggle would hide the just-shown layer, and a phone opens a sheet instead.
       if (untrack(state.open)) {
-        // No layer for the invoker to close: a sheet's opening drops
-        // `popovertarget`, and a layer still loading is not in the page.
-        // The state closes it, as the invoker would.
+        // No layer for the invoker to close: a sheet drops `popovertarget`, and a loading layer is not in the page.
         if (!el.hasAttribute('popovertarget') || document.getElementById(id)?.hasAttribute('popover') !== true) {
           state.setOpen(false, 'trigger');
         }
@@ -213,20 +188,15 @@ export function createTriggerWiring(
   );
 }
 
-/** A surface's chunk: its load, and whether it is in. */
 export interface SurfaceChunk {
   load: () => Promise<unknown>;
   loaded: () => boolean;
 }
 
 /**
- * Loads the surface's chunk. Once the browser is idle, it loads it, which
- * puts the surface in the page, and the content's `preload`, so neither
- * waits on the network at the first opening. An opening made before the
- * chunk is in shows when it arrives, unless the user has gone on meanwhile:
- * a modal dialog opened, or focus moved off the trigger. None of the
- * layer's own closes (a press outside, Escape, blur) were listening yet, so
- * the arrival closes it instead, without taking focus.
+ * Preloads the surface and the content's `preload` when idle, so the first opening doesn't wait on the network.
+ * An opening made before the chunk arrives closes on arrival if the user moved on (a modal opened, or focus left
+ * the trigger), since none of the layer's own closes were listening yet.
  */
 export function createSurfaceLoad(
   state: Anchored,
@@ -254,7 +224,7 @@ export function createSurfaceLoad(
     }
     if (!surface.loaded()) {
       waiting = { focus: document.activeElement };
-      // A failure is SurfaceSlot's to report: the lazy surface fails with it.
+      // SurfaceSlot reports a failure, since the lazy surface fails with it.
       load().catch(() => undefined);
     }
   });
@@ -272,12 +242,7 @@ export function createSurfaceLoad(
   });
 }
 
-/**
- * Where the lazy surface renders: nothing until it is mounted (never in the
- * server's render), nothing while its chunk loads, and a chunk that fails is
- * reported once as `popover:<id>`, closes the surface and is loaded again at
- * the next opening.
- */
+/** Renders nothing until mounted, so never in the server's render. A failed chunk loads again at the next opening. */
 export function SurfaceSlot(props: { state: Anchored; children: JSX.Element }): JSX.Element {
   return (
     <Show when={props.state.mounted()}>

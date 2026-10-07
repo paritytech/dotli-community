@@ -1,46 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Universal Configuration
-
-// The shell is deployed across several root domains (dot.li, paseo.li,
-// paseoli.dev, ephemeral previews). `BASE_DOMAIN` derives the
-// registrable root from the current hostname and never silently
-// defaults to "dot.li", because the cross-origin allowlist (shared
-// auth, protocol iframe, SITE_ID) is keyed on this string.
-//
-// Localhost is a legal dev environment and keeps its explicit
-// `"dot.li"` fallback so local runs match the production allowlist.
-// Anything else that doesn't parse as a two-segment hostname is a
-// deployment misconfiguration and aborts boot rather than opening the
-// allowlist to the wrong origin.
-//
-// Astro's build-time render of the host page's islands (`import.meta.env.SSR`)
-// has no location and derives as localhost: nothing it renders depends on
-// the domain it will be served from.
+// BASE_DOMAIN never defaults silently, because the cross-origin allowlist (shared auth, protocol iframe, SITE_ID) is
+// keyed on it. Localhost falls back to "dot.li" to match production, any other unparsable hostname aborts boot.
+// Astro's build-time render has no location and derives as localhost.
 const hostname = import.meta.env.SSR ? 'localhost' : self.location.hostname;
 const segments = hostname.split('.');
 const isLocalEnv = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1';
 
 /**
- * Explicit base domain from runtime config, for deployments whose hostname has
- * more than two segments.
- *
- * Deriving the registrable root works for `dot.li` and `paseo.li`, but a
- * deployment at `dotli.ppn-65iw.pdp-stg-scw.parity.io` would derive `parity.io`
- * and then look for its protocol iframe at `host.parity.io` — the wrong origin
- * entirely, with `isSandboxOrigin` accepting `*.app.parity.io` to match. Such
- * hosts must state their base domain instead of having it inferred.
- *
- * Read from the same blocking-script global as the network config
- * (see `RuntimeNetworkConfig` in ./network), so it lands before the module
- * bundle runs and `BASE_DOMAIN` can stay a plain const. Gated on the same
- * build-time flag: a build that does not opt into runtime config ignores this,
- * so the hosted deployments keep deriving as before.
- *
- * Must be at least two segments and a suffix of the current hostname. Without
- * the suffix check, a page could declare any base domain and widen the
- * cross-origin allowlist to a host it has nothing to do with.
+ * Runtime base domain for hosts with more than two segments, which would otherwise derive the wrong root.
+ * Must be a suffix of the hostname, or a page could widen the cross-origin allowlist to an unrelated host.
  */
 function configuredBaseDomain(): string | null {
   const enabled = ((import.meta as { env?: Partial<ImportMetaEnv> }).env?.VITE_RUNTIME_NETWORK_CONFIG ?? '') === 'true';
@@ -86,13 +56,8 @@ function deriveBaseDomain(): string {
 
 export const BASE_DOMAIN = deriveBaseDomain();
 
-// SiteId is the registrable root domain the shell is running on (e.g. "dot.li",
-// "paseo.li", "paseoli.dev"). It is a plain string with no closed union,
-// because the codebase is deployed on several root domains including ephemeral
-// ones, and a narrow union here would require an unsafe cast at the boundary.
-// Validation that a caller may only use the current shell's SiteId lives in
-// `@dotli/protocol/auth-storage#isSharedAuthSiteId`, which compares against the
-// running `SITE_ID` at runtime.
+// A plain string, not a union, because deployments include ephemeral root domains. `isSharedAuthSiteId` validates it
+// at runtime.
 export type SiteId = string;
 
 export const isLocalhost = isLocalEnv;
@@ -100,11 +65,7 @@ export const isLocalhost = isLocalEnv;
 export const SITE_ID: SiteId = isLocalhost ? 'local.li' : BASE_DOMAIN;
 
 /**
- * True when `origin` is a dApp sandbox origin (`<label>.app.<BASE_DOMAIN>`
- * over https, or `<label>.app.localhost` in dev). The host shell uses this
- * to gate postMessage traffic it receives from the sandbox iframe (loading
- * status, bitswap relay requests) so that only the embedded sandbox — not
- * an arbitrary frame — can drive host-side UI or services.
+ * Whether `origin` is a sandbox origin, so only the embedded sandbox and not an arbitrary frame drives host services.
  */
 export function isSandboxOrigin(origin: string): boolean {
   try {
@@ -122,28 +83,20 @@ export function isSandboxOrigin(origin: string): boolean {
   }
 }
 
-// Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
 export const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
 
-/**
- * Most bytes of content blocks the host keeps between page loads. After each
- * load, the blocks used longest ago are dropped until the cache fits.
- */
+/** Content block cache cap. After each load the least recently used blocks are dropped until it fits. */
 export const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 /** Drop scheduled notifications older than this many ms past `scheduledAt`. */
 export const SCHEDULED_NOTIFICATIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** Max pending scheduled notifications per product. 21st `schedule` returns ScheduleLimitReached. */
+/** Pending scheduled notifications per product before `schedule` returns ScheduleLimitReached. */
 export const SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP = 20;
 
-/** Polling tick for the scheduler loop. */
 export const SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS = 1_000;
 
-/** Visibility bias: hidden tabs only fire records older than `now - offset`, giving
- *  a visible tab in the same origin first crack at the lock. */
+/** Hidden tabs fire only records older than `now - offset`, giving a visible tab first crack at the lock. */
 export const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
 
-// Re-exported from the pure-constants `timeouts` submodule, so existing
-// `@dotli/config/config` callers keep working unchanged.
 export { TIMEOUTS } from './timeouts.js';

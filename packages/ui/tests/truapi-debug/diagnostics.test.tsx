@@ -60,7 +60,6 @@ async function drain(): Promise<void> {
   }
 }
 
-/** Render the tab, open unless told otherwise. */
 function renderView(active = true): void {
   renderComponent(() => <DiagnosticsView active={active} />);
   flush();
@@ -86,7 +85,6 @@ function infoRow(label: string): HTMLElement {
   return found;
 }
 
-/** A diagnostics row: its label and value, a copy button holding the value on the copyable ones. */
 function expectRow(row: Element | undefined, label: string, value: string, copyable = false): void {
   const el = must(row, 'a row');
   expect(el.getAttribute('data-testid')).toBe('td-diag-row');
@@ -97,13 +95,11 @@ function expectRow(row: Element | undefined, label: string, value: string, copya
   expect(copy?.getAttribute('title') ?? null).toBe(copyable ? `Click to copy ${label}` : null);
 }
 
-/** The rows under a group heading, by its text. */
 function groupRows(title: string): Element[] {
   const heading = Array.from(byTestId('td-diagnostics').querySelectorAll('h3')).find(h => h.textContent === title);
   return Array.from(must(heading?.nextElementSibling, `the ${title} list`).children);
 }
 
-/** The tab: the share button, the page rows and the package versions by group. */
 function expectDiagnostics(): void {
   const share = button('Share diagnostic');
   expect(share.type).toBe('button');

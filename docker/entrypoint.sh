@@ -1,11 +1,6 @@
 #!/bin/sh
-# Generate the runtime network config, then hand off to the nginx image's own
-# entrypoint (which renders /etc/nginx/templates/*.template and starts nginx).
-#
-# Config source, first match wins:
-#   1. /etc/dotli/network.json   — mounted file
-#   2. $DOTLI_NETWORK            — inline JSON in the environment
-#   3. neither                   — no overrides; built-in networks apply
+# Generates the runtime network config, then execs the nginx image's own entrypoint.
+# Config source, first match wins: mounted /etc/dotli/network.json, then $DOTLI_NETWORK, else the built-in networks.
 
 set -eu
 
@@ -14,10 +9,7 @@ MOUNTED=$OUT_DIR/network.json
 
 mkdir -p "$OUT_DIR"
 
-# `getProtocolOrigin` (packages/protocol/src/client.ts) falls back to port 5173
-# when window.location.port is empty, which it is on the default HTTP port. On 80
-# the shell would look for the protocol iframe on the wrong port and boot would
-# fail with nothing pointing at the cause, so refuse here instead.
+# Refused here because on 80 boot would fail with nothing pointing at the cause.
 if [ "${PORT:-5173}" = "80" ]; then
     echo "dotli: PORT=80 is not supported." >&2
     echo "The bundle derives the protocol iframe's origin from window.location.port," >&2
@@ -37,14 +29,8 @@ else
     SOURCE="none (built-in networks)"
 fi
 
-# Validate before nginx starts, so a typo shows up in `docker run` output rather
-# than as a blank page. Anything malformed must stop the container: silently
-# falling back to the built-ins would mean running against the public chains while
-# believing otherwise, which is the one outcome this mechanism exists to prevent.
-#
-# One expression covers every shape that is valid JSON but wrong — `null`, a bare
-# string, an array, a misspelled top-level key, a stray non-object network body,
-# and the common mistake of passing a single network's fields unwrapped.
+# Malformed config must stop the container. Falling back to the built-ins would silently run against the public
+# chains. The shape check also catches valid JSON of the wrong shape, such as one network's fields passed unwrapped.
 SHAPE='type == "object"
   and ((keys - ["enabled", "networks", "baseDomain"]) | length == 0)
   and ((.enabled // []) | type == "array")
@@ -65,10 +51,8 @@ if ! echo "$CONFIG" | jq -e "$SHAPE" >/dev/null 2>&1; then
     exit 1
 fi
 
-# frame-ancestors for the iframeable origins. Localhost serves plain HTTP on a
-# non-default port, and CSP host-sources are port-sensitive, so it needs the
-# scheme and a :* wildcard. A real domain gets the https triple instead, which is
-# what lets this image sit behind an ingress terminating TLS.
+# CSP host-sources are port-sensitive, so localhost needs the scheme and a :* wildcard. A real domain gets https,
+# so the image can sit behind a TLS-terminating ingress.
 DOMAIN=${DOMAIN:-localhost}
 if [ "$DOMAIN" = "localhost" ]; then
     CSP="http://localhost:* http://*.localhost:*"
@@ -79,8 +63,7 @@ export CSP DOMAIN
 
 printf 'window.__DOTLI_NETWORK__ = %s;\n' "$CONFIG" > "$OUT_DIR/dotli-network.js"
 
-# Echo the effective config. This is how an operator answers "did my override
-# actually apply?" without opening a browser.
+# Lets an operator confirm an override applied without opening a browser.
 echo "dotli: network config source: $SOURCE"
 echo "$CONFIG" | jq -c '{enabled: (.enabled // "(built-in VITE_NETWORKS)"), networks: (.networks // {} | keys), baseDomain: (.baseDomain // "(derived from hostname)")}'
 echo "dotli: serving on port ${PORT:-5173} over *.${DOMAIN}"

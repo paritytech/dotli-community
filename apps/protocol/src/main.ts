@@ -1,13 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Protocol host entry point.
-//
-// Three modes, selected explicitly via the `?mode=` URL parameter:
-//   1. "shared-worker": smoldot runs in a SharedWorker shared across tabs.
-//   2. "direct": smoldot runs in this iframe with no cross-tab coordination.
-//   3. "rpc": trusted WSS JSON-RPC to a public node (no smoldot), used by
-//      gateway mode to bridge sandboxed-app chain calls.
+// Protocol iframe entry. `?mode=` picks smoldot in a cross-tab SharedWorker, smoldot in this iframe, or trusted WSS
+// RPC for gateway mode.
 
 import {
   initSentry,
@@ -27,21 +22,15 @@ import {
   loadResolve,
 } from '@dotli/resolver';
 
-// Before anything opens a socket. the smoldot transports are the bulk of
-// cold-load traffic and are invisible to resource timing, so the loading
-// screen speed readout has no other source for them.
+// Before anything opens a socket. Smoldot traffic is invisible to resource timing, so the speed readout needs this.
 installByteMeter();
 
-// Do NOT silently reload on chunk preload failure. The protocol iframe is
-// hidden and has no UI of its own, so it surfaces the failure to the parent
-// via the standard error envelope. The parent will render the user-facing
-// error, and reports it: a capture here would file the same failure twice.
+// No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
 window.addEventListener('vite:preloadError', event => {
   const evt = event as unknown as { payload?: unknown };
   log.error('[dot.li protocol] Asset failed to load', evt.payload);
   if (window.parent !== window) {
-    // The browser's message is what names the chunk: the failed dynamic
-    // import or the stylesheet's URL. Only Safari omits it.
+    // The browser's message names the chunk. Only Safari omits it.
     const msg = evt.payload === undefined ? 'no detail from the loader' : serializeError(evt.payload);
     window.parent.postMessage(
       {
@@ -64,12 +53,6 @@ import {
   setNetworkOverride,
   type Network,
 } from '@dotli/config';
-
-// Smoldot, relay-chain, and dot-name resolver imports live behind
-// `initDirectMode()` (dynamic) so `rpc` mode doesn't drag smoldot into the
-// protocol iframe's initial chunk. The SharedWorker path doesn't import
-// these either. Smoldot for shared-worker mode lives inside
-// `./protocol-shared-worker.ts`, which is already a separate bundle.
 
 import {
   requireBrokerLocalProvider,
@@ -96,12 +79,9 @@ import { errorResponse } from './error-response.js';
 initSentry('protocol');
 installGlobalErrorHandlers('protocol');
 
-// Adopted at module scope, not inside init(): an auth-only iframe and every
-// invalid-mode path return before init() gets far, and those boots still
-// belong to the resolution that opened them.
+// At module scope because auth-only and invalid-mode boots return early from init() yet belong to the resolution.
 adoptResolutionId();
 
-/** Take the correlation id the host shell put on the URL of this iframe. */
 function adoptResolutionId(): void {
   try {
     const id = new URLSearchParams(window.location.search).get('resolutionId');
@@ -114,11 +94,7 @@ function adoptResolutionId(): void {
   }
 }
 
-// Same trust set as shared auth: host shell plus non-sandbox *.<BASE>, but NOT
-// app.<BASE> or *.app.<BASE>. A user-uploaded CID app must never drive the
-// chain bridge directly. It goes through the host shell, which relays on
-// its behalf. Centralizing on `isSharedAuthOriginAllowed` keeps the two
-// allowlists in lockstep.
+// Same allowlist as shared auth, so sandboxed apps never drive the chain bridge directly.
 function isAllowedOrigin(origin: string): boolean {
   return isSharedAuthOriginAllowed(origin);
 }
@@ -130,26 +106,8 @@ function postToSource(source: MessageEventSource | null, origin: string, message
   (source as Window).postMessage(message, origin);
 }
 
-// The shared-auth path is intentionally handled on the host window (not in the
-// SharedWorker) because it only needs `localStorage`, no smoldot and no chain.
-// Each tab embeds its own host iframe, so when tab A writes a session, tab B's
-// adapter subscribers need to be notified. We bridge tabs with a
-// `BroadcastChannel` scoped to the host origin:
-//
-//   1. Tab A's host iframe receives an `authStorageWrite` request from its
-//      parent and writes to localStorage.
-//   2. Tab A's host iframe posts `{ siteId, key, value }` on the
-//      `dotli:shared-auth` BroadcastChannel.
-//   3. Tab B's host iframe (different window, same origin) receives the
-//      broadcast and forwards it to *its* parent window via `postMessage` as
-//      an `auth-storage-changed` envelope.
-//   4. The parent window's protocol client dispatches to local subscribers.
-//
-// The originating tab does NOT receive its own BroadcastChannel message, so
-// tab A's local subscribers fire via the in-process `emit` in
-// `createSharedAuthStorageAdapter`'s `.map(() => emit(...))` chain. There is
-// no double-dispatch.
-
+// Each tab's iframe relays other tabs' shared-auth writes to its parent. BroadcastChannel skips the sender, whose
+// adapter emits locally, so nothing is dispatched twice.
 const SHARED_AUTH_BROADCAST_CHANNEL = 'dotli:shared-auth';
 
 interface SharedAuthBroadcastMessage {
@@ -161,11 +119,8 @@ interface SharedAuthBroadcastMessage {
 const sharedAuthChannel: BroadcastChannel | null =
   typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SHARED_AUTH_BROADCAST_CHANNEL) : null;
 
-// The origin of the parent window embedding this host iframe. Populated from
-// `document.referrer` at module load (best-effort, may be blank under strict
-// referrer policies) and refreshed on every validated shared-auth request.
-// Broadcasts are only forwarded to the parent when we know its origin, so
-// unrelated embedders never receive a shared-auth change notification.
+// Broadcasts go only to a known parent origin, so unrelated embedders never hear them. The referrer may be blank
+// under strict referrer policies.
 let parentOrigin: string | null = initialParentOriginFromReferrer();
 
 function initialParentOriginFromReferrer(): string | null {
@@ -189,8 +144,7 @@ function broadcastSharedAuthChange(siteId: SiteId, key: string, value: string | 
     const msg: SharedAuthBroadcastMessage = { siteId, key, value };
     sharedAuthChannel.postMessage(msg);
   } catch (error: unknown) {
-    // The write itself succeeded and was answered, so the host never hears
-    // that other tabs missed it.
+    // The write was already answered, so the host never hears other tabs missed it.
     captureException(error, { flow: 'storage', step: 'shared_auth_broadcast' });
   }
 }
@@ -220,10 +174,7 @@ function bindSharedAuthBroadcastRelay(): void {
     if (!isSharedAuthBroadcastMessage(data)) {
       return;
     }
-    // Only the current host's SiteId is valid (see `isSharedAuthSiteId`). We
-    // still defensively filter here so stale broadcasts from a different
-    // root domain (which shouldn't happen, the channel is origin-scoped)
-    // cannot leak across trust boundaries.
+    // Defensive, the channel is already origin-scoped.
     if (data.siteId !== SITE_ID) {
       return;
     }
@@ -261,19 +212,12 @@ function bindSharedAuthListener(): void {
     if (!isProtocolEnvelope(data) || data.kind !== 'request' || !isSharedAuthRequestMethod(data.method)) {
       return;
     }
-    // First gate: the broad protocol origin allowlist (`*.<BASE_DOMAIN>` plus
-    // localhost). The narrower shared-auth allowlist, which additionally
-    // rejects `app.<BASE_DOMAIN>` and sandboxed SPA subdomains, runs inside
-    // `handleSharedAuthRequest` via `assertSharedAuthOrigin`.
     if (!isAllowedOrigin(event.origin)) {
       log.warn(`[dot.li protocol] Rejected shared-auth request from disallowed origin: ${event.origin}`);
       countSharedReject('auth', 'origin');
       return;
     }
-    // Remember the parent origin so cross-tab broadcast forwards target a
-    // known origin rather than `*`. This runs on every request, not just the
-    // first, so we tolerate (unlikely) parent navigations that replace the
-    // embedding page.
+    // On every request, in case the parent navigated.
     parentOrigin = event.origin;
 
     try {
@@ -295,12 +239,7 @@ function signalReady(): void {
 
 type RequestedMode = 'shared-worker' | 'direct' | 'rpc' | null;
 
-/**
- * Distinguish "no mode requested" (auth-only iframe, legitimate) from
- * "mode requested but unrecognized" (host bug or URL-tampering, which must
- * surface to the parent so the user sees a real error instead of a silent
- * downgrade to auth-only behavior).
- */
+/** No mode means an auth-only iframe. An unknown mode is `invalid` so it errors instead of silently going auth-only. */
 function getRequestedMode(): RequestedMode | 'invalid' {
   let raw: string | null;
   try {
@@ -328,10 +267,7 @@ function getSkipWorkerCache(): boolean {
 
 type RequestedNetwork = { kind: 'ok'; network: Network } | { kind: 'missing' } | { kind: 'invalid'; raw: string };
 
-/**
- * The protocol iframe runs on a different origin than the host shell and
- * cannot read the host's `dotli:network` from `localStorage`.
- */
+/** Read from the URL because this origin cannot see the host's `dotli:network` in `localStorage`. */
 function getRequestedNetwork(): RequestedNetwork {
   let raw: string | null;
   try {
@@ -348,20 +284,9 @@ function getRequestedNetwork(): RequestedNetwork {
   return { kind: 'invalid', raw };
 }
 
-/**
- * Purge every IndexedDB on this origin that isn't one of ours. Covers
- * smoldot's internal chain DB and polkadot-api's caches, anything persisted
- * across page loads that could warm-start the runtime. The dot.li-owned
- * stores (`dotli`, `dotli-sw`) are preserved because they hold user state
- * (CID cache, shared auth), which is orthogonal to worker bootstrapping.
- *
- * Best-effort: some browsers don't expose `indexedDB.databases()` (Firefox
- * historically, Safari pre-17). On those, the skip still takes effect for
- * future writes but we can't proactively clear prior state.
- */
+/** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
 async function purgeWorkerCaches(): Promise<void> {
-  // Throw on enumeration failure and await each delete: a silent log-and-
-  // continue would let smoldot boot against the still-present stale DB.
+  // Throws rather than continuing, which would boot smoldot against the stale DB.
   const KEEP = new Set(['dotli', 'dotli-sw']);
   if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
     throw new Error(
@@ -405,7 +330,7 @@ async function init(): Promise<void> {
     let raw: string | null = null;
     try {
       raw = new URLSearchParams(window.location.search).get('mode');
-      // eslint-disable-next-line no-restricted-syntax -- best-effort extraction of the offending mode value for the error message; the error is already signalled below regardless.
+      // eslint-disable-next-line no-restricted-syntax -- best-effort extraction of the mode value for the message, the error is signalled below regardless.
     } catch {
       /* URL parse failed, fall through with raw=null */
     }
@@ -415,8 +340,6 @@ async function init(): Promise<void> {
     return;
   }
 
-  // When no mode is requested, the iframe is only serving shared auth
-  // storage requests (localStorage). No chain provider needed.
   if (mode === null) {
     log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
     signalReady();
@@ -439,10 +362,7 @@ async function init(): Promise<void> {
   m.setDefaults({ network: requestedNetwork.network });
   log.event('Protocol mode', { flow: 'protocol', mode, network: requestedNetwork.network });
 
-  // Worker-cache purge runs *before* any broker/smoldot init so the clean
-  // state is what the chain client opens against. A purge failure when the
-  // user explicitly requested skipWorkerCache MUST abort init. Proceeding
-  // against a stale DB would silently violate the user's setting.
+  // Before any smoldot init. A failed purge aborts, since a stale DB would silently ignore the user's setting.
   if (getSkipWorkerCache()) {
     try {
       await purgeWorkerCaches();
@@ -464,10 +384,7 @@ async function init(): Promise<void> {
         signalError(msg);
         return;
       }
-      // Register protocol_mode as a session default before any further metrics
-      // so bootnode errors, chain-connect failures etc. all carry the mode tag.
-      // Values are kebab-case to match `DotliMode` and the `?mode=` URL
-      // convention, keeping one naming scheme across host and protocol.
+      // Before any further metrics, so every one carries the mode.
       m.setDefaults({ protocol_mode: 'shared-worker' });
       await initSharedWorkerMode(requestedNetwork.network);
       m.count(S.PROTOCOL_MODE, { mode: 'shared-worker' });
@@ -483,8 +400,7 @@ async function init(): Promise<void> {
     initOutcome = 'ok';
   } finally {
     const initMs = performance.now() - initStart;
-    // The measurement describes a protocol that came up. A failed init is
-    // only a point in the distribution, where its outcome separates it.
+    // A failed init is only a point in the distribution.
     if (initOutcome === 'ok') {
       m.measure(S.PROTOCOL_INIT, initMs);
     }
@@ -493,11 +409,7 @@ async function init(): Promise<void> {
 }
 
 function signalError(message: string): void {
-  // `init-failed` is a dedicated envelope. It has no `id` because no
-  // request was in flight when init died. The client listens for this
-  // alongside `fatal`, rejects every pending request, and blocks new
-  // work until the user reloads. The old `id: "__init__"` sentinel was
-  // a collision hazard (any real request using that id would alias).
+  // No `id`, since no request was in flight. The client rejects everything pending and blocks until reload.
   if (window.parent !== window) {
     window.parent.postMessage(
       {
@@ -513,31 +425,22 @@ function signalError(message: string): void {
 async function initSharedWorkerMode(network: Network): Promise<void> {
   const swStartTime = performance.now();
 
-  // Vite statically rewrites `new SharedWorker(new URL("./worker.ts",
-  // import.meta.url), ...)` to point at the bundled chunk. The `new URL`
-  // MUST be a literal argument to the SharedWorker constructor. Assigning
-  // it to a variable (even briefly to set a query param) breaks the
-  // rewrite and the browser ends up fetching the unresolved `.ts` path,
-  // which 404s in production. Network is therefore propagated via the
-  // worker name and read inside the worker via `self.name`.
+  // Vite only rewrites a literal `new URL` argument, so the network travels in the worker name, not a query param.
   const worker = new SharedWorker(new URL('./protocol-shared-worker.ts', import.meta.url), {
     type: 'module',
     name: `dotli-protocol-${network}`,
   });
   const port = worker.port;
 
-  // Set while the ready wait below is pending.
   let failReadyWait: ((error: Error) => void) | null = null;
 
-  // Fires when the worker script cannot be fetched or evaluated. Uncaught
-  // errors inside a running worker go to its own handlers instead.
+  // Fires only when the worker script cannot be fetched or evaluated.
   worker.addEventListener('error', event => {
     const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
     const error = new Error(`SharedWorker failed to start${detail}`);
     log.error('[dot.li protocol] SharedWorker error event', error);
     if (failReadyWait !== null) {
-      // Fails the boot now with its cause, rather than at the ready timeout
-      // with none. The host reports it from the `init-failed` this becomes.
+      // Fails now with the cause instead of at the ready timeout. The host reports the resulting `init-failed`.
       failReadyWait(error);
       return;
     }
@@ -545,10 +448,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     captureException(error, { flow: 'protocol', step: 'shared_worker_error' });
   });
 
-  // Relay SharedWorker responses up to the parent from the first moment the
-  // port exists. The worker broadcasts `smoldot-db` during pre-sync, long
-  // before `ready`, and MessagePort events are not replayed: registering this
-  // after the ready wait would silently drop everything sent in between.
+  // Before the ready wait, because `smoldot-db` arrives during pre-sync and MessagePort events are not replayed.
   port.addEventListener('message', (event: MessageEvent) => {
     const data = event.data as SWOutbound | null;
     if (data?.type === 'relay-response' && window.parent !== window) {
@@ -556,7 +456,6 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     }
   });
 
-  // Wait for SharedWorker to signal ready (or error)
   await new Promise<void>((resolve, reject) => {
     function settle(outcome: 'ok' | 'error' | 'timeout', error?: Error, reason?: string): void {
       clearTimeout(timer);
@@ -594,7 +493,6 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     port.start();
   });
 
-  // Relay parent postMessage requests into the SharedWorker.
   window.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
     if (!isProtocolEnvelope(data) || data.kind !== 'request') {
@@ -608,8 +506,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       return;
     }
 
-    // Read per request: the worker serves every tab, and labels only the work
-    // it does for this one with it.
+    // Per request, since the worker serves every tab.
     const resolutionId = getResolutionId();
     const msg: SWRelayRequest = {
       type: 'relay-request',
@@ -625,7 +522,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   window.addEventListener('beforeunload', () => {
     try {
       port.postMessage({ type: 'disconnect' });
-      // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal to the SharedWorker; the port may already be closed (browser tab unloading), which is the expected terminal state.
+      // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal, the port may already be closed.
     } catch {
       /* port already closed on unload, safe */
     }
@@ -634,8 +531,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 }
 
 async function initDirectMode(): Promise<void> {
-  // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
-  // the chain-provider bundle cost (D-1).
+  // Dynamic so the other modes do not pay for the smoldot bundle.
   const [provider, resolve] = await Promise.all([loadProvider(), loadResolve()]);
   const { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome } = provider;
   const {
@@ -647,30 +543,19 @@ async function initDirectMode(): Promise<void> {
     setResolverPeopleProvider,
     waitForPeopleFinalized,
   } = resolve;
-  // Sync reporting is only worth its cost when a loading UI can observe it.
-  // Direct mode is that case and the SharedWorker never enables it.
-  //
-  // Enabled before the first `createChainProvider` call: a connection that
-  // opens without it carries no lifecycle watch.
+  // Before the first `createChainProvider` call, or that connection carries no lifecycle watch.
   resolve.enableSyncReporting([
-    // The chains the load waits on, in the order it waits on them. The relay
-    // warps, the Asset Hub bootstraps on top of it, and Bulletin serves the
-    // content over bitswap. Bulletin is not even created until after the
-    // content phase begins, and takes roughly another second and a half to
-    // find a peer, which is a gap the loading screen has to cover.
+    // The chains the load waits on, in that order.
     'relay',
     'asset-hub',
     'bulletin',
-    // People is not on the loading path, but the network panel lists its
-    // peer count.
+    // Off the loading path, but the network panel lists its peer count.
     'people',
   ]);
   const { onChainSync } = resolve;
 
   const services = getActiveServicesConfig();
 
-  // Direct mode has no SharedWorker in the loop, so a light client that cannot
-  // connect a chain is posted straight up to the host shell.
   onProviderFatal(message => {
     log.error(`[dot.li protocol] Light client died, signaling fatal: ${message}`);
     if (window.parent !== window) {
@@ -685,9 +570,6 @@ async function initDirectMode(): Promise<void> {
     }
   });
 
-  // Forward what the chains report about their sync to the host shell, so
-  // the loading screen moves on real signals instead of log-scraped prose.
-  // This iframe owns the smoldot instance. The host has no handle on it.
   onChainSync(event => {
     if (window.parent === window) {
       return;
@@ -705,8 +587,7 @@ async function initDirectMode(): Promise<void> {
     );
   });
 
-  // Telemetry-only facts, forwarded on the same window as the sync stream so
-  // the host can hang them off the resolution it is already tracing.
+  // Telemetry only, attached by the host to the resolution it is tracing.
   resolve.onChainDetail(detail => {
     if (window.parent === window) {
       return;
@@ -714,9 +595,7 @@ async function initDirectMode(): Promise<void> {
     window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'chain-detail', ...detail }, '*');
   });
 
-  // Feed the host speed readout. Cumulative totals on a fixed tick rather
-  // than a rate, so the host owns the averaging and a dropped message just
-  // widens one window.
+  // Cumulative totals, so the host owns the averaging and a dropped message only widens one window.
   if (window.parent !== window) {
     const postBytes = (): void => {
       window.parent.postMessage(
@@ -728,9 +607,7 @@ async function initDirectMode(): Promise<void> {
         '*',
       );
     };
-    // Send a baseline straight away. A rate needs two readings, so waiting a
-    // full tick for the first one delayed the whole readout by 500ms on top
-    // of the time this iframe took to boot.
+    // A baseline now, since a rate needs two readings.
     postBytes();
     const reportBytes = setInterval(postBytes, 500);
     window.addEventListener('pagehide', () => {
@@ -738,8 +615,6 @@ async function initDirectMode(): Promise<void> {
     });
   }
 
-  // Direct mode owns its light client, so its warm-start outcome goes straight
-  // up to the host shell that tags resolution telemetry with it.
   onSmoldotDbOutcome((chain, outcome) => {
     if (window.parent !== window) {
       window.parent.postMessage(
@@ -760,27 +635,11 @@ async function initDirectMode(): Promise<void> {
     // Releasing a smoldot chain makes the light client drop it and re-sync later.
     destroyDelay: Infinity,
     onBrokerReady: broker => {
-      // Two chains nothing else opens in time, for two different reasons.
-      //
-      // The relay reports the warp progress the loading bar moves on, but papi
-      // never reads it: smoldot runs it as the parent of the parachains, so
-      // without this no tap ever attaches to it.
-      //
-      // Bulletin serves the content, and is otherwise created by the first
-      // `bitswap_v1_get` after the name resolves. That request goes out before
-      // the chain has a single peer and always loses its first attempt to
-      // "No Bitswap peers connected". Opening it here lets it find peers while
-      // the name is still resolving, so the content fetch starts against a warm
-      // chain. The cost is one chain connection on loads that turn out to be
-      // served from the archive cache and never needed Bulletin at all.
-      //
-      // Leases on the pool, so the watched chains are the very connections
-      // everything else on these chains shares.
+      // The relay carries the warp progress but papi never dials it. Bulletin opened lazily by the first
+      // `bitswap_v1_get` has no peers yet and fails it, so it finds peers while the name resolves.
       const stopWatching = observeChains(broker, [services.relay.genesis, services.bulletin.genesis]);
       window.addEventListener('pagehide', stopWatching);
-      // Route the resolver's Asset Hub reads AND the People warm-keep through
-      // the broker's shared follows so they reuse the broker's single follow per
-      // chain instead of opening their own (see protocol-shared-worker).
+      // One follow per chain, shared with the broker (see protocol-shared-worker).
       setResolverAssetHubProvider(() =>
         requireBrokerLocalProvider(broker, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
       );
@@ -789,9 +648,7 @@ async function initDirectMode(): Promise<void> {
       );
     },
     onWarmup: () => {
-      // Warm People in the background so legacy-account auth reads do not race
-      // a cold parachain warp sync. Not needed for resolution, so do not await.
-      // The shared worker does the same at its own pre-sync.
+      // Legacy-account auth reads People, which would race a cold warp sync. Resolution does not need it.
       void waitForPeopleFinalized().catch((err: unknown) => {
         log.warn('[dot.li protocol] People chain warm failed (retried on demand)', err);
       });
@@ -811,22 +668,15 @@ async function initDirectMode(): Promise<void> {
   });
 }
 
-// No smoldot. Sandboxed app chain requests are bridged to a trusted WSS
-// JSON-RPC endpoint via the shared broker. Name resolution in gateway mode
-// happens in the host process (see `@dotli/resolver/rpc-resolve`), not via
-// this iframe, so `resolveDotName` and `resolveOwner` requests aren't wired
-// up here. The host never sends them when gateway is active.
-
+// Gateway mode resolves names in the host process, so no resolver is wired here.
 function initRpcMode(): void {
   const engine = createEngine({
-    // The core set rather than the advertised one, so the network panel can
-    // watch Bulletin blocks over its configured RPC. Advertisement to dApps
-    // stays curated separately in `isRemoteChainSupported`.
+    // The core set, so the network panel can watch Bulletin. Advertisement to dApps is curated in
+    // `isRemoteChainSupported`.
     createChainProvider: createCoreRpcChainProvider,
     isChainSupported: isCoreRpcChainSupported,
     // An unused RPC chain's socket closes a minute after its last connection.
     destroyDelay: 60_000,
-    // No resolver: gateway-mode resolution doesn't go through this iframe.
   });
 
   bindEngineToMessages(engine);
@@ -887,12 +737,7 @@ function assertSharedModeKey(value: unknown): asserts value is string {
   }
 }
 
-/**
- * The shared mode-storage trust boundary is identical to shared auth: any
- * subdomain of the registrable root may read/write, sandboxed app
- * subdomains may not, and the siteId must match `SITE_ID`. Re-using the
- * auth checks keeps the gate consistent and avoids drift.
- */
+/** Reuses the shared-auth checks so both stores keep one trust boundary. */
 function handleSharedModeRequest(request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback): void {
   if (!isSharedModeRequestMethod(request.method)) {
     throw new Error(`Not a shared mode request: ${request.method as string}`);

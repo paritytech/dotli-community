@@ -1,6 +1,5 @@
 // @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
-// The product and protocol frames are never navigated in these tests, and
-// happy-dom would otherwise try to fetch their pages from a dev server.
+// Without this, happy-dom fetches the never-navigated product and protocol frames from a dev server.
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   type WireProvider,
@@ -43,8 +42,7 @@ interface MockRuntime {
 type ProviderListener = (message: Uint8Array) => void;
 type ProviderCloseListener = (error: Error) => void;
 
-// Window listeners the bridge under test added; removed after each test so an
-// earlier test's bridge never reacts to a later test's events.
+// Removed after each test so an earlier test's bridge never hears a later test's events.
 let bridgeListeners: Parameters<typeof window.removeEventListener>[] = [];
 
 afterEach(() => {
@@ -392,7 +390,6 @@ describe('bridge render lifecycle', () => {
       // Then the frame is placed
       expect(iframe.style.position).toBe('fixed');
 
-      // And later layout changes reach it
       layout.setTopbarLayout({ offset: false });
       expect(iframe.style.top).toBe('var(--safe-top, 0px)');
     }
@@ -718,7 +715,6 @@ describe('bridge app roots', () => {
     // Then
     expect(disposePage).toHaveBeenCalledTimes(1);
     expect(disposeLoading).toHaveBeenCalledTimes(1);
-    // Page first, then loading.
     expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(nth(disposeLoading.mock.invocationCallOrder, 0));
     const app = document.getElementById('app');
     expect(app?.children).toHaveLength(1);

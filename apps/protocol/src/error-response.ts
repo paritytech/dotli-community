@@ -4,17 +4,10 @@
 import type { ProtocolEnvelope } from '@dotli/protocol';
 import { errorName, serializeError } from '@dotli/shared';
 
-// Enough for the frames that locate the throw. A full light-client stack would
-// only bloat every failed response.
+// Enough for the frames that locate the throw without bloating every failed response.
 const MAX_STACK_CHARS = 2000;
 
-/**
- * The response telling the host a request failed.
- *
- * The host rebuilds the error from this and reports it, so everything it needs
- * to say where the failure happened has to travel here: the class name to
- * branch on, and the stack, which the rebuilt error cannot have.
- */
+/** A failed response carrying the class name and stack, which the host's rebuilt error cannot have otherwise. */
 export function errorResponse(id: string, error: unknown): ProtocolEnvelope {
   const name = errorName(error);
   const stack = error instanceof Error ? error.stack : undefined;

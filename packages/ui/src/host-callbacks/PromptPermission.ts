@@ -1,17 +1,6 @@
-// Permission prompt. The Rust core awaits the typed response before encoding
-// the product reply, so a slow modal blocks the product just as long as the
-// user takes to dismiss it. Device grants also schedule an iframe reload so
-// the browser sees the refreshed Permissions Policy `allow` attribute.
-//
-// "Always allow" and "Deny" are durable, matching the grant the topbar
-// permissions menu shows and resets. "Allow once" is kept by the core for the
-// current execution and consumed by the next operation that needs it, so it
-// is offered only where the core is that gate: the submit permissions and
-// Notifications. A grant gated by the iframe `allow` attribute reloads the
-// product into a new execution, which would drop a one-time grant.
-// Auto-grants answer `AllowOnce` so the core records nothing the user never
-// saw. Each instance serves one product, so the product the core passes is
-// already known as `label`.
+// The core keeps "Allow once" for the current execution, so it is offered only where the core is the
+// gate. A grant gated by the iframe `allow` attribute reloads the product into a new execution, which
+// would drop it. Auto-grants answer `AllowOnce` so the core records nothing the user never saw.
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions } from '@parity/truapi-host';
@@ -30,9 +19,8 @@ import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js
 import { ERRORS } from '../errors.js';
 import { recordPermissionChange } from '../state/permissions.js';
 
-// Remote tags that don't reach a host enforcement point: WebRtc is gated
-// by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
-// reliably intercepted from inside the sandbox. Auto-grant either.
+// WebRtc is gated by the iframe `allow` attribute and `Remote` (HTTP/WS) cannot be intercepted
+// reliably from the sandbox, so both are auto-granted.
 function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
@@ -51,8 +39,7 @@ export function createPromptPermission(
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
-    // OpenUrl has no host-side enforcement point; auto-grant rather than show
-    // a modal whose deny button cannot block the underlying browser API.
+    // OpenUrl has no host-side enforcement point, so a deny button could not block it.
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
@@ -91,14 +78,12 @@ async function decidePromptPermissionWhenActive(
   signal: AbortSignal,
 ): Promise<PermissionDecision> {
   const { kind, limiter } = options;
-  // Gated by the iframe `allow` attribute: a grant reloads the product.
+  // A grant reloads the product.
   const gatedByIframe = isDevicePermission(name);
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === 'granted') {
-    // The status also reflects a pending one-time grant, so answering
-    // AllowAlways here would quietly make it permanent. AllowOnce leaves a
-    // saved grant untouched.
+    // The status also reflects a pending one-time grant, which AllowAlways would quietly make permanent.
     return 'AllowOnce';
   }
   if (status === 'denied') {
@@ -114,7 +99,6 @@ async function decidePromptPermissionWhenActive(
     });
     return 'Deny';
   }
-  // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
@@ -135,10 +119,8 @@ async function decidePromptPermissionWhenActive(
     throwIfAborted(signal);
   }
   if (gatedByIframe) {
-    // Device permissions are also gated by the iframe `allow` attribute,
-    // which is fixed at iframe load time. Reload so the next attempt sees
-    // the updated attribute. Defer to the next tick so the prompt response
-    // can flush before the iframe is disposed.
+    // The iframe `allow` attribute is fixed at load, so reload, a tick later so the prompt response
+    // flushes before the iframe is disposed.
     setTimeout(() => {
       if (signal.aborted) {
         return;
@@ -146,8 +128,7 @@ async function decidePromptPermissionWhenActive(
       recordPermissionChange({ kind: 'device', label, permission: name });
     }, 0);
   } else {
-    // No browser-level gate, so the grant takes effect as is. The event keeps
-    // the permissions button in sync.
+    // Keeps the permissions button in sync.
     recordPermissionChange({ kind: 'grant', label, permission: name });
   }
   return decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';

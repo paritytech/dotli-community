@@ -1,20 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Human-readable summaries of system (non-TrUAPI) events.
-//
-// Mirrors chain-summary.ts for the System swimlane: each event becomes
-// a single sentence shown at the top of the detail pane. Keeps the
-// renderers (row + timeline tooltip + detail) consistent across event
-// kinds.
-
 import { withActiveTld } from '@dotli/config';
 import type { StoredSystemEvent } from './event-store.js';
 
 export function summariseSystemEvent(ev: StoredSystemEvent): string {
   const p = ev.payload as Record<string, unknown>;
   switch (`${ev.layer}:${ev.event}`) {
-    // boot
     case 'boot:started':
       return `Host boot started (mode: ${str(p['mode'])}, chain: ${str(p['chainBackend'])}, content: ${str(p['contentBackend'])}).`;
     case 'boot:protocol_warmup_started':
@@ -45,7 +37,6 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'boot:failed':
       return `Boot failed (${str(p['dependency'])}): ${str(p['reason'])}.`;
 
-    // resolve
     case 'resolve:started':
       return `Resolving ${withActiveTld(str(p['label']))} via ${str(p['source'])}.`;
     case 'resolve:phase':
@@ -59,13 +50,11 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'resolve:failed':
       return `Resolve failed via ${str(p['source'])}: ${str(p['reason'])}.`;
 
-    // render
     case 'render:iframe_begin':
       return `Rendering iframe for ${str(p['label'])} (${str(p['mode'])}).`;
     case 'render:iframe_ready':
       return `Iframe ready (${str(p['mode'])}).`;
 
-    // bridge
     case 'bridge:setup_begin':
       return `Setting up TrUAPI bridge (productId=${str(p['productId'])}).`;
     case 'bridge:setup_ready':
@@ -77,11 +66,9 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'bridge:first_outbound':
       return `First message sent to product — bridge traffic established (productId=${str(p['productId'])}).`;
 
-    // failover
     case 'failover:chain_backend':
       return `Chain backend failover: ${str(p['from'])} → ${str(p['to'])} (reason: ${str(p['reason'])}).`;
 
-    // chain lifecycle
     case 'chain:phase': {
       const reason = typeof p['reason'] === 'string' ? ` (${p['reason']})` : '';
       const peers = typeof p['peers'] === 'number' ? `, ${String(p['peers'])} peers` : '';
@@ -94,7 +81,6 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'chain:bytes':
       return `Light client has received ${str(p['received'])} bytes so far.`;
 
-    // main-thread monitor
     case 'main:stall_detected':
       return `Main thread blocked for ${numMs(p['durationMs'])}.`;
     case 'main:heartbeat':

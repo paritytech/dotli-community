@@ -1,16 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// One connection per chain, shared by every consumer in this JS context.
-//
-// A chain's entry owns its transport (a WebSocket or a smoldot connection),
-// the watch guard over it, and one ChainBroker, which isolates each
-// consumer's request ids and shares follows and tokens between them. A
-// consumer holds a lease, which is a broker session. The entry closes
-// `destroyDelay` after its last lease is released, and at once when its
-// transport halts. Modelled on polkadot-desktop's chain registry
-// (`@novasamatech/host-substrate-chain-connection`), with the broker in place
-// of that pool's branching, which shares one socket without rewriting ids.
+// One connection per chain, shared by every consumer in this JS context. Each lease is a broker
+// session. An entry closes `destroyDelay` after its last lease is released, and at once when its
+// transport halts.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransportHooks, ConnectionStatus } from '@dotli/resolver';
@@ -43,9 +36,9 @@ export interface ChainPool extends ChainBrokerManager {
   getLocalProvider(genesisHash: string): LeaseProvider | null;
   status(genesisHash: string): ConnectionStatus;
   onStatusChanged(genesisHash: string, callback: (status: ConnectionStatus) => void): () => void;
-  /** Drop the socket of every pausable transport; leases and refcounts stay. */
+  /** Drops every pausable transport's socket. Leases and refcounts stay. */
   pauseAll(): void;
-  /** Reopen them; tracked statement subscriptions are replayed. */
+  /** Tracked statement subscriptions are replayed. */
   resumeAll(): void;
 }
 
@@ -68,10 +61,7 @@ interface Pausable {
 
 type PausableProvider = JsonRpcProvider & Pausable;
 
-/**
- * Whether a transport can drop its socket and reopen it, as the package's ws
- * provider can. The package exports no check, so this is the same duck typing.
- */
+/** Duck-typed because the ws provider package exports no pausability check. */
 function isPausable(transport: JsonRpcProvider): transport is PausableProvider {
   const candidate = transport as Partial<PausableProvider>;
   return typeof candidate.pause === 'function' && typeof candidate.resume === 'function';
@@ -96,7 +86,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
         callback(status);
         // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one listener's throw must not keep the others from the status, nor reach the transport's status callback.
       } catch {
-        /* the listener threw; the remaining listeners still hear the status */
+        /* the other listeners still hear the status */
       }
     }
   }
@@ -123,8 +113,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
   }
 
   function build(key: string): Entry | null {
-    // Assigned once the transport exists. A hook that fires before then, or
-    // after the entry is gone, has nothing to report on.
+    // Null until the transport exists, so a hook that fires earlier has nothing to report on.
     let entry: Entry | null = null;
     const hooks: ChainTransportHooks = {
       onStatus: status => {
@@ -176,7 +165,6 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     return entry;
   }
 
-  /** Start the countdown of an entry nobody leases. */
   function idle(entry: Entry): void {
     if (entry.leases > 0 || !entry.live || entry.destroyTimer !== null) {
       return;
@@ -186,8 +174,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       destroy(entry, null);
       return;
     }
-    // Never schedule a non-finite delay: `setTimeout` clamps it to about 1 ms,
-    // which would close the entry at once instead of never.
+    // `setTimeout` clamps a non-finite delay to about 1 ms, which would close the entry at once.
     if (!Number.isFinite(destroyDelay)) {
       return;
     }
@@ -209,7 +196,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
         }
         released = true;
         connection.disconnect();
-        // A halted entry is gone already; its leases count for nothing.
+        // A halted entry is already gone, so its leases count for nothing.
         if (!entry.live) {
           return;
         }

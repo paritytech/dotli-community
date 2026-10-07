@@ -55,7 +55,6 @@ function passwordView(error?: string): ModalView<'cancel' | 'unlock'> {
   };
 }
 
-/** Where a real key press goes: the focused element. */
 function focused(): Element {
   return document.activeElement ?? document.body;
 }

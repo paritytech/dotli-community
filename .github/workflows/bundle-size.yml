@@ -26,9 +26,7 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
-      # With metrics on, as the deploys build: with them off the Sentry SDK
-      # is swapped for a no-op (stripAnalytics), and the sizes would leave it
-      # out.
+      # Metrics on, as deployed. Off, the Sentry SDK is swapped for a no-op and the sizes would leave it out.
       - name: Build
         env:
           VITE_METRICS: 'true'
@@ -37,15 +35,8 @@ jobs:
       - name: Remove source maps
         run: find apps/*/dist -name '*.map' -delete
 
-      # Flag mode-specific bundles that exceed budget. If
-      # `apps/protocol/dist/assets/index-*.js` exceeds 600 KB raw, it
-      # almost certainly means a static smoldot or chain-specs import
-      # crept back into the protocol iframe's cold-start chunk — which
-      # silently inflates RPC-mode users by ~3 MB. Overages emit a
-      # workflow warning and surface in the PR comment, but do NOT fail
-      # the job — the signal belongs in review, not the required-checks
-      # gate. The thresholds below have headroom above the current
-      # sizes; tighten once they've soaked.
+      # Overages warn in the PR comment but never fail the job. A protocol entry over 600 KB almost always means a
+      # static smoldot or chain-specs import crept into the RPC-mode cold-start chunk.
       - name: Check mode-specific bundle budgets
         run: |
           : > /tmp/budget-warnings.md
@@ -71,23 +62,14 @@ jobs:
               echo "${label}: ${size} B (budget ${max} B) — ok"
             fi
           }
-          # Protocol iframe main entry (RPC mode cold start) — must NOT
-          # bundle smoldot / chain specs.
           check "protocol-iframe-entry" \
                 "apps/protocol/dist/assets/index-*.js" \
                 $((600 * 1024))
-          # Host shell main entry — must not regress more than ~20% above
-          # its current ~460 KB raw size.
           check "host-entry" \
                 "apps/host/dist/assets/index.astro_astro_type_script_index_0_lang.*.js" \
                 $((600 * 1024))
 
-          # Eager path = module entry + every modulepreloaded chunk, and the
-          # host's client:load islands with their static imports, gzip, with
-          # metrics on (the Sentry SDK included), as the deploys build. Each
-          # budget is its measured size + about 10%: the host 152,746 B (the
-          # Solid runtime and the client:load islands among it), the
-          # sandbox 79,325 B.
+          # Each eager path budget is about 10% over its measured gzip size.
           check_eager() {
             local label=$1 dist=$2 max=$3
             local json gz
@@ -107,7 +89,6 @@ jobs:
           check_eager "host-eager-path" apps/host/dist 168000
           check_eager "sandbox-eager-path" apps/sandbox/dist 87000
 
-      # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
         if: github.event_name == 'pull_request'
         id: baseline
@@ -119,7 +100,6 @@ jobs:
           path: /tmp/baseline
           if_no_artifact_found: warn
 
-      # ── PR: build comparison report and comment ────────────────
       - name: Generate bundle size report
         if: github.event_name == 'pull_request'
         run: |
@@ -133,7 +113,6 @@ jobs:
             echo "::warning::No baseline found — sizes shown without comparison"
           fi
 
-          # Format bytes as human-readable
           fmt() {
             local bytes=$1
             if (( bytes >= 1048576 )); then
@@ -145,7 +124,6 @@ jobs:
             fi
           }
 
-          # Format a diff: returns "" if no baseline or unchanged, else " (+1.2 KB)" / " (-3.4 KB)"
           fmt_diff() {
             local current=$1 base=$2
             if [[ -z "$base" ]] || (( base == 0 )); then
@@ -170,7 +148,6 @@ jobs:
             fi
           }
 
-          # One cell: the size, and its diff against the baseline.
           cell() {
             echo "$(fmt $1)$(fmt_diff $1 "$2")"
           }
@@ -178,9 +155,7 @@ jobs:
           rows=""
           large_rows=""
           eager_rows=""
-          # Tab-separated, and a tab is whitespace to `read`: empty fields would
-          # collapse, so the script writes `-` for a missing count and leaves
-          # only the trailing base fields empty.
+          # A tab is whitespace to `read`, so empty fields would collapse. Only the trailing base fields may be empty.
           while IFS=$'\t' read -r kind name count raw br gz base_raw base_br base_gz; do
             case "$kind" in
               file)
@@ -230,7 +205,6 @@ jobs:
               echo ""
             fi
 
-            # Show only chunks over 500 KB + total by default
             if [[ -n "$large_rows" ]]; then
               echo "**Chunks over 500 KB:**"
               echo ""
@@ -244,7 +218,6 @@ jobs:
               echo "**Total:** ${total_raw_fmt} raw / ${total_br_fmt} brotli (compression rate: ${br_pct}%) / ${total_gz_fmt} gzip"
             fi
 
-            # Full file list in expandable section
             echo ""
             echo "<details>"
             echo "<summary>All files</summary>"
@@ -293,7 +266,6 @@ jobs:
               });
             }
 
-      # ── main: generate and upload baseline sizes ───────────────
       - name: Generate baseline sizes
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: node scripts/bundle-sizes.ts baseline host sandbox > /tmp/bundle-baseline.json

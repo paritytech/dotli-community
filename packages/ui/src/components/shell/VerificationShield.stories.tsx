@@ -10,11 +10,7 @@ import { VerificationShield } from './VerificationShield.js';
 
 const shown = openSurface({ surface: 'verification-tooltip' });
 
-/**
- * The explainer is a tooltip, which a mouse click leaves alone: the `Open`
- * play rests the mouse on the shield (trusted input, so the real `:hover`
- * shows), then waits for the explainer and its body.
- */
+/** A click leaves a tooltip alone, so this hovers with trusted input, which the real `:hover` needs. */
 const open: typeof shown = async ctx => {
   await ctx.step('When the mouse rests on the shield', async () => {
     const { userEvent } = await import('vitest/browser');

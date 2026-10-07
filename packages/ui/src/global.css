@@ -1,11 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Design tokens and the page base. Nothing here resets elements, each module
-   resets its own. The dotli UI is dark only: the theme preference
-   (data-theme on <html>, from the boot script in apps/host/src/pages/
-   index.astro and theme-controller.ts) is the product's, and the bar's theme
-   button shows it. */
+/* Nothing here resets elements, each module resets its own. The chrome is dark only, data-theme is the
+   product's preference. */
 
 :root {
   --text-strong: rgba(255, 255, 255, 0.95);
@@ -27,9 +24,7 @@
   --danger: #f87171;
   --neutral-solid: #8f8f8f;
 
-  /* A product's custom chat message names these colors (FgPrimary,
-     BgSurfaceNested, ...) and chat/custom-styles.ts writes them into inline
-     styles, which is why they are global. */
+  /* Global because chat/custom-styles.ts writes them into a product's custom chat message inline styles. */
   --chat-fg-primary: rgba(255, 255, 255, 0.92);
   --chat-fg-secondary: rgba(255, 255, 255, 0.6);
   --chat-fg-tertiary: rgba(255, 255, 255, 0.4);
@@ -40,16 +35,13 @@
   --chat-fg-error: #f87171;
   --chat-fg-warning: #fbbf24;
 
-  /* The host sets `viewport-fit=cover`, so every edge needs its own inset.
-     `env()` carries the 0px fallback here, so stylesheets use the tokens bare.
-     Inline styles set from JS repeat a px fallback instead, because they do not
-     ship with this file. */
+  /* `viewport-fit=cover` needs an inset per edge. Inline styles set from JS repeat the px fallback,
+     because they do not ship with this file. */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
-  /* The pill's band: 10 px above, the 48 px pill, 10 px below. The product
-     frame runs under the floating pill. */
+  /* The product frame runs under the floating pill. */
   --topbar-height: calc(var(--topbar-inset) + var(--h-bar) + var(--topbar-inset) + var(--safe-top));
   /* What the bar and the insets leave of the screen, wherever the bar is. */
   --content-top: var(--topbar-height);
@@ -57,11 +49,8 @@
   --content-height: calc(100dvh - var(--content-top) - var(--content-bottom));
 }
 
-/* Phones: the bar is the 60 px row at the foot of the screen, over the home
-   indicator, with no band around it (Topbar.astro), so the page and the
-   product frame end right above it. Safari's address bar never collapses
-   over the product's iframe, so the page paints the glass's bottom stop,
-   opaque: Safari tints its toolbar from it and the two read as one. */
+/* Phones put the bar at the foot. The page paints the glass's opaque bottom stop because Safari tints its
+   toolbar from it, which never collapses over the product's iframe. */
 @media (max-width: 560px) {
   :root {
     --bg-page: #18181b;
@@ -69,18 +58,15 @@
     --content-top: var(--safe-top);
     --content-bottom: var(--topbar-height);
   }
-  /* No bar on the landing page (body[data-landing] hides it), so its sheets
-     and toasts go down to the home indicator. --content-height is declared
-     again: a custom property resolves the others where it is declared. */
+  /* The landing page has no bar. --content-height is declared again because a custom property resolves
+     the others where it is declared. */
   body[data-landing] {
     --content-bottom: var(--safe-bottom);
     --content-height: calc(100dvh - var(--content-top) - var(--content-bottom));
   }
 }
 
-/* The chrome: the topbar, its menus and sheets, the modals and the toasts.
-   Text ratios are against the lightest the glass gets, --chrome-top over a
-   white product page (#2e2e32). */
+/* Text ratios are against the lightest the glass gets, --chrome-top over a white product page (#2e2e32). */
 :root {
   --chrome-top: rgba(40, 40, 44, 0.97);
   --chrome-bottom: rgba(24, 24, 27, 0.98);
@@ -105,7 +91,7 @@
   --chrome-focus: #96b8ff;
   --chrome-focus-ring: 2px solid var(--chrome-focus);
 
-  /* Status marks: dots, bars, badges and icon tiles, 3:1 or more. */
+  /* Status marks, 3:1 or more. */
   --chrome-ok: #4cc38a;
   --chrome-warn: #f0a93b;
   --chrome-err: #f2555a;
@@ -113,11 +99,9 @@
   --chrome-idle: #a1a1aa;
   --chrome-action: #ffffff;
   --chrome-action-dim: #5e5e66;
-  /* Status text. */
   --chrome-ok-text: #9ff0c6; /* 10.1:1 */
   --chrome-warn-text: #ffd48a; /* 9.7:1 */
   --chrome-err-text: #ffb8ba; /* 8.3:1 */
-  /* Two strengths of any status colour, for chips, icon tiles, halos and hovers. */
   --chrome-tint: 16%;
   --chrome-tint-strong: 22%;
   /* A red tint, never solid red, so the primary action stays the brightest. */
@@ -134,7 +118,7 @@
     0 2px 6px rgba(0, 0, 0, 0.18);
   --chrome-shadow-capsule:
     inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 6px 18px rgba(0, 0, 0, 0.18);
-  /* The ring on the top and the sides only: the sheet's foot rests on the bar. */
+  /* No ring at the foot, which rests on the bar. */
   --chrome-shadow-sheet:
     inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.09),
     inset 1px 0 0 rgba(255, 255, 255, 0.09), inset -1px 0 0 rgba(255, 255, 255, 0.09), 0 -12px 40px rgba(0, 0, 0, 0.3);
@@ -145,23 +129,20 @@
   --chrome-shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.35);
   --chrome-shadow-tile: 0 8px 24px rgba(0, 0, 0, 0.3);
 
-  --chrome-scrim: rgba(0, 0, 0, 0.45); /* behind a sheet or a modal */
+  --chrome-scrim: rgba(0, 0, 0, 0.45);
   --chrome-scrim-light: rgba(0, 0, 0, 0.06); /* behind a desktop popover */
-  /* Black on white whatever the theme, so phones can scan it. */
+  /* Black on white, so phones can scan it. */
   --qr-bg: #ffffff;
   --qr-ink: #141416;
 }
-/* Unblurred, the translucent glass would let the page show through: it is
-   solid instead, for every surface that draws it. */
+/* Unblurred, the translucent glass would let the page show through. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root {
     --chrome-glass: var(--chrome-solid);
   }
 }
 
-/* A status mark's colour, from its data-tone (StatusTone). A mark that may
-   go without the attribute sets its own default --tone on itself, so it never
-   takes an ancestor's. */
+/* A mark that may go without data-tone sets its own default --tone, so it never takes an ancestor's. */
 [data-tone='ok'] {
   --tone: var(--chrome-ok);
 }
@@ -178,9 +159,7 @@
   --tone: var(--chrome-idle);
 }
 
-/* Layout scales shared by the chrome: a 4 px spacing grid with a 2 px
-   hairline step, radii, control sizes (44 px is the touch minimum), popover
-   widths, type and motion. */
+/* 44 px is the touch minimum. */
 :root {
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -232,23 +211,19 @@
   --h-control-lg: 52px;
   --h-row-lg: 56px;
   --h-tile: 72px;
-  /* The desktop pill: 36 px controls with 6 px above and below, 10 px from
-     the top of the window. Desktop is not touch, so its bar is smaller than
-     the phone bar below. */
+  /* Desktop is not touch, so its bar is smaller than the phone bar below. */
   --h-bar: 48px;
   --h-bar-control: 36px;
   --topbar-inset: 10px;
 
-  /* Desktop popover widths, the boards' 300 / 360 / 400 / 760 on phones.
-     The gap is the popover's distance below the pill. The corner is the
-     popovers' and menus', the boards' 24 on phones. */
+  /* Desktop sizes. Phones take the boards' sizes below. */
   --w-pop-sm: 260px;
   --w-pop-md: 320px;
   --w-pop-lg: 360px;
   --w-pop-xl: 680px;
   --pop-gap: 10px;
   --r-pop: 20px;
-  /* The board's toast is 380. Phones' toasts are full width. */
+  /* Phones' toasts are full width. */
   --w-toast: 340px;
 
   --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
@@ -258,22 +233,17 @@
   --dur-morph: 0.46s;
   /* The pill's content waits for the morph. */
   --delay-content: 0.2s;
-  /* Pulses. */
   --loop: 1.4s;
 }
 
-/* Inside the chrome (data-chrome: the topbar, its popovers and menus, the
-   sign-in, the prompts and the toasts), desktop type is a step under the
-   page's: desktop is not touch. The scheme is set here, not on :root, which
-   would change how the browser paints the product frame's backdrop. */
+/* Desktop chrome type is a step under the page's, since desktop is not touch. The scheme is set here, not
+   on :root, which would change how the browser paints the product frame's backdrop. */
 [data-chrome] {
   color-scheme: dark;
   --fs-small: 12px;
   --fs-body: 13px;
 }
 
-/* Phones: the bar's 60 px row of 44 px touch controls, the popovers and
-   the chrome type at the boards' sizes. */
 @media (max-width: 560px) {
   :root {
     --h-bar: 60px;
@@ -297,15 +267,12 @@ body {
   background: var(--bg-page);
   color: var(--text);
   font-family: system-ui, sans-serif;
-  /* The boards' (.ds) rendering: macOS's default subpixel smoothing draws
-     light text on the dark chrome a weight heavier than designed. */
+  /* macOS's default smoothing draws light text on the dark chrome a weight heavier than designed. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* A modal shell dialog is open (components/focus.ts lockScroll). An attribute,
-   not an inline style, so the page's own inline overflow (bridge.ts sets one)
-   survives the dialog. */
+/* An attribute, not an inline style, so the page's own inline overflow survives the dialog. */
 body[data-scroll-locked] {
   overflow: hidden !important;
 }
@@ -314,8 +281,7 @@ body[data-scroll-locked] {
   outline: 2px solid var(--text-muted);
   outline-offset: 2px;
 }
-/* The chrome's own controls draw --chrome-focus-ring. Anything there that
-   does not gets the default ring in the chrome's muted text. */
+/* For chrome elements that do not draw --chrome-focus-ring themselves. */
 :where([data-chrome], [data-chrome] *):focus-visible {
   outline-color: var(--chrome-text-muted);
 }

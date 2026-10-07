@@ -1,23 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the network popover (ChainsPopover.tsx) says, as plain functions of
-// the network store's values: moved unchanged from topbar.ts, except that the
-// verdict takes the chains it judges instead of reading the monitor, and that
-// the menu's status line (describeNetworkStatus) is built from it.
-
 import type { Backend } from '@dotli/config';
 
 import type { ChainClock } from '../../network-monitor.js';
 import type { StatusTone } from '../primitives/StatusDot.js';
 
 /**
- * How the arrival of a single block reads on hover.
- *
- * The interval comes first because it is the measurement, then how far past the
- * expectation the chain declares it landed. A block inside the expectation has no delay
- * to report, and saying "0s late" would invite the reader to look for a problem
- * that is not there.
+ * How a block's arrival reads on hover.
+ * A block inside the expectation says "on time", since "0s late" suggests a problem.
  */
 export function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
   const secs = (ms: number): string =>
@@ -26,14 +17,12 @@ export function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
   return late <= 0 ? `${secs(gapMs)}, on time` : `${secs(gapMs)}, ${secs(late)} late`;
 }
 
-/** Bytes as the panel says them: kB up to a megabyte, then MB. */
 export function formatSize(bytes: number): string {
   return bytes < 1_048_576 ? `${String(Math.round(bytes / 1024))} kB` : `${(bytes / 1_048_576).toFixed(1)} MB`;
 }
 
 export function formatRate(bytesPerSecond: number): string {
-  // Below half a kilobyte the kB rounding reads "0 kB/s", which says the
-  // opposite of what is happening: bytes are moving, just barely.
+  // kB rounding would read "0 kB/s" for a trickle, as if nothing were moving.
   if (bytesPerSecond < 1024) {
     return `${String(Math.round(bytesPerSecond))} B/s`;
   }
@@ -45,12 +34,11 @@ export function formatRate(bytesPerSecond: number): string {
 /** Slots in a chain's history strip, filled from the right as samples arrive. */
 export const HISTORY_SLOTS = 48;
 
-/** Older slots fade: half strength at the left edge, full at the newest. */
+/** Older slots fade, to half strength at the left edge. */
 export function slotOpacity(slot: number): string {
   return (0.5 + (0.5 * slot) / (HISTORY_SLOTS - 1)).toFixed(2);
 }
 
-/** The verdict describeLiveNetwork reaches: its words, and the tone of its dot. */
 export interface LiveVerdict {
   text: string;
   tone: Extract<StatusTone, 'ok' | 'warn' | 'idle'>;
@@ -59,11 +47,8 @@ export interface LiveVerdict {
 }
 
 /**
- * The overall verdict, from the blocks actually arriving.
- *
- * Read from arrivals rather than lifecycle milestones, which are terminal: a
- * verdict built from those latches at whatever the last chain to bootstrap
- * reported and keeps saying it after the connection dies.
+ * The overall verdict, from blocks actually arriving.
+ * Lifecycle milestones are terminal, so a verdict built from them would latch and outlive a dead connection.
  */
 export function describeLiveNetwork(status: readonly ChainClock[]): LiveVerdict {
   const chains = status.filter(c => c.reachable);
@@ -91,7 +76,6 @@ export function describeLiveNetwork(status: readonly ChainClock[]): LiveVerdict 
   return { text: 'Your connection is good', tone: 'ok' };
 }
 
-/** The network menu's status line: a title, and the verdict's own words where they add to it. */
 export interface NetworkStatusLine {
   tone: StatusTone;
   title: string;
@@ -121,7 +105,7 @@ function inSync(chainCount: number): string {
   return `in sync on all ${NUMBER_WORDS[chainCount - 2] ?? String(chainCount)} chains`;
 }
 
-/** The captions per backend: the gateway has no peers and verifies nothing, so it says neither. */
+/** The gateway has no peers and verifies nothing, so its captions say neither. */
 interface Captions {
   offline: string;
   ok: (chainCount: number) => string;
@@ -144,12 +128,8 @@ const GATEWAY: Captions = {
 };
 
 /**
- * The network menu's status line, from the verdict, the browser's online
- * state and the backend serving the chains.
- *
- * Offline wins, as it does for the capsule and the network badge, so the three
- * never disagree: blocks that landed before the connection dropped would
- * otherwise still read as a good connection. Every state carries a caption.
+ * The network menu's status line.
+ * Offline wins, as for the capsule and the network badge, so the three never disagree.
  */
 export function describeNetworkStatus(
   verdict: LiveVerdict,

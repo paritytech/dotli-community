@@ -1,20 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Human-readable summary of a chain-protocol message
-//
-// Translates an already-decoded `remote_chain_*` TrUAPI payload into a
-// single-sentence description. The debug tap decodes chain frames before
-// they reach the panel, so this runs for every chain event it shows.
-//
-// Returns `null` for non-chain messages or unknown shapes. The caller
-// omits the summary section when null.
-
 import type { ChainAnnotations } from './chain-decode.js';
 import { formatChainDisplay } from './chain-registry.js';
 import { asEnum, asObj, asString, peelVersion } from './shape.js';
 
-/** Length at which we abbreviate hex strings in the human summary. */
 const HEX_SHORT_LEN = 8;
 
 export function summariseChainMessage(ann: ChainAnnotations, payload: unknown): string | null {

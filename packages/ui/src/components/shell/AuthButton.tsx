@@ -14,64 +14,40 @@ import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './AuthButton.module.css';
 
-/** The popover's body, its own chunk. */
 const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountContent' });
 
 /**
- * The topbar's auth button (`#auth-button`) and the logged-in account's
- * popover (`#user-popover`, a floating Popover whose body, AccountContent, is
- * its own chunk; a bottom sheet on phones), an item of the topbar's action group
- * (see TopbarActions.tsx) that never collapses into More. The host page
- * renders it logged out at build time, and it shows the session once
- * hydrated. The landing page (components/landing/) renders it too, in its
- * corner.
+ * The auth button and the account popover, in the topbar and in the landing page's corner.
  *
- * Logged out, it is a Sign in button and a click starts a login. Logged in,
- * it shows the account's avatar: its initials, or the person icon
- * (`data-anon`) without a username, and with `showName` the account's name
- * beside it. A click toggles the user popover while the auth state is
- * `Connected`, and starts a login, which opens the auth modal, in any other
- * state (a pairing started while logged in included). Its trigger ARIA
- * follows the click, like a Radix Popover.Trigger or Dialog.Trigger:
- * `aria-haspopup="dialog"`, with `aria-controls` and `aria-expanded` for the
- * user popover while `Connected` (the button is the Popover's trigger then,
- * which writes them), else for the auth modal (`#auth-modal-backdrop`, open
- * as authModalStore says, written here).
+ * A click toggles the popover only while `Connected`, and starts a login in any other state, a pairing
+ * under way while logged in included. The trigger ARIA follows the click: the Popover writes it while
+ * `Connected`, this component writes it for the auth modal otherwise.
  *
- * `idPrefix` sets another instance's ids apart (the landing page's, whose
- * page also holds the topbar's build-time markup).
+ * `idPrefix` keeps the landing page's ids apart from the topbar's build-time markup on the same page.
  */
 export function AuthButton(props: { idPrefix?: string | undefined; showName?: boolean | undefined }): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = useAccount();
   const authModal = useStore(authModalStore);
-  /**
-   * A click toggles the user popover, else opens the auth modal (see
-   * onClick), so the ARIA says so.
-   */
   const opensPopover = account.connected;
-  /** The name beside the avatar, with `showName`: the username, else the shortened account. */
   const shownName = (): string | undefined => {
     const session = props.showName === true && account.loggedIn() ? account.session() : undefined;
     return session === undefined ? undefined : sessionDisplayName(session);
   };
   const label = (): string => (account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile');
-  // The visible text (initials, then name) starts the button's name, so
-  // speech input can use it (WCAG 2.5.3).
+  // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
     const session = account.loggedIn() ? account.session() : undefined;
     const initials = session === undefined ? undefined : sessionInitials(session);
     const visible = [initials, shownName()].filter(part => part !== undefined).join(' ');
     return visible === '' ? label() : `${visible}, account`;
   };
-  // The auth modal's trigger, while mounted (see setAuthModalTrigger).
   onSettled(() => {
     const el = untrack(button);
     return el === undefined ? undefined : setAuthModalTrigger(el);
   });
-  // While connected the click is the popover's (the trigger's own
-  // listener); otherwise it starts the login.
+  // While connected the Popover's own trigger listener takes the click.
   const onClick = (): void => {
     if (getAuthState().tag !== 'Connected') {
       startLogin();

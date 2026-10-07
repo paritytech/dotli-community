@@ -1,29 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Scheduled notifications runtime: a polling loop plus cross-tab
- * coordination on top of the IDB-backed queue in
- * @dotli/storage/scheduled-notifications.
- *
- * Runs in the product origin's top frame (for example acme.dot.li).
- * A guest dapp schedules via TrUAPI, the record lands in IDB, and
- * any tab on this origin fires it once it is past due.
- *
- * Two mechanisms keep sibling same-origin tabs from firing the same
- * record twice. A Web Lock named `dotli-notif:<hostId>` lets one tab do
- * the work at a time. The atomic IDB delete inside that lock is what
- * actually claims the record. The lock only avoids redundant work.
- * Separately, a BroadcastChannel `dotli:scheduled-notifications` wakes
- * the polling loop in sibling tabs on every schedule or cancel, so a
- * freshly scheduled record does not wait a full tick to be noticed.
- *
- * A hidden tab queries past-due records at `now - HIDDEN_TAB_OFFSET_MS`,
- * giving a visible sibling a 300ms head start on the lock. If every
- * sibling tab is hidden, the hidden tab fires 300ms late. That stays
- * well within the few-second error margin allowed for scheduled web
- * notifications.
- */
+// Any tab on the product origin fires a past-due record. The atomic IDB delete claims it, while the
+// Web Lock only avoids redundant work. A hidden tab lags by an offset so a visible sibling wins the lock.
 
 import {
   schedule as dbSchedule,
@@ -44,8 +23,7 @@ export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
 
 interface InitOpts {
-  // The top-frame product label. Used only as a tag in log lines. Record
-  // titles in IDB are what the UI actually renders.
+  /** Only tags log lines. */
   label: string;
 }
 
@@ -56,13 +34,8 @@ let initialized = false;
 let shuttingDown = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let bcChannel: BroadcastChannel | null = null;
-// Hosts currently being fired by this tab. Within a single tab the IDB
-// `removeById` is the source of truth for "claimed". Tracking in-flight
-// fires here lets us skip records we have already begun processing this
-// tick.
 const inFlight = new Set<number>();
-// Steps whose last attempt failed. The poller retries every second, so a
-// failure is reported when it starts, not on every tick it persists.
+// The poller retries every second, so a failure is reported when it starts, not on every tick.
 type PollStep = 'remove_stale' | 'list_pending' | 'claim';
 const failing = new Set<PollStep>();
 
@@ -71,7 +44,7 @@ function succeeded(step: PollStep): void {
 }
 
 function failed(step: PollStep, err: unknown): void {
-  // The connection closes as the page unloads; a tick caught by it is moot.
+  // The connection closes as the page unloads, so a tick caught by it is moot.
   if (shuttingDown || failing.has(step)) {
     return;
   }
@@ -103,19 +76,14 @@ export function initScheduledNotifications(opts: InitOpts): void {
     ensurePolling();
   });
 
-  // Restart polling when the tab becomes visible. Gives a stale visible
-  // tab a chance to drain the queue before the next tick.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       ensurePolling();
     }
   });
 
-  // Stop the polling loop before the page is torn down. The IDB
-  // connection enters "closing" the moment unload begins, and any tick
-  // still in flight at that point throws `InvalidStateError` from
-  // `db.transaction()`. `pagehide` fires for both regular unloads and
-  // the bfcache path, which is why it is preferred over `beforeunload`.
+  // IDB starts closing as unload begins, so a later tick throws `InvalidStateError`. `pagehide`, not
+  // `beforeunload`, because it also fires on the bfcache path.
   window.addEventListener('pagehide', () => {
     shuttingDown = true;
     stopPolling();
@@ -124,12 +92,7 @@ export function initScheduledNotifications(opts: InitOpts): void {
   });
 }
 
-/**
- * Schedule a notification, called by the push-notification handler.
- *
- * An immediate fire (null or past `scheduledAt`) only bumps the counter to
- * allocate an id. Everything else is persisted to IDB.
- */
+/** An immediate fire (null or past `scheduledAt`) only allocates an id and is not persisted. */
 export async function scheduleNotification(req: {
   productId: string;
   title: string;
@@ -139,8 +102,6 @@ export async function scheduleNotification(req: {
 }): Promise<ScheduleNotificationResult> {
   const now = Date.now();
 
-  // Inline the null/past check so `scheduledAt` narrows to `number` below
-  // without a non-null assertion.
   if (req.scheduledAt === null || req.scheduledAt <= now) {
     const id = await allocateId(req.productId);
     return { ok: true, id, immediate: true };
@@ -164,13 +125,7 @@ export async function scheduleNotification(req: {
   return { ok: true, id: result.id, immediate: false };
 }
 
-/**
- * Cancel a pending notification, called by the push-notification cancel
- * handler.
- *
- * Idempotent. Returns true if a pending record was removed, false if it
- * had already fired or never existed.
- */
+/** Idempotent. False when the record had already fired or never existed. */
 export async function cancelNotification(productId: string, perProductId: number): Promise<boolean> {
   const removed = await dbCancel(productId, perProductId);
   if (removed) {
@@ -190,7 +145,7 @@ async function rehydrate(): Promise<void> {
   }
 }
 
-/** Drop stale records and list the rest; `null` when listing failed. */
+/** Null when listing failed. */
 async function pendingRecords(): Promise<ScheduledNotificationRecord[] | null> {
   try {
     await removeStale(Date.now());
@@ -262,7 +217,6 @@ async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'r
     const claimAndFire = async (): Promise<void> => {
       const removed = await removeById(rec.hostId);
       if (!removed) {
-        // Sibling tab won the race.
         return;
       }
       fire(rec, source);
@@ -274,19 +228,17 @@ async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'r
 
     if ('locks' in navigator) {
       await navigator.locks.request(`dotli-notif:${String(rec.hostId)}`, { ifAvailable: true }, async lock => {
-        // Another tab holds the lock, so let it fire.
         if (!lock) {
           return;
         }
         await claimAndFire();
       });
     } else {
-      // No Web Locks. Rely on IDB tx serialization in `removeById`.
+      // The IDB delete still claims the record alone.
       await claimAndFire();
     }
     succeeded('claim');
   } catch (err) {
-    // Callers run from a timer with nothing to catch for them.
     failed('claim', err);
   } finally {
     inFlight.delete(rec.hostId);
@@ -298,8 +250,7 @@ function fire(rec: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'
     label: rec.title,
     text: rec.text,
     deeplink: rec.deeplink ?? undefined,
-    // Past-due fires (rehydrate) render the in-app banner only. An OS
-    // toast for an event the user was not around for is intrusive.
+    // An OS toast for an event the user was not around for is intrusive.
     browserNotification: source === 'realtime',
   });
 }

@@ -14,9 +14,7 @@ import {
 
 const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO];
 
-// The gateway set drives the host's chain-support advertisement in
-// rpc-gateway mode (`isRemoteChainSupported`). The core connection callback
-// accepts a wider set because it also carries host-owned Bulletin operations.
+// The core set is wider than the advertised gateway set because it also carries host-owned Bulletin operations.
 describe('gateway-supported chains (rpc-gateway mode)', () => {
   beforeEach(() => {
     setNetworkOverride(NetworkName.PASEO);

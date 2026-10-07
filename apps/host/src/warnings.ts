@@ -1,21 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What to tell a visitor when a chain stops making progress.
-//
-// A warning is not an error. The load is still running and may well finish,
-// so every line here says what is happening and, where it can, why. The copy
-// lives beside `errors.ts` because both carry the user-facing copy of the host.
+// A warning is not an error: the load is still running and may finish, so each line says what is happening.
 
 import type { ChainKey } from '@dotli/resolver';
 
-/**
- * How long a chain may sit in one lifecycle state before it owes an
- * explanation.
- */
+/** How long a chain may sit in one lifecycle state before it owes an explanation. */
 export const STALL_WARNING_MS = 3_000;
 
-/** Chains the load actually waits on. A stall elsewhere is not the visitor's problem. */
+/** The chains the load waits on. A stall elsewhere is not the visitor's problem. */
 export const CRITICAL_CHAINS = ['relay', 'asset-hub', 'bulletin'] as const satisfies readonly ChainKey[];
 
 export type CriticalChain = (typeof CRITICAL_CHAINS)[number];
@@ -24,12 +17,11 @@ export function isCriticalChain(chain: ChainKey): chain is CriticalChain {
   return (CRITICAL_CHAINS as readonly ChainKey[]).includes(chain);
 }
 
-/** Everything known about a chain that has stopped moving. */
 export interface StallFacts {
   chain: CriticalChain;
-  /** Live peer count, or null when no sample has come back yet. */
+  /** Null until a sample comes back. */
   peers: number | null;
-  /** Bytes per second across every network the shell can see, or null. */
+  /** Across every network the shell can see. */
   bytesPerSecond: number | null;
   /** The word smoldot itself uses for why it stalled, on `stalled` only. */
   reason?: string | undefined;
@@ -42,13 +34,11 @@ const CHAIN_WORDS: Record<CriticalChain, string> = {
 };
 
 function throughput(bytesPerSecond: number | null): string | null {
-  // Under a byte a second there is no honest number to print, and the sentence
-  // for "connected but nothing arriving" already covers it.
+  // The "connected but nothing arriving" sentence covers under a byte a second.
   if (bytesPerSecond === null || bytesPerSecond < 1) {
     return null;
   }
-  // Below half a kilobyte the kB rounding reads "0 kB/s", which says the
-  // opposite of what is happening: bytes are moving, just barely.
+  // Bytes, not kB, so a trickle never rounds to "0 kB/s".
   if (bytesPerSecond < 1024) {
     return `${String(Math.round(bytesPerSecond))} B/s`;
   }
@@ -58,16 +48,8 @@ function throughput(bytesPerSecond: number | null): string | null {
 }
 
 /**
- * One sentence explaining a stalled chain, or null when there is nothing
- * worth saying.
- *
- * Null is the common case and it matters. Sitting in one state for a few
- * seconds is normal: measured on a healthy load, chains dwell in `connecting`
- * for 3s, 8s and 11s, so a dwell alone is not evidence of trouble. A warning
- * is earned only by a fact that says something is actually wrong, which means
- * no peers, smoldot reporting a stall of its own, or a peered chain with no
- * data moving. Absence of a peer sample is absence of information, not a
- * problem, and warning about it fired on every single load.
+ * Null when nothing is wrong, the common case: healthy chains dwell in `connecting` for seconds. Only no peers, a
+ * stall smoldot reports, or a peered chain with no data earns a warning. A missing peer sample is not one.
  */
 export function describeStall(facts: StallFacts): string | null {
   const what = CHAIN_WORDS[facts.chain];
@@ -90,22 +72,14 @@ export function describeStall(facts: StallFacts): string | null {
 }
 
 /**
- * How long a load must have been running before any warning may appear.
- *
- * Warnings that arrive in the first seconds read as failure on loads that were
- * always going to succeed, and a warning that flashes in and out is worse than
- * none. A condition that fires earlier is held back and shown at this mark if
+ * Early warnings read as failure on loads that would succeed. A condition that fires earlier is shown at this mark if
  * it still stands.
  */
 export const WARNING_MIN_LOAD_MS = 5_000;
 
 /**
- * One sentence for a bar that has stopped moving.
- *
- * The per-chain watchdog cannot cover this: a chain that never reaches a peer
- * emits nothing, so its lifecycle stays quiet while the bar parks. The message
- * carries no percentage, because the bar above already shows the live one and
- * a number baked into a sentence goes stale the moment the bar moves.
+ * For a parked bar, which the per-chain watchdog misses when a chain never reaches a peer and so emits nothing. No
+ * percentage, since one baked into a sentence goes stale as the bar moves.
  */
 export function describeProgressStall(bytesPerSecond: number | null): string {
   const rate = throughput(bytesPerSecond);

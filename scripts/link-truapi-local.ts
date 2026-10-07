@@ -3,8 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const dotliRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-// dotli lives either as the `hosts/dotli` submodule of the truapi checkout or
-// as a standalone clone next to it.
+// dotli is either the `hosts/dotli` submodule of the truapi checkout or a clone next to it.
 const truapiRoot = resolve(
   process.env['TRUAPI_REPO'] ??
     [resolve(dotliRoot, '../..'), resolve(dotliRoot, '../host-rust-core')].find(root =>
@@ -44,8 +43,7 @@ function assertPackage(expectedName: string, path: string): void {
   }
 }
 
-// Symlink each checkout into the root node_modules, which is all `npm link`
-// would do, minus the global registry detour and the reinstall it triggers.
+// What `npm link` would do, minus the global registry detour and the reinstall it triggers.
 for (const pkg of packages) {
   assertPackage(pkg.name, pkg.path);
   const target = resolve(dotliRoot, 'node_modules', pkg.name);
@@ -66,11 +64,8 @@ for (const [workspace, name] of [
   });
 }
 
-// host-playground's published product-sdk-host currently nests an older
-// @parity/truapi. The local E2E must use one current client instance; loading
-// a second client over the same MessagePort causes request-id collisions and
-// reproduces the alias card's stuck-pending symptom. Point that nested runtime
-// at this checkout when the local product checkout is available.
+// host-playground's product-sdk-host nests an older @parity/truapi. A second client over the same MessagePort
+// collides on request ids, so point the nested one at this checkout.
 const shouldLinkProduct = process.env['E2E_PRODUCT_REPO'] !== undefined || process.env['E2E_PRODUCT_URL'] !== undefined;
 const productRoot = resolve(process.env['E2E_PRODUCT_REPO'] ?? resolve(dotliRoot, '../../../host-playground'));
 if (shouldLinkProduct && existsSync(resolve(productRoot, 'package.json'))) {

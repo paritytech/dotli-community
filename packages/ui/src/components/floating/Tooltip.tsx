@@ -9,38 +9,24 @@ import { FloatingLayer, type Placement } from './FloatingLayer.js';
 import { Surface, type SurfaceWidth } from '../primitives/Surface.js';
 import s from './Tooltip.module.css';
 
-/** How long a mouse rests on the trigger before the tooltip shows. */
+/** How long a mouse rests on the trigger before showing. */
 const SHOW_MS = 200;
-/** How long after the pointer leaves the trigger and the tooltip before it hides. */
+/** Grace after the pointer leaves both the trigger and the tooltip. */
 const HIDE_MS = 100;
 
 export interface TooltipProps {
   id: string;
-  /**
-   * The described element, wired while given: a focusable one, a button for
-   * the toggle on Enter and Space.
-   */
+  /** Wired while given. Must be focusable, and a button for Enter and Space to toggle. */
   trigger: HTMLElement | undefined;
   class?: string | undefined;
-  /** Under the trigger from its left edge unless this says otherwise. */
   placement?: Placement | undefined;
-  /** The surface's width, `md` unless set. */
   width?: SurfaceWidth | undefined;
   children: JSX.Element;
 }
 
 /**
- * A description that shows while a mouse rests on its trigger or the trigger
- * has keyboard focus, and on a tap on touch; Enter or Space on the trigger
- * toggles it. It never takes focus. It hides once the pointer has left the
- * trigger and the tooltip, on the trigger's blur, on Escape, on a press or
- * focus elsewhere and on the window's blur (a press in the product's
- * iframe). A `manual` FloatingLayer with `role="tooltip"`, so it leaves open
- * popovers alone, and the same anchored layer on a phone. Its children
- * render in a Surface (the popovers' width and gap; the padding is theirs),
- * from a showing until its exit has played. Children that cannot
- * load (a `lazy()` chunk gone after a deploy) or throw are reported once and
- * hide the tooltip; the next showing loads them again.
+ * Shows on mouse rest, keyboard focus or a tap, and never takes focus. A `manual` layer so it leaves open popovers
+ * alone, anchored on a phone too. The window's blur (a press in the product's iframe) hides it.
  */
 export function Tooltip(props: TooltipProps): JSX.Element {
   const [open, setOpenSignal] = createSignal(false, { ownedWrite: true });
@@ -69,7 +55,6 @@ export function Tooltip(props: TooltipProps): JSX.Element {
     clearTimeout(timer);
     timer = setTimeout(hide, HIDE_MS);
   };
-  /** The pointer is back on the trigger or the tooltip: no hiding. */
   const hold = (): void => {
     clearTimeout(timer);
   };
@@ -81,7 +66,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
       if (el === undefined) {
         return;
       }
-      /** A press is under way: the focus it brings is no keyboard's. */
+      /** The focus a press brings is no keyboard's. */
       let pressing = false;
       el.setAttribute('aria-describedby', props.id);
       el.style.setProperty('anchor-name', anchorName(props.id));
@@ -115,8 +100,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         }
       };
       const onClick = (ev: MouseEvent): void => {
-        // A tap toggles it, and so do Enter and Space (their click has
-        // `detail` 0); a mouse's click leaves what its hover did.
+        // A tap, Enter or Space (click `detail` 0) toggles it. A mouse's click leaves what its hover did.
         const tap = ev instanceof PointerEvent && ev.pointerType !== 'mouse' && ev.pointerType !== '';
         if (tap || ev.detail === 0) {
           if (current) {
@@ -152,8 +136,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
     },
   );
 
-  // A manual layer gets none of the closes an auto one has from the browser
-  // and FloatingLayer, so the ones a tooltip needs are its own.
+  // A manual layer gets none of the browser's or FloatingLayer's closes, so the tooltip adds its own.
   createEffect(open, isOpen => {
     if (!isOpen) {
       return;
@@ -172,8 +155,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         hide();
       }
     };
-    // Focus taken elsewhere without the trigger's blur seeing it: a tap
-    // never focused the trigger (Safari), and a modal coming up takes focus.
+    // Focus moved without the trigger's blur: a tap never focused it (Safari), or a modal took focus.
     const onFocusIn = (ev: FocusEvent): void => {
       if (outside(ev.target)) {
         hide();
@@ -203,7 +185,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
       class={[s['tooltip'], props.class].filter(Boolean).join(' ')}
       onPointerEnter={hold}
       onPointerLeave={ev => {
-        // A tap on the tooltip leaves it too: only a mouse moving off hides it.
+        // A tap on the tooltip fires a leave too, so only a mouse moving off hides it.
         if (ev.pointerType === 'mouse') {
           hideSoon();
         }

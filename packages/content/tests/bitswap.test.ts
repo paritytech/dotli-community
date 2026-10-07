@@ -23,12 +23,7 @@ vi.mock('../../config/src/config.js', async importOriginal => ({
   isSandboxOrigin: mocks.isSandboxOrigin,
 }));
 
-/**
- * Stands in for the protocol iframe's smoldot.
- *
- * `replies` is consumed one entry per `bitswap_v1_get`, so the test spells out
- * the exact sequence the chain hands back across retries.
- */
+/** Stands in for the protocol iframe's smoldot, answering each `bitswap_v1_get` with the next of `replies`. */
 function stubChain(
   replies: ({ code: number } | { hex: string })[],
   tail?: { code: number },
@@ -247,7 +242,7 @@ describe('bitswapGet after a halt', () => {
     unanswered: number[];
   }
 
-  /** One fake connection per dial; the first never replies, later ones answer. */
+  /** One fake connection per dial. The first never replies, later ones answer. */
   function stubHaltableChain(): HaltableChain {
     const chain: HaltableChain = { dialled: [], unanswered: [] };
     mocks.createRemoteChainProvider.mockImplementation(

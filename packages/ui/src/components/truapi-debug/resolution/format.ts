@@ -19,12 +19,7 @@ interface FactValue {
   tooltip?: string;
 }
 
-/**
- * One KPI card. `hint` is the plain-English explanation shown on hover, which is
- * the only place several of these are disambiguated: `sync download` counts
- * chain traffic and `app size` counts the dApp files, and nothing else on
- * screen says so.
- */
+/** One KPI card. `hint` is the only place on screen that disambiguates similar facts. */
 interface Fact {
   key: string;
   value: FactValue;
@@ -164,12 +159,11 @@ export function axisTicks(span: number): AxisTick[] {
   }));
 }
 
-/** Phases with a colour of their own; anything else falls back to neutral. */
 const COLOURED_PHASES = new Set(['connecting', 'syncing', 'ready', 'stalled']);
 
 interface BlockView {
   phase: string;
-  /** The phase colour: the phase itself, or `unknown`. */
+  /** The phase itself, or `unknown` when it has no colour of its own. */
   tone: string;
   left: string;
   width: string;

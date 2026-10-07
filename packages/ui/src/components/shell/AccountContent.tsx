@@ -30,13 +30,7 @@ function LogOutIcon(): JSX.Element {
   );
 }
 
-/**
- * The account popover's body (AuthButton), its own chunk: the avatar, the
- * username (or the shortened account, with a hint that the account has no
- * username on this network) and Log out, which asks the Rust core to
- * disconnect. Its ids follow the popover's (`#user-popover-username`, or the
- * landing page's `#landing-user-popover-username`).
- */
+/** The account popover's body, its own chunk. */
 export function AccountContent(): JSX.Element {
   const popover = usePopover();
   const account = useAccount();
@@ -78,8 +72,7 @@ export function AccountContent(): JSX.Element {
           </div>
         </div>
       </div>
-      {/* Explains the username-less state instead of leaving a bare
-          address that reads as a rendering bug. */}
+      {/* A bare address with no explanation reads as a rendering bug. */}
       <Show when={account.loggedIn() && (username() ?? '').length === 0}>
         <Callout icon={<InfoIcon />}>
           <span id={id('hint')}>No username found for this account on this network.</span>

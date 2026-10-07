@@ -12,17 +12,16 @@ import s from './FloatingLayer.module.css';
 
 export type Placement = 'topbar-end' | 'trigger-start';
 
-/** The closes a layer reports; `dismiss` is a sheet's. */
 export type LayerCloseReason = Exclude<CloseReason, 'sheet' | 'released'>;
 
-/** How long content stays after a close: the surface's exit, `--dur`. */
+/** Matches the surface's exit, `--dur`. */
 export const EXIT_MS = 220;
 
 export interface FloatingLayerProps {
   id: string;
   kind: 'auto' | 'manual';
   open: boolean;
-  /** A close the browser or the layer made: the owner sets its state from it. */
+  /** A close the browser or the layer made. The owner sets its state from it. */
   onClose: (reason: LayerCloseReason) => void;
   trigger: () => HTMLElement | undefined;
   placement?: Placement;
@@ -31,9 +30,9 @@ export interface FloatingLayerProps {
   orientation?: 'horizontal' | undefined;
   class?: string | undefined;
   testId?: string | undefined;
-  /** Focus on open; receives the surface. */
+  /** Moves focus in on open. */
   onOpened?: (surface: HTMLElement) => void;
-  /** Keys inside the surface, after the layer's own (Tab trap when trapFocus). */
+  /** Runs after the layer's own keys (the Tab trap). */
   onKeyDown?: (ev: KeyboardEvent, surface: HTMLElement) => void;
   trapFocus?: boolean | undefined;
   onPointerEnter?: (ev: PointerEvent) => void;
@@ -44,26 +43,16 @@ export interface FloatingLayerProps {
 }
 
 /**
- * The anchored base of Popover, DropdownMenu and Tooltip: a `popover`
- * element in the body (in the bar, whose glass is a backdrop filter, a fixed
- * surface would be placed against the bar). The owner's `open` drives
- * showPopover() and hidePopover(); the browser's own closes (a press
- * outside, the invoker) and a ModalLayer showing come back through
- * `beforetoggle` as `onClose`. What the browser leaves out it adds: a press in the
- * product's iframe only blurs this window, and focus can leave by a script,
- * so both close an auto layer too. Escape is the layer's own, on the key:
- * inside a ModalLayer the layer would take the key for itself.
+ * The anchored base of Popover, DropdownMenu and Tooltip, portalled to the body because the bar's backdrop filter
+ * would place a fixed surface against the bar. Browser closes and a ModalLayer showing come back as `onClose`.
+ * A press in the product's iframe only blurs the window and focus can leave by script, so both close it too.
  */
 export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   let surface: HTMLDivElement | undefined;
-  /**
-   * Shown in the top layer, as the browser last announced it. Not
-   * `:popover-open`, which happy-dom's selector engine does not know.
-   */
+  /** As the browser last announced it. Not `:popover-open`, which happy-dom does not support. */
   let shown = false;
-  /** The opening the content belongs to, 0 once its exit has played. */
   const presence = createPresence(() => props.open, EXIT_MS);
-  /** Why the next close happens, set by the listener that saw its cause. */
+  /** Set by the listener that saw the next close's cause. */
   let reason: LayerCloseReason = 'programmatic';
 
   onCleanup(registerTopbarSurface({ element: () => surface, open: () => untrack(() => props.open) }));
@@ -97,8 +86,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
     }
   };
 
-  // Listeners that see why the browser is about to close the layer, and the
-  // closes it never makes.
+  // Why the browser is about to close the layer, and the closes it never makes.
   createEffect(
     () => props.open,
     open => {
@@ -117,9 +105,8 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
       };
       const onKeyDown = (ev: KeyboardEvent): void => {
         if (ev.key === 'Escape' && !ev.defaultPrevented && !ev.isComposing) {
-          // Ahead of the browser's close request, which a prevented key never
-          // makes, so the close is reported once; and ahead of a ModalLayer
-          // under this layer, which leaves a prevented Escape alone.
+          // Prevented so the browser's close request never comes and the close is reported once, and so a
+          // ModalLayer under this one leaves the key alone.
           ev.preventDefault();
           props.onClose('escape');
         }
@@ -128,8 +115,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         props.onClose('blur');
       };
       const onFocusOut = (ev: FocusEvent): void => {
-        // A null relatedTarget is focus going to the body or out of the
-        // window, which the blur listener owns.
+        // A null relatedTarget (the body, or out of the window) is the blur listener's.
         const next = ev.relatedTarget as Node | null;
         if (next !== null && !inside(next)) {
           props.onClose('focus-out');
@@ -182,8 +168,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         onPointerEnter={ev => props.onPointerEnter?.(ev)}
         onPointerLeave={ev => props.onPointerLeave?.(ev)}
       >
-        {/* Keyed, taking the key as a parameter (Show calls only a child
-            that declares one), so each opening mounts the content afresh. */}
+        {/* Show passes the key only to a child declaring a parameter, which remounts the content per opening. */}
         <Show when={presence()} keyed>
           {(_opening: number) => props.children}
         </Show>

@@ -1,21 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Injects description, OpenGraph and Twitter card tags so shared links unfurl.
-// A plugin, not index.html, because crawlers need an absolute og:image URL.
+// Link-unfurl meta tags. A plugin, not index.html, because crawlers need an absolute og:image URL.
 
 import type { HtmlTagDescriptor, Plugin } from 'vite';
 
 export interface SocialMeta {
-  /** Page title as shown in link previews. Should match `<title>`. */
+  /** Should match `<title>`. */
   title: string;
-  /** One or two sentences, ideally under 160 characters. */
+  /** Ideally under 160 characters. */
   description: string;
-  /** Site name shown above the title by some unfurlers. */
   siteName: string;
-  /** Root-relative path to a square PNG of at least 200x200, e.g. `/icon-512.png`. */
+  /** Root-relative path to a square PNG of at least 200x200. */
   image: string;
-  /** Alt text for the preview image. */
   imageAlt: string;
 }
 
@@ -28,11 +25,7 @@ export function socialImageUrl(image: string): string {
   return new URL(image, appUrl).href;
 }
 
-/**
- * The description, OpenGraph and Twitter card `<meta>` tags for `config`, as
- * attribute sets: what socialMetaTags() injects, for a page that writes its
- * own head (the host's Astro page).
- */
+/** The tags socialMetaTags() injects, as attribute sets, for a page that writes its own head. */
 export function socialMetaAttributes(config: SocialMeta): Record<string, string>[] {
   const image = socialImageUrl(config.image);
   return [

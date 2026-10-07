@@ -37,7 +37,6 @@ describe('namehash', () => {
   it('computes hash for myapp.dot', () => {
     const hash = namehash('myapp.dot');
     expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
-    // Must differ from just "dot"
     expect(hash).not.toBe(namehash('dot'));
   });
 
@@ -131,7 +130,6 @@ describe('wordToBigInt', () => {
 describe('extractAddress', () => {
   it('extracts address from right-aligned 32-byte word', () => {
     const data = new Uint8Array(32);
-    // Set last 20 bytes to a known address
     const addr = [
       0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0xaa, 0xbb, 0xcc, 0xdd,
       0xee,
@@ -153,7 +151,6 @@ describe('decodeBytesSlot', () => {
   });
 
   it('decodes short bytes (inline)', () => {
-    // 3 bytes of data: 0xaabbcc, length = 3, lowest byte = 6 (3*2)
     const data = new Uint8Array(32);
     data[0] = 0xaa;
     data[1] = 0xbb;
@@ -170,10 +167,8 @@ describe('decodeBytesSlot', () => {
   });
 
   it('detects long bytes', () => {
-    // Long bytes: lowest bit is 1, word = length * 2 + 1
-    // For 36 bytes: 36 * 2 + 1 = 73 = 0x49
     const data = new Uint8Array(32);
-    data[31] = 73; // 0x49
+    data[31] = 73; // 36 * 2 + 1
     const result = decodeBytesSlot(data, dummySlot);
     if (result === null) {
       throw new Error('expected a decoded slot');
@@ -187,7 +182,7 @@ describe('decodeBytesSlot', () => {
 
   it('returns null for zero-length short bytes', () => {
     const data = new Uint8Array(32);
-    data[31] = 0; // length * 2 = 0
+    data[31] = 0;
     expect(decodeBytesSlot(data, dummySlot)).toBeNull();
   });
 });

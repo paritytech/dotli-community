@@ -1,11 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host is a static Astro site: one page (src/pages/index.astro), whose
-// shell is plain markup with the reactive pieces as Solid islands
-// (@config/astro-solid), server-rendered at build time and hydrated. Astro
-// drives Vite; the build's Vite setup is under `vite` below.
-
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { defineConfig } from 'astro/config';
 import type { AstroIntegration } from 'astro';
@@ -26,14 +21,10 @@ import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config'
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
-// vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
-// NodeNext sees the module object. At runtime the default export is the plugin.
+// Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
 
-// Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
-// git HEAD so Diagnostics shows a real commit identifier in dev too. The
-// literal "dev" is only used when we're not in a git checkout at all (e.g. a
-// tarball).
+// Falls back to git HEAD so local builds show a real commit too.
 if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
   try {
     process.env['VITE_COMMIT_SHA'] = execSync('git rev-parse HEAD', {
@@ -44,24 +35,17 @@ if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
       .trim();
     // eslint-disable-next-line no-restricted-syntax -- no git checkout is a normal build, not an error.
   } catch {
-    // Not a git checkout, so leave it unset. topbar.ts treats that as "dev".
+    // Unset reads as "dev".
   }
 }
 
-// Before Vite reads the environment, so the SDK reports the release the
-// sourcemaps are uploaded under.
+// Before Vite reads the environment, so the SDK reports the release the sourcemaps are uploaded under.
 provideSentryRelease(import.meta.dirname);
 
 const OUT_DIR = 'dist';
 const APP_URL = process.env['VITE_APP_URL'] ?? '';
 
-/**
- * Walk every workspace member's `package.json` and collect its direct
- * `dependencies` entries. devDependencies and peerDependencies are ignored, so
- * only what dot.li code actually imports appears in Diagnostics. Returns a map
- * keyed by package name whose value is the set of workspace directories that
- * depend on it.
- */
+/** Direct `dependencies` only, so Diagnostics lists just what dot.li code imports. Maps a package to its dependents. */
 function collectWorkspaceDependencies(): Map<string, Set<string>> {
   const deps = new Map<string, Set<string>>();
   const roots = [resolve(import.meta.dirname, '../../apps'), resolve(import.meta.dirname, '../../packages')];
@@ -97,11 +81,7 @@ function collectWorkspaceDependencies(): Map<string, Set<string>> {
 
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
 
-/**
- * The installed version of `name` as the workspace at `wsDir` resolves it:
- * its own `node_modules` first, then each ancestor's up to the repo root,
- * where npm hoists most dependencies.
- */
+/** Resolves as Node does, from the workspace's own `node_modules` up to the repo root, where npm hoists most. */
 function installedVersion(wsDir: string, name: string): string | undefined {
   for (let dir = wsDir; ; dir = dirname(dir)) {
     try {
@@ -113,7 +93,7 @@ function installedVersion(wsDir: string, name: string): string | undefined {
       }
       // eslint-disable-next-line no-restricted-syntax -- a missing copy just means an ancestor holds it.
     } catch {
-      // Not installed at this level, so try the parent.
+      // Not at this level, so try the parent.
     }
     if (dir === REPO_ROOT || dirname(dir) === dir) {
       return undefined;
@@ -121,12 +101,7 @@ function installedVersion(wsDir: string, name: string): string | undefined {
   }
 }
 
-/**
- * For every direct dependency whose name starts with `scope`, resolve the
- * actually-installed version as the depending workspace sees it. Ignores
- * transitive dependencies, which would otherwise balloon the version list to
- * 80+ rows.
- */
+/** Direct dependencies only, since transitive ones would balloon the list to 80+ rows. */
 function collectDirectScopedDeps(scope: string): { name: string; version: string }[] {
   const wsDeps = collectWorkspaceDependencies();
   const result = new Map<string, string>();
@@ -156,23 +131,12 @@ function readPolkadotApiVersion(): string {
 }
 
 /**
- * The page's preloads, which Vite writes for an HTML entry and Astro does
- * not, added to the built page:
- * - `<link rel="modulepreload">` for every chunk the page's scripts import
- *   statically, so the browser fetches them in parallel rather than one
- *   import level at a time. The islands load as Astro loads them: each
- *   island element imports its component and renderer when it hydrates.
- * - On subdomain pages, a script that preloads the name resolution chunk
- *   (`resolve`), the first lazy chunk a product load imports.
- *
- * It rewrites index.html, so it runs before astroPwa, whose precache
- * manifest records the page's hash.
+ * The modulepreloads Vite writes for an HTML entry and Astro does not, plus, on subdomain pages, the `resolve` chunk a
+ * product load imports first.
  */
 function pagePreloads(): AstroIntegration {
   let base = '/';
-  /** Each client chunk's static imports, by file name. */
   const imports = new Map<string, readonly string[]>();
-  /** The client chunks' file names, by chunk name. */
   const byName = new Map<string, string>();
   const graph: Plugin = {
     name: 'page-preloads:graph',
@@ -237,12 +201,7 @@ function pagePreloads(): AstroIntegration {
   };
 }
 
-/**
- * Mirror nginx scoping: COEP/COOP/CORP only apply to /__preview, not the
- * whole host build. Applying them server-wide breaks the legacy
- * /localhost:<port> proxy iframe in browsers that enforce COEP, because
- * arbitrary localhost dev servers don't ship CORP/COEP.
- */
+/** Scoped to /__preview as in nginx, since localhost dev servers ship no CORP/COEP and server-wide COEP breaks them. */
 function previewCoepHeaders(): Plugin {
   return {
     name: 'preview-coep-headers',
@@ -259,11 +218,7 @@ function previewCoepHeaders(): Plugin {
   };
 }
 
-/**
- * Sentry sourcemap upload. Skipped when metrics are off (runtime SDK is aliased to a
- * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
- * (preserves source maps for debugging).
- */
+/** Skipped when metrics are off, since the SDK is a no-op, and locally, which keeps source maps for debugging. */
 function sentry(): PluginOption {
   if (process.env['VITE_METRICS'] !== 'true') {
     return false;
@@ -284,22 +239,15 @@ function sentry(): PluginOption {
 export default defineConfig({
   outDir: OUT_DIR,
   base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
-  // Where the Vite build put them: nginx rate-limits and caches /assets/.
+  // nginx rate-limits and caches /assets/.
   build: { assets: 'assets' },
   integrations: [
-    // Compiles Solid for the islands: server-rendered at build time and
-    // hydrated in the browser (see config/astro-solid).
     astroSolid(),
-    // The CSS of a chunk the page imports on demand loads with that chunk
-    // rather than at boot.
+    // An on-demand chunk's CSS loads with that chunk, not at boot.
     astroLazyCss(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
-    // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
-    // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
-    // cross-origin and outside this SW's reach by design. `registerType:
-    // "prompt"` defers update activation to the user via workbox-window in
-    // src/pwa.ts.
+    // src/pwa.ts prompts for updates.
     astroPwa({
       injectRegister: false,
       registerType: 'prompt',
@@ -325,19 +273,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
-        // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
-        // ring-VRF operation first needs it. Precaching it would make every
-        // installed shell download it after each release.
+        // Loaded only on demand. Precaching would make every installed shell download them after each release.
         globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm'],
         cleanupOutdatedCaches: true,
-        // skipWaiting/clientsClaim stay false: prompt-style updates require
-        // the waiting SW to sit idle until the user opts in.
+        // Prompted updates need the waiting SW to sit idle until the user opts in.
         skipWaiting: false,
         clientsClaim: false,
         maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,
-        // Bypass the SW for /__preview so nginx's COEP/COOP/CORP headers
-        // reach the browser, and for host_version.json so opening it shows
-        // the file rather than the cached shell.
+        // /__preview needs nginx's COEP/COOP/CORP headers, and host_version.json must show the file, not the shell.
         navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/, /^\/host_version\.json$/],
       },
     }),
@@ -345,14 +288,12 @@ export default defineConfig({
   vite: {
     css: { modules: cssModules() },
     envDir: resolve(import.meta.dirname, '../..'),
-    // The host's settings are VITE_*, as under plain Vite (Astro's own
-    // default is PUBLIC_*).
+    // Astro's default is PUBLIC_*.
     envPrefix: 'VITE_',
     plugins: [
       stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
       wasm(),
-      // Serves /dotli-network.js under `astro dev`; the page links it
-      // (src/pages/index.astro).
+      // Serves /dotli-network.js under `astro dev`.
       runtimeNetworkConfigScript(),
       buildInfo('host'),
       previewCoepHeaders(),
@@ -364,9 +305,7 @@ export default defineConfig({
     },
     define: {
       __BUILD_TARGET__: JSON.stringify('host'),
-      // Baked once at build time, read lazily at the declaration site so a
-      // missing package (shouldn't happen given the monorepo overrides)
-      // falls back to empty/"unknown" rather than failing the build.
+      // A missing package falls back to "unknown" rather than failing the build.
       __DOTLI_VERSION__: JSON.stringify(readReleaseVersion(import.meta.dirname)),
       __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
       __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),

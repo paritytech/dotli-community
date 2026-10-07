@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// TrUAPI debug export
-//
-// Serializes stored debug events for file download and clipboard copy.
-// Unlike the display formatters in format.ts, nothing is truncated.
+// Unlike the display formatters in format.ts, the export truncates nothing.
 
 import { toHex } from '@dotli/shared';
 
@@ -51,7 +48,6 @@ export function buildExport(events: readonly StoredEvent[], meta: ExportMeta): s
   }
 }
 
-/** `dotli-debug-2026-07-31T14-30-00.json` */
 export function exportFilename(now: Date): string {
   const stamp = now.toISOString().slice(0, 19).replace(/:/g, '-');
   return `dotli-debug-${stamp}.json`;

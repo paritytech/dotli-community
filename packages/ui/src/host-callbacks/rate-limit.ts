@@ -1,5 +1,3 @@
-// Sliding-window rate limiter shared across host callbacks.
-
 const SUBMIT_WINDOW_MS = 10_000;
 const SUBMIT_MAX_PER_WINDOW = 20;
 

@@ -1,7 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Its width is an inline style from the chat-panel store. */
+/* The chat-panel store sets the width inline. */
 
 .panel {
   position: fixed;
@@ -16,8 +16,7 @@
   margin: 0;
   padding: 0;
   border-left: 1px solid var(--border-subtle);
-  /* Painted with the chat palette's surface so it matches product boxes painted
-     BgSurfaceMain exactly. */
+  /* The chat palette's surface, so it matches product boxes painted BgSurfaceMain. */
   background: var(--chat-bg-surface-main);
   color-scheme: dark;
   transition: top 0.3s ease;

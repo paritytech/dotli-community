@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's .toast: dark glass in both page themes, the icon tile tinted
-   by the toast's tone. Desktop sizes by default, the board's in the phone
-   block. */
-
 .card {
   /* The board's 8 px step on the narrower card. */
   --pile-step: 7px;
@@ -24,7 +20,7 @@
   font-family: var(--font-sans);
 }
 
-/* Piled in one cell, each older card a step higher, 4% smaller and 5% darker. */
+/* Collapsed cards pile in one cell, older ones behind. */
 .stacked {
   grid-area: 1 / 1;
   align-self: end;
@@ -102,7 +98,6 @@ a.body {
 }
 a.body:hover {
   text-decoration: underline;
-  /* The board's .link offset. */
   text-underline-offset: 3px;
 }
 a.body:focus-visible {
@@ -141,7 +136,7 @@ a.body:focus-visible {
   pointer-events: none;
 }
 
-/* PHONE_QUERY in phone-viewport.ts: the board's sizes. */
+/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .card {
     --pile-step: var(--sp-2);
@@ -160,8 +155,7 @@ a.body:focus-visible {
   }
 }
 
-/* A card is removed on its animationend, so the animations shrink to
-   nothing instead of going away. */
+/* Cards are removed on animationend, so the animations shrink instead of going away. */
 @media (prefers-reduced-motion: reduce) {
   .stacked,
   .expanded {

@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host page's side of the shell's islands (the Astro page, see
-// src/islands/): their failures. Solid-free: the host's startup path runs
-// it.
+// Island hydration failures. Solid-free because the host's startup path runs it.
 
 import { captureException } from '@dotli/metrics';
 import { disableAuthModal } from '../auth-controller.js';
@@ -14,10 +12,7 @@ import { showBrokenPage } from '../ui.js';
 
 declare global {
   interface Window {
-    /**
-     * The islands' failures from before reportIslandErrors listens, kept by
-     * the host page's inline script; null once it listens.
-     */
+    /** Failures the host page's inline script kept before reportIslandErrors listens, null once it does. */
     __dotliIslandErrors?: Event[] | null;
   }
 }
@@ -27,7 +22,6 @@ interface HydrationErrorDetail {
   componentUrl: string | null;
 }
 
-/** Run `act` once `when` holds for the store's value, now or later. */
 function once<T>(store: ReadableStore<T>, when: (value: T) => boolean, act: () => void): void {
   if (when(store.get())) {
     act();
@@ -42,16 +36,11 @@ function once<T>(store: ReadableStore<T>, when: (value: T) => boolean, act: () =
 }
 
 /**
- * Report an island that failed to load or hydrate (Astro's
- * `astro:hydration-error`), and stand in for what it would have done. Its
- * build-time markup stays, as rendered:
- * - AuthModal: the auth modal is disabled (disableAuthModal), so a login
- *   never holds the blocking-modal lease for a modal nobody can see.
- * - LoadingScreen: its markup goes once the loading screen does.
- * - LandingPage: the landing page shows the reload error page instead.
+ * Stands in for an island that failed to hydrate, whose build-time markup stays. AuthModal is disabled
+ * so a login never holds the blocking-modal lease for a modal nobody can see.
  */
 function onIslandError(ev: Event): void {
-  // In place of Astro's console log, for a failure while this listens.
+  // Replaces Astro's console log.
   ev.preventDefault();
   const island = ev.target instanceof Element ? ev.target : null;
   const component = island?.getAttribute('component-export') ?? 'unknown';
@@ -80,11 +69,6 @@ function onIslandError(ev: Event): void {
   }
 }
 
-/**
- * Handle the islands' failures: the ones the page kept before this ran
- * (`window.__dotliIslandErrors`), then each as it happens. Returns the
- * function that stops listening.
- */
 export function reportIslandErrors(): () => void {
   const early = window.__dotliIslandErrors ?? [];
   window.__dotliIslandErrors = null;

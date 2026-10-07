@@ -13,7 +13,7 @@ const onRow = fn<(row: string) => void>().mockName('onRow');
 const body = within(document.body);
 
 function Harness() {
-  // What the Settings row opens: on a phone, a sheet that takes the menu's place.
+  // On a phone, the Settings row's sheet takes the menu's place.
   const [settings, setSettings] = createSignal(false);
   const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
@@ -69,8 +69,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Trusted input, a user's: the browser's invokers act on it only. Loaded on
- * use, so the stories still load in Storybook outside Vitest.
+ * Trusted input, which the browser's invokers require. Imported lazily so Storybook loads the stories outside Vitest.
  */
 const input = async () => (await import('vitest/browser')).userEvent;
 const menu = (): HTMLElement => {

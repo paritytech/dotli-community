@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Whether a product's manifests let it be opened, decided before any of its
-// content is fetched (product-manifest RFC, "Resolving a product"). A product
-// with no manifests at all is served by its contenthash alone, as before
-// manifests existed; one whose manifests this host cannot read is not opened.
+// Decided before any content is fetched. A product with no manifests is served by its contenthash alone, and one
+// whose manifests this host cannot read is not opened.
 
 import {
   toExecutableManifestResult,
@@ -15,18 +13,16 @@ import {
 } from '@dotli/resolver';
 import type { CachedManifests } from '@dotli/storage';
 
-/** A product's root manifest and its `app.` executable manifest. */
 export interface ProductManifests {
   root: ManifestResult<RootManifest>;
   app: ManifestResult<ExecutableManifest>;
 }
 
-/** Judge cached manifest text again, by the validator this host ships today. */
+/** Re-validates cached text with the validator this host ships today. */
 export function fromCache(cached: CachedManifests): ProductManifests {
   return { root: toRootManifestResult(cached.root), app: toExecutableManifestResult(cached.app, 'app') };
 }
 
-/** The record text to cache next to the CID: `null` for a record that has none. */
 export function toCache(manifests: ProductManifests): CachedManifests {
   const text = (result: ManifestResult<unknown>): string | null => ('raw' in result ? result.raw : null);
   return { root: text(manifests.root), app: text(manifests.app) };
@@ -64,10 +60,7 @@ function assertReadable(result: ManifestResult<unknown>, record: 'root' | 'app')
   }
 }
 
-/**
- * Throw `ManifestRejectedError` unless the root and app manifests let the
- * product be opened. A network without text records counts as no manifests.
- */
+/** A network without text records counts as no manifests. */
 export function assertLaunchable(root: ManifestResult<RootManifest>, app: ManifestResult<ExecutableManifest>): void {
   assertReadable(root, 'root');
   if (!present(root) && present(app)) {
@@ -76,21 +69,12 @@ export function assertLaunchable(root: ManifestResult<RootManifest>, app: Manife
   assertReadable(app, 'app');
 }
 
-/** What a background revalidation does to a cached product. */
 export type RevalidateDecision =
   | { kind: 'keep' }
   | { kind: 'update'; cid: string; manifests: CachedManifests }
   | { kind: 'evict'; reason: 'cleared' | 'rejected' };
 
-/**
- * Decide what happens to a cached product once its name is resolved again.
- *
- * Cached manifests are dropped only by an explicit cleanup or a redeploy. A
- * redeploy moves the contenthash (RFC, "Cache invalidation"), so the
- * manifests are read again only when the CID changed: kept with the new CID
- * if they pass, evicted with the old one if they do not. An unchanged CID
- * keeps the entry as it is.
- */
+/** A redeploy moves the contenthash, so manifests are read again only when the CID changed. */
 export async function revalidateCachedProduct(
   servedCid: string,
   readCid: () => Promise<string | null>,

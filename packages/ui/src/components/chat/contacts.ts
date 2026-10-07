@@ -3,17 +3,14 @@
 
 import type { ChatBotRecord, ChatRoomRecord } from '../../chat/service.js';
 
-/** One list entry: a room, or a registered bot. Both open a conversation;
- *  a bot's is keyed by its botId, which the product uses as the roomId when
- *  it posts into or reads from that conversation. */
+/** A room or a registered bot. A bot's conversation is keyed by its botId, which the product uses as the roomId. */
 export interface ContactEntry {
   kind: 'room' | 'bot';
   id: string;
   name: string;
   icon: string;
   createdAt: number;
-  // null until the conversation has messages; the list then falls back to
-  // creation time, so one recency order covers active and new contacts.
+  /** Null until the conversation has a message. */
   lastMessageAt: number | null;
 }
 
@@ -44,7 +41,7 @@ export function contactEntries(
   return entries.sort((a, b) => recency(b) - recency(a));
 }
 
-/** "just now" / "5 mins ago" / "an hour ago" style label for a bubble. */
+/** A bubble's relative time label, such as "5 mins ago". */
 export function relativeTime(timestamp: number, now: number): string {
   const minutes = Math.floor((now - timestamp) / 60_000);
   if (minutes < 1) {

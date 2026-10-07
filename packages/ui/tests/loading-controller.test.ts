@@ -31,8 +31,6 @@ function stubMotionPreference(): void {
 }
 
 function installLoadingDom(): void {
-  // As the host page paints it: the LoadingScreen island's screen, beside
-  // `#app`.
   document.body.innerHTML = `<div id="app-loading"></div><div id="app"></div>`;
 }
 

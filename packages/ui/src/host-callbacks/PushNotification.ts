@@ -1,10 +1,5 @@
-// Push-notification callback. The Rust core passes the typed request, and
-// this adapter returns a stable host-side id for cancel support.
-//
-// The core authorizes `Notifications` (prompting through `devicePermission`
-// and consuming a one-time grant) before it calls here, so this adapter does
-// not prompt or re-check: a second check would find a consumed "Allow once"
-// gone and prompt the user again.
+// The core authorizes `Notifications` before calling here, so this adapter must not re-check:
+// a second check would find a consumed "Allow once" gone and prompt the user again.
 
 import type { Notifications } from '@parity/truapi-host';
 import { log } from '@dotli/shared';
@@ -14,7 +9,7 @@ import { ERRORS } from '../errors.js';
 
 export function createNotificationAdapters(label: string): Required<Notifications> {
   const pushNotification: Required<Notifications>['pushNotification'] = async ({ text, deeplink, scheduledAt }) => {
-    // Facts only: the text and deeplink are the product's content for the user.
+    // The text and deeplink are the user's content, so they stay out of the log.
     log.event('push notification', { flow: 'notifications', scheduled: scheduledAt !== undefined });
 
     const result = await scheduleNotification({

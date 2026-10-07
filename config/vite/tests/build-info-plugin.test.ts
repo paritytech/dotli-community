@@ -10,7 +10,6 @@ import { buildInfo, readReleaseVersion } from '../src/build-info-plugin.js';
 
 type Output = { type: 'chunk'; code: string } | { type: 'asset'; source: string | Uint8Array };
 
-/** Runs the plugin's hooks against `root` and `bundle`, returns the JSON. */
 function emit(root: string, bundle: Record<string, Output>): unknown {
   const plugin = buildInfo('host');
   const emitted: { fileName?: string; source?: unknown }[] = [];
@@ -88,7 +87,6 @@ describe('readReleaseVersion', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  /** Commit everything in the scratch repo, then tag it if given a tag. */
   function commit(tag?: string): void {
     const git = (args: string): void => {
       execSync(

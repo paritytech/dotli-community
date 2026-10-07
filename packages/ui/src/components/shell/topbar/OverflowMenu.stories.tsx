@@ -26,7 +26,7 @@ function el(selector: string): HTMLElement {
 const meta = {
   title: 'Shell/More',
   component: OverflowMenu,
-  // The bar's own group builds the rows and the button ref; the render below ignores these.
+  // The bar's own group builds the rows and the button ref, so the render ignores these.
   args: { rows: [], buttonRef: () => undefined },
   parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
   beforeEach: () => {

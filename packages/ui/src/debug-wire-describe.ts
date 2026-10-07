@@ -1,23 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Debug-panel frame describer.
-//
-// Maps a wire discriminant to a stable method tag and, for registered
-// families, decodes the SCALE payload so the panel's semantic layer
-// (`@dotli/truapi-debug` chain-decode) gets the tags and value shapes it
-// expects. Chain frames keep the pre-port `remote_chain_*` tag names on
-// purpose, the panel's swimlane and annotation logic keys on them.
-//
-// The chain registry below is deliberately small. Codegen names its
-// wire-table entries and its codec exports with different word orders
-// (wire-table key `CHAIN_GET_HEAD_HEADER`, codec stem `HeadHeader`), so the
-// link between them can't be derived from either name. `CHAIN_LINKAGE` is
-// that one hand-maintained table. Everything else (tags, call/subscription
-// shape, export names, void responses) is derived from it and from the
-// installed `@parity/truapi`, so a codegen rename or a new chain method
-// either just works or fails loudly in the drift-guard test instead of
-// silently mis-decoding.
+// Tags and decodes wire frames for the debug panel. Chain frames keep the `remote_chain_*` tag names
+// because the panel's swimlane and annotation logic keys on them.
 
 import * as WIRE_TABLE from '@parity/truapi/wire-table';
 import * as generated from '@parity/truapi';
@@ -37,22 +22,16 @@ interface WireCodec {
 }
 
 /**
- * Builds the codec for a chain response leg. Codec 2 puts the `Result`
- * outside and each leg's own version wrapper inside:
- * `Result(Versioned<Stem>Response, CallError(Versioned<Stem>Error))`, exactly
- * as the generated client decodes it. The composition has to match because a
- * bare codec doesn't throw on real response bytes. It quietly decodes garbage,
- * which would defeat the raw-bytes fallback in `describeWireFrame`.
+ * Must match the generated client's composition exactly, because a bare codec does not throw on real
+ * response bytes and would quietly decode garbage instead of falling back to raw bytes.
  */
 function responseCodec<T, E>(ok: Codec<T>, err: Codec<E>): WireCodec {
   return Result(ok, CallError(err));
 }
 
 /**
- * Links a chain wire-table entry to its generated codec family. The two
- * names use different word orders, so this row can't be derived and is the
- * only hand-written fact. Everything derived from it is checked against the
- * installed `@parity/truapi` by the drift-guard test.
+ * Wire-table keys and codec stems use different word orders, so this link is the one hand-written fact.
+ * The drift-guard test checks everything derived from it against the installed `@parity/truapi`.
  */
 interface ChainLinkage {
   wireTableKey: keyof typeof WIRE_TABLE;
@@ -79,16 +58,11 @@ const CHAIN_LINKAGE: readonly ChainLinkage[] = [
   { wireTableKey: 'CHAIN_STOP_TRANSACTION', stem: 'TransactionStop' },
 ];
 
-/** Turns a codec stem into its tag segment, e.g. `HeadStopOperation` into `head_stop_operation`. */
 function snakeCase(stem: string): string {
   return stem.replace(/(?!^)([A-Z])/g, '_$1').toLowerCase();
 }
 
-/**
- * Looks up a generated codec export by name and checks it looks like a
- * codec. Returns `undefined` on a miss (renamed or removed export) so the
- * caller falls back to a tag-only raw-bytes entry.
- */
+/** Undefined on a renamed or removed export, so the caller falls back to a tag-only entry. */
 function resolveCodec(exportName: string): Codec<unknown> | undefined {
   const candidate = (generated as Record<string, unknown>)[exportName];
   if (
@@ -107,19 +81,16 @@ interface ChainEntry {
   codec: WireCodec | null;
 }
 
-/** The (trait, method, messageType) triple that identifies one wire leg. */
 export interface WireFrameId {
   traitId: number;
   methodId: number;
   messageType: number;
 }
 
-/** Packs a frame's triple into one stable number for map keys and raw dumps. */
 export function wireFrameKey(frame: WireFrameId): number {
   return (frame.traitId << 16) | (frame.methodId << 8) | frame.messageType;
 }
 
-/** The frame id of one leg of `ids`, for callers holding a wire-table entry. */
 export function wireFrameId(ids: MethodIds, messageType: number): WireFrameId {
   return { traitId: ids.trait, methodId: ids.method, messageType };
 }
@@ -136,7 +107,6 @@ const SUBSCRIPTION_LEGS: readonly (readonly [number, string])[] = [
   [MESSAGE_TYPE_STOP, 'stop'],
 ];
 
-/** The legs a method's `kind` implies, as `[messageType, role]` pairs. */
 function legsOf(ids: MethodIds): readonly (readonly [number, string])[] {
   return ids.kind === 'subscription' ? SUBSCRIPTION_LEGS : REQUEST_LEGS;
 }
@@ -150,14 +120,6 @@ function isMethodIds(value: unknown): value is MethodIds {
   );
 }
 
-/**
- * Builds every chain leg's `{ tag, codec }` entry from `CHAIN_LINKAGE`,
- * degrading to tag-only wherever a codec lookup misses. The follow
- * subscription's `stop`/`interrupt` control frames carry nothing worth
- * decoding, but the swimlane layout assigns lanes by the `remote_chain_` tag
- * prefix, so they still get the legacy tag to land in their chain's lane
- * instead of "other".
- */
 function buildChainEntries(): Map<number, ChainEntry> {
   const entries = new Map<number, ChainEntry>();
 
@@ -174,7 +136,7 @@ function buildChainEntries(): Map<number, ChainEntry> {
     if (ids.kind === 'subscription') {
       set(MESSAGE_TYPE_START, 'start', resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null);
       set(MESSAGE_TYPE_RECEIVE, 'receive', resolveCodec(`VersionedRemoteChain${stem}Item`) ?? null);
-      // Control frames: legacy tag for swimlane routing, never decoded.
+      // Never decoded, but tagged so the swimlane puts them in their chain's lane.
       set(MESSAGE_TYPE_INTERRUPT, 'interrupt', null);
       set(MESSAGE_TYPE_STOP, 'stop', null);
       continue;
@@ -193,10 +155,8 @@ function buildChainEntries(): Map<number, ChainEntry> {
   return entries;
 }
 
-// These families never leave the tap, not even as raw bytes. Byte length
-// only. Matching is by name, so a discriminant from an SDK newer than the
-// host's wire table has no name to match and falls back to raw bytes. That
-// skew window is accepted until the host's truapi dependency catches up.
+// These families leave the tap as byte length only. Matching is by name, so a discriminant newer than
+// the host's wire table falls back to raw bytes, an accepted skew.
 const REDACTED_PREFIXES = ['signing', 'session', 'entropy', 'local_storage'];
 
 interface GenericEntry {
@@ -204,11 +164,6 @@ interface GenericEntry {
   redacted: boolean;
 }
 
-/**
- * Every other leg gets `<lowercased export>_<role>` from the wire table,
- * with the roles implied by the entry's `kind`. The redaction flag is
- * precomputed here so the per-frame path does a single map lookup.
- */
 function buildGenericNames(): Map<number, GenericEntry> {
   const names = new Map<number, GenericEntry>();
   for (const [exportName, ids] of Object.entries(WIRE_TABLE)) {
@@ -243,8 +198,7 @@ export function describeWireFrame(frame: WireFrameId, bytes: Uint8Array): { tag:
     try {
       return { tag: chain.tag, value: chain.codec.dec(bytes) };
     } catch {
-      // A malformed frame must degrade to raw bytes in the debugger, never
-      // break the transport.
+      // A malformed frame degrades to raw bytes, never breaking the transport.
       return { tag: chain.tag, value: { wireId, bytes } };
     }
   }
@@ -263,8 +217,7 @@ export function describeWireFrame(frame: WireFrameId, bytes: Uint8Array): { tag:
   return { tag: generic.name, value: { wireId, bytes } };
 }
 
-// Exposed for the drift-guard test, which walks the linkage table and
-// verifies tags and codec resolution against the installed `@parity/truapi`.
+// For the drift-guard test.
 export const __testing = {
   CHAIN_LINKAGE,
   snakeCase,
