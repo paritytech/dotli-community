@@ -254,10 +254,10 @@ describe('product frame layout: docked panels', () => {
     expect(style['transform']).toBe('');
 
     // When the bar comes back
-    setTopbarLayout({ offset: false });
+    setTopbarLayout({ offset: true });
 
     // Then
-    expect(style['height']).toBe(`calc(${HIDDEN_BAR_HEIGHT} - 300px)`);
+    expect(style['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
     expect(style['transform']).toBe('');
   });
 

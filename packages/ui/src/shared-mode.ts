@@ -46,7 +46,7 @@ function devHttpChannel(): SharedChannel {
         return null;
       }
       if (!res.ok) {
-        throw new Error(`mode sync read ${key} → HTTP ${String(res.status)}`);
+        throw new Error(`mode sync read ${key} failed with HTTP ${String(res.status)}`);
       }
       const text = await res.text();
       return text === '' ? null : text;
@@ -58,7 +58,7 @@ function devHttpChannel(): SharedChannel {
         cache: 'no-store',
       });
       if (!res.ok) {
-        throw new Error(`mode sync write ${key} → HTTP ${String(res.status)}`);
+        throw new Error(`mode sync write ${key} failed with HTTP ${String(res.status)}`);
       }
     },
     clear: async key => {
@@ -67,7 +67,7 @@ function devHttpChannel(): SharedChannel {
         cache: 'no-store',
       });
       if (!res.ok && res.status !== 404) {
-        throw new Error(`mode sync clear ${key} → HTTP ${String(res.status)}`);
+        throw new Error(`mode sync clear ${key} failed with HTTP ${String(res.status)}`);
       }
     },
   };

@@ -17,8 +17,8 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   Clipboard: 'Read text and data from your clipboard',
   Biometrics: 'Authenticate with a platform passkey or biometric prompt',
   IdentityDisclosure: 'Share your primary DotNS identity with this app',
-  ChainSubmit: 'Sign and submit on-chain transactions on your behalf',
-  PreimageSubmit: 'Store preimage data on-chain via the Bulletin network',
+  ChainSubmit: 'Sign and submit network transactions on your behalf',
+  PreimageSubmit: 'Store preimage data on the Bulletin network',
   StatementSubmit: 'Submit signed statements to the statement store',
 };
 
