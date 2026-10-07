@@ -177,6 +177,12 @@ channel; the Host consumes at most one command per trusted input while browser t
 five-second upper bound to accommodate cold guest execution. It does not grant the app iframe clipboard permission.
 Guests request relative-pointer capture through the runtime; desktop Pointer Lock begins on the next primary click.
 
+The host relays safe-area and keyboard insets in physical pixels over an authenticated parent channel. Safe-area insets
+reserve only the titlebar and OS edges still inside the actual app frame: desktop apps retain their full-size canvas
+under the floating titlebar, while already-offset tablet/phone frames do not receive the same spacing twice. The
+host-owned Menu button, app menu and status text use that boundary in CSS pixels. The expanded titlebar band remains
+reserved while the bar folds or reveals, so controls do not jump during its animation.
+
 On coarse-pointer (touch) devices, a guest that declares keyboard and pointer input and requests capture gets host-owned
 FPS controls instead of requiring Pointer Lock. The left stick sends WASD movement/strafe keys; the right stick
 continuously sends relative look input. Buttons provide Fire (left mouse), Grapple (Q), Jump (Space), Reload (R),
@@ -196,10 +202,12 @@ explicit consent and routes the file to that execution's current registration, n
 handler.
 
 After file approval, a host-owned loading overlay names the selected file. Once delivery is ready, the paused menu
-offers **Resume and load**; the overlay clears when the guest presents new content after delivery. Restoring an old
-WebGPU/Tri2D surface on Resume does not finish loading. Guests that decode before switching levels must defer gameplay
-frames during preparation. Delivery rejection clears the overlay and keeps the recovery menu available. This is an
-activity indicator, not a percentage estimate of guest-side decoding.
+offers **Resume and load**. While waiting for Resume, the overlay explicitly reports paused loading, hides its spinner
+and removes the busy state; resuming restores the activity indicator. Reopening the menu during loading pauses that
+indicator again. The overlay clears when the guest presents new content after delivery. Restoring an old WebGPU/Tri2D
+surface on Resume does not finish loading. Guests that decode before switching levels must defer gameplay frames during
+preparation. Delivery rejection clears the overlay and keeps the recovery menu available. This is an activity indicator,
+not a percentage estimate of guest-side decoding.
 
 Inline and relaunch handlers receive bounded bytes. Stream handlers receive the original browser `Blob`, without a
 whole-file read or upload by the host; the runtime manages bounded reads and private OPFS caches. Cache creation and
