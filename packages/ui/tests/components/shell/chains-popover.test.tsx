@@ -283,9 +283,9 @@ const PRELOAD_IDLE_MS = 2000;
 useFloatingSurfaces();
 
 describe('The network popover island', () => {
-  it('As a user, a chain nothing uses reads "not in use" and claims no peers', async () => {
+  it('As a user, a chain nothing uses keeps its last bars under a "Not in use" label and claims no peers', async () => {
     // Given
-    monitor.status = [chain({ state: 'unused', peers: 8 })];
+    monitor.status = [chain({ state: 'unused', peers: 8, latest: 12, bars: bars(11, 2) })];
     notify();
     await renderPopover();
 
@@ -295,9 +295,29 @@ describe('The network popover island', () => {
     // Then
     const cell = byTestId('chains-cell');
     expect(cell.dataset['state']).toBe('unused');
-    expect(cell.textContent).toBe('not in use');
+    expect([...cell.querySelectorAll<HTMLElement>('[data-block]')].map(mark => mark.dataset['block'])).toEqual([
+      '11',
+      '12',
+    ]);
     expect(byTestId('chains-group-label').dataset['state']).toBe('unused');
-    expect(byTestId('chains-group-peers').textContent).toBe('');
+    expect(byTestId('chains-group-unused').textContent).toBe('Not in use');
+    expect(document.querySelector('[data-testid="chains-group-peers"]')).toBeNull();
+  });
+
+  it('As a user, a chain never used shows empty slots with no countdown', async () => {
+    // Given
+    monitor.status = [chain({ state: 'unused' })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    const cell = byTestId('chains-cell');
+    expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS);
+    expect(cell.querySelector('[data-testid="chains-bar-pending"]')).toBeNull();
+    expect(cell.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull();
   });
 
   it('As a user of a product on another chain, it shows under Other chains while in use and goes after', async () => {

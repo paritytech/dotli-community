@@ -151,7 +151,12 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
     >
       <Show
         when={props.chain.bars.length > 0}
-        fallback={<PendingBar chain={props.chain} sinceLast={props.sinceLast} />}
+        fallback={
+          // Nothing is connecting an unused chain, so it gets no ghost bar or countdown.
+          <Show when={props.chain.state !== 'unused'} fallback={<Stubs count={HISTORY_SLOTS} />}>
+            <PendingBar chain={props.chain} sinceLast={props.sinceLast} />
+          </Show>
+        }
       >
         <Stubs count={HISTORY_SLOTS - visible().length} />
         <For each={visible()}>
@@ -186,18 +191,27 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
     <Stack class={s['group']}>
       <p class={s['groupLabel']} data-testid="chains-group-label" data-state={props.chain.state}>
         <span>{props.chain.label}</span>
-        <span
-          class={s['peers']}
-          data-testid="chains-group-peers"
-          data-none={peers() === 0 ? '' : undefined}
-          aria-label={
-            peers() === null
-              ? undefined
-              : `${props.chain.label}: ${String(peers())} ${peers() === 1 ? 'peer' : 'peers'} connected`
+        <Show
+          when={!unused() || !props.chain.reachable}
+          fallback={
+            <Chip tone="mono" testId="chains-group-unused">
+              Not in use
+            </Chip>
           }
         >
-          {peers() === null ? '' : peers() === 1 ? '1 peer' : `${String(peers())} peers`}
-        </span>
+          <span
+            class={s['peers']}
+            data-testid="chains-group-peers"
+            data-none={peers() === 0 ? '' : undefined}
+            aria-label={
+              peers() === null
+                ? undefined
+                : `${props.chain.label}: ${String(peers())} ${peers() === 1 ? 'peer' : 'peers'} connected`
+            }
+          >
+            {peers() === null ? '' : peers() === 1 ? '1 peer' : `${String(peers())} peers`}
+          </span>
+        </Show>
       </p>
       <div
         class={s['cell']}
@@ -206,9 +220,7 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
         data-unavailable={props.chain.reachable ? undefined : ''}
       >
         <Show when={props.chain.reachable} fallback="no endpoint on this network">
-          <Show when={!unused()} fallback="not in use">
-            <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
-          </Show>
+          <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
         </Show>
       </div>
     </Stack>

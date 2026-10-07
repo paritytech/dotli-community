@@ -209,7 +209,10 @@ export function recordChainActivity(activity: ChainActivity): void {
     if (state.role === null) {
       extras.delete(genesis);
     } else {
-      Object.assign(state, idleUse(), { status: activity.status });
+      // The bars stay as the record of its last use. The clock stops, so a chain held again is judged from its next
+      // block rather than read as overdue, and the unused stretch draws no bar.
+      state.lastAt = null;
+      state.poolWasConnected = false;
     }
   }
   notify();

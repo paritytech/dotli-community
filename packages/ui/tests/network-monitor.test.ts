@@ -112,7 +112,7 @@ describe('The network monitor tracks blocks', () => {
     expect(chainByKey('relay').state).not.toBe('unused');
   });
 
-  it('As a user, a known chain going unused loses its history', () => {
+  it('As a user, a known chain going unused keeps its bars and stops its clock', () => {
     // Given
     use(relayGenesis());
     recordBestBlock(relayGenesis(), 100);
@@ -123,7 +123,31 @@ describe('The network monitor tracks blocks', () => {
     release(relayGenesis());
 
     // Then
-    expect(chainByKey('relay')).toMatchObject({ bars: [], latest: null, state: 'unused' });
+    expect(chainByKey('relay')).toMatchObject({ latest: 101, sinceLast: null, state: 'unused' });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
+  });
+
+  it('As a user, a chain held again carries on from its next block, with no bar for the time it was unused', () => {
+    // Given
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 100);
+    vi.advanceTimersByTime(6000);
+    recordBestBlock(relayGenesis(), 101);
+    release(relayGenesis());
+    vi.advanceTimersByTime(60_000);
+
+    // When
+    use(relayGenesis());
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+
+    // When
+    recordBestBlock(relayGenesis(), 120);
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ latest: 120, state: 'live' });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
   });
 
   it('As a user of a product on another chain, it is listed while in use and gone after', () => {
