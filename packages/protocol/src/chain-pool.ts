@@ -162,6 +162,31 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     }
   }
 
+  /**
+   * Installed only while someone watches, since the observer makes the broker fetch a base header per follow, and a
+   * pool nobody watches must send what it sent before.
+   */
+  function observeBroker(entry: Entry): void {
+    // The broker replays an established follow, and one that ended while unobserved must not linger.
+    entry.following = false;
+    entry.broker.observe({
+      onFollowing: following => {
+        if (!entry.live) {
+          return;
+        }
+        entry.following = following;
+        report(entry);
+      },
+      onBestBlock: blockNumber => {
+        if (entry.live) {
+          tellWatchers(watcher => {
+            watcher.onBestBlock(entry.key, blockNumber);
+          });
+        }
+      },
+    });
+  }
+
   function build(key: string): Entry | null {
     // Null until the transport exists, so a hook that fires earlier has nothing to report on.
     let entry: Entry | null = null;
@@ -205,22 +230,9 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     entry = created;
     entries.set(key, created);
     setStatus(key, builtPaused ? 'disconnected' : 'connecting');
-    created.broker.observe({
-      onFollowing: following => {
-        if (!created.live) {
-          return;
-        }
-        created.following = following;
-        report(created);
-      },
-      onBestBlock: blockNumber => {
-        if (created.live) {
-          tellWatchers(watcher => {
-            watcher.onBestBlock(key, blockNumber);
-          });
-        }
-      },
-    });
+    if (watchers.size > 0) {
+      observeBroker(created);
+    }
     report(created);
     return created;
   }
@@ -363,12 +375,27 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     },
 
     watch(watcher) {
+      // Before the watcher joins, so the follows the brokers replay reach it once, through the replay below.
+      if (watchers.size === 0) {
+        for (const entry of entries.values()) {
+          observeBroker(entry);
+        }
+      }
       watchers.add(watcher);
-      for (const entry of entries.values()) {
-        watcher.onActivity(activityOf(entry));
+      for (const entry of [...entries.values()]) {
+        try {
+          watcher.onActivity(activityOf(entry));
+          // eslint-disable-next-line no-restricted-syntax -- a throwing watcher must not reach whoever started the watch.
+        } catch {
+          /* the watcher still hears later changes */
+        }
       }
       return () => {
-        watchers.delete(watcher);
+        if (watchers.delete(watcher) && watchers.size === 0) {
+          for (const entry of entries.values()) {
+            entry.broker.observe(null);
+          }
+        }
       };
     },
 

@@ -750,6 +750,123 @@ describe('createChainPool watch', () => {
     expect(connection).toBeDefined();
   });
 
+  const isBase = (message: JsonRpcRequest): boolean => String(message.id).startsWith('broker-base:');
+
+  /** A lease whose session follows the chain, answered upstream under `upstreamToken`. */
+  function followOn(
+    pool: ChainPool,
+    transport: () => TransportRecord,
+  ): {
+    follow: (upstreamToken: string) => void;
+    unfollow: () => void;
+    event: (upstreamToken: string, result: Record<string, unknown>) => void;
+  } {
+    const replies: { id?: unknown; result?: unknown }[] = [];
+    const connection = lease(pool, '0xaa', message => {
+      replies.push(message as { id?: unknown; result?: unknown });
+    });
+    let nextId = 1;
+    let localToken: string | null = null;
+    return {
+      follow: upstreamToken => {
+        const id = nextId++;
+        connection.send({ jsonrpc: '2.0', id, method: 'chainHead_v1_follow', params: [false] });
+        const record = transport();
+        record.emit({ jsonrpc: '2.0', id: (record.sent.at(-1) as { id: string }).id, result: upstreamToken });
+        localToken = String(
+          must(
+            replies.find(reply => reply.id === id),
+            'follow reply',
+          ).result,
+        );
+      },
+      unfollow: () => {
+        connection.send({
+          jsonrpc: '2.0',
+          id: nextId++,
+          method: 'chainHead_v1_unfollow',
+          params: [must(localToken, 'local token')],
+        });
+      },
+      event: (upstreamToken, result) => {
+        transport().emit({
+          jsonrpc: '2.0',
+          method: 'chainHead_v1_followEvent',
+          params: { subscription: upstreamToken, result },
+        } as unknown as JsonRpcMessage);
+      },
+    };
+  }
+
+  it('As a dotli integrator, a pool nobody watches sends no request of its own when a follow starts', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const chain = followOn(pool, () => must(built[0], 'transport'));
+
+    // When
+    chain.follow('up-1');
+    chain.event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    chain.event('up-1', { event: 'bestBlockChanged', bestBlockHash: '0xf0' });
+
+    // Then
+    expect(must(built[0], 'transport').sent.filter(isBase)).toEqual([]);
+  });
+
+  it('As the network panel opening after a follow started, I hear it and get best blocks once its base arrives', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const transport = (): TransportRecord => must(built[0], 'transport');
+    const chain = followOn(pool, transport);
+    chain.follow('up-1');
+    chain.event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    chain.event('up-1', { event: 'bestBlockChanged', bestBlockHash: '0xf0' });
+    const seen = recorder();
+
+    // When
+    pool.watch(seen.watcher);
+
+    // Then
+    expect(seen.activity).toEqual([{ genesisHash: '0xaa', consumers: 1, status: 'connecting', following: true }]);
+    const bases = transport().sent.filter(isBase);
+    expect(bases.map(message => message.params as unknown)).toEqual([['up-1', '0xf0']]);
+
+    // When
+    transport().emit({ jsonrpc: '2.0', id: must(bases[0], 'base').id, result: headerHex(7) } as JsonRpcMessage);
+
+    // Then
+    expect(seen.best).toEqual([['0xaa', 7]]);
+  });
+
+  it('As the network panel closing, my last unwatch leaves the pool sending no more base requests', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const transport = (): TransportRecord => must(built[0], 'transport');
+    const unwatch = pool.watch(recorder().watcher);
+    const chain = followOn(pool, transport);
+    chain.follow('up-1');
+    chain.event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    const base = must(transport().sent.find(isBase), 'base');
+    transport().emit({ jsonrpc: '2.0', id: base.id, result: headerHex(7) } as JsonRpcMessage);
+
+    // When: a finalization the cache cannot place, which a watched pool numbers afresh
+    unwatch();
+    chain.event('up-1', { event: 'finalized', finalizedBlockHashes: ['0xunknown'], prunedBlockHashes: [] });
+
+    // Then
+    expect(transport().sent.filter(isBase)).toHaveLength(1);
+
+    // When: the follow ends and a new one starts
+    chain.unfollow();
+    chain.follow('up-2');
+    chain.event('up-2', { event: 'initialized', finalizedBlockHashes: ['0xf1'] });
+
+    // Then
+    expect(transport().sent.filter(isBase)).toHaveLength(1);
+  });
+
   it('As the network panel, unwatching stops the reports', () => {
     // Given
     const pool = createChainPool({ createTransport: createTransports().createTransport });

@@ -256,9 +256,16 @@ export class ChainBroker {
     this.onEmpty = onEmpty;
   }
 
-  /** One observer per broker. The pool sets it when it builds the chain. */
+  /** One observer per broker. One set while a follow is established hears it at once, and its base is fetched. */
   observe(observer: BrokerObserver | null): void {
     this.observer = observer;
+    if (observer === null) {
+      return;
+    }
+    if (this.following) {
+      observer.onFollowing(true);
+    }
+    this.ensureBase();
   }
 
   private sendToSession(session: Session, obj: unknown): void {

@@ -8,7 +8,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { ChainBroker } from '../src/broker.js';
+import { ChainBroker, type BrokerObserver } from '../src/broker.js';
 import { createChainPool } from '../src/chain-pool.js';
 import { headerHex } from './header-hex.js';
 
@@ -1279,6 +1279,17 @@ describe('upstream follow stop', () => {
 describe('broker observer', () => {
   const isBase = (message: JsonRpcRequest): boolean => String(message.id).startsWith('broker-base:');
 
+  function observer(seen: { following: boolean[]; best: number[] }): BrokerObserver {
+    return {
+      onFollowing: following => {
+        seen.following.push(following);
+      },
+      onBestBlock: blockNumber => {
+        seen.best.push(blockNumber);
+      },
+    };
+  }
+
   function setup(withObserver = true): {
     broker: ChainBroker;
     harness: ReturnType<typeof createProviderHarness>;
@@ -1290,14 +1301,7 @@ describe('broker observer', () => {
     const broker = new ChainBroker(harness.provider, () => undefined);
     const seen = { following: [] as boolean[], best: [] as number[] };
     if (withObserver) {
-      broker.observe({
-        onFollowing: following => {
-          seen.following.push(following);
-        },
-        onBestBlock: blockNumber => {
-          seen.best.push(blockNumber);
-        },
-      });
+      broker.observe(observer(seen));
     }
     const messages: unknown[] = [];
     const connection = broker.connect(
@@ -1427,6 +1431,30 @@ describe('broker observer', () => {
     // Then
     expect(seen.best).toEqual([]);
     expect(bases(harness)).toHaveLength(1);
+  });
+
+  it('As the network panel observing late, I hear the established follow and get its best block once the base arrives', () => {
+    // Given
+    const { broker, harness, connection } = setup(false);
+    follow(harness, connection);
+    event(harness, { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event(harness, { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event(harness, { event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+    const seen = { following: [] as boolean[], best: [] as number[] };
+
+    // When
+    broker.observe(observer(seen));
+
+    // Then
+    expect(seen.following).toEqual([true]);
+    const base = must(bases(harness)[0], 'base request');
+    expect(base.params).toEqual(['up-1', '0xf0']);
+
+    // When
+    harness.emit({ jsonrpc: '2.0', id: base.id, result: headerHex(100) } as JsonRpcMessage);
+
+    // Then
+    expect(seen.best).toEqual([101]);
   });
 
   it('As the network panel, a best block the cache cannot place is not reported', () => {
