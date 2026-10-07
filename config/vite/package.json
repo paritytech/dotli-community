@@ -6,7 +6,6 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./astro-lazy-css": "./src/astro-lazy-css.ts",
     "./astro-pwa": "./src/astro-pwa.ts",
     "./build-info": "./src/build-info-plugin.ts",
     "./build-options": "./src/build-options.ts",

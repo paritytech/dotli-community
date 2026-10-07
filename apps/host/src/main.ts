@@ -4,7 +4,7 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import './pwa.js';
-import { boot, reportBootFailure, startHost, T0, type EmitFn } from './startup.js';
+import { boot, createBootFlowId, reportBootFailure, startHost, T0, type EmitFn } from './startup.js';
 import { parseDotLabel } from './dot-label.js';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import {
@@ -39,6 +39,7 @@ import {
   recordRecentLabel,
   showNotification,
   initScheduledNotifications,
+  loadTruapiDebugMount,
   loadBridge,
 } from '@dotli/ui';
 
@@ -275,6 +276,7 @@ function setFavicon(href: string, format: 'jpeg' | 'png'): void {
     document.head.appendChild(link);
   }
 }
+import { loadDotliDebugBus } from '@dotli/truapi-debug';
 import { loadRpcResolve as loadRpcResolveModule, loadResolve } from '@dotli/resolver';
 import type { RpcResolveModule } from '@dotli/resolver';
 
@@ -299,6 +301,107 @@ function loadRpcResolve(): Promise<RpcResolveModule> {
   return ready;
 }
 type RenderChunk = RenderModule;
+
+/**
+ * `?debug=true|off` wins and persists, stripped from the URL so the sandbox's strict validator never sees it. Then the
+ * stored choice, then the build's `DEBUG`. An `explicit` opt-in starts expanded.
+ */
+function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
+  try {
+    const url = new URL(window.location.href);
+    const param = url.searchParams.get('debug');
+    if (param === 'true' || param === 'off') {
+      sessionStorage.setItem('dotli:truapi-debug', param === 'off' ? '0' : '1');
+      url.searchParams.delete('debug');
+      const rewritten =
+        url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash;
+      history.replaceState(null, '', rewritten);
+    }
+    const persisted = sessionStorage.getItem('dotli:truapi-debug');
+    if (persisted === '1') {
+      return { enabled: true, explicit: true };
+    }
+    if (persisted === '0') {
+      return { enabled: false, explicit: true };
+    }
+    return { enabled: DEBUG, explicit: false };
+    // eslint-disable-next-line no-restricted-syntax -- URL or sessionStorage may be unavailable in exotic environments such as Safari private mode, so fall through to the build-time default.
+  } catch {
+    /* ignore */
+  }
+  return { enabled: DEBUG, explicit: false };
+}
+
+/** Event-loop stalls and a heartbeat for the debug panel, until the bridge handshakes or MAX_MONITOR_MS passes. */
+function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
+  const TICK_MS = 50;
+  const STALL_THRESHOLD_MS = 150;
+  const HEARTBEAT_INTERVAL_MS = 2_000;
+  const MAX_MONITOR_MS = 120_000;
+
+  const startedAt = performance.now();
+  let lastTick = performance.now();
+  let lastHeartbeat = startedAt;
+
+  const handle = setInterval(() => {
+    const now = performance.now();
+    const delta = now - lastTick;
+    const lag = delta - TICK_MS;
+
+    if (lag > STALL_THRESHOLD_MS) {
+      emit({
+        layer: 'main',
+        event: 'stall_detected',
+        flowId,
+        timestamp: Date.now(),
+        payload: { durationMs: Math.round(lag) },
+      });
+    }
+
+    if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+      lastHeartbeat = now;
+      emit({
+        layer: 'main',
+        event: 'heartbeat',
+        flowId,
+        timestamp: Date.now(),
+        payload: {
+          uptimeSec: Math.round((now - startedAt) / 1000),
+        },
+      });
+    }
+
+    lastTick = now;
+
+    if (now - startedAt > MAX_MONITOR_MS) {
+      clearInterval(handle);
+      window.removeEventListener('dotli:debug:bridge-ready', onBridgeReady);
+      emit({
+        layer: 'main',
+        event: 'monitor_stopped',
+        flowId,
+        timestamp: Date.now(),
+        payload: { reason: 'max_duration' },
+      });
+    }
+  }, TICK_MS);
+
+  // The bridge dispatches this on its first outbound message.
+  const onBridgeReady = (): void => {
+    clearInterval(handle);
+    window.removeEventListener('dotli:debug:bridge-ready', onBridgeReady);
+    emit({
+      layer: 'main',
+      event: 'monitor_stopped',
+      flowId,
+      timestamp: Date.now(),
+      payload: { reason: 'bridge_ready' },
+    });
+  };
+  window.addEventListener('dotli:debug:bridge-ready', onBridgeReady, {
+    once: true,
+  });
+}
 
 /** The sandbox's origin cannot reach `emitDotliDebugEvent`. Sees every window message, so others must pass through. */
 function listenForSandboxDebugEvents(emit: EmitFn): void {
@@ -458,11 +561,32 @@ async function main(): Promise<void> {
     return;
   }
 
-  const { bootFlowId, debugEnabled, emitDotliDebugEvent, chainBackend, cacheSettings, bridgeModule } =
-    await startHost();
-  if (debugEnabled) {
+  performance.mark('dotli:main:start');
+  log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
+
+  // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
+  boot.step = 'debug_bus';
+  const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
+  const debugMode = resolveTruapiDebugMode();
+  if (debugMode.enabled) {
+    enableDotliDebugBuffering();
+    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
+      setupTruapiDebugPanel({
+        startCollapsed: !debugMode.explicit,
+        // As the sandbox relay serves blocks: from the block cache, else over bitswap.
+        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
+      });
+      log.event('TrUAPI debug panel enabled', { flow: 'boot' });
+    });
+  }
+
+  const bootFlowId = createBootFlowId();
+  if (debugMode.enabled) {
+    startMainThreadMonitor(bootFlowId, emitDotliDebugEvent);
     listenForSandboxDebugEvents(emitDotliDebugEvent);
   }
+
+  const { chainBackend, cacheSettings, bridgeModule } = await startHost(bootFlowId, emitDotliDebugEvent);
 
   const label = parseDotLabel();
   const productIdOverride = parseLocalProductIdOverride();

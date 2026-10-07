@@ -12,7 +12,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
 import astroSolid from '@config/astro-solid';
-import { astroLazyCss } from '@config/vite/astro-lazy-css';
 import { astroPwa } from '@config/vite/astro-pwa';
 import { buildInfo, readReleaseVersion } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
@@ -254,8 +253,6 @@ export default defineConfig({
   build: { assets: 'assets', format: 'file' },
   integrations: [
     astroSolid(),
-    // An on-demand chunk's CSS loads with that chunk, not at boot.
-    astroLazyCss(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     // src/pwa.ts prompts for updates.
