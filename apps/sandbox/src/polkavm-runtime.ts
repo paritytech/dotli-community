@@ -873,6 +873,8 @@ export function waitForTruapiPort(
     return Promise.resolve(scope.__HOST_API_PORT__);
   }
 
+  // A restart must replace even an unused port from the previous execution.
+  const connectionId = crypto.randomUUID();
   const { promise, resolve, reject } = Promise.withResolvers<MessagePort>();
   const cleanup = (): void => {
     clearTimeout(timer);
@@ -897,7 +899,7 @@ export function waitForTruapiPort(
     reject(new Error(`TrUAPI Host port was not available within ${String(timeoutMs)}ms`));
   }, timeoutMs);
   scope.addEventListener('message', onMessage);
-  target.postMessage({ type: 'truapi-ready' }, parentOrigin);
+  target.postMessage({ type: 'truapi-ready', connectionId }, parentOrigin);
   return promise;
 }
 
