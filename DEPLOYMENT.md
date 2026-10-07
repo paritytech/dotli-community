@@ -201,7 +201,7 @@ Each browser layer must vendor a matching client/host package set from its corre
 | ----------------------- | --------------------------------------------------------- |
 | #185 PolkaVM runtime    | `host-rust-core#540`, `feat/pvm-app-runtime`              |
 | #255 Chat               | `host-rust-core#709`, `feat/chat-v2-product-authority`    |
-| Media (on #255, no PR)  | `feat/media-sessions` on `host-rust-core#709`             |
+| Media (on #255)         | `host-rust-core#1258`, `feat/media-sessions` (on #709)    |
 | #287 Seity profiles     | `host-rust-core#1001`, `feat/chat-seity-profile`          |
 | #290 JAM PeerTransport  | `host-rust-core#1010`, `feat/pvm-peer-transport`          |
 | #291 Deploy integration | `host-rust-core#1011`, `feat/jam-peer-transport-on-seity` |
