@@ -24,7 +24,7 @@ export default defineConfig({
   workers: WORKERS,
   fullyParallel: true,
   webServer: Array.from({ length: WORKERS }, (_, i) => {
-    const port = String(5173 + i);
+    const port = String(5174 + i);
     return {
       ...previewServer,
       url: `http://localhost:${port}`,
