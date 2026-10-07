@@ -343,13 +343,12 @@ export interface PolkaVmViewInsets {
   bottom: number;
 }
 
-export function validatedPolkaVmViewInsets(value: unknown): PolkaVmViewInsets | null {
-  const message = object(value);
-  const keyboard = object(message?.['keyboard']);
-  if (message?.['type'] !== POLKAVM_VIEW_INSETS || keyboard === null) {
+function validatedInsets(value: unknown): PolkaVmViewInsets | null {
+  const insets = object(value);
+  if (insets === null) {
     return null;
   }
-  const values = [keyboard['left'], keyboard['top'], keyboard['right'], keyboard['bottom']];
+  const values = [insets['left'], insets['top'], insets['right'], insets['bottom']];
   if (values.some(inset => !Number.isInteger(inset) || Number(inset) < 0 || Number(inset) > MAX_VIEW_INSET_PIXELS)) {
     return null;
   }
@@ -359,6 +358,18 @@ export function validatedPolkaVmViewInsets(value: unknown): PolkaVmViewInsets | 
     right: Number(values[2]),
     bottom: Number(values[3]),
   };
+}
+
+export function validatedPolkaVmViewInsets(
+  value: unknown,
+): { safeArea: PolkaVmViewInsets; keyboard: PolkaVmViewInsets } | null {
+  const message = object(value);
+  if (message?.['type'] !== POLKAVM_VIEW_INSETS) {
+    return null;
+  }
+  const safeArea = validatedInsets(message['safeArea']);
+  const keyboard = validatedInsets(message['keyboard']);
+  return safeArea === null || keyboard === null ? null : { safeArea, keyboard };
 }
 
 export function expectedPolkaVmParentOrigin(hostname: string, protocol: string, port: string): string | null {
@@ -1383,16 +1394,16 @@ function createShell(): {
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
     #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100cqw,calc(100cqh * var(--dotli-polkavm-frame-aspect,1)));height:min(100cqh,calc(100cqw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
-    #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
+    #dotli-polkavm-status{top:calc(12px + var(--dotli-polkavm-safe-top,0px));left:calc(12px + var(--dotli-polkavm-safe-left,0px));max-width:calc(100% - 24px - var(--dotli-polkavm-safe-left,0px) - var(--dotli-polkavm-safe-right,0px));box-sizing:border-box;overflow-wrap:anywhere;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
     #dotli-polkavm-loading{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:12px;background:#050505b8;color:#fff;font:600 15px/1.4 system-ui,sans-serif;pointer-events:none}
     #dotli-polkavm-loading[hidden]{display:none}
     .dotli-polkavm-loading-spinner{width:22px;height:22px;box-sizing:border-box;border:3px solid #ffffff45;border-top-color:#e6007a;border-radius:50%;animation:dotli-polkavm-spin .8s linear infinite}
     @keyframes dotli-polkavm-spin{to{transform:rotate(360deg)}}
     @media(prefers-reduced-motion:reduce){.dotli-polkavm-loading-spinner{animation:none;border-color:#e6007a}}
-    #dotli-polkavm-menu-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
+    #dotli-polkavm-menu-open{position:absolute;top:calc(12px + var(--dotli-polkavm-safe-top,0px));right:calc(12px + var(--dotli-polkavm-safe-right,0px));z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
     #dotli-polkavm-menu-open:hover{border-color:#e6007a}
-    .dotli-polkavm-menu{position:fixed;inset:52px 12px auto auto;margin:0;box-sizing:border-box;max-width:calc(100vw - 24px);max-height:calc(100dvh - 64px);overflow:auto;font:14px/1.5 system-ui,sans-serif}
+    .dotli-polkavm-menu{position:fixed;inset:calc(52px + var(--dotli-polkavm-safe-top,0px)) calc(12px + var(--dotli-polkavm-safe-right,0px)) auto auto;margin:0;box-sizing:border-box;max-width:calc(100vw - 24px - var(--dotli-polkavm-safe-left,0px) - var(--dotli-polkavm-safe-right,0px));max-height:calc(100dvh - 64px - var(--dotli-polkavm-safe-top,0px) - var(--dotli-polkavm-safe-bottom,0px));overflow:auto;font:14px/1.5 system-ui,sans-serif}
     .dotli-polkavm-menu::backdrop,.dotli-file-consent-backdrop::backdrop{background:#000a}
     .dotli-polkavm-menu>button{display:block;width:100%;margin-top:12px;background:#303238;color:#fff}
     .dotli-polkavm-menu>button[hidden]{display:none}
@@ -3048,12 +3059,37 @@ async function startPolkaVmApplication(
   let activeMediatedInput: { handle: number; mediaType: string; maxBytes: number } | undefined;
   let relayedMotionSequence = 0;
   let workerReady = false;
+  let safeAreaInsets: PolkaVmViewInsets = {
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  };
   let keyboardInsets: PolkaVmViewInsets = {
     left: 0,
     top: 0,
     right: 0,
     bottom: 0,
   };
+  const updateViewInsetsSurface = (): void => {
+    const dpr = window.devicePixelRatio || 1;
+    for (const edge of ['left', 'top', 'right', 'bottom'] as const) {
+      surface.style.setProperty(`--dotli-polkavm-safe-${edge}`, `${String(safeAreaInsets[edge] / dpr)}px`);
+    }
+    canvas.dataset['polkavmSafeAreaInsets'] = [
+      safeAreaInsets.left,
+      safeAreaInsets.top,
+      safeAreaInsets.right,
+      safeAreaInsets.bottom,
+    ].join(',');
+    canvas.dataset['polkavmKeyboardInsets'] = [
+      keyboardInsets.left,
+      keyboardInsets.top,
+      keyboardInsets.right,
+      keyboardInsets.bottom,
+    ].join(',');
+  };
+  updateViewInsetsSurface();
   const postViewInsets = (eventType: number, insets: PolkaVmViewInsets): void => {
     worker.postMessage({
       type: 'view-insets',
@@ -3072,11 +3108,12 @@ async function startPolkaVmApplication(
     if (validated === null) {
       return;
     }
-    keyboardInsets = validated;
-    canvas.dataset['polkavmKeyboardInsets'] = [validated.left, validated.top, validated.right, validated.bottom].join(
-      ',',
-    );
+    safeAreaInsets = validated.safeArea;
+    keyboardInsets = validated.keyboard;
+    // Recompute CSS pixels even when only DPR changed, not the physical insets.
+    updateViewInsetsSurface();
     if (workerReady) {
+      postViewInsets(INPUT_SAFE_AREA_INSETS, safeAreaInsets);
       postViewInsets(INPUT_KEYBOARD_INSETS, keyboardInsets);
     }
   };
@@ -3527,14 +3564,8 @@ async function startPolkaVmApplication(
         updateMetrics();
         workerReady = true;
         fileControls.ready();
-        postViewInsets(INPUT_SAFE_AREA_INSETS, {
-          left: 0,
-          top: 0,
-          right: 0,
-          bottom: 0,
-        });
+        postViewInsets(INPUT_SAFE_AREA_INSETS, safeAreaInsets);
         postViewInsets(INPUT_KEYBOARD_INSETS, keyboardInsets);
-        canvas.dataset['polkavmSafeAreaInsets'] = '0,0,0,0';
         usesMotion = ready.usesMotion === true;
         usesPointerCapture = ready.usesPointerCapture === true;
         if (usesPointerCapture) {
