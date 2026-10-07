@@ -5,7 +5,7 @@ import { createMemo, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 
-import { applyAndReset, buildLabel, isTruapiDebugEnabled, type ModeDraft } from '../../settings-actions.js';
+import { applyAndReset, dotliVersion, isTruapiDebugEnabled, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
 import { Button } from '../primitives/Button.js';
 import { Chip } from '../primitives/Chip.js';
@@ -152,7 +152,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         title="Settings"
         aside={
           <Chip tone="mono" testId="mode-version">
-            {buildLabel()}
+            v{dotliVersion()}
           </Chip>
         }
       />

@@ -301,7 +301,7 @@ function expectPopoverMatches(settings: Settings, sheet = false): void {
     Element,
   ];
   expect(head?.querySelector('h2')?.textContent).toBe(sheet ? undefined : 'Settings');
-  expect(head?.querySelector('[data-testid="mode-version"]')?.textContent).toBe(sheet ? undefined : 'dev');
+  expect(head?.querySelector('[data-testid="mode-version"]')?.textContent).toBe(sheet ? undefined : 'v0.0.0');
   expect(sections.getAttribute('data-testid')).toBe('mode-popover-sections');
   expectSections(sections, settings);
 

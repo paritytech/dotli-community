@@ -227,6 +227,7 @@ async function unregisterAllServiceWorkers(): Promise<void> {
 // topbar only ever renders in the host shell so these will always be
 // present in practice. `undefined` fallbacks are defensive for tests and
 // for any future caller that imports this module from a different bundle.
+declare const __DOTLI_VERSION__: string | undefined;
 declare const __LIGHT_CLIENT_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__: { name: string; version: string }[] | undefined;
@@ -303,12 +304,9 @@ export async function formatDiagnosticsReport(
   return lines.join('\n');
 }
 
-/**
- * The build this page runs: its commit, short. The package version is not
- * bumped on release, so the commit is what identifies the build.
- */
-export function buildLabel(): string {
-  return shortSha(import.meta.env.VITE_COMMIT_SHA ?? 'dev');
+/** dotli's version: the release the build descends from. */
+export function dotliVersion(): string {
+  return typeof __DOTLI_VERSION__ === 'string' ? __DOTLI_VERSION__ : '0.0.0';
 }
 
 export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
@@ -322,7 +320,7 @@ export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
     // localhost (`hackme3.localhost:5173`), transparent on production
     // (`hackme3.dot.li`).
     ['Site', window.location.host],
-    ['Build', buildLabel()],
+    ['Build', `${dotliVersion()} (${shortSha(sha)})`],
     ['Network', NETWORK_NAME_TO_SERVICES_CONFIG[network].label],
     ['Transport', backendLabel(backend)],
   ];

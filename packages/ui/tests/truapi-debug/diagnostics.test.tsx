@@ -268,7 +268,7 @@ describe('The debug panel Diagnostics tab', () => {
         '',
         '```',
         `Site: ${window.location.host}`,
-        'Build: dev',
+        'Build: 0.0.0 (dev)',
         'Network: ' + (infoRow('Network').querySelector('code')?.textContent ?? ''),
         'Transport: Light client per tab',
         `Browser: ${infoRow('Browser').querySelector('code')?.textContent ?? ''}`,

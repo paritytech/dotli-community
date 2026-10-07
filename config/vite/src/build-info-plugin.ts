@@ -7,6 +7,7 @@
 // as immutable.
 
 import type { Plugin } from 'vite';
+import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -17,6 +18,26 @@ export function readPackageVersion(dir: string): string {
     return pkg.version ?? '0.0.0';
   } catch {
     return '0.0.0';
+  }
+}
+
+/**
+ * dotli's version: the newest `vX.Y.Z` tag the build descends from. The tag
+ * is the release's source of truth, as the package.json versions are synced
+ * to it only while a release deploys. Without git or a tag (a tarball, a
+ * shallow clone) it falls back to the package version in `dir`.
+ */
+export function readReleaseVersion(dir: string): string {
+  try {
+    const tag = execSync("git describe --tags --abbrev=0 --match 'v[0-9]*'", {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+    return tag.slice(1);
+  } catch {
+    return readPackageVersion(dir);
   }
 }
 
