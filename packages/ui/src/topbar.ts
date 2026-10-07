@@ -11,7 +11,7 @@ import { initChatPanelState } from './state/chat-panel.js';
 import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
-import { getTopbarState, recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
+import { setTopbarPresent } from './state/topbar.js';
 import { initTheme } from './theme-controller.js';
 
 export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator()): void {
@@ -39,17 +39,12 @@ function scheduleIdle(callback: () => void): void {
   }
 }
 
-/** Called once a product is on screen, so the icon appears with the app rather than during the load. */
-export function setChainsButtonVisible(visible: boolean): void {
-  recordChainsButtonVisible(visible);
-  if (!visible) {
-    setNetworkHealthWatched(false);
-    return;
-  }
-  // The watch loads a chunk and a client per chain, so it waits for idle.
+/**
+ * Called once a product is on screen. The watch loads a chunk and a client per chain, so it waits for idle and stays
+ * out of the load.
+ */
+export function watchNetworkHealth(): void {
   scheduleIdle(() => {
-    if (getTopbarState().chainsButtonVisible) {
-      setNetworkHealthWatched(true);
-    }
+    setNetworkHealthWatched(true);
   });
 }

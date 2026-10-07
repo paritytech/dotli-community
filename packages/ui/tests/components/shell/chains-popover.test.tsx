@@ -12,7 +12,6 @@ import { startNetworkStore } from '../../../src/state/network.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { setProductLoaded } from '../../../src/state/product.js';
-import { recordChainsButtonVisible } from '../../../src/state/topbar.js';
 import { EXIT_MS } from '../../../src/components/floating/FloatingLayer.js';
 import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { HISTORY_SLOTS } from '../../../src/components/shell/chains-format.js';
@@ -782,29 +781,12 @@ describe('The network popover island', () => {
     expect(popover.getAttribute('tabindex')).toBe('-1');
   });
 
-  it('As a visitor, the button shows once the product is on screen, whether that came before or after the mount', async () => {
-    // Given: revealed before the island mounted.
-    recordChainsButtonVisible(true);
-
+  it('As a visitor, the network button shows from the first render, before any product is on screen', async () => {
     // When
     await renderPopover();
 
     // Then
     expectChainsButton(false);
-    expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(false);
-
-    // When
-    recordChainsButtonVisible(false);
-    await settle();
-
-    // Then
-    expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(true);
-
-    // When: revealed after the mount.
-    recordChainsButtonVisible(true);
-    await settle();
-
-    // Then
     expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(false);
   });
 });

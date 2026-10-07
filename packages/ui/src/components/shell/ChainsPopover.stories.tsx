@@ -5,7 +5,6 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
 import { resetAllStoresForTests } from '../../state/create-store.js';
 import { setProductLoaded } from '../../state/product.js';
-import { recordChainsButtonVisible } from '../../state/topbar.js';
 import { ChainsPopover } from './ChainsPopover.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });
@@ -15,7 +14,6 @@ const meta = {
   component: ChainsPopover,
   parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
   beforeEach: () => {
-    recordChainsButtonVisible(true);
     setProductLoaded('Example', 'example');
     return resetAllStoresForTests;
   },

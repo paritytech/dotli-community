@@ -9,7 +9,6 @@ import { TopbarActions } from '../../../src/components/shell/TopbarActions.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
-import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { initChatPanelState } from '../../../src/state/chat-panel.js';
@@ -134,16 +133,11 @@ describe('Topbar actions island', () => {
     expect(byId('mode-popover').hasAttribute('data-open')).toBe(true);
   });
 
-  it("As a mobile user, once a product is on screen the More menu's Network row opens the network panel", async () => {
+  it("As a mobile user, the More menu's Network row opens the network panel", async () => {
     // Given
     stubTopbarLayout(MORE_ONLY);
     await renderIsland();
     await openMore();
-    expect(document.querySelector('#more-popover [role="menuitem"][data-item="network"]')).toBeNull();
-
-    // When
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
     expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Syncing');
@@ -177,8 +171,6 @@ describe('Topbar actions island', () => {
 
     // When
     await renderIsland();
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
     expect(await moreRowNames()).toEqual([]);
@@ -195,8 +187,6 @@ describe('Topbar actions island', () => {
     stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
     const more = byId('more-button');
@@ -217,7 +207,7 @@ describe('Topbar actions island', () => {
     expect(more.getAttribute('aria-label')).toBe('More, network offline');
   });
 
-  it('As a phone user with a grant and an unverified session, I see the Permissions and Settings rows keep their badges, and More raise none', async () => {
+  it('As a phone user with a grant and an unverified session, I see the Permissions and Settings rows keep their badges, and More raise only the network alert', async () => {
     // Given: the trusted gateway backend, which is not a verified session
     localStorage.setItem(BACKEND_KEY, 'rpc-gateway');
     initSettingsStore();
@@ -242,7 +232,8 @@ describe('Topbar actions island', () => {
       expect(byTestId('more-row-aside', moreRow('settings'))).toBeTruthy();
       expect(within(moreRow('permissions')).getByRole('img').getAttribute('aria-label')).toBe('Has permissions');
       expect(within(moreRow('settings')).getByRole('img').getAttribute('aria-label')).toBe('Unverified session');
-      expect(byId('more-button').getAttribute('aria-label')).toBe('More');
+      // The chains are still starting, which is the only alert More carries.
+      expect(byId('more-button').getAttribute('aria-label')).toBe('More, network syncing');
     } finally {
       unregister();
     }

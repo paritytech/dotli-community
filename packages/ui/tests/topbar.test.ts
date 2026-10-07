@@ -188,10 +188,10 @@ describe('The status capsule network watch', () => {
         return () => {};
       },
     });
-    const { setChainsButtonVisible } = await import('../src/topbar.js');
+    const { watchNetworkHealth } = await import('../src/topbar.js');
 
     // When
-    setChainsButtonVisible(true);
+    watchNetworkHealth();
 
     // Then
     expect(subscribed).toEqual([]);
@@ -201,6 +201,7 @@ describe('The status capsule network watch', () => {
 
     // Then
     expect(subscribed.length).toBeGreaterThan(0);
-    setChainsButtonVisible(false);
+    const { setNetworkHealthWatched } = await import('../src/state/network-health.js');
+    setNetworkHealthWatched(false);
   });
 });

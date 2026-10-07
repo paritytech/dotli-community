@@ -39,7 +39,7 @@ export {
   scheduleTopbarHide,
   TOPBAR_REVEAL_SHORTCUT,
 } from './topbar-autohide.js';
-export { initTopBar, setChainsButtonVisible } from './topbar.js';
+export { initTopBar, watchNetworkHealth } from './topbar.js';
 export { SETTINGS_GLYPH } from './settings-glyph.js';
 export { RELOAD_GLYPH } from './reload-glyph.js';
 export { showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';
