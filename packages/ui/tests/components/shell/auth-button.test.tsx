@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { getAuthModalState } from '../../../src/state/auth-modal.js';
-import { authStore, setAuthState, setSessionRestored } from '../../../src/state/auth.js';
+import { authStore, setAuthState } from '../../../src/state/auth.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { renderComponent, resetStores } from '../../helpers/solid.js';
 import { byTestId } from '../../support.js';
@@ -139,9 +139,11 @@ describe('AuthButton', () => {
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('aria-busy')).toBe('true');
     expect(button.textContent.trim()).toBe('');
+    expect(button.getAttribute('aria-label')).toBe('Checking sign-in');
+    expect(button.title).toBe('Checking sign-in');
 
-    // When
-    setSessionRestored();
+    // When: the read finds no saved session.
+    setAuthState({ tag: 'Disconnected' });
     await settleAll();
 
     // Then
@@ -153,20 +155,20 @@ describe('AuthButton', () => {
     resetStores();
     const button = await renderButton();
 
-    // When: the read finds my session, which reaches the button before the read ends.
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => {
+      seen.push(button.textContent);
+    });
+    observer.observe(button, { childList: true, subtree: true, characterData: true });
+
+    // When: the read finds my session.
     setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
     await settleAll();
-
-    // Then
-    expect(button.getAttribute('aria-busy')).toBe('true');
-    expect(button.textContent).not.toContain('Sign in');
-
-    // When
-    setSessionRestored();
-    await settleAll();
+    observer.disconnect();
 
     // Then
     expectMarkup(button, { initials: 'AS' });
+    expect(seen.some(text => text.includes('Sign in'))).toBe(false);
   });
 
   it('As a logged-in user, I see my initials in the badge, with its ids, labels and ARIA state', async () => {

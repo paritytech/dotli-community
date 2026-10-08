@@ -5,7 +5,7 @@ import type { DotliAuthState } from '../host-callbacks/AuthState.js';
 import { createSyncStore, type ReadableStore } from './create-store.js';
 
 // Every login step must reach the auth controller, including a repeated LoginFailed, so no set is dropped as equal.
-const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' }, { equals: () => false });
+const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Restoring' }, { equals: () => false });
 const session = createSyncStore<boolean>('session', false);
 
 export const authStore: ReadableStore<DotliAuthState> = auth;
@@ -27,13 +27,4 @@ export const getLoggedIn = session.get;
 export function setLoggedIn(next: boolean): void {
   session.set(next);
   window.dispatchEvent(new Event(next ? 'dotli:authenticated' : 'dotli:logged-out'));
-}
-
-// False until boot has read the persisted session, as until then the button cannot tell sign-in from an account.
-const restored = createSyncStore<boolean>('session_restored', false);
-
-export const sessionRestoredStore: ReadableStore<boolean> = restored;
-
-export function setSessionRestored(): void {
-  restored.set(true);
 }

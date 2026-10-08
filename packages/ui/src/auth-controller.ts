@@ -45,6 +45,8 @@ function applyAuthState(state: DotliAuthState): void {
     ...(state.tag === 'LoginFailed' ? { kind: state.kind } : {}),
   });
   switch (state.tag) {
+    case 'Restoring':
+      break;
     case 'Disconnected':
       setLoggedIn(false);
       break;

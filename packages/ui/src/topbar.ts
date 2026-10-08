@@ -20,18 +20,6 @@ export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBl
   initNetworkHealth();
   initChatPanelState();
 
-  // So a reload shows the logged-in badge before any core instance boots.
-  scheduleIdle(() => {
-    emitPersistedSessionUiState();
-  });
-}
-
-function scheduleIdle(callback: () => void): void {
-  if (typeof requestIdleCallback === 'function') {
-    requestIdleCallback(() => {
-      callback();
-    });
-  } else {
-    window.setTimeout(callback, 0);
-  }
+  // At once, not on idle: the auth button spins until this read ends, and a busy boot can starve an idle callback.
+  emitPersistedSessionUiState();
 }

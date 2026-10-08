@@ -2,8 +2,12 @@ import type { AuthPresenter, AuthState, LoginFailureKind } from '@parity/truapi-
 import { toSessionUiState, writeUiStateCache, type TruapiSessionUiState } from './SessionStore.js';
 import { setAuthState } from '../state/auth.js';
 
-/** The core's `AuthState` with byte fields converted for rendering, plus the pairing context the modal needs. */
+/**
+ * The core's `AuthState` with byte fields converted for rendering, plus the pairing context the modal needs.
+ * `Restoring` is the host's own: boot has not yet read the saved session, so the user is neither signed in nor out.
+ */
 export type DotliAuthState =
+  | { tag: 'Restoring' }
   | { tag: 'Disconnected' }
   | {
       tag: 'Pairing';

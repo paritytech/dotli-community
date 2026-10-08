@@ -608,19 +608,18 @@ async function main(): Promise<void> {
   const productIdOverride = parseLocalProductIdOverride();
 
   if (previewTargetUrl !== null && pageHost !== null) {
-    const host = pageHost;
     boot.step = 'preview_render';
-    log.event('Route: preview', { flow: 'boot', host });
-    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
+    log.event('Route: preview', { flow: 'boot', host: pageHost });
+    bridgeModule.setPageProduct({ label: pageHost, productId: productIdOverride });
 
-    initScheduledNotifications({ label: host });
+    initScheduledNotifications({ label: pageHost });
 
     // Local products carry no worker manifest to read the chat flag from,
     // so the debug paths enable chat unconditionally for product testing.
-    setChatCapability(host, true);
+    setChatCapability(pageHost, true);
     await bridgeModule.renderIframe(
       previewTargetUrl,
-      host,
+      pageHost,
       productIdOverride !== undefined ? { productId: productIdOverride } : {},
     );
     setProductContentShown(true);
@@ -631,7 +630,7 @@ async function main(): Promise<void> {
       nextSearch.set(DOTLI_PRODUCT_ID_PARAM, productIdOverride);
     }
     history.replaceState(null, '', `/__preview?${nextSearch.toString()}`);
-    document.title = `${host} · ${SITE_ID}`;
+    document.title = `${pageHost} · ${SITE_ID}`;
     performance.mark('dotli:main:end');
     return;
   }
@@ -643,22 +642,21 @@ async function main(): Promise<void> {
     timestamp: Date.now(),
     payload: {
       label,
-      localhostHost: localhostUrl === null ? null : new URL(localhostUrl).host,
+      localhostHost: localhostUrl === null ? null : pageHost,
       deepPath: window.location.pathname + window.location.search,
     },
   });
   if (localhostUrl !== null && pageHost !== null) {
-    const host = pageHost;
     boot.step = 'localhost_render';
-    log.event('Route: localhost proxy', { flow: 'boot', host });
-    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
+    log.event('Route: localhost proxy', { flow: 'boot', host: pageHost });
+    bridgeModule.setPageProduct({ label: pageHost, productId: productIdOverride });
 
-    initScheduledNotifications({ label: host });
+    initScheduledNotifications({ label: pageHost });
 
-    setChatCapability(host, true);
+    setChatCapability(pageHost, true);
     await bridgeModule.renderIframe(
       localhostUrl,
-      host,
+      pageHost,
       productIdOverride !== undefined ? { productId: productIdOverride } : {},
     );
     setProductContentShown(true);
@@ -672,10 +670,10 @@ async function main(): Promise<void> {
       null,
       '',
       productIdOverride === undefined
-        ? '/' + host
-        : `/${host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
+        ? '/' + pageHost
+        : `/${pageHost}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
     );
-    document.title = `${host} · ${SITE_ID}`;
+    document.title = `${pageHost} · ${SITE_ID}`;
     performance.mark('dotli:main:end');
     emitDotliDebugEvent({
       layer: 'boot',

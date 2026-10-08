@@ -44,7 +44,8 @@ function growFromCircle(el: HTMLButtonElement): void {
     return;
   }
   const style = getComputedStyle(el);
-  const duration = parseFloat(style.getPropertyValue('--dur')) * 1000;
+  const token = style.getPropertyValue('--dur').trim();
+  const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000);
   // Without the tokens' stylesheet, as in unit tests, there is nothing to time it by.
   if (!Number.isFinite(duration)) {
     return;
@@ -59,14 +60,17 @@ function growFromCircle(el: HTMLButtonElement): void {
 /** A chrome button: secondary by default, primary for the one main action, danger for a reject. */
 export function Button(props: ButtonProps): JSX.Element {
   let el: HTMLButtonElement | undefined;
-  createEffect(
-    () => props.loading === true,
-    (loading, wasLoading) => {
-      if (wasLoading === true && !loading && el !== undefined) {
-        growFromCircle(el);
-      }
-    },
-  );
+  // Only a button that can load ever grows, so the rest skip the effect.
+  if ('loading' in props) {
+    createEffect(
+      () => props.loading === true,
+      (loading, wasLoading) => {
+        if (wasLoading === true && !loading && el !== undefined) {
+          growFromCircle(el);
+        }
+      },
+    );
+  }
   return (
     <button
       ref={node => {

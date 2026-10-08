@@ -56,13 +56,9 @@ beforeEach(() => {
 });
 
 describe('topbar boot rehydration', () => {
-  it('As a dotli integrator, the host renders the persisted session badge on idle after init', async () => {
+  it('As a dotli integrator, the host renders the persisted session badge as soon as the topbar starts', async () => {
     // Given
     installTopbarDom();
-    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
-      callback();
-      return 0;
-    });
 
     const { SHARED_CORE_SESSION_KEY } = await import('../../protocol/src/auth-storage.js');
     const { SITE_ID } = await import('../../config/src/config.js');
@@ -100,10 +96,6 @@ describe('topbar boot rehydration', () => {
   it('As a dotli integrator, the host stays logged out when no session is persisted', async () => {
     // Given
     installTopbarDom();
-    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
-      callback();
-      return 0;
-    });
 
     // When
     const { initTopBar } = await import('../src/topbar.js');

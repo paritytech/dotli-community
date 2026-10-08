@@ -400,8 +400,8 @@ test.describe('Shell UI smoke', () => {
 
     // Then: the bar is the page's banner landmark.
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveAttribute('id', 'topbar');
-    // The hydrated islands' build-time renders.
-    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Sign in with Polkadot Mobile');
+    // The hydrated islands' build-time renders: the account button before the saved session is read.
+    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Checking sign-in');
 
     await context.close();
   });

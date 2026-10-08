@@ -8,7 +8,7 @@ import {
   onStoredSessionChanged,
 } from '../src/host-callbacks/SessionStore.js';
 import { createAuthStateChanged } from '../src/host-callbacks/AuthState.js';
-import { sessionRestoredStore } from '../src/state/auth.js';
+import { getAuthState } from '../src/state/auth.js';
 import { resetAllStoresForTests } from '../src/state/create-store.js';
 import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import { must } from './support.js';
@@ -72,6 +72,8 @@ describe('session-store host callbacks', () => {
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
     vi.restoreAllMocks();
+    // Each test is a fresh page, whose auth state is Restoring until the saved session is read.
+    resetAllStoresForTests();
   });
 
   it('As a dotli integrator, the host round-trips the host core session blob', async () => {
@@ -559,20 +561,21 @@ describe('session-store host callbacks', () => {
       events.push((event as CustomEvent).detail);
     });
 
-    // Nothing persisted: nothing emitted, even with a stale cache entry.
+    // Nothing persisted: signed out, even with a stale cache entry.
     sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     emitPersistedSessionUiState();
     await flushMicrotasks();
-    expect(events).toEqual([]);
+    expect(events).toEqual([{ tag: 'Disconnected' }]);
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
-    // When
+    // When: a login persists the session, then a reload reads it back.
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     authStateChanged({
       tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
+    resetAllStoresForTests();
     events.length = 0;
 
     emitPersistedSessionUiState();
@@ -582,16 +585,39 @@ describe('session-store host callbacks', () => {
     expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
   });
 
-  it('As a visitor, the host marks the session read once boot finds a session or none', async () => {
+  it('As a visitor without a saved session, boot ends the unknown state as signed out', async () => {
+    // When
+    emitPersistedSessionUiState();
+    await flushMicrotasks();
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
+  });
+
+  it('As a user pairing before boot read the saved session, finding none leaves my pairing alone', async () => {
     // Given
-    resetAllStoresForTests();
+    createAuthStateChanged('myapp')({ tag: 'Pairing', value: { deeplink: 'polkadotapp://pair' } });
 
     // When
     emitPersistedSessionUiState();
     await flushMicrotasks();
 
     // Then
-    expect(sessionRestoredStore.get()).toBe(true);
+    expect(getAuthState().tag).toBe('Pairing');
+  });
+
+  it('As a user whose session the core already reported, the saved copy read later does not override it', async () => {
+    // Given
+    const storage = createSessionStoreAdapters();
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    createAuthStateChanged('myapp')({ tag: 'Disconnected' });
+
+    // When
+    emitPersistedSessionUiState();
+    await flushMicrotasks();
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
   });
 
   it('As a dotli integrator, the host rehydrates a bare connected state when no cache exists', async () => {
