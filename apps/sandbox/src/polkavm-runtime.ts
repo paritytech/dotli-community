@@ -919,7 +919,7 @@ export interface HostFrameResponseTarget {
 
 /**
  * Route one guest host frame. Every frame goes to the authenticated host port
- * except `JamPeerTransport` (trait 23) requests, which the execution-local peer
+ * except `JamPeerTransport` (trait 111) requests, which the execution-local peer
  * session answers once the host has granted the dialed JAM network. The
  * handshake is the one frame both must see: the peer session negotiates on a
  * copy and its reply is dropped, so the guest only ever observes the host's
@@ -2873,7 +2873,11 @@ async function startPolkaVmApplication(
   // travels over the authenticated host port with the sandbox's own request
   // id and its reply never reaches the guest. The grant is execution-local
   // and carries no account, signing, storage or arbitrary-URL authority.
-  const jamPeersPermission = new JamPeersPermissionRequester(hostFramePort);
+  const jamPeersPermission = new JamPeersPermissionRequester(hostFramePort, {
+    onWebTransportUnavailable: () => {
+      window.parent.postMessage({ type: 'dotli:jam-peer-transport-unavailable' }, parentOrigin);
+    },
+  });
   const peerSession = createJamPeerTransportSession({
     authorize: jamPeersPermission.authorize,
   });

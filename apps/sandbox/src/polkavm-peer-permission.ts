@@ -30,6 +30,12 @@ export interface HostPermissionPort {
   postMessage(message: unknown, transfer: Transferable[]): void;
 }
 
+export interface JamPeersPermissionRequesterOptions {
+  /** Override only for deterministic tests; production probes the browser global. */
+  webTransportAvailable?: boolean;
+  onWebTransportUnavailable?: () => void;
+}
+
 /**
  * Byte range of the SCALE `str` request id heading a wire frame, or `null`
  * when the frame is truncated. Reads the header only, so routing a large
@@ -79,9 +85,10 @@ export function jamPeersGrantText(granted: readonly string[]): string[] {
   return [
     ...granted.map(
       genesis =>
-        `JAM network ${genesis}: read-only peer access (WebTransport) to its validators, granted for this app and closed when it stops.`,
+        `JAM network ${genesis}: send and receive messages (WebTransport) with app-selected peers, granted for this app and closed when it stops.`,
     ),
-    'Limits: 8 connections, 16 streams per connection, 1 MiB messages. Received bytes are unverified until the app checks them.',
+    'Limits: 8 pending or established connections, 8 distinct network decisions per execution, 16 streams per connection, 1 MiB messages.',
+    'The browser handshake does not bind peers to the genesis. Peer keys and endpoints are selected by the app; the app must verify chain data.',
     'This access carries no account, signing, storage or web access.',
   ];
 }
@@ -93,17 +100,30 @@ export function jamPeersGrantText(granted: readonly string[]): string[] {
  */
 export class JamPeersPermissionRequester {
   private readonly port: HostPermissionPort;
+  private readonly webTransportAvailable: boolean;
+  private readonly onWebTransportUnavailable: () => void;
   private readonly pending = new Map<string, (granted: boolean) => void>();
   private readonly grantedGenesis = new Set<string>();
   private closed = false;
+  private unavailableReported = false;
 
-  constructor(port: HostPermissionPort) {
+  constructor(port: HostPermissionPort, options: JamPeersPermissionRequesterOptions = {}) {
     this.port = port;
+    this.webTransportAvailable =
+      options.webTransportAvailable ?? typeof Reflect.get(globalThis, 'WebTransport') === 'function';
+    this.onWebTransportUnavailable = options.onWebTransportUnavailable ?? (() => undefined);
   }
 
   /** JamPeerTransport `authorize` callback: resolves whether the host granted `genesis`. */
   readonly authorize = (genesis: string): Promise<boolean> => {
     if (this.closed) {
+      return Promise.resolve(false);
+    }
+    if (!this.webTransportAvailable) {
+      if (!this.unavailableReported) {
+        this.unavailableReported = true;
+        this.onWebTransportUnavailable();
+      }
       return Promise.resolve(false);
     }
     const nonce = crypto.getRandomValues(new Uint8Array(16));

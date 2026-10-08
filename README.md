@@ -160,15 +160,29 @@ transport is execution-local in the sandbox. Before dialing a network, it reques
 product's authenticated port to the shared page core. The host's Solid permission dialog shows the full genesis hash and
 offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions are scoped to
 product and genesis, while a one-time grant lasts only for that execution. This grants no account, signing, storage, or
-arbitrary web access.
+arbitrary web access. Peer access permits sending and receiving messages; it is not a read-only network permission.
 
-The canonical session uses WebTransport to validators, with at most eight connections, sixteen streams per connection,
-and 1 MiB messages. Received data remains unverified until the guest checks it. The runtime menu's **Network access**
-section lists this execution's grants. Network updates continue while its display/audio menu is paused. Stop,
-replacement, and runtime failure close the session and refuse outstanding permission requests; a replacement guest
-cannot consume old replies. Ordinary host frames retain their 1 MiB bound and still use the shared page core; only peer
-frames use the larger bound needed for message framing. The session's ten-second dial deadline includes the permission
-prompt: a late decision does not resurrect an expired dial, though a retry can use the remembered decision.
+The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
+the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
+the app can continue with its verified snapshot. Supported versions are Chrome or Edge 100+, Firefox 125+, and
+Safari/iOS 26.4+.
+
+The canonical session uses WebTransport to app-selected peers, with at most eight pending or established connections,
+sixteen streams per connection, and 1 MiB messages. Permission waits consume a connection slot before prompting. Each
+execution remembers at most eight distinct genesis decisions, including pending, refused, and dismissed decisions. A new
+ninth genesis returns `Limit`; existing decisions are not evicted or re-prompted. Cancellation releases its pending dial
+slot but retains the bounded network decision. Received data remains unverified until the guest checks it. The runtime
+menu's **Network access** section lists this execution's grants. Network updates continue while its display/audio menu
+is paused. Stop, replacement, and runtime failure close the session and refuse outstanding permission requests; a
+replacement guest cannot consume old replies. Ordinary host frames retain their 1 MiB bound and still use the shared
+page core; only peer frames use the larger bound needed for message framing. The session's ten-second dial deadline
+includes the permission prompt: a late decision does not resurrect an expired dial, though a retry can use the
+remembered decision.
+
+The full genesis scopes permission decisions, but the browser WebTransport handshake does not bind the peer to that
+genesis. The current PolkaJAM HTTP/3 CONNECT endpoint does not negotiate a genesis. TLS pins an app-supplied peer key;
+it does not prove validator membership. The guest must verify chain data. Browser support is retained with this explicit
+limitation; no manifest declaration or invented URL/protocol parameter substitutes for verification.
 
 App manifest v2 uses runtime ABI 1 with framebuffer, Tri2D, WebGPU Raster, and bounded capability negotiation; TrUAPI,
 MotionSample v1, text, IME, focus, and wheel input use the same pinned browser runtime as native Hosts. UI output v1

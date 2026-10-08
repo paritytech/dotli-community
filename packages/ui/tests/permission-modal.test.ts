@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { showPermissionRequestModal } from '../src/permission-modal.js';
+import { showJamPeersPermissionModal, showPermissionRequestModal } from '../src/permission-modal.js';
 import { footerVariants, overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { byTestId } from './support.js';
 
@@ -9,6 +9,18 @@ afterEach(() => {
 });
 
 describe('permission request modal', () => {
+  it('scopes a one-time bidirectional JAM grant to the full displayed genesis', async () => {
+    const genesis = `0x${'35'.repeat(31)}ff`;
+    const decision = showJamPeersPermissionModal('jam-app', genesis);
+    await overlaysReady();
+
+    expect(document.body.textContent).toContain(genesis);
+    expect(document.body.textContent).toContain('send and receive messages with app-selected peers');
+    expect(footerButtons().map(button => button.text)).toEqual(['Deny', 'Always allow', 'Allow once']);
+    byTestId('signing-btn-sign').click();
+    await expect(decision).resolves.toBe('granted-once');
+  });
+
   it('As a dotli integrator, the host resolves granted when the user allows', async () => {
     // Given
     const decision = showPermissionRequestModal('myapp', 'Camera');

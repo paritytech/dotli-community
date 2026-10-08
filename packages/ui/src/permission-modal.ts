@@ -38,9 +38,9 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   StatementSubmit: 'Submit signed statements to the statement store',
 };
 
-/** The question asked before an app may reach the validators of one JAM network. */
+/** The question asked before an app may exchange peer messages for one JAM network. */
 export function jamPeersPermissionText(label: string, genesis: string): string {
-  return `Allow ${withActiveTld(label)} to connect to JAM network ${genesis.slice(0, 10)}… (read-only peer access, no accounts or signing)?`;
+  return `Allow ${withActiveTld(label)} to send and receive messages with app-selected peers for JAM network ${genesis.slice(0, 10)}… (no accounts or signing)?`;
 }
 
 interface PermissionPrompt {
