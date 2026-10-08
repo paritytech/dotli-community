@@ -672,41 +672,6 @@ describe('createChainPool watch', () => {
     expect(seen.activity).toEqual([{ genesisHash: '0xaa', consumers: 1, status: 'connecting', following: false }]);
   });
 
-  it('As the network panel, best blocks and the follow reach me without a lease of my own', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    const seen = recorder();
-    pool.watch(seen.watcher);
-    const connection = lease(pool, '0xaa');
-    const transport = must(built[0], 'transport');
-    const followEvent = (result: Record<string, unknown>): JsonRpcMessage =>
-      ({
-        jsonrpc: '2.0',
-        method: 'chainHead_v1_followEvent',
-        params: { subscription: 'up-1', result },
-      }) as unknown as JsonRpcMessage;
-
-    // When
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [false] });
-    transport.emit({
-      jsonrpc: '2.0',
-      id: (transport.sent.at(-1) as { id: string }).id,
-      result: 'up-1',
-    } as JsonRpcMessage);
-    transport.emit(followEvent({ event: 'initialized', finalizedBlockHashes: ['0xf0'] }));
-    transport.emit(followEvent({ event: 'bestBlockChanged', bestBlockHash: '0xf0' }));
-    const base = must(
-      transport.sent.find(message => String(message.id).startsWith('broker-base:')),
-      'base request',
-    );
-    transport.emit({ jsonrpc: '2.0', id: base.id, result: headerHex(7) } as JsonRpcMessage);
-
-    // Then
-    expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1, following: true });
-    expect(seen.best).toEqual([['0xaa', 7]]);
-  });
-
   it('As the network panel, a chain rebuilt inside its halt ends on the rebuilt chain, not the dead one', () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -750,123 +715,6 @@ describe('createChainPool watch', () => {
     expect(connection).toBeDefined();
   });
 
-  const isBase = (message: JsonRpcRequest): boolean => String(message.id).startsWith('broker-base:');
-
-  /** A lease whose session follows the chain, answered upstream under `upstreamToken`. */
-  function followOn(
-    pool: ChainPool,
-    transport: () => TransportRecord,
-  ): {
-    follow: (upstreamToken: string) => void;
-    unfollow: () => void;
-    event: (upstreamToken: string, result: Record<string, unknown>) => void;
-  } {
-    const replies: { id?: unknown; result?: unknown }[] = [];
-    const connection = lease(pool, '0xaa', message => {
-      replies.push(message as { id?: unknown; result?: unknown });
-    });
-    let nextId = 1;
-    let localToken: string | null = null;
-    return {
-      follow: upstreamToken => {
-        const id = nextId++;
-        connection.send({ jsonrpc: '2.0', id, method: 'chainHead_v1_follow', params: [false] });
-        const record = transport();
-        record.emit({ jsonrpc: '2.0', id: (record.sent.at(-1) as { id: string }).id, result: upstreamToken });
-        localToken = String(
-          must(
-            replies.find(reply => reply.id === id),
-            'follow reply',
-          ).result,
-        );
-      },
-      unfollow: () => {
-        connection.send({
-          jsonrpc: '2.0',
-          id: nextId++,
-          method: 'chainHead_v1_unfollow',
-          params: [must(localToken, 'local token')],
-        });
-      },
-      event: (upstreamToken, result) => {
-        transport().emit({
-          jsonrpc: '2.0',
-          method: 'chainHead_v1_followEvent',
-          params: { subscription: upstreamToken, result },
-        } as unknown as JsonRpcMessage);
-      },
-    };
-  }
-
-  it('As a dotli integrator, a pool nobody watches sends no request of its own when a follow starts', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    const chain = followOn(pool, () => must(built[0], 'transport'));
-
-    // When
-    chain.follow('up-1');
-    chain.event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
-    chain.event('up-1', { event: 'bestBlockChanged', bestBlockHash: '0xf0' });
-
-    // Then
-    expect(must(built[0], 'transport').sent.filter(isBase)).toEqual([]);
-  });
-
-  it('As the network panel opening after a follow started, I hear it and get best blocks once its base arrives', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    const transport = (): TransportRecord => must(built[0], 'transport');
-    const chain = followOn(pool, transport);
-    chain.follow('up-1');
-    chain.event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
-    chain.event('up-1', { event: 'bestBlockChanged', bestBlockHash: '0xf0' });
-    const seen = recorder();
-
-    // When
-    pool.watch(seen.watcher);
-
-    // Then
-    expect(seen.activity).toEqual([{ genesisHash: '0xaa', consumers: 1, status: 'connecting', following: true }]);
-    const bases = transport().sent.filter(isBase);
-    expect(bases.map(message => message.params as unknown)).toEqual([['up-1', '0xf0']]);
-
-    // When
-    transport().emit({ jsonrpc: '2.0', id: must(bases[0], 'base').id, result: headerHex(7) } as JsonRpcMessage);
-
-    // Then
-    expect(seen.best).toEqual([['0xaa', 7]]);
-  });
-
-  it('As the network panel closing, my last unwatch leaves the pool sending no more base requests', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    const transport = (): TransportRecord => must(built[0], 'transport');
-    const unwatch = pool.watch(recorder().watcher);
-    const chain = followOn(pool, transport);
-    chain.follow('up-1');
-    chain.event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
-    const base = must(transport().sent.find(isBase), 'base');
-    transport().emit({ jsonrpc: '2.0', id: base.id, result: headerHex(7) } as JsonRpcMessage);
-
-    // When: a finalization the cache cannot place, which a watched pool numbers afresh
-    unwatch();
-    chain.event('up-1', { event: 'finalized', finalizedBlockHashes: ['0xunknown'], prunedBlockHashes: [] });
-
-    // Then
-    expect(transport().sent.filter(isBase)).toHaveLength(1);
-
-    // When: the follow ends and a new one starts
-    chain.unfollow();
-    chain.follow('up-2');
-    chain.event('up-2', { event: 'initialized', finalizedBlockHashes: ['0xf1'] });
-
-    // Then
-    expect(transport().sent.filter(isBase)).toHaveLength(1);
-  });
-
   const isFollow = (message: JsonRpcRequest): boolean => message.method === 'chainHead_v1_follow';
 
   /** Answers the pool's newest follow request upstream and returns its upstream event emitter. */
@@ -880,6 +728,16 @@ describe('createChainPool watch', () => {
         params: { subscription: upstreamToken, result },
       } as unknown as JsonRpcMessage);
     };
+  }
+
+  /** Answers the pool's newest header request upstream with a header numbered `blockNumber`. */
+  function answerHeader(record: TransportRecord, blockNumber: number): void {
+    const request = must(record.sent.filter(message => message.method === 'chainHead_v1_header').at(-1), 'header');
+    record.emit({
+      jsonrpc: '2.0',
+      id: must(request.id, 'header id'),
+      result: headerHex(blockNumber),
+    } as JsonRpcMessage);
   }
 
   it('As the network panel, a chain someone holds without following it still brings me its best blocks', () => {
@@ -896,13 +754,35 @@ describe('createChainPool watch', () => {
     event({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
     event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
     event({ event: 'bestBlockChanged', bestBlockHash: '0xb1' });
-    const base = must(transport.sent.find(isBase), 'base request');
-    transport.emit({ jsonrpc: '2.0', id: base.id, result: headerHex(7) } as JsonRpcMessage);
+    answerHeader(transport, 8);
 
     // Then
     expect(transport.sent.filter(isFollow).map(message => message.params as unknown)).toEqual([[true]]);
+    expect(transport.sent.at(-1)).toMatchObject({ method: 'chainHead_v1_header', params: ['up-1', '0xb1'] });
     expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1, following: true });
     expect(seen.best).toEqual([['0xaa', 8]]);
+  });
+
+  it('As the network panel opening after a consumer follows with the runtime, I join its follow and get its best block', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const connection = lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    const event = answerFollow(transport, 'up-1');
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event({ event: 'bestBlockChanged', bestBlockHash: '0xf0' });
+    const seen = recorder();
+
+    // When
+    pool.watch(seen.watcher);
+    answerHeader(transport, 7);
+
+    // Then
+    expect(transport.sent.filter(isFollow)).toHaveLength(1);
+    expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1, following: true });
+    expect(seen.best).toEqual([['0xaa', 7]]);
   });
 
   it('As the network panel, the last consumer leaving stops my follow before I hear no consumers are left', async () => {

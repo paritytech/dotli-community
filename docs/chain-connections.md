@@ -82,10 +82,9 @@ In simple terms:
   TrUAPI core), name resolution in `rpc-gateway` and the settings probe all
   lease from it, so the host page holds one connection per chain.
 - **The network panel** leases nothing. `ChainPool.watch` reports each
-  chain's leases, status, follow and best-block numbers, which the broker
-  derives from one `chainHead_v1_header` per follow. A chain someone holds is
-  followed for the panel, so its blocks keep coming when its holder does not
-  follow it, and that follow stops with the last lease.
+  chain's leases, status, follow and best-block numbers. A chain someone holds
+  is followed for the panel, so its blocks keep coming when its holder does
+  not follow it, and that follow stops with the last lease.
 - **The host pool's transport follows the backend.** In `rpc-gateway` it is
   the host page's own RPC socket. On the smoldot backends it is one remote
   connection per chain to the **protocol iframe** over `postMessage`
@@ -151,16 +150,13 @@ flowchart TB
 - **Watch follow**: while the pool is watched, each held chain carries one
   extra broker session, `watch:N`, that follows with the runtime, as
   polkadot-api does, so a product's follow shares it upstream. It is not a
-  lease. It unpins each block at once, follows again after a `stop`, and is
+  lease. It numbers each best block from its `chainHead_v1_header`, unpins a
+  block once finalization passes it, follows again after a `stop`, and is
   closed when the last lease is returned, before the watchers hear the chain
-  has no consumers. With `VITE_APP_DEBUG`, the pool logs every lease, release,
+  has no consumers. The frame and SharedWorker pools are never watched, so
+  they send nothing extra. With `VITE_APP_DEBUG`, the pool logs every lease, release,
   open and close under `[dot.li chain-pool]`, naming each lease's holder
   (`truapi-core`, `resolver`, `host`, `sync-observer`, `remote:<id>`).
-- **Broker observer**: one per broker, installed by the pool only while the
-  pool is watched. It numbers best blocks from one `chainHead_v1_header` for
-  the newest finalized block of one follow, sent under a `broker-base:` id,
-  plus each block's depth above it. The frame and SharedWorker pools are never
-  watched, so they send nothing extra.
 
 ## The RPC transport
 
@@ -415,7 +411,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Host pool's transport on the smoldot backends | `packages/ui/src/host-callbacks/frame-transport.ts` |
 | Host pool's frame and chain gates | `packages/ui/src/host-callbacks/redial-gate.ts` |
 | Settings probe | `packages/ui/src/settings-actions.ts` (`queryFinalizedBlock`) |
-| Network panel | `packages/ui/src/network-monitor.ts`, `ChainPool.watch` in `packages/protocol/src/chain-pool.ts`, the broker observer in `packages/protocol/src/broker.ts`, `packages/protocol/src/header-number.ts` |
+| Network panel | `packages/ui/src/network-monitor.ts`, `ChainPool.watch` in `packages/protocol/src/chain-pool.ts`, `packages/protocol/src/header-number.ts` |
 | Bitswap | `packages/content/src/bitswap.ts` |
 | Protocol iframe engine | `apps/protocol/src/engine.ts` |
 | Watched chains | `apps/protocol/src/observe-chains.ts` |
