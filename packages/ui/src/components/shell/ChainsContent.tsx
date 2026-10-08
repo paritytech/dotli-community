@@ -185,7 +185,7 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
 
 function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
   const unused = (): boolean => props.chain.state === 'unused';
-  // Blank rather than "0 peers" until a sample lands: zero is a different claim. An unused chain claims none.
+  // No chip rather than "0 peers" until a sample lands: zero is a different claim. An unused chain claims none.
   const peers = (): number | null => (props.chain.reachable && !unused() ? props.chain.peers : null);
   return (
     <Stack class={s['group']}>
@@ -199,18 +199,16 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
             </Chip>
           }
         >
-          <span
-            class={s['peers']}
-            data-testid="chains-group-peers"
-            data-none={peers() === 0 ? '' : undefined}
-            aria-label={
-              peers() === null
-                ? undefined
-                : `${props.chain.label}: ${String(peers())} ${peers() === 1 ? 'peer' : 'peers'} connected`
-            }
-          >
-            {peers() === null ? '' : peers() === 1 ? '1 peer' : `${String(peers())} peers`}
-          </span>
+          <Show when={peers() !== null}>
+            <Chip
+              tone="mono"
+              testId="chains-group-peers"
+              alert={peers() === 0}
+              label={`${props.chain.label}: ${String(peers())} ${peers() === 1 ? 'peer' : 'peers'} connected`}
+            >
+              {peers() === 1 ? '1 peer' : `${String(peers())} peers`}
+            </Chip>
+          </Show>
         </Show>
       </p>
       <div

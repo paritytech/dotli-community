@@ -53,20 +53,8 @@
   gap: 6px;
   margin: 0;
   color: var(--chrome-text);
-  font-size: var(--fs-small);
+  font-size: var(--fs-body);
   font-weight: var(--fw-medium);
-}
-/* Tabular figures, so a changing count cannot reflow the row it sits on. */
-.peers {
-  color: var(--chrome-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-regular);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.peers[data-none] {
-  color: var(--chrome-err-text);
 }
 .cell {
   min-width: 0;

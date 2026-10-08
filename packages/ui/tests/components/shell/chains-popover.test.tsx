@@ -225,9 +225,9 @@ function expectBody(expected: ExpectedBody): void {
     const [name, cell] = Array.from(group.children) as [Element, Element];
     expect(group.childElementCount).toBe(2);
     expect(name.children[0]?.textContent).toBe(chainExpected.label);
-    const peers = nth(name.children, 1);
-    expect(peers.textContent).toBe(chainExpected.peers?.text ?? '');
-    expect(peers.getAttribute('aria-label')).toBe(chainExpected.peers?.aria ?? null);
+    const peers = name.querySelector('[data-testid="chains-group-peers"]');
+    expect(peers?.textContent).toBe(chainExpected.peers?.text);
+    expect(peers?.getAttribute('aria-label')).toBe(chainExpected.peers?.aria);
     expect(cell.hasAttribute('data-unavailable')).toBe(chainExpected.cell.kind === 'unavailable');
     if (chainExpected.cell.kind === 'unavailable') {
       expect(cell.textContent).toBe('no endpoint on this network');
@@ -677,7 +677,7 @@ describe('The network popover island', () => {
     // Then
     const peers = byTestId('chains-group-peers');
     expect(peers.textContent).toBe('0 peers');
-    expect(peers.hasAttribute('data-none')).toBe(true);
+    expect(peers.hasAttribute('data-alert')).toBe(true);
   });
 
   it('As a dotli user watching, bars and peers follow the network store', async () => {
