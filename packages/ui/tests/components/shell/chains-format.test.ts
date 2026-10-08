@@ -58,7 +58,7 @@ describe('describeNetworkStatus under a light client', () => {
     expect(line).toEqual({
       tone: 'warn',
       title: 'Connection is unstable',
-      detail: 'Hub and Identity are short on peers',
+      detail: 'Hub and Identity are behind',
     });
   });
 
@@ -70,7 +70,7 @@ describe('describeNetworkStatus under a light client', () => {
     const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
 
     // Then
-    expect(line.detail).toBe('Hub is short on peers');
+    expect(line.detail).toBe('Hub is behind');
   });
 
   it('As a user who went offline, the menu says so whatever the chains last reported', () => {
@@ -103,7 +103,7 @@ describe('describeNetworkStatus under a light client', () => {
     const line = describeNetworkStatus(health, false, 4, 'smoldot-shared-worker');
 
     // Then
-    expect(line.detail).toBe('Hub is short on peers');
+    expect(line.detail).toBe('Hub is behind');
   });
 });
 

@@ -199,6 +199,11 @@ export function recordChainActivity(activity: ChainActivity): void {
     extras.set(genesis, state);
   }
   const released = state.consumers > 0 && activity.consumers === 0;
+  // A consumer can drop its follow and keep the chain. No block is coming then, so the clock stops rather than
+  // reading the chain as overdue, and a later follow carries the strip on from its next block.
+  if (state.following && !activity.following) {
+    state.lastAt = null;
+  }
   state.consumers = activity.consumers;
   state.status = activity.status;
   state.following = activity.following;

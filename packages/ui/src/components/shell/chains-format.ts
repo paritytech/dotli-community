@@ -114,7 +114,7 @@ interface Captions {
 const LIGHT_CLIENT: Captions = {
   offline: 'No peers on any chain. Retrying.',
   ok: chainCount => `Light client is ${inSync(chainCount)}`,
-  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} short on peers`,
+  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} behind`,
   starting: 'Finding peers. This takes a few seconds.',
 };
 

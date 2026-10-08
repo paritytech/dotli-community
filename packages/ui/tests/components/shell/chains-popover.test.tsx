@@ -488,7 +488,7 @@ describe('The network popover island', () => {
       name: 'waiting on overdue chains, one of them due any moment',
       expected: {
         title: 'Connection is unstable',
-        detail: 'Relay chain and Asset Hub are short on peers',
+        detail: 'Relay chain and Asset Hub are behind',
         tone: 'warn',
         chains: [
           {

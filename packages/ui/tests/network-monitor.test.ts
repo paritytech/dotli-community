@@ -508,6 +508,30 @@ describe('The network monitor judges how each chain is used', () => {
     vi.useRealTimers();
   });
 
+  it('As a user whose app dropped its block follow but kept the chain, the chain stops its clock and is not overdue', () => {
+    // Given
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 100);
+    vi.advanceTimersByTime(6000);
+    recordBestBlock(relayGenesis(), 101);
+
+    // When
+    use(relayGenesis(), { following: false });
+    vi.advanceTimersByTime(120_000);
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', alarm: false, sinceLast: null, latest: 101 });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
+
+    // When
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 140);
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', latest: 140 });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
+  });
+
   it('As a user, a followed chain is pending until its first block, then live', () => {
     // When
     use(relayGenesis());
