@@ -7,6 +7,7 @@
   display: flex;
   flex: none;
   align-items: center;
+  gap: 6px;
   box-sizing: border-box;
   height: var(--h-bar-control);
   margin: 0;
@@ -19,12 +20,9 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-.lockup {
+.mark,
+.brand {
   display: block;
-  flex: none;
-}
-.mark {
-  display: none;
   flex: none;
 }
 /* Out of the flow, so the bar is laid out as it will be once the tag goes. */
@@ -48,11 +46,8 @@
   .home {
     padding-right: 12px;
   }
-  .mark {
-    display: block;
-  }
   /* Out of sight but still the link's accessible name. */
-  .lockup {
+  .brand {
     position: absolute;
     width: 1px;
     height: 1px;
