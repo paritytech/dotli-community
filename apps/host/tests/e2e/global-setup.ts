@@ -78,9 +78,9 @@ const CLI_USAGE_EXIT_CODE = 2;
 // Lets CI tell a testnet or identity backend outage from a failed assertion.
 export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
-// A username can be claimed only once, so a fixed prefix fails on every later run. The CLI rejects digits and
+// A username can be claimed only once, so a fixed base fails on every later run. The CLI rejects digits and
 // separators.
-function randomLiteUsernamePrefix(): string {
+function randomSessionBase(): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz';
   let suffix = '';
   for (let i = 0; i < 6; i++) {
@@ -98,8 +98,7 @@ function signingHostConfig(): SigningHostConfig {
     productId: PRODUCT_ID,
     // With an explicit mnemonic the CLI signs as that account directly and
     // rejects auto-account naming flags.
-    liteUsernamePrefix:
-      (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== '' ? undefined : randomLiteUsernamePrefix(),
+    session: (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== '' ? undefined : randomSessionBase(),
   };
 }
 
