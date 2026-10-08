@@ -4,7 +4,6 @@
 import {
   getNetworkStatus,
   getTransfer,
-  holdNetworkWatch,
   subscribeNetwork,
   type ChainStatus,
   type TransferState,
@@ -76,18 +75,8 @@ function sync(): void {
   network.set(snapshot());
 }
 
-/** initTopBar starts it after setBlockSource, so the chains island reads a current store whenever it mounts. */
+/** initTopBar starts it, so the chains island reads a current store whenever it mounts. */
 export function startNetworkStore(): () => void {
   sync();
   return subscribeNetwork(sync);
-}
-
-/**
- * Re-reads the monitor, because starting a watch changes what it reports without a notification.
- * The release lets the watch lapse after the monitor's idle grace once nobody else holds it.
- */
-export function watchNetwork(): () => void {
-  const release = holdNetworkWatch();
-  sync();
-  return release;
 }

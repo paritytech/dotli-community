@@ -6,7 +6,6 @@ import { expect, waitFor } from 'storybook/test';
 import { TopbarFrame, expectPhone, openSurface } from '../../../../.storybook/shell-fixtures.js';
 import { resetAllStoresForTests } from '../../../state/create-store.js';
 import { setProductLoaded } from '../../../state/product.js';
-import { recordChainsButtonVisible } from '../../../state/topbar.js';
 import { initSettingsStore } from '../../../state/settings.js';
 import { ChainsPopover } from '../ChainsPopover.js';
 import { PermissionsPopover } from '../PermissionsPopover.js';
@@ -30,7 +29,6 @@ const meta = {
   args: { rows: [], buttonRef: () => undefined },
   parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
   beforeEach: () => {
-    recordChainsButtonVisible(true);
     setProductLoaded('Example', 'example');
     initSettingsStore();
     return resetAllStoresForTests;

@@ -53,25 +53,27 @@
   gap: 6px;
   margin: 0;
   color: var(--chrome-text);
-  font-size: var(--fs-small);
+  font-size: var(--fs-body);
   font-weight: var(--fw-medium);
-}
-/* Tabular figures, so a changing count cannot reflow the row it sits on. */
-.peers {
-  color: var(--chrome-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-regular);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.peers[data-none] {
-  color: var(--chrome-err-text);
 }
 .cell {
   min-width: 0;
   overflow: hidden;
   text-align: left;
+}
+/* A chain nobody uses keeps its row and last bars, faded, so the known chains never jump around. */
+.group-label[data-state='unused'],
+.cell[data-state='unused'] {
+  opacity: 0.5;
+}
+.other {
+  padding: 0 var(--sp-1);
+}
+.other-summary {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
 }
 .cell[data-unavailable],
 .waiting {
