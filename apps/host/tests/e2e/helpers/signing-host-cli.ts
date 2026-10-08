@@ -13,7 +13,8 @@ export interface SigningHostConfig {
   basePath: string;
   network: string;
   productId: string;
-  liteUsernamePrefix?: string | undefined;
+  /** The username base a managed account is created under. */
+  session?: string | undefined;
 }
 
 export interface SigningHostExit {
@@ -53,8 +54,8 @@ export function startSigningHostPair(config: SigningHostConfig, deeplink: string
     config.productId,
     '--auto-accept',
   ];
-  if (config.liteUsernamePrefix !== undefined) {
-    args.push('--lite-username-prefix', config.liteUsernamePrefix);
+  if (config.session !== undefined) {
+    args.push('--session', config.session);
   }
   args.push('exec', `/pair ${deeplink}`);
 

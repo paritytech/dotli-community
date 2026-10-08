@@ -590,6 +590,34 @@ describe('chain pool brokering', () => {
     ]);
   });
 
+  it('As a dApp user starting a follow, I hear only the newest finalized block, and the older ones are unpinned for me', () => {
+    // Given
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote('bulletin', 'conn-a', message => messages.push(message));
+    connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-a' });
+
+    // When
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: {
+        subscription: 'up-a',
+        result: { event: 'initialized', finalizedBlockHashes: ['0xf0', '0xf1', '0xf2'], finalizedBlockRuntime: null },
+      },
+    } as unknown as JsonRpcMessage);
+
+    // Then
+    const initialized = (JSON.parse(messages[1] ?? '{}') as { params: { result: Record<string, unknown> } }).params
+      .result;
+    expect(initialized['finalizedBlockHashes']).toEqual(['0xf2']);
+    expect(
+      harness.sent.filter(message => message.method === 'chainHead_v1_unpin').map(message => message.params as unknown),
+    ).toEqual([['up-a', ['0xf0', '0xf1']]]);
+  });
+
   it('As a dApp user, joining a follow another session holds replays only blocks still pinned upstream', () => {
     // Given: session A follows, sees two blocks finalized and a third on top,
     // then unpins what it no longer needs, as papi does
