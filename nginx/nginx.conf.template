@@ -1,6 +1,6 @@
 # ${DOMAIN}: DO NOT EDIT THE INSTALLED COPY. Rendered per env by `make deploy-nginx` with envsubst.
 # ${RL} and ${SENTRY} are "" to enable their lines or "#" to comment them out. ${RL} is on for the production
-# domains, ${SENTRY} when SENTRY_DSN is set. ${SNIPPETS} is the env's own copy of nginx/snippets/.
+# domains, ${SENTRY} when SENTRY_DSN is set.
 #   host.${DOMAIN}    protocol build
 #   *.${DOMAIN}       host build
 #   *.app.${DOMAIN}   app build
@@ -32,14 +32,14 @@ server {
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-    include ${SNIPPETS}/dotli-ssl.conf;
+    include /etc/nginx/snippets/dotli-ssl.conf;
 
     root ${WEBROOT}/host;
     index index.html;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
-    ${SENTRY}include ${SNIPPETS}/dotli-sentry-tunnel.conf;
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
     # The landing page. Every other path gets the shell, which sends a URL with no product back here.
     location = / {
@@ -48,11 +48,11 @@ server {
 
     location = /__preview {
         set $csp_ancestors "revx.dev stg.revx.dev http://localhost:*";
-        include ${SNIPPETS}/dotli-headers-iframeable.conf;
+        include /etc/nginx/snippets/dotli-headers-iframeable.conf;
         try_files /index.html =404;
     }
 
-    include ${SNIPPETS}/dotli-host-version.conf;
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri $uri/ /index.html;
@@ -65,26 +65,26 @@ server {
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-    include ${SNIPPETS}/dotli-ssl.conf;
+    include /etc/nginx/snippets/dotli-ssl.conf;
 
     ${RL}limit_req zone=${ZONE} burst=30 nodelay;
     ${RL}limit_req zone=${ZONE}_assets burst=512 nodelay;
     ${RL}limit_req_status 429;
     set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN}";
-    include ${SNIPPETS}/dotli-headers-iframeable.conf;
-    include ${SNIPPETS}/dotli-precompressed.conf;
+    include /etc/nginx/snippets/dotli-headers-iframeable.conf;
+    include /etc/nginx/snippets/dotli-precompressed.conf;
 
     root ${WEBROOT}/app;
     index index.html;
 
-    include ${SNIPPETS}/dotli-assets-iframeable.conf;
-    include ${SNIPPETS}/dotli-sw-app.conf;
+    include /etc/nginx/snippets/dotli-assets-iframeable.conf;
+    include /etc/nginx/snippets/dotli-sw-app.conf;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
-    ${SENTRY}include ${SNIPPETS}/dotli-sentry-tunnel.conf;
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
-    include ${SNIPPETS}/dotli-host-version.conf;
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri /index.html;
@@ -97,25 +97,25 @@ server {
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-    include ${SNIPPETS}/dotli-ssl.conf;
+    include /etc/nginx/snippets/dotli-ssl.conf;
 
     ${RL}limit_req zone=${ZONE} burst=30 nodelay;
     ${RL}limit_req zone=${ZONE}_assets burst=512 nodelay;
     ${RL}limit_req_status 429;
     set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN} revx.dev stg.revx.dev http://localhost:*";
-    include ${SNIPPETS}/dotli-headers-iframeable.conf;
-    include ${SNIPPETS}/dotli-precompressed.conf;
+    include /etc/nginx/snippets/dotli-headers-iframeable.conf;
+    include /etc/nginx/snippets/dotli-precompressed.conf;
 
     root ${WEBROOT}/protocol;
     index index.html;
 
-    include ${SNIPPETS}/dotli-assets-iframeable.conf;
+    include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
-    ${SENTRY}include ${SNIPPETS}/dotli-sentry-tunnel.conf;
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
-    include ${SNIPPETS}/dotli-host-version.conf;
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri /index.html;
@@ -128,24 +128,24 @@ server {
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-    include ${SNIPPETS}/dotli-ssl.conf;
+    include /etc/nginx/snippets/dotli-ssl.conf;
 
     ${RL}limit_req zone=${ZONE} burst=30 nodelay;
     ${RL}limit_req zone=${ZONE}_assets burst=512 nodelay;
     ${RL}limit_req_status 429;
-    include ${SNIPPETS}/dotli-headers-host.conf;
-    include ${SNIPPETS}/dotli-precompressed.conf;
+    include /etc/nginx/snippets/dotli-headers-host.conf;
+    include /etc/nginx/snippets/dotli-precompressed.conf;
 
     root ${WEBROOT}/host;
 
-    include ${SNIPPETS}/dotli-assets-host.conf;
-    include ${SNIPPETS}/dotli-sw-host.conf;
+    include /etc/nginx/snippets/dotli-assets-host.conf;
+    include /etc/nginx/snippets/dotli-sw-host.conf;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
-    ${SENTRY}include ${SNIPPETS}/dotli-sentry-tunnel.conf;
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
-    include ${SNIPPETS}/dotli-host-version.conf;
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri /index.html;

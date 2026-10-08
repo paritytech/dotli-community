@@ -233,9 +233,9 @@ Public Suffix List; nginx has no equivalent. `shared-mode.ts` prefers the
 per-origin seed on localhost and only warns, so each subdomain simply keeps its
 own backend and cache settings.
 
-**No brotli.** `dotli-precompressed.conf` uses `brotli_static`, which the
-official nginx image is not built with, so the image overwrites that snippet with
-`gzip_static` alone. Precompressed `.gz` siblings still serve.
+**No brotli.** The official nginx image is not built with `brotli_static`, so
+the image's snippets in `nginx/snippets/docker/` use `gzip_static` alone.
+Precompressed `.gz` siblings still serve.
 
 **Input and output share `/etc/dotli`.** Mounting the whole directory rather than
 the single `network.json` means the generated files land in your host directory,

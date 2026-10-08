@@ -111,15 +111,12 @@ deploy: _require-env build
 
 # A literal "#" goes through _hash because make >= 4.3 keeps the backslash of a "\#" inside a function call.
 _hash := \#
-# Each site gets its own snippets directory, so a deploy for one env never changes the snippets of its neighbours.
-_nginx_snippets = /etc/nginx/snippets/$(SITE_$(ENV))
-# Renders the file $(1) for ENV. Snippets go through it too, since they include each other by ${SNIPPETS}.
-_nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' SNIPPETS='$(_nginx_snippets)' \
+_nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 	ZONE='rl_$(subst .,_,$(SITE_$(ENV)))' \
 	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,$(_hash))' \
 	SENTRY='$(if $(SENTRY_DSN),,$(_hash))' \
 	SENTRY_INGEST='$(SENTRY_INGEST)' SENTRY_PROJECT='$(SENTRY_PROJECT)' \
-	envsubst '$$DOMAIN $$WEBROOT $$SNIPPETS $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < $(1)
+	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < nginx/nginx.conf.template
 
 # Warns on stderr, since render-nginx pipes stdout. Envs without Sentry are legitimate, a silently dead tunnel is not.
 _sentry_warn = @test -n "$(SENTRY_DSN)" || \
@@ -129,19 +126,17 @@ _sentry_warn = @test -n "$(SENTRY_DSN)" || \
 render-nginx: _require-env-name
 	@command -v envsubst >/dev/null || { echo "render-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
 	$(_sentry_warn)
-	@$(call _nginx_render,nginx/nginx.conf.template)
+	@$(_nginx_render)
 
 deploy-nginx: _require-env
 	@command -v envsubst >/dev/null || { echo "deploy-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
 	$(_sentry_warn)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval SITE := $(SITE_$(ENV)))
-	$(call _nginx_render,nginx/nginx.conf.template) > /tmp/$(SITE).nginx
-	rm -rf /tmp/$(SITE).snippets && mkdir /tmp/$(SITE).snippets
-	for f in nginx/snippets/*.conf; do $(call _nginx_render,$$f) > /tmp/$(SITE).snippets/$${f##*/}; done
-	rsync -avz --delete $(if $(SENTRY_DSN),,--exclude=dotli-sentry-tunnel.conf --delete-excluded) /tmp/$(SITE).snippets/ $(REMOTE_TARGET):/tmp/$(SITE).snippets/
+	$(_nginx_render) > /tmp/$(SITE).nginx
+	rsync -avz --delete $(if $(SENTRY_DSN),,--exclude=dotli-sentry-tunnel.conf --delete-excluded) nginx/snippets/$(SITE)/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
 	scp /tmp/$(SITE).nginx $(REMOTE_TARGET):/tmp/$(SITE).nginx
-	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 $(_nginx_snippets) && sudo rsync -av --delete /tmp/$(SITE).snippets/ $(_nginx_snippets)/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
+	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
 define _rsync_dist
 rsync -avz --delete --filter='P /assets/' apps/host/dist/     $(1):$(2)/host/
