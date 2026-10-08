@@ -596,7 +596,7 @@ describe('The network popover island', () => {
     expect(texts(content())).not.toContain('Network');
   });
 
-  it('As a user on a named network, the menu head carries the network', async () => {
+  it('As a user on a named network, the menu head says only Network, as the settings name the network', async () => {
     // Given
     setNetwork('previewnet');
     initSettingsStore();
@@ -609,8 +609,8 @@ describe('The network popover island', () => {
     await openPopover();
 
     // Then
-    expect(byTestId('chains-network').textContent).toBe('Previewnet');
-    expect(nth(Array.from(content().children), 0).textContent).toBe('NetworkPreviewnet');
+    expect(document.querySelector('[data-testid="chains-network"]')).toBeNull();
+    expect(nth(Array.from(content().children), 0).textContent).toBe('Network');
   });
 
   it('As a user who went offline, the menu says so, as the capsule and the badge do', async () => {
