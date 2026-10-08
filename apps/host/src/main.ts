@@ -30,7 +30,6 @@ import {
   recordPeerCount,
   recordTransfer,
   type ChainPhase,
-  setChainsButtonVisible,
   armTopbarAutoHide,
   setProductContentShown,
   setVerificationShieldState,
@@ -47,7 +46,7 @@ import type { LoadingPhase, ShieldState, BridgeModule as RenderModule } from '@d
 import type { ChainSyncKind, ResolvePhase } from '@dotli/resolver';
 
 import type { ChainRole } from '@dotli/config';
-import { PHASE_BY_MILESTONE, startResolutionTrace, type CidCacheResult } from './resolution-trace.js';
+import { createChainPhaseTracker, startResolutionTrace, type CidCacheResult } from './resolution-trace.js';
 import { beginAttempt, endJourney } from './journey.js';
 
 import {
@@ -973,11 +972,11 @@ async function main(): Promise<void> {
     const lastWarpEmit = new Map<ChainRole, number>();
     const peersByRole = new Map<ChainRole, number>();
 
+    const trackPhase = createChainPhaseTracker();
+
     onProtocolChainSync(event => {
       const role = chainRoleForKey(event.chain);
-      // Recovery names no phase, and `ready` would be a guess, so a recovered chain is syncing until told otherwise.
-      const phase: ChainPhase | undefined =
-        PHASE_BY_MILESTONE[event.syncKind] ?? (event.syncKind === 'recovered' ? 'syncing' : undefined);
+      const phase = trackPhase(role, event.syncKind);
       if (event.syncKind === 'peers' && event.peers !== undefined) {
         // Independent of the phase, since the relay usually finds its peers after its last transition.
         const changed = peersByRole.get(role) !== event.peers;
@@ -1238,7 +1237,6 @@ async function main(): Promise<void> {
       }
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
-        setChainsButtonVisible(true);
         enterStep('render_chunk_load');
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
@@ -1391,7 +1389,6 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
-    setChainsButtonVisible(true);
     enterStep('render_chunk_load');
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);

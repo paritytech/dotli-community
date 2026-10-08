@@ -3,22 +3,19 @@
 
 // Starts the stores the topbar islands render once they mount. Framework-free because it runs at boot.
 
-import { setBlockSource } from './network-monitor.js';
-import { createBlockSource } from './block-source.js';
 import { startNetworkStore } from './state/network.js';
-import { initNetworkHealth, setNetworkHealthWatched } from './state/network-health.js';
+import { initNetworkHealth } from './state/network-health.js';
 import { initChatPanelState } from './state/chat-panel.js';
 import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
-import { getTopbarState, recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
+import { setTopbarPresent } from './state/topbar.js';
 import { initTheme } from './theme-controller.js';
 
 export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator()): void {
   setTopbarPresent();
   initAuthController(modalCoordinator);
   initTheme();
-  setBlockSource(createBlockSource());
   startNetworkStore();
   initNetworkHealth();
   initChatPanelState();
@@ -37,19 +34,4 @@ function scheduleIdle(callback: () => void): void {
   } else {
     window.setTimeout(callback, 0);
   }
-}
-
-/** Called once a product is on screen, so the icon appears with the app rather than during the load. */
-export function setChainsButtonVisible(visible: boolean): void {
-  recordChainsButtonVisible(visible);
-  if (!visible) {
-    setNetworkHealthWatched(false);
-    return;
-  }
-  // The watch loads a chunk and a client per chain, so it waits for idle.
-  scheduleIdle(() => {
-    if (getTopbarState().chainsButtonVisible) {
-      setNetworkHealthWatched(true);
-    }
-  });
 }

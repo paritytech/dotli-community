@@ -3,29 +3,33 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveChainRoles } from '@dotli/config';
-import { resetNetworkMonitor, setBlockSource, type BlockSource } from '../../src/network-monitor.js';
-import { initNetworkHealth, networkHealthStore, setNetworkHealthWatched } from '../../src/state/network-health.js';
+import {
+  recordBestBlock,
+  recordChainActivity,
+  recordChainPhase,
+  resetNetworkMonitor,
+} from '../../src/network-monitor.js';
+import { initNetworkHealth, networkHealthStore } from '../../src/state/network-health.js';
 import { resetStores } from '../helpers/solid.js';
+import type * as ProtocolModule from '@dotli/protocol';
 
-function fakeSource(): { source: BlockSource; emitAll: (n: number) => void; live: () => number } {
-  const emitters = new Map<string, (n: number) => void>();
-  return {
-    source: {
-      isReachable: () => true,
-      subscribe: (genesis, onBlock) => {
-        emitters.set(genesis, onBlock);
-        return () => {
-          emitters.delete(genesis);
-        };
-      },
-    },
-    emitAll: n => {
-      for (const emit of emitters.values()) {
-        emit(n);
-      }
-    },
-    live: () => emitters.size,
-  };
+vi.mock('@dotli/protocol', async importOriginal => ({
+  ...(await importOriginal<typeof ProtocolModule>()),
+  isRemoteChainConnectable: () => true,
+}));
+
+const relay = (): string => getActiveChainRoles()[0]?.genesis ?? '';
+
+function useAll(): void {
+  for (const role of getActiveChainRoles()) {
+    recordChainActivity({ genesisHash: role.genesis, consumers: 1, status: 'connected', following: true });
+  }
+}
+
+function blockAll(blockNumber: number): void {
+  for (const role of getActiveChainRoles()) {
+    recordBestBlock(role.genesis, blockNumber);
+  }
 }
 
 let stop: (() => void) | null = null;
@@ -45,20 +49,18 @@ afterEach(() => {
 });
 
 describe('The network health store', () => {
-  it('As a user, I see syncing until every chain delivers a block, then ok', () => {
+  it('As a user, I see syncing until every chain in use delivers a block, then ok', () => {
     // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
     stop = initNetworkHealth();
 
     // When
-    setNetworkHealthWatched(true);
+    useAll();
 
     // Then
     expect(networkHealthStore.get()).toBe('idle');
 
     // When
-    fake.emitAll(100);
+    blockAll(100);
 
     // Then
     expect(networkHealthStore.get()).toBe('ok');
@@ -66,11 +68,9 @@ describe('The network health store', () => {
 
   it('As a user whose chains stop producing blocks, I see degraded without any new event', () => {
     // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
     stop = initNetworkHealth();
-    setNetworkHealthWatched(true);
-    fake.emitAll(100);
+    useAll();
+    blockAll(100);
     const slowest = Math.max(...getActiveChainRoles().map(role => role.blockTimeMs));
 
     // When
@@ -82,23 +82,21 @@ describe('The network health store', () => {
 
   it('As a user, the health rechecks once, when the first chain would be overdue, and a block moves that one recheck', () => {
     // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
     stop = initNetworkHealth();
-    setNetworkHealthWatched(true);
+    useAll();
 
     // Then: before any block nothing can fall overdue
     expect(vi.getTimerCount()).toBe(0);
 
     // When
-    fake.emitAll(100);
+    blockAll(100);
 
     // Then
     expect(vi.getTimerCount()).toBe(1);
 
     // When
     vi.advanceTimersByTime(1000);
-    fake.emitAll(101);
+    blockAll(101);
 
     // Then
     expect(vi.getTimerCount()).toBe(1);
@@ -107,11 +105,9 @@ describe('The network health store', () => {
 
   it('As a user in another tab, the health is not rechecked until the tab shows again', () => {
     // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
     stop = initNetworkHealth();
-    setNetworkHealthWatched(true);
-    fake.emitAll(100);
+    useAll();
+    blockAll(100);
     const slowest = Math.max(...getActiveChainRoles().map(role => role.blockTimeMs));
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
 
@@ -147,38 +143,59 @@ describe('The network health store', () => {
     window.dispatchEvent(new Event('online'));
 
     // Then
-    expect(networkHealthStore.get()).toBe('idle');
+    expect(networkHealthStore.get()).toBe('quiet');
   });
 
-  it('As a user leaving the product, the health watch stops holding the chains', () => {
-    // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
+  it('As a user before any app holds a chain, I see quiet', () => {
+    // When
     stop = initNetworkHealth();
-    setNetworkHealthWatched(true);
-    expect(fake.live()).toBeGreaterThan(0);
-
-    // When
-    setNetworkHealthWatched(false);
-    vi.advanceTimersByTime(61_000);
 
     // Then
-    expect(fake.live()).toBe(0);
+    expect(networkHealthStore.get()).toBe('quiet');
   });
 
-  it('As the test suite, a store reset releases a watch held without init', () => {
+  it('As a user loading a product, the frame syncing a chain shows syncing, and ready with nothing in use shows quiet', () => {
     // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
-    setNetworkHealthWatched(true);
-    expect(fake.live()).toBeGreaterThan(0);
+    stop = initNetworkHealth();
 
     // When
-    resetStores();
-    vi.advanceTimersByTime(61_000);
+    recordChainPhase('relay', 'syncing');
 
     // Then
-    expect(fake.live()).toBe(0);
+    expect(networkHealthStore.get()).toBe('idle');
+
+    // When
+    recordChainPhase('relay', 'ready');
+
+    // Then
+    expect(networkHealthStore.get()).toBe('quiet');
+  });
+
+  it('As a user, a frame chain that was ready and drops back to connecting shows unstable', () => {
+    // Given
+    stop = initNetworkHealth();
+    recordChainPhase('relay', 'ready');
+
+    // When
+    recordChainPhase('relay', 'connecting');
+
+    // Then
+    expect(networkHealthStore.get()).toBe('warn');
+  });
+
+  it('As a user whose only live chain is released, an armed recheck never turns the indicator unstable', () => {
+    // Given
+    stop = initNetworkHealth();
+    recordChainActivity({ genesisHash: relay(), consumers: 1, status: 'connected', following: true });
+    recordBestBlock(relay(), 100);
+    expect(networkHealthStore.get()).toBe('ok');
+
+    // When
+    recordChainActivity({ genesisHash: relay(), consumers: 0, status: 'connected', following: false });
+    vi.advanceTimersByTime(60_000);
+
+    // Then
+    expect(networkHealthStore.get()).toBe('quiet');
     expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -5,7 +5,6 @@ import { createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { networkHealthStore } from '../../state/network-health.js';
 import { healthWord } from '../../network-health.js';
-import { topbarStore } from '../../state/topbar.js';
 import { Popover } from '../floating/Popover.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { StatusDot } from '../primitives/StatusDot.js';
@@ -32,9 +31,8 @@ function GlobeIcon(): JSX.Element {
   );
 }
 
-/** The network button and its popover, shown once the host has a product on screen. */
+/** The network button and its popover. */
 export function ChainsPopover(): JSX.Element {
-  const topbar = useStore(topbarStore);
   const health = useStore(networkHealthStore);
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
@@ -44,7 +42,9 @@ export function ChainsPopover(): JSX.Element {
         label="Network"
         icon={GlobeIcon}
         alert={
-          health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
+          health() === 'ok' || health() === 'quiet'
+            ? undefined
+            : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
         }
         aside={() => (
           <>
@@ -53,7 +53,6 @@ export function ChainsPopover(): JSX.Element {
           </>
         )}
         priority={TOPBAR_PRIORITY.network}
-        visible={topbar().chainsButtonVisible}
         activate={() => button()?.click()}
       >
         <IconButton ref={setButton} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>

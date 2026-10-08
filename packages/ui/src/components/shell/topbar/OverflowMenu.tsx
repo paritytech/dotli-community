@@ -9,7 +9,7 @@ import type { StatusTone } from '../../primitives/StatusDot.js';
 import type { TopbarAlert, TopbarEntry } from './context.js';
 import s from './OverflowMenu.module.css';
 
-const SEVERITY: Record<StatusTone, number> = { ok: 0, idle: 1, info: 2, warn: 3, err: 4 };
+const SEVERITY: Record<StatusTone, number> = { ok: 0, quiet: 0, idle: 1, info: 2, warn: 3, err: 4 };
 
 /** Choosing the row opens another surface. */
 function Chevron(): JSX.Element {

@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 import { flush } from 'solid-js';
+import { within } from '@solidjs/testing-library';
 import { setBackend, setNetwork } from '@dotli/config';
 import type { BlockBar, ChainStatus, TransferState } from '../../../src/network-monitor.js';
 import { ChainsPopover } from '../../../src/components/shell/ChainsPopover.js';
@@ -12,7 +13,6 @@ import { startNetworkStore } from '../../../src/state/network.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { setProductLoaded } from '../../../src/state/product.js';
-import { recordChainsButtonVisible } from '../../../src/state/topbar.js';
 import { EXIT_MS } from '../../../src/components/floating/FloatingLayer.js';
 import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { HISTORY_SLOTS } from '../../../src/components/shell/chains-format.js';
@@ -42,8 +42,6 @@ const monitor = vi.hoisted(() => {
     listeners: new Set<() => void>(),
     status: [] as unknown[],
     transfer,
-    startNetworkWatch: () => undefined,
-    stopNetworkWatch: () => undefined,
   };
 });
 
@@ -55,18 +53,6 @@ vi.mock('../../../src/network-monitor.js', () => ({
   getNetworkStatus: () => monitor.status,
   getChainClocks: () => monitor.status,
   getTransfer: () => monitor.transfer,
-  startNetworkWatch: () => {
-    monitor.startNetworkWatch();
-  },
-  stopNetworkWatch: () => {
-    monitor.stopNetworkWatch();
-  },
-  holdNetworkWatch: () => {
-    monitor.startNetworkWatch();
-    return () => {
-      monitor.stopNetworkWatch();
-    };
-  },
 }));
 
 const NO_TRANSFER: TransferState = {
@@ -79,16 +65,20 @@ const SEARCHING = 'Finding peers. This takes a few seconds.';
 const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
 function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
+  const latest = overrides.latest ?? null;
   return {
+    key: overrides.role ?? 'relay',
     role: 'relay',
     label: 'Relay chain',
     bars: [],
-    latest: null,
+    latest,
     sinceLast: null,
     blockTimeMs: 6000,
     reachable: true,
     phase: null,
     peers: null,
+    state: latest === null ? 'pending' : 'live',
+    alarm: false,
     ...overrides,
   };
 }
@@ -117,8 +107,6 @@ beforeEach(() => {
   vi.stubGlobal('cancelIdleCallback', () => undefined);
   monitor.status = [];
   monitor.transfer = NO_TRANSFER;
-  monitor.startNetworkWatch = vi.fn();
-  monitor.stopNetworkWatch = vi.fn();
   sentry.captureException.mockClear();
   stopStore = startNetworkStore();
 });
@@ -202,7 +190,7 @@ interface ExpectedChain {
 interface ExpectedBody {
   title: string;
   detail: string;
-  tone: 'idle' | 'warn' | 'ok' | 'err';
+  tone: 'idle' | 'warn' | 'ok' | 'err' | 'quiet';
   chains: ExpectedChain[];
   speed?: [string, string];
   size?: [string, string];
@@ -237,9 +225,9 @@ function expectBody(expected: ExpectedBody): void {
     const [name, cell] = Array.from(group.children) as [Element, Element];
     expect(group.childElementCount).toBe(2);
     expect(name.children[0]?.textContent).toBe(chainExpected.label);
-    const peers = nth(name.children, 1);
-    expect(peers.textContent).toBe(chainExpected.peers?.text ?? '');
-    expect(peers.getAttribute('aria-label')).toBe(chainExpected.peers?.aria ?? null);
+    const peers = name.querySelector('[data-testid="chains-group-peers"]');
+    expect(peers?.textContent).toBe(chainExpected.peers?.text);
+    expect(peers?.getAttribute('aria-label')).toBe(chainExpected.peers?.aria);
     expect(cell.hasAttribute('data-unavailable')).toBe(chainExpected.cell.kind === 'unavailable');
     if (chainExpected.cell.kind === 'unavailable') {
       expect(cell.textContent).toBe('no endpoint on this network');
@@ -295,6 +283,74 @@ const PRELOAD_IDLE_MS = 2000;
 useFloatingSurfaces();
 
 describe('The network popover island', () => {
+  it('As a user, a chain nothing uses keeps its last bars under a "Not in use" label and claims no peers', async () => {
+    // Given
+    monitor.status = [chain({ state: 'unused', peers: 8, latest: 12, bars: bars(11, 2) })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    const cell = byTestId('chains-cell');
+    expect(cell.dataset['state']).toBe('unused');
+    expect([...cell.querySelectorAll<HTMLElement>('[data-block]')].map(mark => mark.dataset['block'])).toEqual([
+      '11',
+      '12',
+    ]);
+    expect(byTestId('chains-group-label').dataset['state']).toBe('unused');
+    expect(byTestId('chains-group-unused').textContent).toBe('Not in use');
+    expect(document.querySelector('[data-testid="chains-group-peers"]')).toBeNull();
+  });
+
+  it('As a user, a chain never used shows empty slots with no countdown', async () => {
+    // Given
+    monitor.status = [chain({ state: 'unused' })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    const cell = byTestId('chains-cell');
+    expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS);
+    expect(cell.querySelector('[data-testid="chains-bar-pending"]')).toBeNull();
+    expect(cell.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull();
+  });
+
+  it('As a user of a product on another chain, it shows under Other chains while in use and goes after', async () => {
+    // Given
+    const extra = chain({
+      key: '0xabab',
+      role: null,
+      label: '0xabab…abab',
+      state: 'live',
+      latest: 5,
+      sinceLast: 100,
+    });
+    monitor.status = [chain(), extra];
+    notify();
+    await renderPopover();
+    await openPopover();
+
+    // Then
+    const other = byTestId('chains-other');
+    expect(other.tagName).toBe('DETAILS');
+    expect(other.hasAttribute('open')).toBe(false);
+    expect(byTestId('chains-other-summary').textContent).toBe('Other chains (1)');
+    expect(within(other).getByText('0xabab…abab')).toBeTruthy();
+
+    // When
+    monitor.status = [chain()];
+    notify();
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="chains-other"]')).toBeNull();
+  });
+
   it('As a dotli user, the closed button and popover carry their labels and ARIA', async () => {
     // When
     await renderPopover();
@@ -309,10 +365,10 @@ describe('The network popover island', () => {
     // When
     await renderPopover();
 
-    // Then: the health starts at syncing, whose tone is idle
+    // Then: with no chain in use the health is quiet
     const button = byId('chains-button');
     expect(button.hasAttribute('data-badge')).toBe(true);
-    expect(button.dataset['tone']).toBe('idle');
+    expect(button.dataset['tone']).toBe('quiet');
   });
 
   const statuses: {
@@ -322,6 +378,16 @@ describe('The network popover island', () => {
     productLoaded?: boolean;
     expected: ExpectedBody;
   }[] = [
+    {
+      name: 'nothing in use',
+      expected: {
+        title: 'No chains in use',
+        detail: 'Chains appear here once the app connects to them.',
+        tone: 'quiet',
+        chains: [],
+      },
+      chains: [],
+    },
     {
       name: 'starting, with no chain reachable',
       expected: {
@@ -422,7 +488,7 @@ describe('The network popover island', () => {
       name: 'waiting on overdue chains, one of them due any moment',
       expected: {
         title: 'Connection is unstable',
-        detail: 'Relay chain and Asset Hub are short on peers',
+        detail: 'Relay chain and Asset Hub are behind',
         tone: 'warn',
         chains: [
           {
@@ -611,26 +677,7 @@ describe('The network popover island', () => {
     // Then
     const peers = byTestId('chains-group-peers');
     expect(peers.textContent).toBe('0 peers');
-    expect(peers.hasAttribute('data-none')).toBe(true);
-  });
-
-  it('As a dotli user, opening it starts watching the chains and closing it lets the watch lapse', async () => {
-    // Given
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(monitor.startNetworkWatch).toHaveBeenCalledTimes(1);
-    expect(monitor.stopNetworkWatch).not.toHaveBeenCalled();
-
-    // When
-    await closePopover();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
+    expect(peers.hasAttribute('data-alert')).toBe(true);
   });
 
   it('As a dotli user watching, bars and peers follow the network store', async () => {
@@ -694,10 +741,9 @@ describe('The network popover island', () => {
 
     // Then
     expect(vi.getTimerCount()).toBe(0);
-    expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli user, a render error while open is reported, closes the popover and stops the countdown and the watch', async () => {
+  it('As a dotli user, a render error while open is reported, closes the popover and stops the countdown', async () => {
     // Given: the island in its root, as islands.ts mounts it.
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
@@ -729,7 +775,6 @@ describe('The network popover island', () => {
     vi.advanceTimersByTime(EXIT_MS);
     await settle();
     expect(vi.getTimerCount()).toBe(0);
-    expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
     expect(isOpen()).toBe(false);
 
     // When: the next open, once the state renders again.
@@ -782,29 +827,12 @@ describe('The network popover island', () => {
     expect(popover.getAttribute('tabindex')).toBe('-1');
   });
 
-  it('As a visitor, the button shows once the product is on screen, whether that came before or after the mount', async () => {
-    // Given: revealed before the island mounted.
-    recordChainsButtonVisible(true);
-
+  it('As a visitor, the network button shows from the first render, before any product is on screen', async () => {
     // When
     await renderPopover();
 
     // Then
     expectChainsButton(false);
-    expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(false);
-
-    // When
-    recordChainsButtonVisible(false);
-    await settle();
-
-    // Then
-    expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(true);
-
-    // When: revealed after the mount.
-    recordChainsButtonVisible(true);
-    await settle();
-
-    // Then
     expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(false);
   });
 });

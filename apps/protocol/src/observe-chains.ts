@@ -12,7 +12,7 @@ import type { ChainBrokerManager } from '@dotli/protocol';
 export function observeChains(pool: ChainBrokerManager, genesisHashes: readonly string[]): () => void {
   const connections: { disconnect(): void }[] = [];
   for (const genesisHash of genesisHashes) {
-    const provider = pool.getLocalProvider(genesisHash);
+    const provider = pool.getLocalProvider(genesisHash, 'sync-observer');
     if (provider === null) {
       continue;
     }

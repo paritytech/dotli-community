@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web';
 import s from './StatusDot.module.css';
 
 /** The status colours every chrome mark shares: dots, the capsule bar, badges and toast tiles. */
-export type StatusTone = 'ok' | 'warn' | 'err' | 'info' | 'idle';
+export type StatusTone = 'ok' | 'warn' | 'err' | 'info' | 'idle' | 'quiet';
 
 /** A coloured dot with a soft halo, decorative unless a `label` names it. */
 export function StatusDot(props: {
