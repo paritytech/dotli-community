@@ -4,7 +4,7 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
 import { resetAllStoresForTests } from '../../state/create-store.js';
-import { setAuthState, setLoggedIn } from '../../state/auth.js';
+import { setAuthState, setLoggedIn, setSessionRestored } from '../../state/auth.js';
 import { AuthButton } from './AuthButton.js';
 
 const open = openSurface({ trigger: 'auth-button', surface: 'user-popover' });
@@ -16,6 +16,7 @@ const meta = {
   beforeEach: () => {
     setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
     setLoggedIn(true);
+    setSessionRestored();
     return resetAllStoresForTests;
   },
   render: () => (
