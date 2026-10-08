@@ -101,10 +101,12 @@ test.describe('Settings works', () => {
     page,
   }) => {
     // Given
+    // `window.name` survives the restart's reload, so it counts the pages this tab has booted.
     await page.addInitScript(() => {
-      if (window.name !== 'seeded') {
+      const boots = Number(window.name || '0') + 1;
+      window.name = String(boots);
+      if (boots === 1) {
         localStorage.setItem('dotli:chain-backend', 'rpc-gateway');
-        window.name = 'seeded';
       }
     });
 
@@ -112,6 +114,8 @@ test.describe('Settings works', () => {
     await page.goto(`${LANDING_URL}?chainBackend=smoldot-direct`);
 
     // Then
+    // The first page already holds the new mode before it reloads, so a read there races the reload.
+    await page.waitForFunction(() => window.name === '2');
     const state = await readChainBackendState(page, 'smoldot-direct');
     expect(state.chainBackend).toBe('smoldot-direct');
     expect(state.url).not.toContain('chainBackend=');
