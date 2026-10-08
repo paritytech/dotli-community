@@ -5,7 +5,7 @@ import type { DotliAuthState } from '../host-callbacks/AuthState.js';
 import { createSyncStore, type ReadableStore } from './create-store.js';
 
 // Every login step must reach the auth controller, including a repeated LoginFailed, so no set is dropped as equal.
-const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' }, { equals: () => false });
+const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Restoring' }, { equals: () => false });
 const session = createSyncStore<boolean>('session', false);
 
 export const authStore: ReadableStore<DotliAuthState> = auth;

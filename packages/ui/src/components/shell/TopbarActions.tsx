@@ -7,7 +7,6 @@ import { ChainsPopover } from './ChainsPopover.js';
 // import { ChatButton } from './ChatButton.js';
 import { PermissionsPopover } from './PermissionsPopover.js';
 import { SettingsPopover } from './SettingsPopover.js';
-import { ThemeToggle } from './ThemeToggle.js';
 import { ActionGroup } from './topbar/ActionGroup.js';
 import { topbarActionRoom, topbarMorph } from '../../topbar-status.js';
 
@@ -19,7 +18,6 @@ export function TopbarActions(): JSX.Element {
       {/* Off until the chat button is redone. */}
       {/* <ChatButton /> */}
       <PermissionsPopover />
-      <ThemeToggle />
       <SettingsPopover />
     </ActionGroup>
   );

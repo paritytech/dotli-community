@@ -17,6 +17,7 @@ import {
 
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
+import { initTheme } from '../../../src/theme-controller.js';
 import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
@@ -24,6 +25,7 @@ import type * as NetworkModule from '../../../../config/src/network.js';
 import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 const actions = vi.hoisted(() => ({
@@ -78,6 +80,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
+  document.documentElement.removeAttribute('data-theme');
+  document.documentElement.removeAttribute('data-theme-pref');
 });
 
 async function settle(): Promise<void> {
@@ -147,6 +151,15 @@ async function openPopover(): Promise<void> {
   await settle();
 }
 
+async function showCategory(category: Category): Promise<void> {
+  byTestId(`settings-category-${category}`).click();
+  await settle();
+}
+
+function selectedCategory(): string | null {
+  return byTestId('settings-categories').querySelector('[aria-pressed="true"]')?.getAttribute('data-testid') ?? null;
+}
+
 /** What the popover reads from @dotli/config when it opens. */
 interface Settings {
   chain: Backend;
@@ -200,11 +213,49 @@ function expectRadioGroup(section: Element, label: string): Element {
   return group;
 }
 
-function expectSections(container: Element, settings: Settings): void {
-  const sections = Array.from(container.children);
-  let at = 0;
+type Category = 'general' | 'network' | 'advanced';
+
+const CATEGORY_LABELS: [Category, string][] = [
+  ['general', 'General'],
+  ['network', 'Network'],
+  ['advanced', 'Advanced'],
+];
+
+function expectCategories(control: Element | undefined, selected: Category): void {
+  expect(control?.getAttribute('data-testid')).toBe('settings-categories');
+  expect(control?.getAttribute('role')).toBe('group');
+  expect(control?.getAttribute('aria-label')).toBe('Settings category');
+  const buttons = Array.from(must(control, 'the category control').children);
+  expect(buttons.map(b => b.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON']);
+  expect(buttons.map(b => b.getAttribute('data-testid'))).toEqual(
+    CATEGORY_LABELS.map(([value]) => `settings-category-${value}`),
+  );
+  expect(buttons.map(b => b.textContent)).toEqual(CATEGORY_LABELS.map(([, label]) => label));
+  expect(buttons.map(b => b.getAttribute('aria-pressed'))).toEqual(
+    CATEGORY_LABELS.map(([value]) => String(value === selected)),
+  );
+}
+
+function expectGeneral(sections: Element[], at: number): number {
+  const appearance = nth(sections, at);
+  expect(tags(appearance)).toEqual(['DIV', 'DIV']);
+  expectHeader(appearance.children[0], 'Appearance');
+  const tiles = nth(appearance.children, 1);
+  expect(tiles.getAttribute('data-testid')).toBe('theme-options');
+  expect(tiles.getAttribute('role')).toBe('radiogroup');
+  expect(tiles.getAttribute('aria-label')).toBe('Theme');
+  expect(Array.from(tiles.children).map(tile => tile.getAttribute('data-testid'))).toEqual([
+    'theme-option-light',
+    'theme-option-dark',
+    'theme-option-system',
+  ]);
+  return at + 1;
+}
+
+function expectNetwork(sections: Element[], at: number, settings: Settings): number {
+  let next = at;
   if (settings.enabledNetworks.length > 1) {
-    const group = expectRadioGroup(nth(sections, at++), 'Network');
+    const group = expectRadioGroup(nth(sections, next++), 'Network');
     expect(group.childElementCount).toBe(settings.enabledNetworks.length);
     settings.enabledNetworks.forEach((n, i) => {
       const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
@@ -217,7 +268,7 @@ function expectSections(container: Element, settings: Settings): void {
     });
   }
 
-  const transports = expectRadioGroup(nth(sections, at++), 'Network transport');
+  const transports = expectRadioGroup(nth(sections, next++), 'Network transport');
   const choices: [Backend, string][] = [
     ['smoldot-direct', 'Verified in your browser, separate for each tab'],
     ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
@@ -236,7 +287,19 @@ function expectSections(container: Element, settings: Settings): void {
     });
   });
 
-  const cache = nth(sections, at++);
+  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
+    .filter(input => input.checked)
+    .map(input => `${input.name}=${input.value}`);
+  expect(checked).toEqual([
+    ...(settings.enabledNetworks.length > 1 ? [`dotli-network=${settings.network}`] : []),
+    `dotli-backend=${settings.chain}`,
+  ]);
+  return next;
+}
+
+function expectAdvanced(sections: Element[], at: number, settings: Settings): number {
+  let next = at;
+  const cache = nth(sections, next++);
   expect(tags(cache)).toEqual(['DIV', 'DIV', 'DIV']);
   expectHeader(cache.children[0], 'Cache');
   const well = nth(cache.children, 1);
@@ -253,7 +316,7 @@ function expectSections(container: Element, settings: Settings): void {
     'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
   );
   if (!settings.debugOn) {
-    const debugRow = nth(sections, at++);
+    const debugRow = nth(sections, next++);
     expect(debugRow.getAttribute('data-testid')).toBe('mode-debug-row');
     expect(tags(debugRow)).toEqual(['BUTTON']);
     expect(debugRow.children[0]?.textContent).toBe('Open in debug mode');
@@ -261,11 +324,27 @@ function expectSections(container: Element, settings: Settings): void {
       'Reload this tab with the debug panel and its diagnostics',
     );
   }
-  expect(sections).toHaveLength(at);
+  return next;
+}
+
+/** The category control, then only the selected category's sections. */
+function expectSections(container: Element, settings: Settings, category: Category): void {
+  const sections = Array.from(container.children);
+  expectCategories(sections[0], category);
+  const end =
+    category === 'general'
+      ? expectGeneral(sections, 1)
+      : category === 'network'
+        ? expectNetwork(sections, 1, settings)
+        : expectAdvanced(sections, 1, settings);
+  expect(sections).toHaveLength(end);
 }
 
 /** The open popover apart from styling. A sheet leaves its title to the sheet header. */
-function expectPopoverMatches(settings: Settings, sheet = false): void {
+function expectPopoverMatches(
+  settings: Settings,
+  { sheet = false, category = 'general' }: { sheet?: boolean; category?: Category } = {},
+): void {
   const popover = byId('mode-popover');
   // A sheet is a modal layer, which labels itself by its title.
   if (sheet) {
@@ -290,7 +369,7 @@ function expectPopoverMatches(settings: Settings, sheet = false): void {
   expect(head?.querySelector('h2')?.textContent).toBe(sheet ? undefined : 'Settings');
   expect(head?.querySelector('[data-testid="mode-version"]')?.textContent).toBe(sheet ? undefined : 'v0.0.0');
   expect(sections.getAttribute('data-testid')).toBe('mode-popover-sections');
-  expectSections(sections, settings);
+  expectSections(sections, settings, category);
 
   expect(footer.contains(byTestId('mode-apply-row'))).toBe(true);
   expect(byTestId('mode-apply-row').childElementCount).toBe(1);
@@ -301,14 +380,6 @@ function expectPopoverMatches(settings: Settings, sheet = false): void {
   const hint = byTestId('mode-apply-warning');
   expect(footer.contains(hint)).toBe(true);
   expect(hint.textContent).toBe('Transport and cache changes reload the app');
-
-  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
-    .filter(input => input.checked)
-    .map(input => `${input.name}=${input.value}`);
-  expect(checked).toEqual([
-    ...(settings.enabledNetworks.length > 1 ? [`dotli-network=${settings.network}`] : []),
-    `dotli-backend=${settings.chain}`,
-  ]);
 }
 
 function expectModeButton(open: boolean): void {
@@ -406,42 +477,88 @@ describe('The settings popover island', () => {
     await settle();
 
     // Then: the content appears without reopening.
+    const settings: Settings = {
+      chain: 'smoldot-direct',
+      network: 'previewnet',
+      cache: DEFAULT_CACHE,
+      enabledNetworks: ['paseo-next-v2', 'previewnet'],
+      sharedWorkerSupported: typeof SharedWorker !== 'undefined',
+      debugOn: false,
+    };
     expect(isOpen()).toBe(true);
-    expectPopoverMatches(
-      {
-        chain: 'smoldot-direct',
-        network: 'previewnet',
-        cache: DEFAULT_CACHE,
-        enabledNetworks: ['paseo-next-v2', 'previewnet'],
-        sharedWorkerSupported: typeof SharedWorker !== 'undefined',
-        debugOn: false,
-      },
-      true,
-    );
+    expectPopoverMatches(settings, { sheet: true });
+
+    // When
+    await showCategory('network');
+
+    // Then
+    expectPopoverMatches(settings, { sheet: true, category: 'network' });
   });
 
-  it('As a dotli user opening it with several networks, it shows its ids, labels and ARIA state', async () => {
+  it('As a dotli user, I open the settings and they start on General, with the category control and the Appearance tiles', async () => {
     // Given
-    setNetwork('previewnet');
-    setCacheSettings({ ...DEFAULT_CACHE, skipArchiveCache: true });
+    stubColorScheme('dark');
+    initTheme();
     await renderPopover();
 
     // When
     await openPopover();
 
     // Then
-    expect(byId('mode-button').getAttribute('aria-expanded')).toBe('true');
-    expectPopoverMatches({
+    expect(selectedCategory()).toBe('settings-category-general');
+    expect(query(document, '[role="radiogroup"][aria-label="Theme"]').getAttribute('data-testid')).toBe(
+      'theme-options',
+    );
+    expect(byTestId('theme-option-system').getAttribute('aria-checked')).toBe('true');
+    expect(document.querySelector('[data-testid="mode-cache"]')).toBeNull();
+    expect(document.querySelector('input[name="dotli-backend"]')).toBeNull();
+
+    // When: switched to Advanced, then closed and opened again.
+    await showCategory('advanced');
+    press('Escape');
+    await settle();
+    await openPopover();
+
+    // Then
+    expect(selectedCategory()).toBe('settings-category-general');
+    expect(document.querySelector('[data-testid="theme-options"]')).not.toBeNull();
+  });
+
+  it('As a dotli user opening it with several networks, it shows its ids, labels and ARIA state in each category', async () => {
+    // Given
+    setNetwork('previewnet');
+    setCacheSettings({ ...DEFAULT_CACHE, skipArchiveCache: true });
+    await renderPopover();
+    const settings: Settings = {
       chain: 'smoldot-direct',
       network: 'previewnet',
       cache: { ...DEFAULT_CACHE, skipArchiveCache: true },
       enabledNetworks: ['paseo-next-v2', 'previewnet'],
       sharedWorkerSupported: typeof SharedWorker !== 'undefined',
       debugOn: false,
-    });
+    };
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byId('mode-button').getAttribute('aria-expanded')).toBe('true');
+    expectPopoverMatches(settings);
+
+    // When
+    await showCategory('network');
+
+    // Then
+    expectPopoverMatches(settings, { category: 'network' });
+
+    // When
+    await showCategory('advanced');
+
+    // Then
+    expectPopoverMatches(settings, { category: 'advanced' });
   });
 
-  it('As a dotli user opening it with one network, in debug mode, on trusted providers and without shared workers, it shows its ids, labels and ARIA state', async () => {
+  it('As a dotli user opening it with one network, in debug mode, on trusted providers and without shared workers, it shows its ids, labels and ARIA state in each category', async () => {
     // Given
     networks.enabled = ['previewnet'];
     setNetwork('previewnet');
@@ -449,19 +566,27 @@ describe('The settings popover island', () => {
     sessionStorage.setItem('dotli:truapi-debug', '1');
     vi.stubGlobal('SharedWorker', undefined);
     await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expectPopoverMatches({
+    const settings: Settings = {
       chain: 'rpc-gateway',
       network: 'previewnet',
       cache: DEFAULT_CACHE,
       enabledNetworks: ['previewnet'],
       sharedWorkerSupported: false,
       debugOn: true,
-    });
+    };
+
+    // When
+    await openPopover();
+    await showCategory('network');
+
+    // Then
+    expectPopoverMatches(settings, { category: 'network' });
+
+    // When
+    await showCategory('advanced');
+
+    // Then
+    expectPopoverMatches(settings, { category: 'advanced' });
   });
 
   it('As a dotli user, a change enables Save and apply, undoing it disables it again, and Save and apply applies the draft', async () => {
@@ -469,6 +594,7 @@ describe('The settings popover island', () => {
     await renderPopover();
     await openPopover();
     expect(applyButton().disabled).toBe(true);
+    await showCategory('advanced');
 
     // When
     toggle('dotNS cache').click();
@@ -486,9 +612,11 @@ describe('The settings popover island', () => {
     expect(applyButton().disabled).toBe(true);
 
     // When
+    toggle('Worker cache').click();
+    await settle();
+    await showCategory('network');
     radio('dotli-network', 'previewnet').click();
     radio('dotli-backend', 'rpc-gateway').click();
-    toggle('Worker cache').click();
     await settle();
     applyButton().click();
     await settle();
@@ -511,10 +639,58 @@ describe('The settings popover island', () => {
     expect(applyButton().textContent).toBe('Resetting…');
   });
 
+  it('As a dotli user, I change the network, look at Advanced and come back, and the change is still there for Save and apply', async () => {
+    // Given
+    await renderPopover();
+    await openPopover();
+    await showCategory('network');
+    radio('dotli-network', 'previewnet').click();
+    await settle();
+
+    // When
+    await showCategory('advanced');
+    await showCategory('network');
+
+    // Then
+    expect(radio('dotli-network', 'previewnet').checked).toBe(true);
+    expect(applyButton().disabled).toBe(false);
+
+    // When
+    applyButton().click();
+    await settle();
+
+    // Then
+    expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
+    expect(actions.applyAndReset).toHaveBeenCalledWith(
+      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
+      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
+    );
+  });
+
+  it('As a dotli user, I pick a theme tile in General and it applies at once without enabling Save and apply', async () => {
+    // Given
+    stubColorScheme('dark');
+    initTheme();
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('theme-option-light').click();
+    await settle();
+
+    // Then
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(localStorage.getItem('dotli-theme')).toBe('light');
+    expect(byTestId('theme-option-light').getAttribute('aria-checked')).toBe('true');
+    expect(applyButton().disabled).toBe(true);
+    expect(isOpen()).toBe(true);
+  });
+
   it('As a keyboard user, picking a transport keeps the focus on the checked radio', async () => {
     // Given
     await renderPopover();
     await openPopover();
+    await showCategory('network');
 
     // When
     radio('dotli-backend', 'rpc-gateway').click();
@@ -533,6 +709,7 @@ describe('The settings popover island', () => {
     // Given
     await renderPopover();
     await openPopover();
+    await showCategory('advanced');
     toggle('Archive cache').click();
     await settle();
 
@@ -540,6 +717,7 @@ describe('The settings popover island', () => {
     press('Escape');
     await settle();
     await openPopover();
+    await showCategory('advanced');
 
     // Then
     expect(toggle('Archive cache').getAttribute('aria-checked')).toBe('true');
@@ -551,6 +729,7 @@ describe('The settings popover island', () => {
     setBackend('rpc-gateway');
     await renderPopover();
     await openPopover();
+    await showCategory('advanced');
     toggle('dotNS cache').click();
     await settle();
 
@@ -589,6 +768,7 @@ describe('The settings popover island', () => {
     });
     await renderPopover();
     await openPopover();
+    await showCategory('advanced');
 
     // When
     button('Open in debug mode').click();

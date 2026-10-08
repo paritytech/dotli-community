@@ -3,7 +3,6 @@
 
 import { createEffect, createMemo, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { ChainStatus } from '../../network-monitor.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { networkStore } from '../../state/network.js';
@@ -243,10 +242,6 @@ export function ChainsContent(): JSX.Element {
   );
   const knownChains = createMemo(() => network().chains.filter(chain => chain.role !== null));
   const otherChains = createMemo(() => network().chains.filter(chain => chain.role === null));
-  const networkLabel = (): string | undefined => {
-    const current = settings();
-    return current === null ? undefined : NETWORK_NAME_TO_SERVICES_CONFIG[current.network].label;
-  };
 
   const [now, setNow] = createSignal(Date.now());
   // Once every chain has bars nothing reads `now`, so the ticker stops. A memo, as Solid 2 runs an effect's
@@ -289,18 +284,7 @@ export function ChainsContent(): JSX.Element {
   };
   return (
     <Surface width="md" class={s['panel']} testId="chains-content">
-      <SurfaceHead
-        title="Network"
-        aside={
-          <Show when={networkLabel()}>
-            {label => (
-              <Chip tone="mono" testId="chains-network">
-                {label()}
-              </Chip>
-            )}
-          </Show>
-        }
-      />
+      <SurfaceHead title="Network" />
       <Well class={s['status']} testId="chains-status">
         <StatusDot tone={status().tone} testId="chains-status-dot" />
         <div class={s['statusText']}>

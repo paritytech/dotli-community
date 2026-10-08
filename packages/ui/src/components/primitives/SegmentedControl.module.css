@@ -15,6 +15,12 @@
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
 }
+.seg[data-block] {
+  width: 100%;
+}
+.seg[data-block] > .option {
+  flex: 1;
+}
 .option {
   box-sizing: border-box;
   display: inline-flex;

@@ -10,7 +10,7 @@
 .sign-in,
 .chip {
   gap: 6px;
-  height: var(--h-bar-control);
+  --button-h: var(--h-bar-control);
   font-size: 13px;
 }
 .sign-in {

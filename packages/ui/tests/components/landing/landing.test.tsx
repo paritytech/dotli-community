@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { getActiveTldSuffix } from '@dotli/config';
+import { setAuthState } from '../../../src/state/auth.js';
 import { mountLandingPage } from '../../helpers/landing.js';
 import { stubIdleBrowser } from '../../helpers/idle.js';
 import { byId, byTestId, query } from '../../support.js';
@@ -460,8 +461,9 @@ describe('landing page', () => {
   });
 
   it("As a visitor, the auth button sits in the page's corner, with its surface in the body", async () => {
-    // Given: an idle browser, whose preload puts the surface in the page.
+    // Given: an idle browser, whose preload puts the surface in the page, and no saved session.
     stubIdleBrowser();
+    setAuthState({ tag: 'Disconnected' });
 
     // When
     mount();

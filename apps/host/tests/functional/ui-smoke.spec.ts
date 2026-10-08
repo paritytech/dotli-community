@@ -66,12 +66,9 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LANDING_URL);
 
-    // Then: the landing page renders its own auth button and no theme button
-    // (it is always dark), and the topbar's action group, More button
-    // included, is gone.
+    // Then: the landing page renders its own auth button, and the topbar's
+    // action group, More button included, is gone.
     await expect(page.locator('#landing-auth-button')).toBeVisible();
-    await expect(page.locator('#landing-theme-toggle')).toHaveCount(0);
-    await expect(page.locator('#theme-toggle')).toHaveCount(0);
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
 
@@ -124,7 +121,6 @@ test.describe('Shell UI smoke', () => {
     expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 844 - 60, width: 390, height: 60 });
     await expect(page.locator('#topbar-url')).toBeHidden();
     await expect(page.locator('#permissions-button')).toBeVisible();
-    await expect(page.locator('#theme-toggle')).toBeVisible();
     await expect(page.locator('#mode-button')).toBeVisible();
     await expect(page.locator('#more-button')).toBeHidden();
     const settings = await page.locator('#mode-button').boundingBox();
@@ -277,7 +273,6 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#mode-button')).toBeVisible();
-    await expect(page.locator('#theme-toggle')).toBeVisible();
     await expect(page.locator('#permissions-button')).toBeVisible();
     await expect(page.locator('#more-button')).toBeHidden();
   });
@@ -306,9 +301,9 @@ test.describe('Shell UI smoke', () => {
     // Given
     await page.goto(LABEL_URL);
 
-    // When
-    await page.locator('#topbar #theme-toggle').click();
-    await expect(page.locator('#theme-popover')).toBeVisible();
+    // When: the settings open on General, where the theme is.
+    await page.locator('#topbar #mode-button').click();
+    await expect(page.locator('#mode-popover')).toBeVisible();
     await page.getByTestId('theme-option-dark').click();
 
     // Then
@@ -323,17 +318,18 @@ test.describe('Shell UI smoke', () => {
     await expect(html).toHaveAttribute('data-theme', 'dark');
   });
 
-  test("As a user with a saved theme, the topbar's theme button names it", async ({ page }) => {
-    // Given: the build rendered the button for the default, System.
+  test('As a user with a saved theme, I see it checked in the settings', async ({ page }) => {
+    // Given
     await page.addInitScript(() => {
       localStorage.setItem('dotli-theme', 'light');
     });
-
-    // When
     await page.goto(LABEL_URL);
 
+    // When
+    await page.locator('#topbar #mode-button').click();
+
     // Then
-    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Appearance: Light');
+    await expect(page.getByTestId('theme-option-light')).toHaveAttribute('aria-checked', 'true');
   });
 
   test("As a user who loses the connection, the bar's status turns red and recovers when I'm back", async ({
@@ -404,9 +400,8 @@ test.describe('Shell UI smoke', () => {
 
     // Then: the bar is the page's banner landmark.
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveAttribute('id', 'topbar');
-    // The hydrated islands' build-time renders.
-    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Sign in with Polkadot Mobile');
-    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Appearance: System');
+    // The hydrated islands' build-time renders: the account button before the saved session is read.
+    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Checking sign-in');
 
     await context.close();
   });

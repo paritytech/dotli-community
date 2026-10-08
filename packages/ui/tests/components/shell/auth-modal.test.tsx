@@ -8,7 +8,7 @@ import { setAuthState } from '../../../src/state/auth.js';
 import { updateAuthModal } from '../../../src/state/auth-modal.js';
 import { getTopbarState, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
 import { anyTopbarSurfaceOpen } from '../../../src/state/topbar-surfaces.js';
-import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
+import { PermissionsPopover } from '../../../src/components/shell/PermissionsPopover.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { mouseClick, renderComponent } from '../../helpers/solid.js';
 import { setViewportWidth, stubPhoneViewport } from '../../helpers/viewport.js';
@@ -657,13 +657,13 @@ describe('AuthModal login flow', () => {
     expect(document.activeElement).toBe(byTestId('auth-modal', document));
   });
 
-  it('As a user, the modal stays open, focused and trapping Tab through its own blocking-modal lease, while the theme menu closes for it', async () => {
-    // Given: the theme menu is open when a product asks for a login.
-    renderComponent(() => <ThemeToggle />);
+  it('As a user, the modal stays open, focused and trapping Tab through its own blocking-modal lease, while the permissions popover closes for it', async () => {
+    // Given: the permissions popover is open when a product asks for a login.
+    renderComponent(() => <PermissionsPopover />);
     await renderModal();
-    mouseClick(byId('theme-toggle'));
+    mouseClick(byId('permissions-button'));
     await settleQr();
-    expect(byId('theme-popover').hasAttribute('data-open')).toBe(true);
+    expect(byId('permissions-popover').hasAttribute('data-open')).toBe(true);
 
     // When: the controller takes the lease, which marks a blocking modal up.
     await authState(pairing());
@@ -671,7 +671,7 @@ describe('AuthModal login flow', () => {
     await settleQr();
 
     // Then
-    expect(byId('theme-popover').hasAttribute('data-open')).toBe(false);
+    expect(byId('permissions-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
     byId('auth-modal-close').focus();

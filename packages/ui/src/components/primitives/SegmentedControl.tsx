@@ -19,6 +19,8 @@ export interface SegmentedControlProps<V extends string> {
   value: V;
   /** Called with a newly picked value, never with the current one. */
   onChange: (value: V) => void;
+  /** Full width of its container, the options sharing it equally. */
+  block?: boolean;
   class?: string | undefined;
   testId?: string;
 }
@@ -76,6 +78,7 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
       role="group"
       aria-label={props.label}
       class={[s['seg'], props.class]}
+      data-block={props.block === true ? '' : undefined}
       data-testid={props.testId}
       onKeyDown={onKeyDown}
       onFocusIn={onFocusIn}

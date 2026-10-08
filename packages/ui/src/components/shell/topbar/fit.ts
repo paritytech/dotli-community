@@ -7,10 +7,9 @@ export const PINNED = Number.POSITIVE_INFINITY;
 /** How early each item moves into More when the bar runs out of room, the lowest first. */
 export const TOPBAR_PRIORITY = {
   settings: 1,
-  theme: 2,
-  permissions: 3,
-  chat: 4,
-  network: 5,
+  permissions: 2,
+  chat: 3,
+  network: 4,
   auth: PINNED,
 } as const;
 

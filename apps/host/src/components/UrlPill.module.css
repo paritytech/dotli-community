@@ -1,11 +1,11 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* At the pill's max-width the address shrinks first, down to 136px, before any action collapses into More. */
+/* Never shrinks, so the row holds still while the bar morphs. A long name ellipsizes. */
 .url {
   display: flex;
-  flex: 0 100 auto;
-  min-width: 136px;
+  flex: none;
+  max-width: 200px;
 }
 .url[hidden] {
   display: none;
@@ -19,7 +19,7 @@
   box-sizing: border-box;
   min-width: 0;
   height: var(--h-bar-control);
-  padding: 0 var(--sp-4);
+  padding: 0 var(--sp-4) 0 var(--sp-3);
   border-radius: var(--r-full);
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);

@@ -21,7 +21,10 @@ const socialMeta = socialMetaAttributes({
 
 {runtimeNetworkConfig && <script is:inline src="/dotli-network.js"></script>}
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+/>
 <title>{TITLE}</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 {/* An island can hydrate before the page's entry runs, so its errors queue here until reportIslandErrors listens. */}

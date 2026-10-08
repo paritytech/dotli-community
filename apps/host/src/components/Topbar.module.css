@@ -3,11 +3,15 @@
 
 /* One element morphs between the open pill and the collapsed status capsule (data-hidden). */
 
+/* The row is centred in the bar at its full width, so while the bar morphs its edges open and close around content
+   that holds still. */
 .topbar {
   position: fixed;
   top: calc(var(--topbar-inset) + var(--safe-top));
   left: 50%;
   z-index: 1000;
+  display: flex;
+  justify-content: center;
   box-sizing: border-box;
   width: fit-content;
   max-width: calc(95vw - var(--safe-left) - var(--safe-right));
@@ -33,17 +37,20 @@
 }
 /* Desktop only: a data-hidden that lands mid-resize across 560px must not fold the phone bar. */
 @media (min-width: 561px) {
+  /* Clip, not hidden: a hidden overflow scrolls the strip away when a clipped control takes focus. */
+  .topbar {
+    overflow: clip;
+  }
   .topbar[data-hidden] {
     top: calc(var(--sp-1) + var(--safe-top));
     width: 120px;
     height: var(--sp-2);
-    /* Clip, not hidden: a hidden overflow scrolls the strip away when a clipped control takes focus. */
-    overflow: clip;
     box-shadow: var(--chrome-shadow-capsule);
   }
 }
 .row {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   box-sizing: border-box;

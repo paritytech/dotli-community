@@ -4,10 +4,11 @@
 // The real auth controller, started once per file: its window listeners have no disposer, and
 // reloading its module would load a second Solid.
 
-import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { closeAuthModal, initAuthController } from '../../../src/auth-controller.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../../../src/blocking-modal-queue.js';
+import { setAuthState } from '../../../src/state/auth.js';
 import { resetStores } from '../../helpers/solid.js';
 import { byId, byTestId } from '../../support.js';
 
@@ -16,13 +17,20 @@ let events = new AbortController();
 
 export const coordinator: BlockingModalCoordinator = createBlockingModalCoordinator();
 
-/** Starts the auth controller for this file, and resets the modal, stores and recorders after each test. */
+/**
+ * Starts the auth controller for this file, with boot having found no saved session before each test, and resets the
+ * modal, stores and recorders after each test.
+ */
 export function useAuthController(): void {
   beforeAll(() => {
     const spy = vi.spyOn(window, 'addEventListener');
     initAuthController(coordinator);
     controllerListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
     spy.mockRestore();
+  });
+
+  beforeEach(() => {
+    setAuthState({ tag: 'Disconnected' });
   });
 
   afterEach(() => {

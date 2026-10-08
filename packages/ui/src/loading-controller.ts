@@ -7,6 +7,7 @@
 import { getActiveTldSuffix, isSandboxOrigin } from '@dotli/config';
 
 import { disposeAppRoot, registerAppRoot } from './mount/app-roots.js';
+import { prefersReducedMotion } from './reduced-motion.js';
 import { getLoadingState, updateLoading, type StepPart } from './state/loading.js';
 
 /** A loading step owning the `[base, target]` band of the bar, crossed in about `expectedMs`. */
@@ -152,10 +153,6 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 const MESSAGE_ROTATE_MS = 9_000;
 
 const DOMAIN_TOKEN = '{domain}';
-
-function prefersReducedMotion(): boolean {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
 
 /** In the order they happen. */
 export const LOADING_STAGES = ['starting', 'relay', 'assetHub', 'resolving', 'content', 'preparing'] as const;

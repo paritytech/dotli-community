@@ -329,14 +329,38 @@ export function setNetworkOverride(network: Network): void {
   networkOverride = network;
 }
 
-export function getNetwork(): Network {
+function storedNetwork(enabled: readonly Network[]): Network | null {
+  const stored = localStorage.getItem(NETWORK_KEY);
+  return stored !== null && isValidNetwork(stored) && enabled.includes(stored) ? stored : null;
+}
+
+/**
+ * The network as this page can tell it before settings apply, from the URL's `fromUrl`, then localStorage, then the
+ * default. Unlike getNetwork it writes nothing, as settings tell a fresh visit from a stored choice by what is stored.
+ */
+export function peekNetwork(fromUrl: Network | null): Network {
   if (networkOverride !== null) {
     return networkOverride;
   }
   const enabled = getEnabledNetworks();
+  if (fromUrl !== null && enabled.includes(fromUrl)) {
+    return fromUrl;
+  }
   try {
-    const stored = localStorage.getItem(NETWORK_KEY);
-    if (stored !== null && isValidNetwork(stored) && enabled.includes(stored)) {
+    return storedNetwork(enabled) ?? defaultNetwork();
+  } catch {
+    // localStorage is unavailable, where getNetwork falls back to the default too.
+    return defaultNetwork();
+  }
+}
+
+export function getNetwork(): Network {
+  if (networkOverride !== null) {
+    return networkOverride;
+  }
+  try {
+    const stored = storedNetwork(getEnabledNetworks());
+    if (stored !== null) {
       return stored;
     }
     const computed = defaultNetwork();
@@ -363,7 +387,12 @@ export function setNetwork(network: Network): void {
  * Each TLD must also be in truapi-platform's `DOTNS_TLDS`, or the core cannot load a product under it.
  */
 export function getActiveTldSuffix(): string {
-  return `.${getActiveServicesConfig().dotns.TLD}`;
+  return getTldSuffix(getNetwork());
+}
+
+/** The TLD `network` registers names under, with its leading dot. */
+export function getTldSuffix(network: Network): string {
+  return `.${NETWORK_NAME_TO_SERVICES_CONFIG[network].dotns.TLD}`;
 }
 
 /** Appends the active TLD to a bare label, giving `myapp.paseo`. */

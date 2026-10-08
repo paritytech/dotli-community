@@ -35,7 +35,8 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
     const session = props.showName === true && account.loggedIn() ? account.session() : undefined;
     return session === undefined ? undefined : sessionDisplayName(session);
   };
-  const label = (): string => (account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile');
+  const label = (): string =>
+    account.restoring() ? 'Checking sign-in' : account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile';
   // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
     const session = account.loggedIn() ? account.session() : undefined;
@@ -69,6 +70,7 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
           ref={setButton}
           onClick={onClick}
           id={id('auth-button')}
+          loading={account.restoring()}
           title={label()}
           aria-label={ariaLabel()}
           aria-haspopup={opensPopover() ? undefined : 'dialog'}

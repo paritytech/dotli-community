@@ -17,6 +17,8 @@ export interface Account {
   session: Accessor<TruapiSessionUiState | undefined>;
   /** True while the auth state is `Connected` (authStore). */
   connected: Accessor<boolean>;
+  /** True until boot has read the saved session (authStore). */
+  restoring: Accessor<boolean>;
 }
 
 export function useAccount(): Account {
@@ -31,6 +33,7 @@ export function useAccount(): Account {
     loggedIn,
     session: () => last() ?? (loggedIn() ? { connected: true } : undefined),
     connected,
+    restoring: () => auth().tag === 'Restoring',
   };
 }
 

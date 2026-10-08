@@ -103,6 +103,9 @@ import {
   type Backend,
   getActiveTldSuffix,
   getNetwork,
+  getTldSuffix,
+  parseSettingsFromSearch,
+  peekNetwork,
   withActiveTld,
   writeSettingsToSearch,
 } from '@dotli/config';
@@ -563,6 +566,21 @@ async function main(): Promise<void> {
   performance.mark('dotli:main:start');
   log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
 
+  // From the URL alone, before any await, so the URL bar is drawn with the page. The TLD is a guess until settings
+  // apply, and the app route below sets it again from them.
+  const label = parseDotLabel();
+  const localhostUrl = parseLocalhostUrl();
+  const pageUrl = label === null ? (previewTargetUrl ?? localhostUrl) : null;
+  const pageHost = pageUrl === null ? null : new URL(pageUrl).host;
+  if (label !== null) {
+    showProductPill(
+      label,
+      getTldSuffix(peekNetwork(parseSettingsFromSearch(new URLSearchParams(window.location.search)).network)),
+    );
+  } else if (pageHost !== null) {
+    showLocalhostPill(pageHost);
+  }
+
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
   boot.step = 'debug_bus';
   const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
@@ -587,25 +605,21 @@ async function main(): Promise<void> {
 
   const { chainBackend, cacheSettings, bridgeModule } = await startHost(bootFlowId, emitDotliDebugEvent);
 
-  const label = parseDotLabel();
   const productIdOverride = parseLocalProductIdOverride();
 
-  if (label === null && previewTargetUrl !== null) {
-    const host = new URL(previewTargetUrl).host;
+  if (previewTargetUrl !== null && pageHost !== null) {
     boot.step = 'preview_render';
-    log.event('Route: preview', { flow: 'boot', host });
-    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
+    log.event('Route: preview', { flow: 'boot', host: pageHost });
+    bridgeModule.setPageProduct({ label: pageHost, productId: productIdOverride });
 
-    initScheduledNotifications({ label: host });
-
-    showLocalhostPill(host);
+    initScheduledNotifications({ label: pageHost });
 
     // Local products carry no worker manifest to read the chat flag from,
     // so the debug paths enable chat unconditionally for product testing.
-    setChatCapability(host, true);
+    setChatCapability(pageHost, true);
     await bridgeModule.renderIframe(
       previewTargetUrl,
-      host,
+      pageHost,
       productIdOverride !== undefined ? { productId: productIdOverride } : {},
     );
     setProductContentShown(true);
@@ -616,12 +630,11 @@ async function main(): Promise<void> {
       nextSearch.set(DOTLI_PRODUCT_ID_PARAM, productIdOverride);
     }
     history.replaceState(null, '', `/__preview?${nextSearch.toString()}`);
-    document.title = `${host} · ${SITE_ID}`;
+    document.title = `${pageHost} · ${SITE_ID}`;
     performance.mark('dotli:main:end');
     return;
   }
 
-  const localhostUrl = parseLocalhostUrl();
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'url_parsed',
@@ -629,24 +642,21 @@ async function main(): Promise<void> {
     timestamp: Date.now(),
     payload: {
       label,
-      localhostHost: localhostUrl === null ? null : new URL(localhostUrl).host,
+      localhostHost: localhostUrl === null ? null : pageHost,
       deepPath: window.location.pathname + window.location.search,
     },
   });
-  if (label === null && localhostUrl !== null) {
-    const host = new URL(localhostUrl).host;
+  if (localhostUrl !== null && pageHost !== null) {
     boot.step = 'localhost_render';
-    log.event('Route: localhost proxy', { flow: 'boot', host });
-    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
+    log.event('Route: localhost proxy', { flow: 'boot', host: pageHost });
+    bridgeModule.setPageProduct({ label: pageHost, productId: productIdOverride });
 
-    initScheduledNotifications({ label: host });
+    initScheduledNotifications({ label: pageHost });
 
-    showLocalhostPill(host);
-
-    setChatCapability(host, true);
+    setChatCapability(pageHost, true);
     await bridgeModule.renderIframe(
       localhostUrl,
-      host,
+      pageHost,
       productIdOverride !== undefined ? { productId: productIdOverride } : {},
     );
     setProductContentShown(true);
@@ -660,10 +670,10 @@ async function main(): Promise<void> {
       null,
       '',
       productIdOverride === undefined
-        ? '/' + host
-        : `/${host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
+        ? '/' + pageHost
+        : `/${pageHost}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
     );
-    document.title = `${host} · ${SITE_ID}`;
+    document.title = `${pageHost} · ${SITE_ID}`;
     performance.mark('dotli:main:end');
     emitDotliDebugEvent({
       layer: 'boot',

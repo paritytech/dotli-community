@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn } from 'storybook/test';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl.js';
 
-// Copies of the Appearance menu's glyphs, which ThemeToggle.tsx does not export.
+// Copies of the Appearance picker's glyphs, which Appearance.tsx does not export.
 const SunGlyph = () => (
   <svg
     width="14"

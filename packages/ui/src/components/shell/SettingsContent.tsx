@@ -13,9 +13,11 @@ import { Choice } from '../primitives/Choice.js';
 import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
 import { Switch } from '../primitives/Switch.js';
+import { SegmentedControl, type SegmentOption } from '../primitives/SegmentedControl.js';
 import { Row, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { usePopover } from '../floating/Popover.js';
+import { AppearancePicker } from './Appearance.js';
 import s from './SettingsContent.module.css';
 
 interface Transport {
@@ -28,6 +30,14 @@ const TRANSPORTS: readonly Transport[] = [
   { value: 'smoldot-direct', description: 'Verified in your browser, separate for each tab', recommended: true },
   { value: 'smoldot-shared-worker', description: 'Verified in your browser, shared across tabs', recommended: false },
   { value: 'rpc-gateway', description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
+];
+
+type Category = 'general' | 'network' | 'advanced';
+
+const CATEGORIES: readonly SegmentOption<Category>[] = [
+  { value: 'general', label: 'General', testId: 'settings-category-general' },
+  { value: 'network', label: 'Network', testId: 'settings-category-network' },
+  { value: 'advanced', label: 'Advanced', testId: 'settings-category-advanced' },
 ];
 
 type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
@@ -86,7 +96,10 @@ function openInDebugMode(): void {
   window.location.assign(url.toString());
 }
 
-/** One opening's panel. Changes stay a draft until Save and apply, and closing drops the draft. */
+/**
+ * One opening's panel, on General each time. Network and cache changes stay a draft across categories until Save and
+ * apply, and closing drops the draft. The theme applies at once.
+ */
 function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const popover = usePopover();
   const saved = untrack(() => props.saved);
@@ -98,6 +111,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const [chain, setChain] = createSignal<Backend>(persisted.chain);
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
+  const [category, setCategory] = createSignal<Category>('general');
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
 
@@ -148,21 +162,64 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         }
       />
       <div class={s['sections']} data-testid="mode-popover-sections">
-        <Show when={networks.length > 1}>
+        <SegmentedControl<Category>
+          label="Settings category"
+          options={CATEGORIES}
+          value={category()}
+          onChange={setCategory}
+          block
+          testId="settings-categories"
+        />
+        <Show when={category() === 'general'}>
           <Stack>
-            <SectionLabel text="Network" />
-            <Stack role="radiogroup" aria-label="Network">
-              <For each={networks}>
-                {value => (
+            <SectionLabel text="Appearance" />
+            <AppearancePicker />
+          </Stack>
+        </Show>
+        <Show when={category() === 'network'}>
+          <Show when={networks.length > 1}>
+            <Stack>
+              <SectionLabel text="Network" />
+              <Stack role="radiogroup" aria-label="Network">
+                <For each={networks}>
+                  {value => (
+                    <Choice
+                      title={NETWORK_NAME_TO_SERVICES_CONFIG[value].label}
+                      description={NETWORK_NAME_TO_SERVICES_CONFIG[value].description}
+                      selected={network() === value}
+                      radio={{
+                        name: 'dotli-network',
+                        value,
+                        onChoose: () => {
+                          setNetwork(value);
+                        },
+                      }}
+                    />
+                  )}
+                </For>
+              </Stack>
+            </Stack>
+          </Show>
+          <Stack>
+            <SectionLabel text="Network transport" />
+            <Stack role="radiogroup" aria-label="Network transport">
+              <For each={TRANSPORTS}>
+                {transport => (
                   <Choice
-                    title={NETWORK_NAME_TO_SERVICES_CONFIG[value].label}
-                    description={NETWORK_NAME_TO_SERVICES_CONFIG[value].description}
-                    selected={network() === value}
+                    title={BACKEND_LABELS[transport.value]}
+                    description={
+                      unavailable(transport.value)
+                        ? 'Unavailable in this browser or private window'
+                        : transport.description
+                    }
+                    chip={transport.recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
+                    selected={chain() === transport.value}
                     radio={{
-                      name: 'dotli-network',
-                      value,
+                      name: 'dotli-backend',
+                      value: transport.value,
+                      disabled: unavailable(transport.value),
                       onChoose: () => {
-                        setNetwork(value);
+                        setChain(transport.value);
                       },
                     }}
                   />
@@ -171,70 +228,45 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             </Stack>
           </Stack>
         </Show>
-        <Stack>
-          <SectionLabel text="Network transport" />
-          <Stack role="radiogroup" aria-label="Network transport">
-            <For each={TRANSPORTS}>
-              {transport => (
-                <Choice
-                  title={BACKEND_LABELS[transport.value]}
-                  description={
-                    unavailable(transport.value)
-                      ? 'Unavailable in this browser or private window'
-                      : transport.description
-                  }
-                  chip={transport.recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
-                  selected={chain() === transport.value}
-                  radio={{
-                    name: 'dotli-backend',
-                    value: transport.value,
-                    disabled: unavailable(transport.value),
-                    onChoose: () => {
-                      setChain(transport.value);
-                    },
-                  }}
-                />
-              )}
-            </For>
+        <Show when={category() === 'advanced'}>
+          <Stack>
+            <SectionLabel text="Cache" />
+            <Well layout="controls" testId="mode-cache">
+              <For each={CACHES}>
+                {([key, label]) => (
+                  <Row label={label}>
+                    <Switch
+                      label={label}
+                      checked={!cache()[key]}
+                      onChange={enabled => {
+                        setCache(c => ({ ...c, [key]: !enabled }));
+                      }}
+                    />
+                  </Row>
+                )}
+              </For>
+            </Well>
+            {/* So users need not toggle a setting back and forth just to wipe state. */}
+            <div data-testid="mode-clear-all-row">
+              <Button
+                block
+                onClick={clearAll}
+                title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
+                disabled={clearing()}
+              >
+                <TrashIcon />
+                {clearing() ? 'Clearing…' : 'Clear all caches'}
+              </Button>
+            </div>
           </Stack>
-        </Stack>
-        <Stack>
-          <SectionLabel text="Cache" />
-          <Well layout="controls" testId="mode-cache">
-            <For each={CACHES}>
-              {([key, label]) => (
-                <Row label={label}>
-                  <Switch
-                    label={label}
-                    checked={!cache()[key]}
-                    onChange={enabled => {
-                      setCache(c => ({ ...c, [key]: !enabled }));
-                    }}
-                  />
-                </Row>
-              )}
-            </For>
-          </Well>
-          {/* So users need not toggle a setting back and forth just to wipe state. */}
-          <div data-testid="mode-clear-all-row">
-            <Button
-              block
-              onClick={clearAll}
-              title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
-              disabled={clearing()}
-            >
-              <TrashIcon />
-              {clearing() ? 'Clearing…' : 'Clear all caches'}
-            </Button>
-          </div>
-        </Stack>
-        <Show when={!isTruapiDebugEnabled()}>
-          <div data-testid="mode-debug-row">
-            <Button block onClick={openInDebugMode} title="Reload this tab with the debug panel and its diagnostics">
-              <TerminalIcon />
-              Open in debug mode
-            </Button>
-          </div>
+          <Show when={!isTruapiDebugEnabled()}>
+            <div data-testid="mode-debug-row">
+              <Button block onClick={openInDebugMode} title="Reload this tab with the debug panel and its diagnostics">
+                <TerminalIcon />
+                Open in debug mode
+              </Button>
+            </div>
+          </Show>
         </Show>
       </div>
       <SurfaceFoot

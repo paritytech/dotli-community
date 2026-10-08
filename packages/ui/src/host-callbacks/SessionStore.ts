@@ -11,6 +11,7 @@ import {
 } from '@dotli/protocol';
 
 import { log } from '@dotli/shared';
+import { getAuthState } from '../state/auth.js';
 import { dispatchAuthState } from './AuthState.js';
 
 const LOCAL_CHANGE_EVENT = 'dotli:truapi-session-store-changed';
@@ -98,22 +99,24 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
   }
 }
 
-/** At boot, so a reload shows the logged-in badge before any core instance runs. */
+/**
+ * At boot, so a reload shows the logged-in badge before any core instance runs. Ends `Restoring` with what was saved,
+ * unless the core has already said where the session stands, which is newer. A store that cannot be read counts as
+ * no session.
+ */
 export function emitPersistedSessionUiState(): void {
   void (async () => {
     let raw: string | null;
     try {
       raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    } catch {
-      return;
+    } catch (err) {
+      log.warn('[dot.li] shared auth session read failed:', err);
+      raw = null;
     }
-    if (raw === null || raw === '') {
-      return;
+    const session = raw === null || raw === '' ? null : ((await readUiStateCache()) ?? { connected: true });
+    if (getAuthState().tag === 'Restoring') {
+      dispatchAuthState(session === null ? { tag: 'Disconnected' } : { tag: 'Connected', session });
     }
-    dispatchAuthState({
-      tag: 'Connected',
-      session: (await readUiStateCache()) ?? { connected: true },
-    });
   })();
 }
 
