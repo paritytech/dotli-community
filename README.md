@@ -200,8 +200,20 @@ their meaning remains guest-defined. Skyhook also uses R to restart.
 
 Contacts are independent, so movement, aiming, and firing can overlap. Cancelling one contact releases only its input;
 focus loss, backgrounding, resizing, and disabling controls release all held virtual input and stop aiming. Physical
-keyboard/mouse input remains independent of virtual holds. The overlay respects safe-area insets and is absent on
-desktop-only devices and apps that do not request capture; ordinary apps continue receiving raw multi-touch records.
+keyboard/mouse input remains independent of virtual holds. The default overlay respects safe-area insets and is absent
+on desktop-only devices and apps that do not request capture; ordinary apps continue receiving raw multi-touch records.
+
+Halo (`halo.app.<host>`, WebGPU Raster) uses its own host-owned compatibility layout, following the same HID
+keyboard/pointer approach as Epoca's iOS SNES controls. **Controls** opens an Xbox-to-keyboard/pointer reference and an
+**On-screen buttons** toggle. Buttons start enabled on coarse-pointer devices, and can be enabled on mouse/pen devices
+without pretending they have touch hardware. The choice lasts for the current execution. This is not direct Gamepad API
+support: Steam Input users can map their controllers to the keys and mouse actions in the reference.
+
+Halo's left pad sends WASD and the right pad sends relative aim; its action buttons cover fire, grenade, jump, melee,
+use/reload, weapon change, crouch, zoom, the original White/Black buttons, Start and Back. When the guest releases
+capture for its menus, gameplay buttons give way to arrow-key navigation, Accept (Enter) and Back (Backspace). Mode
+changes release held input before changing bindings. The host app menu pauses and hides virtual controls. Halo's
+controls respect both the host-relayed safe area and browser safe-area insets; other games retain their existing layout.
 
 Apps register file handlers at runtime through `host_file_register`; manifest declarations do not authorize file
 delivery. The sandbox follows the current execution's `file-registrations` and exposes **Open file** and drag/drop only
