@@ -14,7 +14,8 @@ SITE_dev-paseo     := paseoli.dev
 SITE_fyi-paseo     := paseo.fyi
 SITE_dev-test      := testnet.li
 
-# Only polkadot is prod. The rest share the staging box.
+# Fallback targets when REMOTE is unset. Each env runs on its own server, so pass REMOTE=user@host for a non-prod
+# env whose server is not REMOTE_STG.
 REMOTE_FOR_polkadot      := $(REMOTE_PRD)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
