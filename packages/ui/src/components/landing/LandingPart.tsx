@@ -4,21 +4,19 @@
 import { createEffect, createSignal, Errored, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
-import { registerAppRoot } from '../../mount/app-roots.js';
 import { showBrokenPage } from '../../ui.js';
-import { Landing } from './Landing.js';
+import { joinLandingRoot } from './landing-root.js';
 
-/** Island for the landing page. It is the page's root, so an error page disposes it to take the page over. */
-export function LandingPage(): JSX.Element {
+/**
+ * Wraps each landing island. The page is nothing but these, so one failing breaks the whole page, and an error page
+ * disposes them together.
+ */
+export function LandingPart(props: { children: JSX.Element }): JSX.Element {
   const [shown, setShown] = createSignal(true);
-  onSettled(() => {
-    registerAppRoot('page', () => setShown(false));
-  });
+  onSettled(() => joinLandingRoot(() => setShown(false)));
   return (
     <Show when={shown()}>
-      <Errored fallback={err => <Broken error={err()} />}>
-        <Landing />
-      </Errored>
+      <Errored fallback={err => <Broken error={err()} />}>{props.children}</Errored>
     </Show>
   );
 }

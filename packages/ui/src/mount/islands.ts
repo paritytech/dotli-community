@@ -62,8 +62,10 @@ function onIslandError(ev: Event): void {
         },
       );
       break;
-    case 'LandingPage':
-      // The page is nothing else, so it fails whole.
+    case 'LandingAuth':
+    case 'LandingNav':
+    case 'LandingRecents':
+      // The page's only controls, so it fails whole.
       showBrokenPage();
       break;
   }

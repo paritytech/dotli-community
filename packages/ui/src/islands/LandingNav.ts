@@ -2,4 +2,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // One module per island, so Astro loads only this island's code when its directive fires.
-export { LandingPage } from '../components/landing/LandingPage.js';
+export { LandingNav } from '../components/landing/LandingNav.js';
