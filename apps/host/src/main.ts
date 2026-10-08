@@ -103,6 +103,8 @@ import {
   type Backend,
   getActiveTldSuffix,
   getNetwork,
+  getTldSuffix,
+  peekNetwork,
   withActiveTld,
   writeSettingsToSearch,
 } from '@dotli/config';
@@ -563,6 +565,17 @@ async function main(): Promise<void> {
   performance.mark('dotli:main:start');
   log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
 
+  // From the URL alone, before any await, so the URL bar is drawn with the page. The TLD is a guess until settings
+  // apply, and the app route below sets it again from them.
+  const label = parseDotLabel();
+  const localhostUrl = parseLocalhostUrl();
+  const pageHost = label === null ? (previewTargetUrl ?? localhostUrl) : null;
+  if (label !== null) {
+    showProductPill(label, getTldSuffix(peekNetwork(new URLSearchParams(window.location.search))));
+  } else if (pageHost !== null) {
+    showLocalhostPill(new URL(pageHost).host);
+  }
+
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
   boot.step = 'debug_bus';
   const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
@@ -587,7 +600,6 @@ async function main(): Promise<void> {
 
   const { chainBackend, cacheSettings, bridgeModule } = await startHost(bootFlowId, emitDotliDebugEvent);
 
-  const label = parseDotLabel();
   const productIdOverride = parseLocalProductIdOverride();
 
   if (label === null && previewTargetUrl !== null) {
@@ -597,8 +609,6 @@ async function main(): Promise<void> {
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
-
-    showLocalhostPill(host);
 
     // Local products carry no worker manifest to read the chat flag from,
     // so the debug paths enable chat unconditionally for product testing.
@@ -621,7 +631,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  const localhostUrl = parseLocalhostUrl();
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'url_parsed',
@@ -640,8 +649,6 @@ async function main(): Promise<void> {
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
-
-    showLocalhostPill(host);
 
     setChatCapability(host, true);
     await bridgeModule.renderIframe(

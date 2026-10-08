@@ -4,7 +4,7 @@
 import { createSignal, lazy, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { startLogin } from '../../auth-controller.js';
-import { getAuthState } from '../../state/auth.js';
+import { getAuthState, sessionRestoredStore } from '../../state/auth.js';
 import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
 import { Popover } from '../floating/Popover.js';
 import { Button } from '../primitives/Button.js';
@@ -30,6 +30,7 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = useAccount();
   const authModal = useStore(authModalStore);
+  const restored = useStore(sessionRestoredStore);
   const opensPopover = account.connected;
   const shownName = (): string | undefined => {
     const session = props.showName === true && account.loggedIn() ? account.session() : undefined;
@@ -69,6 +70,7 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
           ref={setButton}
           onClick={onClick}
           id={id('auth-button')}
+          loading={!restored()}
           title={label()}
           aria-label={ariaLabel()}
           aria-haspopup={opensPopover() ? undefined : 'dialog'}

@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The address shrinks first (UrlPill.module.css), so items collapse into More only once it is at its
-   minimum (topbarActionRoom). */
+/* Items collapse into More once the row would pass the pill's max width (topbarActionRoom). */
 .group {
   display: flex;
   flex: none;

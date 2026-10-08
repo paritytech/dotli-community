@@ -11,6 +11,7 @@ import {
 } from '@dotli/protocol';
 
 import { log } from '@dotli/shared';
+import { setSessionRestored } from '../state/auth.js';
 import { dispatchAuthState } from './AuthState.js';
 
 const LOCAL_CHANGE_EVENT = 'dotli:truapi-session-store-changed';
@@ -114,7 +115,7 @@ export function emitPersistedSessionUiState(): void {
       tag: 'Connected',
       session: (await readUiStateCache()) ?? { connected: true },
     });
-  })();
+  })().finally(setSessionRestored);
 }
 
 export function createSessionStoreAdapters(): CoreStorage {

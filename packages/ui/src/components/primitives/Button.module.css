@@ -9,7 +9,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
+  --button-h: 36px;
+  height: var(--button-h);
   margin: 0;
   padding: 0 var(--sp-4);
   border: 0;
@@ -57,12 +58,12 @@
   background: var(--chrome-danger-fill-strong);
 }
 .button[data-size='sm'] {
-  height: 28px;
+  --button-h: 28px;
   padding: 0 var(--sp-3);
   font-size: var(--fs-caption);
 }
 .button[data-size='lg'] {
-  height: var(--h-control);
+  --button-h: var(--h-control);
   font-size: 14px;
   font-weight: var(--fw-semibold);
 }
@@ -80,18 +81,29 @@
   cursor: default;
   transform: none;
 }
+/* A circle as tall as the button. Button.tsx grows it to the content once loading ends. */
+.button[data-loading] {
+  width: var(--button-h);
+  padding: 0;
+}
+.button > .spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
 @media (max-width: 560px) {
   :where(.button) {
     gap: var(--sp-2);
-    height: var(--h-control);
+    --button-h: var(--h-control);
     padding: 0 var(--sp-5);
   }
   .button[data-size='sm'] {
-    height: var(--h-control-sm);
+    --button-h: var(--h-control-sm);
     padding: 0 var(--sp-4);
   }
   .button[data-size='lg'] {
-    height: var(--h-control-lg);
+    --button-h: var(--h-control-lg);
     font-size: var(--fs-title);
   }
   :where(.button:has(> svg:first-child)) {

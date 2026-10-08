@@ -4,9 +4,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { getAuthModalState } from '../../../src/state/auth-modal.js';
-import { authStore, setAuthState } from '../../../src/state/auth.js';
+import { authStore, setAuthState, setSessionRestored } from '../../../src/state/auth.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
-import { renderComponent } from '../../helpers/solid.js';
+import { renderComponent, resetStores } from '../../helpers/solid.js';
 import { byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { byId, recordEvents, settleAll, useAuthController } from './auth-harness.js';
@@ -130,6 +130,43 @@ describe('AuthButton', () => {
     expect(button.hasAttribute('aria-busy')).toBe(false);
     expect(button.querySelector('[data-testid="user-badge"]')).toBeNull();
     expectMarkup(button, 'logged-out');
+  });
+
+  it('As a visitor whose session is still being read, I see a busy button that takes no clicks, then Sign in', async () => {
+    // Given
+    resetStores();
+    const button = await renderButton();
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.textContent.trim()).toBe('');
+
+    // When
+    setSessionRestored();
+    await settleAll();
+
+    // Then
+    expectMarkup(button, 'logged-out');
+  });
+
+  it('As a returning user, the busy button turns into my badge without showing Sign in first', async () => {
+    // Given
+    resetStores();
+    const button = await renderButton();
+
+    // When: the read finds my session, which reaches the button before the read ends.
+    setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
+    await settleAll();
+
+    // Then
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.textContent).not.toContain('Sign in');
+
+    // When
+    setSessionRestored();
+    await settleAll();
+
+    // Then
+    expectMarkup(button, { initials: 'AS' });
   });
 
   it('As a logged-in user, I see my initials in the badge, with its ids, labels and ARIA state', async () => {

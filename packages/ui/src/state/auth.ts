@@ -28,3 +28,12 @@ export function setLoggedIn(next: boolean): void {
   session.set(next);
   window.dispatchEvent(new Event(next ? 'dotli:authenticated' : 'dotli:logged-out'));
 }
+
+// False until boot has read the persisted session, as until then the button cannot tell sign-in from an account.
+const restored = createSyncStore<boolean>('session_restored', false);
+
+export const sessionRestoredStore: ReadableStore<boolean> = restored;
+
+export function setSessionRestored(): void {
+  restored.set(true);
+}

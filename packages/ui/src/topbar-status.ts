@@ -143,8 +143,8 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
 }
 
 /**
- * The pill's max width less the rest of its row, with the address at its minimum. That holds while the
- * pill morphs, so items never pop in and out during a reveal.
+ * The pill's max width less the rest of its row. Nothing in the row shrinks, so that holds while the pill morphs and
+ * items never pop in and out during a reveal.
  */
 export function topbarActionRoom(group: HTMLElement, row = layoutParent(group)): number | undefined {
   if (isPhoneViewport()) {
@@ -158,11 +158,5 @@ export function topbarActionRoom(group: HTMLElement, row = layoutParent(group)):
   if (!Number.isFinite(max)) {
     return undefined;
   }
-  const url = document.getElementById('topbar-url');
-  let urlSlack = 0;
-  if (url !== null && url.hidden !== true) {
-    const min = Number.parseFloat(getComputedStyle(url).minWidth);
-    urlSlack = Math.max(0, url.getBoundingClientRect().width - (Number.isFinite(min) ? min : 0));
-  }
-  return max - (row.scrollWidth - group.getBoundingClientRect().width) + urlSlack;
+  return max - (row.scrollWidth - group.getBoundingClientRect().width);
 }

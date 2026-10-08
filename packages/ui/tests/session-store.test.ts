@@ -8,6 +8,8 @@ import {
   onStoredSessionChanged,
 } from '../src/host-callbacks/SessionStore.js';
 import { createAuthStateChanged } from '../src/host-callbacks/AuthState.js';
+import { sessionRestoredStore } from '../src/state/auth.js';
+import { resetAllStoresForTests } from '../src/state/create-store.js';
 import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import { must } from './support.js';
 
@@ -578,6 +580,18 @@ describe('session-store host callbacks', () => {
 
     // Then
     expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
+  });
+
+  it('As a visitor, the host marks the session read once boot finds a session or none', async () => {
+    // Given
+    resetAllStoresForTests();
+
+    // When
+    emitPersistedSessionUiState();
+    await flushMicrotasks();
+
+    // Then
+    expect(sessionRestoredStore.get()).toBe(true);
   });
 
   it('As a dotli integrator, the host rehydrates a bare connected state when no cache exists', async () => {

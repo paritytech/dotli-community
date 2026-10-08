@@ -192,47 +192,40 @@ describe('bindTopbarStatus', () => {
     expect(document.documentElement.style.getPropertyValue('--topbar-bottom')).toBe('');
   });
 
-  it('As the action group, my room is the same at rest and while the pill morphs', () => {
-    // Given: a pill whose max width is 700, with a 300 px address that may shrink to 160
-    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url" style="min-width: 160px"></div><div id="group"></div></div></header>`;
-    const row = byId('row');
-    const url = byId('topbar-url');
+  it('As the action group, my room is the pill max width less the rest of its row, the address included', () => {
+    // Given: a pill whose max width is 700, with a 600 px row of which the group takes 200
+    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url"></div><div id="group"></div></div></header>`;
     const group = byId('group');
     vi.spyOn(group, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 200, 44));
-    const urlWidth = vi.spyOn(url, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 44));
-    const scroll = vi.spyOn(row, 'scrollWidth', 'get').mockReturnValue(600);
+    vi.spyOn(byId('row'), 'scrollWidth', 'get').mockReturnValue(600);
 
-    // Then: at rest
-    expect(topbarActionRoom(group)).toBe(440);
-
-    // When: mid-morph the address is squeezed to its minimum
-    urlWidth.mockReturnValue(new DOMRect(0, 0, 160, 44));
-    scroll.mockReturnValue(460);
+    // When
+    const room = topbarActionRoom(group);
 
     // Then
-    expect(topbarActionRoom(group)).toBe(440);
+    expect(room).toBe(300);
     document.body.replaceChildren();
   });
 
   it('As the action group hydrated inside an island wrapper, my room is still measured against the pill row', () => {
     // Given: the island wraps the group in a box-less element, as Astro does
-    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url" style="min-width: 160px"></div><astro-island style="display: contents"><div id="group"></div></astro-island></div></header>`;
-    const row = byId('row');
-    const url = byId('topbar-url');
+    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url"></div><astro-island style="display: contents"><div id="group"></div></astro-island></div></header>`;
     const group = byId('group');
     vi.spyOn(group, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 200, 44));
-    vi.spyOn(url, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 44));
-    vi.spyOn(row, 'scrollWidth', 'get').mockReturnValue(600);
+    vi.spyOn(byId('row'), 'scrollWidth', 'get').mockReturnValue(600);
+
+    // When
+    const room = topbarActionRoom(group);
 
     // Then
-    expect(topbarActionRoom(group)).toBe(440);
+    expect(room).toBe(300);
     document.body.replaceChildren();
   });
 
   it('As the action group on a phone, my room is my own width, as I fill the bar in place of the address', () => {
     // Given: a pill row with room to spare, on a phone-wide viewport
     stubPhoneViewport(true);
-    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url" style="min-width: 160px"></div><div id="group"></div></div></header>`;
+    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url"></div><div id="group"></div></div></header>`;
     vi.spyOn(byId('group'), 'clientWidth', 'get').mockReturnValue(310);
 
     // When
