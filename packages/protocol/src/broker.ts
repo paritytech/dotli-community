@@ -763,29 +763,33 @@ export class ChainBroker {
 
     const sharedFollow = this.upstreamFollowTokens.get(upstreamToken);
     if (sharedFollow) {
-      if (isJsonRpcObject(message.params?.result) && message.params.result['event'] === 'stop') {
+      const eventResult = message.params?.result;
+      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
         this.stopSharedFollow(sharedFollow, upstreamToken, message);
         return;
       }
-      message = this.trimInitialized(upstreamToken, message);
-      const eventResult = message.params?.result;
       this.cacheSharedFollowEvent(sharedFollow, eventResult);
+      // Every session holds the event's blocks before any hears it. A session that unpins inside its own delivery, as
+      // polkadot-api does on `initialized`, would otherwise release them upstream under a session not yet told.
+      const recipients: { session: Session; localToken: string }[] = [];
       for (const localToken of sharedFollow.localTokens) {
-        const local = this.localFollowTokens.get(localToken);
-        if (!local) {
+        const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
+        if (session?.connected === true) {
+          this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
+          recipients.push({ session, localToken });
+        }
+      }
+      const eventType = isJsonRpcObject(eventResult)
+        ? typeof eventResult['event'] === 'string'
+          ? eventResult['event']
+          : 'unknown'
+        : '?';
+      for (const { session, localToken } of recipients) {
+        // An earlier delivery can end this follow or session.
+        if (!session.connected || !sharedFollow.localTokens.has(localToken)) {
           continue;
         }
-        const session = this.sessions.get(local.sessionId);
-        if (session?.connected !== true) {
-          continue;
-        }
-        this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
-        const eventType = isJsonRpcObject(eventResult)
-          ? typeof eventResult['event'] === 'string'
-            ? eventResult['event']
-            : 'unknown'
-          : '?';
-        brokerLog(`← subscription [${local.sessionId}] event=${eventType} method=${String(message.method)}`);
+        brokerLog(`← subscription [${session.id}] event=${eventType} method=${String(message.method)}`);
         this.sendToSession(session, {
           ...message,
           params: {
@@ -1130,27 +1134,6 @@ export class ChainBroker {
     }
 
     this.sharedFollows.delete(followToken.followKey);
-  }
-
-  /**
-   * A node can list several finalized blocks in `initialized`, while a session joining later is replayed only the
-   * newest. The first sessions get that same start, and the older blocks are unpinned here, since nobody holds them. A
-   * consumer that releases a block it was told of and then reads it again fails on the full list alone.
-   */
-  private trimInitialized(upstreamToken: string, message: SubscriptionMessage): SubscriptionMessage {
-    const result = message.params?.result;
-    if (!isJsonRpcObject(result) || result['event'] !== 'initialized') {
-      return message;
-    }
-    const hashes = Array.isArray(result['finalizedBlockHashes']) ? result['finalizedBlockHashes'] : [];
-    if (hashes.length <= 1) {
-      return message;
-    }
-    const older = hashes.slice(0, -1).filter((hash): hash is string => typeof hash === 'string');
-    if (older.length > 0) {
-      this.sendUpstreamUnpin(upstreamToken, older);
-    }
-    return { ...message, params: { ...message.params, result: { ...result, finalizedBlockHashes: hashes.slice(-1) } } };
   }
 
   private cacheSharedFollowEvent(sharedFollow: SharedFollow, eventResult: unknown): void {

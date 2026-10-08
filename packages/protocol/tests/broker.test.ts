@@ -590,13 +590,37 @@ describe('chain pool brokering', () => {
     ]);
   });
 
-  it('As a dApp user starting a follow, I hear only the newest finalized block, and the older ones are unpinned for me', () => {
-    // Given
+  it('As a dApp user sharing a new follow, a session that unpins as it hears initialized leaves my blocks pinned', () => {
+    // Given: A releases the older finalized blocks inside its own delivery, as polkadot-api does
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
-    const messages: string[] = [];
-    const connection = manager.connectRemote('bulletin', 'conn-a', message => messages.push(message));
-    connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    const messagesB: string[] = [];
+    let tokenA = '';
+    const connectionA = manager.connectRemote('bulletin', 'conn-a', raw => {
+      const message = JSON.parse(raw) as {
+        id?: number;
+        result?: string;
+        params?: { result?: Record<string, unknown> };
+      };
+      if (message.id === 1) {
+        tokenA = message.result ?? '';
+      }
+      const result = message.params?.result;
+      if (result?.['event'] === 'initialized') {
+        const hashes = result['finalizedBlockHashes'] as string[];
+        connectionA?.send(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'chainHead_v1_unpin',
+            params: [tokenA, hashes.slice(0, -1)],
+          }),
+        );
+      }
+    });
+    const connectionB = manager.connectRemote('bulletin', 'conn-b', message => messagesB.push(message));
+    connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-a' });
 
     // When
@@ -610,12 +634,10 @@ describe('chain pool brokering', () => {
     } as unknown as JsonRpcMessage);
 
     // Then
-    const initialized = (JSON.parse(messages[1] ?? '{}') as { params: { result: Record<string, unknown> } }).params
+    const initializedB = (JSON.parse(messagesB[1] ?? '{}') as { params: { result: Record<string, unknown> } }).params
       .result;
-    expect(initialized['finalizedBlockHashes']).toEqual(['0xf2']);
-    expect(
-      harness.sent.filter(message => message.method === 'chainHead_v1_unpin').map(message => message.params as unknown),
-    ).toEqual([['up-a', ['0xf0', '0xf1']]]);
+    expect(initializedB['finalizedBlockHashes']).toEqual(['0xf0', '0xf1', '0xf2']);
+    expect(harness.sent.filter(message => message.method === 'chainHead_v1_unpin')).toEqual([]);
   });
 
   it('As a dApp user, joining a follow another session holds replays only blocks still pinned upstream', () => {
