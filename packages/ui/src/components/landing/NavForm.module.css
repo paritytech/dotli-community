@@ -7,7 +7,7 @@
   align-items: center;
   box-sizing: border-box;
   width: 100%;
-  max-width: 300px;
+  max-width: var(--w-landing);
   margin: var(--sp-8) 0 0;
   padding: 0;
 }

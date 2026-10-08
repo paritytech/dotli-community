@@ -85,13 +85,16 @@ describe('island failures', () => {
     expect(screen.childElementCount).toBe(0);
   });
 
-  it('As a visitor on the bare host, a landing page that never hydrated shows the reload error page', () => {
-    // When
-    fail(island('LandingPage'));
+  it.each(['LandingAuth', 'LandingNav', 'LandingRecents'])(
+    'As a visitor on the bare host, a landing page whose %s island never hydrated shows the reload error page',
+    component => {
+      // When
+      fail(island(component));
 
-    // Then
-    expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
-  });
+      // Then
+      expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
+    },
+  );
 
   it('As the shell, an island that failed before the host listened is reported and stood in for, and later ones as they happen', () => {
     // Given: the host page's inline script (pages/index.astro) kept a failure

@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page island, the page's root: an error page disposes it, and it shows the reload error page if it
-// throws.
+// The landing page's islands share the page root: an error page disposes all of them, and any one throwing shows the
+// reload error page.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as AppRootsModule from '../../../src/mount/app-roots.js';
@@ -17,30 +17,48 @@ vi.mock('../../../src/recent-labels.js', () => ({
   forgetRecentLabel: () => Promise.resolve(),
 }));
 
-const LANDING = '../../../src/components/landing/Landing.js';
+const NAV_FORM = '../../../src/components/landing/NavForm.js';
+const SLOTS = { auth: 'landing-auth', nav: 'landing-nav-slot', recents: 'landing-recents-slot' } as const;
 
 let roots: typeof AppRootsModule;
 let ui: typeof UiModule;
-let unmount: (() => void) | undefined;
+let unmounts: (() => void)[] = [];
 
-/** Fresh modules and the island, settled as hydration leaves it. */
-async function mountIsland(): Promise<void> {
-  const [solid, web, island] = await Promise.all([
+/** Fresh modules and the three islands, settled as hydration leaves them. */
+async function mountIslands(): Promise<void> {
+  const [solid, web, auth, nav, recents] = await Promise.all([
     import('solid-js'),
     import('@solidjs/web'),
-    import('../../../src/islands/LandingPage.js'),
+    import('../../../src/islands/LandingAuth.js'),
+    import('../../../src/islands/LandingNav.js'),
+    import('../../../src/islands/LandingRecents.js'),
   ]);
   [roots, ui] = await Promise.all([import('../../../src/mount/app-roots.js'), import('../../../src/ui.js')]);
-  unmount = web.render(() => solid.createComponent(island.LandingPage, {}), must(byId('landing-slot'), 'slot'));
+  const islands = [
+    [auth.LandingAuth, SLOTS.auth],
+    [nav.LandingNav, SLOTS.nav],
+    [recents.LandingRecents, SLOTS.recents],
+  ] as const;
+  for (const [island, id] of islands) {
+    // As in Astro, an island an error page already removed never hydrates.
+    const container = byId(id);
+    if (container !== null) {
+      unmounts.push(web.render(() => solid.createComponent(island, {}), container));
+    }
+  }
   solid.flush();
   await vi.waitFor(() => {
-    expect(document.querySelector('[data-testid="landing"], [data-testid="error-page"]')).not.toBeNull();
+    expect(document.querySelector('#dotli-nav-form, [data-testid="error-page"]')).not.toBeNull();
   });
   await settle();
 }
 
 function byId(id: string): HTMLElement | null {
   return document.getElementById(id);
+}
+
+function slot(id: string): HTMLElement {
+  return must(byId(id), `#${id}`);
 }
 
 async function settle(): Promise<void> {
@@ -52,33 +70,32 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   sentry.captureException.mockReset();
-  // Shaped like the landing page (apps/host/src/pages/landing.astro), which has no `#app`.
-  document.body.innerHTML = '<div id="landing-slot"></div>';
+  // Shaped like the landing page (apps/host/src/components/Landing.astro), which has no `#app`.
+  document.body.innerHTML = `<div data-testid="landing"><div id="${SLOTS.auth}"></div><div id="${SLOTS.nav}"></div><div id="${SLOTS.recents}"></div></div>`;
 });
 
 afterEach(() => {
   roots.disposeAppRoots();
-  unmount?.();
-  unmount = undefined;
-  vi.doUnmock(LANDING);
+  for (const unmount of unmounts) {
+    unmount();
+  }
+  unmounts = [];
+  vi.doUnmock(NAV_FORM);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
 });
 
-describe('landing page island', () => {
+describe('landing page islands', () => {
   it('As a visitor, the landing page shows its own account button', async () => {
     // Given: an idle browser, whose preload puts the account surface in the page.
     stubIdleBrowser();
 
     // When
-    await mountIsland();
+    await mountIslands();
 
     // Then
-    expect(must(byId('landing-slot'), 'slot').firstElementChild?.getAttribute('data-testid')).toBe('landing');
-    expect(
-      [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
-    ).toEqual(['auth']);
+    expect([...slot(SLOTS.auth).children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth']);
     await vi.waitFor(() => must(byId('landing-user-popover'), '#landing-user-popover'));
     for (const id of ['landing-auth-button', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
@@ -86,15 +103,17 @@ describe('landing page island', () => {
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it('As a visitor, an error page takes over the landing page and disposes it, typing placeholder and all', async () => {
+  it('As a visitor, an error page takes over the landing page and disposes every island, typing placeholder and all', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     // The account popover's idle preload is not one of the page's timers.
     vi.stubGlobal('requestIdleCallback', () => 1);
     vi.stubGlobal('cancelIdleCallback', () => undefined);
     try {
       // Given
-      await mountIsland();
+      await mountIslands();
       expect(vi.getTimerCount()).toBe(1);
+      expect(byId('landing-auth-button')).not.toBeNull();
+      await vi.waitFor(() => must(document.querySelector('[data-testid="landing-recent-item"]'), 'recent item'));
 
       // When
       ui.showErrorPage({ title: 'Failed' });
@@ -109,17 +128,17 @@ describe('landing page island', () => {
     }
   });
 
-  it('As a visitor, when the landing page fails to render, I see an error page with a reload button, and it is reported once', async () => {
+  it('As a visitor, when one landing island fails to render, I see an error page with a reload button, and it is reported once', async () => {
     // Given
     const failure = new Error('landing render failed');
-    vi.doMock(LANDING, () => ({
-      Landing: () => {
+    vi.doMock(NAV_FORM, () => ({
+      NavForm: () => {
         throw failure;
       },
     }));
 
     // When
-    await mountIsland();
+    await mountIslands();
 
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
@@ -129,6 +148,7 @@ describe('landing page island', () => {
       tags: { root: 'page' },
     });
     expect(document.querySelector('[data-testid="landing"]')).toBeNull();
+    expect(byId('landing-auth-button')).toBeNull();
     expect(document.querySelectorAll('[data-testid="error-page"]')).toHaveLength(1);
 
     // When

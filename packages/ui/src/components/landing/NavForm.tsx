@@ -129,7 +129,7 @@ export function NavForm(): JSX.Element {
       input.focus();
       return;
     }
-    // Recents are written after the name resolves, not here, so a typo never becomes a pill.
+    // Recents are written after the name resolves, not here, so a typo never becomes a recent.
     window.location.href = dotUrl(name);
   };
 

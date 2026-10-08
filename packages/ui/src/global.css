@@ -52,8 +52,10 @@
 /* Phones put the bar at the foot. The page paints the glass's opaque bottom stop because Safari tints its
    toolbar from it, which never collapses over the product's iframe. */
 @media (max-width: 560px) {
-  :root {
+  body[data-host] {
     --bg-page: #18181b;
+  }
+  :root {
     --topbar-height: calc(var(--h-bar) + var(--safe-bottom));
     --content-top: var(--safe-top);
     --content-bottom: var(--topbar-height);
@@ -177,7 +179,6 @@
   --fs-title-lg: 17px;
   --fs-h2: 20px;
   --fs-h1: 24px;
-  --fs-display: 32px;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
@@ -185,7 +186,6 @@
   --lh-body: 1.5;
   --ls-caps: 0.08em;
   --ls-tight: -0.01em;
-  --ls-display: -0.02em;
 
   --sp-hair: 2px;
   --sp-1: 4px;
@@ -229,6 +229,7 @@
   --r-pop: 20px;
   /* Phones' toasts are full width. */
   --w-toast: 340px;
+  --w-landing: 300px;
 
   --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
   --ease-out: cubic-bezier(0.32, 0.72, 0, 1);

@@ -19,7 +19,7 @@ async function sheetBottom(sheet: Locator): Promise<number> {
 }
 
 test.describe('Shell UI smoke', () => {
-  test('As a returning user, the landing page shows my recent sites as pills', async ({ page, request }) => {
+  test('As a returning user, the landing page shows my recent sites as a list', async ({ page, request }) => {
     // Given
     const put = await request.put(`${SHARED_STORE}dotli_recent`, {
       data: JSON.stringify(['browse', 'playground']),
@@ -32,9 +32,9 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(page.locator('#dotli-nav-form')).toBeVisible();
     await expect(page.locator('body')).toHaveAttribute('data-landing', '');
-    const pills = page.locator('#dotli-recent').getByTestId('landing-recent-pill');
-    await expect(pills).toHaveCount(2);
-    await expect(pills.first()).toHaveAttribute('href', /browse/);
+    const links = page.locator('#dotli-recent').getByTestId('landing-recent-link');
+    await expect(links).toHaveCount(2);
+    await expect(links.first()).toHaveAttribute('href', /browse/);
   });
 
   test('As a user, submitting a name on the landing page takes me to that site', async ({ page }) => {
@@ -424,6 +424,11 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(page.getByTestId('landing')).toBeVisible();
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1, name: 'Polkadot' })).toBeVisible();
+    await expect(page.getByText('The decentralized web, in your browser.')).toBeVisible();
+    // The islands' build-time renders.
+    await expect(page.locator('#landing-auth-button')).toBeVisible();
+    await expect(page.locator('#dotli-nav-input')).toBeVisible();
 
     await context.close();
   });

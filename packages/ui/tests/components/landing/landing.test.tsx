@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page component itself (components/landing/Landing.tsx), not its island.
+// The landing page's controls: the account button, the name form and the recents. Its static markup is Astro's, so the
+// functional smoke test covers that.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
@@ -56,6 +57,14 @@ function items(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[data-testid="landing-recent-item"]')];
 }
 
+function labelOf(item: HTMLElement): string | undefined {
+  return byTestId('landing-recent-link', item).dataset['label'];
+}
+
+function revealed(item: HTMLElement): boolean {
+  return byTestId('landing-recent-remove', item).hasAttribute('data-revealed');
+}
+
 function touch(target: Element, kind: string): void {
   target.dispatchEvent(new Event(kind, { bubbles: true }));
 }
@@ -97,16 +106,12 @@ afterEach(() => {
 });
 
 describe('landing page', () => {
-  it('As a visitor, the landing page shows its heading, the name form and no recents row yet', async () => {
+  it('As a visitor, the landing page shows the name form and no recents row yet', async () => {
     // When
     const { view } = mount();
     await settle();
 
     // Then
-    expect(view.children).toHaveLength(1);
-    expect(nth(view.children, 0).getAttribute('data-testid')).toBe('landing');
-    expect(query(view, 'h1').textContent).toBe('Polkadot Web');
-    expect(query(view, 'p').textContent).toBe('The decentralized web, in your browser.');
     expect(byId('dotli-nav-input', HTMLInputElement).getAttribute('aria-label')).toBe(`Search a ${SUFFIX} name`);
     const input = byId('dotli-nav-input', HTMLInputElement);
     expect(input.getAttribute('aria-describedby')).toBe('dotli-nav-error');
@@ -286,7 +291,7 @@ describe('landing page', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('As a returning visitor, my recently visited names show as pills linking to their sites', async () => {
+  it('As a returning visitor, my recently visited names show as a list linking to their sites', async () => {
     // Given
     recents.labels = ['alpha', 'beta'];
 
@@ -303,11 +308,11 @@ describe('landing page', () => {
     expect(heading?.tagName).toBe('H2');
     expect(heading?.textContent).toBe('Recent');
     expect(recent.children[1]?.getAttribute('aria-labelledby')).toBe(heading?.id);
-    expect(items().map(item => item.dataset['label'])).toEqual(['alpha', 'beta']);
-    const pill = nth(items(), 0).querySelector<HTMLAnchorElement>('a[data-testid="landing-recent-pill"]');
-    expect(pill?.getAttribute('href')).toBe('http://alpha.localhost:5173');
-    expect(pill?.textContent).toBe(`alpha${SUFFIX}`);
-    expect(pill?.querySelector('[data-testid="landing-recent-label"] > [data-testid="landing-tld"]')?.textContent).toBe(
+    expect(items().map(labelOf)).toEqual(['alpha', 'beta']);
+    const link = nth(items(), 0).querySelector<HTMLAnchorElement>('a[data-testid="landing-recent-link"]');
+    expect(link?.getAttribute('href')).toBe('http://alpha.localhost:5173');
+    expect(link?.textContent).toBe(`alpha${SUFFIX}`);
+    expect(link?.querySelector('[data-testid="landing-recent-label"] > [data-testid="landing-tld"]')?.textContent).toBe(
       SUFFIX,
     );
     const remove = nth(items(), 0).querySelector('button[data-testid="landing-recent-remove"]');
@@ -338,7 +343,7 @@ describe('landing page', () => {
 
     // Then
     expect(document.querySelector('img')).toBeNull();
-    expect(items()[0]?.dataset['label']).toBe(hostile);
+    expect(labelOf(nth(items(), 0))).toBe(hostile);
     expect(byTestId('landing-recent-label', nth(items(), 0)).firstChild?.textContent).toBe(hostile);
   });
 
@@ -355,7 +360,7 @@ describe('landing page', () => {
     // Then
     expect(event.defaultPrevented).toBe(true);
     expect(recents.forget).toHaveBeenCalledWith('alpha');
-    expect(items().map(item => item.dataset['label'])).toEqual(['beta']);
+    expect(items().map(labelOf)).toEqual(['beta']);
     expect(byId('dotli-recent').hidden).toBe(false);
 
     // When
@@ -369,71 +374,71 @@ describe('landing page', () => {
     expect(byId('dotli-recent').children).toHaveLength(0);
   });
 
-  it('As a touch visitor, a long press on a pill reveals its remove button instead of navigating, and a tap elsewhere hides it', async () => {
+  it('As a touch visitor, a long press on a name reveals its remove button instead of navigating, and a tap elsewhere hides it', async () => {
     // Given
     recents.labels = ['alpha', 'beta'];
     mount();
     await settle();
     const alpha = nth(items(), 0);
     const beta = nth(items(), 1);
-    const alphaPill = byTestId('landing-recent-pill', alpha, Element);
+    const alphaLink = byTestId('landing-recent-link', alpha, Element);
 
     // When: a press that moves is a scroll, not a long press.
-    touch(alphaPill, 'touchstart');
+    touch(alphaLink, 'touchstart');
     vi.advanceTimersByTime(200);
-    touch(alphaPill, 'touchmove');
+    touch(alphaLink, 'touchmove');
     vi.advanceTimersByTime(1000);
     await settle();
 
     // Then
-    expect(alpha.hasAttribute('data-removable')).toBe(false);
+    expect(revealed(alpha)).toBe(false);
 
     // When
-    touch(alphaPill, 'touchstart');
+    touch(alphaLink, 'touchstart');
     vi.advanceTimersByTime(449);
     await settle();
 
     // Then
-    expect(alpha.hasAttribute('data-removable')).toBe(false);
+    expect(revealed(alpha)).toBe(false);
 
     // When
     vi.advanceTimersByTime(1);
     await settle();
 
     // Then
-    expect(alpha.hasAttribute('data-removable')).toBe(true);
+    expect(revealed(alpha)).toBe(true);
 
     // When: the tap that ends the press does not navigate.
-    touch(alphaPill, 'touchend');
-    const tap = click(alphaPill);
+    touch(alphaLink, 'touchend');
+    const tap = click(alphaLink);
 
     // Then
     expect(tap.defaultPrevented).toBe(true);
 
-    // When: a long press on another pill moves the reveal there.
-    const betaPill = byTestId('landing-recent-pill', beta, Element);
-    touch(betaPill, 'touchstart');
+    // When: a long press on another name moves the reveal there.
+    const betaLink = byTestId('landing-recent-link', beta, Element);
+    touch(betaLink, 'touchstart');
     vi.advanceTimersByTime(450);
     await settle();
 
     // Then
-    expect(alpha.hasAttribute('data-removable')).toBe(false);
-    expect(beta.hasAttribute('data-removable')).toBe(true);
+    expect(revealed(alpha)).toBe(false);
+    expect(revealed(beta)).toBe(true);
 
     // When: a tap inside the recents keeps it.
     beta.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await settle();
 
     // Then
-    expect(beta.hasAttribute('data-removable')).toBe(true);
+    expect(revealed(beta)).toBe(true);
 
     // When: a tap anywhere else hides it.
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await settle();
 
     // Then
-    expect(beta.hasAttribute('data-removable')).toBe(false);
-    expect(click(betaPill).defaultPrevented).toBe(false);
+    expect(revealed(beta)).toBe(false);
+    expect(click(betaLink).defaultPrevented).toBe(false);
   });
 
   it("As a visitor, the page's document listener goes with it", async () => {
