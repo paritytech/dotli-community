@@ -250,6 +250,28 @@ describe('session-store host callbacks', () => {
     expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
+  it('As a dotli integrator without Web Locks, plain core storage works and only compare-exchange fails closed', async () => {
+    // Given: a browser without navigator.locks
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: null });
+    const storage = createSessionStoreAdapters();
+    const key = {
+      tag: 'PermissionAuthorization',
+      value: { productId: 'myapp', request: { tag: 'Device', value: 'Camera' } },
+    } satisfies CoreStorageKey;
+
+    // When / Then: read, write and clear stay available
+    await storage.writeCoreStorage(key, new Uint8Array([3]));
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([3]);
+    await storage.clearCoreStorage(key);
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
+
+    // When / Then: compare-exchange refuses without atomicity and writes nothing
+    await expect(storage.compareExchangeCoreStorage(key, undefined, new Uint8Array([4]), false)).rejects.toThrow(
+      'Atomic cross-document core storage is unavailable',
+    );
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
+  });
+
   it('As a dotli integrator, the host keeps remote permission authorization keys opaque', async () => {
     // Given
     const storage = createSessionStoreAdapters();

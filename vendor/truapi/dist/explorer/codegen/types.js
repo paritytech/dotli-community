@@ -2594,6 +2594,362 @@ export const types = [
         ],
     },
     {
+        id: "host-media-add-participant-request",
+        name: "HostMediaAddParticipantRequest",
+        category: "media",
+        definition: "export interface HostMediaAddParticipantRequest {\n  operationId: MediaOperationId;\n  sessionId: MediaSessionId;\n  peer: MediaPeer;\n}",
+        description: "Admit an outgoing invitation, not a wait for the remote person's answer.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Idempotent runtime-wide mutation key.",
+            },
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owned live session capability.",
+            },
+            {
+                name: "peer",
+                type: "MediaPeer",
+                description: "Authenticated peer in the same product and network.",
+            },
+        ],
+    },
+    {
+        id: "host-media-add-participant-response",
+        name: "HostMediaAddParticipantResponse",
+        category: "media",
+        definition: "export interface HostMediaAddParticipantResponse {\n  participant: MediaParticipantSnapshot;\n}",
+        description: "Admitted participant, or the current nonterminal participant for a duplicate peer.",
+        fields: [
+            {
+                name: "participant",
+                type: "MediaParticipantSnapshot",
+                description: "Authoritative participant, initially inviting for a new outbound offer.",
+            },
+        ],
+    },
+    {
+        id: "host-media-cancel-operation-request",
+        name: "HostMediaCancelOperationRequest",
+        category: "media",
+        definition: "export interface HostMediaCancelOperationRequest {\n  operationId: MediaOperationId;\n}",
+        description: "Cancel before commit, or recover the committed outcome if commit won.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Original key; unknown keys reserve a cancellation tombstone before reply.",
+            },
+        ],
+    },
+    {
+        id: "host-media-create-session-request",
+        name: "HostMediaCreateSessionRequest",
+        category: "media",
+        definition: "export interface HostMediaCreateSessionRequest {\n  operationId: MediaOperationId;\n  tracks: MediaLocalTracks;\n}",
+        description: "Create an owned session without connecting to any peer.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Idempotent runtime-wide mutation key.",
+            },
+            {
+                name: "tracks",
+                type: "MediaLocalTracks",
+                description: "Complete initial capture intent, subject to calling and device consent.",
+            },
+        ],
+    },
+    {
+        id: "host-media-create-session-response",
+        name: "HostMediaCreateSessionResponse",
+        category: "media",
+        definition: "export interface HostMediaCreateSessionResponse {\n  session: MediaSessionSnapshot;\n}",
+        description: "Successful session creation.",
+        fields: [
+            {
+                name: "session",
+                type: "MediaSessionSnapshot",
+                description: "Authoritative ready session.",
+            },
+        ],
+    },
+    {
+        id: "host-media-end-session-request",
+        name: "HostMediaEndSessionRequest",
+        category: "media",
+        definition: "export interface HostMediaEndSessionRequest {\n  sessionId: MediaSessionId;\n}",
+        description: "Idempotent owned-session teardown, never gated on permission or subscriptions.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Previously owned live or terminal session capability.",
+            },
+        ],
+    },
+    {
+        id: "host-media-error",
+        name: "HostMediaError",
+        category: "media",
+        definition: 'export type HostMediaError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "InvalidPeer"; value?: undefined }\n  | { tag: "NetworkMismatch"; value?: undefined }\n  | { tag: "ProductMismatch"; value?: undefined }\n  | { tag: "InvalidHandle"; value?: undefined }\n  | { tag: "SessionEnded"; value?: undefined }\n  | { tag: "IncomingExpired"; value?: undefined }\n  | { tag: "IncomingConsumed"; value?: undefined }\n  | { tag: "SubscriptionRequired"; value?: undefined }\n  | { tag: "CapacityExceeded"; value: { limit: number } }\n  | { tag: "InvalidState"; value?: undefined }\n  | { tag: "InvalidSurface"; value?: undefined }\n  | { tag: "StaleViewport"; value: { currentRevision: bigint } }\n  | { tag: "StaleLayout"; value: { currentRevision: bigint } }\n  | { tag: "SurfaceUnavailable"; value?: undefined }\n  | { tag: "DeviceUnavailable"; value?: undefined }\n  | { tag: "CaptureCancelled"; value?: undefined }\n  | { tag: "TimedOut"; value?: undefined }\n  | { tag: "EventOverflow"; value?: undefined }\n  | { tag: "InvalidOperation"; value?: undefined }\n  | { tag: "OperationConflict"; value?: undefined }\n  | { tag: "OperationCancelled"; value?: undefined }\n  | { tag: "ResourceExhausted"; value: { resource: MediaResource } }\n;',
+        description: "Bounded public domain errors. Permission denial and unsupported service use\nframework CallError variants. Never attach backend/device/transport strings.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "Calling connectivity is unavailable.",
+            },
+            {
+                name: "InvalidPeer",
+                type: '{ tag: "InvalidPeer"; value?: undefined }',
+                description: "Peer identity is malformed or unauthenticated.",
+            },
+            {
+                name: "NetworkMismatch",
+                type: '{ tag: "NetworkMismatch"; value?: undefined }',
+                description: "Peer belongs to another network namespace.",
+            },
+            {
+                name: "ProductMismatch",
+                type: '{ tag: "ProductMismatch"; value?: undefined }',
+                description: "Peer belongs to another canonical product.",
+            },
+            {
+                name: "InvalidHandle",
+                type: '{ tag: "InvalidHandle"; value?: undefined }',
+                description: "Random and unowned handles are indistinguishable.",
+            },
+            {
+                name: "SessionEnded",
+                type: '{ tag: "SessionEnded"; value?: undefined }',
+                description: "Owned session is terminal.",
+            },
+            {
+                name: "IncomingExpired",
+                type: '{ tag: "IncomingExpired"; value?: undefined }',
+                description: "Incoming offer expired or was cancelled.",
+            },
+            {
+                name: "IncomingConsumed",
+                type: '{ tag: "IncomingConsumed"; value?: undefined }',
+                description: "Incoming offer was already claimed.",
+            },
+            {
+                name: "SubscriptionRequired",
+                type: '{ tag: "SubscriptionRequired"; value?: undefined }',
+                description: "No runtime listener has an initial snapshot enqueued.",
+            },
+            {
+                name: "CapacityExceeded",
+                type: '{ tag: "CapacityExceeded"; value: { limit: number } }',
+                description: "Live endpoint capacity would be exceeded before any signaling.",
+            },
+            {
+                name: "InvalidState",
+                type: '{ tag: "InvalidState"; value?: undefined }',
+                description: "Mutation is invalid or superseded by a newer admitted intent.",
+            },
+            {
+                name: "InvalidSurface",
+                type: '{ tag: "InvalidSurface"; value?: undefined }',
+                description: "Invalid surface set, including conflicting reuse of a layout revision.",
+            },
+            {
+                name: "StaleViewport",
+                type: '{ tag: "StaleViewport"; value: { currentRevision: bigint } }',
+                description: "Submitted viewport transform is no longer current.",
+            },
+            {
+                name: "StaleLayout",
+                type: '{ tag: "StaleLayout"; value: { currentRevision: bigint } }',
+                description: "Submitted layout revision predates the committed or queued layout.",
+            },
+            {
+                name: "SurfaceUnavailable",
+                type: '{ tag: "SurfaceUnavailable"; value?: undefined }',
+                description: "No authorized rendering attachment is available.",
+            },
+            {
+                name: "DeviceUnavailable",
+                type: '{ tag: "DeviceUnavailable"; value?: undefined }',
+                description: "A required capture device is currently unavailable.",
+            },
+            {
+                name: "CaptureCancelled",
+                type: '{ tag: "CaptureCancelled"; value?: undefined }',
+                description: "User cancelled the trusted screen picker.",
+            },
+            {
+                name: "TimedOut",
+                type: '{ tag: "TimedOut"; value?: undefined }',
+                description: "Host operation or consent deadline elapsed; late work cannot commit.",
+            },
+            {
+                name: "EventOverflow",
+                type: '{ tag: "EventOverflow"; value?: undefined }',
+                description: "Listener queue overflowed; resubscribe for an atomic fresh snapshot.",
+            },
+            {
+                name: "InvalidOperation",
+                type: '{ tag: "InvalidOperation"; value?: undefined }',
+                description: "No operation exists for the queried key in this runtime.",
+            },
+            {
+                name: "OperationConflict",
+                type: '{ tag: "OperationConflict"; value?: undefined }',
+                description: "Same key was previously bound to a different request.",
+            },
+            {
+                name: "OperationCancelled",
+                type: '{ tag: "OperationCancelled"; value?: undefined }',
+                description: "Cancellation tombstone prevents the mutation from acting.",
+            },
+            {
+                name: "ResourceExhausted",
+                type: '{ tag: "ResourceExhausted"; value: { resource: MediaResource } }',
+                description: "A finite runtime budget would be exceeded before effects begin.",
+            },
+        ],
+    },
+    {
+        id: "host-media-get-operation-request",
+        name: "HostMediaGetOperationRequest",
+        category: "media",
+        definition: "export interface HostMediaGetOperationRequest {\n  operationId: MediaOperationId;\n}",
+        description: "Recover the exact outcome of a potentially lost mutation response.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Original mutation key; unknown keys return InvalidOperation.",
+            },
+        ],
+    },
+    {
+        id: "host-media-remove-participant-request",
+        name: "HostMediaRemoveParticipantRequest",
+        category: "media",
+        definition: "export interface HostMediaRemoveParticipantRequest {\n  sessionId: MediaSessionId;\n  participantId: MediaParticipantId;\n}",
+        description: "Idempotently remove a known participant, even after subscription or grant loss.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owning session capability.",
+            },
+            {
+                name: "participant_id",
+                type: "MediaParticipantId",
+                description: "Previously owned participant capability, live or terminal.",
+            },
+        ],
+    },
+    {
+        id: "host-media-respond-incoming-request",
+        name: "HostMediaRespondIncomingRequest",
+        category: "media",
+        definition: "export interface HostMediaRespondIncomingRequest {\n  incomingId: MediaIncomingId;\n  decision: MediaIncomingDecision;\n}",
+        description: "Decide a single-use offer; a peer address cannot substitute for its capability.",
+        fields: [
+            {
+                name: "incoming_id",
+                type: "MediaIncomingId",
+                description: "Owned, authenticated incoming capability.",
+            },
+            {
+                name: "decision",
+                type: "MediaIncomingDecision",
+                description: "Refusal or operation-correlated acceptance.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-local-tracks-request",
+        name: "HostMediaSetLocalTracksRequest",
+        category: "media",
+        definition: "export interface HostMediaSetLocalTracksRequest {\n  operationId: MediaOperationId;\n  sessionId: MediaSessionId;\n  tracks: MediaLocalTracks;\n}",
+        description: "Replace capture intent. Admission orders changes before asynchronous consent;\nnewer intent cancels older uncommitted work, whose late capture is released.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Idempotent runtime-wide mutation key.",
+            },
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owned live session capability.",
+            },
+            {
+                name: "tracks",
+                type: "MediaLocalTracks",
+                description: "Complete replacement intent; all-off remains allowed without a listener.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-local-tracks-response",
+        name: "HostMediaSetLocalTracksResponse",
+        category: "media",
+        definition: "export interface HostMediaSetLocalTracksResponse {\n  session: MediaSessionSnapshot;\n}",
+        description: "Successful capture intent update; actual tracks may still be starting.",
+        fields: [
+            {
+                name: "session",
+                type: "MediaSessionSnapshot",
+                description: "Authoritative session with the newly committed intent.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-surfaces-request",
+        name: "HostMediaSetSurfacesRequest",
+        category: "media",
+        definition: "export interface HostMediaSetSurfacesRequest {\n  sessionId: MediaSessionId;\n  viewportRevision: bigint;\n  layoutRevision: bigint;\n  surfaces: Array<MediaSurface>;\n}",
+        description: "Atomically replace the complete session layout at one compositor frame.\nValidate every entry before queueing. A viewport change discards the entire\nstale queued set, and teardown overrides all pending layouts.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owned live session capability.",
+            },
+            {
+                name: "viewport_revision",
+                type: "bigint",
+                description: "Current authorized attachment/transform revision.",
+            },
+            {
+                name: "layout_revision",
+                type: "bigint",
+                description: "Product-monotonic session revision; identical current retries succeed.",
+            },
+            {
+                name: "surfaces",
+                type: "Array<MediaSurface>",
+                description: "Complete set with unique surface keys; an empty set clears pictures.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-surfaces-response",
+        name: "HostMediaSetSurfacesResponse",
+        category: "media",
+        definition: "export interface HostMediaSetSurfacesResponse {\n  layoutRevision: bigint;\n}",
+        description: "Acknowledges an atomic queued commit, not immunity from viewport changes.",
+        fields: [
+            {
+                name: "layout_revision",
+                type: "bigint",
+                description: "Accepted product layout revision.",
+            },
+        ],
+    },
+    {
         id: "host-native-chat-acknowledgment",
         name: "HostNativeChatAcknowledgment",
         category: "account",
@@ -4429,6 +4785,1085 @@ export const types = [
         ],
     },
     {
+        id: "media-account",
+        name: "MediaAccount",
+        category: "media",
+        definition: 'export type MediaAccount =\n  | { tag: "Sr25519"; value: HexString }\n;',
+        description: "Explicit algorithm and public key for a product-scoped remote account.",
+        variants: [
+            {
+                name: "Sr25519",
+                type: '{ tag: "Sr25519"; value: HexString }',
+                description: "Product-derived sr25519 account; not a legacy wallet or transport address.",
+            },
+        ],
+    },
+    {
+        id: "media-audio-route",
+        name: "MediaAudioRoute",
+        category: "media",
+        definition: 'export type MediaAudioRoute = "Earpiece" | "Speaker" | "Headset" | "Other";',
+        description: "Sanitized audio route class, never a device identifier or inventory.",
+        variants: [
+            {
+                name: "Earpiece",
+                type: '{ tag: "Earpiece"; value?: undefined }',
+                description: "Handset earpiece.",
+            },
+            {
+                name: "Speaker",
+                type: '{ tag: "Speaker"; value?: undefined }',
+                description: "Loudspeaker.",
+            },
+            {
+                name: "Headset",
+                type: '{ tag: "Headset"; value?: undefined }',
+                description: "Headset output.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value?: undefined }',
+                description: "Any other route class.",
+            },
+        ],
+    },
+    {
+        id: "media-call-outcome",
+        name: "MediaCallOutcome",
+        category: "media",
+        definition: 'export type MediaCallOutcome = "LocalEnded" | "RemoteEnded" | "Refused" | "Busy" | "Unanswered" | "PermissionRevoked" | "IdentityLost" | "RuntimeClosed" | "ConnectivityLost" | "HostFailed";',
+        description: "Bounded terminal business outcome; never a raw backend error string.",
+        variants: [
+            {
+                name: "LocalEnded",
+                type: '{ tag: "LocalEnded"; value?: undefined }',
+                description: "Ended by the local product or trusted host controls.",
+            },
+            {
+                name: "RemoteEnded",
+                type: '{ tag: "RemoteEnded"; value?: undefined }',
+                description: "Ended by the remote endpoint.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "Invitation refused.",
+            },
+            {
+                name: "Busy",
+                type: '{ tag: "Busy"; value?: undefined }',
+                description: "Remote endpoint busy.",
+            },
+            {
+                name: "Unanswered",
+                type: '{ tag: "Unanswered"; value?: undefined }',
+                description: "Invitation reached its answer deadline.",
+            },
+            {
+                name: "PermissionRevoked",
+                type: '{ tag: "PermissionRevoked"; value?: undefined }',
+                description: "Calling, microphone, or camera permission revoked.",
+            },
+            {
+                name: "IdentityLost",
+                type: '{ tag: "IdentityLost"; value?: undefined }',
+                description: "Product/account/network authority lost.",
+            },
+            {
+                name: "RuntimeClosed",
+                type: '{ tag: "RuntimeClosed"; value?: undefined }',
+                description: "Owning product runtime destroyed.",
+            },
+            {
+                name: "ConnectivityLost",
+                type: '{ tag: "ConnectivityLost"; value?: undefined }',
+                description: "Connection or reconnection deadline reached.",
+            },
+            {
+                name: "HostFailed",
+                type: '{ tag: "HostFailed"; value?: undefined }',
+                description: "Sanitized terminal host failure.",
+            },
+        ],
+    },
+    {
+        id: "media-camera-kind",
+        name: "MediaCameraKind",
+        category: "media",
+        definition: 'export type MediaCameraKind = "Front" | "Rear" | "Other";',
+        description: "Sanitized camera class, never a device identifier or model.",
+        variants: [
+            {
+                name: "Front",
+                type: '{ tag: "Front"; value?: undefined }',
+                description: "Front-facing camera.",
+            },
+            {
+                name: "Rear",
+                type: '{ tag: "Rear"; value?: undefined }',
+                description: "Rear-facing camera.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value?: undefined }',
+                description: "Any other camera class.",
+            },
+        ],
+    },
+    {
+        id: "media-capabilities",
+        name: "MediaCapabilities",
+        category: "media",
+        definition: "export interface MediaCapabilities {\n  contractVersions: Array<number>;\n  network: MediaNetwork;\n  maxRemoteParticipants: number;\n  maxSessions: number;\n  maxSurfacesPerSession: number;\n  incomingLifetimeMs: number;\n  operationTimeoutMs: number;\n  consentTimeoutMs: number;\n  reconnectTimeoutMs: number;\n  limits: MediaRuntimeLimits;\n}",
+        description: "Complete service discovery, with no permission prompt or capture side effect.\nMissing any mandatory capture, connectivity, picker, indicator, or unreadable\ncompositor facility makes the entire service unsupported, not partially ready.",
+        fields: [
+            {
+                name: "contract_versions",
+                type: "Array<number>",
+                description: "Sorted unique supported contract versions, including 1 for this contract.",
+            },
+            {
+                name: "network",
+                type: "MediaNetwork",
+                description: "Immutable host-configured network namespace for this runtime.",
+            },
+            {
+                name: "max_remote_participants",
+                type: "number",
+                description: "Live remote endpoint limit, at least five; excludes the local endpoint.",
+            },
+            {
+                name: "max_sessions",
+                type: "number",
+                description: "Live session limit, at least one.",
+            },
+            {
+                name: "max_surfaces_per_session",
+                type: "number",
+                description: "At least twice the endpoint limit including the local endpoint.",
+            },
+            {
+                name: "incoming_lifetime_ms",
+                type: "number",
+                description: "Incoming offer lifetime, 60,000 milliseconds in V1.",
+            },
+            {
+                name: "operation_timeout_ms",
+                type: "number",
+                description: "Non-consent operation deadline, 5,000 milliseconds in V1.",
+            },
+            {
+                name: "consent_timeout_ms",
+                type: "number",
+                description: "Host consent/picker deadline, 60,000 milliseconds in V1.",
+            },
+            {
+                name: "reconnect_timeout_ms",
+                type: "number",
+                description: "Connection/reconnection deadline, 30,000 milliseconds in V1.",
+            },
+            {
+                name: "limits",
+                type: "MediaRuntimeLimits",
+                description: "Actual finite budgets enforced by this runtime.",
+            },
+        ],
+    },
+    {
+        id: "media-event",
+        name: "MediaEvent",
+        category: "media",
+        definition: 'export type MediaEvent =\n  | { tag: "Snapshot"; value: { sequence: bigint; sessions: Array<MediaSessionSnapshot>; incoming: Array<MediaIncomingOffer>; viewport?: MediaViewport } }\n  | { tag: "SessionChanged"; value: { sequence: bigint; session: MediaSessionSnapshot } }\n  | { tag: "IncomingOffered"; value: { sequence: bigint; offer: MediaIncomingOffer } }\n  | { tag: "IncomingResolved"; value: { sequence: bigint; incomingId: MediaIncomingId; result: MediaIncomingResolution } }\n  | { tag: "ViewportChanged"; value: { sequence: bigint; viewport?: MediaViewport } }\n;',
+        description: "Runtime-wide events. Each listener starts with an atomic current snapshot;\nsubsequent sequence values strictly increase. Resubscription does not replay\nold ringing events. Overflow terminates the stream with EventOverflow.",
+        variants: [
+            {
+                name: "Snapshot",
+                type: '{ tag: "Snapshot"; value: { sequence: bigint; sessions: Array<MediaSessionSnapshot>; incoming: Array<MediaIncomingOffer>; viewport?: MediaViewport } }',
+                description: "Atomic initial state, including before any session exists.",
+            },
+            {
+                name: "SessionChanged",
+                type: '{ tag: "SessionChanged"; value: { sequence: bigint; session: MediaSessionSnapshot } }',
+                description: "Authoritative session revision, including terminal teardown exactly once.",
+            },
+            {
+                name: "IncomingOffered",
+                type: '{ tag: "IncomingOffered"; value: { sequence: bigint; offer: MediaIncomingOffer } }',
+                description: "Passive authenticated incoming offer; no consent or capture yet.",
+            },
+            {
+                name: "IncomingResolved",
+                type: '{ tag: "IncomingResolved"; value: { sequence: bigint; incomingId: MediaIncomingId; result: MediaIncomingResolution } }',
+                description: "An offer can no longer be accepted.",
+            },
+            {
+                name: "ViewportChanged",
+                type: '{ tag: "ViewportChanged"; value: { sequence: bigint; viewport?: MediaViewport } }',
+                description: "Transform changes hide stale pictures; detach/replace clears all layouts.",
+            },
+        ],
+    },
+    {
+        id: "media-fit",
+        name: "MediaFit",
+        category: "media",
+        definition: 'export type MediaFit = "Contain" | "Cover";',
+        description: "Picture scaling inside its clipped, rounded rectangle.",
+        variants: [
+            {
+                name: "Contain",
+                type: '{ tag: "Contain"; value?: undefined }',
+                description: "Preserve the full picture with letterboxing.",
+            },
+            {
+                name: "Cover",
+                type: '{ tag: "Cover"; value?: undefined }',
+                description: "Crop to fill the rectangle.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-decision",
+        name: "MediaIncomingDecision",
+        category: "media",
+        definition: 'export type MediaIncomingDecision =\n  | { tag: "Refuse"; value?: undefined }\n  | { tag: "AcceptNew"; value: { operationId: MediaOperationId; tracks: MediaLocalTracks } }\n  | { tag: "AcceptExisting"; value: { operationId: MediaOperationId; sessionId: MediaSessionId } }\n;',
+        description: "Incoming decisions atomically claim an offer once acceptance begins.",
+        variants: [
+            {
+                name: "Refuse",
+                type: '{ tag: "Refuse"; value?: undefined }',
+                description: "Cleanup requiring no permission, subscription, or new operation quota.",
+            },
+            {
+                name: "AcceptNew",
+                type: '{ tag: "AcceptNew"; value: { operationId: MediaOperationId; tracks: MediaLocalTracks } }',
+                description: "Atomically create a session and accept after required consent.",
+            },
+            {
+                name: "AcceptExisting",
+                type: '{ tag: "AcceptExisting"; value: { operationId: MediaOperationId; sessionId: MediaSessionId } }',
+                description: "Join only the offer's matching existing session; never merge calls.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-id",
+        name: "MediaIncomingId",
+        category: "media",
+        definition: "export type MediaIncomingId = HexString;",
+        description: "Host-minted, single-use authenticated incoming-offer capability.",
+    },
+    {
+        id: "media-incoming-offer",
+        name: "MediaIncomingOffer",
+        category: "media",
+        definition: "export interface MediaIncomingOffer {\n  incomingId: MediaIncomingId;\n  peer: MediaPeer;\n  requestedRemoteTracks: MediaRemoteState;\n  remainingMs: number;\n  existingSession?: MediaSessionId;\n}",
+        description: "Authenticated, expiring offer; passive delivery does not create a session.",
+        fields: [
+            {
+                name: "incoming_id",
+                type: "MediaIncomingId",
+                description: "Single-use capability bound to sender, nonce, destination, and authority.",
+            },
+            {
+                name: "peer",
+                type: "MediaPeer",
+                description: "Authenticated remote product account.",
+            },
+            {
+                name: "requested_remote_tracks",
+                type: "MediaRemoteState",
+                description: "Declared caller intent: only Off or Starting, not proof of live capture.",
+            },
+            {
+                name: "remaining_ms",
+                type: "number",
+                description: "Remaining host-monotonic lifetime measured at emission.",
+            },
+            {
+                name: "existing_session",
+                type: "MediaSessionId | undefined",
+                description: "Existing local session only for an authenticated offer from its group.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-resolution",
+        name: "MediaIncomingResolution",
+        category: "media",
+        definition: 'export type MediaIncomingResolution = "Accepted" | "Refused" | "Expired" | "Cancelled" | "AnsweredElsewhere";',
+        description: "Bounded reason an incoming offer no longer rings.",
+        variants: [
+            {
+                name: "Accepted",
+                type: '{ tag: "Accepted"; value?: undefined }',
+                description: "Accepted locally.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "Refused locally.",
+            },
+            {
+                name: "Expired",
+                type: '{ tag: "Expired"; value?: undefined }',
+                description: "Authoritative lifetime expired.",
+            },
+            {
+                name: "Cancelled",
+                type: '{ tag: "Cancelled"; value?: undefined }',
+                description: "Cancelled before completion.",
+            },
+            {
+                name: "AnsweredElsewhere",
+                type: '{ tag: "AnsweredElsewhere"; value?: undefined }',
+                description: "Claimed by another authorized host endpoint.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-response",
+        name: "MediaIncomingResponse",
+        category: "media",
+        definition: 'export type MediaIncomingResponse =\n  | { tag: "Refused"; value?: undefined }\n  | { tag: "Accepted"; value: { session: MediaSessionSnapshot; participant: MediaParticipantSnapshot } }\n;',
+        description: "Result of a successful incoming decision.",
+        variants: [
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "Offer refused without capture or signaling a new call.",
+            },
+            {
+                name: "Accepted",
+                type: '{ tag: "Accepted"; value: { session: MediaSessionSnapshot; participant: MediaParticipantSnapshot } }',
+                description: "Offer accepted, returning both authoritative owned resources.",
+            },
+        ],
+    },
+    {
+        id: "media-local-state",
+        name: "MediaLocalState",
+        category: "media",
+        definition: "export interface MediaLocalState {\n  microphone: MediaTrackState;\n  camera: MediaTrackState;\n  screen: MediaTrackState;\n  cameraKind?: MediaCameraKind;\n  audioRoute?: MediaAudioRoute;\n}",
+        description: "Host-observed local media and sanitized selected device classes.",
+        fields: [
+            {
+                name: "microphone",
+                type: "MediaTrackState",
+                description: "Actual microphone state.",
+            },
+            {
+                name: "camera",
+                type: "MediaTrackState",
+                description: "Actual camera state.",
+            },
+            {
+                name: "screen",
+                type: "MediaTrackState",
+                description: "Actual screen-sharing state.",
+            },
+            {
+                name: "camera_kind",
+                type: "MediaCameraKind | undefined",
+                description: "Actual camera class, if selected.",
+            },
+            {
+                name: "audio_route",
+                type: "MediaAudioRoute | undefined",
+                description: "Actual audio route class, if selected.",
+            },
+        ],
+    },
+    {
+        id: "media-local-tracks",
+        name: "MediaLocalTracks",
+        category: "media",
+        definition: "export interface MediaLocalTracks {\n  microphone: boolean;\n  camera: boolean;\n  screen: boolean;\n  cameraPreference?: MediaCameraKind;\n  audioPreference?: MediaAudioRoute;\n}",
+        description: "Complete replacement capture intent. All false means receive-only.\nPreferences are advisory; screen capture always uses the trusted host picker.",
+        fields: [
+            {
+                name: "microphone",
+                type: "boolean",
+                description: "Request microphone capture.",
+            },
+            {
+                name: "camera",
+                type: "boolean",
+                description: "Request camera capture.",
+            },
+            {
+                name: "screen",
+                type: "boolean",
+                description: "Request screen capture without selecting a source on the product side.",
+            },
+            {
+                name: "camera_preference",
+                type: "MediaCameraKind | undefined",
+                description: "Advisory camera class preference.",
+            },
+            {
+                name: "audio_preference",
+                type: "MediaAudioRoute | undefined",
+                description: "Advisory audio route preference.",
+            },
+        ],
+    },
+    {
+        id: "media-network",
+        name: "MediaNetwork",
+        category: "media",
+        definition: "export interface MediaNetwork {\n  genesisHash: HexString;\n}",
+        description: "Host-configured network namespace; never inferred from a display label or URL.",
+        fields: [
+            {
+                name: "genesis_hash",
+                type: "HexString",
+                description: "Genesis hash identifying the authenticated signaling namespace.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-failure",
+        name: "MediaOperationFailure",
+        category: "media",
+        definition: 'export type MediaOperationFailure =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "Domain"; value: { error: HostMediaError } }\n  | { tag: "HostFailure"; value?: undefined }\n;',
+        description: "Retained sanitized failure; diagnostics never enter the operation history.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "User or authority denied the operation.",
+            },
+            {
+                name: "Domain",
+                type: '{ tag: "Domain"; value: { error: HostMediaError } }',
+                description: "Bounded Media domain failure.",
+            },
+            {
+                name: "HostFailure",
+                type: '{ tag: "HostFailure"; value?: undefined }',
+                description: "Host failure without a diagnostic string.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-id",
+        name: "MediaOperationId",
+        category: "media",
+        definition: "export type MediaOperationId = HexString;",
+        description: "Client-random operation correlation key, shared across runtime listeners.\nReusing a key with a different request is an operation conflict.",
+    },
+    {
+        id: "media-operation-kind",
+        name: "MediaOperationKind",
+        category: "media",
+        definition: 'export type MediaOperationKind = "CreateSession" | "AddParticipant" | "AcceptIncoming" | "SetLocalTracks";',
+        description: "Mutation category retained with a correlation key.",
+        variants: [
+            {
+                name: "CreateSession",
+                type: '{ tag: "CreateSession"; value?: undefined }',
+                description: "Session creation.",
+            },
+            {
+                name: "AddParticipant",
+                type: '{ tag: "AddParticipant"; value?: undefined }',
+                description: "Outbound invitation admission.",
+            },
+            {
+                name: "AcceptIncoming",
+                type: '{ tag: "AcceptIncoming"; value?: undefined }',
+                description: "Incoming acceptance, new or existing session.",
+            },
+            {
+                name: "SetLocalTracks",
+                type: '{ tag: "SetLocalTracks"; value?: undefined }',
+                description: "Complete local capture-intent replacement.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-result",
+        name: "MediaOperationResult",
+        category: "media",
+        definition: 'export type MediaOperationResult =\n  | { tag: "Session"; value: { sessionId: MediaSessionId } }\n  | { tag: "Participant"; value: { sessionId: MediaSessionId; participantId: MediaParticipantId } }\n  | { tag: "Incoming"; value: { incomingId: MediaIncomingId; sessionId: MediaSessionId; participantId: MediaParticipantId } }\n  | { tag: "Tracks"; value: { sessionId: MediaSessionId } }\n;',
+        description: "Exact committed resources, without guessing from concurrent session snapshots.",
+        variants: [
+            {
+                name: "Session",
+                type: '{ tag: "Session"; value: { sessionId: MediaSessionId } }',
+                description: "Created a session.",
+            },
+            {
+                name: "Participant",
+                type: '{ tag: "Participant"; value: { sessionId: MediaSessionId; participantId: MediaParticipantId } }',
+                description: "Admitted an outbound participant.",
+            },
+            {
+                name: "Incoming",
+                type: '{ tag: "Incoming"; value: { incomingId: MediaIncomingId; sessionId: MediaSessionId; participantId: MediaParticipantId } }',
+                description: "Accepted a specific incoming offer.",
+            },
+            {
+                name: "Tracks",
+                type: '{ tag: "Tracks"; value: { sessionId: MediaSessionId } }',
+                description: "Committed local intent for a session.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-snapshot",
+        name: "MediaOperationSnapshot",
+        category: "media",
+        definition: "export interface MediaOperationSnapshot {\n  operationId: MediaOperationId;\n  kind?: MediaOperationKind;\n  state: MediaOperationState;\n}",
+        description: "Authoritative runtime-wide correlation record, shared across all listeners.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Client-random key identifying the original request.",
+            },
+            {
+                name: "kind",
+                type: "MediaOperationKind | undefined",
+                description: "None only for cancellation-before-admission tombstones.",
+            },
+            {
+                name: "state",
+                type: "MediaOperationState",
+                description: "Authoritative current or terminal outcome.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-state",
+        name: "MediaOperationState",
+        category: "media",
+        definition: 'export type MediaOperationState =\n  | { tag: "Pending"; value?: undefined }\n  | { tag: "Committed"; value: { result: MediaOperationResult } }\n  | { tag: "Failed"; value: { failure: MediaOperationFailure } }\n  | { tag: "Cancelled"; value?: undefined }\n;',
+        description: "Cancellation linearizes against commit; a committed result is never undone\nor misreported as cancelled. Terminal records last for the owning runtime.",
+        variants: [
+            {
+                name: "Pending",
+                type: '{ tag: "Pending"; value?: undefined }',
+                description: "Admitted and not yet settled.",
+            },
+            {
+                name: "Committed",
+                type: '{ tag: "Committed"; value: { result: MediaOperationResult } }',
+                description: "Effects committed before any cancellation won.",
+            },
+            {
+                name: "Failed",
+                type: '{ tag: "Failed"; value: { failure: MediaOperationFailure } }',
+                description: "Settled without committing the mutation.",
+            },
+            {
+                name: "Cancelled",
+                type: '{ tag: "Cancelled"; value?: undefined }',
+                description: "Cancellation won; delayed original requests and callbacks cannot act.",
+            },
+        ],
+    },
+    {
+        id: "media-participant-id",
+        name: "MediaParticipantId",
+        category: "media",
+        definition: "export type MediaParticipantId = HexString;",
+        description: "Host-minted remote endpoint capability within one owned session.",
+    },
+    {
+        id: "media-participant-snapshot",
+        name: "MediaParticipantSnapshot",
+        category: "media",
+        definition: "export interface MediaParticipantSnapshot {\n  participantId: MediaParticipantId;\n  peer: MediaPeer;\n  state: MediaParticipantState;\n  media: MediaRemoteState;\n  outcome?: MediaCallOutcome;\n}",
+        description: "Current state of one remote endpoint; the local endpoint has no participant ID.",
+        fields: [
+            {
+                name: "participant_id",
+                type: "MediaParticipantId",
+                description: "Runtime-scoped participant capability.",
+            },
+            {
+                name: "peer",
+                type: "MediaPeer",
+                description: "Authenticated remote product account.",
+            },
+            {
+                name: "state",
+                type: "MediaParticipantState",
+                description: "Authoritative endpoint state.",
+            },
+            {
+                name: "media",
+                type: "MediaRemoteState",
+                description: "Host-observed remote media state.",
+            },
+            {
+                name: "outcome",
+                type: "MediaCallOutcome | undefined",
+                description: "Terminal outcome, if any.",
+            },
+        ],
+    },
+    {
+        id: "media-participant-state",
+        name: "MediaParticipantState",
+        category: "media",
+        definition: 'export type MediaParticipantState = "Inviting" | "Connecting" | "Connected" | "Reconnecting" | "Left";',
+        description: "Authoritative state of one remote endpoint.",
+        variants: [
+            {
+                name: "Inviting",
+                type: '{ tag: "Inviting"; value?: undefined }',
+                description: "An outbound invitation is awaiting an answer.",
+            },
+            {
+                name: "Connecting",
+                type: '{ tag: "Connecting"; value?: undefined }',
+                description: "Accepted and establishing media connectivity.",
+            },
+            {
+                name: "Connected",
+                type: '{ tag: "Connected"; value?: undefined }',
+                description: "Media connectivity established.",
+            },
+            {
+                name: "Reconnecting",
+                type: '{ tag: "Reconnecting"; value?: undefined }',
+                description: "Recovering connectivity within the host deadline.",
+            },
+            {
+                name: "Left",
+                type: '{ tag: "Left"; value?: undefined }',
+                description: "Terminal for this participant capability.",
+            },
+        ],
+    },
+    {
+        id: "media-peer",
+        name: "MediaPeer",
+        category: "media",
+        definition: "export interface MediaPeer {\n  network: MediaNetwork;\n  productId: string;\n  account: MediaAccount;\n}",
+        description: "Authenticated destination. V1 permits only the caller's network and product.",
+        fields: [
+            {
+                name: "network",
+                type: "MediaNetwork",
+                description: "Network namespace returned by discovery.",
+            },
+            {
+                name: "product_id",
+                type: "string",
+                description: "Full canonical authenticated product identifier, including subdomains.",
+            },
+            {
+                name: "account",
+                type: "MediaAccount",
+                description: "Product account resolved and authenticated by the host.",
+            },
+        ],
+    },
+    {
+        id: "media-picture-kind",
+        name: "MediaPictureKind",
+        category: "media",
+        definition: 'export type MediaPictureKind = "Camera" | "Screen";',
+        description: "Host-owned picture kind, without a readable frame or stream handle.",
+        variants: [
+            {
+                name: "Camera",
+                type: '{ tag: "Camera"; value?: undefined }',
+                description: "Camera picture.",
+            },
+            {
+                name: "Screen",
+                type: '{ tag: "Screen"; value?: undefined }',
+                description: "Screen-sharing picture.",
+            },
+        ],
+    },
+    {
+        id: "media-picture-source",
+        name: "MediaPictureSource",
+        category: "media",
+        definition: 'export type MediaPictureSource =\n  | { tag: "Local"; value: { picture: MediaPictureKind } }\n  | { tag: "Remote"; value: { participantId: MediaParticipantId; picture: MediaPictureKind } }\n;',
+        description: "Selects an unreadable host-composited local preview or remote picture.",
+        variants: [
+            {
+                name: "Local",
+                type: '{ tag: "Local"; value: { picture: MediaPictureKind } }',
+                description: "Self-preview uses the same isolated compositor as remote pictures.",
+            },
+            {
+                name: "Remote",
+                type: '{ tag: "Remote"; value: { participantId: MediaParticipantId; picture: MediaPictureKind } }',
+                description: "Picture belonging to an owned participant in this session.",
+            },
+        ],
+    },
+    {
+        id: "media-placement",
+        name: "MediaPlacement",
+        category: "media",
+        definition: 'export type MediaPlacement = "BelowProduct" | "AboveProduct";',
+        description: "Placement relative to the complete product plane, always below trusted UI.",
+        variants: [
+            {
+                name: "BelowProduct",
+                type: '{ tag: "BelowProduct"; value?: undefined }',
+                description: "Below all product content; the product must be transparent there.",
+            },
+            {
+                name: "AboveProduct",
+                type: '{ tag: "AboveProduct"; value?: undefined }',
+                description: "Above all product content, not interleaved with arbitrary DOM z-indices.",
+            },
+        ],
+    },
+    {
+        id: "media-rect",
+        name: "MediaRect",
+        category: "media",
+        definition: "export interface MediaRect {\n  x: number;\n  y: number;\n  width: number;\n  height: number;\n}",
+        description: "Axis-aligned logical viewport rectangle. Negative positions permit clipping;\narithmetic overflow is rejected, and zero size draws nothing.",
+        fields: [
+            {
+                name: "x",
+                type: "number",
+                description: "Left edge relative to viewport origin.",
+            },
+            {
+                name: "y",
+                type: "number",
+                description: "Top edge relative to viewport origin.",
+            },
+            {
+                name: "width",
+                type: "number",
+                description: "Logical width.",
+            },
+            {
+                name: "height",
+                type: "number",
+                description: "Logical height.",
+            },
+        ],
+    },
+    {
+        id: "media-remote-state",
+        name: "MediaRemoteState",
+        category: "media",
+        definition: "export interface MediaRemoteState {\n  microphone: MediaTrackState;\n  camera: MediaTrackState;\n  screen: MediaTrackState;\n}",
+        description: "Remote track states, without quality metrics or device metadata.",
+        fields: [
+            {
+                name: "microphone",
+                type: "MediaTrackState",
+                description: "Remote microphone state.",
+            },
+            {
+                name: "camera",
+                type: "MediaTrackState",
+                description: "Remote camera state.",
+            },
+            {
+                name: "screen",
+                type: "MediaTrackState",
+                description: "Remote screen-sharing state.",
+            },
+        ],
+    },
+    {
+        id: "media-resource",
+        name: "MediaResource",
+        category: "media",
+        definition: 'export type MediaResource = "Sessions" | "Participants" | "Incoming" | "Operations" | "Subscriptions";',
+        description: "Exhausted finite resource class, without exposing another runtime's state.",
+        variants: [
+            {
+                name: "Sessions",
+                type: '{ tag: "Sessions"; value?: undefined }',
+                description: "Runtime session issuance budget.",
+            },
+            {
+                name: "Participants",
+                type: '{ tag: "Participants"; value?: undefined }',
+                description: "Runtime participant issuance budget.",
+            },
+            {
+                name: "Incoming",
+                type: '{ tag: "Incoming"; value?: undefined }',
+                description: "Incoming issuance or pending-offer budget.",
+            },
+            {
+                name: "Operations",
+                type: '{ tag: "Operations"; value?: undefined }',
+                description: "Retained operation budget.",
+            },
+            {
+                name: "Subscriptions",
+                type: '{ tag: "Subscriptions"; value?: undefined }',
+                description: "Active subscription budget.",
+            },
+        ],
+    },
+    {
+        id: "media-runtime-limits",
+        name: "MediaRuntimeLimits",
+        category: "media",
+        definition: "export interface MediaRuntimeLimits {\n  maxIssuedSessions: number;\n  maxIssuedParticipants: number;\n  maxIssuedIncoming: number;\n  maxOperations: number;\n  maxPendingIncoming: number;\n  maxSubscriptions: number;\n  eventQueueCapacity: number;\n}",
+        description: "Finite runtime-lifetime retention and delivery budgets, reserved before effects.\nKnown cleanup never allocates quota; terminal and operation tombstones are not\nsilently evicted. Lower host budgets must still support the six-endpoint floor.",
+        fields: [
+            {
+                name: "max_issued_sessions",
+                type: "number",
+                description: "Total session IDs that may be issued in this runtime (core default 256).",
+            },
+            {
+                name: "max_issued_participants",
+                type: "number",
+                description: "Total participant IDs that may be issued (core default 2048).",
+            },
+            {
+                name: "max_issued_incoming",
+                type: "number",
+                description: "Total incoming IDs that may be issued (core default 4096).",
+            },
+            {
+                name: "max_operations",
+                type: "number",
+                description: "Retained operation keys, including cancellation tombstones (default 8192).",
+            },
+            {
+                name: "max_pending_incoming",
+                type: "number",
+                description: "Simultaneously pending incoming offers (core default 32).",
+            },
+            {
+                name: "max_subscriptions",
+                type: "number",
+                description: "Simultaneous runtime listeners (core default 8).",
+            },
+            {
+                name: "event_queue_capacity",
+                type: "number",
+                description: "Queued events per listener (core default 128); overflow terminates it.",
+            },
+        ],
+    },
+    {
+        id: "media-session-id",
+        name: "MediaSessionId",
+        category: "media",
+        definition: "export type MediaSessionId = HexString;",
+        description: "Host-minted, unguessable session capability, bound to one product runtime.",
+    },
+    {
+        id: "media-session-snapshot",
+        name: "MediaSessionSnapshot",
+        category: "media",
+        definition: "export interface MediaSessionSnapshot {\n  sessionId: MediaSessionId;\n  revision: bigint;\n  state: MediaSessionState;\n  requested: MediaLocalTracks;\n  actual: MediaLocalState;\n  participants: Array<MediaParticipantSnapshot>;\n  outcome?: MediaCallOutcome;\n}",
+        description: "Authoritative session state. Remote departure does not implicitly end it.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Runtime-scoped session capability.",
+            },
+            {
+                name: "revision",
+                type: "bigint",
+                description: "Strictly increasing per-session revision.",
+            },
+            {
+                name: "state",
+                type: "MediaSessionState",
+                description: "Aggregate endpoint state.",
+            },
+            {
+                name: "requested",
+                type: "MediaLocalTracks",
+                description: "Last committed complete local intent.",
+            },
+            {
+                name: "actual",
+                type: "MediaLocalState",
+                description: "Host-observed actual capture and routing state.",
+            },
+            {
+                name: "participants",
+                type: "Array<MediaParticipantSnapshot>",
+                description: "Remote endpoints, including their terminal outcomes.",
+            },
+            {
+                name: "outcome",
+                type: "MediaCallOutcome | undefined",
+                description: "Terminal session outcome, if any.",
+            },
+        ],
+    },
+    {
+        id: "media-session-state",
+        name: "MediaSessionState",
+        category: "media",
+        definition: 'export type MediaSessionState = "Ready" | "Negotiating" | "Connecting" | "Connected" | "Reconnecting" | "Ended";',
+        description: "Authoritative aggregate session state, independent of track interruption.",
+        variants: [
+            {
+                name: "Ready",
+                type: '{ tag: "Ready"; value?: undefined }',
+                description: "No nonterminal participants; the session remains explicitly owned.",
+            },
+            {
+                name: "Negotiating",
+                type: '{ tag: "Negotiating"; value?: undefined }',
+                description: "Invitations are outstanding.",
+            },
+            {
+                name: "Connecting",
+                type: '{ tag: "Connecting"; value?: undefined }',
+                description: "An accepted endpoint is connecting; takes precedence over negotiating.",
+            },
+            {
+                name: "Connected",
+                type: '{ tag: "Connected"; value?: undefined }',
+                description: "All accepted nonterminal endpoints are connected and no invite remains.",
+            },
+            {
+                name: "Reconnecting",
+                type: '{ tag: "Reconnecting"; value?: undefined }',
+                description: "An established endpoint is recovering; takes precedence over connecting.",
+            },
+            {
+                name: "Ended",
+                type: '{ tag: "Ended"; value?: undefined }',
+                description: "Terminal, with all capture, signaling, playback, and surfaces released.",
+            },
+        ],
+    },
+    {
+        id: "media-surface",
+        name: "MediaSurface",
+        category: "media",
+        definition: "export interface MediaSurface {\n  surfaceId: number;\n  source: MediaPictureSource;\n  rect: MediaRect;\n  clip: MediaRect;\n  cornerRadius: number;\n  placement: MediaPlacement;\n  depth: number;\n  fit: MediaFit;\n  mirrored: boolean;\n  visible: boolean;\n}",
+        description: "One unreadable sibling compositor layer. Layers do not receive product input\nand are excluded from product renderer/screenshot APIs. Off or interrupted\nsources never retain stale captured frames. Hiding pictures does not stop audio.",
+        fields: [
+            {
+                name: "surface_id",
+                type: "number",
+                description: "Product-chosen layout key, unique within the session's submitted set.",
+            },
+            {
+                name: "source",
+                type: "MediaPictureSource",
+                description: "Local or owned remote picture.",
+            },
+            {
+                name: "rect",
+                type: "MediaRect",
+                description: "Target logical viewport rectangle.",
+            },
+            {
+                name: "clip",
+                type: "MediaRect",
+                description: "Additional clipping rectangle, intersected with viewport and host region.",
+            },
+            {
+                name: "corner_radius",
+                type: "number",
+                description: "Clamped to half the smaller target dimension.",
+            },
+            {
+                name: "placement",
+                type: "MediaPlacement",
+                description: "Placement plane relative to all product content.",
+            },
+            {
+                name: "depth",
+                type: "number",
+                description: "Lower is behind higher; ties sort by session bytes then surface ID.",
+            },
+            {
+                name: "fit",
+                type: "MediaFit",
+                description: "Aspect-ratio treatment within the clip.",
+            },
+            {
+                name: "mirrored",
+                type: "boolean",
+                description: "Presentation only; does not change what peers receive.",
+            },
+            {
+                name: "visible",
+                type: "boolean",
+                description: "False draws no picture, without changing capture or audio playback.",
+            },
+        ],
+    },
+    {
+        id: "media-track-state",
+        name: "MediaTrackState",
+        category: "media",
+        definition: 'export type MediaTrackState = "Off" | "Starting" | "Live" | "Interrupted";',
+        description: "Actual track state, without exposing underlying capture or stream objects.",
+        variants: [
+            {
+                name: "Off",
+                type: '{ tag: "Off"; value?: undefined }',
+                description: "No sending or stale picture remains after an off intent commits.",
+            },
+            {
+                name: "Starting",
+                type: '{ tag: "Starting"; value?: undefined }',
+                description: "Requested but not yet live.",
+            },
+            {
+                name: "Live",
+                type: '{ tag: "Live"; value?: undefined }',
+                description: "Host-observed live track.",
+            },
+            {
+                name: "Interrupted",
+                type: '{ tag: "Interrupted"; value?: undefined }',
+                description: "Temporarily interrupted, distinct from permission revocation.",
+            },
+        ],
+    },
+    {
+        id: "media-viewport",
+        name: "MediaViewport",
+        category: "media",
+        definition: "export interface MediaViewport {\n  revision: bigint;\n  width: number;\n  height: number;\n  deviceScaleNumerator: number;\n  deviceScaleDenominator: number;\n}",
+        description: "One authorized rendering attachment shared by every session in a runtime.\nRevision never restarts after detach/replace. Product coordinates are logical\nviewport units (CSS pixels on web), not document or physical screen coordinates.",
+        fields: [
+            {
+                name: "revision",
+                type: "bigint",
+                description: "Runtime-monotonic transform/attachment revision.",
+            },
+            {
+                name: "width",
+                type: "number",
+                description: "Logical viewport width.",
+            },
+            {
+                name: "height",
+                type: "number",
+                description: "Logical viewport height.",
+            },
+            {
+                name: "device_scale_numerator",
+                type: "number",
+                description: "Effective uniform physical-pixels/logical-unit ratio numerator.",
+            },
+            {
+                name: "device_scale_denominator",
+                type: "number",
+                description: "Positive scale denominator; products must not pre-scale rectangles.",
+            },
+        ],
+    },
+    {
         id: "modifier",
         name: "Modifier",
         category: "renderer",
@@ -5307,7 +6742,7 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n;',
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "Calling"; value?: undefined }\n;',
         description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, and `StatementSubmit` are also triggered\nimplicitly by the corresponding business calls when not yet granted.",
         variants: [
             {
@@ -5334,6 +6769,11 @@ export const types = [
                 name: "StatementSubmit",
                 type: '{ tag: "StatementSubmit"; value?: undefined }',
                 description: "Submitting statements on behalf of the user via `remote_statement_store_submit`.",
+            },
+            {
+                name: "Calling",
+                type: '{ tag: "Calling"; value?: undefined }',
+                description: "Host-owned Media calling, scoped to authenticated product/account/network.\n\nDistinct from browser-realm WebRtc. Receive-only sessions still require\nthis grant; microphone and camera additionally require device grants.\nScreen selection is exclusively a trusted host picker, not a permission\nto enumerate or name capture sources. Revocation ends affected sessions.",
             },
         ],
     },

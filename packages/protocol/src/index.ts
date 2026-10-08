@@ -26,6 +26,7 @@ export {
 export { createChainPool, type ChainPool, type LeaseProvider } from './chain-pool.js';
 export {
   clearSharedAuthStorage,
+  compareExchangeSharedAuthStorage,
   clearSharedModeStorage,
   createRemoteChainProvider,
   ensureProtocolFrame,

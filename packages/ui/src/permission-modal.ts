@@ -22,7 +22,8 @@ import type { ModalButton } from './state/modals.js';
 //
 // Rendered by the overlays root (components/entities/PromptDialog.tsx).
 
-export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
+export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName | 'Calling', string> = {
+  Calling: 'Make and receive encrypted calls for this account and network',
   Notifications: 'Show in-app and system notifications',
   Camera: 'Access your camera for photo and video capture',
   Microphone: 'Access your microphone for audio input',
@@ -43,6 +44,11 @@ export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | '
 export interface PermissionRequestModalOptions {
   /** Offer "Allow once" alongside "Always allow" and "Deny". */
   allowOnce?: boolean;
+  /**
+   * Trusted host Media consent: the exact product id and scope fields. Media
+   * consent never reloads the product or grants it raw capture.
+   */
+  media?: { productId: string; fields: readonly (readonly [string, string])[] };
 }
 
 /**
@@ -50,11 +56,12 @@ export interface PermissionRequestModalOptions {
  */
 export async function showPermissionRequestModal(
   label: string,
-  permission: EnforceablePermissionName,
+  permission: EnforceablePermissionName | 'Calling',
   signal?: AbortSignal,
   options: PermissionRequestModalOptions = {},
 ): Promise<PermissionPromptDecision> {
   const allowOnce = options.allowOnce === true;
+  const media = options.media;
   const buttons: ModalButton<PermissionPromptDecision>[] = [
     { label: 'Deny', variant: 'danger', result: 'denied' },
     allowOnce
@@ -73,10 +80,18 @@ export async function showPermissionRequestModal(
       icon: iconMarkup(PERMISSION_ICONS[permission]),
       title: 'Permission Request',
       fields: [
-        { label: 'Application', value: withActiveTld(label) },
+        { label: 'Application', value: media?.productId ?? withActiveTld(label) },
         { label: 'Permission', value: PERMISSION_DESCRIPTIONS[permission] },
+        ...(media?.fields ?? []).map(([fieldLabel, value]) => ({ label: fieldLabel, value, mono: true })),
       ],
-      ...(isDevicePermission(permission) ? { notice: 'Granting this permission will reload the application.' } : {}),
+      ...(media !== undefined
+        ? {
+            notice:
+              'Only the trusted host handles call media. The application receives no camera, microphone, screen pixels, or raw browser capture permission.',
+          }
+        : permission !== 'Calling' && isDevicePermission(permission)
+          ? { notice: 'Granting this permission will reload the application.' }
+          : {}),
       buttons,
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',

@@ -4,7 +4,8 @@
 import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
 import type { ProtocolRequestMethod } from './messages.js';
 
-export type SharedAuthRequestMethod = 'authStorageRead' | 'authStorageWrite' | 'authStorageClear';
+export type SharedAuthRequestMethod =
+  'authStorageRead' | 'authStorageWrite' | 'authStorageClear' | 'authStorageCompareExchange';
 
 export type SharedModeRequestMethod = 'modeStorageRead' | 'modeStorageWrite' | 'modeStorageClear';
 
@@ -15,7 +16,12 @@ export const SHARED_CORE_SESSION_KEY = 'session';
 // regex shared so the validation contract is one thing. A future store
 // needing a different shape should get its own constant.
 const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
-const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>(['authStorageRead', 'authStorageWrite', 'authStorageClear']);
+const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>([
+  'authStorageRead',
+  'authStorageWrite',
+  'authStorageClear',
+  'authStorageCompareExchange',
+]);
 const SHARED_MODE_METHODS = new Set<ProtocolRequestMethod>(['modeStorageRead', 'modeStorageWrite', 'modeStorageClear']);
 
 export function isSharedAuthRequestMethod(method: ProtocolRequestMethod): method is SharedAuthRequestMethod {
