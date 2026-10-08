@@ -20,18 +20,10 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-.mark {
-  display: block;
-  flex: none;
-  width: 18px;
-  height: 20px;
-}
-/* 72 x 13 holds the logotype's own proportions in whole pixels. */
+.mark,
 .brand {
   display: block;
   flex: none;
-  width: 72px;
-  height: 13px;
 }
 /* Out of the flow, so the bar is laid out as it will be once the tag goes. */
 .beta {
@@ -73,7 +65,7 @@
     padding: 0;
   }
   .mark {
-    width: 22px;
+    width: auto;
     height: 24px;
   }
 }
