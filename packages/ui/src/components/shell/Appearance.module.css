@@ -1,39 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Follows <html data-theme>, which the inline bootstrap script sets before hydration, so the build-time
-   button already shows the theme in effect. */
-
-.sun {
-  display: none;
-}
-:global([data-theme='light']) .sun {
-  display: block;
-}
-:global([data-theme='light']) .moon {
-  display: none;
-}
-
-/* FloatingLayer draws the glass. The open rule's `display` wins over FloatingLayer's own. */
-.popover {
-  flex-direction: column;
-  gap: 10px;
-  width: var(--w-pop-sm);
-  min-width: 0;
-  max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
-  padding: var(--sp-3);
-}
-.popover[data-open] {
-  display: flex;
-}
-.head {
-  margin: 0;
-  padding: var(--sp-hair) var(--sp-1) 0;
-  color: var(--chrome-text);
-  font-size: var(--fs-pop-title);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
-}
 .tiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -104,9 +71,4 @@
     width: 20px;
     height: 20px;
   }
-}
-
-/* The sheet's head carries the title. */
-.tiles[data-sheet] {
-  margin: var(--sp-1) var(--sp-4) 0;
 }
