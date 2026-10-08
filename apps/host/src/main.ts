@@ -104,6 +104,7 @@ import {
   getActiveTldSuffix,
   getNetwork,
   getTldSuffix,
+  parseSettingsFromSearch,
   peekNetwork,
   withActiveTld,
   writeSettingsToSearch,
@@ -569,11 +570,15 @@ async function main(): Promise<void> {
   // apply, and the app route below sets it again from them.
   const label = parseDotLabel();
   const localhostUrl = parseLocalhostUrl();
-  const pageHost = label === null ? (previewTargetUrl ?? localhostUrl) : null;
+  const pageUrl = label === null ? (previewTargetUrl ?? localhostUrl) : null;
+  const pageHost = pageUrl === null ? null : new URL(pageUrl).host;
   if (label !== null) {
-    showProductPill(label, getTldSuffix(peekNetwork(new URLSearchParams(window.location.search))));
+    showProductPill(
+      label,
+      getTldSuffix(peekNetwork(parseSettingsFromSearch(new URLSearchParams(window.location.search)).network)),
+    );
   } else if (pageHost !== null) {
-    showLocalhostPill(new URL(pageHost).host);
+    showLocalhostPill(pageHost);
   }
 
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
@@ -602,8 +607,8 @@ async function main(): Promise<void> {
 
   const productIdOverride = parseLocalProductIdOverride();
 
-  if (label === null && previewTargetUrl !== null) {
-    const host = new URL(previewTargetUrl).host;
+  if (previewTargetUrl !== null && pageHost !== null) {
+    const host = pageHost;
     boot.step = 'preview_render';
     log.event('Route: preview', { flow: 'boot', host });
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
@@ -642,8 +647,8 @@ async function main(): Promise<void> {
       deepPath: window.location.pathname + window.location.search,
     },
   });
-  if (label === null && localhostUrl !== null) {
-    const host = new URL(localhostUrl).host;
+  if (localhostUrl !== null && pageHost !== null) {
+    const host = pageHost;
     boot.step = 'localhost_render';
     log.event('Route: localhost proxy', { flow: 'boot', host });
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });

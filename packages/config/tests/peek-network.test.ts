@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getTldSuffix, NETWORK_KEY, NetworkName, peekNetwork } from '../src/network.js';
+import { parseSettingsFromSearch } from '../src/url-settings.js';
 
 describe('peekNetwork', () => {
   beforeEach(() => {
@@ -11,7 +12,7 @@ describe('peekNetwork', () => {
 
   it('As a first-time visitor, the shell guesses the default network and stores nothing', () => {
     // When
-    const network = peekNetwork(new URLSearchParams());
+    const network = peekNetwork(null);
 
     // Then
     expect(network).toBe(NetworkName.PASEO);
@@ -23,7 +24,7 @@ describe('peekNetwork', () => {
     localStorage.setItem(NETWORK_KEY, NetworkName.PREVIEWNET);
 
     // When
-    const network = peekNetwork(new URLSearchParams());
+    const network = peekNetwork(null);
 
     // Then
     expect(network).toBe(NetworkName.PREVIEWNET);
@@ -34,7 +35,9 @@ describe('peekNetwork', () => {
     localStorage.setItem(NETWORK_KEY, NetworkName.PASEO);
 
     // When
-    const network = peekNetwork(new URLSearchParams({ network: NetworkName.PREVIEWNET }));
+    const network = peekNetwork(
+      parseSettingsFromSearch(new URLSearchParams({ network: NetworkName.PREVIEWNET })).network,
+    );
 
     // Then
     expect(network).toBe(NetworkName.PREVIEWNET);
@@ -46,7 +49,7 @@ describe('peekNetwork', () => {
     localStorage.setItem(NETWORK_KEY, NetworkName.PREVIEWNET);
 
     // When
-    const network = peekNetwork(new URLSearchParams({ network: 'nope' }));
+    const network = peekNetwork(parseSettingsFromSearch(new URLSearchParams({ network: 'nope' })).network);
 
     // Then
     expect(network).toBe(NetworkName.PREVIEWNET);

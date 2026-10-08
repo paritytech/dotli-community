@@ -5,6 +5,7 @@ import { createSignal, onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getActiveTldSuffix } from '@dotli/config';
 import { validateDotLabel, type DotLabelResult } from '@dotli/shared';
+import { prefersReducedMotion } from '../../reduced-motion.js';
 import { dotUrl } from './dot-url.js';
 import s from './NavForm.module.css';
 
@@ -27,7 +28,7 @@ const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], s
 /** Type and erase example names in `input`'s placeholder while it is empty, holding the first under reduced motion. */
 function animatePlaceholder(input: HTMLInputElement): { resume: () => void; stop: () => void } {
   input.placeholder = PLACEHOLDER_NAMES[0];
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (prefersReducedMotion()) {
     return { resume: () => undefined, stop: () => undefined };
   }
   let wordIdx = 0;

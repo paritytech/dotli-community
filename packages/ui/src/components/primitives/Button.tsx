@@ -3,6 +3,7 @@
 
 import { createEffect } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { prefersReducedMotion } from '../../reduced-motion.js';
 import { Spinner } from './Spinner.js';
 import s from './Button.module.css';
 
@@ -39,7 +40,7 @@ export interface ButtonProps {
  * flex parent would otherwise keep the button at its content's width.
  */
 function growFromCircle(el: HTMLButtonElement): void {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (prefersReducedMotion()) {
     return;
   }
   const style = getComputedStyle(el);
@@ -58,14 +59,12 @@ function growFromCircle(el: HTMLButtonElement): void {
 /** A chrome button: secondary by default, primary for the one main action, danger for a reject. */
 export function Button(props: ButtonProps): JSX.Element {
   let el: HTMLButtonElement | undefined;
-  let wasLoading = false;
   createEffect(
     () => props.loading === true,
-    loading => {
-      if (wasLoading && !loading && el !== undefined) {
+    (loading, wasLoading) => {
+      if (wasLoading === true && !loading && el !== undefined) {
         growFromCircle(el);
       }
-      wasLoading = loading;
     },
   );
   return (

@@ -329,25 +329,25 @@ export function setNetworkOverride(network: Network): void {
   networkOverride = network;
 }
 
-function storedNetwork(): Network | null {
+function storedNetwork(enabled: readonly Network[]): Network | null {
   const stored = localStorage.getItem(NETWORK_KEY);
-  return stored !== null && isValidNetwork(stored) && getEnabledNetworks().includes(stored) ? stored : null;
+  return stored !== null && isValidNetwork(stored) && enabled.includes(stored) ? stored : null;
 }
 
 /**
- * The network as this page can tell it before settings apply, from `search`, then localStorage, then the default.
- * Unlike getNetwork it writes nothing, as settings tell a fresh visit from a stored choice by what is stored.
+ * The network as this page can tell it before settings apply, from the URL's `fromUrl`, then localStorage, then the
+ * default. Unlike getNetwork it writes nothing, as settings tell a fresh visit from a stored choice by what is stored.
  */
-export function peekNetwork(search: URLSearchParams): Network {
+export function peekNetwork(fromUrl: Network | null): Network {
   if (networkOverride !== null) {
     return networkOverride;
   }
-  const fromUrl = search.get('network');
-  if (fromUrl !== null && isValidNetwork(fromUrl) && getEnabledNetworks().includes(fromUrl)) {
+  const enabled = getEnabledNetworks();
+  if (fromUrl !== null && enabled.includes(fromUrl)) {
     return fromUrl;
   }
   try {
-    return storedNetwork() ?? defaultNetwork();
+    return storedNetwork(enabled) ?? defaultNetwork();
   } catch {
     // localStorage is unavailable, where getNetwork falls back to the default too.
     return defaultNetwork();
@@ -359,7 +359,7 @@ export function getNetwork(): Network {
     return networkOverride;
   }
   try {
-    const stored = storedNetwork();
+    const stored = storedNetwork(getEnabledNetworks());
     if (stored !== null) {
       return stored;
     }

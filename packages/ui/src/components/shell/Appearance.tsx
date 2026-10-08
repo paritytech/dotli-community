@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { themeStore, type ThemePref } from '../../state/theme.js';
 import { selectThemePref } from '../../theme-controller.js';
@@ -65,6 +66,12 @@ function MonitorGlyph(): JSX.Element {
   );
 }
 
+const GLYPH: Record<ThemePref, () => JSX.Element> = {
+  light: SunGlyph,
+  dark: MoonGlyph,
+  system: MonitorGlyph,
+};
+
 function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element }): JSX.Element {
   return (
     <button
@@ -114,15 +121,13 @@ export function AppearancePicker(): JSX.Element {
         onTilesKeyDown(ev, pref());
       }}
     >
-      <Tile pref="light" checked={pref() === 'light'}>
-        <SunGlyph />
-      </Tile>
-      <Tile pref="dark" checked={pref() === 'dark'}>
-        <MoonGlyph />
-      </Tile>
-      <Tile pref="system" checked={pref() === 'system'}>
-        <MonitorGlyph />
-      </Tile>
+      <For each={PREFS}>
+        {value => (
+          <Tile pref={value} checked={pref() === value}>
+            {GLYPH[value]()}
+          </Tile>
+        )}
+      </For>
     </div>
   );
 }
