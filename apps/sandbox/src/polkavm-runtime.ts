@@ -18,6 +18,7 @@ import { POLKAVM_RUNTIME_SOURCE, polkaVmRuntimeAssetUrl } from './polkavm-runtim
 import { Tri2dRenderer } from './tri2d-renderer.js';
 import { installPolkaVmMenu, type PolkaVmMenu } from './polkavm-menu.js';
 import { installPolkaVmTouchControls, type PolkaVmTouchControls } from './polkavm-touch-controls.js';
+import { installHaloControlReference } from './polkavm-halo-controls.js';
 import { WebGpuBridge, observeSurfaceDimensions, type WebGpuRequirements } from './webgpu.js';
 
 const MAX_PROGRAM_BYTES = 128 * 1024 * 1024;
@@ -1840,8 +1841,15 @@ function installInput(
   let touchCaptureActive = false;
   let touchControls: PolkaVmTouchControls | null = null;
   const coarsePointer = window.matchMedia('(any-pointer: coarse)');
+  // Like Epoca's compatibility layouts, match the exact product label, never
+  // arbitrary display copy or a substring. This grants no guest authority.
+  const haloControls = location.hostname.split('.app.')[0] === 'halo' && graphicsProfile === 'webgpu-raster';
+  let virtualControls = coarsePointer.matches;
+  let virtualControlsChosen = false;
   const touchControlsEligible = (): boolean =>
-    coarsePointer.matches && inputFeatureSet.has('keyboard') && inputFeatureSet.has('pointer');
+    (haloControls ? virtualControls : coarsePointer.matches) &&
+    inputFeatureSet.has('keyboard') &&
+    inputFeatureSet.has('pointer');
   const pointerCaptureSupported =
     typeof canvas.requestPointerLock === 'function' && typeof document.exitPointerLock === 'function';
   canvas.dataset['polkavmPointerCaptureArmed'] = 'false';
@@ -2468,64 +2476,84 @@ function installInput(
   // touch hardware the host supplies that input through an FPS overlay, without
   // changing raw touch delivery for ordinary apps or requiring Pointer Lock.
   const createTouchControls = (): PolkaVmTouchControls =>
-    installPolkaVmTouchControls(canvas.parentElement ?? canvas, {
-      activate: event => {
-        canvas.focus({ preventScroll: true });
-        syncFocus();
-        resumeAudio();
-        requestDeviceMotionPermission();
-        if (!touchCaptureActive) {
-          touchCaptureActive = true;
-          pointerLockChanged();
-        }
-        if (event.isTrusted && parentOrigin !== null) {
-          window.parent.postMessage({ type: 'dotli:polkavm-user-activation' }, parentOrigin);
-        }
+    installPolkaVmTouchControls(
+      canvas.parentElement ?? canvas,
+      {
+        activate: event => {
+          canvas.focus({ preventScroll: true });
+          syncFocus();
+          resumeAudio();
+          requestDeviceMotionPermission();
+          if (captureRequested && !touchCaptureActive) {
+            touchCaptureActive = true;
+            pointerLockChanged();
+          }
+          if (event.isTrusted && parentOrigin !== null) {
+            window.parent.postMessage({ type: 'dotli:polkavm-user-activation' }, parentOrigin);
+          }
+        },
+        key: (key, down) => {
+          const code = keyCodes[key];
+          if (code === undefined || touchKeys.has(code) === down) {
+            return;
+          }
+          if (down) {
+            touchKeys.add(code);
+          } else {
+            touchKeys.delete(code);
+          }
+          if (!pressed.has(code)) {
+            send(encodedInput(down ? 1 : 2, code));
+          }
+        },
+        button: (button, down) => {
+          if (touchButtons.has(button) === down) {
+            return;
+          }
+          if (down) {
+            touchButtons.add(button);
+          } else {
+            touchButtons.delete(button);
+          }
+          if (!heldPointerButtons.has(button)) {
+            send(encodedInput(down ? 3 : 4, button, canvas.width / 2, canvas.height / 2));
+          }
+        },
+        look: (x, y) => {
+          send(encodedInput(6, 0, x, y));
+          queuePointerMotion(x, y);
+        },
       },
-      key: (key, down) => {
-        const code = keyCodes[key];
-        if (code === undefined || touchKeys.has(code) === down) {
-          return;
-        }
-        if (down) {
-          touchKeys.add(code);
-        } else {
-          touchKeys.delete(code);
-        }
-        if (!pressed.has(code)) {
-          send(encodedInput(down ? 1 : 2, code));
-        }
-      },
-      button: (button, down) => {
-        if (touchButtons.has(button) === down) {
-          return;
-        }
-        if (down) {
-          touchButtons.add(button);
-        } else {
-          touchButtons.delete(button);
-        }
-        if (!heldPointerButtons.has(button)) {
-          send(encodedInput(down ? 3 : 4, button, canvas.width / 2, canvas.height / 2));
-        }
-      },
-      look: (x, y) => {
-        send(encodedInput(6, 0, x, y));
-        queuePointerMotion(x, y);
-      },
-    });
+      haloControls ? 'halo' : 'classic',
+    );
   const updateTouchControls = (): void => {
-    const enabled = !inputPaused && captureRequested && touchControlsEligible();
+    const enabled = !inputPaused && (haloControls || captureRequested) && touchControlsEligible();
     if (enabled) {
       touchControls ??= createTouchControls();
     }
+    touchControls?.setPlaying(captureRequested);
     touchControls?.setEnabled(enabled);
-    if (!enabled && touchCaptureActive) {
+    if ((!enabled || !captureRequested) && touchCaptureActive) {
       touchCaptureActive = false;
       pointerLockChanged();
     }
   };
-  coarsePointer.addEventListener('change', updateTouchControls);
+  const reference = haloControls
+    ? installHaloControlReference(canvas.parentElement ?? canvas, virtualControls, enabled => {
+        virtualControlsChosen = true;
+        virtualControls = enabled;
+        updateTouchControls();
+      })
+    : null;
+  const coarsePointerChanged = (): void => {
+    if (!virtualControlsChosen) {
+      virtualControls = coarsePointer.matches;
+      reference?.setVirtual(virtualControls);
+    }
+    updateTouchControls();
+  };
+  coarsePointer.addEventListener('change', coarsePointerChanged);
+  updateTouchControls();
   document.addEventListener('visibilitychange', focusChanged);
   const stopObservingDimensions = observeSurfaceDimensions(metricsElement, sendSurfaceMetrics);
   canvas.addEventListener('focus', focusChanged);
@@ -2584,7 +2612,8 @@ function installInput(
       }
     },
     cleanup: () => {
-      coarsePointer.removeEventListener('change', updateTouchControls);
+      coarsePointer.removeEventListener('change', coarsePointerChanged);
+      reference?.cleanup();
       document.removeEventListener('visibilitychange', focusChanged);
       touchControls?.cleanup();
       touchCaptureActive = false;
