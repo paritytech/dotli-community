@@ -3,14 +3,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The Beta tag floats over the logo so the bar keeps the width it will have without it.
-import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
+import { LogoLockup, LogoSymbol } from '@dotli/ui/brand';
 import s from './TopbarLogo.module.css';
 
 const homeUrl = import.meta.env.VITE_APP_URL ?? '/';
 ---
 
 <a class={s['home']} id="topbar-home" href={homeUrl}>
-  <LogoSymbol class={s['mark']} />
-  <LogoWordmark class={s['brand']} />
+  <LogoLockup class={s['lockup']} height={20} />
+  <LogoSymbol class={s['mark']} height={20} />
   <span class={s['beta']}>β</span>
 </a>

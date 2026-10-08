@@ -1,15 +1,12 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Inset like the bar's icon buttons (8px plus the row's 6px). The gap and wordmark keep the Logo Guide's horizontal
-   lockup proportions, from a 64.23 high symbol with a 41.25 high wordmark 18.25 after it. */
+/* Inset like the bar's icon buttons (8px plus the row's 6px). */
 .home {
-  --symbol: 20px;
   position: relative;
   display: flex;
   flex: none;
   align-items: center;
-  gap: calc(var(--symbol) * 18.25 / 64.23);
   box-sizing: border-box;
   height: var(--h-bar-control);
   margin: 0;
@@ -22,17 +19,13 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-.mark,
-.brand {
+.lockup {
   display: block;
   flex: none;
-  width: auto;
 }
 .mark {
-  height: var(--symbol);
-}
-.brand {
-  height: calc(var(--symbol) * 41.25 / 64.23);
+  display: none;
+  flex: none;
 }
 /* Out of the flow, so the bar is laid out as it will be once the tag goes. */
 .beta {
@@ -55,8 +48,11 @@
   .home {
     padding-right: 12px;
   }
+  .mark {
+    display: block;
+  }
   /* Out of sight but still the link's accessible name. */
-  .brand {
+  .lockup {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -69,9 +65,12 @@
 }
 @media (max-width: 560px) {
   .home {
-    --symbol: 24px;
     justify-content: center;
     width: var(--h-control);
     padding: 0;
+  }
+  .mark {
+    width: auto;
+    height: 24px;
   }
 }
