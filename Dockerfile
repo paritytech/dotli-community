@@ -26,6 +26,7 @@ RUN apk add --no-cache jq
 COPY --from=build /src/apps/host/dist     /srv/dotli/host
 COPY --from=build /src/apps/sandbox/dist  /srv/dotli/app
 COPY --from=build /src/apps/protocol/dist /srv/dotli/protocol
+# The snippets include each other by ${SNIPPETS}, which the image has one of.
 COPY nginx/snippets/ /etc/nginx/snippets/
 COPY docker/dotli-runtime-network.conf /etc/nginx/snippets/
 
@@ -36,6 +37,7 @@ COPY docker/entrypoint.sh /dotli-entrypoint.sh
 # The stock default server would also claim a port. The official image lacks brotli_static, which would stop
 # nginx from starting.
 RUN rm /etc/nginx/conf.d/default.conf \
+ && sed -i 's|${SNIPPETS}|/etc/nginx/snippets|g' /etc/nginx/snippets/*.conf \
  && printf 'gzip_static on;\n' > /etc/nginx/snippets/dotli-precompressed.conf \
  && chmod +x /dotli-entrypoint.sh
 

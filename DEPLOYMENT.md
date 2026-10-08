@@ -65,8 +65,10 @@ deploys do not use these: the GitHub Actions path reads `DEPLOY_HOST` / `DEPLOY_
    `--keep-until-expiring --expand` makes re-runs cheap.
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
 6. `deploy` — runs `npm run build` on your machine `dist/` outputs into the env's web root.
-7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst) and installs it plus `nginx/snippets/`
-   into `/etc/nginx/`, runs `nginx -t`, and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
+7. `deploy-nginx` — renders `nginx/nginx.conf.template` and `nginx/snippets/` for the env (envsubst), installs the site
+   into `/etc/nginx/sites-available/` and the snippets into `/etc/nginx/snippets/<site>/`, runs `nginx -t`, and reloads
+   nginx. Each env has its own snippets, so a deploy never changes another env's. Preview the site with
+   `make render-nginx ENV=<env>`.
 
 ## Run it
 

@@ -1,7 +1,7 @@
 name: Deploy nginx
 
-# Gated by the environment's protection rules and deployment branch policy. Snippets are shared by every site on a
-# box, so a deploy to one environment reloads them for its neighbours too.
+# Gated by the environment's protection rules and deployment branch policy. Each environment installs its own copy of
+# the snippets, but nginx reloads as a whole, so a config that fails `nginx -t` blocks reloads for its neighbours.
 
 run-name: Deploy nginx to ${{ inputs.environment }} from ${{ github.ref_name }}
 
