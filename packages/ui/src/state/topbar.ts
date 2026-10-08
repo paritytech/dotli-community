@@ -12,7 +12,6 @@ export interface TopbarState {
   blockingModalActive: boolean;
   /** Prompts queued behind the one on screen. */
   blockingModalsWaiting: number;
-  chainsButtonVisible: boolean;
   /** SettingsPopover writes it as the panel opens and closes, and opens the panel when openSettings() sets it. */
   settingsOpen: boolean;
 }
@@ -25,7 +24,6 @@ const topbar = createSyncStore<TopbarState>(
     autoHide: false,
     blockingModalActive: false,
     blockingModalsWaiting: 0,
-    chainsButtonVisible: false,
     settingsOpen: false,
   },
   { equals: shallowEqual },
@@ -53,10 +51,6 @@ export function setBlockingModalActive(active: boolean): void {
 
 export function setBlockingModalsWaiting(blockingModalsWaiting: number): void {
   topbar.set({ ...topbar.get(), blockingModalsWaiting });
-}
-
-export function recordChainsButtonVisible(visible: boolean): void {
-  topbar.set({ ...topbar.get(), chainsButtonVisible: visible });
 }
 
 /** For a control outside the bar that sends the visitor to Settings, such as an error page's. */

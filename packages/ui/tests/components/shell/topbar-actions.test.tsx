@@ -9,7 +9,6 @@ import { TopbarActions } from '../../../src/components/shell/TopbarActions.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
-import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { initChatPanelState } from '../../../src/state/chat-panel.js';
@@ -134,20 +133,15 @@ describe('Topbar actions island', () => {
     expect(byId('mode-popover').hasAttribute('data-open')).toBe(true);
   });
 
-  it("As a mobile user, once a product is on screen the More menu's Network row opens the network panel", async () => {
+  it("As a mobile user, the More menu's Network row opens the network panel", async () => {
     // Given
     stubTopbarLayout(MORE_ONLY);
     await renderIsland();
     await openMore();
-    expect(document.querySelector('#more-popover [role="menuitem"][data-item="network"]')).toBeNull();
-
-    // When
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
-    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Syncing');
-    expect(moreRow('network').textContent).toBe('NetworkSyncing');
+    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Not in use');
+    expect(moreRow('network').textContent).toBe('NetworkNot in use');
 
     // When
     await tapMoreRow('network');
@@ -177,8 +171,6 @@ describe('Topbar actions island', () => {
 
     // When
     await renderIsland();
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
     expect(await moreRowNames()).toEqual([]);
@@ -191,19 +183,16 @@ describe('Topbar actions island', () => {
   });
 
   it('As a phone user, the Network row leads the More menu with its status dot and verdict word, and More carries the health badge', async () => {
-    // Given: the chains are still starting, on a phone bar with room for More only
+    // Given: no chain in use, on a phone bar with room for More only
     stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
     const more = byId('more-button');
     expect((await moreRowNames())[0]).toBe('network');
-    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
-    expect(more.getAttribute('data-tone')).toBe('idle');
-    expect(more.getAttribute('aria-label')).toBe('More, network syncing');
+    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Not in use');
+    expect(more.getAttribute('aria-label')).toBe('More');
 
     // When
     initNetworkHealth();

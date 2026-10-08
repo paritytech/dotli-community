@@ -1,55 +1,49 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getActiveChainRoles } from '@dotli/config';
+import type { ChainActivity } from '@dotli/protocol';
+import type * as ProtocolModule from '@dotli/protocol';
 import {
   classifyGap,
-  endNetworkWatch,
   getNetworkStatus,
   resetNetworkMonitor,
-  setBlockSource,
-  startNetworkWatch,
-  stopNetworkWatch,
   getTransfer,
-  holdNetworkWatch,
+  recordBestBlock,
+  recordChainActivity,
   recordChainPhase,
   recordPeerCount,
   recordTransfer,
   subscribeNetwork,
-  type BlockSource,
   type ChainStatus,
 } from '../src/network-monitor.js';
-import { getActiveChainRoles } from '@dotli/config';
 import { nth } from './helpers/nth.js';
+import { must } from './support.js';
 
-// Mirror of IDLE_GRACE_MS in network-monitor.ts.
-const GRACE_MS = 60_000;
+const reach = vi.hoisted(() => ({ unreachable: new Set<string>() }));
+vi.mock('@dotli/protocol', async importOriginal => ({
+  ...(await importOriginal<typeof ProtocolModule>()),
+  isRemoteChainConnectable: (genesis: string) => !reach.unreachable.has(genesis.toLowerCase()),
+}));
+
 // Mirror of MAX_BARS in network-monitor.ts. A memory ceiling only, as the panel measures what a visitor sees.
 const MAX_BARS = 120;
+const EXTRA = `0x${'ab'.repeat(32)}`;
 
-/** A source the test drives by hand, one emitter per chain. */
-function fakeSource(unreachable: string[] = []): {
-  source: BlockSource;
-  emit: (genesis: string, blockNumber: number) => void;
-  liveCount: () => number;
-} {
-  const emitters = new Map<string, (n: number) => void>();
-  let live = 0;
-  return {
-    source: {
-      isReachable: genesis => !unreachable.includes(genesis),
-      subscribe: (genesis, onBlock) => {
-        emitters.set(genesis, onBlock);
-        live += 1;
-        return () => {
-          emitters.delete(genesis);
-          live -= 1;
-        };
-      },
-    },
-    emit: (genesis, blockNumber) => {
-      emitters.get(genesis)?.(blockNumber);
-    },
-    liveCount: () => live,
-  };
+const relayGenesis = (): string => nth(getActiveChainRoles(), 0).genesis;
+
+/** A consumer holds the chain, connected and following, unless the test says otherwise. */
+function use(genesis: string, overrides: Partial<ChainActivity> = {}): void {
+  recordChainActivity({ genesisHash: genesis, consumers: 1, status: 'connected', following: true, ...overrides });
 }
+
+function release(genesis: string): void {
+  recordChainActivity({ genesisHash: genesis, consumers: 0, status: 'connected', following: false });
+}
+
+const chainByKey = (key: string): ChainStatus =>
+  must(
+    getNetworkStatus().find(chain => chain.key === key),
+    key,
+  );
 
 describe('Block arrival colouring works', () => {
   it('As a user, a block inside the expected time reads healthy', () => {
@@ -81,36 +75,111 @@ describe('The network monitor tracks blocks', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
+    reach.unreachable.clear();
   });
 
   afterEach(() => {
     resetNetworkMonitor();
+    reach.unreachable.clear();
     vi.useRealTimers();
   });
 
-  it('As a user opening the panel, every chain of my network is listed', () => {
-    // Given
-    const { source } = fakeSource();
-    setBlockSource(source);
+  it('As a user opening the panel, every known chain of my network is listed and unused', () => {
+    // Then
+    expect(getNetworkStatus().map(chain => [chain.key, chain.label, chain.state])).toEqual([
+      ['relay', 'Relay', 'unused'],
+      ['assethub', 'Hub', 'unused'],
+      ['bulletin', 'Storage', 'unused'],
+      ['people', 'Identity', 'unused'],
+    ]);
+  });
 
+  it('As a user, a chain nobody uses records no blocks', () => {
     // When
-    startNetworkWatch();
+    recordBestBlock(relayGenesis(), 100);
 
     // Then
-    const labels = getNetworkStatus().map(c => c.label);
-    expect(labels).toEqual(['Relay', 'Hub', 'Storage', 'Identity']);
+    expect(chainByKey('relay').latest).toBeNull();
+  });
+
+  it('As a user, a chain the pool names in lowercase lands on its known row', () => {
+    // When
+    use(relayGenesis().toUpperCase().replace(/^0X/, '0x'));
+    use(relayGenesis().toLowerCase());
+
+    // Then
+    expect(getNetworkStatus()).toHaveLength(4);
+    expect(chainByKey('relay').state).not.toBe('unused');
+  });
+
+  it('As a user, a known chain going unused keeps its bars and stops its clock', () => {
+    // Given
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 100);
+    vi.advanceTimersByTime(6000);
+    recordBestBlock(relayGenesis(), 101);
+
+    // When
+    release(relayGenesis());
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ latest: 101, sinceLast: null, state: 'unused' });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
+  });
+
+  it('As a user, a chain held again carries on from its next block, with no bar for the time it was unused', () => {
+    // Given
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 100);
+    vi.advanceTimersByTime(6000);
+    recordBestBlock(relayGenesis(), 101);
+    release(relayGenesis());
+    vi.advanceTimersByTime(60_000);
+
+    // When
+    use(relayGenesis());
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+
+    // When
+    recordBestBlock(relayGenesis(), 120);
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ latest: 120, state: 'live' });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
+  });
+
+  it('As a user of a product on another chain, it is listed while in use and gone after', () => {
+    // When
+    use(EXTRA);
+
+    // Then
+    expect(chainByKey(EXTRA)).toMatchObject({ role: null, label: '0xabab…abab', blockTimeMs: 6000, reachable: true });
+
+    // When
+    release(EXTRA);
+
+    // Then
+    expect(getNetworkStatus().some(chain => chain.key === EXTRA)).toBe(false);
+  });
+
+  it('As a user, a chain released before it was ever held is never listed', () => {
+    // When
+    release(EXTRA);
+
+    // Then
+    expect(getNetworkStatus()).toHaveLength(4);
   });
 
   it('As a user watching a chain, the first block anchors and later ones get bars', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const relay = nth(getNetworkStatus(), 0);
     const genesis = relayGenesis();
 
     // When
-    emit(genesis, 100);
+    recordBestBlock(genesis, 100);
 
     // Then
     expect(getNetworkStatus()[0]?.bars.length).toBe(0);
@@ -118,7 +187,7 @@ describe('The network monitor tracks blocks', () => {
 
     // When
     vi.advanceTimersByTime(relay.blockTimeMs);
-    emit(genesis, 101);
+    recordBestBlock(genesis, 101);
 
     // Then
     expect(getNetworkStatus()[0]?.bars).toEqual([{ number: 101, health: 'onTime', gapMs: relay.blockTimeMs }]);
@@ -126,19 +195,17 @@ describe('The network monitor tracks blocks', () => {
 
   it('As a reader holding a snapshot, later blocks do not change its bars', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const relay = nth(getNetworkStatus(), 0);
     const genesis = relayGenesis();
-    emit(genesis, 100);
+    recordBestBlock(genesis, 100);
     vi.advanceTimersByTime(relay.blockTimeMs);
-    emit(genesis, 101);
+    recordBestBlock(genesis, 101);
     const held = nth(getNetworkStatus(), 0).bars;
 
     // When
     vi.advanceTimersByTime(relay.blockTimeMs);
-    emit(genesis, 102);
+    recordBestBlock(genesis, 102);
 
     // Then
     expect(held.map(b => b.number)).toEqual([101]);
@@ -148,15 +215,13 @@ describe('The network monitor tracks blocks', () => {
 
   it('As a user on a degraded chain, the bar for a slow block is not green', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const genesis = relayGenesis();
-    emit(genesis, 1);
+    recordBestBlock(genesis, 1);
 
     // When
     vi.advanceTimersByTime(60_000);
-    emit(genesis, 2);
+    recordBestBlock(genesis, 2);
 
     // Then
     expect(getNetworkStatus()[0]?.bars[0]?.health).toBe('veryLate');
@@ -164,15 +229,13 @@ describe('The network monitor tracks blocks', () => {
 
   it('As a user with the panel open all day, memory stays bounded', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const genesis = relayGenesis();
 
     // When
     for (let i = 0; i < MAX_BARS + 15; i += 1) {
       vi.advanceTimersByTime(6000);
-      emit(genesis, i);
+      recordBestBlock(genesis, i);
     }
 
     // Then
@@ -181,15 +244,13 @@ describe('The network monitor tracks blocks', () => {
 
   it('As a user who kept the panel open, more history is retained than a strip can show', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const genesis = relayGenesis();
 
     // When
     for (let i = 0; i < 60; i += 1) {
       vi.advanceTimersByTime(6000);
-      emit(genesis, i);
+      recordBestBlock(genesis, i);
     }
 
     // Then
@@ -198,20 +259,18 @@ describe('The network monitor tracks blocks', () => {
 
   it('As a user on a chain that republishes its head, one block makes one bar', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const genesis = relayGenesis();
 
     // When
     vi.advanceTimersByTime(6000);
-    emit(genesis, 100);
+    recordBestBlock(genesis, 100);
     vi.advanceTimersByTime(6000);
-    emit(genesis, 101);
-    emit(genesis, 101);
-    emit(genesis, 101);
+    recordBestBlock(genesis, 101);
+    recordBestBlock(genesis, 101);
+    recordBestBlock(genesis, 101);
     vi.advanceTimersByTime(6000);
-    emit(genesis, 102);
+    recordBestBlock(genesis, 102);
 
     // Then
     const bars = nth(getNetworkStatus(), 0).bars;
@@ -220,114 +279,62 @@ describe('The network monitor tracks blocks', () => {
 
   it('As a user whose chain reorgs to an earlier block, the strip does not go backwards', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const genesis = relayGenesis();
 
     // When
     vi.advanceTimersByTime(6000);
-    emit(genesis, 200);
+    recordBestBlock(genesis, 200);
     vi.advanceTimersByTime(6000);
-    emit(genesis, 201);
+    recordBestBlock(genesis, 201);
     vi.advanceTimersByTime(6000);
-    emit(genesis, 199);
+    recordBestBlock(genesis, 199);
 
     // Then
     expect(getNetworkStatus()[0]?.bars.map(b => b.number)).toEqual([201]);
   });
 
-  it('As a user reopening the panel quickly, watching never stopped', () => {
+  it('As a user on a network missing an endpoint, that chain is marked unreachable and never in use', () => {
     // Given
-    const { source, liveCount } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
-    const before = liveCount();
+    reach.unreachable.add(relayGenesis().toLowerCase());
 
     // When
-    stopNetworkWatch();
-    vi.advanceTimersByTime(GRACE_MS - 1000);
-    startNetworkWatch();
-    vi.advanceTimersByTime(GRACE_MS * 2);
+    use(relayGenesis());
 
     // Then
-    expect(liveCount()).toBe(before);
-  });
-
-  it('As a user who closed the panel and walked away, nothing is left watching', () => {
-    // Given
-    const { source, liveCount } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
-    expect(liveCount()).toBeGreaterThan(0);
-
-    // When
-    stopNetworkWatch();
-    vi.advanceTimersByTime(GRACE_MS + 1000);
-
-    // Then
-    expect(liveCount()).toBe(0);
-  });
-
-  it('As a user on a network missing an endpoint, that chain is marked unreachable', () => {
-    // Given
-    const { source } = fakeSource([relayGenesis()]);
-    setBlockSource(source);
-
-    // When
-    startNetworkWatch();
-
-    // Then
-    expect(getNetworkStatus()[0]?.reachable).toBe(false);
+    expect(chainByKey('relay')).toMatchObject({ reachable: false, state: 'unused' });
   });
 
   it('As a user with the panel open, a new block shows up the moment it lands', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     let calls = 0;
     const off = subscribeNetwork(() => {
       calls += 1;
     });
 
     // When
-    emit(relayGenesis(), 7);
+    recordBestBlock(relayGenesis(), 7);
 
     // Then
     expect(calls).toBe(1);
     off();
-    emit(relayGenesis(), 8);
+    recordBestBlock(relayGenesis(), 8);
     expect(calls).toBe(1);
   });
 
   it('As a user hovering a bar, the gap that produced it is recorded', () => {
     // Given
-    const { source, emit } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
+    use(relayGenesis());
     const genesis = relayGenesis();
-    emit(genesis, 1);
+    recordBestBlock(genesis, 1);
 
     // When
     vi.advanceTimersByTime(15_000);
-    emit(genesis, 2);
+    recordBestBlock(genesis, 2);
 
     // Then
     expect(getNetworkStatus()[0]?.bars[0]?.gapMs).toBe(15_000);
-  });
-
-  it('As a user closing the page, nothing keeps watching the chains', () => {
-    // Given
-    const { source, liveCount } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
-
-    // When
-    endNetworkWatch();
-
-    // Then
-    expect(liveCount()).toBe(0);
   });
 });
 
@@ -335,31 +342,21 @@ describe('The network monitor tracks peers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
+    reach.unreachable.clear();
   });
 
   afterEach(() => {
     resetNetworkMonitor();
+    reach.unreachable.clear();
     vi.useRealTimers();
   });
 
   it('As a user opening the panel before any sample, no chain claims a peer count', () => {
-    // Given
-    const { source } = fakeSource();
-    setBlockSource(source);
-
-    // When
-    startNetworkWatch();
-
     // Then
     expect(getNetworkStatus().map(c => c.peers)).toEqual([null, null, null, null]);
   });
 
   it('As a user watching the panel, each chain reports the peers it actually holds', () => {
-    // Given
-    const { source } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
-
     // When
     recordPeerCount('relay', 7);
     recordPeerCount('assethub', 3);
@@ -373,9 +370,6 @@ describe('The network monitor tracks peers', () => {
 
   it('As a user, the panel repaints when a peer count changes and stays quiet when it repeats', () => {
     // Given
-    const { source } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
     let woken = 0;
     subscribeNetwork(() => {
       woken += 1;
@@ -389,33 +383,18 @@ describe('The network monitor tracks peers', () => {
     // Then
     expect(woken).toBe(2);
   });
-
-  it('As a user who closed the panel and reopened it, the peer count survived', () => {
-    // Given
-    const { source } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
-    recordPeerCount('relay', 6);
-
-    // When
-    stopNetworkWatch();
-    vi.advanceTimersByTime(GRACE_MS + 1_000);
-    startNetworkWatch();
-
-    // Then
-    const relay = getNetworkStatus().find(c => c.role === 'relay');
-    expect(relay?.peers).toBe(6);
-  });
 });
 
 describe('The network monitor tracks the connection', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
+    reach.unreachable.clear();
   });
 
   afterEach(() => {
     resetNetworkMonitor();
+    reach.unreachable.clear();
     vi.useRealTimers();
   });
 
@@ -473,30 +452,22 @@ describe('The network monitor tracks the phase of each chain', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
+    reach.unreachable.clear();
   });
 
   afterEach(() => {
     resetNetworkMonitor();
+    reach.unreachable.clear();
     vi.useRealTimers();
   });
 
   it('As a user opening the panel before the light client speaks, no phase is claimed', () => {
-    // Given
-    const { source } = fakeSource();
-    setBlockSource(source);
-
-    // When
-    startNetworkWatch();
-
     // Then
     expect(getNetworkStatus().map(c => c.phase)).toEqual([null, null, null, null]);
   });
 
   it('As a user watching a chain come up, the panel follows it through to ready', () => {
     // Given
-    const { source } = fakeSource();
-    setBlockSource(source);
-    startNetworkWatch();
     const relay = (): ChainStatus | undefined => getNetworkStatus().find(c => c.role === 'relay');
 
     // When
@@ -525,15 +496,11 @@ describe('The network monitor tracks the phase of each chain', () => {
   });
 });
 
-/** The relay genesis of the active network, which the fake source keys on. */
-function relayGenesis(): string {
-  return nth(getActiveChainRoles(), 0).genesis;
-}
-
-describe('Several readers share the network watch', () => {
+describe('The network monitor judges how each chain is used', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
+    reach.unreachable.clear();
   });
 
   afterEach(() => {
@@ -541,45 +508,134 @@ describe('Several readers share the network watch', () => {
     vi.useRealTimers();
   });
 
-  it('As a user, closing the network menu keeps the watch the status capsule holds', () => {
+  it('As a user whose app dropped its block follow but kept the chain, the chain stops its clock and is not overdue', () => {
     // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
-    const capsule = holdNetworkWatch();
-    const menu = holdNetworkWatch();
-    const live = fake.liveCount();
-    expect(live).toBeGreaterThan(0);
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 100);
+    vi.advanceTimersByTime(6000);
+    recordBestBlock(relayGenesis(), 101);
 
     // When
-    menu();
-    vi.advanceTimersByTime(GRACE_MS + 1000);
+    use(relayGenesis(), { following: false });
+    vi.advanceTimersByTime(120_000);
 
     // Then
-    expect(fake.liveCount()).toBe(live);
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', alarm: false, sinceLast: null, latest: 101 });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
 
     // When
-    capsule();
-    vi.advanceTimersByTime(GRACE_MS + 1000);
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 140);
 
     // Then
-    expect(fake.liveCount()).toBe(0);
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', latest: 140 });
+    expect(chainByKey('relay').bars.map(bar => bar.number)).toEqual([101]);
   });
 
-  it('As a reader released twice by a repeated cleanup, I do not release another reader', () => {
-    // Given
-    const fake = fakeSource();
-    setBlockSource(fake.source);
-    const capsule = holdNetworkWatch();
-    const menu = holdNetworkWatch();
-    const live = fake.liveCount();
-
+  it('As a user, a followed chain is pending until its first block, then live', () => {
     // When
-    menu();
-    menu();
-    vi.advanceTimersByTime(GRACE_MS + 1000);
+    use(relayGenesis());
 
     // Then
-    expect(fake.liveCount()).toBe(live);
-    capsule();
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+
+    // When
+    recordBestBlock(relayGenesis(), 100);
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', alarm: false });
+  });
+
+  it('As a user on trusted providers, a chain held without a follow is judged by its connection', () => {
+    // When
+    use(relayGenesis(), { following: false, status: 'connecting' });
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+
+    // When
+    use(relayGenesis(), { following: false, status: 'connected' });
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', alarm: false });
+
+    // When
+    use(relayGenesis(), { following: false, status: 'connecting' });
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', alarm: true });
+  });
+
+  it('As a user, a chain released and held again starts its connection afresh', () => {
+    // Given
+    use(relayGenesis(), { following: false, status: 'connected' });
+    release(relayGenesis());
+
+    // When
+    use(relayGenesis(), { following: false, status: 'connecting' });
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+  });
+
+  it('As a user on trusted providers, a chain that reconnected while nothing held it starts afresh when held again', () => {
+    // Given
+    use(relayGenesis(), { following: false, status: 'connecting' });
+    release(relayGenesis());
+    recordChainActivity({ genesisHash: relayGenesis(), consumers: 0, status: 'connected', following: false });
+
+    // When
+    use(relayGenesis(), { following: false, status: 'connecting' });
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+  });
+
+  it('As a user loading a product, the frame syncing an unused chain counts as pending', () => {
+    // When
+    recordChainPhase('relay', 'syncing');
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'pending', alarm: false });
+
+    // When
+    recordChainPhase('relay', 'ready');
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'unused', alarm: false });
+  });
+
+  it('As a user, a frame chain that was ready and drops back to connecting raises the alarm, used or not', () => {
+    // Given
+    recordChainPhase('relay', 'ready');
+
+    // When
+    recordChainPhase('relay', 'connecting');
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', alarm: true });
+  });
+
+  it('As a user, a chain in use that the frame calls stalled raises the alarm', () => {
+    // Given
+    use(relayGenesis());
+    recordBestBlock(relayGenesis(), 100);
+
+    // When
+    recordChainPhase('relay', 'stalled');
+
+    // Then
+    expect(chainByKey('relay')).toMatchObject({ state: 'live', alarm: true });
+  });
+
+  it('As a user, an extra chain that was connected and reconnects raises the alarm', () => {
+    // Given
+    use(EXTRA, { following: false, status: 'connected' });
+
+    // When
+    use(EXTRA, { following: false, status: 'connecting' });
+
+    // Then
+    expect(chainByKey(EXTRA)).toMatchObject({ state: 'live', alarm: true });
   });
 });

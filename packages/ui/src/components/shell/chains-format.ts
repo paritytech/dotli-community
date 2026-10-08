@@ -41,37 +41,35 @@ export function slotOpacity(slot: number): string {
 
 export interface LiveVerdict {
   text: string;
-  tone: Extract<StatusTone, 'ok' | 'warn' | 'idle'>;
+  tone: Extract<StatusTone, 'ok' | 'warn' | 'idle' | 'quiet'>;
   /** The chains behind a warning, by label. */
   slow?: readonly string[];
 }
 
+/** Live but past three block times, which the monitor leaves to the verdict so overdue is judged in one place. */
+function isOverdue(chain: ChainClock): boolean {
+  return chain.state === 'live' && chain.sinceLast !== null && chain.sinceLast > chain.blockTimeMs * 3;
+}
+
 /**
- * The overall verdict, from blocks actually arriving.
- * Lifecycle milestones are terminal, so a verdict built from them would latch and outlive a dead connection.
+ * The overall verdict, over the chains in use or pending only. Lifecycle milestones reach it through the monitor's
+ * state and alarm, never directly, so a verdict cannot latch on a dead connection.
  */
 export function describeLiveNetwork(status: readonly ChainClock[]): LiveVerdict {
-  const chains = status.filter(c => c.reachable);
-  if (chains.length === 0) {
-    return { text: 'Starting', tone: 'idle' };
+  const counted = status.filter(chain => chain.state !== 'unused');
+  if (counted.length === 0) {
+    return { text: 'Not in use', tone: 'quiet' };
   }
-  const started = chains.filter(c => c.latest !== null);
-  if (started.length === 0) {
+  const slow = counted.filter(chain => chain.alarm || isOverdue(chain)).map(chain => chain.label);
+  if (slow.length > 0) {
+    return { text: `Waiting on ${slow.join(' and ')}`, tone: 'warn', slow };
+  }
+  const live = counted.filter(chain => chain.state === 'live').length;
+  if (live === 0) {
     return { text: 'Connecting', tone: 'idle' };
   }
-  const overdue = started.filter(c => c.sinceLast !== null && c.sinceLast > c.blockTimeMs * 3);
-  if (overdue.length > 0) {
-    return {
-      text: `Waiting on ${overdue.map(c => c.label).join(' and ')}`,
-      tone: 'warn',
-      slow: overdue.map(c => c.label),
-    };
-  }
-  if (started.length < chains.length) {
-    return {
-      text: `Connecting, ${String(started.length)} of ${String(chains.length)} ready`,
-      tone: 'idle',
-    };
+  if (live < counted.length) {
+    return { text: `Connecting, ${String(live)} of ${String(counted.length)} ready`, tone: 'idle' };
   }
   return { text: 'Your connection is good', tone: 'ok' };
 }
@@ -116,7 +114,7 @@ interface Captions {
 const LIGHT_CLIENT: Captions = {
   offline: 'No peers on any chain. Retrying.',
   ok: chainCount => `Light client is ${inSync(chainCount)}`,
-  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} short on peers`,
+  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} behind`,
   starting: 'Finding peers. This takes a few seconds.',
 };
 
@@ -140,6 +138,9 @@ export function describeNetworkStatus(
   const captions = backend === 'rpc-gateway' ? GATEWAY : LIGHT_CLIENT;
   if (offline) {
     return { tone: 'err', title: 'You are offline', detail: captions.offline };
+  }
+  if (verdict.tone === 'quiet') {
+    return { tone: 'quiet', title: 'No chains in use', detail: 'Chains appear here once the app connects to them.' };
   }
   const { text, tone, slow } = verdict;
   if (tone === 'ok') {

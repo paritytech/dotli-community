@@ -13,12 +13,7 @@ import { CHAT_AVAILABILITY_EVENT } from '@dotli/shared';
 import type { ReadableStore } from '../../src/state/create-store.js';
 import { resetStores } from '../helpers/solid.js';
 import { getLoadingState, loadingStore, updateLoading } from '../../src/state/loading.js';
-import {
-  recordChainsButtonVisible,
-  setBlockingModalActive,
-  setTopbarVisible,
-  topbarStore,
-} from '../../src/state/topbar.js';
+import { setBlockingModalActive, setTopbarVisible, topbarStore } from '../../src/state/topbar.js';
 import {
   chatPanelStore,
   initChatPanelState,
@@ -110,15 +105,13 @@ describe('store equality', () => {
     topbar.stop();
   });
 
-  it('As the topbar, an unchanged blocking-modal flag or chains button notifies nobody', () => {
+  it('As the topbar, an unchanged blocking-modal flag notifies nobody', () => {
     // Given
     setBlockingModalActive(true);
-    recordChainsButtonVisible(true);
     const topbar = countNotifications(topbarStore);
 
     // When
     setBlockingModalActive(true);
-    recordChainsButtonVisible(true);
 
     // Then
     expect(topbar.count()).toBe(0);

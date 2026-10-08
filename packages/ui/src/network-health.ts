@@ -7,7 +7,7 @@ import type { StatusTone } from './components/primitives/StatusDot.js';
 import { describeLiveNetwork } from './components/shell/chains-format.js';
 import type { ChainClock } from './network-monitor.js';
 
-export type NetworkHealth = Extract<StatusTone, 'ok' | 'idle' | 'warn' | 'err'>;
+export type NetworkHealth = Extract<StatusTone, 'ok' | 'idle' | 'warn' | 'err' | 'quiet'>;
 
 export function judgeNetworkHealth(status: readonly ChainClock[], online: boolean): NetworkHealth {
   return online ? describeLiveNetwork(status).tone : 'err';
@@ -17,7 +17,7 @@ export function judgeNetworkHealth(status: readonly ChainClock[], online: boolea
 export function nextOverdueAt(status: readonly ChainClock[], now: number): number | null {
   let at: number | null = null;
   for (const chain of status) {
-    if (!chain.reachable || chain.latest === null || chain.sinceLast === null) {
+    if (chain.state !== 'live' || chain.alarm || chain.latest === null || chain.sinceLast === null) {
       continue;
     }
     const limit = chain.blockTimeMs * 3;
@@ -34,6 +34,7 @@ const WORDS: Record<NetworkHealth, string> = {
   idle: 'Syncing',
   warn: 'Unstable',
   err: 'Offline',
+  quiet: 'Not in use',
 };
 
 export function healthWord(health: NetworkHealth): string {

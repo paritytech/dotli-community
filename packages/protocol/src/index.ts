@@ -20,7 +20,13 @@ export {
   haltReasonOf,
   type RemoteChainHalt,
 } from './chain-halted.js';
-export { createChainPool, type ChainPool, type LeaseProvider } from './chain-pool.js';
+export {
+  createChainPool,
+  type ChainActivity,
+  type ChainPool,
+  type ChainPoolWatcher,
+  type LeaseProvider,
+} from './chain-pool.js';
 export {
   clearSharedAuthStorage,
   clearSharedModeStorage,

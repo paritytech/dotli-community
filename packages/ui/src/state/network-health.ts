@@ -1,19 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Once chains exist it also holds the network watch and rechecks when the first chain would pass
-// three block times, because a stalled chain sends no event. A hidden tab is judged when it shows.
+// Rechecks when the first live chain would pass three block times, because a stalled chain sends no event. A hidden
+// tab is judged when it shows.
 
-import { getChainClocks, holdNetworkWatch, subscribeNetwork } from '../network-monitor.js';
+import { getChainClocks, subscribeNetwork } from '../network-monitor.js';
 import { judgeNetworkHealth, nextOverdueAt, type NetworkHealth } from '../network-health.js';
 import { createSyncStore, registerStoreStateReset, type ReadableStore } from './create-store.js';
 
-const health = createSyncStore<NetworkHealth>('network-health', 'idle');
+const health = createSyncStore<NetworkHealth>('network-health', 'quiet');
 
 export const networkHealthStore: ReadableStore<NetworkHealth> = health;
 
 let stopInit: (() => void) | null = null;
-let releaseWatch: (() => void) | null = null;
 let recheck: ReturnType<typeof setTimeout> | null = null;
 /** Lets a notify that moves no deadline leave `recheck` be. */
 let recheckAt: number | null = null;
@@ -34,7 +33,7 @@ function judge(): void {
   const now = Date.now();
   const clocks = getChainClocks(now);
   health.set(judgeNetworkHealth(clocks, navigator.onLine));
-  const at = releaseWatch === null ? null : nextOverdueAt(clocks, now);
+  const at = nextOverdueAt(clocks, now);
   if (at === recheckAt) {
     return;
   }
@@ -68,30 +67,15 @@ export function initNetworkHealth(): () => void {
     window.removeEventListener('online', judge);
     window.removeEventListener('offline', judge);
     document.removeEventListener('visibilitychange', judge);
-    setNetworkHealthWatched(false);
+    disarm();
     stopInit = null;
   };
   stopInit = stop;
   return stop;
 }
 
-/** True while chains exist. */
-export function setNetworkHealthWatched(watched: boolean): void {
-  if (watched && releaseWatch === null) {
-    releaseWatch = holdNetworkWatch();
-    judge();
-    return;
-  }
-  if (!watched && releaseWatch !== null) {
-    releaseWatch();
-    releaseWatch = null;
-    judge();
-  }
-}
-
 registerStoreStateReset(() => {
   stopInit?.();
-  // A watch can be held without init (setChainsButtonVisible alone).
-  setNetworkHealthWatched(false);
-  health.set('idle');
+  disarm();
+  health.set('quiet');
 });
