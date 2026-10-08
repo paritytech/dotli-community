@@ -262,7 +262,16 @@ function createCore(product: PageProduct): Core {
   log.event('wallet core create', { flow: 'wallet', landing: product === LANDING_PRODUCT });
   const coordinator = modalCoordinator;
   const blockingModalScope = coordinator.createScope();
-  const profileLifetime = new AbortController();
+  let profileLifetime = new AbortController();
+  let profileAccount: string | undefined;
+  const profileInvalidators = new Set<() => void>();
+  const invalidateProfiles = (): void => {
+    profileLifetime.abort();
+    profileLifetime = new AbortController();
+    for (const invalidate of profileInvalidators) {
+      invalidate();
+    }
+  };
   const connectionDisposers = new Set<() => void>();
   let runtimeCallbacks: RequiredHostCallbacks | undefined;
   const context = isExperimentalWalletActive() ? localWalletContext() : undefined;
@@ -332,7 +341,7 @@ function createCore(product: PageProduct): Core {
       pairingDotSuffix: product.pairing?.dotSuffix,
       pairingHostGlobal: product.pairing?.hostGlobal,
       blockingModalScope,
-      profileSignal: profileLifetime.signal,
+      profileSignal: () => profileLifetime.signal,
       ...(custodyLease === undefined ? {} : { custodyLease }),
       ...(nativeContacts === undefined ? {} : { contacts: nativeContacts.callbacks }),
       ...(contactsDirectory === undefined ? {} : { contactsDirectory }),
@@ -364,6 +373,12 @@ function createCore(product: PageProduct): Core {
     callbacks.auth.authStateChanged = state => {
       if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
         return;
+      }
+      const profileSession =
+        state.tag === 'Connected' ? `${state.value.publicKey}:${state.value.identityAccountId ?? ''}` : undefined;
+      if (profileSession !== profileAccount) {
+        profileAccount = profileSession;
+        invalidateProfiles();
       }
       contactsDirectory?.invalidate();
       if (context === undefined) {
@@ -407,6 +422,7 @@ function createCore(product: PageProduct): Core {
       unsubscribeStore = onStoredSessionChanged(() => {
         // Fence both local and cross-tab changes before the worker reloads auth.
         setNotificationAccount(product.label, undefined);
+        invalidateProfiles();
         pairing.notifySessionStoreChanged();
       });
       queueMicrotask(() => {
@@ -543,7 +559,12 @@ function createCore(product: PageProduct): Core {
         throw new Error('Page core callbacks are unavailable');
       }
       const scope = coordinator.createScope();
-      const connectionLifetime = new AbortController();
+      let connectionLifetime = new AbortController();
+      const invalidateProfile = (): void => {
+        connectionLifetime.abort();
+        connectionLifetime = new AbortController();
+        options.contactAvatars?.clear();
+      };
       const contacts =
         contactsDirectory === undefined
           ? undefined
@@ -551,7 +572,7 @@ function createCore(product: PageProduct): Core {
       const callbacks = createHostCallbacks({
         label: product.label,
         blockingModalScope: scope,
-        profileSignal: connectionLifetime.signal,
+        profileSignal: () => connectionLifetime.signal,
         ...(options.contactAvatars === undefined ? {} : { contactAvatars: options.contactAvatars }),
         ...(custodyLease === undefined ? {} : { custodyLease }),
         ...(contacts === undefined ? {} : { contacts: contacts.callbacks }),
@@ -581,10 +602,12 @@ function createCore(product: PageProduct): Core {
         options.contactAvatars?.dispose();
         options.contactLabels?.dispose();
         connectionDisposers.delete(dispose);
+        profileInvalidators.delete(invalidateProfile);
         contacts?.dispose();
         scope.dispose();
       };
       connectionDisposers.add(dispose);
+      profileInvalidators.add(invalidateProfile);
       return { callbacks, dispose };
     },
     dispose() {

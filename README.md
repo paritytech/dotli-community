@@ -785,8 +785,10 @@ wallet custody and wallet/network namespaces. A network without a configured reg
 
 Profiles and contact-avatar layers are Solid host surfaces attached to the product's connection to the shared page core.
 Closing or retiring the connection aborts pending loads, removes its drawer and avatars, and releases decrypted image
-URLs. Profile content is self-described; verified Chat attribution confirms who shared a reference, not who an image
-depicts.
+URLs. Sign-out, account replacement and paired-session storage changes also retire that session's profile UI without
+preventing a later session from presenting on the same connection. Mood rings disappear when their lifetime expires,
+including in an already-open drawer. Profile content is self-described; verified Chat attribution confirms who shared a
+reference, not who an image depicts.
 
 Opening a contact without a received, live profile reference still opens the host drawer. It shows the host-verified
 contact name and **No information shared with you yet**, without an error style or an indefinite spinner. It does not

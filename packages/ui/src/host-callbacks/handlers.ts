@@ -43,8 +43,8 @@ export interface CreateHostCallbacksOptions {
   custodyLease?: string;
   /** Avatar layer of the product frame this connection serves, if any. */
   contactAvatars?: ContactAvatarOverlay;
-  /** Retires Profile presentations and loads with the native connection. */
-  profileSignal?: AbortSignal;
+  /** Retires Profile presentations with the connection or its current session. */
+  profileSignal?: AbortSignal | (() => AbortSignal);
   contacts?: Required<ContactsPlatform>;
   contactsDirectory?: NativeChatContactsDirectory;
 }

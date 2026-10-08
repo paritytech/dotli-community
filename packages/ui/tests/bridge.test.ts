@@ -19,6 +19,7 @@ import {
   scale,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
+import type { AuthState, RequiredHostCallbacks } from '@parity/truapi-host';
 import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -1050,6 +1051,63 @@ describe('bridge render lifecycle', () => {
       expect(mocks.coreRuntimes[0]?.cancelPairing).toHaveBeenCalledTimes(1);
     });
   });
+
+  it.each(['sign out', 'account replacement', 'stored session change'])(
+    'retires profile UI and avatars on %s while keeping the connection usable',
+    async change => {
+      // Reset modules per test: these must be the same fresh singletons the bridge just initialized.
+      const store = await import('../src/host-callbacks/SessionStore.js');
+      let storedSessionChanged = (): void => {};
+      vi.spyOn(store, 'onStoredSessionChanged').mockImplementation(listener => {
+        storedSessionChanged = listener;
+        return () => {};
+      });
+      const { acquireCore } = await import('../src/page-core.js');
+      const lease = await acquireCore();
+      const avatars = { attach: vi.fn(), place: vi.fn(), clear: vi.fn(), dispose: vi.fn() };
+      const opening = lease.connect('App', { contactAvatars: avatars });
+      await waitForProviderRequests(1);
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+      const connection = await opening;
+      const callbacks = nth(nth(mocks.coreRuntimes, 0).createProvider.mock.calls, 0)[1] as RequiredHostCallbacks;
+      const auth = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+      const connected: AuthState = {
+        tag: 'Connected',
+        value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+      };
+      const product = { productId: connection.productId, executionKind: 'App' as const };
+      const contact = { peerIdentity: new Uint8Array(32), username: 'old-session.paseo' };
+      try {
+        auth.auth.authStateChanged(connected);
+        await callbacks.profile?.presentContactProfile(product, contact);
+        expect(document.querySelector('[data-testid="profile-drawer"]')?.textContent).toContain('old-session.paseo');
+        avatars.clear.mockClear();
+        // A same-account status refresh must not discard the current placement.
+        auth.auth.authStateChanged(connected);
+        expect(document.querySelector('[data-testid="profile-drawer"]')).not.toBeNull();
+        expect(avatars.clear).not.toHaveBeenCalled();
+
+        if (change === 'stored session change') {
+          storedSessionChanged();
+        } else {
+          auth.auth.authStateChanged(
+            change === 'sign out'
+              ? { tag: 'Disconnected' }
+              : { tag: 'Connected', value: { publicKey: `0x${'33'.repeat(32)}` } },
+          );
+        }
+        expect(document.querySelector('[data-testid="profile-drawer"]')).toBeNull();
+        expect(avatars.clear).toHaveBeenCalledTimes(1);
+
+        auth.auth.authStateChanged(connected);
+        await callbacks.profile?.presentContactProfile(product, { ...contact, username: 'new-session.paseo' });
+        expect(document.querySelector('[data-testid="profile-drawer"]')?.textContent).toContain('new-session.paseo');
+      } finally {
+        connection.close();
+        lease.release();
+      }
+    },
+  );
 
   it('As a user who logs in before the product has loaded, the product joins the core my login runs on and my pairing survives its render', async () => {
     // Given: a product page whose topbar login is pairing
