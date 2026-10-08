@@ -204,7 +204,8 @@ export interface ChainBrokerManager {
     connectionId: string,
     onMessage: (message: string) => void,
   ): StringJsonRpcConnection | null;
-  getLocalProvider(genesisHash: string): JsonRpcProvider | null;
+  /** `holder` names the lease in debug logs. */
+  getLocalProvider(genesisHash: string, holder?: string): JsonRpcProvider | null;
   disconnectAll(): void;
 }
 
@@ -215,7 +216,7 @@ export function requireBrokerLocalProvider(
   genesisHash: string,
   label: string,
 ): JsonRpcProvider {
-  const provider = manager.getLocalProvider(genesisHash);
+  const provider = manager.getLocalProvider(genesisHash, 'resolver');
   if (provider === null) {
     throw new Error(`No broker provider available for ${label}`);
   }

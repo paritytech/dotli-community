@@ -62,7 +62,7 @@ flowchart LR
 
   Core -- lease --> HostPool
   RpcResolve -- "lease (Asset Hub)" --> HostPool
-  HostPool -.->|"watch, no lease"| Panel
+  HostPool -.->|"watch, follow, no lease"| Panel
   Probe -- lease --> HostPool
   HostPool -- "rpc-gateway: own socket" --> Nodes
   HostPool -- "smoldot: one remote<br/>connection per chain" --> Client
@@ -83,7 +83,9 @@ In simple terms:
   lease from it, so the host page holds one connection per chain.
 - **The network panel** leases nothing. `ChainPool.watch` reports each
   chain's leases, status, follow and best-block numbers, which the broker
-  derives from one `chainHead_v1_header` per follow.
+  derives from one `chainHead_v1_header` per follow. A chain someone holds is
+  followed for the panel, so its blocks keep coming when its holder does not
+  follow it, and that follow stops with the last lease.
 - **The host pool's transport follows the backend.** In `rpc-gateway` it is
   the host page's own RPC socket. On the smoldot backends it is one remote
   connection per chain to the **protocol iframe** over `postMessage`
@@ -146,6 +148,14 @@ flowchart TB
 - **Watch** (`ChainPool.watch`): reports each chain's leases, status, follow
   and best blocks without a lease, so it never builds a chain or keeps one
   past its destroy delay. A new watcher first hears every chain held now.
+- **Watch follow**: while the pool is watched, each held chain carries one
+  extra broker session, `watch:N`, that follows with the runtime, as
+  polkadot-api does, so a product's follow shares it upstream. It is not a
+  lease. It unpins each block at once, follows again after a `stop`, and is
+  closed when the last lease is returned, before the watchers hear the chain
+  has no consumers. With `VITE_APP_DEBUG`, the pool logs every lease, release,
+  open and close under `[dot.li chain-pool]`, naming each lease's holder
+  (`truapi-core`, `resolver`, `host`, `sync-observer`, `remote:<id>`).
 - **Broker observer**: one per broker, installed by the pool only while the
   pool is watched. It numbers best blocks from one `chainHead_v1_header` for
   the newest finalized block of one follow, sent under a `broker-base:` id,

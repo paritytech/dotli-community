@@ -47,7 +47,7 @@ export function createHostChainPool(destroyDelay?: number): ChainPool {
 }
 
 const hostChainPool = createHostChainPool();
-// The network panel reads the pool's chains without leasing them, so it never opens one.
+// The network panel never leases a chain, so it never opens or keeps one. It follows only those someone holds.
 hostChainPool.watch({ onActivity: recordChainActivity, onBestBlock: recordBestBlock });
 
 /** The rpc-gateway name resolver reads through this lease instead of dialing its own socket. */
@@ -63,7 +63,7 @@ export function hostChainProvider(genesisHash: string, pool: ChainPool = hostCha
   if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
-  const lease = pool.getLocalProvider(genesisHash);
+  const lease = pool.getLocalProvider(genesisHash, 'host');
   if (lease === null) {
     return null;
   }
@@ -110,7 +110,7 @@ function chainGate(genesisHash: string): RedialGate {
 
 /** Takes one lease at once and another on the first send after a halt. */
 function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConnection {
-  const first = pool.getLocalProvider(genesisHash);
+  const first = pool.getLocalProvider(genesisHash, 'truapi-core');
   if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
@@ -159,7 +159,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
       return null;
     }
     try {
-      const provider = pool.getLocalProvider(genesisHash);
+      const provider = pool.getLocalProvider(genesisHash, 'truapi-core');
       if (provider === null) {
         log.warn(`[dot.li truapi-chain] no chain transport for ${genesisHash} after a halt`);
         return null;

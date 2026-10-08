@@ -867,6 +867,123 @@ describe('createChainPool watch', () => {
     expect(transport().sent.filter(isBase)).toHaveLength(1);
   });
 
+  const isFollow = (message: JsonRpcRequest): boolean => message.method === 'chainHead_v1_follow';
+
+  /** Answers the pool's newest follow request upstream and returns its upstream event emitter. */
+  function answerFollow(record: TransportRecord, upstreamToken: string): (result: Record<string, unknown>) => void {
+    const request = must(record.sent.filter(isFollow).at(-1), 'follow request');
+    record.emit({ jsonrpc: '2.0', id: must(request.id, 'follow id'), result: upstreamToken } as JsonRpcMessage);
+    return result => {
+      record.emit({
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: upstreamToken, result },
+      } as unknown as JsonRpcMessage);
+    };
+  }
+
+  it('As the network panel, a chain someone holds without following it still brings me its best blocks', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const seen = recorder();
+    pool.watch(seen.watcher);
+
+    // When
+    lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    const event = answerFollow(transport, 'up-1');
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event({ event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+    const base = must(transport.sent.find(isBase), 'base request');
+    transport.emit({ jsonrpc: '2.0', id: base.id, result: headerHex(7) } as JsonRpcMessage);
+
+    // Then
+    expect(transport.sent.filter(isFollow).map(message => message.params as unknown)).toEqual([[true]]);
+    expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1, following: true });
+    expect(seen.best).toEqual([['0xaa', 8]]);
+  });
+
+  it('As the network panel, the last consumer leaving stops my follow before I hear no consumers are left', async () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    const seen = recorder();
+    pool.watch(seen.watcher);
+    const connection = lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    answerFollow(transport, 'up-1')({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+
+    // When
+    connection.disconnect();
+
+    // Then
+    expect(transport.sent.at(-1)).toMatchObject({ method: 'chainHead_v1_unfollow', params: ['up-1'] });
+    expect(seen.activity.find(activity => activity.consumers === 0)).toMatchObject({ following: false });
+
+    // When
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then
+    expect(transport.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a consumer following with the runtime, I share the network panel follow rather than open another', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(recorder().watcher);
+    const replies: JsonRpcMessage[] = [];
+    const connection = lease(pool, '0xaa', message => {
+      replies.push(message);
+    });
+    const transport = must(built[0], 'transport');
+    answerFollow(transport, 'up-1')({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+
+    // When
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+
+    // Then
+    expect(transport.sent.filter(isFollow)).toHaveLength(1);
+    expect(replies.some(reply => 'id' in reply && reply.id === 1 && 'result' in reply)).toBe(true);
+  });
+
+  it('As the network panel, a follow the chain stops is started again while the chain is held', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(recorder().watcher);
+    lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    const event = answerFollow(transport, 'up-1');
+
+    // When
+    event({ event: 'stop' });
+
+    // Then
+    expect(transport.sent.filter(isFollow)).toHaveLength(2);
+  });
+
+  it('As a dotli integrator, a pool nobody watches follows nothing of its own, and the last unwatch ends its follows', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+
+    // Then
+    expect(transport.sent.filter(isFollow)).toEqual([]);
+
+    // When
+    const unwatch = pool.watch(recorder().watcher);
+    answerFollow(transport, 'up-1')({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    unwatch();
+
+    // Then
+    expect(transport.sent.at(-1)).toMatchObject({ method: 'chainHead_v1_unfollow', params: ['up-1'] });
+  });
+
   it('As the network panel, unwatching stops the reports', () => {
     // Given
     const pool = createChainPool({ createTransport: createTransports().createTransport });

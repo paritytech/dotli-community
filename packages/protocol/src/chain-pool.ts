@@ -3,10 +3,12 @@
 
 // One connection per chain, shared by every consumer in this JS context. Each lease is a broker
 // session. An entry closes `destroyDelay` after its last lease is released, and at once when its
-// transport halts.
+// transport halts. While someone watches the pool, each held chain also carries the watchers' own follow, which is a
+// session but not a lease.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransportHooks, ConnectionStatus } from '@dotli/resolver';
+import { log } from '@dotli/shared';
 import { ChainBroker, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
 import { createWatchGuard, type WatchGuard } from './watch-guard.js';
 
@@ -20,9 +22,13 @@ export type LeaseProvider = (
 export interface ChainActivity {
   /** Lowercase. */
   readonly genesisHash: string;
-  /** Leases held. 0 once the last is released, while the chain waits out its destroy delay. */
+  /**
+   * Leases held, the watchers' own follow not counted. 0 once the last is released, while the chain waits out its
+   * destroy delay, and that follow has stopped by then.
+   */
   readonly consumers: number;
   readonly status: ConnectionStatus;
+  /** A follow is established, the watchers' own included. */
   readonly following: boolean;
 }
 
@@ -48,7 +54,8 @@ export interface ChainPool extends ChainBrokerManager {
     onMessage: (message: string) => void,
     onHalt?: (error?: unknown) => void,
   ): StringJsonRpcConnection | null;
-  getLocalProvider(genesisHash: string): LeaseProvider | null;
+  /** `holder` names the lease in debug logs. */
+  getLocalProvider(genesisHash: string, holder?: string): LeaseProvider | null;
   status(genesisHash: string): ConnectionStatus;
   onStatusChanged(genesisHash: string, callback: (status: ConnectionStatus) => void): () => void;
   /** Drops every pausable transport's socket. Leases and refcounts stay. */
@@ -56,8 +63,8 @@ export interface ChainPool extends ChainBrokerManager {
   /** Tracked statement subscriptions are replayed. */
   resumeAll(): void;
   /**
-   * Reports each chain's leases, status, follow and best blocks without leasing or keeping any chain. The chains held
-   * now are replayed first.
+   * Reports each chain's leases, status, follow and best blocks. The chains held now are replayed first. A chain
+   * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept.
    */
   watch(watcher: ChainPoolWatcher): () => void;
 }
@@ -71,9 +78,25 @@ interface Entry {
   destroyTimer: ReturnType<typeof setTimeout> | null;
   live: boolean;
   following: boolean;
+  watchFollow: { disconnect: () => void } | null;
 }
 
 const DEFAULT_DESTROY_DELAY_MS = 60_000;
+
+// Debug level, so lease traffic prints only with VITE_APP_DEBUG.
+const POOL_TAG = '[dot.li chain-pool]';
+
+function shortKey(key: string): string {
+  return `${key.slice(0, 10)}…`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function stringsOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
 
 interface Pausable {
   pause: () => void;
@@ -146,6 +169,9 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       return;
     }
     entry.live = false;
+    log.debug(`${POOL_TAG} ${shortKey(entry.key)} closing`, halt === null ? 'unused' : halt.error);
+    // The broker drops it with the other sessions.
+    entry.watchFollow = null;
     if (entry.destroyTimer !== null) {
       clearTimeout(entry.destroyTimer);
       entry.destroyTimer = null;
@@ -187,6 +213,94 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     });
   }
 
+  /**
+   * The watchers' own follow, so a held chain's blocks keep coming while no consumer follows it. With the runtime, as
+   * polkadot-api asks, so a consumer's follow shares it upstream. Every block is unpinned at once, since only its
+   * number is read.
+   */
+  function openWatchFollow(entry: Entry): { disconnect: () => void } {
+    const sessionId = `watch:${sessionCounter.toString(36)}`;
+    sessionCounter += 1;
+    let requests = 0;
+    let followId: string | null = null;
+    let token: string | null = null;
+    let closed = false;
+    const send = (method: string, params: unknown[]): string => {
+      const id = `${sessionId}:${requests.toString(36)}`;
+      requests += 1;
+      session.send({ jsonrpc: '2.0', id, method, params });
+      return id;
+    };
+    const follow = (): void => {
+      token = null;
+      followId = send('chainHead_v1_follow', [true]);
+    };
+    const unpin = (hashes: string[]): void => {
+      if (token !== null && hashes.length > 0) {
+        send('chainHead_v1_unpin', [token, hashes]);
+      }
+    };
+    const session = entry.broker.connect(
+      sessionId,
+      message => {
+        if (!isRecord(message)) {
+          return;
+        }
+        if ('id' in message) {
+          if (message['id'] === followId) {
+            if (typeof message['result'] === 'string') {
+              token = message['result'];
+            } else {
+              log.debug(`${POOL_TAG} ${shortKey(entry.key)} refused the network panel's follow`, message['error']);
+            }
+          }
+          return;
+        }
+        const params = message['params'];
+        if (message['method'] !== 'chainHead_v1_followEvent' || !isRecord(params) || params['subscription'] !== token) {
+          return;
+        }
+        const result = params['result'];
+        if (!isRecord(result)) {
+          return;
+        }
+        if (result['event'] === 'initialized') {
+          unpin(stringsOf(result['finalizedBlockHashes']));
+        } else if (result['event'] === 'newBlock') {
+          unpin(stringsOf([result['blockHash']]));
+        } else if (result['event'] === 'stop' && !closed && entry.live) {
+          // A halted chain stops it too, and its broker has dropped this session by then.
+          follow();
+        }
+      },
+      'object',
+      null,
+    );
+    follow();
+    return {
+      disconnect: () => {
+        closed = true;
+        session.disconnect();
+      },
+    };
+  }
+
+  /** The watchers' follow runs exactly while the chain is held and watched. */
+  function syncWatchFollow(entry: Entry): void {
+    const wanted = entry.live && watchers.size > 0 && entry.leases > 0;
+    if (wanted && entry.watchFollow === null) {
+      log.debug(`${POOL_TAG} ${shortKey(entry.key)} held, the network panel follows it`);
+      entry.watchFollow = openWatchFollow(entry);
+    } else if (!wanted && entry.watchFollow !== null) {
+      const watchFollow = entry.watchFollow;
+      entry.watchFollow = null;
+      log.debug(
+        `${POOL_TAG} ${shortKey(entry.key)} the network panel stops following it (${String(entry.leases)} leases)`,
+      );
+      watchFollow.disconnect();
+    }
+  }
+
   function build(key: string): Entry | null {
     // Null until the transport exists, so a hook that fires earlier has nothing to report on.
     let entry: Entry | null = null;
@@ -226,7 +340,9 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       destroyTimer: null,
       live: true,
       following: false,
+      watchFollow: null,
     };
+    log.debug(`${POOL_TAG} ${shortKey(key)} opening`);
     entry = created;
     entries.set(key, created);
     setStatus(key, builtPaused ? 'disconnected' : 'connecting');
@@ -267,9 +383,11 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
   }
 
   /** Count `connection` as a lease on `entry`, released once by its first `disconnect()`. */
-  function lease<C extends { disconnect: () => void }>(entry: Entry, connection: C): C {
+  function lease<C extends { disconnect: () => void }>(entry: Entry, connection: C, holder: string): C {
     entry.leases += 1;
+    log.debug(`${POOL_TAG} ${shortKey(entry.key)} leased by ${holder} (${String(entry.leases)} held)`);
     report(entry);
+    syncWatchFollow(entry);
     let released = false;
     return {
       ...connection,
@@ -284,6 +402,9 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           return;
         }
         entry.leases -= 1;
+        log.debug(`${POOL_TAG} ${shortKey(entry.key)} released by ${holder} (${String(entry.leases)} held)`);
+        // Before the report, so the last release reaches the watchers with the follow already stopped.
+        syncWatchFollow(entry);
         report(entry);
         idle(entry);
       },
@@ -306,6 +427,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
             'string',
             onHalt ?? null,
           ),
+          `remote:${connectionId}`,
         );
       } catch (error) {
         idle(entry);
@@ -313,7 +435,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       }
     },
 
-    getLocalProvider(genesisHash) {
+    getLocalProvider(genesisHash, holder = 'local') {
       const entry = acquire(genesisHash);
       if (entry === null) {
         return null;
@@ -334,6 +456,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           return lease(
             current,
             current.broker.connect(sessionId, onMessage as (message: unknown) => void, 'object', onHalt ?? null),
+            holder,
           ) as JsonRpcConnection;
         } catch (error) {
           idle(current);
@@ -390,9 +513,13 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           /* the watcher still hears later changes */
         }
       }
+      for (const entry of [...entries.values()]) {
+        syncWatchFollow(entry);
+      }
       return () => {
         if (watchers.delete(watcher) && watchers.size === 0) {
-          for (const entry of entries.values()) {
+          for (const entry of [...entries.values()]) {
+            syncWatchFollow(entry);
             entry.broker.observe(null);
           }
         }
