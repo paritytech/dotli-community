@@ -10,3 +10,8 @@
   font-size: 12px;
   line-height: 1.4;
 }
+.warn {
+  border-left-color: var(--td-amber);
+  background: color-mix(in srgb, var(--td-amber) 10%, transparent);
+  color: var(--td-fg-strong);
+}

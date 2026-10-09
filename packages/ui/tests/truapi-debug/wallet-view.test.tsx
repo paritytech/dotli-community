@@ -49,6 +49,16 @@ describe('WalletView', () => {
     expect(walletSwitch.switchToLocalWallet).toHaveBeenCalledWith(mnemonicToEntropy(DEV_PHRASE));
   });
 
+  it('As a Polkadot App user, I am told what a local wallet is and warned that it is not secure', async () => {
+    // When
+    renderComponent(() => <WalletView active />);
+    await settle();
+
+    // Then
+    expect(byTestId('td-wallet-about').textContent).toContain('Copy the recovery phrase from Polkadot App');
+    expect(byTestId('td-wallet-warning').textContent).toContain('Use it only for an account you can afford to lose.');
+  });
+
   it('As a user who mistyped my phrase, I am told and nothing is saved', async () => {
     // Given
     renderComponent(() => <WalletView active />);

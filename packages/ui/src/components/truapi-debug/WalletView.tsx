@@ -12,10 +12,12 @@ import { reportLocalWalletFailure } from '../../wallet-boot.js';
 import { switchToLocalWallet, switchToPolkadotApp } from '../../wallet-switch.js';
 import { useStore } from '../use-store.js';
 import { Button } from './shared/Button.js';
+import { Callout } from './shared/Callout.js';
 import { Code } from './shared/Code.js';
 import { ErrorText } from './shared/ErrorText.js';
 import { Inline } from './shared/Inline.js';
 import { KeyValue, KeyValueList } from './shared/KeyValueList.js';
+import { Note } from './shared/Note.js';
 import { Pane } from './shared/Pane.js';
 import { Stack } from './shared/Stack.js';
 import { TextArea } from './shared/TextArea.js';
@@ -66,6 +68,14 @@ function ImportForm(props: { submitLabel: string; onCancel?: () => void }): JSX.
 
   return (
     <Stack narrow onSubmit={submit}>
+      <Note testId="td-wallet-about">
+        Copy the recovery phrase from Polkadot App and paste it here to use the same account in this browser, with no
+        phone. Every app on this domain then signs with it locally.
+      </Note>
+      <Callout testId="td-wallet-warning" tone="warn">
+        This is not secure. The phrase leaves your phone and stays in this browser, where anything that gets into the
+        browser can take it. Use it only for an account you can afford to lose.
+      </Callout>
       <TextArea
         id="td-wallet-phrase"
         testId="td-wallet-phrase"
