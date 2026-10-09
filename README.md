@@ -198,6 +198,12 @@ channel; the Host consumes at most one command per trusted input while browser t
 five-second upper bound to accommodate cold guest execution. It does not grant the app iframe clipboard permission.
 Guests request relative-pointer capture through the runtime; desktop Pointer Lock begins on the next primary click.
 
+Host-mediated camera input keeps the camera outside the guest iframe and does not reload the app when approved. Unlike a
+Rust permission callback, this host-side request explicitly commits **Always allow** and **Deny** to the canonical
+permission store. **Allow once** applies only to the current capture request; dismissing or cancelling a pending review
+stores no decision. Core permission callbacks remain return-only, so their own approval cannot invalidate the pending
+Rust prompt.
+
 The host relays safe-area and keyboard insets in physical pixels over an authenticated parent channel. Safe-area insets
 reserve only the titlebar and OS edges still inside the actual app frame: desktop apps retain their full-size canvas
 under the floating titlebar, while already-offset tablet/phone frames do not receive the same spacing twice. The
