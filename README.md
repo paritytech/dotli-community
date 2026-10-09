@@ -484,7 +484,9 @@ prompt. They must not call the administrative permission setter: settings writes
 doing both would invalidate the user's own answer. E2E tests select a specific review title and decision only during the
 operation under test, with no worker-wide auto-approval. Lasting remote and notification grants remain explicit
 `Always allow` interactions; preimage upload review is separate from the remote permission and resource-allocation
-review.
+review. Raw-message signing also drives the wallet connection's `Identity Disclosure` (`Allow once`) and
+`Product Account` (`Allow`) reviews and the signing `Permission Request` (`Allow once`), so it does not depend on
+permissions left by earlier tests or a previous worker.
 
 Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
 ready before boot finishes rewriting the URL. Backend, cache flags and URL are read as one snapshot; the assertion waits
@@ -580,12 +582,15 @@ cartridge contents. Wallet signing and native hosts are also outside this suite.
 ### Running the host-playground E2E locally
 
 The product E2E suite loads the source checkout through dotli's localhost proxy. CI pins
-[host-playground](https://github.com/paritytech/host-playground) to `f56294cea4430163bf16ec068844b1327441073c`, installs
+[host-playground](https://github.com/paritytech/host-playground) to `f32da97c39310853f5c927f2c242a88f1f7b306c`, installs
 its frozen dependency lock, and links its TrUAPI consumers to this repository's installed `@parity/truapi` with
 `node scripts/link-truapi-local.ts --product-vendor`. This runs the existing product behavior checks against the pinned
 SDK rather than the independently deployed `host-playground.dot`. The deployed smoke suite below checks that separate
 boundary. The product still calls the real host; no SDK responses are mocked. The pinned fixture requests bare host
-patterns for `Remote` permissions; scheme-bearing URLs are intentionally rejected by the core before prompting.
+patterns for `Remote` permissions; scheme-bearing URLs are intentionally rejected by the core before prompting. The
+fixture uses its per-card finalized-write budgets for allowance allocation rather than the default read-only deadline.
+`NEXT_PUBLIC_SKIP_HOST_BRIDGE=1` disables its standalone CLI development bridge: the embedded product must exercise
+dotli's host transport.
 
 CI and local Playwright runs use Node.js 26 and npm 12.
 
