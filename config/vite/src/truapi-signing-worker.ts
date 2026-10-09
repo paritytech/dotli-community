@@ -7,8 +7,8 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import type { Plugin } from 'vite';
+import { dirname, join, posix, resolve } from 'node:path';
+import type { Plugin, Rolldown } from 'vite';
 
 export const SIGNING_WORKER_RUNTIME_ID = 'dotli:truapi-signing-worker-runtime';
 
@@ -17,6 +17,7 @@ const RUNTIME_EXPORT = './worker-runtime';
 const MARK = 'truapi-signing';
 const WEB_GLUE = './wasm/web/truapi_server.js';
 const TESTING_GLUE = './wasm/testing/truapi_server.js';
+const TESTING_WASM = '/wasm/testing/truapi_server_bg.wasm';
 
 /** Throws when the literal is gone, so an upstream change fails the build instead of shipping the web glue. */
 export function rewriteWasmGlue(code: string, id: string): string {
@@ -57,12 +58,34 @@ export function findPublishedRuntime(root: string): string {
   }
 }
 
+/**
+ * Worker asset names, with Vite's worker default for all but the testing server wasm. Both bundles ship
+ * `truapi_server_bg.wasm`, and the host's service worker must tell the signing one apart to leave it out of its
+ * precache. The bundles' other files are byte-identical, so their shared names keep them one file.
+ */
+export function workerAssetFileName(asset: Rolldown.PreRenderedAsset, assetsDir: string): string {
+  const signing = asset.originalFileNames.some(name => name.endsWith(TESTING_WASM));
+  return posix.join(assetsDir, signing ? 'truapi_signing_bg-[hash][extname]' : '[name]-[hash][extname]');
+}
+
 export function truapiSigningWorker(): Plugin {
   let root = process.cwd();
+  let assetsDir = 'assets';
   return {
     name: 'dotli-truapi-signing-worker',
+    // Vite reads worker output options from the main config only, so a worker plugin instance cannot set them.
+    config() {
+      return {
+        worker: {
+          rolldownOptions: {
+            output: { assetFileNames: asset => workerAssetFileName(asset, assetsDir) },
+          },
+        },
+      };
+    },
     configResolved(config) {
       root = config.root;
+      assetsDir = config.build.assetsDir;
     },
     resolveId(source) {
       if (source !== SIGNING_WORKER_RUNTIME_ID) {

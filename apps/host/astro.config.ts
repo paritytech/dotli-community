@@ -284,7 +284,15 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
         // Loaded only on demand. Precaching would make every installed shell download them after each release. The
         // worker lives on product hosts only, which never show the landing page.
-        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm', 'landing.html'],
+        // The local wallet's signing worker, its wasm and its core module load only in local mode.
+        globIgnores: [
+          '**/truapi_provider_bg*.wasm',
+          '**/truapi_verifiable_bg*.wasm',
+          'landing.html',
+          '**/truapi_signing_bg*.wasm',
+          '**/signing-worker*.js',
+          '**/local-wallet-core*.js',
+        ],
         cleanupOutdatedCaches: true,
         // Prompted updates need the waiting SW to sit idle until the user opts in.
         skipWaiting: false,
