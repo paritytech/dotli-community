@@ -5,7 +5,6 @@ import 'fake-indexeddb/auto';
 import { MessageChannel as NodeMessageChannel, MessagePort as NodeMessagePort } from 'node:worker_threads';
 import type * as TruapiHostWeb from '@parity/truapi-host/web';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import type { RequiredHostCallbacks } from '@parity/truapi-host';
 import { waitForTruapiPort } from '../../../apps/sandbox/src/polkavm-runtime.js';
 import { afterEach, assert, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent } from '@solidjs/testing-library';
