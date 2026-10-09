@@ -238,11 +238,11 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the GitHub-only `0.3.2-rc.9` release candidate. It combines bounded WebGPU recovery, replacement-device
-resize limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and forward dispatch.
-Exact binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe offscreen resources,
-streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays separately pinned;
-these runtime changes do not replace its Chat, profile, transport or Media APIs. Synchronization
+The current pin is the GitHub-only `0.3.2-rc.9` release candidate. It combines bounded WebGPU recovery,
+replacement-device resize limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and
+forward dispatch. Exact binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe
+offscreen resources, streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays
+separately pinned; these runtime changes do not replace its Chat, profile, transport or Media APIs. Synchronization
 verifies the package's complete checksum inventory, including its session API and type declarations, but serves only the
 host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt`
 alongside those artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
@@ -405,7 +405,7 @@ protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything t
 such as the shell's offline service worker.
 
 This branch vendors the Profile TrUAPI 0.24.0 SDK from source
-`f724e73fc58ac5d7519265475d46523d77db7d47`, recorded in `vendor/truapi-host.lock.json`.
+`ba61aa77cb694dce7a4dba69979791cbc37c0d21`, recorded in `vendor/truapi-host.lock.json`.
 The browser wallet uses the production `--web-only --signing-host` build, without `test-host`. Its archive inventory
 comes from `npm pack`, with stale compiled files lacking a matching upstream TypeScript source and non-web Wasm
 removed in a temporary staging directory before packing. The recorded archive hashes precede the local
@@ -416,15 +416,17 @@ clears its avatars and labels immediately; the new execution receives fresh Prof
 Locale timestamp batches use the SDK's browser `Intl` implementation.
 Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery
 opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame.
-Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
+Allowance inspection batches historical ring membership reads while preserving finalized snapshots, complete ring
+validation and identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a
+matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
 ```
 
-The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either
-page loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity
-before binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
+The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either page
+loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity before
+binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
 
 When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
 
@@ -573,8 +575,8 @@ echo "Signing-host source: https://github.com/paritytech/host-rust-core/commit/$
 "$SIGNING_HOST_BIN" --version
 ```
 
-Set `SIGNING_HOST_BIN` to the source-matched binary. Build dotli without linking a different SDK checkout, then run
-the host workspace suite with the product paths:
+Set `SIGNING_HOST_BIN` to the source-matched binary. Build dotli without linking a different SDK checkout, then run the
+host workspace suite with the product paths:
 
 ```bash
 VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
@@ -602,10 +604,10 @@ E2E_CHAIN_BACKEND=smoldot-shared-worker npm run --workspace apps/host test:e2e:l
 revision and disable self-updates with `TRUAPI_HOST_NO_UPDATE=1`. Rebuild when the lock revision changes, including when
 switching between generic and Chat branches. Set `SIGNING_HOST_NETWORK` when testing against a non-default network. The
 CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a
-fresh lowercase username base: an unsuccessful attempt may already have claimed its name. Account provisioning and
-ring inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI
-diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach the CLI's
-private account/session files to reports.
+fresh lowercase username base: an unsuccessful attempt may already have claimed its name. Account provisioning and ring
+inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI diagnostics
+redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach the CLI's private
+account/session files to reports.
 
 Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
 process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
