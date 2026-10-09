@@ -7,12 +7,12 @@ import { startNetworkStore } from './state/network.js';
 import { initNetworkHealth } from './state/network-health.js';
 import { initChatPanelState } from './state/chat-panel.js';
 import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
+import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
 import { setTopbarPresent } from './state/topbar.js';
 import { initTheme } from './theme-controller.js';
 import { log } from '@dotli/shared';
-import { dispatchAuthState } from './host-callbacks/AuthState.js';
 
 export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator()): void {
   setTopbarPresent();

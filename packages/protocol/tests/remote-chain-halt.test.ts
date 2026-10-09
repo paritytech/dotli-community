@@ -202,35 +202,38 @@ describe('createRemoteChainProvider halts', () => {
     expect(openHalt).toHaveBeenCalledWith('chain');
   });
 
-  it.each(['reset', 'pagehide'])('As a wallet user, %s retires old chain IDs before a fresh lease connects', async mode => {
-    // Given
-    const onHalt = vi.fn<(reason: RemoteChainHalt) => void>();
-    const old = await connectRemote(onHalt);
+  it.each(['reset', 'pagehide'])(
+    'As a wallet user, %s retires old chain IDs before a fresh lease connects',
+    async mode => {
+      // Given
+      const onHalt = vi.fn<(reason: RemoteChainHalt) => void>();
+      const old = await connectRemote(onHalt);
 
-    // When
-    if (mode === 'pagehide') {
-      window.dispatchEvent(new Event('pagehide'));
-    } else {
-      resetProtocolFrame();
-    }
-    const fresh = await connectRemote();
-    old.connection.send({ jsonrpc: '2.0', id: 71, method: 'chain_getBlockHash', params: [] });
-    fresh.connection.send({ jsonrpc: '2.0', id: 72, method: 'chain_getBlockHash', params: [] });
-    await flush();
+      // When
+      if (mode === 'pagehide') {
+        window.dispatchEvent(new Event('pagehide'));
+      } else {
+        resetProtocolFrame();
+      }
+      const fresh = await connectRemote();
+      old.connection.send({ jsonrpc: '2.0', id: 71, method: 'chain_getBlockHash', params: [] });
+      fresh.connection.send({ jsonrpc: '2.0', id: 72, method: 'chain_getBlockHash', params: [] });
+      await flush();
 
-    // Then
-    expect(onHalt).toHaveBeenCalledExactlyOnceWith('frame');
-    expect(old.received).toEqual([
-      { jsonrpc: '2.0', id: 71, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
-    expect(fresh.connectionId).not.toBe(old.connectionId);
-    const sends = fresh.frame.posted.filter(request => request.method === 'chainSend');
-    expect(sends).toHaveLength(1);
-    expect(sends[0]?.payload).toEqual({
-      connectionId: fresh.connectionId,
-      message: JSON.stringify({ jsonrpc: '2.0', id: 72, method: 'chain_getBlockHash', params: [] }),
-    });
-  });
+      // Then
+      expect(onHalt).toHaveBeenCalledExactlyOnceWith('frame');
+      expect(old.received).toEqual([
+        { jsonrpc: '2.0', id: 71, error: { code: -32603, message: 'Chain connection is closed' } },
+      ]);
+      expect(fresh.connectionId).not.toBe(old.connectionId);
+      const sends = fresh.frame.posted.filter(request => request.method === 'chainSend');
+      expect(sends).toHaveLength(1);
+      expect(sends[0]?.payload).toEqual({
+        connectionId: fresh.connectionId,
+        message: JSON.stringify({ jsonrpc: '2.0', id: 72, method: 'chain_getBlockHash', params: [] }),
+      });
+    },
+  );
 
   it('As a dotli integrator, a dead protocol frame halts every open chain connection once', async () => {
     // Given
@@ -346,7 +349,7 @@ describe('createRemoteChainProvider halts', () => {
     expect(isProtocolReady()).toBe(false);
   });
 
-  it.each(['reset', 'fatal'] as const)('retires ownership before %s removes the lock frame', async kind => {
+  it.each(['reset', 'fatal', 'pagehide'] as const)('retires ownership before %s removes the lock frame', async kind => {
     vi.spyOn(log, 'error').mockImplementation(() => undefined);
     const { frame } = await connectRemote();
     const iframe = document.querySelector('iframe');
@@ -354,6 +357,8 @@ describe('createRemoteChainProvider halts', () => {
     const unsubscribe = subscribeWalletOwnerRevoked(revoked);
     if (kind === 'reset') {
       resetProtocolFrame();
+    } else if (kind === 'pagehide') {
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
     } else {
       frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
     }
@@ -600,6 +605,26 @@ describe('createRemoteChainProvider halts', () => {
     // Then
     expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect']);
     expect(logError).not.toHaveBeenCalled();
+  });
+
+  it('an accepted connection retired before its continuation cannot boot a frame to disconnect its old ID', async () => {
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const onHalt = vi.fn<(reason: RemoteChainHalt) => void>();
+    provider(() => undefined, onHalt);
+    const frame = await bootFrame();
+    const request = frame.posted.find(envelope => envelope.method === 'chainConnect');
+    if (request === undefined) {
+      throw new Error('no chainConnect posted');
+    }
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result: true });
+    resetProtocolFrame();
+    await flush();
+    expect(onHalt).toHaveBeenCalledExactlyOnceWith('frame');
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect']);
   });
 
   it('As a dotli integrator, a connection the frame refuses to open halts as a dead frame', async () => {
