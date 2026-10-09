@@ -23,12 +23,15 @@ export function Stack(props: {
     props.stretch === true && s['stretch'],
   ];
   return (
-    <Show when={props.onSubmit} fallback={<div class={classes()}>{props.children}</div>}>
-      {submit => (
-        <form class={classes()} onSubmit={submit()}>
-          {props.children}
-        </form>
-      )}
+    <Show when={props.onSubmit !== undefined} fallback={<div class={classes()}>{props.children}</div>}>
+      <form
+        class={classes()}
+        onSubmit={event => {
+          props.onSubmit?.(event);
+        }}
+      >
+        {props.children}
+      </form>
     </Show>
   );
 }

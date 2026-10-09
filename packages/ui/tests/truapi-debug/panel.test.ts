@@ -2030,6 +2030,7 @@ describe('truapi debug panel: capacity', () => {
     expect(counts()).toBe('5 events (+3 dropped)');
   });
 
+  // Drawing the full default capacity in jsdom takes 4 to 7 seconds on a CI runner.
   it('As a dotli developer, past the default 2000 events the oldest are pruned from the list', () => {
     // Given
     mount();
@@ -2046,7 +2047,7 @@ describe('truapi debug panel: capacity', () => {
     expect(tags[0]).toBe('ev3_x');
     expect(tags[1999]).toBe('ev2002_x');
     expect(counts()).toBe('2000 events (+3 dropped)');
-  });
+  }, 20_000);
 });
 
 describe('truapi debug panel: streaming load', () => {
