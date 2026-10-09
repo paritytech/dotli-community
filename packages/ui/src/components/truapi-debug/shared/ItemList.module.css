@@ -40,3 +40,14 @@
 .item[data-selection='paired'] {
   background: var(--td-paired);
 }
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta {
+  flex-shrink: 0;
+  color: var(--td-fg-dim);
+}

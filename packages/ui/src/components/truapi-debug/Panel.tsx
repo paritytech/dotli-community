@@ -25,6 +25,9 @@ import {
   matches,
   type FilterState,
   panelDockInset,
+  readStoredSection,
+  writeStoredSection,
+  type PanelSection,
 } from '@dotli/truapi-debug';
 
 import type { ResolutionRecorder } from '@dotli/truapi-debug';
@@ -39,7 +42,6 @@ import { BodySplitter, ResizeHandle } from './Resizers.js';
 import { ArchiveView } from './ArchiveView.js';
 import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
-import type { PanelSection } from './SectionTabs.js';
 import { ViewTabs, type PanelView } from './ViewTabs.js';
 import { TimelineView } from './TimelineView.js';
 import { WalletView } from './WalletView.js';
@@ -168,7 +170,7 @@ export function Panel(props: {
 
   const [snapshot, setSnapshot] = createSignal<Snapshot>(takeSnapshot());
   const [filters, setFilters] = createSignal<FilterState>(initialFilterState());
-  const [section, setSection] = createSignal<PanelSection>('truapi');
+  const [section, setSection] = createSignal<PanelSection>(readStoredSection());
   const [view, setView] = createSignal<PanelView>('list');
   const [resolutionCleared, setResolutionCleared] = createSignal(0);
   const events = (): boolean => section() === 'truapi';
@@ -373,6 +375,7 @@ export function Panel(props: {
   };
   const selectSection = (next: PanelSection): void => {
     if (next !== section()) {
+      writeStoredSection(next);
       show(() => setSection(next));
     }
   };

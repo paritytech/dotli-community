@@ -33,20 +33,6 @@
   margin-left: auto;
 }
 
-.close {
-  flex: none;
-  margin: 0;
-  background: none;
-  border: none;
-  color: var(--td-fg-dim);
-  cursor: pointer;
-  font-size: 18px;
-  padding: 0 4px;
-}
-.close:hover {
-  color: var(--td-fg-bright);
-}
-
 /* Matches `NARROW_QUERY` in Panel.tsx, where the panel always docks at the bottom. */
 @media (max-width: 560px) {
   .header {

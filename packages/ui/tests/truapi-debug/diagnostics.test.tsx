@@ -197,25 +197,17 @@ describe('The debug panel Diagnostics tab', () => {
     expect(infoRow('Build').querySelector('button')).toBeNull();
   });
 
-  it('As a dotli developer, clicking a copyable row that reads n/a copies nothing', async () => {
+  it('As a dotli developer, a copyable row that reads n/a offers nothing to copy', () => {
     // Given
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
     actions.extraRows = [['Relay node', 'n/a']];
-    renderView();
-    const row = infoRow('Relay node');
-    const copy = query(row, 'button', HTMLButtonElement);
-    expect(query(row, 'code').textContent).toBe('n/a');
 
     // When
-    copy.click();
-    await Promise.resolve();
+    renderView();
 
     // Then
-    expect(writeText).not.toHaveBeenCalled();
+    const row = infoRow('Relay node');
+    expect(query(row, 'code').textContent).toBe('n/a');
+    expect(row.querySelector('button')).toBeNull();
   });
 
   it('As a dotli developer on trusted providers, the AssetHub row shows the node the client is connected to, in the tab and the shared report', async () => {

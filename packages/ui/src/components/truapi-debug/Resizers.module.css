@@ -3,48 +3,17 @@
 
 .handle {
   grid-area: handle;
-  cursor: ns-resize;
-  background: transparent;
-  transition: background 0.15s;
-}
-.handle:hover,
-.handle:active {
-  background: var(--td-accent);
-}
-.handle[data-dock='right'] {
-  cursor: ew-resize;
-}
-.handle[data-collapsed] {
-  visibility: hidden;
 }
 
-.splitter {
-  cursor: col-resize;
-  background: transparent;
-  border-left: 1px solid var(--td-line);
+.splitter[data-orientation='vertical'] {
   border-right: 1px solid var(--td-line);
-  transition: background 0.12s;
-  position: relative;
-  user-select: none;
+  border-left: 1px solid var(--td-line);
 }
-.splitter:hover,
-.splitter[data-dragging] {
-  background: var(--td-accent);
-  border-color: var(--td-accent);
-}
-.splitter::after {
-  /* A wider hit area than the visible line. */
-  content: '';
-  position: absolute;
-  inset: 0 -4px;
-}
-.splitter[data-layout='stacked'] {
-  cursor: row-resize;
-  border-left: none;
-  border-right: none;
+.splitter[data-orientation='horizontal'] {
   border-top: 1px solid var(--td-line);
   border-bottom: 1px solid var(--td-line);
 }
-.splitter[data-layout='stacked']::after {
-  inset: -4px 0;
+.splitter:hover,
+.splitter[data-dragging] {
+  border-color: var(--td-accent);
 }

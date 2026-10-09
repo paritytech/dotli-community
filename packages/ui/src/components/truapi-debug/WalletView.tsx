@@ -12,38 +12,38 @@ import { reportLocalWalletFailure } from '../../wallet-boot.js';
 import { switchToLocalWallet, switchToPolkadotApp } from '../../wallet-switch.js';
 import { useStore } from '../use-store.js';
 import { Button } from './shared/Button.js';
+import { Code } from './shared/Code.js';
+import { ErrorText } from './shared/ErrorText.js';
+import { Inline } from './shared/Inline.js';
 import { KeyValue, KeyValueList } from './shared/KeyValueList.js';
-import s from './WalletView.module.css';
+import { Pane } from './shared/Pane.js';
+import { Stack } from './shared/Stack.js';
+import { TextArea } from './shared/TextArea.js';
 
 export function WalletView(props: { active: boolean }): JSX.Element {
   return (
-    <div class={s['view']} data-testid="td-wallet" hidden={!props.active}>
+    <Pane testId="td-wallet" hidden={!props.active} padded>
       <Show when={props.active}>
         <Wallet />
       </Show>
-    </div>
+    </Pane>
   );
 }
 
 function Wallet(): JSX.Element {
   const state = useStore(walletModeStore);
   return (
-    <>
-      <Show when={state().failure}>
-        {failure => (
-          <p class={s['failure']} data-testid="td-wallet-failure" role="alert">
-            {failure()}
-          </p>
-        )}
-      </Show>
-      <Show when={state().mode === 'local'} fallback={<ImportForm />}>
+    <Stack gap="md">
+      <Show when={state().failure}>{failure => <ErrorText testId="td-wallet-failure">{failure()}</ErrorText>}</Show>
+      <Show when={state().mode === 'local'} fallback={<ImportForm submitLabel="Use locally" />}>
         <LocalWallet />
       </Show>
-    </>
+    </Stack>
   );
 }
 
-function ImportForm(): JSX.Element {
+/** Takes a phrase and switches every app to it. While replacing a local wallet, Cancel keeps the current one. */
+function ImportForm(props: { submitLabel: string; onCancel?: () => void }): JSX.Element {
   const [phrase, setPhrase] = createSignal('');
   const [error, setError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
@@ -65,40 +65,35 @@ function ImportForm(): JSX.Element {
   };
 
   return (
-    <form class={s['form']} onSubmit={submit}>
-      <label class={s['label']} for="td-wallet-phrase">
-        Polkadot App recovery phrase
-      </label>
-      <textarea
+    <Stack narrow onSubmit={submit}>
+      <TextArea
         id="td-wallet-phrase"
-        class={s['phrase']}
-        data-testid="td-wallet-phrase"
-        rows={3}
-        autocomplete="off"
-        autocapitalize="off"
-        autocorrect="off"
-        spellcheck="false"
+        testId="td-wallet-phrase"
+        label="Polkadot App recovery phrase"
         value={phrase()}
-        onInput={event => {
-          setPhrase(event.currentTarget.value);
-        }}
+        verbatim
+        onInput={setPhrase}
       />
-      <Show when={error()}>
-        {message => (
-          <p class={s['error']} data-testid="td-wallet-error" role="alert">
-            {message()}
-          </p>
-        )}
-      </Show>
-      <Button type="submit" testId="td-wallet-use-local" disabled={saving()}>
-        Use locally
-      </Button>
-    </form>
+      <Show when={error()}>{message => <ErrorText testId="td-wallet-error">{message()}</ErrorText>}</Show>
+      <Inline>
+        <Button type="submit" testId="td-wallet-use-local" disabled={saving()}>
+          {props.submitLabel}
+        </Button>
+        <Show when={props.onCancel}>
+          {cancel => (
+            <Button testId="td-wallet-cancel" disabled={saving()} onClick={cancel()}>
+              Cancel
+            </Button>
+          )}
+        </Show>
+      </Inline>
+    </Stack>
   );
 }
 
 function LocalWallet(): JSX.Element {
   const auth = useStore(authStore);
+  const [replacing, setReplacing] = createSignal(false);
   const [leaving, setLeaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const session = (): { identityAccountId?: string; liteUsername?: string } | undefined => {
@@ -106,7 +101,7 @@ function LocalWallet(): JSX.Element {
     return state.tag === 'Connected' ? state.session : undefined;
   };
 
-  const leave = (): void => {
+  const forget = (): void => {
     setError(null);
     setLeaving(true);
     switchToPolkadotApp().catch((failure: unknown) => {
@@ -117,25 +112,49 @@ function LocalWallet(): JSX.Element {
   };
 
   return (
-    <section class={s['local']}>
-      <KeyValueList>
-        <KeyValue name="Identity account">
-          <code data-testid="td-wallet-account">{session()?.identityAccountId ?? 'Activating'}</code>
-        </KeyValue>
-        <KeyValue name="Username">
-          <code data-testid="td-wallet-username">{session()?.liteUsername ?? 'None'}</code>
-        </KeyValue>
-      </KeyValueList>
-      <Show when={error()}>
-        {message => (
-          <p class={s['error']} data-testid="td-wallet-error" role="alert">
-            {message()}
-          </p>
-        )}
-      </Show>
-      <Button testId="td-wallet-use-app" disabled={leaving()} onClick={leave}>
-        Use Polkadot App
-      </Button>
-    </section>
+    <Show
+      when={!replacing()}
+      fallback={
+        <ImportForm
+          submitLabel="Replace"
+          onCancel={() => {
+            setReplacing(false);
+          }}
+        />
+      }
+    >
+      <Stack narrow>
+        <KeyValueList>
+          <KeyValue name="Identity account">
+            <Code testId="td-wallet-account">{session()?.identityAccountId ?? 'Activating'}</Code>
+          </KeyValue>
+          <KeyValue name="Username">
+            <Code testId="td-wallet-username">{session()?.liteUsername ?? 'None'}</Code>
+          </KeyValue>
+        </KeyValueList>
+        <Show when={error()}>{message => <ErrorText testId="td-wallet-error">{message()}</ErrorText>}</Show>
+        <Inline>
+          <Button
+            testId="td-wallet-replace"
+            disabled={leaving()}
+            title="Use another recovery phrase instead"
+            onClick={() => {
+              setError(null);
+              setReplacing(true);
+            }}
+          >
+            Replace
+          </Button>
+          <Button
+            testId="td-wallet-forget"
+            disabled={leaving()}
+            title="Forget this wallet and go back to Polkadot App"
+            onClick={forget}
+          >
+            Forget
+          </Button>
+        </Inline>
+      </Stack>
+    </Show>
   );
 }

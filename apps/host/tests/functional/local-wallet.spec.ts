@@ -42,7 +42,7 @@ test('As a developer, I switch every app to a local wallet with my phrase and ba
     await expect(page.getByTestId('td-wallet-account')).toHaveText(/^0x[0-9a-f]{64}$/, { timeout: TIMEOUT_MS });
 
     // When
-    await Promise.all([page.waitForEvent('load'), page.getByTestId('td-wallet-use-app').click()]);
+    await Promise.all([page.waitForEvent('load'), page.getByTestId('td-wallet-forget').click()]);
 
     // Then: signed out here and in every other app
     await expect(page.getByRole('button', { name: 'Sign in with Polkadot Mobile' })).toBeVisible({

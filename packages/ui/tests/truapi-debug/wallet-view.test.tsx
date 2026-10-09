@@ -65,7 +65,7 @@ describe('WalletView', () => {
     expect(walletSwitch.switchToLocalWallet).not.toHaveBeenCalled();
   });
 
-  it('As a local wallet user, I see my account and username and switch back to Polkadot App', async () => {
+  it('As a local wallet user, I see my account and username and forget the wallet to go back to Polkadot App', async () => {
     // Given
     setWalletModeState({ mode: 'local', failure: null });
     setAuthState({
@@ -76,7 +76,7 @@ describe('WalletView', () => {
     await settle();
 
     // When
-    byTestId('td-wallet-use-app', document, HTMLButtonElement).click();
+    byTestId('td-wallet-forget', document, HTMLButtonElement).click();
     await settle();
 
     // Then
@@ -85,7 +85,7 @@ describe('WalletView', () => {
     expect(walletSwitch.switchToPolkadotApp).toHaveBeenCalledTimes(1);
   });
 
-  it('As a local wallet user whose switch back failed, I am told to try again', async () => {
+  it('As a local wallet user whose forget failed, I am told to try again', async () => {
     // Given
     walletSwitch.switchToPolkadotApp.mockRejectedValueOnce(new Error('frame gone'));
     setWalletModeState({ mode: 'local', failure: null });
@@ -93,13 +93,60 @@ describe('WalletView', () => {
     await settle();
 
     // When
-    byTestId('td-wallet-use-app', document, HTMLButtonElement).click();
+    byTestId('td-wallet-forget', document, HTMLButtonElement).click();
     await settle();
 
     // Then
     expect(byTestId('td-wallet-error').textContent).toBe('Could not switch back. Try again.');
     expect(byTestId('td-wallet-error').getAttribute('role')).toBe('alert');
-    expect(byTestId('td-wallet-use-app', document, HTMLButtonElement).disabled).toBe(false);
+    expect(byTestId('td-wallet-forget', document, HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('As a local wallet user, I replace my wallet with another phrase', async () => {
+    // Given
+    setWalletModeState({ mode: 'local', failure: null });
+    renderComponent(() => <WalletView active />);
+    await settle();
+    byTestId('td-wallet-replace', document, HTMLButtonElement).click();
+    await settle();
+    typePhrase(DEV_PHRASE);
+    await settle();
+
+    // When
+    byTestId('td-wallet-use-local', document, HTMLButtonElement).form?.requestSubmit();
+    await settle();
+
+    // Then
+    expect(byTestId('td-wallet-use-local').textContent).toBe('Replace');
+    expect(walletSwitch.switchToLocalWallet).toHaveBeenCalledWith(mnemonicToEntropy(DEV_PHRASE));
+    expect(walletSwitch.switchToPolkadotApp).not.toHaveBeenCalled();
+  });
+
+  it('As a local wallet user who changed my mind about replacing, I cancel and keep my wallet', async () => {
+    // Given
+    setWalletModeState({ mode: 'local', failure: null });
+    renderComponent(() => <WalletView active />);
+    await settle();
+    byTestId('td-wallet-replace', document, HTMLButtonElement).click();
+    await settle();
+
+    // When
+    byTestId('td-wallet-cancel', document, HTMLButtonElement).click();
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="td-wallet-phrase"]')).toBeNull();
+    expect(byTestId('td-wallet-account').textContent).toBe('Activating');
+    expect(walletSwitch.switchToLocalWallet).not.toHaveBeenCalled();
+  });
+
+  it('As a Polkadot App user, the import form has no Cancel', async () => {
+    // When
+    renderComponent(() => <WalletView active />);
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="td-wallet-cancel"]')).toBeNull();
   });
 
   it('As a user whose local wallet could not start, I see why', async () => {

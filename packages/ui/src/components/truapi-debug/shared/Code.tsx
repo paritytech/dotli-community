@@ -4,7 +4,11 @@
 import type { JSX } from '@solidjs/web';
 import s from './Code.module.css';
 
-/** A value that is code, such as a hash or a method name. */
-export function Code(props: { children: string }): JSX.Element {
-  return <code class={s['code']}>{props.children}</code>;
+/** A value that is code, such as a hash or a version. */
+export function Code(props: { muted?: boolean; testId?: string | undefined; children: string }): JSX.Element {
+  return (
+    <code class={[s['code'], props.muted === true && s['muted']]} data-testid={props.testId}>
+      {props.children}
+    </code>
+  );
 }

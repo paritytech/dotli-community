@@ -3,10 +3,10 @@
 
 import { createSignal, flush, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { DockPosition } from '@dotli/truapi-debug';
+import type { DockPosition, PanelSection } from '@dotli/truapi-debug';
 import { exportFilename } from '@dotli/truapi-debug';
 import { Button } from './shared/Button.js';
-import { SectionTabs, type PanelSection } from './SectionTabs.js';
+import { SectionTabs } from './SectionTabs.js';
 import s from './Header.module.css';
 
 const DEBUG_SESSION_KEY = 'dotli:truapi-debug';
@@ -45,6 +45,23 @@ function CopyIcon(): JSX.Element {
     >
       <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
       <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </svg>
+  );
+}
+
+function CloseIcon(): JSX.Element {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }
@@ -226,15 +243,9 @@ export function Header(props: {
       <Button testId="td-collapse" icon title="Collapse" onClick={props.onToggleCollapse}>
         {props.collapsed ? '▲' : '▼'}
       </Button>
-      <button
-        class={s['close']}
-        data-testid="td-close"
-        type="button"
-        title="Hide (Ctrl+Shift+D)"
-        onClick={exitDebugMode}
-      >
-        ×
-      </button>
+      <Button testId="td-close" icon title="Hide (Ctrl+Shift+D)" label="Hide" onClick={exitDebugMode}>
+        <CloseIcon />
+      </Button>
     </div>
   );
 }

@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
+import type { PanelSection } from '@dotli/truapi-debug';
 import { Tabs, type TabOption } from './shared/Tabs.js';
 import s from './SectionTabs.module.css';
-
-/** The panel's top-level tabs. Only `truapi` shows the captured events. */
-export type PanelSection = 'truapi' | 'resolution' | 'archive' | 'diagnostics' | 'wallet';
 
 const SECTIONS: readonly TabOption<PanelSection>[] = [
   { value: 'truapi', label: 'TrUAPI' },

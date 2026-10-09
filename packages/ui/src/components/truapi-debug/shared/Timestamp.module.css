@@ -1,0 +1,8 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.time {
+  min-width: 0;
+  color: var(--td-fg-faint);
+  font-size: 11px;
+}

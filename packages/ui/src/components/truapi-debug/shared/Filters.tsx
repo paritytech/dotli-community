@@ -5,6 +5,7 @@
 
 import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { Bar } from './Bar.js';
 import s from './Filters.module.css';
 
 export function FilterBar(props: {
@@ -14,9 +15,9 @@ export function FilterBar(props: {
   children: JSX.Element;
 }): JSX.Element {
   return (
-    <div class={[s['bar'], props.class]} data-testid={props.testId} hidden={props.hidden}>
+    <Bar testId={props.testId} hidden={props.hidden} wrap class={props.class}>
       {props.children}
-    </div>
+    </Bar>
   );
 }
 

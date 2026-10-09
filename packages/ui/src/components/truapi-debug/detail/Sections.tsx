@@ -6,9 +6,9 @@ import type { JSX } from '@solidjs/web';
 import { formatPayloadDetail, type ChainDetail } from '@dotli/truapi-debug';
 import { Callout } from '../shared/Callout.js';
 import { Code } from '../shared/Code.js';
+import { CodeBlock } from '../shared/CodeBlock.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
 import { SectionTitle } from '../shared/SectionTitle.js';
-import s from './Sections.module.css';
 
 /** What an event means, in prose. */
 export function Summary(props: { text: string }): JSX.Element {
@@ -36,7 +36,9 @@ export function ChainFields(props: { chain: ChainDetail | null }): JSX.Element {
           <SectionTitle>Chain</SectionTitle>
           <KeyValueList testId="td-chain-head">
             <For each={chain().fields}>
-              {field => <KeyValue name={field.name}>{field.code ? <Code>{field.value}</Code> : field.value}</KeyValue>}
+              {field => (
+                <KeyValue name={field.name}>{field.code ? <Code muted>{field.value}</Code> : field.value}</KeyValue>
+              )}
             </For>
           </KeyValueList>
         </>
@@ -46,9 +48,5 @@ export function ChainFields(props: { chain: ChainDetail | null }): JSX.Element {
 }
 
 export function Payload(props: { payload: unknown }): JSX.Element {
-  return (
-    <pre class={s['payload']} data-testid="td-detail-pre">
-      {formatPayloadDetail(props.payload)}
-    </pre>
-  );
+  return <CodeBlock testId="td-detail-pre">{formatPayloadDetail(props.payload)}</CodeBlock>;
 }

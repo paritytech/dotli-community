@@ -1,15 +1,19 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Carries `hidden` while another view shows, so it sets no display of its own. */
-
-.timeline {
+.pane {
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   scrollbar-width: thin;
   background: var(--td-bg);
 }
+.padded {
+  padding: 10px 12px 14px;
+  color: var(--td-fg-strong);
+  font-size: 11px;
+}
 /* Beats global.css's :focus-visible whatever the sheet order (dev loads it last). */
-.timeline:focus-visible {
+.focusable:focus-visible {
   outline: none;
 }

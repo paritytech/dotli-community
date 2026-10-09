@@ -21,25 +21,9 @@
   border-left: 2px solid var(--td-system-edge);
 }
 
-.time,
-.arrowIn,
-.arrowOut,
 .product,
-.layer,
 .tagAndSummary {
   min-width: 0;
-}
-.time {
-  color: var(--td-fg-faint);
-  font-size: 11px;
-}
-.arrowIn {
-  color: var(--td-green);
-  font-weight: bold;
-}
-.arrowOut {
-  color: var(--td-amber);
-  font-weight: bold;
 }
 .product {
   color: var(--td-slate);
@@ -55,70 +39,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tag {
-  color: var(--td-fg-strong);
-}
-.tag[data-kind='request'] {
-  color: var(--td-amber);
-}
-.tag[data-kind='response'] {
-  color: var(--td-green);
-}
-.tag[data-kind='subscription'] {
-  color: var(--td-purple);
-}
-.tag[data-kind='system'] {
-  color: var(--td-sky);
-}
 .summary {
   color: var(--td-fg-dim);
   margin-left: 8px;
   font-size: 11px;
-}
-
-.layer {
-  display: inline-flex;
-  align-items: center;
-  font-family: system-ui, sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--td-slate-bg);
-  color: var(--td-slate);
-  border: 1px solid var(--td-slate-line);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.layer[data-layer='boot'] {
-  background: var(--td-boot-bg);
-  color: var(--td-blue);
-  border-color: var(--td-boot-line);
-}
-.layer[data-layer='resolve'] {
-  background: var(--td-resolve-bg);
-  color: var(--td-green);
-  border-color: var(--td-resolve-line);
-}
-.layer[data-layer='render'] {
-  background: var(--td-render-bg);
-  color: var(--td-amber);
-  border-color: var(--td-render-line);
-}
-.layer[data-layer='bridge'] {
-  background: var(--td-bridge-bg);
-  color: var(--td-purple);
-  border-color: var(--td-bridge-line);
-}
-.layer[data-layer='failover'] {
-  background: var(--td-failover-bg);
-  color: var(--td-orange);
-  border-color: var(--td-failover-line);
-}
-.layer[data-layer='chain'] {
-  background: var(--td-chain-bg);
-  color: var(--td-cyan);
-  border-color: var(--td-chain-line);
 }
 
 .pending {
@@ -135,10 +59,4 @@
   background: var(--td-accent-bg);
   color: var(--td-pink);
   border-color: var(--td-pink-line);
-}
-
-.empty {
-  padding: 32px 16px;
-  text-align: center;
-  color: var(--td-fg-faint);
 }

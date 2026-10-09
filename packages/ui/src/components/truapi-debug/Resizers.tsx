@@ -7,7 +7,7 @@
 import { onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DockPosition } from '@dotli/truapi-debug';
-import { startDrag } from '../drag.js';
+import { Resizer } from './shared/Resizer.js';
 import s from './Resizers.module.css';
 
 /** Room for the filter chips and tabs. */
@@ -29,12 +29,9 @@ export function ResizeHandle(props: {
   onResize: (px: number) => void;
 }): JSX.Element {
   const panelEl = untrack(() => props.panel);
-  let handle: HTMLDivElement | undefined;
-  let stopDrag: (() => void) | undefined;
   let resized: number | null = null;
   let frame: number | null = null;
   onCleanup(() => {
-    stopDrag?.();
     if (frame !== null) {
       cancelAnimationFrame(frame);
     }
@@ -66,21 +63,12 @@ export function ResizeHandle(props: {
   };
 
   return (
-    <div
+    <Resizer
+      testId="td-resize-handle"
       class={s['handle']}
-      data-testid="td-resize-handle"
-      data-dock={props.dock}
-      data-collapsed={props.collapsed ? '' : undefined}
-      role="separator"
-      aria-orientation="horizontal"
-      ref={el => {
-        handle = el;
-      }}
-      onPointerDown={e => {
-        if (!props.collapsed && handle !== undefined) {
-          stopDrag = startDrag(handle, e, { move });
-        }
-      }}
+      orientation={props.dock === 'right' ? 'vertical' : 'horizontal'}
+      disabled={props.collapsed}
+      onDrag={move}
     />
   );
 }
@@ -92,16 +80,12 @@ export function BodySplitter(props: {
   hidden: boolean;
 }): JSX.Element {
   const panelEl = untrack(() => props.panel);
-  let splitter: HTMLDivElement | undefined;
-  let stopDrag: (() => void) | undefined;
-  onCleanup(() => {
-    stopDrag?.();
-  });
+  /** Measured once at drag start, since measuring per move would read layout after a write. */
+  let body: DOMRect | undefined;
 
-  /** `body` is measured once at drag start, since measuring per move would read layout after a write. */
-  const move = (e: PointerEvent, body: DOMRect): void => {
+  const move = (e: PointerEvent): void => {
     const panel = panelEl();
-    if (panel === undefined) {
+    if (panel === undefined || body === undefined) {
       return;
     }
     if (props.stacked) {
@@ -118,35 +102,17 @@ export function BodySplitter(props: {
   };
 
   return (
-    <div
+    <Resizer
+      testId="td-body-splitter"
       class={s['splitter']}
-      data-testid="td-body-splitter"
-      data-layout={props.stacked ? 'stacked' : undefined}
+      orientation={props.stacked ? 'horizontal' : 'vertical'}
       hidden={props.hidden}
-      role="separator"
-      aria-orientation={props.stacked ? 'horizontal' : 'vertical'}
-      tabindex="-1"
       title="Drag to resize"
-      ref={el => {
-        splitter = el;
+      onDragStart={el => {
+        body = el.parentElement?.getBoundingClientRect();
       }}
-      onPointerDown={e => {
-        const el = splitter;
-        const body = el?.parentElement?.getBoundingClientRect();
-        if (el === undefined || body === undefined) {
-          return;
-        }
-        el.setAttribute('data-dragging', '');
-        stopDrag = startDrag(el, e, {
-          move: m => {
-            move(m, body);
-          },
-          end: () => {
-            el.removeAttribute('data-dragging');
-          },
-        });
-      }}
-      onDblClick={() => {
+      onDrag={move}
+      onReset={() => {
         const panel = panelEl();
         panel?.style.removeProperty('--td-left-width');
         panel?.style.removeProperty('--td-top-height');

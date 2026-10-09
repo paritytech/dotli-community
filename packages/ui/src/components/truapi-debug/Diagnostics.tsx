@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, For, onCleanup, Show, untrack } from 'solid-js';
+import { createSignal, For, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getBackend } from '@dotli/config';
 import { loadRpcResolve } from '@dotli/resolver';
@@ -14,53 +14,23 @@ import {
   type PackageVersion,
 } from '../../settings-actions.js';
 import { Button } from './shared/Button.js';
+import { Code } from './shared/Code.js';
+import { Column, Columns } from './shared/Columns.js';
+import { CopyValue } from './shared/CopyValue.js';
 import { KeyValue, KeyValueList, ListHeading } from './shared/KeyValueList.js';
-import s from './Diagnostics.module.css';
-
-const COPIED_MS = 1000;
+import { Pane } from './shared/Pane.js';
+import { Stack } from './shared/Stack.js';
 
 const COPYABLE_ROWS = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
-
-function Value(props: { label: string; value: string; copyable: boolean }): JSX.Element {
-  const [copied, setCopied] = createSignal(false);
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => {
-    clearTimeout(copiedTimer);
-  });
-  const copy = (): void => {
-    const value = untrack(() => props.value);
-    if (value === '' || value === '…' || value === 'n/a') {
-      return;
-    }
-    void navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(() => {
-        setCopied(false);
-        copiedTimer = undefined;
-      }, COPIED_MS);
-    });
-  };
-  return (
-    <Show when={props.copyable} fallback={<code class={s['code']}>{props.value}</code>}>
-      <button
-        class={s['copy']}
-        type="button"
-        title={`Click to copy ${props.label}`}
-        aria-label={`Copy ${props.label}`}
-        data-copied={copied() ? '' : undefined}
-        onClick={copy}
-      >
-        <code class={s['code']}>{copied() ? 'Copied' : props.value}</code>
-      </button>
-    </Show>
-  );
-}
+/** Shown while a value is unknown or loading, so there is nothing to copy. */
+const PLACEHOLDERS = new Set(['', '…', 'n/a']);
 
 function Row(props: { label: string; value: string; copyable?: boolean }): JSX.Element {
   return (
     <KeyValue name={props.label} testId="td-diag-row">
-      <Value label={props.label} value={props.value} copyable={props.copyable === true} />
+      <Show when={props.copyable === true && !PLACEHOLDERS.has(props.value)} fallback={<Code>{props.value}</Code>}>
+        <CopyValue label={props.label} value={props.value} />
+      </Show>
     </KeyValue>
   );
 }
@@ -79,11 +49,11 @@ function PackageGroup(props: { title: string; packages: readonly PackageVersion[
 /** Read afresh each time the tab opens. */
 export function DiagnosticsView(props: { active: boolean }): JSX.Element {
   return (
-    <div class={s['view']} data-testid="td-diagnostics" hidden={!props.active}>
+    <Pane testId="td-diagnostics" hidden={!props.active} padded>
       <Show when={props.active}>
         <Diagnostics />
       </Show>
-    </div>
+    </Pane>
   );
 }
 
@@ -134,14 +104,12 @@ function Diagnostics(): JSX.Element {
   };
 
   return (
-    <>
-      <div class={s['bar']}>
-        <Button onClick={share} title="Open a new issue on paritytech/dotli pre-filled with these diagnostics">
-          Share diagnostic
-        </Button>
-      </div>
-      <div class={s['sections']}>
-        <section class={s['section']}>
+    <Stack gap="md">
+      <Button onClick={share} title="Open a new issue on paritytech/dotli pre-filled with these diagnostics">
+        Share diagnostic
+      </Button>
+      <Columns>
+        <Column>
           <ListHeading>Page</ListHeading>
           <KeyValueList testId="td-diagnostics-rows">
             <For each={base}>
@@ -154,16 +122,16 @@ function Diagnostics(): JSX.Element {
               )}
             </For>
           </KeyValueList>
-        </section>
-        <section class={s['section']} data-testid="td-packages">
+        </Column>
+        <Column testId="td-packages">
           <ListHeading>Light client</ListHeading>
           <KeyValueList>
             <Row label="@parity/truapi-provider" value={buildLightClientVersionLabel()} />
           </KeyValueList>
           <PackageGroup title="@polkadot-api" packages={polkadotApi} />
           <PackageGroup title="@parity/truapi" packages={parityTruapi} />
-        </section>
-      </div>
-    </>
+        </Column>
+      </Columns>
+    </Stack>
   );
 }

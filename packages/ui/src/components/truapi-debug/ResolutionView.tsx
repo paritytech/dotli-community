@@ -7,8 +7,10 @@
 import { createEffect, createSignal, flush, onCleanup, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { buildResolution, type ResolutionModel, type ResolutionRecorder } from '@dotli/truapi-debug';
-import { wireHoverTooltips } from './hover-tooltip.js';
+import { wireHoverTooltips } from './shared/hover-tooltip.js';
 import { Chart } from './resolution/Chart.js';
+import { EmptyState } from './shared/EmptyState.js';
+import { Pane } from './shared/Pane.js';
 import { Summary } from './resolution/Summary.js';
 import s from './ResolutionView.module.css';
 
@@ -68,10 +70,11 @@ export function ResolutionView(props: {
   });
 
   return (
-    <div
-      class={s['res']}
-      data-testid="td-res"
+    <Pane
+      testId="td-res"
       hidden={!props.active}
+      padded
+      class={s['res']}
       ref={el => {
         unwireTooltips = wireHoverTooltips(
           el,
@@ -85,9 +88,9 @@ export function ResolutionView(props: {
           <Show
             when={m().flowId !== null}
             fallback={
-              <div class={s['empty']} data-testid="td-res-empty">
+              <EmptyState testId="td-res-empty">
                 No page load recorded yet. Reload the page with the panel open.
-              </div>
+              </EmptyState>
             }
           >
             <Summary model={m()} />
@@ -97,6 +100,6 @@ export function ResolutionView(props: {
           </Show>
         )}
       </Show>
-    </div>
+    </Pane>
   );
 }

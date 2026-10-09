@@ -9,7 +9,6 @@ import {
   chainDetail,
   correlationKeyOf,
   eventCountLabel,
-  formatTime,
   groupDuration,
   memberDelta,
   summariseSystemEvent,
@@ -21,7 +20,13 @@ import {
 import { Explanation } from './Explanation.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
 import { IdValue } from '../shared/IdBadge.js';
+import { DirectionArrow } from '../shared/DirectionArrow.js';
+import { Inline } from '../shared/Inline.js';
 import { Latency } from '../shared/Latency.js';
+import { LayerBadge } from '../shared/LayerBadge.js';
+import { MethodTag } from '../shared/MethodTag.js';
+import { Stack } from '../shared/Stack.js';
+import { Timestamp } from '../shared/Timestamp.js';
 import { ChainFields, ChainSummary, Payload, Summary } from './Sections.js';
 import s from './GroupDetail.module.css';
 
@@ -73,27 +78,17 @@ function TruapiMember(props: { member: StoredTruapiEvent; delta: string | null }
   const chain = chainDetail(m.tag, m.payload);
   return (
     <div class={s['member']} data-testid="td-detail-member" data-seq={String(m.seq)}>
-      <div class={s['header']}>
-        <span class={s['time']} data-testid="td-time">
-          {formatTime(m.receivedAt)}
-        </span>
-        {m.direction === 'outgoing' ? (
-          <span class={s['arrowOut']} data-testid="td-arrow-out">
-            ▶
-          </span>
-        ) : (
-          <span class={s['arrowIn']} data-testid="td-arrow-in">
-            ◀
-          </span>
-        )}
-        <span class={s['tag']} data-testid="td-tag" data-kind={tagKind(m.tag)}>
-          {m.tag}
-        </span>
-        <Latency text={props.delta} />
-      </div>
-      <ChainSummary chain={chain} />
-      <ChainFields chain={chain} />
-      <Payload payload={m.payload} />
+      <Stack stretch>
+        <Inline>
+          <Timestamp at={m.receivedAt} />
+          <DirectionArrow direction={m.direction} />
+          <MethodTag kind={tagKind(m.tag)}>{m.tag}</MethodTag>
+          <Latency text={props.delta} />
+        </Inline>
+        <ChainSummary chain={chain} />
+        <ChainFields chain={chain} />
+        <Payload payload={m.payload} />
+      </Stack>
     </div>
   );
 }
@@ -102,21 +97,17 @@ function SystemMember(props: { member: StoredSystemEvent; delta: string | null }
   const m = untrack(() => props.member);
   return (
     <div class={s['member']} data-testid="td-detail-member" data-seq={String(m.seq)}>
-      <div class={s['header']}>
-        <span class={s['time']} data-testid="td-time">
-          {formatTime(m.receivedAt)}
-        </span>
-        <span class={s['layer']} data-testid="td-layer-badge" data-layer={m.layer}>
-          {m.layer}
-        </span>
-        <span class={s['tag']} data-testid="td-tag" data-kind="system">
-          {m.event}
-        </span>
-        <Latency text={props.delta} />
-      </div>
-      <Summary text={summariseSystemEvent(m)} />
-      <Explanation event={m} />
-      <Payload payload={m.payload} />
+      <Stack stretch>
+        <Inline>
+          <Timestamp at={m.receivedAt} />
+          <LayerBadge layer={m.layer} />
+          <MethodTag kind="system">{m.event}</MethodTag>
+          <Latency text={props.delta} />
+        </Inline>
+        <Summary text={summariseSystemEvent(m)} />
+        <Explanation event={m} />
+        <Payload payload={m.payload} />
+      </Stack>
     </div>
   );
 }

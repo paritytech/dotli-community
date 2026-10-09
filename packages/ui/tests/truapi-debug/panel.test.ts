@@ -279,7 +279,8 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('[data-testid="td-dock"]').querySelector('svg')).not.toBeNull();
     expect(q('[data-testid="td-collapse"]').textContent).toBe('▼');
     expect(q('[data-testid="td-collapse"]').title).toBe('Collapse');
-    expect(q('[data-testid="td-close"]').textContent).toBe('×');
+    expect(q('[data-testid="td-close"]').getAttribute('aria-label')).toBe('Hide');
+    expect(q('[data-testid="td-close"]').querySelector('svg')).not.toBeNull();
     expect(q('[data-testid="td-close"]').title).toBe('Hide (Ctrl+Shift+D)');
 
     const kinds = [
@@ -340,7 +341,7 @@ describe('truapi debug panel: mount and dispose', () => {
     // Then
     expect(panel().hasAttribute('data-collapsed')).toBe(true);
     expect(q('[data-testid="td-collapse"]').textContent).toBe('▲');
-    expect(q('[data-testid="td-resize-handle"]').hasAttribute('data-collapsed')).toBe(true);
+    expect(q('[data-testid="td-resize-handle"]').hasAttribute('data-disabled')).toBe(true);
     expect(q('[data-testid="td-filters"]').hidden).toBe(true);
   });
 
@@ -593,7 +594,7 @@ describe('truapi debug panel: header actions', () => {
     // Then
     expect(shown()).toEqual(['td-clear']);
     expect(q('[data-testid="td-filters"]').hidden).toBe(true);
-    expect(q('[data-testid="td-tabs"]').hidden).toBe(true);
+    expect(q('[data-testid="td-view-bar"]').hidden).toBe(true);
 
     // When
     click(section('wallet'));
@@ -1180,6 +1181,34 @@ describe('truapi debug panel: views', () => {
     expect(rows()).toHaveLength(3);
   });
 
+  it('As a dotli developer, the tab I pick is the one the panel opens on next time', () => {
+    // Given
+    const dispose = mount();
+    click(section('diagnostics'));
+
+    // When
+    dispose();
+    mount();
+
+    // Then
+    expect(localStorage.getItem('truapi-debug:section')).toBe('diagnostics');
+    expect(section('diagnostics').getAttribute('aria-selected')).toBe('true');
+    expect(panel().getAttribute('data-section')).toBe('diagnostics');
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(false);
+  });
+
+  it('As a dotli developer with an unknown tab stored, the panel opens on the TrUAPI tab', () => {
+    // Given
+    localStorage.setItem('truapi-debug:section', 'gone');
+
+    // When
+    mount();
+
+    // Then
+    expect(section('truapi').getAttribute('aria-selected')).toBe('true');
+    expect(q('[data-testid="td-list"]').hidden).toBe(false);
+  });
+
   it('As a dotli developer, the Archive tab takes the whole width and, with no product, says so', () => {
     // Given
     mount();
@@ -1486,10 +1515,9 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Then
     expect(panel().getAttribute('data-dock')).toBe('right');
     expect(panel().getAttribute('data-layout')).toBe('stacked');
-    for (const part of ['td-resize-handle', 'td-header']) {
-      expect(q(`[data-testid="${part}"]`).getAttribute('data-dock')).toBe('right');
-    }
-    expect(q('[data-testid="td-body-splitter"]').getAttribute('data-layout')).toBe('stacked');
+    expect(q('[data-testid="td-header"]').getAttribute('data-dock')).toBe('right');
+    expect(q('[data-testid="td-resize-handle"]').getAttribute('data-orientation')).toBe('vertical');
+    expect(q('[data-testid="td-body-splitter"]').getAttribute('data-orientation')).toBe('horizontal');
     expect(dock.title).toBe('Dock to bottom');
     expect(dock.getAttribute('aria-label')).toBe('Dock to bottom');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
@@ -1502,6 +1530,8 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     expect(panel().getAttribute('data-dock')).toBe('bottom');
     expect(panel().hasAttribute('data-layout')).toBe(false);
     expect(q('[data-testid="td-header"]').getAttribute('data-dock')).toBe('bottom');
+    expect(q('[data-testid="td-resize-handle"]').getAttribute('data-orientation')).toBe('horizontal');
+    expect(q('[data-testid="td-body-splitter"]').getAttribute('data-orientation')).toBe('vertical');
     expect(dock.title).toBe('Dock to right');
     expect(dock.getAttribute('aria-label')).toBe('Dock to right');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('bottom');

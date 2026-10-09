@@ -1,0 +1,33 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.resizer {
+  position: relative;
+  background: transparent;
+  transition: background 0.12s;
+  user-select: none;
+}
+.resizer[data-orientation='horizontal'] {
+  cursor: row-resize;
+}
+.resizer[data-orientation='vertical'] {
+  cursor: col-resize;
+}
+.resizer:hover,
+.resizer[data-dragging] {
+  background: var(--td-accent);
+}
+.resizer[data-disabled] {
+  visibility: hidden;
+}
+/* A wider hit area than the visible line. */
+.resizer::after {
+  content: '';
+  position: absolute;
+}
+.resizer[data-orientation='horizontal']::after {
+  inset: -4px 0;
+}
+.resizer[data-orientation='vertical']::after {
+  inset: 0 -4px;
+}

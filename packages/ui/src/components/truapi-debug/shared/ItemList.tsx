@@ -3,6 +3,7 @@
 
 // The panel's lists of rows to pick from: the TrUAPI events and the archive's files.
 
+import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './ItemList.module.css';
 
@@ -20,6 +21,8 @@ export function Item(props: {
   value: string;
   selected: boolean;
   title?: string | undefined;
+  /** Quiet detail at the row's end, such as a size. */
+  meta?: string | undefined;
   onSelect: () => void;
   children: JSX.Element;
 }): JSX.Element {
@@ -36,7 +39,8 @@ export function Item(props: {
           props.onSelect();
         }}
       >
-        {props.children}
+        <span class={s['label']}>{props.children}</span>
+        <Show when={props.meta}>{meta => <span class={s['meta']}>{meta()}</span>}</Show>
       </button>
     </li>
   );

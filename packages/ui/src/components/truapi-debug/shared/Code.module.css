@@ -2,8 +2,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 .code {
+  color: var(--td-fg);
   font-family: inherit;
   font-size: 11px;
-  color: var(--td-fg-muted);
   overflow-wrap: anywhere;
+}
+.muted {
+  color: var(--td-fg-muted);
 }

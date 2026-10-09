@@ -17,9 +17,9 @@ import {
 import { Explanation } from './Explanation.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
 import { IdValue } from '../shared/IdBadge.js';
+import { LinkButton } from '../shared/LinkButton.js';
 import { SectionTitle } from '../shared/SectionTitle.js';
 import { ChainFields, ChainSummary, Payload, Summary } from './Sections.js';
-import s from './SingleDetail.module.css';
 
 interface SingleDetailProps {
   event: StoredEvent;
@@ -95,17 +95,16 @@ function GroupField(props: SingleDetailProps): JSX.Element {
           {(pill, i) => (
             <>
               {i() > 0 ? ' · ' : ''}
-              <span
-                class={s['pair']}
-                data-testid="td-detail-pair"
-                data-seq={String(pill.seq)}
+              <LinkButton
+                testId="td-detail-pair"
+                value={String(pill.seq)}
                 title={pill.title}
                 onClick={() => {
                   props.onSelectPair(pill.seq);
                 }}
               >
                 {pill.label}
-              </span>
+              </LinkButton>
             </>
           )}
         </For>
