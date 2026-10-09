@@ -85,7 +85,8 @@ vi.mock('@dotli/config', async importOriginal => ({
   DEBUG: false,
 }));
 
-vi.mock('@parity/truapi-host', () => ({
+vi.mock('@parity/truapi-host', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   createWasmRawCallbacks: mocks.createWasmRawCallbacks,
 }));
 
