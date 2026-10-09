@@ -16,6 +16,7 @@ import type { PhaseCallback, StatusCallback } from './access-raw-storage.js';
 import { createRawApi, type Api } from './api.js';
 import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
+import { readSeitySlot, type SeitySlot } from './seity-registry.js';
 
 export type { StatusCallback, PhaseCallback, ResolvePhase } from './access-raw-storage.js';
 export { statusToPhase } from './access-raw-storage.js';
@@ -306,4 +307,17 @@ async function readOwner(label: string, opts: ResolveOptions): Promise<string | 
 
   const dotns = getActiveServicesConfig().dotns;
   return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
+}
+
+/**
+ * Read one Seity registry slot on the active network's Asset Hub. Returns
+ * null when the network has no Seity registry configured.
+ */
+export async function resolveSeitySlot(lookupKey: `0x${string}`, opts: ResolveOptions = {}): Promise<SeitySlot | null> {
+  const registry = getActiveServicesConfig().seity?.REGISTRY;
+  if (registry === undefined) {
+    return null;
+  }
+  const api = await ensureClient(opts);
+  return readSeitySlot(api, registry, lookupKey);
 }

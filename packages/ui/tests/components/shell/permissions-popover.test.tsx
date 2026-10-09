@@ -43,6 +43,7 @@ function nameOf(request: PermissionAuthorizationRequest): string {
     case 'AccountAccess':
     case 'ChatAuthority':
     case 'StatementStoreAllowance':
+    case 'ProfileDisclosure':
       return request.tag;
   }
 }
@@ -137,7 +138,14 @@ const GROUPS: readonly { label: string; names: readonly string[] }[] = [
   },
   {
     label: 'Account and chain',
-    names: ['ChatAuthority', 'IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'],
+    names: [
+      'ChatAuthority',
+      'IdentityDisclosure',
+      'ProfileDisclosure',
+      'ChainSubmit',
+      'PreimageSubmit',
+      'StatementSubmit',
+    ],
   },
 ];
 

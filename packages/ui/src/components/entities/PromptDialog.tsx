@@ -31,6 +31,8 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
  * preimage submit, a transaction or message to sign, a host-owned pick such
  * as a Chat contact) drawn as a Modal: its head, a well of fields, the
  * notice, the host's choices, the password input, and the answers.
+ * A view with a `selection` draws its choices as a searchable checkbox list
+ * whose edits only its primary answer confirms.
  * The close button (or a swipe) answers as the scrim does, and on a prompt
  * the scrim cannot dismiss, as its Cancel (or else its danger reject) does.
  */
@@ -39,8 +41,24 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   const { id, view } = props.entry;
   const titleId = `overlay-modal-title-${String(id)}`;
   const [password, setPassword] = createSignal('');
+  const [query, setQuery] = createSignal('');
+  const [selected, setSelected] = createSignal(new Set(view.selection?.selected));
   let input: HTMLInputElement | undefined;
+  let search: HTMLInputElement | undefined;
   let firstChoice: HTMLButtonElement | undefined;
+
+  const matches = (choice: { label: string }): boolean =>
+    choice.label.toLowerCase().includes(query().trim().toLowerCase());
+
+  const toggle = (result: string, checked: boolean): void => {
+    const next = new Set(selected());
+    if (checked) {
+      next.add(result);
+    } else {
+      next.delete(result);
+    }
+    setSelected(next);
+  };
 
   const needsPassword = (button: ModalButton<string>): boolean =>
     view.input !== undefined && button.variant === 'primary';
@@ -53,7 +71,12 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
       settleModal(id, button.result, password());
       return;
     }
-    settleModal(id, button.result);
+    settleModal(
+      id,
+      button.result,
+      undefined,
+      view.selection !== undefined && button.variant === 'primary' ? [...selected()] : undefined,
+    );
   };
 
   const dismiss = (): void => {
@@ -93,7 +116,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
       }}
       title={view.title}
       labelledBy={titleId}
-      initialFocus={() => input ?? firstChoice}
+      initialFocus={() => input ?? search ?? firstChoice}
       testId="signing-modal"
     >
       <Modal.Head titleId={titleId} title={view.title} icon={view.icon} iconTestId="permission-modal-icon" />
@@ -123,26 +146,79 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
             </Callout>
           )}
         </Show>
+        <Show when={view.selection}>
+          {selection => (
+            <>
+              <input
+                ref={el => {
+                  search = el;
+                }}
+                type="search"
+                class={s['input']}
+                data-testid="prompt-choice-search"
+                placeholder="Search contacts"
+                aria-label="Search contacts"
+                autocomplete="off"
+                spellcheck="false"
+                onInput={event => setQuery(event.currentTarget.value)}
+              />
+              <p class={s['caption']} data-testid="prompt-choice-status" role="status">
+                {selected().size === 0
+                  ? 'No contacts selected. Use selection to remove everyone.'
+                  : `${String(selected().size)} selected${selected().size === selection().limit ? ' (selection limit)' : ''}`}
+              </p>
+            </>
+          )}
+        </Show>
         <Show when={view.choices}>
           {choices => (
-            <div class={s['choices']} data-testid="prompt-choices">
+            <div
+              class={s['choices']}
+              data-selection={view.selection === undefined ? undefined : ''}
+              data-testid="prompt-choices"
+            >
               <For each={choices()}>
                 {choice => (
-                  <Button
-                    ref={el => {
-                      firstChoice ??= el;
-                    }}
-                    block
-                    class={s['choice']}
-                    testId="prompt-choice"
-                    onClick={() => {
-                      settleModal(id, choice.result);
-                    }}
+                  <Show
+                    when={view.selection}
+                    fallback={
+                      <Button
+                        ref={el => {
+                          firstChoice ??= el;
+                        }}
+                        block
+                        class={s['choice']}
+                        testId="prompt-choice"
+                        onClick={() => {
+                          settleModal(id, choice.result);
+                        }}
+                      >
+                        {choice.label}
+                      </Button>
+                    }
                   >
-                    {choice.label}
-                  </Button>
+                    {selection => (
+                      <label class={s['check']} data-testid="prompt-choice" hidden={!matches(choice)}>
+                        <input
+                          type="checkbox"
+                          class={s['box']}
+                          checked={selected().has(choice.result)}
+                          disabled={!selected().has(choice.result) && selected().size >= selection().limit}
+                          onChange={event => {
+                            toggle(choice.result, event.currentTarget.checked);
+                          }}
+                        />
+                        <span class={s['label']}>{choice.label}</span>
+                      </label>
+                    )}
+                  </Show>
                 )}
               </For>
+              <Show when={view.selection !== undefined && !choices().some(matches)}>
+                <p class={s['caption']} role="status">
+                  No matching contacts
+                </p>
+              </Show>
             </div>
           )}
         </Show>

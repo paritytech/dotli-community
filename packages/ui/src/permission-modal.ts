@@ -18,6 +18,8 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   Biometrics: 'Authenticate with a platform passkey or biometric prompt',
   ChatAuthority: "Bind this app's device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
   IdentityDisclosure: 'Share your primary DotNS identity with this app',
+  ProfileDisclosure:
+    "Share this app's profile with app audiences or selected contacts, including personal sharing across recipients' apps",
   ChainSubmit: 'Sign and submit network transactions on your behalf',
   PreimageSubmit: 'Store preimage data on the Bulletin network',
   StatementSubmit: 'Submit signed statements to the statement store',

@@ -79,6 +79,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `StatementStoreAllowance:${JSON.stringify(request.value.derivationIndex)}`;
     case 'IdentityDisclosure':
       return 'IdentityDisclosure';
+    case 'ProfileDisclosure':
+      return 'ProfileDisclosure';
     case 'AccountAccess':
       return `AccountAccess:${request.value.targetProductId}`;
   }
@@ -170,6 +172,20 @@ describe('resetPermission', () => {
   it('As a product, resetting an unknown permission leaves my grants unchanged', async () => {
     await resetPermission('myapp', 'Camera');
     expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
+  });
+
+  it('As a dotli user, revoking profile disclosure leaves identity disclosure granted', async () => {
+    // Given
+    await setPermissionStatus('myapp', 'ProfileDisclosure', 'granted');
+    await setPermissionStatus('myapp', 'IdentityDisclosure', 'granted');
+    expect(myappStore.get('ProfileDisclosure')).toBe('Authorized');
+
+    // When
+    await resetPermission('myapp', 'ProfileDisclosure');
+
+    // Then
+    expect(await getPermissionStatus('myapp', 'ProfileDisclosure')).toBe('ask');
+    expect(await getPermissionStatus('myapp', 'IdentityDisclosure')).toBe('granted');
   });
 });
 
@@ -467,7 +483,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     expect(names).not.toContain('TransactionSubmit');
   });
 
-  it('As a user, the menu lists the eight device permissions, then the five app permissions', () => {
+  it('As a user, the menu lists the eight device permissions, then the six app permissions', () => {
     // Then
     expect(ALL_PERMISSIONS.filter(({ group }) => group === 'device').map(({ name }) => name)).toEqual([
       'Notifications',
@@ -482,6 +498,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     expect(ALL_PERMISSIONS.filter(({ group }) => group === 'app').map(({ name }) => name)).toEqual([
       'ChatAuthority',
       'IdentityDisclosure',
+      'ProfileDisclosure',
       'ChainSubmit',
       'PreimageSubmit',
       'StatementSubmit',

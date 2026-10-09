@@ -9,6 +9,7 @@ import type {
   ManifestResult,
   RootManifest,
   ResolveOptions,
+  SeitySlot,
 } from '@dotli/resolver';
 import { isExecutableKind } from '@dotli/shared';
 import {
@@ -44,7 +45,13 @@ export interface EngineOptions {
    */
   resolveDotName?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveOwner?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
-  /** Unwired in `rpc-gateway` mode, which resolves manifests in the host process. */
+  resolveSeitySlot?: (lookupKey: `0x${string}`, opts?: ResolveOptions) => Promise<SeitySlot | null>;
+  /**
+   * Product-manifest readers.
+   *
+   * `rpc-gateway` mode resolves manifests in the host process, not via the
+   * iframe engine, so these stay unwired there.
+   */
   resolveExecutableManifest?: (
     label: string,
     kind: 'app' | 'widget' | 'worker',
@@ -139,6 +146,23 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
           id: request.id,
           ok: true,
           result,
+        });
+        return;
+      }
+
+      case 'resolveSeitySlot': {
+        if (!options.resolveSeitySlot) {
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_SEITY_SLOT_UNSUPPORTED);
+        }
+        const payload = request.payload as ProtocolRequestMap['resolveSeitySlot'];
+        assertStr(payload.lookupKey, 'lookupKey');
+        const slot = await options.resolveSeitySlot(payload.lookupKey as `0x${string}`, syncOptions);
+        respond({
+          namespace: 'dotli:protocol',
+          kind: 'response',
+          id: request.id,
+          ok: true,
+          result: slot === null ? null : { ...slot, version: slot.version.toString() },
         });
         return;
       }

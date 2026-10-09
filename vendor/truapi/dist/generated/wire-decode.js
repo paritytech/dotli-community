@@ -392,6 +392,14 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostContactsPickRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostContactsPickResponse, S.CallError(T.VersionedHostContactsPickError)).dec(payload),
     },
+    [W.CONTACTS_PICK_MANY.trait * 256 + W.CONTACTS_PICK_MANY.method]: {
+        0: (payload) => T.VersionedHostContactsPickManyRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostContactsPickManyResponse, S.CallError(T.VersionedHostContactsPickManyError)).dec(payload),
+    },
+    [W.CONTACTS_PLACE_LABELS.trait * 256 + W.CONTACTS_PLACE_LABELS.method]: {
+        0: (payload) => T.VersionedHostContactsPlaceLabelsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostContactsPlaceLabelsResponse, S.CallError(T.VersionedHostContactsPlaceLabelsError)).dec(payload),
+    },
     [W.GAME_REMIND_NEXT_GAME.trait * 256 + W.GAME_REMIND_NEXT_GAME.method]: {
         0: (payload) => T.VersionedHostRemindNextGameRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostRemindNextGameResponse, S.CallError(T.VersionedHostRemindNextGameError)).dec(payload),
@@ -407,5 +415,33 @@ export const WIRE_DECODE_TABLE = {
     [W.SCANNER_SCAN.trait * 256 + W.SCANNER_SCAN.method]: {
         0: (payload) => T.VersionedHostScannerScanRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostScannerScanResponse, S.CallError(T.VersionedHostScannerScanError)).dec(payload),
+    },
+    [W.PROFILE_PRESENT.trait * 256 + W.PROFILE_PRESENT.method]: {
+        0: (payload) => T.VersionedHostProfilePresentRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfilePresentResponse, S.CallError(T.VersionedHostProfilePresentError)).dec(payload),
+    },
+    [W.PROFILE_DISCLOSE.trait * 256 + W.PROFILE_DISCLOSE.method]: {
+        0: (payload) => T.VersionedHostProfileDiscloseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfileDiscloseResponse, S.CallError(T.VersionedHostProfileDiscloseError)).dec(payload),
+    },
+    [W.PROFILE_RETRACT.trait * 256 + W.PROFILE_RETRACT.method]: {
+        0: (payload) => T.VersionedHostProfileRetractRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfileRetractResponse, S.CallError(T.VersionedHostProfileRetractError)).dec(payload),
+    },
+    [W.PROFILE_PRESENT_CONTACT.trait * 256 + W.PROFILE_PRESENT_CONTACT.method]: {
+        0: (payload) => T.VersionedHostProfilePresentContactRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfilePresentContactResponse, S.CallError(T.VersionedHostProfilePresentContactError)).dec(payload),
+    },
+    [W.PROFILE_PLACE_CONTACT_AVATARS.trait * 256 + W.PROFILE_PLACE_CONTACT_AVATARS.method]: {
+        0: (payload) => T.VersionedHostProfilePlaceContactAvatarsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfilePlaceContactAvatarsResponse, S.CallError(T.VersionedHostProfilePlaceContactAvatarsError)).dec(payload),
+    },
+    [W.PROFILE_OWN_STATUS.trait * 256 + W.PROFILE_OWN_STATUS.method]: {
+        0: (payload) => T.VersionedHostProfileOwnStatusRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfileOwnStatusResponse, S.CallError(T.VersionedHostProfileOwnStatusError)).dec(payload),
+    },
+    [W.PROFILE_PRESENT_OWN.trait * 256 + W.PROFILE_PRESENT_OWN.method]: {
+        0: (payload) => T.VersionedHostProfilePresentOwnRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfilePresentOwnResponse, S.CallError(T.VersionedHostProfilePresentOwnError)).dec(payload),
     },
 };

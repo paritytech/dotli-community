@@ -20,6 +20,9 @@ import { createThemeSubscribe } from './Theme.js';
 import { createLocaleSubscribe } from './Locale.js';
 import { createAuthStateChanged } from './AuthState.js';
 import { createChatPlatform } from './Chat.js';
+import { createProfilePlatform } from './Profile.js';
+import type { NativeChatContactsDirectory } from './Contacts.js';
+import type { ContactAvatarOverlay } from '../profile/avatar-overlay.js';
 import { createSessionStoreAdapters } from './SessionStore.js';
 import { createUserConfirmationAdapters } from './UserConfirmation.js';
 import { createBlockingModalScope, type BlockingModalScope } from '../blocking-modal-queue.js';
@@ -32,7 +35,12 @@ export interface CreateHostCallbacksOptions {
   pairingHostGlobal?: boolean | undefined;
   blockingModalScope?: BlockingModalScope;
   custodyLease?: string;
+  /** Avatar layer of the product frame this connection serves, if any. */
+  contactAvatars?: ContactAvatarOverlay;
+  /** Retires Profile presentations with the connection or its current session. */
+  profileSignal?: AbortSignal | (() => AbortSignal);
   contacts?: Required<ContactsPlatform>;
+  contactsDirectory?: NativeChatContactsDirectory;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
@@ -43,7 +51,10 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
     custodyLease,
+    contactAvatars,
+    profileSignal,
     contacts,
+    contactsDirectory,
   } = options;
   const presentAuth = createAuthStateChanged(pairingLabel ?? label, {
     dotSuffix: pairingDotSuffix,
@@ -80,6 +91,10 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     // Always served; the core itself denies chat calls on non-Chat
     // executions and without an active session.
     chat: createChatPlatform(),
+    // Any product may ask the host to show a profile it references; the
+    // drawer attributes it to the product and returns nothing to it. Placed
+    // contact avatars are drawn on the frame's own host layer.
+    profile: createProfilePlatform(contactAvatars, profileSignal, contactsDirectory),
     ...(contacts === undefined ? {} : { contacts }),
   };
 }

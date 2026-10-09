@@ -9,6 +9,7 @@ import type {
   PermissionDecision,
   PreimageSubmitReview,
   ProductSubtreeReview,
+  ProfileDisclosureReview,
   ResourceAllocationReview,
   SignPayloadReview,
   SignRawReview,
@@ -121,6 +122,8 @@ function confirmationDisplay(label: string, review: ModalReview): { fields: Conf
       return { fields: createChatAuthorityFields(review.value) };
     case 'MainPurseChatPayment':
       return { fields: createMainPurseChatPaymentFields(review.value) };
+    case 'ProfileDisclosure':
+      return { fields: createProfileDisclosureFields(review.value) };
     case 'ResourceAllocation':
       return { fields: createResourceAllocationFields(review.value) };
   }
@@ -306,6 +309,22 @@ function createChatAuthorityFields(review: ChatAuthorityReview): ConfirmationFie
   ];
 }
 
+function createProfileDisclosureFields(review: ProfileDisclosureReview): ConfirmationField[] {
+  return [
+    { label: 'Requesting product', value: review.productId },
+    {
+      label: 'Permission',
+      value:
+        "Share this app's profile with app audiences or selected contacts. Personally shared profiles may be shown across the recipients' apps.",
+    },
+    {
+      label: 'Audience changes',
+      value:
+        'This authorizes the app to choose and update recipients. Always allow remembers that permission; it does not ask again for each audience change.',
+    },
+  ];
+}
+
 function createMainPurseChatPaymentFields(review: MainPurseChatPaymentReview): ConfirmationField[] {
   const services = getActiveServicesConfig();
   if (
@@ -434,6 +453,13 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
       };
     case 'ResourceAllocation':
       return { title: 'Resource Allocation', action: 'Allow' };
+    case 'ProfileDisclosure':
+      return {
+        title: 'Allow Profile Sharing',
+        action: 'Allow',
+        cancelAction: 'Deny',
+        icon: iconMarkup(PERMISSION_ICONS.ProfileDisclosure),
+      };
   }
 }
 
@@ -456,6 +482,11 @@ async function handleConfirmationReview(
   const decision = await showConfirmationModal(label, confirmationCopy(review), review, signal, allowOnce);
   if (decision === 'dismissed' && review.tag === 'IdentityDisclosure') {
     throw new Error(ERRORS.IDENTITY_DISCLOSURE_DISMISSED);
+  }
+  // A failed prompt leaves the grant undetermined in the core, so dismissing
+  // the dialog asks again next time instead of storing a refusal.
+  if (decision === 'dismissed' && review.tag === 'ProfileDisclosure') {
+    throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
   return decision;
 }

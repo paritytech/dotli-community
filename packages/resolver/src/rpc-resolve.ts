@@ -20,6 +20,7 @@ import { createRawApi, type Api } from './api.js';
 import { getConnectedRpcEndpoint } from './rpc-chain.js';
 import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
+import { readSeitySlot, type SeitySlot } from './seity-registry.js';
 
 export type { StatusCallback } from './access-raw-storage.js';
 
@@ -184,7 +185,26 @@ export function resolveOwnerViaRpc(label: string): Promise<string | null> {
   });
 }
 
-/** The node actually answering, which may not be the first configured one, since the transport rotates. */
+/**
+ * Read one Seity registry slot over JSON-RPC: the gateway-mode counterpart of
+ * `resolveSeitySlot`. Null when the network has no Seity registry, matching
+ * the protocol-worker path.
+ */
+export async function resolveSeitySlotViaRpc(lookupKey: `0x${string}`): Promise<SeitySlot | null> {
+  const registry = getActiveServicesConfig().seity?.REGISTRY;
+  if (registry === undefined) {
+    return null;
+  }
+  return withRpcClient(api => readSeitySlot(api, registry, lookupKey));
+}
+
+/**
+ * Return the Asset Hub RPC endpoint URI the shared chain connection is
+ * currently on, or `null` while none is open. The URI may not be the first
+ * entry of the candidate list, because the transport rotates on failure.
+ * Callers that want to display which node is actually answering (e.g. the
+ * diagnostics popover) should read this instead of the config list.
+ */
 export function getConnectedAssetHubRpcEndpoint(): string | null {
   return getConnectedRpcEndpoint(getActiveServicesConfig().assethub.genesis);
 }

@@ -410,18 +410,19 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the Chat TrUAPI 0.24.0 SDK from source `a0711ac26a795bea35764447f8d5bf36648f55af`, recorded in
+This branch vendors the Profile TrUAPI 0.24.0 SDK from source `ba61aa77cb694dce7a4dba69979791cbc37c0d21`, recorded in
 `vendor/truapi-host.lock.json`. The browser wallet uses the production `--web-only --signing-host` build, without
 `test-host`. Its archive inventory comes from `npm pack`, with stale compiled files lacking a matching upstream
 TypeScript source and non-web Wasm removed in a temporary staging directory before packing. The recorded archive hashes
 precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
-notification activation are preserved above the generic browser runtime and wallet layer; Profile and Jam remain
-separate feature layers. Locale timestamp batches use the SDK's browser `Intl` implementation. Explicit protocol-frame
-resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery opens fresh connection IDs
-instead of sending read-only allowance queries through IDs owned by the removed frame. Allowance inspection batches
-historical ring membership reads while preserving finalized snapshots, complete ring validation and identity-activation
-fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout
-instead, run:
+notification activation are preserved above the generic browser runtime and wallet layer. Profile disclosure, contacts
+and presentation fences are added here; Jam remains a separate feature layer. Replacing a product document retires its
+execution and clears its avatars and labels immediately; the new execution receives fresh Profile callbacks. Locale
+timestamp batches use the SDK's browser `Intl` implementation. Explicit protocol-frame resets and `pagehide` retire
+every remote chain lease as well as the wallet signer. Recovery opens fresh connection IDs instead of sending read-only
+allowance queries through IDs owned by the removed frame. Allowance inspection batches historical ring membership reads
+while preserving finalized snapshots, complete ring validation and identity-activation fences. Install the tree in
+`package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
@@ -781,6 +782,17 @@ private storage and attachment custody stay with the one page core.
 
 Picker rows show verified contact names, with a generic label for unnamed contacts; raw account IDs are not displayed.
 
+The multi-select picker opens with the current audience checked, preserves selections while searching, and applies them
+only with **Use selection**. Confirming no checked contacts removes everyone; **Cancel**, Escape, and the backdrop leave
+the audience unchanged. The original single-contact picker remains available.
+
+Contact names and account identities remain host-private. Products receive opaque contact handles and can reserve
+clipped label boxes on their surface; the host draws verified contact usernames, or account identifiers when no username
+is available, above the product frame. These labels do not require a shared profile or photo, and are independent of
+Profile avatar placement. Same-wallet contact-directory changes clear stale names and refresh the latest placement
+without waiting for the product to redraw. Product restart, navigation, wallet/session replacement, an empty placement,
+and frame teardown cancel pending refreshes and remove labels.
+
 Use the existing **List**, **Timeline**, and **Resolution** tabs for activity and diagnostics. Wallet does not duplicate
 their event viewer or capture controls.
 
@@ -826,6 +838,31 @@ keys despite encryption. Wallet secrets never enter sandbox origins or HTTP mode
 funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
 
 Keep `VITE_APP_DEBUG` unset or false in production builds.
+
+### Seity profiles
+
+Profile sharing uses the native core's separate **Profile Disclosure** consent. It does not authorize identity
+disclosure, transaction signing, spending, or statement submission. Dismissing a disclosure prompt leaves it undecided;
+an explicit denial is persisted by the core.
+
+The host resolves Seity contact references through the active network's registry and decrypts Bulletin content outside
+the product frame. Profile references are bearer capabilities: their storage follows the existing encrypted native
+wallet custody and wallet/network namespaces. A network without a configured registry has no contact profile to display.
+
+Profiles and contact-avatar layers are Solid host surfaces attached to the product's connection to the shared page core.
+Closing or retiring the connection aborts pending loads, removes its drawer and avatars, and releases decrypted image
+URLs. Sign-out, account replacement and paired-session storage changes also retire that session's profile UI without
+preventing a later session from presenting on the same connection. Mood rings disappear when their lifetime expires,
+including in an already-open drawer. Profile content is self-described; verified Chat attribution confirms who shared a
+reference, not who an image depicts.
+
+Opening a contact without a received, live profile reference still opens the host drawer. It shows the host-verified
+contact name and **No information shared with you yet**, without an error style or an indefinite spinner. It does not
+claim the contact has never shared: information may not have reached this host yet. Availability stays private from the
+requesting product, whose completion reply is the same for shared and empty profiles. When a product-specific Chat name
+is unavailable, the drawer resolves it from the same wallet- and People-network-bound verified directory used by contact
+labels. This lookup never delays opening the drawer or returns the name to the requesting product. Missing or
+unavailable directory names retain generic attribution.
 
 ## Sandbox API Checker
 

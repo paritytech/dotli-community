@@ -763,6 +763,7 @@ async function initDirectMode(): Promise<void> {
     resolveExecutableManifest,
     resolveOwner,
     resolveRootManifest,
+    resolveSeitySlot,
     setResolverAssetHubProvider,
     setResolverPeopleProvider,
     waitForPeopleFinalized,
@@ -880,6 +881,7 @@ async function initDirectMode(): Promise<void> {
     },
     resolveDotName,
     resolveOwner,
+    resolveSeitySlot,
     resolveExecutableManifest,
     resolveRootManifest,
   });

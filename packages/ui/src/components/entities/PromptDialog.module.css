@@ -2,7 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* The password prompt's parts: its caption, its error and the board's
-   password .input, and a host-owned pick's list of .choices.
+   password .input, and a host-owned pick's list of .choices (or, for a
+   multiple pick, of .check rows under the search .input).
    floating/Modal.module.css draws the modal around them.
    Desktop sizes by default, the boards' in the phone block. */
 
@@ -63,13 +64,72 @@
   overflow-wrap: anywhere;
 }
 
+/* A multiple pick (Chat contacts to share with): checkbox rows in a list
+   that scrolls on its own, so the search above it stays in view. The 2 px
+   padding, given back by the margin, keeps a row's focus ring in the clip. */
+.choices[data-selection] {
+  max-height: 40dvh;
+  margin: calc(-1 * var(--sp-hair));
+  padding: var(--sp-hair);
+  overflow-y: auto;
+}
+.check {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--h-control-sm);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-full);
+  background: var(--chrome-fill);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+  color: var(--chrome-text);
+  font: var(--fw-medium) var(--fs-body) / var(--lh-body) var(--font-sans);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.check:hover {
+  background: var(--chrome-fill-strong);
+}
+.check[hidden] {
+  display: none;
+}
+.check:has(.box:disabled) {
+  cursor: default;
+  opacity: 0.45;
+}
+/* The board's ring sits flush on the pill, inside the list's clip. */
+.check:has(.box:focus-visible) {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 0;
+}
+.box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  outline: none;
+  accent-color: var(--chrome-action);
+}
+.label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* PHONE_QUERY in phone-viewport.ts: the boards' 44 px input and choices. */
 @media (max-width: 560px) {
   .input {
     height: var(--h-control);
     padding: 0 var(--sp-5);
   }
-  .choice {
+  .choice,
+  .check {
     min-height: var(--h-control);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .check {
+    transition: none;
   }
 }

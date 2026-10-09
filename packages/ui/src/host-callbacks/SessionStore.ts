@@ -365,6 +365,9 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case 'NativeChatFileChunk':
       case 'NativeChatProducts':
       case 'DeviceEncryptionKey':
+      case 'ProfileDisclosure':
+      case 'ProfileReferencesReceived':
+      case 'ProfilePersonalReferencesReceived':
         return encoded;
       case 'AuthSession':
       case 'PairingDeviceIdentity':
@@ -503,6 +506,14 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     // Per product, so one product's revoked grant expires without touching the others.
     case 'ProductManifest':
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
+    // Bearer capabilities are scoped by wallet and chain in the encoded key.
+    case 'ProfileDisclosure':
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-disclosure:${hexNoPrefix(encodeCoreStorageKey(key))}`;
+    // Product-scoped received references remain separate from personal grants.
+    case 'ProfileReferencesReceived':
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-references-received:${hexNoPrefix(encodeCoreStorageKey(key))}`;
+    case 'ProfilePersonalReferencesReceived':
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-personal-references-received:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     case 'MainPurseCoinage':
     case 'NativeChatDevice':
     case 'NativeChatFileChunk':
@@ -516,7 +527,11 @@ function storesSecretMaterial(key: CoreStorageKey): boolean {
     key.tag === 'AllowanceKeys' ||
     key.tag === 'AutoSigningKey' ||
     key.tag === 'AutoSigningKeys' ||
-    key.tag === 'DeviceEncryptionKey'
+    key.tag === 'DeviceEncryptionKey' ||
+    // Bearer capabilities: whoever reads one can open the profile it names.
+    key.tag === 'ProfileDisclosure' ||
+    key.tag === 'ProfileReferencesReceived' ||
+    key.tag === 'ProfilePersonalReferencesReceived'
   );
 }
 

@@ -14,7 +14,13 @@ import type {
 export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
-  DevicePermissionName | 'ChainSubmit' | 'ChatAuthority' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
+  | DevicePermissionName
+  | 'ChainSubmit'
+  | 'ChatAuthority'
+  | 'IdentityDisclosure'
+  | 'PreimageSubmit'
+  | 'ProfileDisclosure'
+  | 'StatementSubmit';
 
 export type AutoGrantDevicePermission = 'OpenUrl';
 
@@ -69,6 +75,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: 'Biometrics', label: 'Biometrics', group: 'device' },
   { name: 'ChatAuthority', label: 'Chat identity authority', group: 'app' },
   { name: 'IdentityDisclosure', label: 'Identity disclosure', group: 'app' },
+  { name: 'ProfileDisclosure', label: 'Profile disclosure', group: 'app' },
   { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
   { name: 'PreimageSubmit', label: 'Submit preimages', group: 'app' },
   { name: 'StatementSubmit', label: 'Submit statements', group: 'app' },
@@ -124,6 +131,9 @@ export function authorizationRequest(permission: PermissionName): PermissionAuth
   }
   if (permission === 'IdentityDisclosure') {
     return { tag: 'IdentityDisclosure' };
+  }
+  if (permission === 'ProfileDisclosure') {
+    return { tag: 'ProfileDisclosure' };
   }
   return { tag: 'Device', value: permission };
 }
