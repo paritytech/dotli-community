@@ -595,8 +595,9 @@ scenarios exercise a fresh visit without opting in. On production `dot.li`, the 
 default applies only when no valid preference has been saved.
 
 The `echat` smoke stays signed out: it cancels the initial sign-in request, uses the guest's Retry button to open a
-fresh host prompt, cancels again, and checks redraw and resize. An idle, demand-driven UI need not publish continuous
-update telemetry. The game scenarios retain their continuous rendering, audio, and input checks.
+fresh host prompt, cancels again, and checks redraw and resize. Each cancellation checks for a redraw relative to the
+pre-click frame count: a demand-driven UI may finish that redraw before its host response is observed and need not
+publish another frame while idle. The game scenarios retain their continuous rendering, audio, and input checks.
 
 ```bash
 cd apps/host
