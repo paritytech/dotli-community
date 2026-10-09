@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Manual check of the Sentry resolution spans the live host sends. Loads
-// host-playground on paseoli.dev cold, then warm, and prints each resolution
-// transaction found in the `/t` tunnel posts.
+// Manual check of the Sentry resolution spans the live host sends, on a cold then a warm load.
 //
 //   node apps/host/sentry-check.ts
 

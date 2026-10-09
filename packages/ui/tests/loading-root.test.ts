@@ -31,8 +31,7 @@ const PHASES: LoadingPhase[] = [
   },
 ];
 
-// A band that waits for a real percentage, so the bar parks at its base and
-// the stall watch fires unless something stops it.
+// A band that waits for a real percentage, so the bar parks and the stall watch fires unless stopped.
 const PARKED_PHASES: LoadingPhase[] = [
   {
     label: 'Fetching content',
@@ -45,7 +44,6 @@ const PARKED_PHASES: LoadingPhase[] = [
 ];
 
 function installLoadingDom(): void {
-  // As the host page paints it: the loading screen beside `#app`.
   document.body.innerHTML = `
     <div id="app-loading">
       <div id="loading-progress">
@@ -83,10 +81,8 @@ describe('The loading screen is a tracked app root', () => {
     vi.useRealTimers();
   });
 
-  /** Where the bar stands. */
   const progress = (): number => state.getLoadingState().progress;
 
-  /** Start a load whose bar is crawling. */
   function startLoading(): void {
     ctl.initPhases(PHASES);
     ctl.advancePhase(0);

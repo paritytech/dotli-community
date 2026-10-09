@@ -5,9 +5,8 @@ import { base64 } from '@scure/base';
 import { ERRORS } from '../errors.js';
 import { createResultStream } from './result-stream.js';
 
-// Same-window writes don't fire the `storage` event, so every runtime in this
-// window (app frames and the chat worker) is told through this set instead.
-// Other tabs are reached by the `storage` event.
+// Same-window writes fire no `storage` event, so runtimes in this window (app frames and the chat
+// worker) hear through this set. Other tabs get the `storage` event.
 type StorageListener = (key: string) => void;
 const listeners = new Set<StorageListener>();
 

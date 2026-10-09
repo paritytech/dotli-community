@@ -9,9 +9,8 @@ import { ModalOutlet } from './ModalOutlet.js';
 import { ToastStack } from './ToastStack.js';
 
 /**
- * Mount the toast and modal trees as the "overlays" root. `onBroken` runs
- * once the root broke and was disposed, so the loader can settle the queued
- * work (see `overlays/load.ts`).
+ * Mount the toast and modal trees.
+ * `onBroken` runs once the root broke and was disposed, so the loader can settle queued work.
  */
 export function mountOverlays(onBroken: () => void): () => void {
   return mountRoot(

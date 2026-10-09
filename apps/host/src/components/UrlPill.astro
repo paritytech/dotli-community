@@ -2,13 +2,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The topbar's URL bar (`#topbar-url`): the pill's markup, empty and hidden
-// until the host knows what it shows. Its script binds it to the url-pill
-// store main.ts writes (bindUrlPill in @dotli/ui), which fills in the
-// product's label and TLD or a local product's host. The verification
-// shield and its explainer are an island in the pill (UrlPillShield),
-// hydrated once the browser is idle. bindUrlPill finds the pill and the name
-// by their ids, and marks a local product's pill `data-localhost`.
+// Empty and hidden until bindUrlPill fills it from the url-pill store. bindUrlPill finds the pill and the name by id.
 import { UrlPillShield } from '@dotli/ui/islands/UrlPillShield';
 import s from './UrlPill.module.css';
 ---

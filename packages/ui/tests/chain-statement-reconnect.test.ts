@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Issue #308, end to end through the real host path: Chain.ts, the chain
-// pool and broker, and the replaying RPC transport, over a fake server.
+// End to end through the real host path (Chain.ts, the chain pool and broker, the replaying RPC transport) over a
+// fake server.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveServicesConfig, setBackend } from '@dotli/config';

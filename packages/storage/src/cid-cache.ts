@@ -1,21 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li IndexedDB-backed cache mapping a label to its CID.
-//
-// Enables stale-while-revalidate: on repeat visits, render from
-// the cached CID instantly while smoldot validates in the background.
-//
-// The product's root and app manifest records are kept as raw text next to
-// the CID, so a cache hit can be validated before rendering, by whatever
-// validator the host ships today, without a chain read. An entry belongs to
-// the network it was resolved on: the same name can point elsewhere, or
-// nowhere, on another network.
-//
-// The canonical surface is the discriminated `getCachedCidResult` so
-// callers can distinguish "miss" (run full resolution) from "error"
-// (storage broken, surface to user). The legacy `getCachedCid` remains
-// for incremental migration but collapses both into `null`.
+// Label to CID cache, so a repeat visit renders at once while smoldot revalidates.
+// Manifest records ride along as raw text, so a hit is validated by today's validator without a chain read.
 
 import type { Network } from '@dotli/config';
 import { getDb, isExpectedDbError } from './db.js';
@@ -24,7 +11,7 @@ import { isValidDotLabel, log } from '@dotli/shared';
 
 const STORE = 'cids';
 
-/** Raw manifest record text, as read from dotNS. `null`: the record is unset. */
+/** Raw record text as read from dotNS, `null` when the record is unset. */
 export interface CachedManifests {
   root: string | null;
   app: string | null;
@@ -32,10 +19,10 @@ export interface CachedManifests {
 
 interface CidEntry {
   label: string;
-  /** Absent on entries cached before networks were kept: those read as a miss. */
+  /** Absent on older entries, which read as a miss. The same name can differ per network. */
   network?: Network;
   cid: string;
-  /** Absent on entries cached before manifests were kept: those read as a miss. */
+  /** Absent on older entries, which read as a miss. */
   manifests?: CachedManifests;
   timestamp: number;
 }
@@ -49,8 +36,7 @@ export type CidCacheResult = ({ kind: 'hit' } & CachedCid) | { kind: 'miss' } | 
 
 type CacheAction = 'read' | 'write' | 'clear' | 'evict';
 
-// Sentry capture is throttled to once per action per page: a cache stuck in
-// one failure reports identically on every access.
+// One Sentry capture per action per page, since a stuck cache reports identically on every access.
 const reportedActions = new Set<CacheAction>();
 
 function report(action: CacheAction, err: unknown): void {
@@ -97,12 +83,7 @@ export async function getCachedCidResult(label: string, network: Network): Promi
   }
 }
 
-/**
- * Legacy surface where `null` collapses cache miss and storage error.
- *
- * New callers should use `getCachedCidResult` so storage failures can be
- * surfaced rather than silently treated as "no cache".
- */
+/** `null` covers both a miss and a storage error. Prefer `getCachedCidResult`. */
 export async function getCachedCid(label: string, network: Network): Promise<CachedCid | null> {
   const result = await getCachedCidResult(label, network);
   if (result.kind === 'error') {
@@ -115,12 +96,7 @@ export async function getCachedCid(label: string, network: Network): Promise<Cac
 export const RECENT_KEY = 'dotli_recent';
 const MAX_RECENT = 8;
 
-/**
- * Decode a stored recent list, dropping anything that isn't a usable label.
- *
- * Shared with the cross-subdomain transport in `@dotli/ui/recent-labels`,
- * which holds the same list under the shared-mode store.
- */
+/** Drops anything that isn't a usable label. Also used by the cross-subdomain store in `@dotli/ui`. */
 export function parseRecentLabels(raw: string | null): string[] {
   if (raw === null || raw === '') {
     return [];
@@ -140,12 +116,11 @@ export function serializeRecentLabels(labels: string[]): string {
   return JSON.stringify(labels.slice(0, MAX_RECENT));
 }
 
-/** Put `label` at the front of `labels`, deduplicated and length-capped. */
 export function withRecentLabel(labels: string[], label: string): string[] {
   return [label, ...labels.filter(l => l !== label)].slice(0, MAX_RECENT);
 }
 
-/** Read this origin's recent list. The shared store is authoritative. */
+/** This origin's copy. The shared store is authoritative. */
 export function getRecentLabels(): string[] {
   try {
     return parseRecentLabels(localStorage.getItem(RECENT_KEY));
@@ -157,9 +132,9 @@ export function getRecentLabels(): string[] {
 export function writeRecentLabels(labels: string[]): void {
   try {
     localStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));
-    // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable / quota exceeded when writing a UI-only "recent labels" list. Not worth a metric per page load; defaults keep working.
+    // eslint-disable-next-line no-restricted-syntax -- the recent list is UI-only, so a full or missing localStorage is not worth a metric.
   } catch {
-    /* non-critical. The recent list is UI decoration */
+    /* the recent list is UI decoration */
   }
 }
 
@@ -188,13 +163,7 @@ export async function setCachedCid(
   }
 }
 
-/**
- * Clear every cached label-to-CID entry.
- *
- * Used when the user turns the dotNS cache off in settings. Awaits
- * transaction completion so a reload right after won't abort the clear
- * mid-flight. Best-effort: failures are logged.
- */
+/** Awaits completion so a reload right after cannot abort the clear. Best-effort, failures are only logged. */
 export async function clearCidCache(): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
@@ -216,7 +185,7 @@ export async function clearCidCache(): Promise<void> {
   }
 }
 
-/** Remove a cached entry. Best-effort: failures are logged, not thrown. */
+/** Best-effort, failures are only logged. */
 export async function evictCachedCid(label: string): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {

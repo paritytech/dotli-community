@@ -36,7 +36,8 @@ When visiting the root (`paseo.li`), a landing page is shown with:
 - **Recently visited** apps shown as pill-shaped shortcuts (persisted in localStorage)
 - A **login** button in the top-right corner
 
-The topbar is hidden on the landing page and only appears when viewing an app.
+It is its own page (`landing.html`), with no topbar and no service worker. The topbar and the offline shell belong to
+the app pages (`index.html`) on each app's subdomain.
 
 ## Architecture
 
@@ -219,17 +220,27 @@ The project uses npm workspaces and [Turborepo](https://turbo.build).
 nvm use                  # or any Node 26 install
 npm install -g npm@latest
 npm install
-npm run preview          # Build + serve both apps on localhost:5173
+export VITE_NETWORKS=paseo-next-v2,previewnet
+npm run dev              # Dev servers with hot reload on localhost:4321
+npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
 ```
 
-This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the unified host-rust-core
-runtime. `vendor/truapi-host.lock.json` records the source revisions, archive hashes, `dist/generated/client.js` digest,
-and signing-host WASM digest. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
-dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
+`npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
+protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
+such as the shell's offline service worker.
+
+This branch vendors the generic TrUAPI wallet SDK from the source recorded in `vendor/truapi-host.lock.json`.
+The browser wallet uses the `wasm-signing-host` web build, without `test-host`; the published pairing-only SDK
+does not provide its native identity and allowance APIs. Install the tree in `package-lock.json` with `npm ci`.
+To iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
 ```
+
+The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either
+page loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity
+before binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
 
 When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
 
@@ -255,7 +266,8 @@ advancing the fake clock. Cold module loading cannot resume a timed-out case aga
 
 Local development uses wildcard subdomains:
 
-- `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
+- `host-playground.localhost:4321` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
+  via the host
 
 ### Running the functional browser suite locally
 
@@ -273,23 +285,18 @@ Both metric settings are required: without them the transport ownership cases ei
 ### Running the host-playground E2E locally
 
 The product E2E suite can load a source checkout through dotli's localhost proxy instead of resolving the published
-`host-playground.dot` CID. Use a `truapi-host` CLI built from the exact `upstreamRevision` in
-`vendor/truapi-host.lock.json`; an installed release or another feature branch may have a different wire contract. CI
-checks out that immutable revision from [host-rust-core](https://github.com/paritytech/host-rust-core), generates its
-sources, and builds the CLI. In a checkout of that revision, with its codegen Rust toolchain and stable Rust installed:
+`host-playground.dot` CID. Use the released `truapi-host` CLI with the published SDK 0.24 packages. CI installs the
+released CLI rather than rebuilding the old feature-branch vendor source:
 
 ```bash
-npm ci --ignore-scripts
-TRUAPI_SKIP_PACKAGE_BUILD=1 ./scripts/codegen.sh
-cargo build --locked -p truapi-host-cli --bin truapi-host
+curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
 ```
 
-To qualify this branch's vendored SDKs, build dotli without linking a different SDK checkout, then run the host
-workspace suite with explicit CLI and product paths:
+Set `TRUAPI_HOST_VERSION` to select a specific CLI release and `SIGNING_HOST_BIN` to use an explicit binary. Build dotli
+without linking a different SDK checkout, then run the host workspace suite with the product paths:
 
 ```bash
 VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
-SIGNING_HOST_BIN=/path/to/pinned-host-rust-core/target/debug/truapi-host \
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
 npm run --workspace apps/host test:e2e:local
@@ -300,11 +307,9 @@ when deliberately developing against that checkout. Set `TRUAPI_REPO` to select 
 
 The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND=smoldot-shared-worker` to exercise the SharedWorker light
 client, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
-`apps/host/tests/e2e/.auth/signing-host`. The adapter uses canonical `--session` selection with a unique bare username
-stem saved in `.dotli-e2e-session` under that state directory. Set `SIGNING_HOST_SESSION` to choose a stem or an
-existing exact numbered username. A new stem must contain at least six lowercase ASCII letters (digits and separators do
-not count). Repeated pairing attempts and runs reuse the same base path and session, including unfinished setup. The
-first run provisions an account and can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed.
+`apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a fresh lowercase username base:
+an unsuccessful attempt may already have claimed its name, so retries must not request the same name again. Account
+provisioning and ring inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed.
 Captured CLI diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach
 the CLI's private account/session files to reports.
 

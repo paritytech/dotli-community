@@ -32,7 +32,6 @@ vi.mock('../../../src/chat/service.js', () => ({
   },
 }));
 
-/** A stand-in IntersectionObserver the test scrolls by hand. */
 class FakeObserver {
   static last: FakeObserver | undefined;
   disconnected = false;

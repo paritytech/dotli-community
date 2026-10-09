@@ -3,11 +3,7 @@
 
 import { vi } from 'vitest';
 
-/**
- * A browser that is idle at once: an idle preload (components/idle.ts) runs
- * on the next task, which puts a Popover's surface in the page before any
- * opening. Undone by `vi.unstubAllGlobals()`.
- */
+/** A browser that is idle at once, so an idle preload puts a Popover's surface in the page before any opening. */
 export function stubIdleBrowser(): void {
   vi.stubGlobal('requestIdleCallback', (run: () => void) => setTimeout(run, 0));
   vi.stubGlobal('cancelIdleCallback', (handle: ReturnType<typeof setTimeout>) => {

@@ -1,19 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Persistent IDB queue for `notification.push` with `scheduledAt`.
- *
- * Lives on the product origin, shared across same-origin tabs of the same
- * product. Fire-time coordination across those tabs happens in the
- * scheduler runtime (packages/ui) via Web Locks and a BroadcastChannel.
- *
- * Two stores are touched in a single tx on schedule. The
- * `scheduled_notifications` store (keyPath hostId, autoIncrement) holds
- * the records. The `notification_counters` store (keyPath productId)
- * holds the monotonic per-product `next` value, so each schedule returns
- * a stable, unique `perProductId` for TrUAPI notification callbacks.
- */
+// Queue for `notification.push` with `scheduledAt`, shared by the product's same-origin tabs.
+// The scheduler in packages/ui coordinates which tab fires.
 
 import { getDb } from './db.js';
 import { SCHEDULED_NOTIFICATIONS_MAX_AGE_MS, SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP } from '@dotli/config';
@@ -48,14 +37,8 @@ interface CounterEntry {
 }
 
 /**
- * Run `body` on a new transaction over `stores`, settling with what it
- * resolves. The transaction rejects on error or abort unless `body` sets its
- * own handlers.
- *
- * Opening the transaction can throw (a connection that is closing). That
- * throw must reject the returned promise: inside a `getDb().then` callback
- * whose promise is dropped, it left the caller pending forever and surfaced
- * as an unhandled rejection instead.
+ * Rejects on error or abort unless `body` sets its own handlers.
+ * Opening the transaction throws on a closing connection, and that throw must reject the returned promise.
  */
 function inTransaction<T>(
   stores: string | string[],
@@ -79,10 +62,7 @@ function inTransaction<T>(
 }
 
 /**
- * Atomically: enforce per-product cap, bump per-product counter, insert
- * record. All three operations run inside one readwrite tx so concurrent
- * schedules from sibling tabs cannot allocate duplicate ids or exceed the
- * cap.
+ * One transaction for cap check, counter bump and insert, so sibling tabs cannot duplicate ids or overshoot the cap.
  */
 export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
   return inTransaction<ScheduleResult>(
@@ -113,7 +93,6 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
             next,
           } satisfies CounterEntry);
 
-          // hostId is autoIncrement, so it is omitted from the record.
           const insertReq = records.add({
             perProductId: next,
             productId: req.productId,
@@ -136,8 +115,7 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
         }
       };
       tx.onerror = () => {
-        // The ScheduleLimitReached path aborts on purpose, so surface the
-        // result rather than the abort error.
+        // The limit path aborts on purpose.
         if (result?.ok === false) {
           resolve(result);
         } else {
@@ -155,10 +133,7 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
   );
 }
 
-/**
- * Bump the per-product counter without persisting a record. Used by the
- * immediate-fire path so the returned NotificationId is still monotonic.
- */
+/** Bump the counter without a record, so an immediate notification still gets a monotonic id. */
 export function allocateId(productId: string): Promise<number> {
   return inTransaction<number>(COUNTER_STORE, 'readwrite', 'allocateId', (tx, resolve) => {
     const counters = tx.objectStore(COUNTER_STORE);
@@ -177,11 +152,7 @@ export function allocateId(productId: string): Promise<number> {
   });
 }
 
-/**
- * Idempotent. Returns true if a matching record was deleted, false if no
- * such (productId, perProductId) pair existed (already fired or never
- * scheduled).
- */
+/** Idempotent. Resolves `false` when the notification already fired or never existed. */
 export function cancel(productId: string, perProductId: number): Promise<boolean> {
   return inTransaction<boolean>(RECORD_STORE, 'readwrite', 'cancel', (tx, resolve) => {
     const byProduct = tx.objectStore(RECORD_STORE).index(BY_PRODUCT_ID);
@@ -254,10 +225,6 @@ export function listAll(): Promise<ScheduledNotificationRecord[]> {
   return collect('listAll', store => store.openCursor());
 }
 
-/**
- * Delete every record whose `scheduledAt` is older than `now - maxAgeMs`.
- * Returns the number of records removed.
- */
 export function removeStale(now: number, maxAgeMs: number = SCHEDULED_NOTIFICATIONS_MAX_AGE_MS): Promise<number> {
   const cutoff = now - maxAgeMs;
   return inTransaction<number>(RECORD_STORE, 'readwrite', 'removeStale', (tx, resolve) => {

@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
@@ -17,6 +14,7 @@ export interface SigningHostConfig {
   basePath: string;
   network: string;
   productId: string;
+  /** The username base a managed account is created under. */
   session?: string | undefined;
 }
 
@@ -32,25 +30,7 @@ export interface SigningHostProcess {
   output: () => string;
 }
 
-/** Keep one unique bare username stem for every run using this state directory. */
-export function persistentSigningHostSession(basePath: string): string {
-  const path = join(basePath, '.dotli-e2e-session');
-  if (existsSync(path)) {
-    return readFileSync(path, 'utf8').trim();
-  }
-  // Letters avoid the CLI's exact-numbered-username selection mode.
-  const suffix = randomUUID()
-    .replaceAll('-', '')
-    .slice(0, 20)
-    .replace(/\d/g, digit => String.fromCharCode(103 + Number(digit)));
-  const session = `dotlitest${suffix}`;
-  mkdirSync(basePath, { recursive: true });
-  writeFileSync(path, `${session}\n`, { flag: 'wx', mode: 0o600 });
-  return session;
-}
-
-// Preflight so a missing binary fails with install guidance instead of a
-// spawn ENOENT buried in the pair retry loop.
+// Preflight, so a missing binary fails with install guidance, not a spawn ENOENT buried in the pair retry loop.
 export function signingHostVersion(binary: string): string | null {
   const probe = spawnSync(binary, ['--version'], { encoding: 'utf8' });
   if (probe.error || probe.status !== 0) {
@@ -65,8 +45,7 @@ export function sanitizeSigningHostOutput(text: string): string {
   return scrubbed.replace(PAIRING_DEEPLINK, '<pairing deeplink>').replace(RECOVERY_PHRASE, '$1<redacted>');
 }
 
-// Spawns `truapi-host signing-host … exec "/pair <deeplink>"`: answers the
-// handshake, then keeps auto-signing SignRequests until SIGTERMed.
+// Answers the handshake, then keeps auto-signing SignRequests until SIGTERMed.
 export function startSigningHostPair(config: SigningHostConfig, deeplink: string): SigningHostProcess {
   const args = [
     'signing-host',
@@ -101,8 +80,7 @@ export function startSigningHostPair(config: SigningHostConfig, deeplink: string
     child.once('error', error => {
       resolve({ code: null, signal: null, error: error.message });
     });
-    // "close", not "exit": stdio has flushed, so output() holds the final
-    // stderr lines that usually explain the failure.
+    // "close", not "exit": stdio has flushed, so output() holds the final stderr lines that explain a failure.
     child.once('close', (code, signal) => {
       resolve({ code, signal });
     });
@@ -137,8 +115,7 @@ export async function stopSigningHost(proc: SigningHostProcess): Promise<void> {
   }
 }
 
-// Pid-based stop for crash recovery, where no ChildProcess handle survived.
-// SIGTERM, wait up to 5s for the exit, then SIGKILL.
+// For crash recovery, where no ChildProcess handle survived.
 export async function stopSigningHostPid(pid: number): Promise<void> {
   try {
     process.kill(pid, 'SIGTERM');

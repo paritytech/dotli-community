@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Follow one pointer drag that began with `down` on `target`. The pointer is
- * captured, so its moves and its release reach `target` wherever it goes, and
- * the drag ends on pointerup or on pointercancel, which is never followed by
- * a pointerup. Text selection is off while it lasts. `end` runs once,
- * however the drag ends. Returns a function that ends it early, for a
- * component unmounting mid-drag.
+ * Follow one captured pointer drag until pointerup or pointercancel, which no pointerup follows.
+ * `end` runs once however the drag ends. The returned function ends it early, for an unmount mid-drag.
  */
 export function startDrag(
   target: HTMLElement,

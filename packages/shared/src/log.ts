@@ -1,44 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li debug logger.
-//
-// Thin wrapper around console that respects the DEBUG flag for verbose
-// channels but ALWAYS routes warn/error to a registered side-channel
-// (typically Sentry breadcrumbs):
-// - `log.debug` is a no-op when DEBUG is false (verbose tracing only).
-// - `log.warn` and `log.error` ALWAYS reach the registered side-channel so
-//   handled failures leave a trace in production, regardless of DEBUG.
-// - `log.event` records a lifecycle marker (always-on side-channel).
-//
-// Side-channel registration is inverted to avoid a dependency from
-// `shared` on `metrics`. `@dotli/metrics` calls `bindLogSink` on init.
-//
-// `log.child(scope)` creates a logger whose output prepends a tag and
-// merges scope attributes into the side-channel payload. Wire it to
-// `metrics.setDefaults` so logs and metrics agree on which mode/provider
-// was active.
+// Console output only under DEBUG, while warn, error and event always reach the sink so production keeps a trace.
+// The sink is bound from `@dotli/metrics`, since this package cannot depend on it.
 
 import { DEBUG } from '@dotli/config';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogSink {
-  /**
-   * Called for every `log.warn`, `log.error`, and `log.event` call. The sink
-   * decides whether to forward to Sentry, console, etc. Sinks must not
-   * throw. Failures here are silent.
-   */
+  /** Called for every warn, error and event. A throw is swallowed. */
   emit: (level: LogLevel, message: string, attrs?: Record<string, unknown>, args?: unknown[]) => void;
 }
 
 let sink: LogSink | null = null;
 
-/**
- * Wire a side-channel sink (e.g. Sentry breadcrumbs). Called once during
- * app bootstrap from `@dotli/metrics`. Multiple binds replace the prior
- * sink (no fan-out).
- */
+/** A later bind replaces the earlier sink. */
 export function bindLogSink(next: LogSink): void {
   sink = next;
 }
@@ -50,7 +27,7 @@ function safeEmit(level: LogLevel, message: string, attrs?: Record<string, unkno
   }
   try {
     s.emit(level, message, attrs, args);
-    // eslint-disable-next-line no-restricted-syntax -- the log sink is the deepest observability primitive in the stack; letting it re-throw would break every caller of `log.error` (including error handlers themselves). Intentionally swallow.
+    // eslint-disable-next-line no-restricted-syntax -- a throwing sink would break every `log.error` caller, error handlers included.
   } catch {
     /* sinks must not break logging */
   }
@@ -60,13 +37,12 @@ interface BoundLogger {
   debug: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-  /** Always-on lifecycle marker; sink receives `level: "info"`. */
+  /** Always-on lifecycle marker, sent to the sink as `info`. */
   event: (name: string, attrs?: Record<string, unknown>) => void;
-  /** Returns a child logger with a scope tag merged into every emit. */
   child: (scope: Record<string, unknown>) => BoundLogger;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-function
+// eslint-disable-next-line @typescript-eslint/no-empty-function -- debug is a no-op without DEBUG.
 const noop = (): void => {};
 
 function createLogger(scope: Record<string, unknown>): BoundLogger {

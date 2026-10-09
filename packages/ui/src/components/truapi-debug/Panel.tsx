@@ -1,25 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// TrUAPI debug panel: a docked, resizable panel listing dotli-internal debug
-// events. Holds the panel state as signals and wires the parts together.
-//
 // Rendering rules the parts rely on:
-// - The store is not reactive. `snapshot` is a copy of it, refreshed at most
-//   once per animation frame from `store.subscribe`, and synchronously on a
-//   user action that re-reads the store (filter change, tab swap). A
-//   collapsed panel takes no snapshots: it keeps only its header count, from
-//   the events that arrived, and expanding catches up once.
-// - Per-frame work follows what changed, not what is retained: `visible`
-//   filters only the events a snapshot added, and returns the same array
-//   when the visible set did not change.
-// - User actions apply synchronously (`flush`), as the imperative panel did:
-//   the DOM reflects a click or keypress before the handler returns. Never
-//   call `flush()` from an effect, a memo, or `onSettled` — those already
-//   run inside Solid's own update pass, and forcing a nested flush there
-//   would re-enter it.
-// - The detail pane is rebuilt only on user actions (`detailRevision`), never
-//   because traffic arrived.
+// - The store is not reactive. `snapshot` copies it at most once per frame, and synchronously on user actions.
+//   A collapsed panel takes no snapshots and only updates its header count.
+// - User actions apply synchronously via `flush`. Never call `flush()` from an effect, memo or `onSettled`,
+//   which already run inside Solid's update pass and would re-enter it.
+// - The detail pane rebuilds only on user actions (`detailRevision`), never on traffic.
 
 import { createEffect, createMemo, createSignal, flush, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import { DEBUG } from '@dotli/config';
@@ -45,6 +32,7 @@ import {
 import type { ResolutionRecorder } from '@dotli/truapi-debug';
 import { setDockInset } from '../../product-frame-layout.js';
 import { getTopbarState } from '../../state/topbar.js';
+import { DiagnosticsView } from './Diagnostics.js';
 import { DetailPane } from './DetailPane.js';
 import { EventList, type Selection } from './EventList.js';
 import { Filters } from './Filters.js';
@@ -61,18 +49,10 @@ import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
 
-/**
- * The viewport where the panel docks at the bottom with its panes stacked,
- * whatever dock was picked: side by side or docked right, each pane is too
- * narrow to read. The breakpoint of the matching rule in Header.module.css.
- */
+/** Below this the panel docks at the bottom with panes stacked, whatever dock was picked. Matches Header.module.css. */
 const NARROW_QUERY = '(max-width: 560px)';
 
-/**
- * The first row still in view at `scrollTop`, found by bisection over the
- * rows' offsets (relative to the first row, so the list's own offset drops
- * out). Null for an empty list.
- */
+/** The first row still in view at `scrollTop`, by bisection over offsets relative to the first row. */
 function topRow(list: HTMLElement, scrollTop: number): HTMLElement | null {
   const rows = list.children;
   const first = rows[0] as HTMLElement | undefined;
@@ -94,11 +74,10 @@ function topRow(list: HTMLElement, scrollTop: number): HTMLElement | null {
   return rows[lo] as HTMLElement;
 }
 
-/** What the panel last read from the store. */
 interface Snapshot {
   events: readonly StoredEvent[];
   dropped: number;
-  /** Distinct product ids, sorted, `undefined` last. */
+  /** Sorted, `undefined` last. */
   products: readonly (string | undefined)[];
   version: number;
   takenAt: number;
@@ -116,19 +95,14 @@ function sortProducts(products: (string | undefined)[]): (string | undefined)[] 
   });
 }
 
-/**
- * How many of the store's events a filter shows, kept up to date from the
- * live ring buffer at a cost proportional to the events that arrived or left.
- * What a collapsed panel's header count reads.
- */
+/** The collapsed header's shown count, updated at a cost proportional to the events that arrived or left. */
 class ShownCounter {
-  /** Seqs of the shown events, in order, from `head` on. */
+  /** Valid from `head` on. */
   private seqs: EventSeq[] = [];
   private head = 0;
   private lastSeq = -1;
   private filters: FilterState | null = null;
 
-  /** Start from what the panel last drew. */
   seed(shown: readonly StoredEvent[], events: readonly StoredEvent[], filters: FilterState): void {
     this.seqs = shown.map(e => e.seq);
     this.head = 0;
@@ -172,12 +146,10 @@ function countsLabel(total: number, dropped: number, shown: number): string {
 
 export function Panel(props: {
   store: EventStore;
-  /** Kept apart from the ring buffer so a busy session cannot evict the head
-   *  of the load the Resolution view is drawing. */
+  /** Kept apart from the ring buffer so a busy session cannot evict the load the Resolution view draws. */
   resolution: ResolutionRecorder;
   startCollapsed: boolean;
   wallet?: ExperimentalWalletControls | undefined;
-  /** Reads the product's archive for the Archive tab. */
   loadArchive: ArchiveLoader;
 }): JSX.Element {
   const store = untrack(() => props.store);
@@ -186,11 +158,10 @@ export function Panel(props: {
   let panelEl: HTMLDivElement | undefined;
   let listEl: HTMLDivElement | undefined;
   let tooltipEl: HTMLDivElement | undefined;
-  /** Inline drag-resize height stashed while collapsed, restored on expand. */
   let expandedHeight = '';
 
   const takeSnapshot = (): Snapshot => ({
-    // `list()` is the live ring buffer; copy it.
+    // `list()` is the live ring buffer.
     events: store.list().slice(),
     dropped: store.dropped(),
     products: sortProducts(store.productIds()),
@@ -206,14 +177,11 @@ export function Panel(props: {
   const [dock, setDock] = createSignal<DockPosition>(readStoredDock());
   const narrowViewport = window.matchMedia(NARROW_QUERY);
   const [narrow, setNarrow] = createSignal(narrowViewport.matches);
-  /** Where the panel sits: the picked dock, except at the bottom on a narrow viewport. */
   const placement = createMemo<DockPosition>(() => (narrow() ? 'bottom' : dock()));
-  /** List above detail rather than beside it. */
   const stacked = createMemo(() => placement() === 'right' || narrow());
   const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
 
-  /** The events and filters `visible` last filtered. */
   let filtered: {
     events: readonly StoredEvent[];
     filters: FilterState;
@@ -226,7 +194,7 @@ export function Panel(props: {
     if (prev === undefined || last?.filters !== current) {
       return events.filter(e => matches(e, current));
     }
-    // Same filters: drop what left the head, filter only what was appended.
+    // Same filters: filter only what was appended, and keep the array identity when nothing changed.
     const firstSeq = events[0]?.seq ?? Infinity;
     const kept = prev.findIndex(e => e.seq >= firstSeq);
     const dropped = kept === -1 ? prev.length : kept;
@@ -242,14 +210,12 @@ export function Panel(props: {
     }
     return dropped === 0 ? [...prev, ...added] : [...prev.slice(dropped), ...added];
   });
-  // The Resolution view draws the recorder, not the store: TrUAPI traffic
-  // (most of it) leaves this unchanged, so it does not redraw.
+  // Keyed on the recorder, not the store, so TrUAPI traffic does not redraw the Resolution view.
   const resolutionVersion = createMemo(() => {
     snapshot();
     return recorder.version();
   });
 
-  // While collapsed, the header count follows the store without a snapshot.
   const shown = new ShownCounter();
   const [collapsedCounts, setCollapsedCounts] = createSignal<string | null>(null);
   if (untrack(collapsed)) {
@@ -264,11 +230,7 @@ export function Panel(props: {
     setDetailRevision(n => n + 1);
   };
 
-  /**
-   * Apply `update` synchronously, keeping the list pinned to the bottom if it
-   * was there. Otherwise the row at the top of the view stays where it was,
-   * even as rows are evicted above it at capacity.
-   */
+  /** Apply `update` synchronously, keeping the list pinned to the bottom or to its top row as rows are evicted. */
   const commit = (update: () => void): void => {
     const list = listEl;
     const wasAtBottom = list !== undefined && list.scrollHeight - list.clientHeight - list.scrollTop < 4;
@@ -287,14 +249,12 @@ export function Panel(props: {
     }
   };
 
-  /** Re-read the store, unless nothing changed since the last snapshot. */
   const refreshSnapshot = (): void => {
     if (store.version() !== untrack(snapshot).version) {
       setSnapshot(takeSnapshot());
     }
   };
 
-  // Store traffic: one refresh per animation frame, however many events.
   let frame: number | null = null;
   const unsubscribeStore = store.subscribe(() => {
     if (frame !== null) {
@@ -305,8 +265,6 @@ export function Panel(props: {
       if (store.version() === snapshot().version) {
         return;
       }
-      // No rows are on screen: only the header count follows, and
-      // expanding catches up.
       if (collapsed()) {
         const events = store.list();
         const label = countsLabel(events.length, store.dropped(), shown.count(events, filters()));
@@ -323,9 +281,8 @@ export function Panel(props: {
     }
   });
 
-  // The frame layout keeps the inset across product reloads and bar moves,
-  // so it only needs reporting when the panel's own box changes. A drag
-  // passes the size it just set (`size`), so nothing reads layout back.
+  // The frame layout keeps the inset across reloads, so report only when the panel box changes.
+  // A drag passes the size it just set, so nothing reads layout back.
   const refit = (size?: number): void => {
     setDockInset(
       panelDockInset({
@@ -341,11 +298,7 @@ export function Panel(props: {
     setDockInset({ right: 0, bottom: 0 }, 'debug');
   });
 
-  /**
-   * Lay the panel out for the current dock: clear inline resize overrides and
-   * split sizes (each orientation starts from its CSS default), pin the top,
-   * and refit the product iframe.
-   */
+  /** Each orientation starts from its CSS defaults, so inline resize and split sizes are cleared. */
   const applyDockLayout = (persist: boolean): void => {
     const el = panelEl;
     if (el === undefined) {
@@ -357,8 +310,7 @@ export function Panel(props: {
     expandedHeight = '';
     el.style.removeProperty('--td-left-width');
     el.style.removeProperty('--td-top-height');
-    // Right-dock sits below the host topbar so the dock toggle and session
-    // controls remain reachable. Bottom-dock pins to the viewport bottom edge.
+    // Right dock sits below the topbar so its controls stay reachable.
     if (placement() === 'right') {
       el.style.top = getTopbarState().present ? 'var(--content-top)' : '0';
     } else {
@@ -394,8 +346,7 @@ export function Panel(props: {
 
   const isShown = (seq: EventSeq | undefined): boolean => seq !== undefined && visible().some(e => e.seq === seq);
 
-  // The detail pane does not depend on the filters: it is rebuilt only when
-  // the selected event leaves or enters the list.
+  // The detail pane rebuilds only when the selected event leaves or enters the list.
   const changeFilters = (next: FilterState): void => {
     const selected = selection()?.seq;
     const wasShown = isShown(selected);
@@ -408,12 +359,13 @@ export function Panel(props: {
     }
   };
 
+  const splitView = (): boolean => view() === 'list' || view() === 'timeline';
+
   const selectView = (next: PanelView): void => {
     if (next === view()) {
       return;
     }
-    // `display: none` on the pane under the cursor is not guaranteed to fire
-    // a boundary event, which would strand the tooltip over the page.
+    // Hiding the pane under the cursor may fire no boundary event, which would strand the tooltip.
     tooltipEl?.removeAttribute('data-visible');
     commit(() => {
       setView(next);
@@ -422,7 +374,7 @@ export function Panel(props: {
     });
   };
 
-  /** Exports carry the filtered view — what the user currently sees. */
+  /** Exports carry the filtered view, what the user currently sees. */
   const exportJson = (): string => {
     const all = store.list();
     const current = filters();
@@ -512,8 +464,7 @@ export function Panel(props: {
         onClear={() => {
           store.clear();
           recorder.clear();
-          // The list follows on the next frame; the detail pane only
-          // rebuilds on request, so rebuild it now or the old event lingers.
+          // The detail pane rebuilds only on request, so rebuild now or the old event lingers.
           flush(() => {
             setSelection(null);
             refreshDetail();
@@ -528,9 +479,7 @@ export function Panel(props: {
           const el = panelEl;
           if (el !== undefined) {
             if (next) {
-              // An inline drag-resize height would override the collapsed
-              // 32px rule and leave an empty panel-sized box. Stash it while
-              // collapsed and restore it on expand.
+              // An inline drag height would override the collapsed height rule, so stash it until expand.
               expandedHeight = el.style.height;
               el.style.height = '';
             } else if (expandedHeight !== '') {
@@ -592,18 +541,15 @@ export function Panel(props: {
             panel={() => panelEl}
           />
           <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
+          <DiagnosticsView active={view() === 'diagnostics'} />
         </div>
-        <BodySplitter
-          panel={() => panelEl}
-          stacked={stacked()}
-          hidden={view() === 'resolution' || view() === 'archive' || view() === 'wallet'}
-        />
+        <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!splitView()} />
         <DetailPane
           revision={detailRevision()}
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
-          hidden={view() === 'resolution' || view() === 'archive' || view() === 'wallet'}
+          hidden={!splitView()}
           onSelectPair={seq => {
             select(seq);
             listEl?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });

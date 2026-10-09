@@ -1,31 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dotli-internal debug events
-//
-// Events emitted by dotli host-side logic that is independent of the
-// TrUAPI transport: boot orchestration, resolver phases, render +
-// bridge-setup lifecycles, and backend failover decisions. These
-// complement the TrUAPI host-to-product message events.
-//
-// Events are point-in-time OR paired start/end. The consumer decides
-// rendering: multi-event flows (same `flowId`) become boxes, single-
-// event flows become pills.
+// The consumer renders multi-event flows (same `flowId`) as boxes and single-event flows as pills.
 
 export type DotliDebugEvent =
   BootEvent | ResolveEvent | RenderEvent | BridgeEvent | FailoverEvent | MainEvent | SandboxEvent | ChainEvent;
 
-/** Sandbox (<label>.app.dot.li) lifecycle. These events originate in the
- *  sandbox iframe and are forwarded to the host's debug bus via
- *  `postMessage({ type: "dotli:debug-event", event })`.
- *
- *  The sandbox-side flow is opaque to the host otherwise: the host
- *  creates the iframe, sets `iframe.src`, and then has to wait for the
- *  product to finish loading and start talking over the TrUAPI bridge.
- *  Typical "host is silent for 15 seconds" windows are actually the
- *  sandbox fetching the CID's archive from the bulletin chain and
- *  staging it in the service worker, fully invisible from the host
- *  unless these events are surfaced. */
+/**
+ * Forwarded from the sandbox iframe as `postMessage({ type: "dotli:debug-event", event })`.
+ * Without them the sandbox's content fetch is a silent gap on the host.
+ */
 export type SandboxEvent =
   | {
       layer: 'sandbox';
@@ -84,9 +68,7 @@ export type SandboxEvent =
       timestamp: number;
       payload: {
         cid: string;
-        /** Human-readable status string that the sandbox uses to
-         *  update its own loading overlay; mirrored here so the
-         *  progress stream is visible in the system swimlane. */
+        /** Mirrors the sandbox's own loading overlay text. */
         message: string;
       };
     }
@@ -134,8 +116,7 @@ export type SandboxEvent =
       payload: {
         cid: string;
         totalMs: number;
-        /** Decoded size of everything the dApp shipped, across both the
-         * cache-hit and fetch paths. */
+        /** Decoded size across both the cache-hit and fetch paths. */
         bytes?: number;
         fileCount?: number;
       };
@@ -151,9 +132,6 @@ export type SandboxEvent =
       };
     };
 
-/** Host main-thread diagnostics. Intended to reveal "what is the host
- *  doing right now" windows that would otherwise show as empty in the
- *  system swimlane. */
 export type MainEvent =
   | {
       layer: 'main';
@@ -161,10 +139,7 @@ export type MainEvent =
       flowId: string;
       timestamp: number;
       payload: {
-        /** How long the event loop was unable to service the tick
-         *  timer. Values above ~200ms mean the main thread was
-         *  blocked (synchronous work, frozen microtask chain,
-         *  heavy WASM init, etc.). */
+        /** Above about 200ms the main thread was blocked. */
         durationMs: number;
       };
     }
@@ -174,8 +149,6 @@ export type MainEvent =
       flowId: string;
       timestamp: number;
       payload: {
-        /** Seconds since the monitor started. Useful for visualising
-         *  "we got this far without stalling". */
         uptimeSec: number;
       };
     }
@@ -189,7 +162,6 @@ export type MainEvent =
       };
     };
 
-/** High-level orchestration of the host's boot sequence (per tab). */
 export type BootEvent =
   | {
       layer: 'boot';
@@ -246,7 +218,6 @@ export type BootEvent =
       payload: {
         /** Blocks the relay answered from the host's block cache. */
         hits: number;
-        /** Blocks it had to fetch over the network. */
         misses: number;
       };
     }
@@ -280,7 +251,6 @@ export type BootEvent =
       };
     };
 
-/** Dot-name resolution. Covers both smoldot (P2P) and RPC paths. */
 export type ResolveEvent =
   | {
       layer: 'resolve';
@@ -338,7 +308,6 @@ export type ResolveEvent =
       };
     };
 
-/** Iframe render lifecycle (renderIframe / renderAppSubdomain). */
 export type RenderEvent =
   | {
       layer: 'render';
@@ -362,7 +331,6 @@ export type RenderEvent =
       };
     };
 
-/** Container bridge setup (TrUAPI bridge, per dApp iframe). */
 export type BridgeEvent =
   | {
       layer: 'bridge';
@@ -416,7 +384,7 @@ export type BridgeEvent =
       };
     };
 
-/** Backend failover decisions (chain backend switch on resolution error). */
+/** A chain backend switch after a resolution error. */
 export interface FailoverEvent {
   layer: 'failover';
   event: 'chain_backend';
@@ -429,18 +397,11 @@ export interface FailoverEvent {
   };
 }
 
-/** Light-client lifecycle, per chain.
- *
- *  Only smoldot emits these: the RPC gateway runs no light client, so a
- *  gateway load produces none at all and the Resolution view says so rather
- *  than drawing four empty rows.
- *
- *  `phase` is the derived milestone the loading screen also uses, not
- *  the raw `LifecycleState` from smoldot. A phase is emitted when it changes, so
- *  consecutive events bound the interval the chain spent in the previous
- *  one. The peer count of a chain moves on its own schedule rather than with its
- *  phase, so `peers` carries each change; `bytes` is the light client's
- *  cumulative received total, sampled on a tick. */
+/**
+ * Emitted only by smoldot, so a gateway load has none.
+ * `phase` is the loading screen's derived milestone, emitted on change, not smoldot's raw state.
+ * `bytes` carries the cumulative received total, sampled on a tick.
+ */
 export type ChainEvent =
   | {
       layer: 'chain';

@@ -284,12 +284,8 @@ describe('describeWireFrame', () => {
   });
 });
 
-// The linkage table (`CHAIN_LINKAGE`) is the one hand-maintained fact
-// bridging a wire-table entry to its generated codec family. Everything
-// else is derived. These tests fail the moment that derivation stops
-// matching the installed `@parity/truapi`: a new codegen chain method with
-// no linkage row, a renamed codec export, or a stem typo that would
-// silently shift the panel's tag vocabulary.
+// `CHAIN_LINKAGE` is the one hand-maintained link from a wire-table entry to its codec family. These tests fail when
+// the installed `@parity/truapi` drifts from it.
 describe('chain-family drift guard', () => {
   it("As a dotli integrator, the host's linkage table covers every CHAIN_* wire-table export", () => {
     // Given: every chain wire-table export the installed `@parity/truapi` defines.

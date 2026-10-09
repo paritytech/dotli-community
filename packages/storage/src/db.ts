@@ -1,16 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li shared IndexedDB connection.
-//
-// Single "dotli" database with stores for CID cache and smoldot chain data.
-// Pre-opened during HTML parse via an inline <script> (window.__dotliDb).
-//
-// The pre-opened-handle path does not silently fall back to a fresh open
-// when it rejects. A silent fallback would hide quota errors,
-// upgrade-blocked, or origin-denied situations from operators. We log and
-// capture the underlying rejection before falling back, so the warm-start
-// failure is visible even though we still return a working DB.
+// The one "dotli" IndexedDB connection, pre-opened during HTML parse by an inline script (`window.__dotliDb`).
 
 import { log } from '@dotli/shared';
 import { captureException, recordExpected } from '@dotli/metrics';
@@ -28,11 +19,7 @@ const BLOCKED_MESSAGE = 'Failed to open dotli DB: blocked by another tab';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
-// Monotonic counter bumped every time a DB handle is replaced. Callers
-// that cache a resolved handle and then hold a transaction open across
-// an async boundary can check the generation to detect "the handle I
-// was handed just got invalidated by onclose" instead of silently
-// operating against a half-closed connection.
+// Bumped on every new handle, so a late `onclose` from an old handle cannot drop a newer one.
 let dbGeneration = 0;
 
 function openFresh(): Promise<IDBDatabase> {
@@ -56,7 +43,7 @@ function openFresh(): Promise<IDBDatabase> {
         store.createIndex('byScheduledAt', 'scheduledAt', { unique: false });
       }
       if (!db.objectStoreNames.contains('notification_counters')) {
-        // keyPath: "productId". Value: { productId, next: number }.
+        // Value: `{ productId, next }`.
         db.createObjectStore('notification_counters', { keyPath: 'productId' });
       }
       // v3: product chat rooms and messages.
@@ -80,8 +67,7 @@ function openFresh(): Promise<IDBDatabase> {
           keyPath: ['productId', 'botId'],
         });
       }
-      // v5: content blocks the host relays to the sandbox, and their sizes
-      // and last use, kept apart so pruning never loads the bytes.
+      // v5: relayed content blocks, with sizes and last use apart so pruning never loads the bytes.
       if (!db.objectStoreNames.contains('blocks')) {
         db.createObjectStore('blocks', { keyPath: 'cid' });
       }
@@ -94,14 +80,10 @@ function openFresh(): Promise<IDBDatabase> {
       resolve(req.result);
     };
     req.onerror = () => {
-      // Preserve the IDBError name + cause so callers can distinguish
-      // VersionError / QuotaExceededError / InvalidStateError instead of
-      // seeing one opaque message.
       const cause = req.error;
       reject(new Error(`Failed to open dotli DB: ${cause?.name ?? 'unknown'}`, cause ? { cause } : undefined));
     };
-    // A still-open tab on an older schema blocks the upgrade. Blocked fires
-    // neither onsuccess nor onerror, so reject rather than hang forever.
+    // A tab on an older schema blocks the upgrade, and blocked fires neither onsuccess nor onerror.
     req.onblocked = () => {
       reject(new Error(BLOCKED_MESSAGE));
     };
@@ -109,10 +91,8 @@ function openFresh(): Promise<IDBDatabase> {
 }
 
 /**
- * Whether `err` is a database failure the app expects and recovers from,
- * rather than a fault: the connection closing under a page that is unloading
- * or under another tab's schema upgrade, or the open being blocked by a tab
- * still on an older schema. The next access reopens the database.
+ * A connection closing under unload or another tab's upgrade, or an open blocked by an older tab.
+ * The next access reopens, so these are not faults.
  */
 export function isExpectedDbError(err: unknown): boolean {
   if (!(err instanceof Error)) {
@@ -121,31 +101,19 @@ export function isExpectedDbError(err: unknown): boolean {
   if (err.message.includes('blocked by another tab')) {
     return true;
   }
-  // Browsers word it differently ("The database connection is closing.",
-  // "...is not, or is no longer, usable"); the name is what they share.
+  // Browsers word the message differently ("is closing", "is no longer usable").
   return (err.name === 'InvalidStateError' || err.name === 'AbortError') && /clos|no longer/i.test(err.message);
 }
 
-/**
- * Get the shared database connection.
- * Reuses the pre-opened connection from window.__dotliDb if available.
- *
- * If the pre-opened handle rejects, the warm-start failure is logged and
- * captured to Sentry before we fall back to a fresh open, so the operator
- * can see *why* the optimization didn't fire instead of silently losing
- * the signal.
- */
+/** Reuses the pre-opened handle once. A rejected pre-open is reported before the fresh open. */
 export function getDb(): Promise<IDBDatabase> {
   if (dbPromise !== null) {
     return dbPromise;
   }
 
-  // Pick up the pre-opened connection from the inline HTML script
   const preOpened = typeof window !== 'undefined' ? window.__dotliDb : undefined;
   if (preOpened !== undefined) {
-    // One use only: once this handle closes, the next access must open a new
-    // one rather than be handed the closed handle again, and a rejected
-    // pre-open is reported once rather than on every reopen.
+    // One use only, so a reopen after close gets a new handle and a rejected pre-open is reported once.
     delete window.__dotliDb;
     dbPromise = preOpened.catch((err: unknown) => {
       if (isExpectedDbError(err)) {
@@ -162,11 +130,6 @@ export function getDb(): Promise<IDBDatabase> {
 
   const thisGeneration = ++dbGeneration;
 
-  // Reset on close so we re-open on next access. If the close fires while
-  // the same generation is still current, clear the cached promise so the
-  // next getDb() opens a fresh handle. If a later getDb() already bumped
-  // the generation (racing refresh), leave it alone. Otherwise we'd null
-  // out a newer, valid promise.
   void dbPromise
     .then(db => {
       db.onclose = () => {
@@ -174,8 +137,7 @@ export function getDb(): Promise<IDBDatabase> {
           dbPromise = null;
         }
       };
-      // Another tab wants to upgrade the schema. Close so it is not blocked
-      // and drop the cached handle so the next access reopens.
+      // Another tab is upgrading the schema. Close so it is not blocked.
       db.onversionchange = () => {
         db.close();
         if (dbGeneration === thisGeneration) {

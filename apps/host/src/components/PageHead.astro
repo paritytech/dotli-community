@@ -1,0 +1,60 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The head tags the shell and the landing page share.
+import { socialMetaAttributes } from '@config/vite/social-meta';
+
+const TITLE = 'Polkadot - The decentralized web, in your browser';
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+// Its script is blocking and classic on purpose: it sets the network config global before the module bundle runs.
+const runtimeNetworkConfig = import.meta.env.VITE_RUNTIME_NETWORK_CONFIG === 'true';
+const socialMeta = socialMetaAttributes({
+  title: TITLE,
+  description:
+    'A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.',
+  siteName: 'Polkadot Web',
+  image: '/icon-512.png',
+  imageAlt: 'Polkadot logo',
+});
+---
+
+{runtimeNetworkConfig && <script is:inline src="/dotli-network.js"></script>}
+<meta charset="UTF-8" />
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+/>
+<title>{TITLE}</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+{/* An island can hydrate before the page's entry runs, so its errors queue here until reportIslandErrors listens. */}
+<script is:inline>
+  window.__dotliIslandErrors = [];
+  addEventListener('astro:hydration-error', function (event) {
+    window.__dotliIslandErrors?.push(event);
+  });
+</script>
+{socialMeta.map(attrs => (
+  <meta {...attrs} />
+))}
+<link rel="manifest" href={`${base}manifest.webmanifest`} />
+<script is:inline>
+  (function () {
+    let pref = 'system';
+    try {
+      const stored = localStorage.getItem('dotli-theme');
+      if (stored === 'light' || stored === 'dark' || stored === 'system') {
+        pref = stored;
+      }
+      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, disabled cookies): fall back to the system theme.
+    } catch {
+      /* localStorage unavailable: fall back to system */
+    }
+    let theme = pref;
+    if (theme === 'system') {
+      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-theme-pref', pref);
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>

@@ -8,7 +8,7 @@ import { baseConfig } from '../playwright.base.config.js';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
 
-// Load repo-root .env; playwright runs from apps/host and never sees it.
+// Playwright runs from apps/host, so it never sees the repo-root .env.
 try {
   const env = readFileSync(resolve(repoRoot, '.env'), 'utf-8');
   for (const line of env.split('\n')) {
@@ -32,12 +32,7 @@ try {
 
 const localProductUrl = process.env['E2E_PRODUCT_URL'];
 
-// Stale-dist guard. The preview server serves built artifacts from
-// `apps/{host,sandbox,protocol}/dist`. If those are older than the lockfile
-// we're almost certainly running against an out-of-date build. The symptoms
-// look like obscure SDK byte-parity bugs but the fix is `npm run build`. CI
-// is unaffected because it always builds fresh. This only fires for local
-// repeat runs.
+// A dist older than the lockfile is stale, and its failures look like obscure SDK bugs. CI always builds fresh.
 if (process.env['CI'] !== 'true') {
   try {
     const lockMtime = statSync(resolve(repoRoot, 'package-lock.json')).mtimeMs;
@@ -94,8 +89,7 @@ export default defineConfig({
   ...baseConfig,
   webServer,
   testDir: '.',
-  // Co-locate traces with results.json (configDir-relative). The default is
-  // packageJsonDir/test-results, which the CI upload step doesn't cover.
+  // Beside results.json, since the CI upload step doesn't cover the default packageJsonDir/test-results.
   outputDir: 'test-results',
   timeout: 60_000,
   retries: 1,

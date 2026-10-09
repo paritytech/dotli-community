@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Solid-free: it must not import `@dotli/ui` or `solid-js`. Returns plain
-// data, never markup. The components render it as JSX text.
+// Must not import `@dotli/ui` or `solid-js`. Returns plain data that the components render as JSX text.
 
 import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
 import { summariseChainMessage } from './chain-summary.js';
@@ -60,7 +59,6 @@ export function memberDelta(m: StoredEvent, first: StoredEvent | undefined): str
   return `+${formatLatency(m.receivedAt - first.receivedAt)}`;
 }
 
-/** First to last event of a group, or null when the group is a single event. */
 export function groupDuration(first: StoredEvent | undefined, group: readonly StoredEvent[]): string | null {
   const last = group.length > 0 ? group[group.length - 1] : undefined;
   if (first === undefined || last === undefined || first.seq === last.seq) {
@@ -74,10 +72,7 @@ export interface InlineSegment {
   text: string;
 }
 
-/**
- * Split text on backticked `identifiers`, so prose can name them without a
- * Markdown engine. A lone backtick stays literal text.
- */
+/** Split text on backticked `identifiers` without a Markdown engine. A lone backtick stays literal. */
 function formatInlineCode(text: string): InlineSegment[] {
   const segments: InlineSegment[] = [];
   let last = 0;
@@ -94,7 +89,6 @@ function formatInlineCode(text: string): InlineSegment[] {
   return segments;
 }
 
-/** A paragraph of the explanation, or a list made of `• ` lines. */
 type ExplanationBlock = { kind: 'paragraph'; segments: InlineSegment[] } | { kind: 'list'; items: InlineSegment[][] };
 
 interface ExplanationDetail {
@@ -102,10 +96,6 @@ interface ExplanationDetail {
   blocks: ExplanationBlock[];
 }
 
-/**
- * The long-form explanation of a system event, split into paragraphs on
- * blank lines. A paragraph whose every line starts with `• ` is a list.
- */
 export function explanationDetail(ev: StoredSystemEvent): ExplanationDetail | undefined {
   const explanation = getSystemExplanation(ev.layer, ev.event);
   if (explanation === undefined) {

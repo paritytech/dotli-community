@@ -38,25 +38,11 @@ function ExperimentalWalletBadge(): JSX.Element {
 const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountContent' });
 
 /**
- * The topbar's auth button (`#auth-button`) and the logged-in account's
- * popover (`#user-popover`, a floating Popover whose body, AccountContent, is
- * its own chunk; a bottom sheet on phones), an item of the topbar's action group
- * (see TopbarActions.tsx) that never collapses into More. The host page
- * renders it logged out at build time, and it shows the session once
- * hydrated. The landing page (components/landing/) renders it too, in its
- * corner.
+ * The auth button and the account popover, in the topbar and in the landing page's corner.
  *
- * Logged out, it is a Sign in button and a click starts a login. Logged in,
- * it shows the account's avatar: its initials, or the person icon
- * (`data-anon`) without a username, and with `showName` the account's name
- * beside it. A click toggles the user popover while the auth state is
- * `Connected`, and starts a login, which opens the auth modal, in any other
- * state (a pairing started while logged in included). Its trigger ARIA
- * follows the click, like a Radix Popover.Trigger or Dialog.Trigger:
- * `aria-haspopup="dialog"`, with `aria-controls` and `aria-expanded` for the
- * user popover while `Connected` (the button is the Popover's trigger then,
- * which writes them), else for the auth modal (`#auth-modal-backdrop`, open
- * as authModalStore says, written here).
+ * A click toggles the popover only while `Connected`, and starts a login in any other state, a pairing
+ * under way while logged in included. The trigger ARIA follows the click: the Popover writes it while
+ * `Connected`, this component writes it for the auth modal otherwise.
  *
  * With the debug-only experimental test wallet active, it shows the wallet
  * badge instead, and a click opens the debug panel's Wallet tab
@@ -84,11 +70,12 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
   const label = (): string =>
     account.experimental()
       ? 'Open Wallet tab — experimental test wallet'
-      : account.loggedIn()
-        ? 'Account'
-        : 'Sign in with Polkadot Mobile';
-  // The visible text (initials, then name) starts the button's name, so
-  // speech input can use it (WCAG 2.5.3).
+      : account.restoring()
+        ? 'Checking sign-in'
+        : account.loggedIn()
+          ? 'Account'
+          : 'Sign in with Polkadot Mobile';
+  // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
     if (account.experimental()) {
       return label();
@@ -98,7 +85,6 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
     const visible = [initials, shownName()].filter(part => part !== undefined).join(' ');
     return visible === '' ? label() : `${visible}, account`;
   };
-  // The auth modal's trigger, while mounted (see setAuthModalTrigger).
   onSettled(() => {
     const el = untrack(button);
     return el === undefined ? undefined : setAuthModalTrigger(el);
@@ -130,6 +116,7 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
           ref={setButton}
           onClick={onClick}
           id={id('auth-button')}
+          loading={account.restoring()}
           title={label()}
           aria-label={ariaLabel()}
           aria-haspopup={opensPopover() || account.experimental() ? undefined : 'dialog'}

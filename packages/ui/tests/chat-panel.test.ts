@@ -16,8 +16,7 @@ import { moreRow, stubTopbarLayout } from './components/shell/topbar-harness.js'
 import { nth } from './helpers/nth.js';
 import { preloadFloatingSurfaces } from './helpers/floating.js';
 
-// happy-dom drops a calc() that holds a var(), so the box helper returns plain
-// stand-in values here. product-frame-layout tests cover the inset terms.
+// happy-dom drops a calc() holding a var(). product-frame-layout tests cover the inset terms.
 vi.mock('../src/product-iframe-box.js', () => ({
   productIframeBox: () => ({
     top: '56px',
@@ -27,25 +26,18 @@ vi.mock('../src/product-iframe-box.js', () => ({
   }),
 }));
 
-// The panel and service keep module-level state (listeners, connection
-// registry), so each test loads a fresh module instance via resetModules.
-// The session and topbar stores the panel follows come from the same graph.
+// The panel and service keep module-level state, so each test loads a fresh module graph, stores included.
 let stores: {
   auth: typeof AuthModule;
   topbar: typeof TopbarModule;
 };
-/** The docked panel, mounted by {@link loadDock}'s `initChatPanel`. */
 interface Dock {
-  /** Start the chat state and render the ChatDock island, as the host page does. */
   initChatPanel: () => void;
 }
 
 let disposeDock: (() => void) | undefined;
 
-/**
- * The ChatDock island (components/chat/ChatDock.tsx) and the chat state,
- * from the current module graph, like the chat button.
- */
+/** Loads the ChatDock island and the chat state from the current module graph. */
 async function loadDock(): Promise<Dock> {
   const solid = await import('solid-js');
   const web = await import('@solidjs/web');
@@ -86,10 +78,8 @@ let flushUi: () => void = () => undefined;
 let disposeButton: (() => void) | undefined;
 
 /**
- * Render the topbar's ChatButton (components/shell/ChatButton.tsx) into the
- * page, from the current module graph, so it follows the same chat-panel
- * store as the panel. Built without JSX: this file's JSX would bind to the
- * Solid instance loaded before resetModules.
+ * Renders the topbar's ChatButton from the current module graph. Built without JSX, which would bind to the Solid
+ * instance loaded before resetModules.
  */
 async function mountChatButton(): Promise<void> {
   const solid = await import('solid-js');
@@ -114,7 +104,6 @@ function setLoggedIn(loggedIn: boolean): void {
   flushUi();
 }
 
-/** A tap on the chat button, and the button's updates. */
 function clickChat(): void {
   byId('chat-button').click();
   flushUi();
@@ -127,8 +116,7 @@ function loadProduct(label: string): void {
   setLoggedIn(true);
 }
 
-/** Panel renders on a queued task then reads IndexedDB, so a fixed wait
- *  races slow machines. Poll until the expected state appears. */
+/** The panel renders on a queued task, then reads IndexedDB, so a fixed wait races slow machines. */
 async function settle(ready: () => boolean): Promise<void> {
   await vi.waitFor(
     () => {
@@ -289,8 +277,7 @@ describe('chat panel', () => {
       name: 'Support',
       icon: 'data:image/png;base64,AAAA',
     });
-    // Room order ties on same-millisecond createdAt stamps; let the clock
-    // tick so "General" reliably sorts first (newest created, no messages).
+    // Rooms created in the same millisecond tie, so let the clock tick for "General" to sort first.
     await new Promise(resolve => setTimeout(resolve, 2));
     await service.productCreateRoom(productId, {
       roomId: 'general',
@@ -309,7 +296,6 @@ describe('chat panel', () => {
     expect(items[1]?.querySelector<HTMLImageElement>('img[data-testid="chat-room-icon"]')?.src).toBe(
       'data:image/png;base64,AAAA',
     );
-    // A room without an icon falls back to its initial.
     expect(items[0]?.querySelector('[data-testid="chat-room-icon"][data-fallback]')?.textContent).toBe('G');
 
     nth(items, 1).click();
@@ -366,13 +352,11 @@ describe('chat panel', () => {
 
     clickChat();
     await settle(() => document.querySelector('[data-testid="chat-room-item"]') !== null);
-    // The panel opens on the room list; enter the room to see messages.
     const roomItem = document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]');
     expect(roomItem?.textContent).toContain('Main');
     roomItem?.click();
     await settle(() => byId('chat-panel-messages').textContent.includes('hello from the app'));
     expect(byId('chat-panel-messages').textContent).toContain('hello from the app');
-    // Bubbles carry a relative timestamp with the exact time on hover.
     const time = document.querySelector<HTMLTimeElement>('[data-testid="chat-msg-time"]');
     expect(time?.textContent).toBe('just now');
     expect(time?.title).not.toBe('');
@@ -399,8 +383,7 @@ describe('chat panel', () => {
     loadProduct('contacts');
     const productId = labelToProductId('contacts');
 
-    // Creation and post stamps tie within one millisecond otherwise, and
-    // the list orders contacts against those stamps.
+    // Stamps within one millisecond tie, and the list orders contacts by them.
     const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 2));
     await service.productCreateRoom(productId, {
       roomId: 'first',
@@ -441,8 +424,7 @@ describe('chat panel', () => {
     clickChat();
     await settle(() => document.querySelectorAll('[data-testid="chat-room-item"]').length === 4);
 
-    // One recency order across rooms and bots: last message time, falling
-    // back to creation/registration time for message-less contacts.
+    // One recency order across rooms and bots, falling back to creation time for contacts without messages.
     const items = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')];
     expect(items.map(row => byTestId('chat-room-name', row).textContent)).toEqual([
       'First',
@@ -451,7 +433,6 @@ describe('chat panel', () => {
       'Idle',
     ]);
 
-    // The bot lists with its registered icon and opens like a room.
     const botRow = nth(items, 2);
     expect(botRow.querySelector<HTMLImageElement>('img[data-testid="chat-room-icon"]')?.src).toBe(
       'data:image/png;base64,AAAA',
@@ -461,8 +442,7 @@ describe('chat panel', () => {
     expect(byId('chat-panel-title').textContent).toBe('Echo Bot');
     expect(byId('chat-panel-composer', HTMLFormElement).hidden).toBe(false);
 
-    // The bot messages the user through its own conversation: the product
-    // posts with the botId as the roomId.
+    // A bot messages the user by posting with its botId as the roomId.
     await service.productPostMessage(productId, 'echo', {
       tag: 'Text',
       value: { text: 'hi, I am the bot' },
@@ -471,7 +451,6 @@ describe('chat panel', () => {
     const botMessage = byTestId('chat-msg', byId('chat-panel-messages'));
     expect([...botMessage.children].map(child => child.getAttribute('data-testid'))).toEqual(['chat-msg-bubble']);
 
-    // With the newest message, the bot now leads the list.
     byId('chat-panel-back').click();
     await settle(() => byId('chat-panel-rooms').hidden === false);
     const reordered = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')].map(
@@ -481,8 +460,7 @@ describe('chat panel', () => {
   });
 
   it('As a user, custom messages render live trees and taps reach the product', async () => {
-    // No IntersectionObserver in this environment: the mount falls back to
-    // subscribing immediately, which is exactly what the test needs.
+    // Without IntersectionObserver the mount subscribes at once, which this test needs.
     vi.stubGlobal('IntersectionObserver', undefined);
     try {
       const { panel, service } = await loadChatModules();
@@ -527,7 +505,6 @@ describe('chat panel', () => {
       document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]')?.click();
       await settle(() => renders.length === 1);
 
-      // The cell subscribed with the stored message identity and payload.
       const context = {
         tag: 'ChatMessage',
         value: { roomId: 'main', messageId, messageType: 'poll' },
@@ -536,7 +513,6 @@ describe('chat panel', () => {
       expect(renders[0]?.request).toEqual({ context, payload: '0x0102' });
       expect(byId('chat-panel-messages').textContent).toContain('Loading…');
 
-      // The product streams a tree; the cell replaces its content.
       nth(renders, 0).sink.onUpdate({
         tag: 'Column',
         value: {
@@ -569,8 +545,7 @@ describe('chat panel', () => {
       await settle(() => byId('chat-panel-messages').textContent.includes('Pick one'));
       expect(byId('chat-panel-messages').textContent).toContain('Pick one');
 
-      // Tapping the rendered button publishes a renderer action naming the
-      // same body; the chat action stream stays untouched.
+      // Tapping the rendered button publishes a renderer action, not a chat action.
       document.querySelector<HTMLButtonElement>('[data-testid="chat-custom-btn"]')?.click();
       await settle(() => rendererActions.length === 1);
       expect(rendererActions).toEqual([{ context, actionId: 'pick:a', payload: '0x' }]);
@@ -582,7 +557,6 @@ describe('chat panel', () => {
       expect(byId('chat-panel-messages').textContent).not.toContain('Pick one');
       expect(byId('chat-panel-messages').textContent).toContain('This message can’t be shown right now.');
 
-      // Leaving the room disposes the live render.
       byId('chat-panel-back').click();
       await settle(() => disposeRender.mock.calls.length > 0);
       expect(disposeRender).toHaveBeenCalled();
@@ -669,11 +643,9 @@ describe('chat panel', () => {
     const backBadges = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-room-item"]')].map(
       row => row.querySelector('[data-testid="chat-room-unread"]')?.textContent ?? '',
     );
-    // Quiet holds the newest message so it lists first, carrying the one
-    // unread it accumulated while Busy was on screen.
+    // Quiet lists first with the newest message, carrying the unread it got while Busy was open.
     expect(backBadges).toEqual(['1', '']);
 
-    // Closing the panel surfaces the remaining unread on the topbar.
     byId('chat-panel-close').click();
     flushUi();
     expect(badge.hidden).toBe(false);
@@ -694,7 +666,6 @@ describe('chat panel', () => {
     expect(byId('chat-panel').style.width).toBe('360px');
     expect(iframe.style.width).toBe('calc(calc(100% - 10px) - 360px)');
 
-    // Dragging the resize handle follows the panel's width.
     const state = await import('../src/state/chat-panel.js');
     state.setChatPanelWidth(420);
     flushUi();
@@ -705,7 +676,7 @@ describe('chat panel', () => {
     flushUi();
     expect(byId('chat-panel').hidden).toBe(true);
     expect(byId('chat-button').getAttribute('aria-expanded')).toBe('false');
-    // Closed, the frame gets the whole safe box, as a fresh render does.
+    // Closed, the frame gets the whole safe box.
     expect(iframe.style.width).toBe('calc(100% - 10px)');
   });
 
@@ -717,7 +688,6 @@ describe('chat panel', () => {
     loadProduct('chatty-reload');
     clickChat();
 
-    // A reload renders a fresh frame and hands it to the layout module.
     const fresh = document.createElement('iframe');
     byId('app').replaceChildren(fresh);
     layout.attachProductFrame(fresh);
@@ -843,8 +813,7 @@ describe('chat panel', () => {
     const composer = byId('chat-panel-composer', HTMLFormElement);
     input.value = 'hello';
     composer.requestSubmit();
-    // The hint appears as soon as the send fails, but the thread re-reads
-    // the saved message from IndexedDB afterwards, so wait for both.
+    // The hint shows as soon as the send fails, but the thread re-reads the message afterwards.
     await settle(
       () => byId('chat-panel-hint').hidden === false && byId('chat-panel-messages').textContent.includes('hello'),
     );
@@ -897,8 +866,7 @@ describe('chat panel', () => {
     });
     expect(state.chatPanelStore.get().unreadByRoom['main']).toBe(1);
 
-    // Gate the room's message read so it resolves only after the panel has
-    // already closed, the way a slow IndexedDB read would.
+    // Hold the room's message read until the panel has closed, as a slow IndexedDB read would.
     const original = service.chatMessages;
     let release: (() => void) | undefined;
     const gate = new Promise<void>(resolve => {
@@ -921,8 +889,7 @@ describe('chat panel', () => {
       release?.();
       await new Promise(resolve => setTimeout(resolve, 20));
 
-      // The read resolved after the panel closed: it must not have marked
-      // the room seen behind the user's back.
+      // The late read must not mark the room seen.
       expect(state.chatPanelStore.get().unreadByRoom['main']).toBe(1);
     } finally {
       readSpy.mockRestore();
@@ -935,9 +902,7 @@ describe('chat panel', () => {
     panel.initChatPanel();
     loadProduct('chatty-broken-render');
 
-    // ChatPanel's title() reads this only when no room is open; failing it
-    // once throws synchronously during the panel's first render, the same
-    // way the overlays render-error test fails a top-level store read.
+    // ChatPanel's title() reads this only with no room open, so failing it once throws during the first render.
     const manifestSpy = vi.spyOn(manifest, 'getActiveRootManifest').mockImplementationOnce(() => {
       throw new Error('render boom');
     });
@@ -954,8 +919,7 @@ describe('chat panel', () => {
     }
   });
 
-  // This test resets the module registry via vi.doMock, so it must stay last
-  // in this describe block.
+  // Must stay last in this describe, as it resets the module registry via vi.doMock.
   it('As a user, if the chat code cannot load, the panel closes and the next open retries', async () => {
     vi.resetModules();
     let calls = 0;

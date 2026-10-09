@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SharedModule from '@dotli/shared';
 
 interface NotificationAction {
   label: string;
@@ -37,7 +38,10 @@ vi.mock('@dotli/ui', () => ({
 }));
 
 vi.mock('@dotli/metrics', () => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
-vi.mock('@dotli/shared', () => ({ markContinuation: vi.fn() }));
+vi.mock('@dotli/shared', async importOriginal => ({
+  ...(await importOriginal<typeof SharedModule>()),
+  markContinuation: vi.fn(),
+}));
 
 function emit(type: string, event?: { wasWaitingBeforeRegister?: boolean }): void {
   for (const listener of workbox.listeners.get(type) ?? []) {
@@ -45,7 +49,7 @@ function emit(type: string, event?: { wasWaitingBeforeRegister?: boolean }): voi
   }
 }
 
-/** The service worker registration as the page sees it when Reload is pressed. */
+/** The registration's waiting worker at the moment Reload is pressed. */
 let waiting: object | null = null;
 const reload = vi.fn();
 
@@ -58,12 +62,14 @@ beforeEach(async () => {
   vi.stubGlobal('navigator', {
     serviceWorker: { getRegistration: () => Promise.resolve({ waiting }) },
   });
-  vi.stubGlobal('location', { reload });
+  vi.stubGlobal('location', { reload, hostname: 'browse.localhost' });
+  vi.stubEnv('PROD', true);
   await import('../../src/pwa.js');
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 async function pressReload(): Promise<void> {
@@ -128,5 +134,33 @@ describe('an update that was already waiting when the page loaded', () => {
 
     // Then
     expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
+describe('where the shell registers no service worker', () => {
+  it('As a dotli developer, the dev server gets no worker that could serve stale modules', async () => {
+    // Given
+    vi.resetModules();
+    workbox.listeners.clear();
+    vi.stubEnv('PROD', false);
+
+    // When
+    await import('../../src/pwa.js');
+
+    // Then
+    expect(workbox.listeners.size).toBe(0);
+  });
+
+  it('As a visitor of the bare host, its root stays the landing page because no worker answers it', async () => {
+    // Given: the shell on the bare host, as /__preview serves it
+    vi.resetModules();
+    workbox.listeners.clear();
+    vi.stubGlobal('location', { reload, hostname: 'localhost' });
+
+    // When
+    await import('../../src/pwa.js');
+
+    // Then
+    expect(workbox.listeners.size).toBe(0);
   });
 });

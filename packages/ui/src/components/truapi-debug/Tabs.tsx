@@ -6,13 +6,14 @@ import type { JSX } from '@solidjs/web';
 import s from './Tabs.module.css';
 import { WALLET_TAB_ID } from './wallet/WalletView.js';
 
-export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'wallet';
+export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'diagnostics' | 'wallet';
 
 const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'list', label: 'List' },
   { view: 'timeline', label: 'Timeline' },
   { view: 'resolution', label: 'Resolution' },
   { view: 'archive', label: 'Archive' },
+  { view: 'diagnostics', label: 'Diagnostics' },
 ];
 
 export function Tabs(props: {

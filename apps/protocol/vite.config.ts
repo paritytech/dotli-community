@@ -7,16 +7,15 @@ import { resolve } from 'node:path';
 import wasmPlugin from 'vite-plugin-wasm';
 import { buildInfo } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
+import { modeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
-// vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
-// NodeNext sees the module object. At runtime the default export is the plugin.
+// The CommonJS-style declarations make NodeNext see the module object. At runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
 
-// Before Vite reads the environment, so the SDK reports the release the
-// sourcemaps are uploaded under.
+// Before Vite reads the environment, so the SDK reports the release the sourcemaps are uploaded under.
 provideSentryRelease(import.meta.dirname);
 
 const OUT_DIR = 'dist';
@@ -47,6 +46,7 @@ export default defineConfig({
     wasm(),
     runtimeNetworkConfigScript(),
     buildInfo('protocol'),
+    modeSync(),
     sentry(),
   ],
   worker: {
@@ -67,8 +67,15 @@ export default defineConfig({
     sourcemap: 'hidden',
   },
   server: {
+    // Must match DEV_PROTOCOL_PORT in @dotli/config.
+    port: 4323,
+    strictPort: true,
     headers: {
       'Access-Control-Allow-Origin': '*',
+      // As nginx sends.
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      'Cross-Origin-Opener-Policy': 'same-origin',
     },
   },
 });

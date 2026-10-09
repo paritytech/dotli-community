@@ -19,11 +19,12 @@ export interface SegmentedControlProps<V extends string> {
   value: V;
   /** Called with a newly picked value, never with the current one. */
   onChange: (value: V) => void;
+  /** Full width of its container, the options sharing it equally. */
+  block?: boolean;
   class?: string | undefined;
   testId?: string;
 }
 
-/** Where each key moves the focus from option `index` of `count`. */
 const FOCUS_KEYS: Readonly<Record<string, (index: number, count: number) => number>> = {
   ArrowRight: (index, count) => (index + 1) % count,
   ArrowDown: (index, count) => (index + 1) % count,
@@ -34,15 +35,11 @@ const FOCUS_KEYS: Readonly<Record<string, (index: number, count: number) => numb
 };
 
 /**
- * One choice out of a few, as pressed buttons in a sunken track. It is one
- * Tab stop: the focused option while focus is inside, else the pressed one
- * (the first while none is). The arrow keys, Home and End move the focus
- * between the options without picking, and a click, Enter or Space picks the
- * focused one.
+ * One choice out of a few, as pressed buttons in a sunken track. It is one Tab stop, and the
+ * arrow keys, Home and End move the focus without picking.
  */
 export function SegmentedControl<V extends string>(props: SegmentedControlProps<V>): JSX.Element {
-  // Tab from an arrow-focused option would otherwise stop on the pressed
-  // option of the same control before leaving it.
+  // Without it, Tab from an arrow-focused option stops on the pressed one before leaving.
   const [focused, setFocused] = createSignal<number | null>(null);
   const tabStop = (): number =>
     focused() ??
@@ -81,6 +78,7 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
       role="group"
       aria-label={props.label}
       class={[s['seg'], props.class]}
+      data-block={props.block === true ? '' : undefined}
       data-testid={props.testId}
       onKeyDown={onKeyDown}
       onFocusIn={onFocusIn}

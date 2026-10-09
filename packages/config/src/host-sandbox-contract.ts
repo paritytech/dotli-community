@@ -1,47 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Host to sandbox URL contract.
-//
-// The sandbox runs on `<label>.app.<root>` and cannot read the host's
-// localStorage (different origin). The host MUST thread every user
-// decision through URL params on the iframe load, and the sandbox MUST
-// reject any contract value it doesn't recognize. A silent default on
-// the sandbox side would re-introduce the "user picked X, got Y"
-// regression class that the determinism audit eliminated.
-//
-// The sandbox origin is keyed on the dotns label (not the CID) so all
-// versions of a product share an origin. The host owns dotns resolution
-// and threads the resolved CID through `?cid=`. The sandbox does not
-// re-resolve.
-//
-// Schema v3 (current):
-//
-//   Required:
-//     ?cid=<IPFS content id the host resolved from the dotns label>
-//     ?chainBackend=<"smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway">
-//     ?network=<"paseo-next-v2" | "previewnet">
-//
-//   Optional:
-//     ?fullReset=<"0" | "1">
-//     ?resolutionId=<correlation id for the telemetry of this page load>
-//     ?v=<schema version integer, reserved for future breakage>
-//
-// When we add a new required param, bump SANDBOX_SCHEMA_VERSION and
-// have the validator reject unmatched versions so stale host builds
-// don't feed malformed params to fresh sandbox deploys.
+// The sandbox cannot read the host's localStorage, so the host passes every user decision as a URL param and the
+// sandbox rejects any value it doesn't recognize instead of defaulting.
+// The sandbox origin is keyed on the dotNS label, not the CID, so all versions of a product share an origin.
+// A new required param bumps SANDBOX_SCHEMA_VERSION, so a stale host can't feed a fresh sandbox.
 
 import { NetworkName, isValidNetwork, type Network } from './network.js';
 
 export const SANDBOX_SCHEMA_VERSION = 3;
 
-// Cheap CID charset gate (base32 cidv1 / base58btc cidv0 are alphanumeric).
-// The sandbox does the authoritative CID.parse, then hash-verifies fetched
-// content against this CID: every block on the gateway path, and the root
-// block (on top of smoldot's own per-block check) on the bitswap path.
+// A cheap charset gate. The sandbox parses the CID and hash-verifies fetched content against it.
 const CID_PATTERN = /^[a-zA-Z0-9]+$/;
 
-/** Known chain backends. The only values the sandbox accepts. */
 const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set(['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway']);
 
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
@@ -49,9 +20,7 @@ const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
 /**
- * Single source of truth for the host-to-sandbox URL contract param names.
- * Imported by the host writer (`bridge.ts`), the validator below, and the
- * post-validation strip in the sandbox so the wire format never drifts.
+ * Shared by the host writer, this validator and the sandbox's post-validation strip, so the wire format never drifts.
  */
 export const SANDBOX_CONTRACT_PARAMS = {
   cid: 'cid',
@@ -67,11 +36,7 @@ export interface SandboxParams {
   chainBackend: 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
   network: Network;
   fullReset: boolean;
-  /**
-   * Correlation id for this page load, absent on a host build that predates
-   * it. Telemetry only: it is deliberately not required and not version
-   * gated, because no sandbox should ever fail to boot over a trace id.
-   */
+  /** Telemetry only, so never required: no sandbox should fail to boot over a trace id. */
   resolutionId: string | null;
 }
 
@@ -79,24 +44,12 @@ export type SandboxParamsResult =
   { ok: true; params: SandboxParams } | { ok: false; reason: string; recoverable?: boolean };
 
 /**
- * Validate a sandbox URL against the host-to-sandbox contract.
- *
- * Returns a discriminated result. The caller is expected to render the
- * failure reason in the UI and stop. Never substitute defaults silently.
- *
- * `recoverable: true` marks failures where a required param is absent
- * entirely. The sandbox strips contract params from its URL after a
- * successful boot, so an absent param is the signature of a reload of an
- * already-booted sandbox window, and the host can recover by re-rendering
- * the iframe with a fresh contract URL. A param that is present but
- * invalid means the host build itself is broken. Re-rendering would
- * produce the same bad value, so those stay fatal.
+ * Validates a sandbox URL against the host-to-sandbox contract. The caller shows the reason and stops.
+ * `recoverable` marks an absent required param: the sandbox strips its params after boot, so this is a reload the host
+ * fixes by re-rendering the iframe. A present but invalid param means a broken host build, so it stays fatal.
  */
 export function validateSandboxParams(search: URLSearchParams): SandboxParamsResult {
-  // Version gate: if the host sends an explicit version token, it must
-  // match. Absent `?v=` means "pre-versioned host", a path now rejected
-  // post-collapse because the `?backend=` requirement is also new and a
-  // pre-collapse host would not emit it.
+  // An explicit version must match. A host too old to send one fails the required params below.
   const version = search.get(SANDBOX_CONTRACT_PARAMS.v);
   if (version !== null && version !== String(SANDBOX_SCHEMA_VERSION)) {
     return {
@@ -105,9 +58,6 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
     };
   }
 
-  // The CID used to live in the origin (`<cid>.app.<root>`). With the dotns
-  // origin it must arrive as a param so the sandbox knows which content to
-  // fetch and verify. Missing or malformed is a hard error, never a default.
   const cid = search.get(SANDBOX_CONTRACT_PARAMS.cid);
   if (cid === null || cid === '') {
     return {
@@ -166,9 +116,7 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
   }
 
   const resolutionIdRaw = search.get(SANDBOX_CONTRACT_PARAMS.resolutionId);
-  // Bounded and charset-gated rather than validated as a uuid: the host may
-  // fall back to a non-uuid id, and an odd value here must degrade to
-  // "untagged", never to a rejected boot.
+  // Not a uuid check, because the host may fall back to a non-uuid id. An odd value degrades to untagged.
   const resolutionId =
     resolutionIdRaw !== null &&
     resolutionIdRaw.length > 0 &&

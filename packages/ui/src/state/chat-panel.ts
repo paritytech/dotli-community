@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// State of the docked chat panel and the rules that change it, outside
-// Solid: the topbar button (eager) and the lazily loaded panel components
-// both read it. Rooms, bots and messages are not cached here; the panel
-// re-reads them from storage when `contactsVersion` or a room's `roomSeq`
-// moves.
+// Outside Solid because the eager topbar button and the lazy panel both read it. Rooms, bots and
+// messages are not cached here, the panel re-reads them when `contactsVersion` or a `roomSeq` moves.
 
 import { CHAT_AVAILABILITY_EVENT, type ChatAvailabilityDetail } from '@dotli/shared';
 import {
@@ -26,10 +23,7 @@ export const DEFAULT_PANEL_WIDTH = 360;
 
 export interface ChatPanelState {
   label: string | null;
-  /**
-   * Runtime productId from `dotli:product-loaded`. It can differ from the
-   * label-derived id when the localhost debug path sets an override.
-   */
+  /** Differs from the label-derived id when the localhost debug path sets an override. */
   runtimeProductId: string | null;
   available: boolean;
   loggedIn: boolean;
@@ -37,11 +31,7 @@ export interface ChatPanelState {
   /** null shows the room list. */
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
-  /**
-   * Messages seen per room since the product loaded; moves on every message.
-   * Messages also reorder the contact list, which the panel re-reads for
-   * them only while the list shows.
-   */
+  /** Moves on every message. The panel re-reads the contact list for it only while the list shows. */
   roomSeq: Readonly<Record<string, number>>;
   /** Moves whenever the product, its rooms or its bots may have changed. */
   contactsVersion: number;
@@ -68,8 +58,7 @@ const INITIAL: ChatPanelState = {
   topbarVisible: true,
 };
 
-// A width drag past the clamp, a cleared composer error and repeated
-// availability or topbar events rebuild an equal state: nobody is notified.
+// A drag past the clamp and repeated availability or topbar events rebuild an equal state.
 const panel = createSyncStore<ChatPanelState>('chat_panel', INITIAL, {
   equals: shallowEqual,
 });
@@ -82,10 +71,7 @@ export function currentChatProductId(state: ChatPanelState = panel.get()): strin
   return state.label === null ? null : labelToProductId(state.label);
 }
 
-/**
- * Every chat call needs an active session, so a logged-out user gets no chat
- * affordance at all rather than a panel full of denied calls.
- */
+/** Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. */
 export function chatButtonVisible(state: ChatPanelState = panel.get()): boolean {
   return state.available && state.label !== null && state.loggedIn;
 }
@@ -98,7 +84,7 @@ export function totalChatUnread(state: ChatPanelState = panel.get()): number {
   return total;
 }
 
-/** "3" / "9+" pill text shared by the topbar badge and the room rows. */
+/** Shared by the topbar badge and the room rows. */
 export function chatUnreadLabel(count: number): string {
   return count > 9 ? '9+' : String(count);
 }
@@ -120,7 +106,6 @@ function storedPanelWidth(): number {
   return DEFAULT_PANEL_WIDTH;
 }
 
-/** Write, closing the panel if the button just became invisible. */
 function commit(next: ChatPanelState): void {
   panel.set(next.open && !chatButtonVisible(next) ? { ...next, open: false } : next);
 }
@@ -145,14 +130,13 @@ export function backToChatRooms(): void {
   update({ activeRoomId: null, composerError: null });
 }
 
-/** The open room no longer exists (or there are no contacts). */
+/** For when the open room no longer exists. */
 export function clearActiveChatRoom(): void {
   if (panel.get().activeRoomId !== null) {
     update({ activeRoomId: null });
   }
 }
 
-/** The room's conversation is on screen, so its messages count as seen. */
 export function markChatRoomSeen(roomId: string): void {
   const { unreadByRoom } = panel.get();
   if (!(roomId in unreadByRoom)) {
@@ -174,7 +158,6 @@ export function consumeComposerFocus(): void {
   }
 }
 
-/** Live resize; clamped to 280–560 px. */
 export function setChatPanelWidth(width: number): void {
   update({ width: clampWidth(width) });
 }
@@ -188,7 +171,6 @@ export function persistChatPanelWidth(): void {
   }
 }
 
-/** Install the window-event and store rules. Returns the remove function. */
 export function initChatPanelState(): () => void {
   const onAvailability = (event: Event): void => {
     const detail = (event as CustomEvent<ChatAvailabilityDetail>).detail;
@@ -231,8 +213,6 @@ export function initChatPanelState(): () => void {
     if (detail.productId !== currentChatProductId(state)) {
       return;
     }
-    // A message in the room being viewed is seen immediately; anything else
-    // (panel closed, or a different room) counts as unread.
     const viewing = state.open && state.activeRoomId === detail.roomId;
     const unreadByRoom =
       detail.author === 'product' && !viewing
@@ -270,8 +250,6 @@ export function initChatPanelState(): () => void {
   for (const [name, listener] of listeners) {
     window.addEventListener(name, listener);
   }
-  // The session (the auth controller's rule: only Connected and Disconnected
-  // change it) and the auto-hidden topbar come from their stores.
   const follow = (): void => {
     update({
       loggedIn: getLoggedIn(),
@@ -290,23 +268,17 @@ export function initChatPanelState(): () => void {
   };
 }
 
-/** Tests only. */
 export function resetChatPanelStateForTests(): void {
   panel.set(INITIAL);
 }
 
-/**
- * The docked panel's element (components/chat/ChatDock.tsx), for the chat
- * button, a separate island, to tell whether the focus was in it.
- */
+// The chat button, a separate island, reads it to tell whether focus was in the panel.
 let panelElement: HTMLElement | undefined;
 
-/** The docked panel, while one is mounted. */
 export function getChatPanelElement(): HTMLElement | undefined {
   return panelElement;
 }
 
-/** Register `el` as the docked panel; returns the unregister. */
 export function setChatPanelElement(el: HTMLElement): () => void {
   panelElement = el;
   return () => {

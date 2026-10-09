@@ -47,12 +47,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/**
- * Stands in for the protocol iframe's smoldot.
- *
- * `replies` is consumed one entry per `bitswap_v1_get`, so the test spells out
- * the exact sequence the chain hands back across retries.
- */
+/** Stands in for the protocol iframe's smoldot, answering each `bitswap_v1_get` with the next of `replies`. */
 function stubChain(
   replies: ({ code: number } | { hex: string })[],
   tail?: { code: number },
@@ -230,7 +225,7 @@ describe('bitswapGet after a halt', () => {
     unanswered: number[];
   }
 
-  /** One fake connection per dial; the first never replies, later ones answer. */
+  /** One fake connection per dial. The first never replies, later ones answer. */
   function stubHaltableChain(): HaltableChain {
     const chain: HaltableChain = { dialled: [], unanswered: [] };
     mocks.createRemoteChainProvider.mockImplementation(
@@ -489,8 +484,6 @@ describe('listenForSandboxBitswap', () => {
   it('As an operator, a failed fetch reaches the sandbox with its error class and code', async () => {
     // Given a chain that rejects the request outright
     stubChain([{ code: -32602 }]);
-    vi.resetModules();
-    const { listenForSandboxBitswap } = await import('../src/bitswap.js');
     listenForSandboxBitswap();
     const frame = fakeFrame();
 

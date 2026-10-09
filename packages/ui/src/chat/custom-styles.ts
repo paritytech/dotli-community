@@ -1,16 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Style mapping for product-authored render trees (components/chat/CustomNode).
-//
-// The tree is a closed vocabulary: the product names layouts and design
-// tokens, never markup, styles, or URLs, so everything it can express is
-// drawn from the host's own design system here and cannot reach past it.
-// Protocol-level port of the desktop host's React renderer.
-//
-// Every builder returns a style object keyed by CSS property name, which is
-// what a Solid `style` prop takes; a key that disappears on the next tree is
-// removed from the element.
+// The product names layouts and design tokens, never markup, styles or URLs, so everything it can
+// express is drawn from the host's design system and cannot reach past it.
 
 import type {
   Arrangement,
@@ -28,8 +20,7 @@ import type {
 
 export type CustomStyle = Record<string, string>;
 
-// Semantic tokens resolve to the chat palette in global.css (`--chat-*`),
-// matching the desktop host's token mapping.
+// Matches the desktop host's token mapping.
 const COLOR_TOKEN_CSS: Record<ColorToken, string> = {
   FgPrimary: 'var(--chat-fg-primary)',
   FgSecondary: 'var(--chat-fg-secondary)',
@@ -140,8 +131,7 @@ function shapeToBorderRadius(shape: Shape | undefined): string | undefined {
   }
 }
 
-// Two- and three-value CSS shorthands carry the spec's defaulting rules:
-// bottom falls back to top, start falls back to end.
+// The shorter CSS shorthands default bottom to top and start to end.
 function dimensionsToCss(dims: Dimensions): string {
   if (dims.bottom !== undefined && dims.start !== undefined) {
     return `${px(dims.top)} ${px(dims.end)} ${px(dims.bottom)} ${px(dims.start)}`;
@@ -152,7 +142,7 @@ function dimensionsToCss(dims: Dimensions): string {
   return `${px(dims.top)} ${px(dims.end)}`;
 }
 
-/** The style `modifiers` give a node, later modifiers winning. */
+/** Later modifiers win. */
 export function modifierStyle(modifiers: Modifier[]): CustomStyle {
   const style: CustomStyle = {};
   for (const mod of modifiers) {
@@ -203,7 +193,7 @@ export function modifierStyle(modifiers: Modifier[]): CustomStyle {
           style['height'] = '100%';
         }
         break;
-      // The wire carries a u8 alpha; CSS wants the unit interval.
+      // The wire carries a u8 alpha, and CSS wants the unit interval.
       case 'Opacity':
         style['opacity'] = String(mod.value / 255);
         break;

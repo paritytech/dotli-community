@@ -1,17 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Renders a product-authored render tree (chat custom messages) as host UI.
-//
-// Product strings land as JSX text, so they can never inject markup, and
-// every style comes from the closed mapping in chat/custom-styles.ts.
-//
-// A new tree from the product updates the one on screen in place: a node
-// is matched by its tag and its children by position, so an element whose
-// tag stays the same is kept. A text field being typed in therefore keeps
-// its focus, caret and typed text across updates, and its value is only
-// written when the product changes the text it sends (and, while the user
-// is typing, only once they pause: see TextField).
+// Product strings land as JSX text and every style comes from the closed mapping in custom-styles.ts.
+// Nodes match by tag and children by position, so an updated tree keeps a focused field's caret and text.
 
 import { createEffect, createUniqueId, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -33,8 +24,7 @@ const textEncoder = new TextEncoder();
 
 /** `node`'s value when it is a `tag` node, for a non-keyed `Match`. */
 function valueOf<T extends NodeTag>(node: RendererNode, tag: T): NodeValue<T> | false {
-  // A matching tag is a node whose value is NodeValue<T>; TypeScript
-  // cannot narrow a union by a generic tag, so say so once here.
+  // TypeScript cannot narrow a union by a generic tag.
   return node.tag === tag ? ((node as { value?: unknown }).value as NodeValue<T>) : false;
 }
 
@@ -53,18 +43,12 @@ function Children(props: { nodes: RendererNode[]; onAction: CustomActionHandler 
   );
 }
 
-/**
- * What makes a text field the same field from one tree to the next: the
- * action its edits report and its label.
- */
+/** What makes a text field the same field from one tree to the next. */
 function fieldIdentity(value: NodeValue<'TextField'>): string {
   return `${value.props.valueChangeAction ?? ''}\u0000${value.props.label ?? ''}`;
 }
 
-/**
- * How long after the last keystroke a focused field still counts as being
- * typed in. Product text that arrives meanwhile is held until then.
- */
+/** How long after the last keystroke product text for a focused field is held back. */
 const TYPING_HOLD_MS = 1000;
 
 function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActionHandler }): JSX.Element {
@@ -72,8 +56,7 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
   let input: HTMLInputElement | undefined;
   // The product text last seen, applied or held.
   let written: string | undefined;
-  // Product text that arrived while the user was typing, and the timer that
-  // applies it once typing pauses.
+  // Product text that arrived while the user was typing.
   let held: string | undefined;
   let holdTimer: ReturnType<typeof setTimeout> | undefined;
   let lastTypedAt = Number.NEGATIVE_INFINITY;
@@ -90,7 +73,6 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
       holdTimer = undefined;
     }
   };
-  // Apply the held text when typing has paused, or wait for the pause.
   const settleHeld = (): void => {
     holdTimer = undefined;
     if (held === undefined) {
@@ -107,14 +89,8 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
   };
   onCleanup(dropHeld);
 
-  // Not a `value` binding, which Solid rewrites on every new tree: the value
-  // is written only when the product sends different text, and not even
-  // then when the field already shows it, so resending the same text never
-  // overwrites what the user is typing or moves their caret. The product
-  // echoes each edit back after a round trip, so an echo of an earlier
-  // keystroke can land while the user types on: text that arrives while the
-  // field is focused and was typed in within TYPING_HOLD_MS is held, and
-  // applied when typing pauses, if it still differs from the field.
+  // Not a `value` binding, which Solid rewrites on every tree and which would move the caret. The product
+  // echoes each edit after a round trip, so a stale echo can land mid-typing and is held until a pause.
   createEffect(
     () => props.value.props.text,
     text => {
@@ -131,10 +107,8 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
       apply(text);
     },
   );
-  // Children are matched by position, so a field the product inserts or
-  // removes above this one hands this element another field. Start that
-  // field fresh, as a new element would: its own text, and not the focus
-  // the user had in the other field.
+  // Position matching hands this element another field when the product inserts or removes one above.
+  // Start it fresh, as a new element would, without the other field's focus.
   createEffect(
     () => fieldIdentity(props.value),
     (identity, previous) => {
@@ -262,8 +236,8 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
         {value => <TextField value={value()} onAction={props.onAction} />}
       </Match>
 
-      {/* No fetch path for Bulletin or archive image bytes in the host frame
-          yet, so an image draws as the empty space the RFC gives a miss. */}
+      {/* The host frame has no fetch path for Bulletin or archive image bytes yet,
+          so an image draws as empty space. */}
       <Match when={valueOf(props.node, 'Image')}>
         {value => <div class={s['image']} data-testid="chat-custom-image" style={modifierStyle(value().modifiers)} />}
       </Match>

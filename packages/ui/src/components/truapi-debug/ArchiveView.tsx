@@ -1,10 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Archive view of the TrUAPI debug panel: the files of the product's CID, a
-// sidebar listing them and a pane showing the one selected. The archive is
-// read when the tab first shows (see archive-source.ts), once per CID.
-
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isEncrypted, type ArchiveFiles } from '@dotli/content';
@@ -23,7 +19,6 @@ type ArchiveRead =
   | { status: 'loaded'; files: readonly ArchiveFile[]; total: number }
   | { status: 'failed'; reason: string };
 
-/** What the content pane shows for a file. */
 type Preview = { kind: 'encrypted' } | { kind: 'image' } | { kind: 'text'; text: string } | { kind: 'binary' };
 
 const IMAGE_TYPES: Readonly<Record<string, string>> = {
@@ -37,7 +32,7 @@ const IMAGE_TYPES: Readonly<Record<string, string>> = {
   bmp: 'image/bmp',
 };
 
-/** Text past this many characters is cut, so a huge bundle stays responsive. */
+/** Cut so a huge bundle stays responsive. */
 const MAX_TEXT_CHARS = 1_000_000;
 
 function imageType(path: string): string | undefined {
@@ -45,7 +40,6 @@ function imageType(path: string): string | undefined {
   return dot === -1 ? undefined : IMAGE_TYPES[path.slice(dot + 1).toLowerCase()];
 }
 
-/** The file as UTF-8 text, or null when it is not text. */
 function decodeText(bytes: Uint8Array): string | null {
   if (bytes.includes(0)) {
     return null;
@@ -85,11 +79,7 @@ function toFiles(files: ArchiveFiles): ArchiveRead {
   return { status: 'loaded', files: list, total: list.reduce((sum, file) => sum + file.bytes.length, 0) };
 }
 
-export function ArchiveView(props: {
-  active: boolean;
-  /** Reads the archive behind a CID. */
-  load: ArchiveLoader;
-}): JSX.Element {
+export function ArchiveView(props: { active: boolean; load: ArchiveLoader }): JSX.Element {
   const product = useStore(productStore);
   const cid = (): string | undefined => {
     const state = product();
@@ -99,8 +89,7 @@ export function ArchiveView(props: {
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
   const [imageUrl, setImageUrl] = createSignal<string | null>(null);
 
-  // Read on first show, and again only for a new CID (a product reloaded
-  // under another one).
+  // Read on first show, and again only for a new CID.
   let readCid: string | null = null;
   createEffect(
     () => (props.active ? (cid() ?? null) : null),
@@ -136,7 +125,6 @@ export function ArchiveView(props: {
     return file === undefined ? undefined : preview(file);
   });
 
-  // An image previews through a blob URL, freed when another file is picked.
   let url: string | null = null;
   const freeUrl = (): void => {
     if (url !== null) {

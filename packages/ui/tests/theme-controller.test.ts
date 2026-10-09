@@ -14,8 +14,7 @@ beforeEach(() => {
   document.documentElement.removeAttribute('data-theme-pref');
 });
 
-// A fresh module per test: initTheme() adds a matchMedia listener that lives
-// as long as the module, and the store starts from its default.
+// A fresh module per test, as initTheme() adds a matchMedia listener for the module's life.
 async function loadController(): Promise<typeof ThemeControllerModule & typeof ThemeModule> {
   const controller = await import('../src/theme-controller.js');
   const store = await import('../src/state/theme.js');

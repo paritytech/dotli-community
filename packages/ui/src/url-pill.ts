@@ -11,14 +11,7 @@ function part(bar: HTMLElement, selector: string): HTMLElement {
   return el;
 }
 
-/**
- * Keep the host page's URL bar (`#topbar-url`, rendered at build time by
- * apps/host/src/components/UrlPill.astro) showing the url-pill store, which
- * the host (main.ts) writes: hidden while there is no pill, a local
- * product's host (the pill's `data-localhost`), or a `.dot` product's label and
- * TLD. Product strings go in as text.
- * Returns the unbind.
- */
+/** Keeps the build-time URL bar markup showing the url-pill store. Product strings go in as text, never markup. */
 export function bindUrlPill(bar: HTMLElement): () => void {
   const pill = part(bar, '#url-pill');
   const domain = part(bar, '#url-pill-domain');

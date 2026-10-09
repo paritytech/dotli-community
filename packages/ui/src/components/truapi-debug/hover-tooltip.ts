@@ -2,35 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Zero-delay hover tooltip for any element under `root` carrying a
- * `data-tooltip` attribute. `pointerover` shows it, `pointermove` updates the
- * position, `pointerleave` hides it. Bypasses the browser-native `<title>`
- * delay so the information appears the instant the cursor lands.
+ * Zero-delay tooltip for `[data-tooltip]` elements under `root`, skipping the native `title` delay.
  *
- * Delegated from `root` rather than bound per element, so a view whose
- * elements come and go keeps working without re-wiring. The tooltip is
- * positioned on every pointer move, so it is driven directly rather than
- * through signals.
- *
- * An element that also sets `data-tooltip-prose` gets a wrapped, width-capped
- * tooltip. The default stays on one line, which is what the short timeline
- * strings want.
- *
- * A move over the element already showing only writes the new position: the
- * panel's box is measured when the tooltip is shown (the panel does not move
- * under a hovering cursor), and the tooltip's own size only when its text
- * changes, so a pointermove never forces a layout. The size is measured with
- * the tooltip at the panel's left edge, where it has room for its full
- * width, so the right-edge clamp holds wherever it was first shown.
- *
- * Returns a function that removes the listeners.
+ * Delegated so elements can come and go. `data-tooltip-prose` wraps the text. A move over the shown element
+ * only writes the position, since the panel box and tooltip size are cached, so pointermove never forces layout.
  */
 export function wireHoverTooltips(
   root: HTMLElement,
   tooltipEl: () => HTMLElement | undefined,
   panelEl: () => HTMLElement | undefined,
 ): () => void {
-  /** The element the tooltip shows for, and what was measured for it. */
   let shownFor: Element | null = null;
   let panelRect: DOMRect | null = null;
   let size: { width: number; height: number } | null = null;
@@ -57,32 +38,22 @@ export function wireHoverTooltips(
     if (rect === null) {
       return;
     }
-    // Position (viewport-fixed): offset 12px below-right of the cursor,
-    // then clamp to the viewport so the tooltip never gets cropped.
     const left = clientX - rect.left + 12;
     const top = clientY - rect.top + 16;
     if (size === null) {
-      // Measured at the panel's left edge: a prose tooltip wraps to the room
-      // right of its `left`, so measured near the right edge it would come
-      // out narrow and tall, and the clamp below would under-correct.
+      // Measured at the left edge, since a prose tooltip near the right edge wraps narrow and the clamp under-corrects.
       tooltip.style.left = '0px';
       const measured = tooltip.getBoundingClientRect();
       size = { width: measured.width, height: measured.height };
     }
     tooltip.style.left = `${String(left)}px`;
     tooltip.style.top = `${String(top)}px`;
-    // Where the tooltip's edges land, from its size and the position just
-    // written, as a fresh measure would find them.
     const right = rect.left + left + size.width;
     const bottom = rect.top + top + size.height;
-    // Clamp right edge.
     if (right > rect.right - 4) {
       const adjusted = left - (right - rect.right) - 6;
       tooltip.style.left = `${String(Math.max(4, adjusted))}px`;
     }
-    // Flip above the cursor rather than run off the bottom. A one-line
-    // timeline tooltip almost never needs this. A wrapped prose one near the
-    // foot of a bottom-docked panel always would.
     if (bottom > window.innerHeight - 4) {
       tooltip.style.top = `${String(top - size.height - 28)}px`;
     }

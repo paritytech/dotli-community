@@ -1,42 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The icon follows <html data-theme>, the theme in effect, which the inline
-   bootstrap script sets before the island hydrates, so the build-time button
-   already shows it. */
-
-.sun {
-  display: none;
-}
-:global([data-theme='light']) .sun {
-  display: block;
-}
-:global([data-theme='light']) .moon {
-  display: none;
-}
-
-/* The board's Appearance popover (MenuTheme): a title over three radio tiles
-   in a well. FloatingLayer draws the glass; the open rule lays it out as a
-   column (FloatingLayer's own open `display` yields to it). */
-.popover {
-  flex-direction: column;
-  gap: 10px;
-  width: var(--w-pop-sm);
-  min-width: 0;
-  max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
-  padding: var(--sp-3);
-}
-.popover[data-open] {
-  display: flex;
-}
-.head {
-  margin: 0;
-  padding: var(--sp-hair) var(--sp-1) 0;
-  color: var(--chrome-text);
-  font-size: var(--fs-pop-title);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
-}
 .tiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -47,7 +11,6 @@
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
 }
-/* The board's .seg-tiles buttons. */
 .tiles .tile {
   display: flex;
   align-items: center;
@@ -94,7 +57,6 @@
   }
 }
 
-/* Phones: the boards' sizes. */
 @media (max-width: 560px) {
   .tiles {
     border-radius: var(--r-md);
@@ -109,10 +71,4 @@
     width: 20px;
     height: 20px;
   }
-}
-
-/* Phones: the sheet's head carries the title, and the tiles sit inset
-   under it (the board's .popover.is-sheet). */
-.tiles[data-sheet] {
-  margin: var(--sp-1) var(--sp-4) 0;
 }

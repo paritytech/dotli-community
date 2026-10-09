@@ -14,14 +14,12 @@ dist
 coverage
 *.local
 
-# Ad-hoc screenshots dropped at the repo root during debugging.
-# Documentation images should live under docs/ (or be explicitly
-# force-added) rather than at the root.
+# Debug screenshots. Doc images belong under docs/.
 /*.png
 /*.jpg
 /*.jpeg
 
-# Lock files (keep package-lock.json committed for reproducible CI builds)
+# Lock files of other package managers
 yarn.lock
 pnpm-lock.yaml
 bun.lock
@@ -43,7 +41,7 @@ test-results/
 playwright-report/
 **/results.json
 apps/host/**/.auth/
-# Machine-local cold-start runs; CI keeps its own baseline as an artifact.
+# Machine-local cold-start runs. CI keeps its baseline as an artifact.
 apps/host/tests/performance/results/
 
 # PAPI
@@ -53,7 +51,7 @@ apps/host/tests/performance/results/
 .env*
 !.env.example
 
-# Deploy (uncommitted SSH targets; see deploy.env.example)
+# Deploy targets, see deploy.env.example
 deploy.env
 
 # Turbo
@@ -78,20 +76,18 @@ deploy.env
 opencode.json
 GEMINI.md
 
-# Vendored SDK packages (debug branch only).
-# Override the generic `dist` / `.papi/descriptors` rules so the
-# prebuilt packages under vendor/truapi-debug/ ship to CI.
+# Prebuilt vendored SDK packages ship to CI despite the rules above (debug branch only).
 !vendor/truapi-debug/**/dist
 !vendor/truapi-debug/**/dist/**
 !vendor/truapi-debug/**/.papi
 !vendor/truapi-debug/**/.papi/**
 
-# Local planning docs (specs, plans) written by agent workflows
+# Agent planning docs
 docs/superpowers/
 
 # Storybook
 storybook-static
 packages/ui/.vrt/
 
-# Vitest attachments written by the screenshot runs (test:vrt)
+# test:vrt screenshot attachments
 packages/ui/.vitest/

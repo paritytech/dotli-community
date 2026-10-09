@@ -1,24 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li app Service Worker.
-//
-// Archive serving only, no smoldot and no chain sync.
-// Runs on <label>.app.dot.li and serves the multi-file SPA archive the page
-// hands it. It keeps nothing across reloads: the iframe is credentialless, so
-// this origin's storage lasts only as long as the host page. The host keeps
-// the content blocks instead (`@dotli/storage/block-cache`).
+// Serves the archive the page hands it. The iframe is credentialless, so this origin's storage lasts only as long as
+// the host page, and the host keeps the content blocks instead.
 
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
 
-// Baked at build time by vite.config.ts (`define.__SW_VERSION__`). The page
-// queries this via `GET_SW_VERSION` to detect stale workers.
-declare const __SW_VERSION__: string;
-
 import { getMimeType } from '@dotli/shared';
 
-// Base path, derived at runtime from the SW script location.
+// The page reads it through `GET_SW_VERSION` to detect a stale worker. A build inlines it as a literal, so the worker's
+// bytes change between releases and the browser never skips the update as byte-identical.
+const SW_VERSION = import.meta.env.VITE_COMMIT_SHA ?? 'dev';
+
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 const DOTLI_APP_PREFIX = `${BASE}dotli-app/`;
 
@@ -28,13 +22,8 @@ function hasExtension(path: string): boolean {
   return lastDot > lastSlash;
 }
 
-// Archive storage.
-//
-// The browser stops an idle worker after about 30 s and starts a new instance
-// for the next fetch, so module state does not outlive the worker. The current
-// archive is therefore also written to this origin's IndexedDB and read back
-// on the first fetch after a restart. The iframe is credentialless, so the
-// copy lasts as long as the page: it outlives the worker, never a reload.
+// The browser stops an idle worker after about 30s, so the archive is also kept in IndexedDB and read back on the
+// first fetch after a restart.
 
 type ArchiveIndex = { p: string; o: number; l: number }[];
 
@@ -47,13 +36,12 @@ const ARCHIVE_DB_NAME = 'dotli-app-sw';
 const ARCHIVE_STORE = 'archive';
 const CURRENT_ARCHIVE_KEY = 'current';
 
-/** Files of the archive the fetch handler serves, keyed by path. */
 let servedFiles: Record<string, ArrayBuffer> | null = null;
 
-/** The read-back of the persisted archive, started by the first fetch that finds no archive in memory. */
+/** Started by the first fetch that finds no archive in memory. */
 let restoring: Promise<void> | null = null;
 
-/** Set once the read-back found nothing: the page has not sent an archive yet. */
+/** The read-back found nothing, so the page has not sent an archive yet. */
 let nothingPersisted = false;
 
 function unpackArchive(packed: ArrayBuffer, index: ArchiveIndex): Record<string, ArrayBuffer> {
@@ -114,13 +102,7 @@ async function loadPersistedArchive(): Promise<PersistedArchive | null> {
   }
 }
 
-/**
- * Tell the page a write or read-back of the archive failed.
- *
- * The worker has no error reporting of its own, and both failures surface
- * long after the page's archive exchange finished: a failed write only shows
- * once a restarted worker has nothing to serve.
- */
+/** The worker has no error reporting, and a failed write otherwise shows only when a restart has nothing to serve. */
 function reportArchiveFailure(clients: readonly Client[], stage: 'persist' | 'restore', err: unknown): void {
   const message = {
     type: 'ARCHIVE_FAILURE',
@@ -166,8 +148,6 @@ function getFile(path: string): ArrayBuffer | undefined {
   return servedFiles !== null && Object.hasOwn(servedFiles, path) ? servedFiles[path] : undefined;
 }
 
-// SW lifecycle.
-
 self.addEventListener('install', () => {
   void self.skipWaiting();
 });
@@ -175,8 +155,6 @@ self.addEventListener('install', () => {
 self.addEventListener('activate', event => {
   event.waitUntil(self.clients.claim());
 });
-
-// Message handling.
 
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const data = event.data as { type?: string; [key: string]: unknown } | null;
@@ -190,10 +168,8 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
   }
 
   if (data.type === 'GET_SW_VERSION') {
-    // Reply synchronously via MessageChannel port so the caller doesn't have
-    // to wire up a global listener. If no port was provided (older callers),
-    // fall back to source.postMessage.
-    const reply = { type: 'SW_VERSION', version: __SW_VERSION__ } as const;
+    // On the caller's MessageChannel port, so it needs no global listener. Older callers send no port.
+    const reply = { type: 'SW_VERSION', version: SW_VERSION } as const;
     const [port] = event.ports;
     if (port !== undefined) {
       port.postMessage(reply);
@@ -204,9 +180,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
   }
 
   if (data.type === 'SET_ARCHIVE') {
-    // Reject malformed payloads loudly instead of ACKing as if it
-    // worked. The sender will loop forever trying to serve archives
-    // from an empty SW if we ACK without applying the payload.
+    // An ACK without a payload would leave the sender looping forever against an empty SW.
     const packed = data['packed'] as ArrayBuffer | undefined;
     const idx = data['index'] as ArchiveIndex | undefined;
 
@@ -221,9 +195,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     }
 
     servedFiles = unpackArchive(packed, idx);
-    // Serving starts now, from memory. The write only matters to the next
-    // instance, so it does not hold up the ACK, and `waitUntil` keeps this
-    // instance alive until it lands.
+    // The write matters only to the next instance, so it does not hold up the ACK. `waitUntil` keeps this one alive.
     const sender = event.source as Client | null;
     event.waitUntil(
       persistArchive({ packed, index: idx }).catch((err: unknown) => {
@@ -240,19 +212,13 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
   }
 });
 
-// Fetch interception (archive serving).
-
 self.addEventListener('fetch', (event: FetchEvent) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) {
     return;
   }
 
-  // SW infrastructure paths (the SW script itself, dev source,
-  // node_modules, Vite virtual modules) are intentionally not served from
-  // the archive. Let them reach the network. This excludes well-known
-  // dApp filesystem paths only by accident. Future archives that legitimately
-  // contain `node_modules/` will not be served. Documented for follow-up.
+  // SW infrastructure goes to the network. An archive that ships its own `node_modules/` is not served from it.
   if (
     url.pathname === BASE ||
     url.pathname === BASE.slice(0, -1) ||
@@ -284,9 +250,7 @@ self.addEventListener('fetch', (event: FetchEvent) => {
     return;
   }
 
-  // A restarted worker: read the archive back before answering. Letting the
-  // request go now would send an app file to nginx, which answers every path
-  // with the sandbox shell as `text/html`.
+  // A restarted worker reads the archive back first, since nginx answers every path with the shell as `text/html`.
   const { request } = event;
   event.respondWith(
     restoreArchive().then(
@@ -297,12 +261,8 @@ self.addEventListener('fetch', (event: FetchEvent) => {
 });
 
 /**
- * Answer for a request that arrives before the page has sent an archive.
- *
- * App paths must NOT fall through to nginx (which returns the sandbox shell
- * HTML and produces broken MIME types), so they get a deterministic 503 and
- * the page sees a real failure instead of a nonsense response. `null` lets
- * the sandbox's own assets reach the network.
+ * App paths get a 503 rather than nginx's shell HTML under the wrong MIME type. `null` lets the sandbox's own assets
+ * reach the network.
  */
 function noArchiveResponse(pathname: string): Response | null {
   if (!pathname.startsWith(DOTLI_APP_PREFIX)) {
@@ -315,20 +275,8 @@ function noArchiveResponse(pathname: string): Response | null {
 }
 
 /**
- * Look up `pathname` in the loaded archive.
- *
- * Return values:
- *   - `Response`: we own this path (either a file hit, or the SPA
- *     `index.html` fallback for a top-level navigation).
- *   - `null`: we don't own it, and the caller MUST let the request fall
- *     through to the network. The sandbox origin hosts BOTH the shell
- *     (`<label>.app.localhost/index.html` plus its vite-hashed `/assets/*.js`
- *     and `/assets/*.css`) AND, post-boot, whatever the currently-loaded
- *     dApp archive contains. Returning a 404 for shell asset requests
- *     just because they're not in the dApp archive breaks every refresh
- *     once a previous archive is in memory. Firefox surfaces a 404 on
- *     a module import as `NS_ERROR_CORRUPTED_CONTENT`, so the shell's
- *     own bundle fails to load and the page gets stuck on the loader.
+ * `null` means the path is not the archive's and must reach the network: the origin also serves the shell's own
+ * assets, and a 404 for them strands a refresh on the loader.
  */
 function lookupArchive(pathname: string, requestMode: RequestMode): Response | null {
   let filePath = pathname.startsWith(DOTLI_APP_PREFIX)
@@ -367,7 +315,6 @@ function lookupArchive(pathname: string, requestMode: RequestMode): Response | n
     const mime = getMimeType(filePath);
     if (mime === 'text/html') {
       if (pathname === `${DOTLI_APP_PREFIX}index.html` || pathname === DOTLI_APP_PREFIX) {
-        // Primary index.html: inject only the sandbox checker, no base or prefix rewrite.
         return makePrimaryHtmlResponse(content, mime);
       }
       return makeHtmlResponse(content, mime);
@@ -375,9 +322,7 @@ function lookupArchive(pathname: string, requestMode: RequestMode): Response | n
     return new Response(content, archiveResponseInit(mime));
   }
 
-  // SPA fallback, only for top-level navigations. Other requests fall
-  // through to the network so shell assets (same origin, not in the
-  // archive) reach nginx and load correctly.
+  // Only navigations fall back to the SPA index, so shell assets still reach nginx.
   if (requestMode === 'navigate') {
     const indexHtml = getFile('index.html');
     if (!hasExtension(filePath) && indexHtml !== undefined) {
@@ -388,13 +333,11 @@ function lookupArchive(pathname: string, requestMode: RequestMode): Response | n
   return null;
 }
 
-/** Inject the sandbox checker script into HTML, inlined for the SW context. */
 function injectSandboxScript(html: string): string {
   if (import.meta.env.VITE_SANDBOX_CHECKER === undefined) {
     return html;
   }
-  // Inline the same IIFE as sandbox-checker.ts to avoid importing from main bundle.
-  // The SW build is separate, so we duplicate the script string here.
+  // A copy of the sandbox-checker IIFE, since the SW build cannot import from the main bundle.
   const script = `<script>(function(){
 "use strict";
 function __dotliReport(a,d){try{window.parent.postMessage({type:"DOTLI_API_VIOLATION",api:a,details:d||{},timestamp:Date.now()},"*")}catch(e){}}
@@ -421,11 +364,7 @@ var __wr=false;setTimeout(function(){__wr=true},3000);["injectedWeb3","polkadot"
   return script + html;
 }
 
-/**
- * Shared `ResponseInit` for SW-served archive content: 200 plus the security
- * header set. Single-sourced so any future header (e.g. CSP) lands on every
- * served body rather than a subset of the response builders.
- */
+/** One source, so a new header lands on every served body. */
 function archiveResponseInit(mime: string): ResponseInit {
   return {
     status: 200,
@@ -437,10 +376,7 @@ function archiveResponseInit(mime: string): ResponseInit {
   };
 }
 
-/**
- * Response for the primary index.html, with only sandbox checker injection
- * and no base href or prefix stripping (those are only for sub-pages).
- */
+/** No base href or prefix stripping, which only sub-pages need. */
 function makePrimaryHtmlResponse(content: ArrayBuffer | Uint8Array, mime: string): Response {
   let html = new TextDecoder().decode(content);
   html = injectSandboxScript(html);

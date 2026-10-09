@@ -26,15 +26,8 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
   primary: 'signing-btn-sign',
 };
 
-/**
- * Every queued app prompt (a permission request, the password prompt, a
- * preimage submit, a transaction or message to sign) drawn as a Modal: its
- * head, a well of fields, the notice, the password input, and the answers.
- * The close button (or a swipe) answers as the scrim does, and on a prompt
- * the scrim cannot dismiss, as its Cancel (or else its danger reject) does.
- */
+/** A queued app prompt (permission, password, preimage, signing) drawn as a Modal. */
 export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
-  // The outlet re-creates this component per entry (keyed), so reading once is intended.
   // eslint-disable-next-line solid/reactivity -- keyed entry, read once
   const { id, view } = props.entry;
   const titleId = `overlay-modal-title-${String(id)}`;
@@ -61,8 +54,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
     }
   };
 
-  // Close always answers: the scrim's answer where it has one, else Cancel,
-  // else the danger reject, so no prompt shape leaves a dead button.
+  // Close always answers, so no prompt shape leaves a dead button.
   const close = (): void => {
     if (view.dismissOnBackdrop && view.dismissResult !== undefined) {
       settleModal(id, view.dismissResult);

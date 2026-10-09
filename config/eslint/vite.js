@@ -11,10 +11,7 @@ import { defineConfig } from 'eslint/config';
 // eslint-plugin-solid types its rules against the ESLint 8 rule API, which
 // ESLint 10's `Plugin` type rejects. The rules themselves run under ESLint 10.
 const solidPlugin = /** @type {import("eslint").ESLint.Plugin} */ (/** @type {unknown} */ (solid));
-/**
- * ESLint configuration for Vite + TypeScript apps.
- * Extends the base config with strict type-checked rules.
- */
+
 export const config = defineConfig([
   js.configs.recommended,
   eslintConfigPrettier,
@@ -64,38 +61,21 @@ export const config = defineConfig([
       'no-throw-literal': 'error',
       curly: ['error', 'all'],
 
-      // Deterministic-path contract rules — see
-      // docs/DETERMINISM_AUDIT_2026-04-17.md §3 for rationale. Every
-      // pattern here encodes one specific regression class that leaked
-      // into the repo before the audit pass.
       'no-restricted-syntax': [
         'error',
         {
-          // Silent catch bodies. Every `catch` must either rethrow with
-          // `{ cause }`, or call `captureException` + `log.error` + emit
-          // an outcome metric. Bare `catch {}` / `catch (e) {}` swallows
-          // the cause entirely. For genuinely-safe silent-swallow cases
-          // (e.g. `localStorage` unavailable), use an eslint-disable
-          // with a one-line rationale so the exception is reviewed.
+          // A genuinely safe swallow takes an eslint-disable with a one-line reason, so it gets reviewed.
           selector: 'CatchClause > BlockStatement[body.length=0]',
           message:
             'Silent catch {} is forbidden. Either rethrow with `{ cause: err }`, or call captureException + log.error and emit an outcome metric (see docs/DETERMINISM_AUDIT §3.1).',
         },
         {
-          // Error wrapping via string concatenation with a `.message`
-          // access: `new Error("x: " + e.message)` loses the original
-          // `.cause` chain. Use the native `cause` constructor option
-          // instead. We only match the `.message` form — plain string
-          // concatenation for constant messages doesn't apply.
           selector:
             "NewExpression[callee.name='Error'] BinaryExpression[operator='+'] MemberExpression[property.name='message']",
           message:
             "Do not wrap errors by concatenating `err.message`. Use `new Error('msg', { cause: err })` so `.cause` survives (see docs/DETERMINISM_AUDIT §3.1).",
         },
         {
-          // Parallel `_FAILURE` / `_TIMEOUT` / `_RETRY` metric constants
-          // violate the "one name per logical event" schema. Use
-          // `m.count(<base>, { outcome: "error" | "timeout" })` instead.
           selector:
             'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[id.name=/_(FAILURE|TIMEOUT|RETRY|RETRIES)$/]',
           message:
@@ -105,9 +85,7 @@ export const config = defineConfig([
     },
   },
   {
-    // Relative imports name the emitted `.js` file, as NodeNext resolution
-    // expects. `allowImportingTsExtensions` stays on only for the files Node
-    // loads directly (below), so tsc alone would not catch a stray `.ts`.
+    // `allowImportingTsExtensions` is on for the files Node loads directly, so tsc alone would not catch a stray `.ts`.
     rules: {
       'no-restricted-imports': [
         'error',
@@ -129,9 +107,7 @@ export const config = defineConfig([
     },
   },
   {
-    // Only the logging + metrics entry points may call `console.*`
-    // directly. Everywhere else must go through `log.*` so DEBUG
-    // gating + Sentry breadcrumb wiring applies uniformly.
+    // Everything else logs through `log.*`, so DEBUG gating and Sentry breadcrumbs apply.
     files: ['**/src/**/*.ts', '**/src/**/*.tsx'],
     ignores: ['**/packages/shared/src/log.ts', '**/packages/metrics/src/**', '**/apps/sandbox/src/app-sw.ts'],
     rules: {
@@ -145,11 +121,7 @@ export const config = defineConfig([
     },
   },
   {
-    // Test doubles are often deliberate no-ops: a stubbed listener, a
-    // silenced console, an async adapter method with nothing to do, or a
-    // best-effort Playwright step (`.catch(() => {})` on an optional click or
-    // wait). The empty body is the point there, so the rule only adds noise.
-    // `src` keeps the rule.
+    // Test doubles and best-effort Playwright steps are deliberate no-ops.
     files: ['tests/**/*.ts', 'tests/**/*.tsx'],
     rules: {
       '@typescript-eslint/no-empty-function': 'off',

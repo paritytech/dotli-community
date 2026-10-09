@@ -18,14 +18,9 @@ const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
 
 export interface SetupOptions {
-  /** Hard cap on retained events before oldest are evicted. */
+  /** Retained events before the oldest are evicted. */
   capacity?: number;
-  /**
-   * Mount the panel collapsed (header-only). Used when debug mode is
-   * auto-enabled in dev environments so the panel doesn't cover content
-   * unsolicited; explicit opt-ins (Settings button / `?debug=true`)
-   * mount expanded.
-   */
+  /** Set when debug mode is auto-enabled in dev, so the panel does not cover content unasked. */
   startCollapsed?: boolean;
   /** Compile-time debug builds only; runtime debug opt-ins cannot enable custody. */
   experimentalWallet?: ExperimentalWalletControls;
@@ -41,22 +36,14 @@ function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBus
 }
 
 /**
- * Install the TrUAPI debug panel into the current document.
+ * Install the debug panel, returning a dispose that also gives the product iframe its full size back.
  *
- * Creates a single panel bound to the current page, subscribes once to the
- * dotli debug bus, and returns a dispose function that tears everything down
- * (DOM, subscription, timers) and gives the product iframe its full size back.
- *
- * The panel mounts visible whenever debug mode is on. The header's `×` button
- * exits debug mode entirely (clears the session flag and reloads). Re-enter
- * via the host Settings panel's "Open in debug mode" button.
- *
- * Calling twice without disposing is a no-op on the second call.
+ * A second call before disposing is a no-op.
  */
 export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   if (document.getElementById(PANEL_ID) !== null) {
     return () => {
-      /* already mounted; owner should dispose the original handle */
+      /* already mounted, the owner disposes the original handle */
     };
   }
 
@@ -68,18 +55,12 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
-  // Subscribed before the panel mounts so the synchronous early-buffer
-  // replay this subscription triggers lands in the store first: the
-  // panel's own store subscription sees inserts regardless of subscribe
-  // order, but subscribing first means buffered boot events are already in
-  // `store` for the panel's initial snapshot, so they render immediately
-  // instead of waiting for the next animation frame.
+  // Subscribed before mount so the buffered boot replay is in the panel's first snapshot, not a frame later.
   const unsubscribe = onDotliDebugEvent(ev => {
     if (isTruapiDebugEvent(ev)) {
       store.insertTruapi(ev);
     } else {
-      // Paused events are dropped by the store; keep the Resolution view
-      // consistent with it.
+      // The store drops paused events, so the Resolution view does too.
       if (!store.isPaused()) {
         resolution.record(ev);
       }
@@ -99,11 +80,10 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
         loadArchive={productArchiveLoader(options.blockSource)}
       />
     ),
-    // A render error, even a late one, tears the panel down instead of
-    // leaving it frozen with its timers running.
+    // A render error, even a late one, tears the panel down rather than leave it frozen with timers running.
     { onBroken: unsubscribe, removeContainer: true },
   );
-  // The panel, its layout and the iframe fit are in place when setup returns.
+  // Callers expect the panel, its layout and the iframe fit in place on return.
   flush();
 
   return () => {

@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The cards are keyed by fact name, so a redraw keeps every card's nodes and
-// only rewrites a value that changed. The info badge the cursor rests on is
-// never replaced, and its tooltip stays up across ticks.
+// Keyed by fact name, so the hovered info badge is never replaced and its tooltip stays up across ticks.
 
 import { createMemo, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -20,9 +18,7 @@ export function Summary(props: { model: ResolutionModel }): JSX.Element {
           <div data-testid="td-res-fact" data-fact={fact().key}>
             <dt class={s['key']}>
               {fact().key}
-              {/* The only hover target in the summary. Hovering a card
-                  itself does nothing, so the pointer can cross the grid
-                  without tooltips firing. */}
+              {/* The only hover target, so the pointer can cross the grid without tooltips firing. */}
               <span
                 class={s['info']}
                 data-testid="td-res-info"

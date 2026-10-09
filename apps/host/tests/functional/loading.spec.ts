@@ -15,9 +15,7 @@ import {
 import { test } from './helpers/shared-mode-reset.js';
 import { findAppFrame } from '../product-frame.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
-// Playwright loads specs in Node, where the package barrels cannot load (they
-// read `self.location` and `import.meta.env` at load), so these constants come
-// from their side-effect-free source files.
+// From source files, since the package barrels read `self.location` and `import.meta.env` at load and Node cannot.
 import { TIMEOUTS } from '../../../../packages/config/src/timeouts.js';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '../../../../packages/config/src/network.js';
 import { METHOD_TIMEOUTS } from '../../../../packages/protocol/src/method-timeouts.js';
@@ -27,24 +25,17 @@ import { NETWORK, PORT, TLD_SUFFIX } from '../env.js';
 const DOMAIN = process.env['COMBO_DOMAIN'] ?? 'host-playground';
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
-// The drop to a trusted provider is gated: the first sighting of a failure
-// offers Settings, and only a repeat of the same kind offers the one-click
-// switch. Most tests below assert the first screen.
+// The first sighting of a failure offers Settings, only a repeat of the same kind offers the one-click switch.
 const RETRY_LABEL_FROM_SMOLDOT = FAILOVER_BTN_LABELS['rpc-gateway'];
 
 // The budget a `resolveDotName` handler derives from its request deadline.
 const RESOLVER_SYNC_BUDGET_MS = (METHOD_TIMEOUTS.resolveDotName ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE;
 
-// Preserve the post-retry backend that the in-page button just flipped.
+// Keeps the backend the in-page retry button flipped.
 async function setBackend(page: Page, backend: Backend): Promise<void> {
   await seedBackend(page, backend, { onlyIfUnset: true });
 }
 
-/**
- * Replace the protocol iframe document with a mock that runs a provided script.
- * Lets each test simulate ready / init-failed / fatal / response envelopes
- * without running the real smoldot pipeline.
- */
 async function mockProtocolIframe(page: Page, script: string): Promise<void> {
   await page.route('**', async route => {
     const isProtocolDoc =
@@ -62,11 +53,7 @@ async function mockProtocolIframe(page: Page, script: string): Promise<void> {
 
 const READY = `window.parent.postMessage({namespace:"dotli:protocol",kind:"ready"},"*");`;
 
-// Post init-failed AFTER the iframe's load event fires, then retry with
-// exponential backoff until the parent acks via `resetProtocolFrameState` (which
-// blanks the iframe). A single fixed delay races the parent's `ensureProtocolFrame`
-// resolver-registration window. Retries cover the worst case where the first
-// post lands before any waiter is queued.
+// Retried until the parent blanks the iframe, since a single post can land before any waiter is queued.
 const initFailed = (message: string): string => `
   window.addEventListener("load", function() {
     var msg = {
@@ -301,8 +288,7 @@ test('As a user using smoldot directly, when every peer WebSocket is unavailable
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  // A window, not equality: the budget is the deadline minus however long
-  // dispatch took, so it lands just under the constant.
+  // A window, not equality: dispatch time comes off the budget, so it lands just under the constant.
   await page.addInitScript((budgetMs: number) => {
     const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
     globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
@@ -482,8 +468,7 @@ test('As a user, after a resolution failure, clicking retry switches backend and
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  // The switch is only offered on the second sighting, so reload into the
-  // same failure first.
+  // The switch is offered only on the second sighting.
   await page.locator('#error-retry-btn').click();
   await page.waitForLoadState('domcontentloaded');
   await expect(page.locator('#error-retry-btn-1')).toContainText(RETRY_LABEL_FROM_SMOLDOT, { timeout: 10_000 });
@@ -492,8 +477,7 @@ test('As a user, after a resolution failure, clicking retry switches backend and
 
   // When
   await page.locator('#error-retry-btn-1').click();
-  // Dropping verification is confirmed first: `Try Anyway` is the leading
-  // action on the interstitial, so it keeps `#error-retry-btn`.
+  // Dropping verification is confirmed first, and `Try Anyway` leads, so it keeps `#error-retry-btn`.
   await expect(page.locator('#error-retry-btn')).toContainText(TRY_ANYWAY_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(GO_BACK_BTN_LABEL);
   await page.locator('#error-retry-btn').click();

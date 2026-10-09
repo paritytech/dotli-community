@@ -1,19 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Raw chainHead-backed contract-storage API.
-//
-// Reads a Revive contract slot via direct `chainHead_v1_storage` queries,
-// no runtime call or metadata exchange involved.
-//
-// A slot is read in two steps, mirroring `ReviveApi::get_storage`:
-//   1. read `Revive::AccountInfoOf[address]` from the MAIN trie, decode trie_id
-//   2. read `blake2_256(slot)` from the contract's CHILD trie trie_id
-//
-// Callers hold one best block (`withBestBlock`) and its `trie_id` for a whole
-// logical multi-slot read (see `access-raw-storage.ts`). The API itself does
-// NOT cache `trie_id` across calls, because a contract redeploy would silently
-// return stale data otherwise.
+// Revive contract slots read straight from `chainHead_v1_storage`, with no runtime call or metadata.
+// Like `ReviveApi::get_storage`, the `trie_id` comes from `AccountInfoOf` in the main trie, then the slot
+// from that child trie. `trie_id` is never cached, because a redeploy would then return stale data.
 
 import type { SubstrateClient } from '@polkadot-api/substrate-client';
 import { OperationInaccessibleError, StopError } from '@polkadot-api/substrate-client';
@@ -22,19 +12,13 @@ import { fromHex, toHex, mergeUint8 } from '@polkadot-api/utils';
 
 const enc = new TextEncoder();
 
-// Precomputed once: twox128("Revive") ++ twox128("AccountInfoOf").
 const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox128(enc.encode('AccountInfoOf'))]);
 
-/** SCALE `Vec<u8>` decoder (compact length + bytes), shared across calls. */
 const decodeVecU8 = Hex().dec;
 
 /**
- * `operationInaccessible` is the node saying it cannot serve a read right now.
- * A light client says it just after syncing, before any peer has answered for
- * the proof. papi's observable client retries it every 750 ms; the
- * raw client these reads go through does not. The window bounds it so a read
- * no peer ever serves still fails, instead of polling the long-lived shared
- * follow after its caller has given up.
+ * A light client answers `operationInaccessible` just after syncing, before any peer served the proof.
+ * The raw client does not retry it as papi's observable client does. The window lets a read no peer serves fail.
  */
 const INACCESSIBLE_RETRY_DELAY_MS = 750;
 const INACCESSIBLE_RETRY_WINDOW_MS = 30_000;
@@ -53,11 +37,7 @@ async function withInaccessibleRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/**
- * Error thrown when an `Api` operation runs after the underlying chainHead
- * follow has stopped. Callers should treat this as "redial needed",
- * distinct from a `null` "slot not set" result.
- */
+/** The chainHead follow stopped, so the caller must redial. Distinct from a `null` unset slot. */
 export class ApiStoppedError extends Error {
   constructor(cause?: unknown) {
     super('chainHead follow stopped', { cause });
@@ -66,50 +46,25 @@ export class ApiStoppedError extends Error {
 }
 
 export interface Api {
-  /**
-   * Resolves once the chain head is initialized and a block is available.
-   * Rejects with `ApiStoppedError` if the follow dies before then.
-   */
   whenReady(): Promise<void>;
-  /**
-   * Run `read` against the current best block, keeping that block pinned until
-   * `read` settles. Multi-call reads must go through here so the block they
-   * read from is not unpinned under them. Rejects with `ApiStoppedError` once
-   * the follow has stopped.
-   */
+  /** Keeps the best block pinned until `read` settles. Multi-call reads must go through here. */
   withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T>;
-  /**
-   * Walk `Revive::AccountInfoOf[contractAddress]` at `atHash`. Returns the
-   * contract's child-trie id, or `null` if the account is missing or not a
-   * Contract variant. Always queries the network. There is no cache.
-   */
+  /** Resolves `null` when the account is missing or not a contract. */
   resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null>;
-  /**
-   * Read a 32-byte EVM storage slot of a Revive contract. Optional `atHash`
-   * and `trieId` let callers pin a multi-slot read to a single block and trie
-   * id (avoids torn reads when smoldot emits `bestBlockChanged` mid-loop).
-   * `null` if unset.
-   */
+  /** Pass `atHash` and `trieId` to pin a multi-slot read to one block. Resolves `null` when unset. */
   readSlot(
     contractAddress: string,
     slotKey: `0x${string}`,
     atHash?: string,
     trieId?: Uint8Array,
   ): Promise<Uint8Array | null>;
-  /**
-   * Subscribe to the chainHead follow stopping. Fires at most once. Returns
-   * an unsubscribe.
-   */
+  /** Fires at most once. */
   onStop(cb: () => void): () => void;
-  /** Stop the chainHead follow. The owning `SubstrateClient` is NOT destroyed. */
+  /** Leaves the owning `SubstrateClient` alive. */
   destroy(): void;
 }
 
-/**
- * Build an `Api` over an existing `SubstrateClient`. Opens its own
- * `chainHead` follow (`withRuntime: false`, no metadata fetch) and reads
- * from the best block. The caller owns the client's lifecycle.
- */
+/** Opens its own `chainHead` follow without runtime. The caller owns the client. */
 export function createRawApi(client: SubstrateClient): Api {
   let bestHashRef: string | null = null;
   let stopped = false;
@@ -127,9 +82,6 @@ export function createRawApi(client: SubstrateClient): Api {
     }
     stopped = true;
     if (rejectReady !== null) {
-      // Always wrap so callers can `instanceof ApiStoppedError` to
-      // distinguish "follow died" from a transient network error inside an
-      // operation. The original error is preserved as `cause`.
       const wrapped = err instanceof ApiStoppedError ? err : new ApiStoppedError(err);
       rejectReady(wrapped);
       rejectReady = null;
@@ -145,11 +97,8 @@ export function createRawApi(client: SubstrateClient): Api {
     }
   }
 
-  // Every block the follow reports stays pinned until it is unpinned, and a
-  // server may `stop` a follow whose client lets pins pile up. A block is done
-  // with once finality leaves it behind or prunes it: reads only ever target
-  // the best block, which descends from the newest finalized one. A block a
-  // read still holds is unpinned when the last such read finishes.
+  // A server may stop a follow that lets pins pile up. Reads only target descendants of the newest finalized
+  // block, so blocks finality leaves behind or prunes are unpinned, once the last read holding them ends.
   let newestFinalized: string | null = null;
   const holds = new Map<string, number>();
   const retiredWhileHeld = new Set<string>();
@@ -159,7 +108,7 @@ export function createRawApi(client: SubstrateClient): Api {
       return;
     }
     follow.unpin(hashes).catch(() => {
-      /* the follow stopped; its pins went with it */
+      /* the follow stopped, and its pins went with it */
     });
   }
 
@@ -187,7 +136,7 @@ export function createRawApi(client: SubstrateClient): Api {
     }
   }
 
-  /** Make `hashes` (oldest first) the newest finalized blocks; return the ones left behind. */
+  /** `hashes` are oldest first. Returns the blocks left behind. */
   function advanceFinalized(hashes: string[]): string[] {
     const newest = hashes.at(-1);
     if (newest === undefined) {
@@ -234,7 +183,8 @@ export function createRawApi(client: SubstrateClient): Api {
   }
 
   async function resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null> {
-    const addr = fromHex(contractAddress); // 20-byte H160, Identity hasher
+    // `AccountInfoOf` uses the Identity hasher.
+    const addr = fromHex(contractAddress);
     const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, addr]);
     const accountInfoHex = await withInaccessibleRetry(() =>
       withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null)),
@@ -243,8 +193,7 @@ export function createRawApi(client: SubstrateClient): Api {
       return null;
     }
     const accountInfo = fromHex(accountInfoHex);
-    // AccountInfo.account_type is an enum: tag 0x00 = Contract(ContractInfo).
-    // ContractInfo.trie_id is its first field, a SCALE `Vec<u8>`.
+    // Tag 0x00 is `Contract(ContractInfo)`, whose first field is `trie_id` as a SCALE `Vec<u8>`.
     if (accountInfo[0] !== 0x00) {
       return null;
     }
@@ -275,7 +224,7 @@ export function createRawApi(client: SubstrateClient): Api {
     if (trie === null) {
       return null;
     }
-    const childKey = Blake2256(fromHex(slotKey)); // Key::Fix hash path
+    const childKey = Blake2256(fromHex(slotKey));
     const valueHex = await withInaccessibleRetry(() =>
       withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie))),
     );
@@ -295,7 +244,6 @@ export function createRawApi(client: SubstrateClient): Api {
     },
     onStop(cb) {
       if (stopped) {
-        // Fire immediately for late subscribers, matching `onSmoldotFatal`.
         try {
           cb();
           // eslint-disable-next-line no-restricted-syntax -- defensive: one buggy late subscriber must not break the registration.

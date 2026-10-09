@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The topbar's action group (components/shell/TopbarActions.tsx), with its
-// real items: what the More menu's rows open. The group's fitting is covered
-// with stand-in items in action-group.test.tsx, and each item on its own in
-// its own test.
+// The action group island with its real items. action-group.test.tsx covers the fitting.
 
 import { cleanup, within } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,10 +9,8 @@ import { TopbarActions } from '../../../src/components/shell/TopbarActions.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
-import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
-import { setLandingPage } from '../../../src/state/topbar.js';
 import { initChatPanelState } from '../../../src/state/chat-panel.js';
 import { setLoggedIn } from '../../../src/state/auth.js';
 import { CHAT_MESSAGE_EVENT } from '../../../src/chat/service.js';
@@ -39,6 +34,8 @@ const MORE_ONLY = ITEM_WIDTH;
 
 async function renderIsland(): Promise<void> {
   const container = document.createElement('div');
+  // As the host page's bar, which stays live over the sheets resting on it.
+  container.setAttribute('data-over-sheets', '');
   document.body.append(container);
   renderComponent(() => <TopbarActions />, { container });
   await settle();
@@ -94,7 +91,6 @@ describe('Topbar actions island', () => {
         byId('permissions-popover').contains(document.activeElement) ||
           document.activeElement === byId('permissions-popover'),
       ).toBe(true);
-      // The list is the popover's body, its own chunk.
       await waitForContent('permissions-popover');
       await settle();
       const camera = must(
@@ -107,50 +103,45 @@ describe('Topbar actions island', () => {
     }
   });
 
-  it("As a mobile user, the More menu's Appearance and Settings rows open the Appearance popover and the settings popover", async () => {
+  it("As a mobile user, the More menu's Network and Settings rows open the network panel and the settings popover", async () => {
     // Given
     initSettingsStore();
     stubTopbarLayout(MORE_ONLY);
     await renderIsland();
 
     // When
-    await tapMoreRow('theme');
+    await tapMoreRow('network');
 
     // Then
     expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
-    expect(byId('theme-popover').hasAttribute('data-open')).toBe(true);
+    expect(byId('chains-popover').hasAttribute('data-open')).toBe(true);
 
     // When
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await settle();
 
     // Then
-    expect(byId('theme-popover').hasAttribute('data-open')).toBe(false);
+    expect(byId('chains-popover').hasAttribute('data-open')).toBe(false);
     expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
 
     // When
     await tapMoreRow('settings');
 
     // Then
-    expect(byId('theme-popover').hasAttribute('data-open')).toBe(false);
+    expect(byId('chains-popover').hasAttribute('data-open')).toBe(false);
     expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(byId('mode-popover').hasAttribute('data-open')).toBe(true);
   });
 
-  it("As a mobile user, once a product is on screen the More menu's Network row opens the network panel", async () => {
+  it("As a mobile user, the More menu's Network row opens the network panel", async () => {
     // Given
     stubTopbarLayout(MORE_ONLY);
     await renderIsland();
     await openMore();
-    expect(document.querySelector('#more-popover [role="menuitem"][data-item="network"]')).toBeNull();
-
-    // When
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
-    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Syncing');
-    expect(moreRow('network').textContent).toBe('NetworkSyncing');
+    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Not in use');
+    expect(moreRow('network').textContent).toBe('NetworkNot in use');
 
     // When
     await tapMoreRow('network');
@@ -173,35 +164,17 @@ describe('Topbar actions island', () => {
     expect(byId('topbar-actions').hasAttribute('data-collapsible')).toBe(true);
   });
 
-  it("As a visitor on the landing page, the group renders nothing, so the page's own account and appearance buttons are the only ones", async () => {
-    // Given
-    stubTopbarLayout(6 * ITEM_WIDTH);
-    await renderIsland();
-    expect(document.getElementById('auth-button')).not.toBeNull();
-
-    // When
-    setLandingPage(true);
-    await settle();
-
-    // Then
-    expect(document.getElementById('topbar-actions')).toBeNull();
-    expect(document.getElementById('auth-button')).toBeNull();
-    expect(document.getElementById('theme-toggle')).toBeNull();
-  });
-
-  it('As a phone user, the header keeps only More and then the account, however much room it measures: every action is in More', async () => {
-    // Given: a phone, though the stand-in layout has room for every item
+  it('As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it', async () => {
+    // Given: a phone bar with room for every item
     stubTopbarLayout(6 * ITEM_WIDTH);
     stubPhoneViewport(true);
 
     // When
     await renderIsland();
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
-    expect(await moreRowNames()).toEqual(['network', 'permissions', 'theme', 'settings']);
-    expect(byTestId('more-item').hasAttribute('data-parked')).toBe(false);
+    expect(await moreRowNames()).toEqual([]);
+    expect(byTestId('more-item').hasAttribute('data-parked')).toBe(true);
     const account = must(byId('auth-button').closest<HTMLElement>('[data-testid="topbar-item"]'), 'the account item');
     expect(account.hasAttribute('data-parked')).toBe(false);
     expect(byId('more-button').compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
@@ -210,19 +183,16 @@ describe('Topbar actions island', () => {
   });
 
   it('As a phone user, the Network row leads the More menu with its status dot and verdict word, and More carries the health badge', async () => {
-    // Given: the chains are still starting
-    stubTopbarLayout(6 * ITEM_WIDTH);
+    // Given: no chain in use, on a phone bar with room for More only
+    stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
-    setChainsButtonVisible(true);
-    await settle();
 
     // Then
     const more = byId('more-button');
     expect((await moreRowNames())[0]).toBe('network');
-    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
-    expect(more.getAttribute('data-tone')).toBe('idle');
-    expect(more.getAttribute('aria-label')).toBe('More, network syncing');
+    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Not in use');
+    expect(more.getAttribute('aria-label')).toBe('More');
 
     // When
     initNetworkHealth();
@@ -328,8 +298,8 @@ describe('Topbar actions island', () => {
     button.focus();
     button.click();
     await settle();
-    const sheet = byId('more-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('more-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
 
     // When
     const tab = tabTo(document.body);
@@ -348,21 +318,20 @@ describe('Topbar actions island', () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it("As a phone user choosing Appearance in More, the Appearance sheet takes More's place without sliding", async () => {
+  it("As a phone user choosing Permissions in More, the permissions sheet takes More's place without sliding", async () => {
     // Given
     stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
 
     // When
-    await tapMoreRow('theme');
+    await tapMoreRow('permissions');
 
-    // Then: More goes and Appearance comes at rest, over a scrim that stays.
+    // Then: More goes and Permissions comes at rest, over a scrim that stays.
     const more = byId('more-popover');
     expect(more.hasAttribute('data-open')).toBe(false);
     expect(more.hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('theme-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('permissions-popover');
     expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
     expect(sheet.contains(document.activeElement)).toBe(true);
@@ -380,10 +349,41 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byId('more-popover').hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('mode-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('mode-popover');
     expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
+  });
+
+  it('As a phone user with the Permissions sheet open, pressing Settings in the bar swaps the sheets without sliding, and pressing it again closes its sheet', async () => {
+    // Given
+    initSettingsStore();
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+    await renderIsland();
+    mouseClick(byId('permissions-button'));
+    await settle();
+    const permissions = byId('permissions-popover');
+    expect(permissions.hasAttribute('data-open')).toBe(true);
+    expect(byId('mode-button').closest('[inert]')).toBeNull();
+
+    // When
+    mouseClick(byId('mode-button'));
+    await settle();
+
+    // Then
+    expect(permissions.hasAttribute('data-open')).toBe(false);
+    expect(permissions.hasAttribute('data-handoff')).toBe(true);
+    const settings = byId('mode-popover');
+    expect(settings.hasAttribute('data-open')).toBe(true);
+    expect(settings.hasAttribute('data-handoff')).toBe(true);
+    expect(settings.contains(document.activeElement)).toBe(true);
+
+    // When
+    mouseClick(byId('mode-button'));
+    await settle();
+
+    // Then
+    expect(settings.hasAttribute('data-open')).toBe(false);
   });
 
   it("As a phone user closing a sheet that took More's place, it slides out", async () => {
@@ -391,14 +391,14 @@ describe('Topbar actions island', () => {
     stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);
     await renderIsland();
-    await tapMoreRow('theme');
+    await tapMoreRow('permissions');
 
     // When
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await settle();
 
     // Then
-    const sheet = byId('theme-popover');
+    const sheet = byId('permissions-popover');
     expect(sheet.hasAttribute('data-open')).toBe(false);
     expect(sheet.hasAttribute('data-handoff')).toBe(false);
   });
@@ -424,15 +424,15 @@ describe('Topbar actions island', () => {
       expect(more.hasAttribute('data-open')).toBe(false);
       expect(more.hasAttribute('data-handoff')).toBe(false);
 
-      // When: Appearance opens from its own button, not from More
-      mouseClick(byId('theme-toggle'));
+      // When: Permissions opens from its own button, not from More
+      mouseClick(byId('permissions-button'));
       await settle();
 
       // Then: the Chat choice left no hand-off waiting for this sheet
-      const theme = byId('theme-popover');
-      expect(theme.hasAttribute('data-open')).toBe(true);
-      expect(theme.hasAttribute('data-sheet')).toBe(true);
-      expect(theme.hasAttribute('data-handoff')).toBe(false);
+      const permissions = byId('permissions-popover');
+      expect(permissions.hasAttribute('data-open')).toBe(true);
+      expect(permissions.hasAttribute('data-sheet')).toBe(true);
+      expect(permissions.hasAttribute('data-handoff')).toBe(false);
     } finally {
       stopChat();
     }

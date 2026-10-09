@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The SharedWorker module runs at import: it reads the network from its name,
-// subscribes to the light client's fatal and starts pre-sync. The light client
-// is faked at the `@dotli/resolver` seam, and the worker scope is happy-dom's
-// window, which the module sees as `self`.
+// The worker module runs at import. The light client is faked at the `@dotli/resolver` seam, and happy-dom's
+// window stands in as `self`.
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type * as MetricsModule from '@dotli/metrics';
@@ -15,8 +13,7 @@ const resolver = vi.hoisted(() => ({
   fatal: null as ((message: string) => void) | null,
   presync: (): Promise<void> => Promise.resolve(),
   resolveDotName: (): Promise<string | null> => Promise.resolve(null),
-  // What the chains reported so far, replayed to each new subscriber as the
-  // resolver does.
+  // Replayed to each new subscriber, as the resolver does.
   sync: [] as ChainSyncEvent[],
   detail: [] as ChainDetail[],
   syncListeners: new Set<(event: ChainSyncEvent) => void>(),
@@ -53,7 +50,7 @@ vi.mock('@dotli/resolver', () => ({
   setResolverAssetHubProvider: () => undefined,
   setResolverPeopleProvider: () => undefined,
   waitForAssetHubFinalized: () => resolver.presync(),
-  // People warms in the background; it never settles here.
+  // Never settles, as People warms in the background.
   waitForPeopleFinalized: () => new Promise<void>(() => undefined),
 }));
 
@@ -92,7 +89,6 @@ function fakePort(): FakePort {
   };
 }
 
-/** Connect a port to the worker as a tab's protocol iframe would. */
 function connect(): FakePort {
   const port = fakePort();
   const event = new Event('connect');
@@ -131,7 +127,6 @@ function isPing(message: unknown): boolean {
   return typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'ping';
 }
 
-/** The protocol envelopes a port was sent, of one kind. */
 function envelopes(port: FakePort, kind: string): unknown[] {
   return heard(port)
     .filter(
@@ -163,12 +158,9 @@ describe('protocol SharedWorker', () => {
   let error: Mock<(...args: unknown[]) => void>;
   let open: Mock<SpanOpen>;
   let closeWorker: Mock<() => void>;
-  // Each test imports a fresh worker, which adds its own `connect` listener to
-  // the one window every test shares. Removed after each test, so a connect
-  // reaches only the worker of the test that made it.
+  // Each fresh worker adds listeners to the shared window, removed after each test.
   let added: Parameters<typeof self.addEventListener>[];
 
-  /** Run the worker module afresh, as a new SharedWorker would, with the log and spans it writes to spied on. */
   async function bootWorker(): Promise<void> {
     vi.resetModules();
     const { log } = await import('@dotli/shared');

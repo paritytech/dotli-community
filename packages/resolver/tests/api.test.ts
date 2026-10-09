@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The seam: papi's `SubstrateClient.chainHead`. The fake hands the test the
-// follow's event callback and records what the API sends back on the follow.
+// Faked at papi's `SubstrateClient.chainHead`, which hands the test the follow's event callback.
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {

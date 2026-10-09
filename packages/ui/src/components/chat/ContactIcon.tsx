@@ -5,13 +5,9 @@ import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './ContactIcon.module.css';
 
-/**
- * The icon string is product-supplied, so it only ever becomes an `img.src`,
- * never markup.
- */
+/** The icon is product-supplied, so it only ever becomes an `img.src`, never markup. */
 export function ContactIcon(props: { name: string; icon: string }): JSX.Element {
-  // The icon that failed to load, so a new icon from the product gets its
-  // own chance instead of inheriting the old one's failure.
+  // Remembers which icon failed, so a new icon from the product gets its own chance.
   const [failedIcon, setFailedIcon] = createSignal<string | null>(null);
   const initial = (): string => (props.name.trim().charAt(0) || '#').toUpperCase();
   return (

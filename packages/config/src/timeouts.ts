@@ -1,26 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Timeouts (ms)
+/** Milliseconds. */
 export const TIMEOUTS = {
-  /** Host recover-request grace before the sandbox falls back to the
-   * contract error. Must exceed the host's recover rate-limit window so
-   * a rate-limited request fails visibly instead of hanging. */
+  /**
+   * Wait for a host recover reply. Exceeds the host's recover rate-limit window, so a limited request fails visibly.
+   */
   SANDBOX_RECOVER: 6_000,
-  /** Waiting for SW controllerchange after registration */
+  /** Wait for `controllerchange` after registration. */
   SW_READY: 10_000,
-  /** P2P fetch abort (per attempt) */
+  /** Per attempt. */
   P2P_FETCH: 30_000,
-  /** SharedWorker readiness timeout. Must exceed `HUB_FINALIZED_SYNC`
-   * so the outer wait doesn't race the inner sync timeout. A caller that
-   * supplies its own request deadline is the one exception, and it reserves
-   * `RESPONSE_DELIVERY_GRACE` so its typed error still arrives first. */
+  /**
+   * Exceeds `HUB_FINALIZED_SYNC` so the outer wait doesn't race the inner one. A caller with its own deadline
+   * reserves `RESPONSE_DELIVERY_GRACE` instead.
+   */
   SHARED_WORKER_READY: 210_000,
   /** Upper bound on `getFinalizedBlock()` while bootstrapping smoldot. */
   HUB_FINALIZED_SYNC: 180_000,
   /** Upper bound on the background People-chain warm for legacy-account auth. */
   PEOPLE_FINALIZED_SYNC: 180_000,
-  /** Held back from a caller's request deadline so the typed resolver error
-   * has time to cross postMessage before the caller's own timer fires. */
+  /**
+   * Held back from a caller's deadline so the typed resolver error crosses postMessage before the caller's timer fires.
+   */
   RESPONSE_DELIVERY_GRACE: 1_000,
 } as const;

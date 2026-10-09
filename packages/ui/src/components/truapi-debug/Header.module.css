@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel header */
-
 .header {
   display: flex;
   align-items: center;
@@ -12,7 +10,7 @@
   border-bottom: 1px solid var(--td-line);
   background: var(--td-bg-raised);
   white-space: nowrap;
-  /* A phone is narrower than the toolbar: scroll it rather than clip it. */
+  /* Scroll rather than clip on a phone. */
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -123,9 +121,7 @@
   color: var(--td-fg-bright);
 }
 
-/* Phones: the panel always docks at the bottom (`NARROW_QUERY` in
-   Panel.tsx), so the dock toggle has nothing to do, and the title gives way
-   so every control fits. */
+/* Matches `NARROW_QUERY` in Panel.tsx, where the panel always docks at the bottom. */
 @media (max-width: 560px) {
   .header {
     gap: 6px;
