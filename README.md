@@ -120,7 +120,8 @@ The native connection stays open across a halt: queued requests receive terminal
 same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
 retires its URL generation under a shared-origin Web Lock before the iframe reports fatal. Tabs in the same storage
 partition share the replacement generation; late callbacks cannot retire it. Recovery does not require closing other
-tabs.
+tabs. The debug test wallet is an exception when its protocol iframe is removed: that iframe owns its exclusive signing
+lock, so the wallet core must stop before removal and acquire a new lock before retrying.
 
 ## How multi-file SPAs work
 
@@ -351,7 +352,9 @@ select Wallet. Status changes do not change this button; verification, pending c
 Wallet tab. Wallet shares the pane's existing bottom/right docking and resizing controls. Right docking reserves page
 width for both the landing page and product content. There is no separate wallet window or docking preference. Normal
 login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does
-**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved.
+**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved. In a debug
+build, unavailable wallet storage does not block Mobile startup when no wallet is configured. A configured wallet's
+restoration failure or a wallet conflict is still surfaced; it never silently switches the signing identity.
 
 Start with **Use test wallet** and accept the warning to create or reuse a browser-local test identity. Username
 controls appear only after activation completes. A newly created or imported wallet looks up its Lite username on chain
@@ -433,6 +436,10 @@ moves the wallet, so two tabs cannot bounce it between them. If the tab that has
 **Test wallet is open in another tab**; close the other tab and reload. Ownership requires the browser's Web Locks API;
 there is no unlocked fallback. A handover acknowledges release only after the previous owner's signing workers,
 including workers still booting, have stopped. An unresponsive owner is never forcibly bypassed after a timeout.
+Protocol-frame reset and page hiding (including entry into the back/forward cache) also retire signing workers before
+their frame-owned lock is released. Returning to that page requires fresh wallet verification and a new ownership lease.
+After a handover, only the banner's user-initiated reload can reacquire ownership; background identity requests are
+rejected.
 
 Safari keeps each app's storage separate, so there every app has its own test wallet and the one-tab rule only covers
 tabs of the same app. Importing the same recovery phrase into two apps runs two copies of one wallet with nothing

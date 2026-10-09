@@ -22,6 +22,7 @@ import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import {
   initializeLocalWalletState,
+  initializeSessionMode,
   isExperimentalWalletActive,
   isCurrentLocalWallet,
   localWalletContext,
@@ -88,6 +89,7 @@ const cores = new Set<Core>();
 let generation = 0;
 let walletOwnerLease: Promise<string | undefined> | undefined;
 let ownerRevocationBound = false;
+let walletHandedOver = false;
 let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
 const noop = (): void => undefined;
 
@@ -128,21 +130,54 @@ export function disposePageCores(): void {
   }
 }
 
+function retireWalletOwner(lease?: string): void {
+  if (walletOwnerLease === undefined) {
+    return;
+  }
+  walletOwnerLease = undefined;
+  disposePageCores();
+  dispatchAuthState({
+    tag: 'WalletUnavailable',
+    reason:
+      lease === undefined
+        ? 'The test wallet owner frame closed. Retry wallet verification.'
+        : 'The test wallet moved to another tab. Reload to use it here.',
+  });
+  if (lease !== undefined) {
+    walletHandedOver = true;
+    window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
+    void requestWalletOwner({ action: 'release', lease }).catch(noop);
+  }
+}
+
 async function ensureWalletOwner(): Promise<void> {
+  if (walletHandedOver) {
+    throw new Error('The test wallet moved to another tab. Reload to use it here.');
+  }
   if (!ownerRevocationBound) {
     ownerRevocationBound = true;
-    subscribeWalletOwnerRevoked(lease => {
-      walletOwnerLease = undefined;
-      disposePageCores();
-      window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
-      void requestWalletOwner({ action: 'release', lease }).catch(noop);
+    subscribeWalletOwnerRevoked(retireWalletOwner);
+    // The child frame releases its lock on pagehide, including BFCache entry.
+    // A restored page must acquire a new lease rather than reuse its old signer.
+    window.addEventListener('pagehide', () => {
+      retireWalletOwner();
     });
   }
-  walletOwnerLease ??= requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {
-    walletOwnerLease = undefined;
-    throw error;
-  });
-  if ((await walletOwnerLease) === undefined) {
+  if (walletOwnerLease === undefined) {
+    const pending = requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {
+      if (walletOwnerLease === pending) {
+        walletOwnerLease = undefined;
+      }
+      throw error;
+    });
+    walletOwnerLease = pending;
+  }
+  const pending = walletOwnerLease;
+  const lease = await pending;
+  if (walletOwnerLease !== pending) {
+    throw new Error('The test wallet lost exclusive signing ownership.');
+  }
+  if (lease === undefined) {
     walletOwnerLease = undefined;
     throw new Error('The test wallet could not acquire exclusive signing ownership.');
   }
@@ -150,7 +185,7 @@ async function ensureWalletOwner(): Promise<void> {
 
 export async function acquireCore(): Promise<CoreLease> {
   const requestedGeneration = generation;
-  await initializeLocalWalletState();
+  await initializeSessionMode();
   if (requestedGeneration !== generation) {
     throw new Error('Page core retired while loading wallet state');
   }

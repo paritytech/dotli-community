@@ -91,7 +91,7 @@ const chainConnections = new Map<string, RemoteChainConnection>();
 const protocolReadyListeners = new Set<() => void>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const sharedWalletListeners = new Set<(state: SharedWalletState) => void>();
-const walletOwnerRevokedListeners = new Set<(lease: string) => void>();
+const walletOwnerRevokedListeners = new Set<(lease: string | undefined) => void>();
 const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
 let lastNetBytesTotal = 0;
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
@@ -198,6 +198,11 @@ export function resetProtocolFrame(): void {
 }
 
 function resetProtocolFrameState(reason?: Error): void {
+  if (protocolIframe !== null) {
+    // The iframe holds the Web Lock. Retire the page's signer synchronously,
+    // before removing its lock owner lets another tab start signing.
+    broadcast(walletOwnerRevokedListeners, undefined, 'Wallet owner');
+  }
   protocolIframe?.remove();
   protocolIframe = null;
   // The byte meter of the rebuilt frame restarts at zero, and the monotonic gate
@@ -768,8 +773,8 @@ export async function requestWalletOwner(operation: WalletOwnerOperation): Promi
   return typeof result === 'string' ? result : undefined;
 }
 
-/** Another tab asked for the test wallet this page runs. */
-export function subscribeWalletOwnerRevoked(listener: (lease: string) => void): () => void {
+/** Stop signing before releasing a lease, or before its owning frame is removed. */
+export function subscribeWalletOwnerRevoked(listener: (lease: string | undefined) => void): () => void {
   walletOwnerRevokedListeners.add(listener);
   return () => {
     walletOwnerRevokedListeners.delete(listener);

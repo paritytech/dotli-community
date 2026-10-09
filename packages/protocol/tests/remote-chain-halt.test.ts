@@ -13,6 +13,7 @@ import {
   isProtocolReady,
   onProtocolReady,
   resetProtocolFrame,
+  subscribeWalletOwnerRevoked,
 } from '../src/client.js';
 import type { RemoteChainHalt } from '../src/chain-halted.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '../src/messages.js';
@@ -314,6 +315,23 @@ describe('createRemoteChainProvider halts', () => {
 
     // Then
     expect(isProtocolReady()).toBe(false);
+  });
+
+  it.each(['reset', 'fatal'] as const)('retires ownership before %s removes the lock frame', async kind => {
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const { frame } = await connectRemote();
+    const iframe = document.querySelector('iframe');
+    const revoked = vi.fn(() => iframe?.isConnected);
+    const unsubscribe = subscribeWalletOwnerRevoked(revoked);
+    if (kind === 'reset') {
+      resetProtocolFrame();
+    } else {
+      frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+    }
+    unsubscribe();
+    expect(revoked).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(revoked).toHaveReturnedWith(true);
+    expect(iframe?.isConnected).toBe(false);
   });
 
   it('As a dotli integrator, I can tell whether a protocol frame is on its way up, without starting one', async () => {

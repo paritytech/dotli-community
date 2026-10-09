@@ -24,7 +24,13 @@ const SUBMIT = 'author_submitAndWatchExtrinsic';
 const UPDATE = 'author_extrinsicUpdate';
 const LIGHT_CLIENT_BLOCK_WAIT_MS = 30_000;
 const LIGHT_CLIENT_BLOCK_POLL_MS = 1_000;
-const TERMINAL_UPDATES = new Set(['finalized', 'invalid', 'dropped', 'usurped', 'finalityTimeout']);
+const TERMINAL_UPDATES: Record<string, true> = {
+  finalized: true,
+  invalid: true,
+  dropped: true,
+  usurped: true,
+  finalityTimeout: true,
+};
 
 type JsonRpcMessage = Record<string, unknown>;
 
@@ -62,27 +68,50 @@ export function withTrustedSubmitFallback(
     let lookupCounter = 0;
     let disconnected = false;
 
-    const waitForLightClientBlock = async (blockHash: string): Promise<void> => {
-      const deadline = Date.now() + LIGHT_CLIENT_BLOCK_WAIT_MS;
-      while (!disconnected && Date.now() < deadline) {
-        const id = `dotli-submit-fallback:${String(++lookupCounter)}`;
-        const known = Promise.withResolvers<boolean>();
-        blockLookups.set(id, known.resolve);
-        upstream.send({
-          jsonrpc: '2.0',
-          id,
-          method: 'chain_getHeader',
-          params: [blockHash],
-        });
-        if (await known.promise) {
-          return;
-        }
-        const pause = Promise.withResolvers<undefined>();
-        setTimeout(() => {
-          pause.resolve(undefined);
-        }, LIGHT_CLIENT_BLOCK_POLL_MS);
-        await pause.promise;
+    const waitForLightClientBlock = (blockHash: string, signal: AbortSignal): Promise<boolean> => {
+      if (signal.aborted || disconnected) {
+        return Promise.resolve(false);
       }
+      const { promise, resolve } = Promise.withResolvers<boolean>();
+      let lookupId: string | undefined;
+      let pollTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (known: boolean): void => {
+        clearTimeout(deadlineTimer);
+        clearTimeout(pollTimer);
+        signal.removeEventListener('abort', cancel);
+        if (lookupId !== undefined) {
+          blockLookups.delete(lookupId);
+        }
+        resolve(known);
+      };
+      const cancel = (): void => {
+        finish(false);
+      };
+      const deadlineTimer = setTimeout(cancel, LIGHT_CLIENT_BLOCK_WAIT_MS);
+      signal.addEventListener('abort', cancel, { once: true });
+      const poll = (): void => {
+        lookupId = `dotli-submit-fallback:${String(++lookupCounter)}`;
+        blockLookups.set(lookupId, known => {
+          lookupId = undefined;
+          if (known) {
+            finish(true);
+          } else {
+            pollTimer = setTimeout(poll, LIGHT_CLIENT_BLOCK_POLL_MS);
+          }
+        });
+        try {
+          upstream.send({
+            jsonrpc: '2.0',
+            id: lookupId,
+            method: 'chain_getHeader',
+            params: [blockHash],
+          });
+        } catch {
+          finish(false);
+        }
+      };
+      poll();
+      return promise;
     };
 
     const resubmitThroughTrustedRpc = (subscription: string, watch: WatchedSubmission): boolean => {
@@ -95,9 +124,15 @@ export function withTrustedSubmitFallback(
       );
       let trustedSubscription: unknown;
       let relay = Promise.resolve();
+      const cancellation = new AbortController();
+      const isActive = (): boolean => !disconnected && watches.get(subscription) === watch;
+      const stop = (): void => {
+        watches.delete(subscription);
+        watch.fallback?.disconnect();
+      };
       const connection: JsonRpcConnection<unknown> = trusted(raw => {
         const message = asMessage(raw);
-        if (message === null || disconnected) {
+        if (message === null || !isActive()) {
           return;
         }
         if (message['id'] === 'dotli-submit-fallback') {
@@ -107,13 +142,16 @@ export function withTrustedSubmitFallback(
           }
           // The trusted node refused the submission outright.
           relay = relay.then(() => {
+            if (!isActive()) {
+              return;
+            }
+            stop();
             onMessage({
               jsonrpc: '2.0',
               method: UPDATE,
               params: { subscription, result: 'invalid' },
             });
           });
-          connection.disconnect();
           return;
         }
         const params = asMessage(message['params']);
@@ -124,10 +162,26 @@ export function withTrustedSubmitFallback(
         const kind = updateKind(result);
         const included = asMessage(result)?.['inBlock'] ?? asMessage(result)?.['finalized'];
         relay = relay.then(async () => {
-          if (typeof included === 'string') {
-            await waitForLightClientBlock(included);
+          if (!isActive()) {
+            return;
           }
-          if (!disconnected) {
+          if (typeof included === 'string' && !(await waitForLightClientBlock(included, cancellation.signal))) {
+            // The trusted RPC cannot establish inclusion on its own. End the
+            // watch, rather than claiming success when light-client sync fails.
+            if (isActive()) {
+              stop();
+              onMessage({
+                jsonrpc: '2.0',
+                method: UPDATE,
+                params: { subscription, result: 'dropped' },
+              });
+            }
+            return;
+          }
+          if (isActive()) {
+            if (kind !== null && TERMINAL_UPDATES[kind] === true) {
+              stop();
+            }
             onMessage({
               jsonrpc: '2.0',
               method: UPDATE,
@@ -135,13 +189,13 @@ export function withTrustedSubmitFallback(
             });
           }
         });
-        if (kind !== null && TERMINAL_UPDATES.has(kind)) {
-          void relay.then(() => {
-            connection.disconnect();
-          });
-        }
       });
-      watch.fallback = connection;
+      watch.fallback = {
+        disconnect() {
+          cancellation.abort();
+          connection.disconnect();
+        },
+      };
       connection.send({
         jsonrpc: '2.0',
         id: 'dotli-submit-fallback',
@@ -157,7 +211,7 @@ export function withTrustedSubmitFallback(
         onMessage(raw);
         return;
       }
-      if (typeof message['id'] === 'string' && blockLookups.has(message['id'])) {
+      if (typeof message['id'] === 'string' && message['id'].startsWith('dotli-submit-fallback:')) {
         const resolve = blockLookups.get(message['id']);
         blockLookups.delete(message['id']);
         resolve?.(asMessage(message['result']) !== null);
@@ -184,7 +238,7 @@ export function withTrustedSubmitFallback(
         ) {
           return;
         }
-        if (watch !== undefined && TERMINAL_UPDATES.has(updateKind(params['result']) ?? '')) {
+        if (watch !== undefined && TERMINAL_UPDATES[updateKind(params['result']) ?? ''] === true) {
           watches.delete(params['subscription']);
         }
       }

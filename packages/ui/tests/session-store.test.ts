@@ -11,6 +11,7 @@ import {
   emitPersistedSessionUiState,
   exportLocalWalletMnemonic,
   importLocalWalletMnemonic,
+  initializeSessionMode,
   LOCAL_WALLET_ENABLED_KEY,
   onStoredSessionChanged,
   readLocalWalletDisplay,
@@ -131,23 +132,31 @@ describe('session-store host callbacks', () => {
     });
   });
 
-  it('does not report restoration failure before a wallet is configured', async () => {
-    // Given
-    buildFlags.debug = true;
-    sharedAuth.walletError = new Error('shared wallet unavailable');
+  describe.each([
+    { label: 'page core', initialize: initializeSessionMode },
+    { label: 'persisted UI', initialize: emitPersistedSessionUiState },
+  ])('$label session mode', ({ initialize }) => {
+    it('does not make an unconfigured debug wallet a dependency of Mobile', async () => {
+      buildFlags.debug = true;
+      sharedAuth.walletError = new Error('shared wallet unavailable');
+      await expect(initialize()).resolves.toBeUndefined();
+      // Tolerating an unused wallet must not bypass custody's strict restore.
+      await expect(readLocalWalletSecret()).rejects.toThrow('shared wallet unavailable');
+    });
 
-    // When / Then
-    await expect(emitPersistedSessionUiState()).resolves.toBeUndefined();
-  });
+    it('preserves restoration failures for a configured wallet', async () => {
+      buildFlags.debug = true;
+      localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, '1');
+      sharedAuth.walletError = new Error('shared wallet unavailable');
+      await expect(initialize()).rejects.toThrow('shared wallet unavailable');
+    });
 
-  it('preserves restoration failures for a configured wallet', async () => {
-    // Given
-    buildFlags.debug = true;
-    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, '1');
-    sharedAuth.walletError = new Error('shared wallet unavailable');
-
-    // When / Then
-    await expect(emitPersistedSessionUiState()).rejects.toThrow('shared wallet unavailable');
+    it('does not fall back to Mobile after a wallet conflict', async () => {
+      buildFlags.debug = true;
+      sharedAuth.walletError = new Error('shared wallet changed');
+      sharedAuth.walletError.name = 'WalletConflictError';
+      await expect(initialize()).rejects.toThrow('shared wallet changed');
+    });
   });
 
   it('As a dotli integrator, the host round-trips the host core session blob', async () => {
