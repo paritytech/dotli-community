@@ -17,6 +17,7 @@ export function createWasmRawCallbacks(callbacks) {
     const chat = callbacks.chat;
     const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
     const contacts = contactsHostAdapter(callbacks.contacts);
+    const game = callbacks.game;
     const identityBackend = callbacks.identityBackend;
     const media = callbacks.media;
     const permissionStatus = callbacks.permissionStatus;
@@ -55,6 +56,12 @@ export function createWasmRawCallbacks(callbacks) {
         coreStorageChanged: async (key) => await callbacks.coreStorage.coreStorageChanged(CoreStorageKey.dec(key)),
         featureSupported: async (request) => HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(HostFeatureSupportedRequest.dec(request))),
         supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+        ...(game
+            ? {
+                scheduleGameReminder: async (product, startsAt) => await game.scheduleGameReminder(ProductContext.dec(product), startsAt),
+                cancelGameReminder: async (product) => await game.cancelGameReminder(ProductContext.dec(product)),
+            }
+            : {}),
         allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
         hopConnect: hopConnectAdapter(hop),
         ...(identityBackend

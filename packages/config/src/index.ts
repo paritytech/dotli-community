@@ -1,13 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Public API of @dotli/config. Other workspace packages import only from here.
-// Every other module under src/ is private to the package.
-
 export {
   BASE_DOMAIN,
   BLOCK_CACHE_MAX_BYTES,
   DEBUG,
+  DEV_PROTOCOL_PORT,
+  DEV_SANDBOX_PORT,
   SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS,
   SCHEDULED_NOTIFICATIONS_MAX_AGE_MS,
   SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP,
@@ -62,7 +61,9 @@ export {
   getActiveTldSuffix,
   getEnabledNetworks,
   getNetwork,
+  getTldSuffix,
   isValidNetwork,
+  peekNetwork,
   setNetwork,
   setNetworkOverride,
   withActiveTld,

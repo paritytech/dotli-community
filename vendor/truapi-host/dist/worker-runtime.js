@@ -870,9 +870,21 @@ ctx.addEventListener("message", (ev) => {
                 const signing = rt;
                 if (typeof signing.setGrantAllowancesUnchecked !== "function") {
                     return Promise.reject(new Error("setGrantAllowancesUnchecked needs a signing host built with " +
-                        "`wasm-signing-host`; this core does not carry it"));
+                        "`test-host`; this core does not carry it"));
                 }
                 signing.setGrantAllowancesUnchecked(granted);
+                return Promise.resolve();
+            }, false);
+            break;
+        }
+        case "setSubmitPreimagesLocally": {
+            const { local } = msg;
+            void handleSessionActivation(msg.requestId, "setSubmitPreimagesLocally", (rt) => {
+                if (typeof rt.setSubmitPreimagesLocally !== "function") {
+                    return Promise.reject(new Error("setSubmitPreimagesLocally needs a core built with " +
+                        "`test-host`; this core does not carry it"));
+                }
+                rt.setSubmitPreimagesLocally(local);
                 return Promise.resolve();
             }, false);
             break;
@@ -883,11 +895,11 @@ ctx.addEventListener("message", (ev) => {
                 const signing = rt;
                 if (typeof signing.setWithheldResources !== "function") {
                     return Promise.reject(new Error("setWithheldResources needs a signing host built with " +
-                        "`wasm-signing-host`; this core does not carry it"));
+                        "`test-host`; this core does not carry it"));
                 }
                 signing.setWithheldResources(tags);
                 return Promise.resolve();
-            });
+            }, false);
             break;
         }
         case "resetSessionState":

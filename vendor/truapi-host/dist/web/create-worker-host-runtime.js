@@ -1128,6 +1128,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                         profile: host.profile !== undefined,
                         identityBackend: host.identityBackend !== undefined,
                         coinageWallet: callbacks.nativeCoinage !== undefined,
+                        game: host.game !== undefined,
                         contacts: host.contacts !== undefined,
                         media: typeof host.media?.mediaBackendCapabilities === "function" &&
                             typeof host.media?.mediaBackendEvents === "function" &&
@@ -1256,6 +1257,7 @@ function buildRuntime(state) {
                                             "function" &&
                                         typeof callbacks.media?.mediaBackendCommand ===
                                             "function",
+                                    game: callbacks.game !== undefined,
                                 },
                             }),
                     });
@@ -1359,12 +1361,19 @@ function buildRuntime(state) {
                 granted,
             }), false);
         },
+        setSubmitPreimagesLocally(local) {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "setSubmitPreimagesLocally",
+                requestId,
+                local,
+            }), false);
+        },
         setWithheldResources(tags) {
             return sendSessionActivationRequest(state, (requestId) => ({
                 kind: "setWithheldResources",
                 requestId,
                 tags,
-            }));
+            }), false);
         },
         resetSessionState() {
             return sendSessionActivationRequest(state, (requestId) => ({

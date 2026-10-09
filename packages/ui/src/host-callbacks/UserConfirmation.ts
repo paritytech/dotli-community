@@ -34,15 +34,14 @@ import { createBlockingModalScope, type BlockingModalScope } from '../blocking-m
 import { presentModal } from '../overlays/load.js';
 import type { ModalButton, ModalField } from '../state/modals.js';
 
-// The board's pen, the chain-submit permission's, for every prompt that asks
-// for a signature. Markup, as the modal view is plain data.
+// Markup, as the modal view is plain data.
 const PEN_ICON = iconMarkup(PERMISSION_ICONS.ChainSubmit);
 
 interface ConfirmationCopy {
   title: string;
   action: string;
   cancelAction?: string;
-  /** SVG markup for the head's tile. */
+  /** SVG markup. */
   icon?: string;
 }
 
@@ -53,10 +52,6 @@ type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismiss
 /** Calling uses operation-scoped Media consent; PreimageSubmit has its own UI. */
 type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' | 'Calling' }>;
 
-/**
- * With `allowOnce`, "Allow once" is offered and highlighted, and the lasting
- * grant is labelled "Always allow".
- */
 async function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
@@ -159,13 +154,7 @@ function formatProductAccount(account: ProductAccountId): string {
   return `${account.dotNsIdentifier} / ${formatDerivationIndex(account.derivationIndex)}`;
 }
 
-/**
- * Name the calling product when it signs with another product's account.
- *
- * A manifest `context` grant lets one product sign with an account derived for
- * another. The core always asks the user about such a request, and the prompt
- * has to say who is asking, not only whose account it is.
- */
+/** A manifest `context` grant lets one product sign with another's account, so the prompt must say who asks. */
 function withCallingProduct(
   fields: ConfirmationField[],
   callingProductId: string | undefined,
@@ -520,7 +509,7 @@ export function createUserConfirmationAdapters(
           : (await handleConfirmationReview(label, review, signal, false)) === 'accepted',
       );
     },
-    // Only the explicit lifetime decision may grant future operations.
+    // The core stores AllowAlways and Deny, and honours AllowOnce for this request only.
     confirmPermission: review => {
       if (review.tag === 'Calling') {
         return Promise.reject(new Error('Calling requires operation-scoped Media consent'));

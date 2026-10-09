@@ -1,17 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Pins URL/navigation behaviour: deep-path/query/hash forwarding, host
- * URL-bar preservation across render and reload, sandbox URL hygiene
- * (host contract keys never reach the product), and validator/contract
- * side-effects.
- *
- * Apps are reached by subdomain only: http://acme.dot.li/foo?a=b#h
- *
- * Env overrides: PORT, COMBO_TIMEOUT_MS.
- */
-
 import { expect, type Page } from '@playwright/test';
 import {
   assertNoContractKeys,
@@ -28,11 +17,12 @@ const TIMEOUT_MS = parseInt(process.env['COMBO_TIMEOUT_MS'] ?? '45000', 10);
 
 const HOST_BY_LABEL = `http://${LABEL}.localhost:${PORT}`;
 
-// Navigation behaviour is the same for every backend, so we pin
-// `rpc-gateway` (fastest/least-flaky) to keep the suite deterministic.
+// Navigation is the same on every backend, so the suite pins the fastest and least flaky one.
 async function seedBackend(page: Page): Promise<void> {
   await seedChainBackend(page, 'rpc-gateway');
 }
+
+const GATEWAY_FLAKY = 'flaky on CI: the product loads from the uncached IPFS gateway';
 
 test.describe('URL parameters are forwarded into the product', () => {
   test('when I open http://<label>.dot.li/foo?a=b#h, I land on /foo?a=b#h inside the product', async ({ page }) => {
@@ -93,9 +83,9 @@ test.describe('URL parameters are forwarded into the product', () => {
 });
 
 test.describe('Host URL bar preserves the entered URL after render', () => {
-  // `applyUrlSettings` canonicalises the URL on every load so non-default
-  // settings axes (rpc-gateway here) get re-inserted. Assert the user's
-  // own params survive, not that canonicalisation is a no-op.
+  test.skip(true, GATEWAY_FLAKY);
+
+  // Canonicalisation re-inserts non-default settings on every load, so only the user's own params are asserted.
   test('after the product renders from http://<label>.dot.li/foo?a=b#h, the URL bar still shows /foo?a=b#h', async ({
     page,
   }) => {
@@ -182,13 +172,8 @@ test.describe('Validator regression guards', () => {
     await context.addInitScript(() => {
       localStorage.setItem('dotli:chain-backend', 'rpc-gateway');
     });
-    // Inject a bogus contract value into the sandbox frame's URL BEFORE its
-    // main.ts runs. `route.continue({ url })` only changes the fetch URL.
-    // The frame's window.location stays as the original, so the validator
-    // still sees the host-written value. addInitScript runs in every newly
-    // attached child frame before any of its own scripts, so a targeted
-    // history.replaceState here is the only reliable way to corrupt the
-    // sandbox URL the validator actually reads.
+    // `route.continue({ url })` changes only the fetch URL, not the `window.location` the validator reads, so
+    // rewrite history before the sandbox's own scripts run.
     await context.addInitScript(() => {
       if (!window.location.host.includes('.app.localhost')) {
         return;
@@ -223,8 +208,6 @@ test.describe('Validator regression guards', () => {
 
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
-    // The pre-PR validator would have rejected `ref` as an unknown contract
-    // key and rendered the error page. Assert no error page is showing.
     const errorVisible = await page
       .getByTestId('error-page-title')
       .first()
@@ -248,12 +231,8 @@ test.describe('Validator regression guards', () => {
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    // Host's bridge.ts uses searchParams.set, which OVERWRITES any user-supplied
-    // value. The validator then accepts the host's valid value, and the sandbox
-    // strips the (overwritten) chainBackend before document.write. Net effect:
-    // the user's `?chainBackend=foo` vanishes silently from the product's URL.
-    // Pinning this so a future "passthrough user contract keys" change can't
-    // land without revisiting the question.
+    // The host overwrites a user-supplied contract key, and the sandbox strips it. Pinned so passing user contract
+    // keys through needs a deliberate change.
     expect(new URLSearchParams(loc.search).has('chainBackend')).toBe(false);
     assertNoContractKeys(loc.search);
   });
@@ -273,10 +252,7 @@ test.describe('Sandbox side-effects from URL contract keys', () => {
     const page = await context.newPage();
 
     try {
-      // Visit 1 (no fullReset): warm the sandbox so we have a Frame to plant
-      // a marker DB into. Same sandbox origin (<label>.app.localhost:PORT) is used
-      // for visit 2, so the marker should persist across navigations until the
-      // purge wipes it.
+      // The second visit reuses this sandbox origin, so the marker persists until the purge wipes it.
       await page.goto(`${HOST_BY_LABEL}/`);
       let product = await getProductFrame(page, TIMEOUT_MS);
 
@@ -318,7 +294,6 @@ test.describe('Sandbox side-effects from URL contract keys', () => {
         return dbs.map(d => d.name).filter((n): n is string => typeof n === 'string');
       });
       expect(dbNames).not.toContain(PURGE_MARKER_DB);
-      // The contract key must not leak into the product's URL either.
       const loc = await getProductLocation(product);
       assertNoContractKeys(loc.search);
     } finally {

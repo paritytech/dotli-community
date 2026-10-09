@@ -209,12 +209,13 @@ export function createContactAvatars(): ContactAvatarOverlay {
  */
 export function createProfilePlatform(
   avatars: ContactAvatarOverlay | null = null,
-  signal?: AbortSignal,
+  signal?: AbortSignal | (() => AbortSignal),
   contactsDirectory?: NativeChatContactsDirectory,
 ): Required<ProfilePlatform> {
+  const operationSignal = (): AbortSignal | undefined => (typeof signal === 'function' ? signal() : signal);
   return {
     presentProfile(product, request) {
-      return presentProfileReference(product.productId, request.reference, signal);
+      return presentProfileReference(product.productId, request.reference, operationSignal());
     },
     presentContactProfile(product, presented) {
       const username = presented.username?.trim();
@@ -222,7 +223,7 @@ export function createProfilePlatform(
         product.productId,
         presented.shared?.reference,
         username,
-        signal,
+        operationSignal(),
         (username !== undefined && username !== '') || contactsDirectory === undefined
           ? undefined
           : async presentationSignal => {
@@ -239,8 +240,9 @@ export function createProfilePlatform(
       );
     },
     placeContactAvatars(_product, placed) {
+      const activeSignal = operationSignal();
       return Promise.resolve().then(() => {
-        signal?.throwIfAborted();
+        activeSignal?.throwIfAborted();
         avatars?.place(placed);
       });
     },

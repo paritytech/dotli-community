@@ -49,7 +49,6 @@ function content(container: HTMLElement): HTMLElement {
   return el;
 }
 
-/** Render the view, active, with `files` behind the product's CID. */
 async function renderLoaded(
   files: Record<string, Uint8Array>,
 ): Promise<{ container: HTMLElement; load: ReturnType<typeof vi.fn<ArchiveLoader>> }> {

@@ -1,14 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li light-client chain provider factory.
-//
-// Produces `JsonRpcProvider`s backed by @parity/truapi-provider's embedded
-// smoldot light client, one instance shared across the resolver, the broker,
-// and every dApp connection. Each chain resolves from the genesis hash passed
-// to `connect()` through truapi-provider's bundled catalog, which carries the
-// chain specs, relay topology, and statement-store placement. Gateway (`rpc`)
-// mode dials public nodes through `./rpc-chain.ts` instead.
+// `JsonRpcProvider`s over truapi-provider's embedded smoldot, one instance shared by the resolver, the broker
+// and every product. Each chain comes from its genesis hash through truapi-provider's bundled catalog.
 
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcProvider } from 'polkadot-api';
@@ -26,8 +20,6 @@ import { createSmoldotDb } from './smoldot-db.js';
 import { attachChainSync, chainKeyForGenesis, reportDbCache, type ChainSyncTap } from './chain-sync.js';
 import type { ChainTransportHooks } from './transport-hooks.js';
 
-// One provider per host process: every connection shares the single embedded
-// light client.
 let handlePromise: Promise<ChainProviderHandle> | null = null;
 
 function isLocalHost(): boolean {
@@ -35,16 +27,12 @@ function isLocalHost(): boolean {
   return host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1';
 }
 
-// Falls back to "" in contexts that lack `sessionStorage`, such as the shared
-// worker, so callers can read a flag without guarding each access.
+// "" where `sessionStorage` is missing, such as the SharedWorker.
 function sessionFlag(key: string): string {
   const store = (globalThis as { sessionStorage?: Storage }).sessionStorage;
   return store === undefined ? '' : (store.getItem(key) ?? '');
 }
 
-// Console verbosity for the embedded provider and smoldot. A `sessionStorage`
-// override wins. Otherwise localhost defaults to `info` so the light client is
-// observable out of the box, and deployed origins stay silent.
 function providerLogLevel(): string {
   const override = sessionFlag('dotli:truapi-provider-log');
   if (override !== '') {
@@ -55,31 +43,18 @@ function providerLogLevel(): string {
 
 const HEARTBEAT_DEFAULT_MS = 60_000;
 
-// A `sessionStorage` override, same shape as `dotli:truapi-provider-log` above.
-// Tests set it high so only the startup emission lands inside the run, which is
-// what makes the emitted count exact rather than a function of wall-clock.
+// Tests set it high so only the startup emission lands, keeping the count independent of wall-clock.
 function heartbeatIntervalMs(): number {
   const override = Number(sessionFlag('dotli:smoldot-heartbeat-ms'));
   return Number.isFinite(override) && override > 0 ? override : HEARTBEAT_DEFAULT_MS;
 }
 
 /**
- * Report that a light client is alive in this context, once now and then on
- * every tick.
- *
- * The immediate emission matters twice over. It keeps the first bucket from
- * reading as zero while the client is already syncing, and it means a context
- * contributes exactly one point from the moment it exists, so a reader counting
- * startup points counts contexts.
- *
- * Deliberately not paired with a teardown call. `handlePromise` lives as long
- * as the context does and nothing runs when a tab or worker is killed, so a
- * stop function exists for tests rather than for production shutdown.
+ * Report a live light client now and on every tick, so counting startup points counts contexts.
+ * The stop function is for tests, since nothing runs when a tab or worker is killed.
  */
 export function startLightClientHeartbeat(intervalMs: number = heartbeatIntervalMs()): () => void {
-  // A metrics-stripped build drops every gauge on the floor, and the timer on
-  // its own is not free: a pending interval is a live task that can keep an
-  // otherwise idle SharedWorker from being reclaimed.
+  // A pending interval can keep an idle SharedWorker from being reclaimed, so skip it when gauges go nowhere.
   if (!m.enabled) {
     return () => {
       /* nothing started */
@@ -97,8 +72,6 @@ export function startLightClientHeartbeat(intervalMs: number = heartbeatInterval
 function getHandle(): Promise<ChainProviderHandle> {
   handlePromise ??= (async () => {
     await init({ module_or_path: wasmUrl });
-    // Route the provider and smoldot `tracing` output to the console, and expose
-    // `__truapiProvider.setLogLevel(...)` as a runtime verbosity toggle.
     setLogLevel(providerLogLevel());
     (
       globalThis as unknown as {
@@ -106,16 +79,11 @@ function getHandle(): Promise<ChainProviderHandle> {
       }
     ).__truapiProvider = { setLogLevel };
     const builder = new ChainProviderBuilder();
-    // dot.li is served over https, where the browser blocks plain `ws://` to
-    // non-localhost peers as mixed content; don't dial them at all. Localhost
-    // `ws://` stays allowed for local dev nodes.
+    // Over https the browser blocks `ws://` to non-localhost peers as mixed content.
     builder.setConnectionTypes({ unsecure: false });
     const store = createSmoldotDb();
     if (store !== null) {
-      // Observe every read the crate makes, not just explicit `loadDatabase`
-      // calls: the relay's blob is only ever read through here. Rethrow on
-      // failure, because the store contract says "cannot answer" must reject
-      // rather than read as "nothing stored".
+      // The relay's blob is only read here, never through `loadDatabase`. A failure must reject, not read as empty.
       const observed: typeof store = {
         load: async genesisHash => {
           try {
@@ -132,32 +100,24 @@ function getHandle(): Promise<ChainProviderHandle> {
       builder.setStorage(observed);
     }
     const handle = builder.build();
-    // Inside `getHandle`, so the heartbeat is scoped to the singleton rather
-    // than to callers. One context means one client means one emitter, whether
-    // that context is the SharedWorker serving every tab or a per-tab iframe.
+    // Scoped to the singleton, so each context has exactly one emitter.
     startLightClientHeartbeat();
     log.event('Light client ready', { flow: 'protocol' });
     return handle;
   })().catch((error: unknown) => {
-    // Clear the cached promise so the next call retries instead of handing the
-    // same dead rejection to every caller forever.
     handlePromise = null;
     throw error;
   });
   return handlePromise;
 }
 
-// Reports a light client that cannot connect a chain, which leaves the app
-// with no way to reach any chain. A single chain that stops responding is not
-// reported here: it halts alone through its `onHalt` hook.
+// A light client that cannot connect a chain at all. A chain that stops responding halts alone instead.
 type FatalCallback = (message: string) => void;
 const fatalListeners = new Set<FatalCallback>();
 let fatalMessage: string | null = null;
 
 export function onProviderFatal(cb: FatalCallback): () => void {
   fatalListeners.add(cb);
-  // Replay for listeners registered after the failure so a late subscriber
-  // still sees it instead of waiting on a chain that is already gone.
   if (fatalMessage !== null) {
     try {
       cb(fatalMessage);
@@ -187,13 +147,8 @@ function markFatal(message: string): void {
   }
 }
 
-// Per-chain warm-start record, observed at the storage layer rather than at
-// `loadDatabase`: the crate reads the store itself for every chain it adds,
-// including the relay it dials internally through the catalog, which no
-// dot.li code ever connects explicitly. "unavailable" is a store that could
-// not answer, kept distinct from "miss" so a storage outage does not read as
-// ordinary cold starts. People is deliberately not reported: nothing the
-// page waits on depends on its warm state.
+// Observed at the store, since the crate reads it for the relay it dials internally. "unavailable" keeps an
+// outage apart from cold starts. People is left out, as nothing the page waits on depends on it.
 export type SmoldotDbChain = 'relay' | 'hub' | 'bulletin';
 export type SmoldotDbOutcome = 'hit' | 'miss' | 'unavailable';
 type SmoldotDbListener = (chain: SmoldotDbChain, outcome: SmoldotDbOutcome) => void;
@@ -217,8 +172,7 @@ function chainRole(genesisHash: string): SmoldotDbChain | null {
 
 function markSmoldotDb(genesisHash: string, outcome: SmoldotDbOutcome): void {
   const chain = chainRole(genesisHash);
-  // First read wins: the store is consumed on the chain's first add, so a
-  // later read for the same chain observed nothing the light client used.
+  // First read wins, since only the chain's first add consumes the store.
   if (chain === null || smoldotDbOutcomes.has(chain)) {
     return;
   }
@@ -235,8 +189,6 @@ function markSmoldotDb(genesisHash: string, outcome: SmoldotDbOutcome): void {
 
 export function onSmoldotDbOutcome(cb: SmoldotDbListener): void {
   smoldotDbListeners.add(cb);
-  // Chains can load before any subscriber registers, so replay what is
-  // already recorded the way `onProviderFatal` replays its failure.
   for (const [chain, outcome] of smoldotDbOutcomes) {
     try {
       cb(chain, outcome);
@@ -259,29 +211,16 @@ async function resumeFromStore(handle: ChainProviderHandle, key: string): Promis
       log.debug(`[dot.li provider] resuming ${key} from stored state`);
     }
   } catch (error) {
-    // A store that threw left the chain on the chain-spec checkpoint, which is
-    // the same starting position as a miss and is what the timings will show.
+    // The chain starts from the chain-spec checkpoint, as on a miss, which is slower but correct.
     reportDbCache(key, false);
-    // Never block the connection on the store. Syncing from the chain-spec
-    // checkpoint is slower but correct.
     log.warn(`[dot.li provider] warm start unavailable for ${key}:`, error);
   }
 }
 
 /**
- * Create a `JsonRpcProvider` for a genesis hash, backed by truapi-provider.
  * Returns `null` for a genesis the active network does not define.
- *
- * papi providers are object-wire. The truapi connection is a raw string pipe,
- * so messages are stringified on send and parsed on receipt. Messages sent
- * before the async connect resolves are queued and flushed in order. Once
- * connected, the provider owns sync-aware buffering; do not wait for ready here.
- *
- * `hooks` hears each connection's status, and a halt when it fails or its
- * stream ends without `disconnect()`: smoldot does not reconnect underneath
- * its consumers, so that connection is gone for good. Only a light client that
- * cannot connect the chain also raises `onProviderFatal`; a chain that fails
- * after it connected halts alone.
+ * smoldot never reconnects underneath its consumers, so a failure or an unrequested stream end halts the chain.
+ * Only a failure before connecting raises `onProviderFatal`; an established chain halts alone.
  */
 export function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();
@@ -291,8 +230,6 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
   }
 
   return onMessage => {
-    // Object-held so control-flow analysis doesn't narrow the flag across the
-    // connect await (`disconnect` can flip it at any time).
     const state: {
       connection: Connection | null;
       closed: boolean;
@@ -302,12 +239,9 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
       closed: false,
       sync: null,
     };
-    // Read through a call so the early `state.closed` guard below does not
-    // narrow later reads to `false`. `disconnect` mutates it between awaits,
-    // which control-flow analysis cannot see.
+    // A call, so the early guard cannot narrow later reads to `false` while `disconnect` flips it between awaits.
     const isClosed = (): boolean => state.closed;
     const queued: string[] = [];
-    // The connection is gone for good, and its owner did not end it.
     const fail = (error: unknown): void => {
       hooks?.onStatus('disconnected');
       hooks?.onHalt(error);
@@ -315,11 +249,9 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
     hooks?.onStatus('connecting');
 
     void (async () => {
-      // Set when the response stream ends, so the halt runs once, outside the
-      // `try`: a throwing hook must not reach the `catch` and halt again.
+      // The halt runs outside the `try`, so a throwing hook cannot reach the `catch` and halt again.
       let streamEnded = false;
-      // Set once the light client has connected the chain. Only a failure
-      // before that is the light client's; one after it is this chain's.
+      // A failure before connecting is the light client's, one after it is this chain's.
       let connected = false;
       try {
         const handle = await getHandle();
@@ -337,10 +269,7 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
           candidate.send(message);
         }
         queued.length = 0;
-        // Sync reporting watches the chain's lifecycle, and its one request
-        // rides this connection under a reserved id. Attached after the queue
-        // flush so that request cannot jump ahead of a caller's, and only for
-        // a chain the loading screen observes.
+        // After the flush, so the sync request cannot jump ahead of a caller's.
         const chain = chainKeyForGenesis(key);
         state.sync =
           chain === null
@@ -359,8 +288,7 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
             break;
           }
           const parsed = JSON.parse(response) as JsonRpcMessage;
-          // Our side-channel traffic is consumed here. polkadot-api would
-          // reject a string id it never issued.
+          // polkadot-api would reject a string id it never issued.
           if (state.sync?.intercept(parsed) === true) {
             continue;
           }
@@ -369,8 +297,6 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         if (connected) {
-          // A malformed response, a throwing consumer or a broken read on
-          // this chain: it halts alone, as when its stream ends.
           log.warn(`[dot.li provider] chain ${key} read failed, halting it: ${reason}`, error);
         } else {
           markFatal(`chain ${key} connection failed: ${reason}`);
@@ -379,17 +305,12 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
           fail(error);
         }
       }
-      // Only `disconnect()` makes the end of the stream orderly. Otherwise the
-      // transport died or overflowed its send budget, and no further response
-      // will ever arrive on this chain. That halts this chain through the
-      // pool; a crashed light client surfaces as `fatal` when the next
-      // connect fails.
+      // Only `disconnect()` ends the stream in order. Otherwise the transport died or overflowed its send budget.
       if (streamEnded && !isClosed()) {
         try {
           fail(new Error(`chain ${key} stopped responding`));
         } catch (error) {
-          // A throwing listener is its owner's bug, and nothing awaits this
-          // loop to hear it.
+          // Nothing awaits this loop to hear it.
           log.warn(`[dot.li provider] halt listener for chain ${key} threw`, error);
         }
       }

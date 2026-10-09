@@ -6,16 +6,8 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { PORT } from '../../env.js';
 
 /**
- * Wipe the preview-server's process-wide mode-sync `Map` (see
- * `scripts/preview-server.ts`). Required between tests: a sibling spec's
- * `rpc-gateway` write shadows this test's per-context `localStorage` seed
- * during bootstrap, silently rerouting the host through the RPC path
- * (where mocked iframes are never queried, the 10s-timeout failure shape).
- *
- * Hits `127.0.0.1` directly: Chromium resolves `*.localhost` to 127.0.0.1,
- * but Node's default DNS resolver on Linux (the CI runner) does not, so
- * `host.localhost:PORT` here would ECONNREFUSED on CI. The mode-sync
- * endpoint gates on path, not hostname, so this is safe.
+ * Wipes the preview server's process-wide mode-sync store, or a sibling spec's `rpc-gateway` write silently
+ * reroutes this test through RPC. Hits 127.0.0.1 because Node on Linux CI does not resolve `*.localhost`.
  */
 export async function resetSharedMode(request: APIRequestContext): Promise<void> {
   const res = await request.delete(`http://127.0.0.1:${PORT}/__dotli-mode/`);
@@ -24,15 +16,7 @@ export async function resetSharedMode(request: APIRequestContext): Promise<void>
   }
 }
 
-/**
- * Disable the TrUAPI debug panel for the page's lifetime. The panel is
- * on-by-default on the `debug-panel-system-events` branch (and in any
- * debug build), and its docked filter bar overlaps content the tests
- * try to click (e.g. `#error-retry-btn`), causing "pointer events
- * intercepted" failures. Tests should exercise the production-like
- * UI surface, so we set the panel's persisted sessionStorage flag to
- * `"0"` before any page script runs.
- */
+/** On in debug builds, the panel's docked filter bar overlaps controls the tests click. */
 async function disableTruapiDebugPanel(page: Page): Promise<void> {
   await page.addInitScript(() => {
     try {
@@ -44,13 +28,7 @@ async function disableTruapiDebugPanel(page: Page): Promise<void> {
   });
 }
 
-/**
- * Drop-in replacement for `@playwright/test`'s `test` that:
- *   1. auto-resets the shared mode-sync store before every test
- *   2. auto-disables the TrUAPI debug panel for every page
- * Specs that seed `dotli:chain-backend` in `localStorage` should
- * import `test` from here.
- */
+/** Specs that seed `dotli:chain-backend` must import `test` from here. */
 export const test = base.extend<{ _resetSharedMode: undefined }>({
   _resetSharedMode: [
     async ({ request, page }, use) => {

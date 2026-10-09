@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The seam: `createRawApi` is stubbed (its chainHead follow is covered by the
-// api tests), while papi's real `createClient` runs over a fake provider so
-// the provider's `disconnect` is observable.
+// `createRawApi` is stubbed, while papi's real `createClient` runs over a fake provider to observe `disconnect`.
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';

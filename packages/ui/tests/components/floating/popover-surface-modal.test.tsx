@@ -3,11 +3,11 @@
 
 import { createSignal } from 'solid-js';
 import { describe, expect, it, vi } from 'vitest';
+import { ModalLayer } from '../../../src/components/floating/ModalLayer.js';
 import { Popover } from '../../../src/components/floating/Popover.js';
 import { mouseClick, renderComponent, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
 
-/** The surface's chunk, on its way until `release()`. */
 const chunk = vi.hoisted(() => {
   let release = (): void => undefined;
   const arrived = new Promise<void>(resolve => {
@@ -30,6 +30,7 @@ describe('A popover opened while its surface is on its way, then a modal', () =>
   it('As a dotli user on a slow network, opening Settings and then signing in leaves the sign-in on top and focused', async () => {
     // Given
     const onOpenChange = vi.fn<(open: boolean) => void>();
+    const [signIn, setSignIn] = createSignal(false);
     renderComponent(() => {
       const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
       return (
@@ -42,11 +43,11 @@ describe('A popover opened while its surface is on its way, then a modal', () =>
               Inside
             </button>
           </Popover>
-          <dialog id="sign-in">
+          <ModalLayer open={signIn()} onDismiss={() => undefined} testId="sign-in" label="Sign in" layout="center">
             <button type="button" id="sign-in-inside">
               Sign in
             </button>
-          </dialog>
+          </ModalLayer>
         </>
       );
     });
@@ -56,7 +57,8 @@ describe('A popover opened while its surface is on its way, then a modal', () =>
     byId('settings-trigger').focus();
     mouseClick(byId('settings-trigger'));
     await settle();
-    byId('sign-in', HTMLDialogElement).showModal();
+    setSignIn(true);
+    await settle();
     byId('sign-in-inside').focus();
     chunk.release();
     await vi.waitFor(() => {

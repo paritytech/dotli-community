@@ -1,16 +1,6 @@
-// Core-owned prompts return a decision; Rust commits it against the permission
-// revision captured before prompting. Writing the grant here would invalidate
-// that compare-exchange and turn an approval into Permission denied.
-//
-// "Always allow" and "Deny" are durable. Generic permission grants appear in
-// the topbar permissions menu; JAM peer decisions are keyed by product and
-// genesis in the core. Submit and notification one-time grants are consumed
-// by the next operation. A JAM peer one-time grant authorizes the running
-// peer session. Iframe `allow`-gated permissions offer no one-time grant:
-// granting reloads the product into a new execution.
-// Auto-grants answer `AllowOnce` so the core records nothing the user never
-// saw. Each instance serves one product, so the product the core passes is
-// already known as `label`.
+// Core callbacks keep "Allow once" for the current execution; host-mediated input uses it for one request.
+// A grant gated by the iframe `allow` attribute reloads into a new execution, which would drop it.
+// Auto-grants answer `AllowOnce` so the core records nothing the user never saw.
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions } from '@parity/truapi-host';
@@ -20,7 +10,6 @@ import {
   hasTrustedRemotePermissions,
   isDevicePermission,
   isEnforceableDevicePermission,
-  setPermissionStatus,
   type PromptPermissionName,
 } from '../permissions.js';
 import { showJamPeersPermissionModal, showPermissionRequestModal } from '../permission-modal.js';
@@ -64,7 +53,7 @@ export function createPromptPermission(
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, tag, { kind: 'Device', limiter, commitOwner: 'core' }, modalScope);
+    return decidePromptPermission(label, tag, { kind: 'Device', limiter }, modalScope);
   };
 
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
@@ -85,7 +74,7 @@ export function createPromptPermission(
     if (name === null) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, name, { kind: 'Remote', limiter, commitOwner: 'core' }, modalScope);
+    return decidePromptPermission(label, name, { kind: 'Remote', limiter }, modalScope);
   };
 
   return { devicePermission, remotePermission };
@@ -122,8 +111,6 @@ interface PromptOptions {
   kind: 'Device' | 'Remote';
   limiter: { allow: () => boolean };
   gatedByIframe?: boolean;
-  /** Host-initiated operations have no enclosing core prompt commit. */
-  commitOwner: 'core' | 'host';
 }
 
 export function decidePromptPermission(
@@ -146,9 +133,7 @@ async function decidePromptPermissionWhenActive(
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === 'granted') {
-    // The status also reflects a pending one-time grant, so answering
-    // AllowAlways here would quietly make it permanent. AllowOnce leaves a
-    // saved grant untouched.
+    // The status also reflects a pending one-time grant, which AllowAlways would quietly make permanent.
     return 'AllowOnce';
   }
   if (status === 'denied') {
@@ -180,23 +165,14 @@ async function decidePromptPermissionWhenActive(
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
-  if (options.commitOwner === 'core') {
-    return decision === 'denied' ? 'Deny' : decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';
-  }
+  // Core callbacks must return the decision without an administrative write, which would invalidate
+  // their pending prompt. Host-mediated consumers without a core prompt commit durable answers themselves.
   if (decision === 'denied') {
-    await setPermissionStatus(label, name, 'denied');
-    throwIfAborted(signal);
     return 'Deny';
   }
-  if (decision === 'granted') {
-    await setPermissionStatus(label, name, 'granted');
-    throwIfAborted(signal);
-  }
   if (gatedByIframe) {
-    // Device permissions are also gated by the iframe `allow` attribute,
-    // which is fixed at iframe load time. Reload so the next attempt sees
-    // the updated attribute. Defer to the next tick so the prompt response
-    // can flush before the iframe is disposed.
+    // The iframe `allow` attribute is fixed at load, so reload, a tick later so the prompt response
+    // flushes before the iframe is disposed.
     setTimeout(() => {
       if (signal.aborted) {
         return;
@@ -204,8 +180,7 @@ async function decidePromptPermissionWhenActive(
       recordPermissionChange({ kind: 'device', label, permission: name });
     }, 0);
   } else {
-    // No browser-level gate, so the grant takes effect as is. The event keeps
-    // the permissions button in sync.
+    // Keeps the permissions button in sync.
     recordPermissionChange({ kind: 'grant', label, permission: name });
   }
   return decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';

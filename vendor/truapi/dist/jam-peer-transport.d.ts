@@ -30,6 +30,8 @@ export interface JamPeerTransportOptions {
      * `RemotePermission::JamPeers` runtime permission. The session asks at most
      * once per genesis and concurrent dials share the pending answer; `false` or
      * a rejection answers `NotGranted` for the rest of the session.
+     * At most eight distinct genesis decisions, including pending/refused ones,
+     * are retained per session; a new ninth genesis answers `Limit`.
      */
     authorize(genesis: string): Promise<boolean>;
     /** Host transport injection; defaults to the browser `WebTransport` constructor. */
@@ -60,5 +62,7 @@ export declare function peerUrl(ip: Uint8Array, port: number): string;
  * permission decision is remembered either way, so a retry does not ask
  * again. The host must fence late replies against execution stop or
  * replacement.
+ * Pending permission/handshake dials share the eight-connection admission
+ * budget with established connections, before any permission request is made.
  */
 export declare function createJamPeerTransportSession(options: JamPeerTransportOptions): JamPeerTransportSession;

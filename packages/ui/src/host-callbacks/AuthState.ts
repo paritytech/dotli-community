@@ -3,11 +3,11 @@ import { toSessionUiState, writeUiStateCache, type TruapiSessionUiState } from '
 import { setAuthState } from '../state/auth.js';
 
 /**
- * UI-level auth state held in `authStore`. Mirrors the core's `AuthState`
- * with byte fields converted for rendering, pairing presentation context,
- * and persistent wallet availability.
+ * The core's `AuthState` with byte fields converted for rendering, plus the pairing context the modal needs.
+ * `Restoring` is the host's own: boot has not yet read the saved session, so the user is neither signed in nor out.
  */
 export type DotliAuthState =
+  | { tag: 'Restoring' }
   | { tag: 'Disconnected' }
   | { tag: 'WalletUnavailable'; reason: string }
   | {
@@ -21,16 +21,11 @@ export type DotliAuthState =
   | { tag: 'Connected'; session: TruapiSessionUiState }
   | { tag: 'LoginFailed'; kind: LoginFailureKind; reason: string };
 
-/** Record the auth state in `authStore` (see `setAuthState`). */
 export function dispatchAuthState(state: DotliAuthState): void {
   setAuthState(state);
 }
 
-/**
- * Build the `authStateChanged` host callback: writes each of the core's
- * ordered auth states to `authStore` and maintains the boot-rehydration
- * UI-state cache on connect/disconnect transitions.
- */
+/** Also keeps the UI-state cache that boot rehydrates from. */
 export function createAuthStateChanged(
   label: string,
   options: {

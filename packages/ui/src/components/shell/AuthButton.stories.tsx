@@ -14,7 +14,6 @@ const meta = {
   component: AuthButton,
   parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
   beforeEach: () => {
-    // As the auth-button tests build a signed-in session.
     setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
     setLoggedIn(true);
     return resetAllStoresForTests;

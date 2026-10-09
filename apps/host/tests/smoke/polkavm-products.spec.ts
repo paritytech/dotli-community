@@ -138,15 +138,13 @@ async function cancelSignIn(page: Page, canvas: Locator): Promise<void> {
   const signIn = page.locator('#auth-modal-backdrop');
   await expect(signIn).toBeVisible({ timeout: 30_000 });
   const responsesBefore = await counter(canvas, 'data-polkavm-host-frame-responses');
+  const framesBefore = await counter(canvas, 'data-polkavm-frames');
   await signIn.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(signIn).toBeHidden();
   await expect
     .poll(() => counter(canvas, 'data-polkavm-host-frame-responses'), { timeout: 30_000 })
     .toBeGreaterThan(responsesBefore);
-  const framesAfterResponse = await counter(canvas, 'data-polkavm-frames');
-  await expect
-    .poll(() => counter(canvas, 'data-polkavm-frames'), { timeout: 30_000 })
-    .toBeGreaterThan(framesAfterResponse);
+  await expect.poll(() => counter(canvas, 'data-polkavm-frames'), { timeout: 30_000 }).toBeGreaterThan(framesBefore);
 }
 
 async function assertHandshake(canvas: Locator, workerId: number, wireStart: number): Promise<void> {

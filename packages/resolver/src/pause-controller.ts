@@ -1,21 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Pause and resume for a ws provider's socket.
- *
- * This has the same contract as the pause controller in
- * `@novasamatech/host-substrate-chain-connection` (paritytech/triangle-js-sdks,
- * Apache-2.0), which that package does not export. Pausing closes the live
- * socket, reports a halt so the provider proxy re-follows and buffers sends,
- * and holds back reconnects. Resuming opens a fresh socket and flushes what
- * was buffered.
- */
+// Same contract as the unexported pause controller in `@novasamatech/host-substrate-chain-connection`
+// (Apache-2.0). Pause closes the socket and halts so the proxy re-follows, resume reconnects and flushes.
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import type { InnerJsonRpcProvider } from '@polkadot-api/json-rpc-provider-proxy';
 
 export interface PauseController {
-  /** Plugs into the ws provider's `middleware` option. */
   middleware: (base: InnerJsonRpcProvider) => InnerJsonRpcProvider;
   pause: () => void;
   resume: () => void;
@@ -29,8 +20,7 @@ export function createPauseController(): PauseController {
   let onHalt: ((error?: unknown) => void) | null = null;
   let real: JsonRpcConnection | null = null;
   let buffer: JsonRpcRequest[] = [];
-  // A halt we fired already scheduled a middleware re-invocation, so resume
-  // must defer to it rather than reuse the stale onMessage/onHalt pair.
+  // Our own halt schedules a re-invocation, so resume must not reuse the stale callbacks.
   let reinvocationPending = false;
 
   const connect = (): void => {
@@ -50,9 +40,7 @@ export function createPauseController(): PauseController {
     base = inner;
     return (onMsg, onH) => {
       reinvocationPending = false;
-      // A new invocation means a fresh consumer, so a `destroyed` left by the
-      // previous disconnect must not stick: it only gates pause/resume between
-      // that disconnect and the next invocation.
+      // A new invocation is a fresh consumer, so the previous disconnect's `destroyed` must not stick.
       destroyed = false;
       onMessage = onMsg;
       onHalt = onH;
@@ -90,8 +78,7 @@ export function createPauseController(): PauseController {
     reinvocationPending = true;
     const live = real;
     real = null;
-    // The ws socket detaches its listeners before closing, so no halt fires
-    // from there. Report it by hand to drive the proxy's replay.
+    // The socket detaches its listeners before closing, so the halt that drives the proxy replay is ours.
     live.disconnect();
     onHalt({ type: 'paused' });
   };

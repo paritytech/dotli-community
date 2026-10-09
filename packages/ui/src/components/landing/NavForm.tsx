@@ -5,6 +5,7 @@ import { createSignal, onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getActiveTldSuffix } from '@dotli/config';
 import { validateDotLabel, type DotLabelResult } from '@dotli/shared';
+import { prefersReducedMotion } from '../../reduced-motion.js';
 import { dotUrl } from './dot-url.js';
 import s from './NavForm.module.css';
 
@@ -24,15 +25,10 @@ const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], s
   'non-ascii': 'Names can only contain a-z, 0-9 and hyphens',
 };
 
-/**
- * Cycle example names through `input`'s placeholder, typing and erasing
- * them, while the input is empty. Holds the first name for a visitor who
- * prefers reduced motion. Returns what resumes the cycle, for each input
- * event (it pauses while the input has a value), and what stops it.
- */
+/** Type and erase example names in `input`'s placeholder while it is empty, holding the first under reduced motion. */
 function animatePlaceholder(input: HTMLInputElement): { resume: () => void; stop: () => void } {
   input.placeholder = PLACEHOLDER_NAMES[0];
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (prefersReducedMotion()) {
     return { resume: () => undefined, stop: () => undefined };
   }
   let wordIdx = 0;
@@ -76,8 +72,7 @@ function animatePlaceholder(input: HTMLInputElement): { resume: () => void; stop
       }
     }
   };
-  // Resume the cycle when the visitor clears the input. Pause is implicit:
-  // tick returns without rescheduling while the input has a value.
+  // Pause is implicit: tick stops rescheduling while the input has a value.
   const resume = (): void => {
     if (input.value === '' && timer === null) {
       schedule(PLACEHOLDER_TYPE_MS);
@@ -96,19 +91,21 @@ function animatePlaceholder(input: HTMLInputElement): { resume: () => void; stop
 }
 
 /**
- * The landing page's name form: a `.dot` name, with or without the active
- * TLD, goes to its site; an invalid one shows why inline. The input is not
- * focused on load: that hijacks screen reader order and pops the mobile
- * keyboard over the recents before anything has been read.
+ * The landing page's name form.
+ * The input is not focused on load: that hijacks screen reader order and pops the mobile keyboard over
+ * the recents.
  */
 export function NavForm(): JSX.Element {
-  const suffix = getActiveTldSuffix();
+  // The visitor's network decides it, so the browser reads it and the build renders none. Null until then, and the
+  // form stays disabled, as the build renders it and a submit before hydration would reload with the name lost.
+  const [suffix, setSuffix] = createSignal<string | null>(null);
   let input: HTMLInputElement | undefined;
   const [invalid, setInvalid] = createSignal(false);
   const [message, setMessage] = createSignal('');
 
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
+    setSuffix(getActiveTldSuffix());
     if (input !== undefined) {
       placeholder = animatePlaceholder(input);
     }
@@ -122,11 +119,10 @@ export function NavForm(): JSX.Element {
     if (input === undefined) {
       return;
     }
-    // The active TLD shows beside the input, so a visitor may type it too,
-    // and `validateDotLabel` rejects any dot: a name typed with the suffix
-    // has to lose it here.
+    // The TLD shows beside the input, so a visitor may type it too, and `validateDotLabel` rejects any dot.
     const typed = input.value.trim().toLowerCase();
-    const name = typed.endsWith(suffix) ? typed.slice(0, -suffix.length) : typed;
+    const tld = suffix() ?? '';
+    const name = typed.endsWith(tld) ? typed.slice(0, -tld.length) : typed;
     const result = validateDotLabel(name);
     if (!result.ok) {
       setMessage(NAME_ERROR_COPY[result.reason]);
@@ -134,8 +130,7 @@ export function NavForm(): JSX.Element {
       input.focus();
       return;
     }
-    // Recents are written after the name resolves, not here, so a typo is not
-    // persisted as a pill that reproduces the failure on every future click.
+    // Recents are written after the name resolves, not here, so a typo never becomes a recent.
     window.location.href = dotUrl(name);
   };
 
@@ -156,12 +151,13 @@ export function NavForm(): JSX.Element {
           placeholder={PLACEHOLDER_NAMES[0]}
           spellcheck="false"
           autocomplete="off"
-          aria-label={`Search a ${suffix} name`}
+          aria-label={`Search a ${suffix() ?? ''} name`}
           aria-describedby="dotli-nav-error"
           aria-invalid={invalid() ? 'true' : undefined}
+          disabled={suffix() === null}
         />
-        <span class={s['suffix']}>{suffix}</span>
-        <button type="submit" class={s['go']} aria-label="Go">
+        <span class={s['suffix']}>{suffix()}</span>
+        <button type="submit" class={s['go']} aria-label="Go" disabled={suffix() === null}>
           <svg
             width="16"
             height="16"

@@ -1,19 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Trusted RPC-based dotNS resolver.
-//
-// Reads the dotNS contract storage directly from a public Asset Hub Paseo
-// RPC node over WSS JSON-RPC.
-//
-// The reader is the same `createRawApi(client)` used by the smoldot
-// path. It opens a `chainHead_v1_follow` (no metadata fetch) and reads
-// `Revive::AccountInfoOf` then the contract's child trie directly. The old
-// `getFinalizedBlock()` warmup that forced a metadata exchange we never
-// used is gone, and so is the per-read-site runtime-call adapter.
-//
-// Intentionally does NOT import from `./smoldot` so Vite can tree-shake the
-// smoldot worker out of any bundle that only pulls in this module.
+// dotNS resolution over a trusted Asset Hub RPC node. Never imports smoldot, so the light client stays
+// out of any bundle that only pulls this module.
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
@@ -52,12 +41,7 @@ function withRpcClient<T>(read: (api: Api) => Promise<T>, onStatus?: StatusCallb
 
 let assetHubProviderFactory: (() => JsonRpcProvider) | null = null;
 
-/**
- * Install the factory that opens a connection to Asset Hub. The resolver
- * cannot import the host's chain pool, so the host injects a lease on it
- * (mirrors `setResolverAssetHubProvider` in `resolve.ts`). Each client takes
- * a fresh provider from it, and tearing the client down releases it.
- */
+/** The host injects a lease on its chain pool, which the resolver cannot import. */
 export function setRpcAssetHubProvider(factory: () => JsonRpcProvider): void {
   assetHubProviderFactory = factory;
 }
@@ -93,13 +77,8 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   const client = createClient(provider);
   const api = createRawApi(client);
 
-  // Bound the wait: without it, an unreachable peer set leaves
-  // `whenReady()` pending forever and the UI sits on "Connecting…"
-  // indefinitely. The timeout throws so the outer catch can surface a
-  // visible error via `showError`. Mirrors the smoldot path in `resolve.ts`.
-  //
-  // Unlike the smoldot path this gets no caller deadline, so the 90s protocol
-  // request timer still wins and the host reports the generic message.
+  // Bounded, since an unreachable node leaves `whenReady()` pending forever. With no caller deadline here,
+  // the 90s protocol request timer still wins and the host reports the generic message.
   try {
     await raceSyncTimeout(api.whenReady(), 'Asset Hub RPC', TIMEOUTS.HUB_FINALIZED_SYNC);
     log.event('RPC chain head ready', { flow: 'resolve', ms: Math.round(performance.now() - t0) });
@@ -107,7 +86,7 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
     try {
       api.destroy();
       client.destroy();
-      // eslint-disable-next-line no-restricted-syntax -- best-effort teardown of a never-fully-initialised client; the real cause is rethrown on the next line.
+      // eslint-disable-next-line no-restricted-syntax -- best-effort teardown of a never-fully-initialised client, the real cause is rethrown below.
     } catch {
       /* already dead */
     }
@@ -134,13 +113,6 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   return api;
 }
 
-/**
- * Resolve a `.dot` label to an IPFS CID by reading dotNS contract storage
- * directly over JSON-RPC (bypassing smoldot).
- *
- * This is the "trusted gateway" path: a normal client-server request to
- * a known Polkadot RPC node instead of running a light client in-browser.
- */
 export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
   return withRpcClient(async api => {
     const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
@@ -186,13 +158,6 @@ export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): 
   }, onStatus);
 }
 
-/**
- * Read the executable manifest at `<kind>.<label>.<tld>` over the gateway
- * RPC client.
- *
- * The return shape matches the smoldot path so the host shell can branch
- * on a single discriminated union regardless of backend.
- */
 export function resolveExecutableManifestViaRpc(
   label: string,
   kind: ExecutableKind,
@@ -203,7 +168,6 @@ export function resolveExecutableManifestViaRpc(
   });
 }
 
-/** Gateway-backed reader for the root manifest at `<label>.<tld>`. */
 export function resolveRootManifestViaRpc(label: string): Promise<ManifestResult<RootManifest>> {
   return withRpcClient(api => {
     const dotns = getActiveServicesConfig().dotns;
@@ -211,10 +175,6 @@ export function resolveRootManifestViaRpc(label: string): Promise<ManifestResult
   });
 }
 
-/**
- * Resolve the owner address of a `.dot` label by reading the dotNS registry
- * contract storage over JSON-RPC.
- */
 export function resolveOwnerViaRpc(label: string): Promise<string | null> {
   return withRpcClient(api => {
     const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
@@ -249,11 +209,7 @@ export function getConnectedAssetHubRpcEndpoint(): string | null {
   return getConnectedRpcEndpoint(getActiveServicesConfig().assethub.genesis);
 }
 
-/**
- * Tear down the RPC client. Safe to call multiple times. Must be invoked
- * by the network-switch handler so a stale follow against the old network's
- * endpoint can't satisfy reads against the new network's config.
- */
+/** Idempotent. A network switch must call it, so the old network's follow cannot answer new reads. */
 export function destroyRpcClient(): void {
   const api = apiInstance;
   const client = clientInstance;

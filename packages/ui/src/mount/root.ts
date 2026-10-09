@@ -7,32 +7,16 @@ import { captureException } from '@dotli/metrics';
 import { disposeAppRoot, registerAppRoot } from './app-roots.js';
 
 export interface MountRootOptions {
-  /**
-   * Runs inside the error boundary on the first render error, right after the
-   * report, while the view's nodes are still where they were.
-   */
+  /** Runs inside the error boundary on the first render error, while the view's nodes are still in place. */
   onError?: () => void;
-  /**
-   * Runs once after the first render error, a microtask later (a root cannot
-   * be disposed from inside its own error boundary), once the root is
-   * disposed.
-   */
+  /** Runs after the broken root is disposed, a microtask later since a root cannot dispose inside its own boundary. */
   onBroken?: () => void;
-  /** Take `container` out of the page when the root is disposed. */
   removeContainer?: boolean;
 }
 
 /**
- * Render `view` into `container` as the named root, tracked with the app
- * roots (disposeAppRoot disposes it by name). Mounting a name that is already
- * mounted disposes the old root first. The returned disposer may run more
- * than once.
- *
- * A throwing view is caught by an error boundary and renders nothing, so
- * other roots and the page keep working. The first error is reported to
- * Sentry as a `root_render` failure tagged with the root's name; the root is then broken: it is disposed a
- * microtask later, then `options.onBroken` runs, so the owner can recover.
- * Solid may re-invoke the fallback, but a broken root is only handled once.
+ * A throwing view renders nothing, so other roots keep working, and the owner recovers in `onBroken`.
+ * Solid may re-invoke the fallback, but a broken root is handled once. The disposer may run more than once.
  */
 export function mountRoot(
   name: string,

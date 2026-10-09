@@ -9,10 +9,8 @@ import { ViolationPanel } from './ViolationPanel.js';
 const ROOT = 'sandbox-checker';
 
 /**
- * Show the violation panel for `iframe`. Returns the dispose function, which
- * may run more than once. A render error, even a late one, disposes the
- * panel and removes it (a microtask later, not from inside its own error
- * boundary), so it never stays frozen and running.
+ * Shows the violation panel for `iframe` and returns a dispose that may run more than once. A render error,
+ * even a late one, disposes and removes the panel so it never stays frozen and running.
  */
 export function mountViolationPanel(iframe: HTMLIFrameElement): () => void {
   const container = document.createElement('div');

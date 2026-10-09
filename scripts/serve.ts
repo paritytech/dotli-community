@@ -1,43 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Standalone server for a built dot.li bundle — the runner shipped in the
-// release tarball for environments without Docker.
-//
-//   node serve.mjs          # or: bun serve.mjs
-//
-// Written against node builtins only, so one implementation runs under both
-// node and bun. Bundled to serve.mjs at release time so the tarball carries no
-// TypeScript and none of the packages/ tree it imports from.
-//
-// Mirrors nginx/nginx.docker.conf.template: same hostname routing, the same
-// headers, precompressed siblings, immutable asset caching and SPA fallback.
-// **If you change the serving rules in one, change them in the other** — nothing
-// enforces it, and a mismatch means a local run behaves differently from a
-// deployed one. The headers here are the reason this exists rather than
-// `python3 -m http.server`: the sandbox isolation model depends on
-// frame-ancestors and COEP, so serving without them tests a different product.
-//
-// Configuration, all optional:
-//   PORT           listen port (default 5173; must not be 80, see below)
-//   HOST           bind address (default 127.0.0.1 — see below)
-//   DIST           directory holding host/, app/, protocol/ (default ./dist)
-//   DOTLI_NETWORK  runtime network config JSON, same format as the container
-//
-// Binds loopback by default. The bundle is only usable over `*.localhost`
-// anyway — browsers resolve those to loopback, treat them as a secure context so
-// service workers and SharedWorker work, and `deriveBaseDomain` has a matching
-// special case. Reaching it from elsewhere therefore means a tunnel
-// (`ssh -L 5173:localhost:5173 vm`), which routes over loopback on the client
-// side, and routing here is decided by the Host header so the tunnel is
-// transparent. Binding every interface would just expose an unauthenticated
-// server on a port nobody can usefully browse to. Set HOST=0.0.0.0 to override,
-// e.g. when fronting it with your own reverse proxy.
-//
-// Not 80: `getProtocolOrigin` (packages/protocol/src/client.ts) falls back to
-// port 5173 when window.location.port is empty, which browsers leave empty on
-// the default HTTP port, so the protocol iframe would be looked for on the wrong
-// port and never load.
+// The release tarball's server for environments without Docker. Node builtins only, so the bundled serve.mjs runs
+// under node and bun.
+// Keep the serving rules in sync with nginx/nginx.docker.conf.template by hand. The headers are why this exists:
+// sandbox isolation depends on frame-ancestors and COEP.
+// Binds loopback by default because the bundle only works over `*.localhost`, so remote use goes through a tunnel.
 
 import { createServer, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
@@ -66,27 +34,21 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 };
 
-/**
- * Which build serves a request, from its Host header. Mirrors the four server
- * blocks in the nginx profile: `host.` is exact, `*.app.` wins over `*.` because
- * it is the longer match, and everything else is the host shell.
- */
-function routeFor(hostHeader: string): { dir: string; iframeable: boolean } {
+/** Mirrors the nginx profile's server blocks. */
+function routeFor(hostHeader: string): { dir: string; iframeable: boolean; root: string } {
   const hostname = (hostHeader.split(':')[0] ?? '').toLowerCase();
   if (hostname === 'host.localhost') {
-    return { dir: join(DIST, 'protocol'), iframeable: true };
+    return { dir: join(DIST, 'protocol'), iframeable: true, root: 'index.html' };
   }
   if (hostname.includes('.app.')) {
-    return { dir: join(DIST, 'app'), iframeable: true };
+    return { dir: join(DIST, 'app'), iframeable: true, root: 'index.html' };
   }
-  return { dir: join(DIST, 'host'), iframeable: false };
+  // The bare host's root is the landing page, as nginx's `location = /` serves it.
+  const bare = !hostname.endsWith('.localhost');
+  return { dir: join(DIST, 'host'), iframeable: false, root: bare ? 'landing.html' : 'index.html' };
 }
 
-/**
- * Security headers, split exactly as nginx/snippets/dotli-headers-*.conf do.
- * The iframeable origins carry frame-ancestors plus the cross-origin isolation
- * trio; the host build gets X-Frame-Options instead and is not iframeable.
- */
+/** Split as nginx/snippets/dotli-headers-*.conf does. */
 function securityHeaders(iframeable: boolean): Record<string, string> {
   const shared = {
     'X-Content-Type-Options': 'nosniff',
@@ -106,7 +68,7 @@ function securityHeaders(iframeable: boolean): Record<string, string> {
   };
 }
 
-/** Cache policy per path, matching dotli-assets-*.conf and dotli-sw-*.conf. */
+/** Matches dotli-assets-*.conf and dotli-sw-*.conf. */
 function cacheControl(pathname: string): string {
   if (pathname.startsWith('/assets/')) {
     return 'public, max-age=31536000, immutable';
@@ -117,11 +79,7 @@ function cacheControl(pathname: string): string {
   return 'no-cache';
 }
 
-/**
- * Pick a precompressed sibling when the client accepts it, matching
- * `brotli_static` / `gzip_static`. Brotli first: the build emits both and it is
- * the smaller of the two.
- */
+/** Matches `brotli_static` and `gzip_static`. Brotli first, as the smaller. */
 function negotiate(filePath: string, acceptEncoding: string): { path: string; encoding?: string } {
   if (acceptEncoding.includes('br') && existsSync(`${filePath}.br`)) {
     return { path: `${filePath}.br`, encoding: 'br' };
@@ -149,7 +107,7 @@ function send(
 ): void {
   const chosen = negotiate(filePath, acceptEncoding);
   const headers: Record<string, string> = {
-    // Content-Type comes from the *logical* path, not the .br/.gz sibling.
+    // From the requested file, not its .br or .gz sibling.
     'Content-Type': MIME[extname(filePath)] ?? 'application/octet-stream',
     'Cache-Control': cacheControl(pathname),
     ...securityHeaders(iframeable),
@@ -186,7 +144,7 @@ for (const sub of ['host', 'app', 'protocol']) {
 }
 
 createServer((req, res) => {
-  const { dir, iframeable } = routeFor(req.headers.host ?? '');
+  const { dir, iframeable, root } = routeFor(req.headers.host ?? '');
   const url = new URL(req.url ?? '/', 'http://placeholder');
   if (url.pathname.startsWith(IDENTITY_PROXY_PREFIX)) {
     void handleNodeIdentityProxy(req, res);
@@ -195,10 +153,7 @@ createServer((req, res) => {
   const acceptEncoding = req.headers['accept-encoding'] ?? '';
   const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
 
-  // Runtime network config, same path and same $DOTLI_NETWORK as the container.
-  // Ahead of the static branches: the SPA fallback would answer with index.html,
-  // and HTML where a <script> expects JavaScript fails as a syntax error rather
-  // than as a missing file.
+  // Ahead of the SPA fallback, whose index.html would fail as a script syntax error rather than a missing file.
   if (url.pathname === RUNTIME_CONFIG_PATH) {
     const body = runtimeNetworkConfigScriptBody();
     res.writeHead(200, {
@@ -223,9 +178,10 @@ createServer((req, res) => {
     return;
   }
 
-  const index = join(dir, 'index.html');
+  const page = requested === '/' ? root : 'index.html';
+  const index = join(dir, page);
   if (isFile(index)) {
-    send(res, index, '/index.html', iframeable, accept);
+    send(res, index, `/${page}`, iframeable, accept);
     return;
   }
   res.writeHead(404).end('Not Found');

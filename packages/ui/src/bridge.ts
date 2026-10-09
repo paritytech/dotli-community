@@ -1,13 +1,8 @@
-// dot.li TrUAPI host bridge
-//
-// Connects the page's TrUAPI core (see page-core.ts) to a sandboxed product
-// iframe via `@parity/truapi-host`, and routes the topbar's login, pairing
-// cancel and logout to that same core. Each render swaps the iframe and its
-// connection; the core stays for as long as anything holds it.
-//
-// Nested dApp-in-dApp composition is not modeled as separate Rust runtimes,
-// sessions, product identities, or storage namespaces. Any future nested
-// traffic must share the top-level core/provider context.
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Connects the page's TrUAPI core to the product iframe and to the topbar's login and logout. Nested
+// products are not modeled separately, so any nested traffic must share the top-level core.
 
 import {
   AllocatableResource,
@@ -46,7 +41,7 @@ import { chatCapabilityFor, log } from '@dotli/shared';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { createIframeHost } from '@parity/truapi-host/web';
-import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
+import { buildAllowAttribute, registerPermissionAuthorizationProvider, setPermissionStatus } from './permissions.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createContactAvatars, installProfileDebugTrigger } from './host-callbacks/Profile.js';
 import type { AvatarSurfaceFit } from './profile/avatar-overlay.js';
@@ -92,14 +87,11 @@ import {
 } from './host-callbacks/SessionStore.js';
 
 export { setPageProduct } from './page-core.js';
-// The host boot already awaits this module, and the pool behind these leases
-// is already in it (through the page core's callbacks), so the gateway
-// resolver and the settings probe take their leases from here rather than
-// from a chunk of their own.
+// The pool behind these leases already ships in this chunk, so other callers take them from here.
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';
 import { describeWireFrame } from './debug-wire-describe.js';
-import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { throwIfAborted, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createRendererImageLoader, registerChatConnection } from './chat/service.js';
 import { showNotification } from './notification.js';
 import { registerProductNotificationTarget } from './notification-activation.js';
@@ -183,10 +175,14 @@ const mediatedInputHost = new MediatedInputHost({
           kind: 'Device',
           limiter: mediatedInputPermissionLimiter,
           gatedByIframe: false,
-          commitOwner: 'host',
         },
         scope,
       );
+      throwIfAborted(signal);
+      // This host-mediated capture has no pending Rust permission callback to commit its answer.
+      if (decision !== 'AllowOnce') {
+        await setPermissionStatus(label, 'Camera', decision === 'AllowAlways' ? 'granted' : 'denied');
+      }
       return decision !== 'Deny';
     } finally {
       signal.removeEventListener('abort', abort);
@@ -325,6 +321,7 @@ function inspectorProductContext(): InspectorProductContext | null {
   }
   assertInspectorWallet(wallet);
   const generation = renderGeneration;
+  const core = host.core;
   return {
     product,
     host,
@@ -335,7 +332,7 @@ function inspectorProductContext(): InspectorProductContext | null {
         : labelToProductId(product.label),
     assertCurrent(): void {
       assertInspectorWallet(wallet);
-      if (currentProduct !== product || currentHost !== host || generation !== renderGeneration) {
+      if (currentProduct !== product || currentHost !== host || generation !== renderGeneration || host.core !== core) {
         throw new Error(
           'The product changed during the Wallet tab operation. An allocation already submitted may have completed; check its outcome before making another request.',
         );
@@ -721,7 +718,7 @@ function rerenderProduct(product: CurrentProduct): void {
           legacyCapture: product.legacyCapture,
         });
   void render.catch((error: unknown) => {
-    // A newer render superseded this one, so its result owns the UI now.
+    // A newer render owns the UI now.
     if (renderGeneration !== expectedGeneration) {
       return;
     }
@@ -741,9 +738,7 @@ function rerenderProduct(product: CurrentProduct): void {
   });
 }
 
-// Listen for device permission grants. Reload the iframe so the updated
-// `allow` attribute takes effect. Keep the current iframe visible and surface
-// a retry if replacement host startup fails.
+// A new `allow` attribute only takes effect in a fresh iframe.
 window.addEventListener('dotli:device-permission-changed', event => {
   const product = currentProduct;
   const permission = (event as CustomEvent<{ permission?: unknown } | null>).detail?.permission;
@@ -1292,8 +1287,6 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
     void disconnectSession();
   });
 
-  // User closed the pairing modal: the page's core runs every pairing,
-  // whether the product or the topbar asked for it.
   window.addEventListener('dotli:truapi-cancel-login', () => {
     log.event('pairing cancelled', { flow: 'wallet' });
     cancelPairing();
@@ -1309,10 +1302,8 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
       (error: unknown) => {
         reportLoginFailure(error);
         const message = error instanceof Error ? error.message : String(error);
-        // A `LoginRequestError` came back over the wire, so the core already
-        // rendered its own `LoginFailed` (or deliberately stayed silent, e.g.
-        // a second login while one is pairing). Synthesize a state only for
-        // failures the core never saw: host boot, encode, transport errors.
+        // The core already rendered a `LoginRequestError`, or stayed silent on purpose. Synthesize a
+        // state only for failures it never saw.
         if (!(error instanceof LoginRequestError)) {
           dispatchAuthState({
             tag: 'LoginFailed',
@@ -1325,11 +1316,7 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
   });
 }
 
-/**
- * A login the user called off, or one denied permission, is an outcome, not
- * a fault. Everything else is reported, the core's own refusals included:
- * its `LoginFailed` is only what the user sees.
- */
+/** A cancelled or denied login is an outcome, not a fault. The core's other refusals are still reported. */
 function reportLoginFailure(error: unknown): void {
   if (error instanceof LoginRequestError && (error.error.tag === 'Cancelled' || error.error.tag === 'Denied')) {
     recordExpected(error, { flow: 'wallet', step: 'login' });
@@ -1342,11 +1329,7 @@ function reportLoginFailure(error: unknown): void {
   });
 }
 
-/**
- * Log in from the topbar, over a connection of its own: the product's
- * connection forwards every frame to the product. The lease keeps the core
- * up until the login settles, whatever renders meanwhile.
- */
+/** Over a connection of its own, since the product's connection forwards every frame to the product. */
 async function topbarLogin(reason: string | undefined): Promise<void> {
   const lease = await acquireCore();
   try {
@@ -1376,8 +1359,7 @@ async function disconnectSession(): Promise<void> {
   try {
     lease = await acquireCore();
   } catch (err) {
-    // If the core cannot boot, keep the UI responsive even though persisted
-    // core session state could not be cleared.
+    // Keep the UI responsive even though the persisted session could not be cleared.
     log.warn('[dot.li] disconnect skipped, the wallet core did not boot:', err);
     dispatchAuthState({ tag: 'Disconnected' });
     return;
@@ -1391,10 +1373,6 @@ async function disconnectSession(): Promise<void> {
   }
 }
 
-/**
- * Capture the deep link path, meaning pathname, search and hash, to forward
- * into the iframe.
- */
 function getDeepPath(): string {
   const { pathname, search, hash } = window.location;
   let p = pathname;
@@ -1409,11 +1387,6 @@ function getDeepPath(): string {
   return p + search + hash;
 }
 
-/**
- * Pin the product iframe to the area the host chrome and the insets leave.
- * product-frame-layout owns its geometry from here on. A protected Media
- * container positions its trusted compositor, which the iframe fills.
- */
 function applyIframeStyling(iframe: HTMLIFrameElement): void {
   const parent = iframe.parentElement;
   attachProductFrame(iframe, parent?.classList.contains('host-media-compositor') === true ? parent : iframe);
@@ -1476,7 +1449,7 @@ function pipeProviders(
         unsub();
         // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort. Stale MessagePorts can already be closed while the next cleanup still must run.
       } catch {
-        /* ignore teardown races */
+        // Teardown race.
       }
     }
   };
@@ -1500,7 +1473,7 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
     });
     // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
   } catch {
-    /* ignore, debug tap failures must not affect the transport */
+    // Debug tap failures must not affect the transport.
   }
 }
 
@@ -1567,7 +1540,6 @@ let topbarLoginRequestSeq = 0;
 
 export function requestCoreLogin(core: Provider, reason?: string): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
-  // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
     VersionedHostRequestLoginResponse,
     scale.CallError(VersionedHostRequestLoginError),
@@ -1696,15 +1668,17 @@ async function createHost(args: {
 }): Promise<ActiveHost> {
   const hostGeneration = renderGeneration;
   const coordinator = blockingModalCoordinator;
-  const media =
+  const mediaOptions =
     args.mediaOrigin !== undefined && coordinator !== null
-      ? createMediaHost({
+      ? {
           label: args.label,
           productId: args.productId ?? labelToProductId(args.label),
           origin: args.mediaOrigin,
           coordinator,
-        })
+        }
       : undefined;
+  let media = mediaOptions === undefined ? undefined : createMediaHost(mediaOptions);
+  let mediaFrame: HTMLIFrameElement | null = null;
   // The trusted compositor is the product frame's immediate, isolated parent;
   // host media planes sit beside the frame inside it.
   const container = media === undefined ? args.container : document.createElement('div');
@@ -1731,10 +1705,7 @@ async function createHost(args: {
   let connection: CoreConnection;
   let chatCapable: boolean;
   try {
-    // Chat-capable products get a Worker-kind execution so the core serves
-    // their chat calls; everything an App connection can do still works.
-    // The capability is primed by the host shell before rendering, so
-    // this await settles from cache or the in-flight manifest read.
+    // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
     chatCapable = await chatCapabilityFor(args.label);
     log.event('chat capability resolved', { flow: 'chat', capable: chatCapable });
     connection = await lease.connect(chatCapable ? 'Worker' : 'App', {
@@ -1752,15 +1723,19 @@ async function createHost(args: {
     lease.release();
     throw error;
   }
-  const coreProvider = wrapCoreProviderForDebug(connection);
+  let coreProvider: CoreProviderBase | null = wrapCoreProviderForDebug(connection);
   media?.bindProvider(coreProvider);
-  const unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
-  const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
+  let unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
+  let unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
+  let executionGeneration = 0;
+  let disposed = false;
+  let hasProductPort = false;
+  let pendingPort: MessagePort | null = null;
+  let connecting = false;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   let productProbeCleanup: (() => void) | null = null;
   let disposeViewInsets: (() => void) | null = null;
-  let receivingPortConnected = false;
   // Whether the product has sent a frame on the current port, which proves
   // it adopted that port's `truapi-init`.
   let productPortUsed = false;
@@ -1778,20 +1753,10 @@ async function createHost(args: {
     disposePipe = null;
     productProvider = null;
   };
-  const connectProductPort = (port: MessagePort): void => {
-    if (hostGeneration !== renderGeneration) {
-      connection.receiving.close();
-      port.close();
-      return;
+  const bindProductPort = (port: MessagePort): void => {
+    if (coreProvider === null) {
+      throw new Error('The product execution is not connected.');
     }
-    if (receivingPortConnected) {
-      connection.receiving.close();
-    }
-    cleanupProductSide();
-    // A new port is a restarted product: what it placed before is stale.
-    contactAvatars.clear();
-    contactLabels.clear();
-    productPortUsed = false;
     const provider = createMessagePortProvider(port);
     productProvider = provider;
     unsubscribeProductPortUse = provider.subscribe(() => {
@@ -1800,17 +1765,121 @@ async function createHost(args: {
       unsubscribeProductPortUse = null;
     });
     disposePipe = pipeProviders(provider, coreProvider, pipeArgs);
-    if (!receivingPortConnected) {
-      connection.receiving.ready();
+    connection.receiving.ready();
+  };
+  const retireExecution = (): void => {
+    const previous = coreProvider;
+    coreProvider = null;
+    unregisterPermissions();
+    unregisterPermissions = noop;
+    unregisterChat();
+    unregisterChat = noop;
+    media?.dispose();
+    previous?.dispose();
+  };
+  const connectPendingPort = (): void => {
+    const port = pendingPort;
+    if (disposed || connecting || port === null) {
+      return;
     }
-    receivingPortConnected = true;
+    connecting = true;
+    const generation = executionGeneration;
+    media = mediaOptions === undefined ? undefined : createMediaHost(mediaOptions);
+    if (media !== undefined && mediaFrame !== null) {
+      media.attach(mediaFrame, container);
+    }
+    void lease
+      .connect(chatCapable ? 'Worker' : 'App', {
+        contactAvatars,
+        contactLabels,
+        archiveCid: args.archiveCid,
+        isCurrentExecution: () =>
+          !disposed && hostGeneration === renderGeneration && generation === executionGeneration,
+        ...(media === undefined ? {} : { media }),
+      })
+      .then(next => {
+        if (disposed || generation !== executionGeneration) {
+          next.close();
+          port.close();
+          return;
+        }
+        connection = next;
+        try {
+          coreProvider = wrapCoreProviderForDebug(next);
+          media?.bindProvider(coreProvider);
+          unregisterChat = chatCapable ? registerProductChat(next, args.archiveCid) : noop;
+          unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
+          pendingPort = null;
+          bindProductPort(port);
+        } catch (error) {
+          next.close();
+          throw error;
+        }
+      })
+      .catch((error: unknown) => {
+        port.close();
+        if (disposed || generation !== executionGeneration) {
+          return;
+        }
+        cleanupCoreSide();
+        log.error('[dot.li] Product execution reconnect failed:', error);
+        showNotification({
+          label: 'dot.li',
+          text: 'The app could not reconnect to the host.',
+          browserNotification: false,
+          dismissMs: 0,
+          action: {
+            label: 'Reload',
+            onClick: () => {
+              window.location.reload();
+            },
+          },
+        });
+      })
+      .finally(() => {
+        connecting = false;
+        // Coalesce documents replaced during startup without creating an
+        // unbounded number of native executions. Failed current starts stop.
+        connectPendingPort();
+      });
+  };
+  const connectProductPort = (port: MessagePort): void => {
+    if (disposed || hostGeneration !== renderGeneration) {
+      connection.receiving.close();
+      port.close();
+      return;
+    }
+    cleanupProductSide();
+    // Retire the previous document's host-owned presentation immediately.
+    contactAvatars.clear();
+    contactLabels.clear();
+    pendingPort?.close();
+    pendingPort = null;
+    productPortUsed = false;
+    if (!hasProductPort) {
+      hasProductPort = true;
+      bindProductPort(port);
+      return;
+    }
+
+    // A fresh document must not inherit prompts, one-use grants or resources
+    // from its predecessor. Keep the wallet lease, but replace its execution.
+    retireExecution();
+    executionGeneration++;
+    pendingPort = port;
+    connectPendingPort();
   };
   const cleanupCoreSide = (): void => {
-    unregisterPermissions();
-    unregisterChat();
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    executionGeneration++;
+    pendingPort?.close();
+    pendingPort = null;
     cleanupProductSide();
+    retireExecution();
     disposeMedia();
-    coreProvider.dispose();
     contactAvatars.dispose();
     contactLabels.dispose();
     lease.release();
@@ -1841,6 +1910,7 @@ async function createHost(args: {
     });
     contactAvatars.attach(host.iframe, args.avatarSurface ?? 'viewport');
     contactLabels.attach(host.iframe, args.avatarSurface ?? 'viewport');
+    mediaFrame = host.iframe;
     if (media !== undefined) {
       host.iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;z-index:1;';
       media.attach(host.iframe, container);
@@ -1882,7 +1952,6 @@ async function createHost(args: {
         }
         if (probeMode === 'modern') {
           // A second handshake means the product document was replaced.
-          media?.dispose();
           const channel = new MessageChannel();
           connectProductPort(channel.port1);
           targetWindow.postMessage({ type: 'truapi-init' }, args.allowedOrigin, [channel.port2]);
@@ -1906,11 +1975,20 @@ async function createHost(args: {
       productProbeCleanup = null;
     };
     return {
-      core: coreProvider,
-      wallet: connection.wallet,
+      get core() {
+        if (coreProvider === null) {
+          throw new Error('The product execution is not connected.');
+        }
+        return coreProvider;
+      },
+      get wallet() {
+        return connection.wallet;
+      },
       generation: hostGeneration,
       productId: connection.productId,
-      receiving: connection.receiving,
+      get receiving() {
+        return connection.receiving;
+      },
       iframe: host.iframe,
       stopMedia() {
         media?.dispose();
@@ -1965,9 +2043,6 @@ function registerProductChat({ provider, productId }: CoreConnection, archiveCid
   });
 }
 
-/**
- * Render a dApp iframe backed by the TrUAPI host bridge.
- */
 export async function renderIframe(
   url: string,
   label: string,
@@ -1986,14 +2061,10 @@ export async function renderIframe(
     payload: { label, url, mode: 'iframe' },
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  // Keep the current product visible while its replacement frame connects.
-  // A core booting for it can take several seconds. Removing the old iframe
-  // first made permission-triggered reloads look like a permanently blank
-  // application.
+  // Keep the previous frame visible, but immediately retire its protected capture.
   const previousHost = retirePreviousMedia(options.legacyCapture === true);
   if (previousHost === null) {
-    // This path has no loading overlay to keep, so the tracked roots go first
-    // and whatever else the page left in `#app` goes with them.
+    // This path has no loading overlay to keep.
     disposeAppRoots();
     app.innerHTML = '';
   }
@@ -2020,8 +2091,7 @@ export async function renderIframe(
     allowedOrigin: iframeUrl.origin,
     sandbox:
       options.legacyCapture === true
-        ? // Keep parity with the current dotli product sandbox permissions.
-          'allow-scripts allow-same-origin allow-forms allow-pointer-lock'
+        ? 'allow-scripts allow-same-origin allow-forms allow-pointer-lock'
         : PROTECTED_MEDIA_SANDBOX,
     label,
     productId: options.productId,
@@ -2067,8 +2137,7 @@ export async function renderIframe(
   stopSetup();
   document.title = `${label} · dot.li`;
 
-  // Carry the runtime productId so listeners key chat data the same way
-  // storage does when the debug path overrides the label-derived id.
+  // The runtime productId, so chat data is keyed like storage when the debug path overrides it.
   setProductLoaded(label, options.productId ?? labelToProductId(label));
   emitDotliDebugEvent({
     layer: 'render',
@@ -2146,9 +2215,7 @@ export async function renderAppSubdomain(
   const renderFlowId = newFlowId('render');
   const bridgeFlowId = newFlowId('bridge');
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  // Permission changes rebuild this host so the iframe receives a refreshed
-  // `allow` attribute. Keep the current product visible until its replacement
-  // iframe is connected, just like the direct-iframe render path.
+  // Keep the previous frame visible, but immediately retire its protected capture.
   const previousHost = retirePreviousMedia(options.legacyCapture === true);
   setPageProduct({ label });
 
@@ -2160,17 +2227,12 @@ export async function renderAppSubdomain(
     legacyCapture: options.legacyCapture === true,
   };
 
-  // Propagate the current sandbox contract. The `?mode=` preset param is no
-  // longer sent. Host and sandbox deploy together, and the sandbox validator
-  // rejects unknown params.
+  // The sandbox validator rejects unknown params.
   const chainBackend = getBackend();
   const network = getNetwork();
   const appOrigin = sandboxOriginForLabel(label);
   const deepPath = getDeepPath();
-  // One-shot: the settings popover sets this flag right before reloading so
-  // the first sandbox boot after "Save & Apply" wipes its own origin too.
-  // Consume and clear so subsequent navigations (permission reload, etc.)
-  // don't keep triggering resets.
+  // One-shot, so later navigations such as a permission reload do not reset again.
   let fullReset = false;
   try {
     if (sessionStorage.getItem('dotli:pending-reset:sandbox') === '1') {
@@ -2179,7 +2241,7 @@ export async function renderAppSubdomain(
     }
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag defaults to false which is the safe state.
   } catch {
-    /* sessionStorage unavailable, skip pending reset */
+    // No pending reset.
   }
   const parsedUrl = new URL(deepPath ? `${appOrigin}${deepPath}` : appOrigin);
   if (parsedUrl.origin !== appOrigin) {
@@ -2202,11 +2264,7 @@ export async function renderAppSubdomain(
   }
   const url = parsedUrl.toString();
 
-  // Keep the loading overlay visible. The sandbox will post status
-  // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only on the initial render. During a permission refresh the current
-  // iframe remains visible until the replacement is ready, and the overlay,
-  // if still up, is disposed then.
+  // On the initial render the sandbox dismisses the overlay itself, with `dotli:loading-status`.
   const keepLoading = previousHost === null;
 
   const iframeUrl = new URL(url);
@@ -2294,15 +2352,12 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
     currentPanelDispose();
     currentPanelDispose = null;
   }
-  // The previous frame leaves with its host.
   previousHost?.dispose();
   disposeAppRoot('page');
   if (!keepLoading) {
     disposeAppRoot('loading');
   }
-  // The one untracked child: an error page written over a product whose frame
-  // was already up (a failure after `activateHost`), which a later rebuild of
-  // that product has to clear.
+  // An error page written after an earlier `activateHost` is the one untracked child a rebuild must clear.
   for (const stray of app.querySelectorAll(':scope > [data-error-page]')) {
     stray.remove();
   }

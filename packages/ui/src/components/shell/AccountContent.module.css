@@ -1,9 +1,17 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's account menu: the large avatar beside "Welcome back" and the
-   name, inset 4 px like a popover head, then the hint, a hairline and Log out.
-   Desktop: a 40 px avatar and a 15 px name (the boards' 48 and 17 on phones). */
+.panel {
+  padding: var(--sp-3);
+}
+.panel[data-sheet] {
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+}
+@media (max-width: 560px) {
+  .panel:not([data-sheet]) {
+    padding: var(--sp-4);
+  }
+}
 
 .identity {
   display: flex;
@@ -59,7 +67,6 @@
   border: 0;
   background: var(--chrome-line);
 }
-/* Log out's icon. */
 .icon {
   width: 14px;
   height: 14px;

@@ -19,7 +19,7 @@ import {
   scale,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
-import type { PermissionAuthorizationRequest, RequiredHostCallbacks } from '@parity/truapi-host';
+import type { AuthState, PermissionAuthorizationRequest, RequiredHostCallbacks } from '@parity/truapi-host';
 import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -55,8 +55,7 @@ interface MockRuntime {
 type ProviderListener = (message: Uint8Array) => void;
 type ProviderCloseListener = (error: Error) => void;
 
-// Window listeners the bridge under test added; removed after each test so an
-// earlier test's bridge never reacts to a later test's events.
+// Removed after each test so an earlier test's bridge never hears a later test's events.
 let bridgeListeners: Parameters<typeof window.removeEventListener>[] = [];
 let uninstallWebLocks: (() => void) | undefined;
 
@@ -759,7 +758,6 @@ describe('bridge render lifecycle', () => {
       expect(compositor?.style.position).toBe('fixed');
       expect(iframe.style.position).toBe('absolute');
 
-      // And later layout changes reach it
       layout.setTopbarLayout({ offset: false });
       expect(compositor?.style.top).toBe('var(--safe-top, 0px)');
     }
@@ -1151,6 +1149,71 @@ describe('bridge render lifecycle', () => {
     };
   }
 
+  it('cancels prior-document permission prompts while keeping the wallet available to the replacement', async ({
+    onTestFinished,
+  }) => {
+    const product = await renderWithProductPort('document-permission');
+    const { disposePageCores } = await import('../src/page-core.js');
+    const { overlaysReady: readyOverlays, resetOverlays: resetCurrentOverlays } = await import('./helpers/overlays.js');
+    onTestFinished(() => {
+      disposePageCores();
+      resetCurrentOverlays();
+      product.productPort.close();
+      for (const port of product.inits()) {
+        port.close();
+      }
+    });
+    product.ready('first');
+    const runtime = nth(mocks.coreRuntimes, 0);
+    const callbacks = nth(runtime.createProvider.mock.calls, 0)[1] as RequiredHostCallbacks;
+    const productContext = { productId: 'document-permission.paseo', executionKind: 'App' as const };
+    const firstMedia = callbacks.media;
+    assert(firstMedia);
+    await expect(firstMedia.mediaBackendCapabilities(productContext)).resolves.toEqual({ tag: 'Unsupported' });
+    const permission = callbacks.permissions.devicePermission(productContext, 'Notifications');
+    const outcome = permission.catch((error: unknown) => error);
+    await readyOverlays();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-modal"]')).not.toBeNull();
+    });
+
+    product.ready('second');
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
+    });
+    await expect(outcome).resolves.toMatchObject({ name: 'AbortError' });
+    expect(runtime.dispose).not.toHaveBeenCalled();
+    expect(() => firstMedia.mediaBackendCapabilities(productContext)).toThrow('Media:RuntimeMismatch');
+
+    await waitForProviderRequests(2);
+    const supersededCallbacks = nth(runtime.createProvider.mock.calls, 1)[1] as RequiredHostCallbacks;
+    product.ready('third');
+    product.ready('fourth');
+    expect(mocks.coreProviderDefers).toHaveLength(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await waitForProviderRequests(3);
+    await expect(
+      supersededCallbacks.permissions.devicePermission(productContext, 'Notifications'),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    nth(mocks.coreProviderDefers, 2).resolve(makeProvider());
+    const nextCallbacks = nth(runtime.createProvider.mock.calls, 2)[1] as RequiredHostCallbacks;
+    const nextMedia = nextCallbacks.media;
+    const supersededMedia = supersededCallbacks.media;
+    assert(nextMedia);
+    assert(supersededMedia);
+    await expect(nextMedia.mediaBackendCapabilities(productContext)).resolves.toEqual({ tag: 'Unsupported' });
+    expect(() => supersededMedia.mediaBackendCapabilities(productContext)).toThrow('Media:RuntimeMismatch');
+    const nextPermission = nextCallbacks.permissions.devicePermission(productContext, 'Notifications');
+    await readyOverlays();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-btn-sign"]')).not.toBeNull();
+    });
+    const allowOnce = document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]');
+    assert(allowOnce);
+    fireEvent.click(allowOnce);
+    await expect(nextPermission).resolves.toBe('AllowOnce');
+  });
+
   it('treats connectionId-less ready repeats as retries until the product uses its port', async () => {
     const product = await renderWithProductPort('legacy-ready');
     // Pre-0.23 clients retry ready every 50 ms without a connectionId and
@@ -1173,11 +1236,15 @@ describe('bridge render lifecycle', () => {
     expect(product.inits()).toHaveLength(1);
 
     const replacement = nth(product.inits(), 0);
+    await waitForProviderRequests(2);
+    const replacementCore = makeProvider();
+    nth(mocks.coreProviderDefers, 1).resolve(replacementCore);
     const replacementFrame = new Uint8Array([9, 9]);
     replacement.postMessage(replacementFrame);
     await vi.waitFor(() => {
-      expect(product.core.postMessage).toHaveBeenCalledWith(replacementFrame);
+      expect(replacementCore.postMessage).toHaveBeenCalledWith(replacementFrame);
     });
+    expect(product.core.postMessage).not.toHaveBeenCalledWith(replacementFrame);
     product.ready();
     expect(product.inits()).toHaveLength(2);
     product.productPort.close();
@@ -1246,11 +1313,15 @@ describe('bridge render lifecycle', () => {
       delete sandbox.__HOST_API_PORT__;
       const replacement = await waitForTruapiPort(sandbox, window, parentOrigin, 1_000);
       expect(replacement).not.toBe(first);
+      await waitForProviderRequests(2);
+      const replacementCore = makeProvider();
+      nth(mocks.coreProviderDefers, 1).resolve(replacementCore);
       const frame = new Uint8Array([9, 9]);
       replacement.postMessage(frame);
       await vi.waitFor(() => {
-        expect(core.postMessage).toHaveBeenCalledWith(frame);
+        expect(replacementCore.postMessage).toHaveBeenCalledWith(frame);
       });
+      expect(core.postMessage).not.toHaveBeenCalled();
     } finally {
       sandbox.__HOST_API_PORT__?.close();
       delete sandbox.__HOST_API_PORT__;
@@ -1303,8 +1374,9 @@ describe('bridge render lifecycle', () => {
     expect(updateRequired).toHaveBeenCalledTimes(1);
   });
 
-  it('shows browser requirements for an authenticated unsupported JAM transport signal', async () => {
+  it('shows browser requirements only for an authenticated unsupported JAM transport signal', async () => {
     vi.stubGlobal('WebTransport', undefined);
+    // Import after the per-test reset to isolate bridge singleton state and its listener.
     const { renderAppSubdomain } = await import('../src/bridge.js');
     const notification = await import('../src/notification.js');
     const showNotification = vi.spyOn(notification, 'showNotification').mockImplementation(() => () => undefined);
@@ -1318,26 +1390,27 @@ describe('bridge render lifecycle', () => {
       throw new Error('app frame has no content window');
     }
     const appOrigin = new URL(nth(mocks.iframeHosts, 0).iframeUrl).origin;
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { type: 'dotli:jam-peer-transport-unavailable' },
-        origin: 'https://evil.example',
-        source: targetWindow,
-      }),
-    );
+    const signal = (origin: string, source: Window): void => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'dotli:jam-peer-transport-unavailable' },
+          origin,
+          source,
+        }),
+      );
+    };
+    signal('https://evil.example', targetWindow);
+    signal(appOrigin, window);
     expect(showNotification).not.toHaveBeenCalled();
 
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { type: 'dotli:jam-peer-transport-unavailable' },
-        origin: appOrigin,
-        source: targetWindow,
-      }),
-    );
+    vi.stubGlobal('WebTransport', vi.fn());
+    signal(appOrigin, targetWindow);
+    expect(showNotification).not.toHaveBeenCalled();
+
+    vi.stubGlobal('WebTransport', undefined);
+    signal(appOrigin, targetWindow);
     expect(showNotification).toHaveBeenCalledTimes(1);
     const notificationCall = showNotification.mock.calls[0]?.[0];
-    expect(notificationCall?.label).toBe('Live JAM unavailable');
-    expect(notificationCall?.text).toContain('Chrome or Edge 100+, Firefox 125+, or Safari/iOS 26.4+');
     expect(notificationCall?.dismissMs).toBe(0);
     expect(notificationCall?.browserNotification).toBe(false);
     showNotification.mockRestore();
@@ -1382,6 +1455,63 @@ describe('bridge render lifecycle', () => {
       expect(mocks.coreRuntimes[0]?.cancelPairing).toHaveBeenCalledTimes(1);
     });
   });
+
+  it.each(['sign out', 'account replacement', 'stored session change'])(
+    'retires profile UI and avatars on %s while keeping the connection usable',
+    async change => {
+      // Reset modules per test: these must be the same fresh singletons the bridge just initialized.
+      const store = await import('../src/host-callbacks/SessionStore.js');
+      let storedSessionChanged = (): void => {};
+      vi.spyOn(store, 'onStoredSessionChanged').mockImplementation(listener => {
+        storedSessionChanged = listener;
+        return () => {};
+      });
+      const { acquireCore } = await import('../src/page-core.js');
+      const lease = await acquireCore();
+      const avatars = { attach: vi.fn(), place: vi.fn(), clear: vi.fn(), dispose: vi.fn() };
+      const opening = lease.connect('App', { contactAvatars: avatars });
+      await waitForProviderRequests(1);
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+      const connection = await opening;
+      const callbacks = nth(nth(mocks.coreRuntimes, 0).createProvider.mock.calls, 0)[1] as RequiredHostCallbacks;
+      const auth = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+      const connected: AuthState = {
+        tag: 'Connected',
+        value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+      };
+      const product = { productId: connection.productId, executionKind: 'App' as const };
+      const contact = { peerIdentity: new Uint8Array(32), username: 'old-session.paseo' };
+      try {
+        auth.auth.authStateChanged(connected);
+        await callbacks.profile?.presentContactProfile(product, contact);
+        expect(document.querySelector('[data-testid="profile-drawer"]')?.textContent).toContain('old-session.paseo');
+        avatars.clear.mockClear();
+        // A same-account status refresh must not discard the current placement.
+        auth.auth.authStateChanged(connected);
+        expect(document.querySelector('[data-testid="profile-drawer"]')).not.toBeNull();
+        expect(avatars.clear).not.toHaveBeenCalled();
+
+        if (change === 'stored session change') {
+          storedSessionChanged();
+        } else {
+          auth.auth.authStateChanged(
+            change === 'sign out'
+              ? { tag: 'Disconnected' }
+              : { tag: 'Connected', value: { publicKey: `0x${'33'.repeat(32)}` } },
+          );
+        }
+        expect(document.querySelector('[data-testid="profile-drawer"]')).toBeNull();
+        expect(avatars.clear).toHaveBeenCalledTimes(1);
+
+        auth.auth.authStateChanged(connected);
+        await callbacks.profile?.presentContactProfile(product, { ...contact, username: 'new-session.paseo' });
+        expect(document.querySelector('[data-testid="profile-drawer"]')?.textContent).toContain('new-session.paseo');
+      } finally {
+        connection.close();
+        lease.release();
+      }
+    },
+  );
 
   it('As a user who logs in before the product has loaded, the product joins the core my login runs on and my pairing survives its render', async () => {
     // Given: a product page whose topbar login is pairing
@@ -1667,7 +1797,6 @@ describe('bridge app roots', () => {
     // Then
     expect(disposePage).toHaveBeenCalledTimes(1);
     expect(disposeLoading).toHaveBeenCalledTimes(1);
-    // Page first, then loading.
     expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(nth(disposeLoading.mock.invocationCallOrder, 0));
     const app = document.getElementById('app');
     expect(app?.children).toHaveLength(1);

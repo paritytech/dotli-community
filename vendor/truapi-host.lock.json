@@ -2,30 +2,29 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "6142e3d9cd99ab5faafa591ca5113e86a9bae44e",
-  "upstreamRevisionNote": "Mobile Safari calling without getDisplayMedia integrated above 3f840c929, together with Media picture stability and Tommy source cf424c97d. Host JavaScript rebuilt at 6142e3d9c; the unchanged client and production/testing signing-host WASM retain the verified 44b87fea6 build.",
+  "upstreamRevision": "70627ffb8fb64b3de99db2e37bf514f44f629542",
+  "upstreamRevisionNote": "Client, host JavaScript and production web signing WASM were built from the recorded source revision. The browser bundle excludes testing/non-web WASM and precompressed WASM sidecars.",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
-  "baseRevision": "795a4082023abd952041c784c9f9e81714aab999",
-  "publication": "Media and Tommy-blocker integration above #1011; SDK packages are vendored, not npm-published.",
+  "baseRevision": "a507a383405868a0b70b6dc90ca7b966b861e6f4",
+  "publication": "Production-only Media integration above #1011; SDK packages are vendored, not npm-published.",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
-      "version": "0.23.0",
-      "sourceArchiveSha256": "3efbb0ecd66aafc34775b159b4ff7521f10b0439963bf10437de95fb52acc892",
-      "clientSha256": "9f2aa73c6ab058542acf13cbdc65a59f7fd9ae7f1ecc166f5aa6a46523daa132"
+      "version": "0.24.0",
+      "sourceArchiveSha256": "3d4473baf4f4574241e877f0cd550d8883c137e60ac17eea19add0acd46079a9",
+      "clientSha256": "0ee3ba3d776f2049aa9e8f92f9e710c8940beadfbf5fcc8ae92412a715a7a182"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
-      "version": "0.23.0",
-      "sourceArchiveSha256": "19b50023e637280ef454d6d960544e24b263f22c47a89a598d0db2095768af5a",
+      "version": "0.24.0",
+      "sourceArchiveSha256": "cd779a74637a09bba20694f0854a04b83e7052be29be7a5b0f786382756bbe89",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "ff5d34f4abf320e47b2509a4e03cb97087da19960e9937d88638113fba01899d",
-      "testingWasmSha256": "7370542518d412bccd3953e6e97f866d605581f3a7a45ae4fbf3de2a76f88898",
+      "wasmSha256": "dde26843c573560952ce345d9d80772e66e12cbacd4edae3ff3ba333d9330c26",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "44b87fea6fbe430589bb53c31a3e38b620ad5374"
+  "wasmUpstreamRevision": "70627ffb8fb64b3de99db2e37bf514f44f629542"
 }

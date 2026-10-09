@@ -41,6 +41,7 @@ import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createContactsPlatform, NativeChatContactsDirectory } from './host-callbacks/Contacts.js';
 import {
   initializeLocalWalletState,
+  initializeSessionMode,
   isExperimentalWalletActive,
   isCurrentLocalWallet,
   localWalletContext,
@@ -72,6 +73,7 @@ export interface CoreConnectionOptions {
 
 export interface PageProduct {
   label: string;
+  /** Overrides the label-derived product id, for the local debug routes. */
   productId?: string | undefined;
   pairing?: { label: string; dotSuffix: boolean; hostGlobal: boolean };
 }
@@ -134,11 +136,13 @@ const LANDING_PRODUCT: PageProduct = {
 let modalCoordinator: BlockingModalCoordinator | null = null;
 let pageProduct: PageProduct = LANDING_PRODUCT;
 let current: Core | null = null;
+// Also holds cores a product change or fault replaced while they still had leases.
 const cores = new Set<Core>();
 let generation = 0;
 let walletOwnerLease: Promise<string | undefined> | undefined;
 let ownerRevocationBound = false;
 let custodyOperations: Promise<void> = Promise.resolve();
+let walletHandedOver = false;
 let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
 const noop = (): void => undefined;
 
@@ -153,6 +157,7 @@ export function initPageCore(coordinator: BlockingModalCoordinator): void {
   modalCoordinator = coordinator;
 }
 
+/** Called as soon as the page knows it, so a core booted by an early login is already the product's. */
 export function setPageProduct(product: PageProduct): void {
   pageProduct = product;
   if (current !== null && !isPageProduct(current)) {
@@ -182,29 +187,56 @@ export function disposePageCores(): void {
 
 window.addEventListener('pagehide', disposePageCores);
 
+function retireWalletOwner(lease?: string): void {
+  if (walletOwnerLease === undefined) {
+    return;
+  }
+  walletOwnerLease = undefined;
+  disposePageCores();
+  dispatchAuthState({
+    tag: 'WalletUnavailable',
+    reason:
+      lease === undefined
+        ? 'The test wallet owner frame closed. Retry wallet verification.'
+        : 'The test wallet moved to another tab. Reload to use it here.',
+  });
+  if (lease !== undefined) {
+    walletHandedOver = true;
+    window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
+    void requestWalletOwner({ action: 'release', lease }).catch(noop);
+  }
+}
+
 async function ensureWalletOwner(): Promise<void> {
+  if (walletHandedOver) {
+    throw new Error('The test wallet moved to another tab. Reload to use it here.');
+  }
   if (!ownerRevocationBound) {
     ownerRevocationBound = true;
-    subscribeWalletOwnerRevoked(lease => {
-      walletOwnerLease = undefined;
-      disposePageCores();
-      window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
-      void requestWalletOwner({ action: 'release', lease }).catch(noop);
-    });
+    subscribeWalletOwnerRevoked(retireWalletOwner);
   }
-  walletOwnerLease ??= requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {
-    walletOwnerLease = undefined;
-    throw error;
-  });
-  if ((await walletOwnerLease) === undefined) {
+  if (walletOwnerLease === undefined) {
+    const pending = requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {
+      if (walletOwnerLease === pending) {
+        walletOwnerLease = undefined;
+      }
+      throw error;
+    });
+    walletOwnerLease = pending;
+  }
+  const pending = walletOwnerLease;
+  const lease = await pending;
+  if (walletOwnerLease !== pending) {
+    throw new Error('The test wallet lost exclusive signing ownership.');
+  }
+  if (lease === undefined) {
     walletOwnerLease = undefined;
     throw new Error('The test wallet could not acquire exclusive signing ownership.');
   }
 }
-
 export async function acquireCore(): Promise<CoreLease> {
   const requestedGeneration = generation;
-  await initializeLocalWalletState();
+  await initializeSessionMode();
   if (requestedGeneration !== generation) {
     throw new Error('Page core retired while loading wallet state');
   }
@@ -272,7 +304,6 @@ export function assertLocalWallet(wallet: LiveLocalWallet): void {
     throw new Error('The test identity changed. Reopen the Wallet tab.');
   }
 }
-
 export function cancelPairing(): void {
   for (const core of cores) {
     void core.runtime.then(runtime => {
@@ -290,7 +321,16 @@ function createCore(product: PageProduct): Core {
   log.event('wallet core create', { flow: 'wallet', landing: product === LANDING_PRODUCT });
   const coordinator = modalCoordinator;
   const blockingModalScope = coordinator.createScope();
-  const profileLifetime = new AbortController();
+  let profileLifetime = new AbortController();
+  let profileAccount: string | undefined;
+  const profileInvalidators = new Set<() => void>();
+  const invalidateProfiles = (): void => {
+    profileLifetime.abort();
+    profileLifetime = new AbortController();
+    for (const invalidate of profileInvalidators) {
+      invalidate();
+    }
+  };
   const connectionDisposers = new Set<() => void>();
   let runtimeCallbacks: RequiredHostCallbacks | undefined;
   const context = isExperimentalWalletActive() ? localWalletContext() : undefined;
@@ -362,7 +402,7 @@ function createCore(product: PageProduct): Core {
       pairingDotSuffix: product.pairing?.dotSuffix,
       pairingHostGlobal: product.pairing?.hostGlobal,
       blockingModalScope,
-      profileSignal: profileLifetime.signal,
+      profileSignal: () => profileLifetime.signal,
       ...(custodyLease === undefined ? {} : { custodyLease }),
       ...(nativeContacts === undefined ? {} : { contacts: nativeContacts.callbacks }),
       ...(contactsDirectory === undefined ? {} : { contactsDirectory }),
@@ -439,6 +479,12 @@ function createCore(product: PageProduct): Core {
       if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
         return;
       }
+      const profileSession =
+        state.tag === 'Connected' ? `${state.value.publicKey}:${state.value.identityAccountId ?? ''}` : undefined;
+      if (profileSession !== profileAccount) {
+        profileAccount = profileSession;
+        invalidateProfiles();
+      }
       contactsDirectory?.invalidate();
       if (context === undefined) {
         forwardAuthState(state);
@@ -476,11 +522,11 @@ function createCore(product: PageProduct): Core {
       assertCurrent();
       const pairing = booted;
       log.event('wallet core booted', { flow: 'wallet' });
-      // Another tab logging in or out lands in the shared session store; the
-      // core reads it again. Once now too, for a session stored before boot.
+      // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
       unsubscribeStore = onStoredSessionChanged(() => {
         // Storage is a reload hint, not an auth transition. The core may retain
         // the same session without re-emitting its change-only AuthState.
+        invalidateProfiles();
         pairing.notifySessionStoreChanged();
       });
       queueMicrotask(() => {
@@ -624,7 +670,12 @@ function createCore(product: PageProduct): Core {
         throw new Error('Page core callbacks are unavailable');
       }
       const scope = coordinator.createScope();
-      const connectionLifetime = new AbortController();
+      let connectionLifetime = new AbortController();
+      const invalidateProfile = (): void => {
+        connectionLifetime.abort();
+        connectionLifetime = new AbortController();
+        options.contactAvatars?.clear();
+      };
       const contacts =
         contactsDirectory === undefined
           ? undefined
@@ -632,7 +683,7 @@ function createCore(product: PageProduct): Core {
       const callbacks = createHostCallbacks({
         label: product.label,
         blockingModalScope: scope,
-        profileSignal: connectionLifetime.signal,
+        profileSignal: () => connectionLifetime.signal,
         ...(options.contactAvatars === undefined ? {} : { contactAvatars: options.contactAvatars }),
         ...(custodyLease === undefined ? {} : { custodyLease }),
         ...(contacts === undefined ? {} : { contacts: contacts.callbacks }),
@@ -669,10 +720,12 @@ function createCore(product: PageProduct): Core {
         if (media !== undefined) {
           connectionMedia.delete(media);
         }
+        profileInvalidators.delete(invalidateProfile);
         contacts?.dispose();
         scope.dispose();
       };
       connectionDisposers.add(dispose);
+      profileInvalidators.add(invalidateProfile);
       return { callbacks, dispose };
     },
     dispose() {
@@ -768,6 +821,7 @@ async function connect(
     throw error;
   }
   let closing = false;
+  // A deliberate close also fires close listeners. Any other close is the core going down.
   provider.subscribeClose?.(() => {
     receiving.close();
     unregisterRefresh();

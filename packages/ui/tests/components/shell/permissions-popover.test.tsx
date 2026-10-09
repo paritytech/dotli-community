@@ -34,7 +34,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** The permission a request asks about. */
 function nameOf(request: PermissionAuthorizationRequest): string {
   switch (request.tag) {
     case 'Device':
@@ -53,14 +52,13 @@ function nameOf(request: PermissionAuthorizationRequest): string {
 }
 
 interface Provider {
-  /** The stored statuses, by permission name ("NotDetermined" when absent). */
+  /** By permission name. A missing one is "NotDetermined". */
   stored: Map<string, PermissionAuthorizationStatus>;
   set: ReturnType<
     typeof vi.fn<(request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus) => Promise<void>>
   >;
 }
 
-/** A provider for `label` keeping statuses in memory, as the Rust core does. */
 function provide(label = LABEL, initial: Record<string, PermissionAuthorizationStatus> = {}): Provider {
   const stored = new Map(Object.entries(initial));
   const set = vi.fn((request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus) => {
@@ -129,7 +127,6 @@ function isOpen(): boolean {
   return byId('permissions-popover').hasAttribute('data-open');
 }
 
-/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('permissions-button').click();
   await settleAll();
@@ -149,12 +146,10 @@ function row(name: string): HTMLElement {
   );
 }
 
-/** The segment that sets permission `name` to `status`. */
 function segment(name: string, status: PermissionStatus): HTMLButtonElement {
   return byTestId(`permissions-popover-segment-${status}`, row(name), HTMLButtonElement);
 }
 
-/** The status whose segment is pressed in the row of permission `name`. */
 function statusOf(name: string): PermissionStatus | undefined {
   return STATUSES.find(status => segment(name, status).getAttribute('aria-pressed') === 'true');
 }

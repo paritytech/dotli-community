@@ -11,7 +11,7 @@ export interface ChatActionButtonProps {
   /** Pulses while the app works on the action. A loading button is disabled. */
   loading?: boolean;
   disabled?: boolean;
-  /** Inline style, for the layout modifiers of a product's render tree. */
+  /** Carries the layout modifiers of a product's render tree. */
   style?: JSX.CSSProperties;
   class?: string;
   testId?: string;

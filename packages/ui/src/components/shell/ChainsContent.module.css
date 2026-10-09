@@ -1,9 +1,19 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's network menu: the status well, then per chain its name and
-   peers over a strip of block bars, the download rows and the tips. The
-   Surface around them sets the rhythm between them. */
+.panel {
+  padding: var(--sp-3);
+}
+.panel[data-sheet] {
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+}
+@media (max-width: 560px) {
+  .panel:not([data-sheet]) {
+    padding: var(--sp-4);
+  }
+}
+
+/* The Surface around these parts sets the rhythm between them. */
 
 .status {
   flex-direction: row;
@@ -43,25 +53,27 @@
   gap: 6px;
   margin: 0;
   color: var(--chrome-text);
-  font-size: var(--fs-small);
+  font-size: var(--fs-body);
   font-weight: var(--fw-medium);
-}
-/* Tabular figures, so a changing count cannot reflow the row it sits on. */
-.peers {
-  color: var(--chrome-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-regular);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.peers[data-none] {
-  color: var(--chrome-err-text);
 }
 .cell {
   min-width: 0;
   overflow: hidden;
   text-align: left;
+}
+/* A chain nobody uses keeps its row and last bars, faded, so the known chains never jump around. */
+.group-label[data-state='unused'],
+.cell[data-state='unused'] {
+  opacity: 0.5;
+}
+.other {
+  padding: 0 var(--sp-1);
+}
+.other-summary {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
 }
 .cell[data-unavailable],
 .waiting {
@@ -79,20 +91,17 @@
 .bars {
   position: relative;
   display: flex;
-  /* 48 slots share the width. The newest is at the right edge. */
+  /* 48 slots share the width, the newest at the right edge. */
   flex-direction: row;
   align-items: flex-end;
   gap: var(--sp-hair);
   box-sizing: border-box;
-  /* A flex item defaults to `min-width: auto`, which lets its content set
-     the floor and defeats the clipping. */
+  /* A flex item's default `min-width: auto` would let its content defeat the clipping. */
   min-width: 0;
   height: var(--sp-3);
   overflow: hidden;
 }
-/* Set for one frame after a block lands (slideStrip): the strip starts
-   shifted right by the room the new bar took, then settles to zero, so the
-   row glides left together instead of the bars jumping a step. */
+/* Set for one frame after a block lands (slideStrip), so the row glides left instead of jumping a step. */
 .bars[data-sliding] {
   transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -127,7 +136,6 @@
 .bar[data-health='onTime'] {
   background: var(--chrome-ok);
 }
-/* 8 and 5 of the strip's 12 px (the board's 10 and 6 of 16). */
 .bar[data-health='late'] {
   height: 8px;
   background: var(--chrome-warn);
@@ -136,9 +144,7 @@
   height: 5px;
   background: var(--chrome-err);
 }
-/* Its inline height is the elapsed share of the chain's block time once a first
-   head anchors the estimate. Searching before that, full and pulsing once the
-   block is due. */
+/* Inline height is the elapsed share of the block time once a first head anchors the estimate. */
 .pending {
   height: 20%;
   background: var(--chrome-idle);
@@ -205,7 +211,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Phones: the boards' sizes. */
 @media (max-width: 560px) {
   .status {
     gap: var(--sp-3);

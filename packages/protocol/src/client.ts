@@ -8,6 +8,7 @@ import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/re
 import {
   BASE_DOMAIN,
   SITE_ID,
+  DEV_PROTOCOL_PORT,
   type SiteId,
   getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
@@ -50,11 +51,8 @@ interface PendingRequest {
 }
 
 /**
- * Requests that are steps of a page load, recorded as breadcrumbs when sent
- * and when settled. The trail of a failed load then names the request it was
- * waiting on, which the error rebuilt at the receiving line cannot. Storage
- * and chain traffic is left out: it is per product call, and would push the
- * load's own steps out of the trail.
+ * Page load steps, breadcrumbed when sent and settled so a failed load's trail names what it waited on.
+ * Storage and chain traffic is per product call and would crowd them out.
  */
 const TRAILED_METHODS: ReadonlySet<ProtocolRequestMethod> = new Set<ProtocolRequestMethod>([
   'warmup',
@@ -84,15 +82,16 @@ export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => voi
 let protocolIframe: HTMLIFrameElement | null = null;
 let hostFramePromise: Promise<void> | null = null;
 let protocolReadyPromise: Promise<void> | null = null;
-// The frame's last ready wait timed out or failed, and the frame was not reset
-// since: it is not on its way up any more.
+let frameGeneration = 0;
+let cancelFrameLoad: ((reason: Error) => void) | null = null;
+// The last ready wait failed and no reset followed, so the frame is not on its way up.
 let protocolReadyWaitFailed = false;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const protocolReadyListeners = new Set<() => void>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const sharedWalletListeners = new Set<(state: SharedWalletState) => void>();
-const walletOwnerRevokedListeners = new Set<(lease: string) => void>();
+const walletOwnerRevokedListeners = new Set<(lease: string | undefined) => void>();
 const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
 let lastNetBytesTotal = 0;
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
@@ -105,18 +104,10 @@ interface ReadyWaiter {
 }
 let pendingReadyResolvers: ReadyWaiter[] = [];
 
-/** Sub-mode to pass to the protocol iframe. `null` means the iframe is
- *  only needed for shared auth, with no chain provider at all.
- *
- *  `"shared-worker"` and `"direct"` are P2P (smoldot-backed) submodes.
- *  `"rpc"` is the gateway submode: chain calls are bridged over trusted
- *  WSS JSON-RPC instead of smoldot. */
+/** `"rpc"` bridges chain calls over trusted WSS JSON-RPC instead of smoldot. `null` serves shared auth only. */
 type ProtocolSubMode = 'shared-worker' | 'direct' | 'rpc';
 let protocolSubMode: ProtocolSubMode | null = null;
 
-/** Map the user-facing `Backend` to the protocol iframe sub-mode.
- *  The iframe doesn't carry the `smoldot-` / `rpc-gateway` prefix.
- *  That prefix already lives on the chain side of the boundary. */
 function backendToSubMode(backend: Backend): ProtocolSubMode {
   if (backend === 'smoldot-shared-worker') {
     return 'shared-worker';
@@ -127,13 +118,9 @@ function backendToSubMode(backend: Backend): ProtocolSubMode {
   return 'rpc';
 }
 
-/** When true, ask the protocol iframe to purge its IDB caches before
- *  starting up, i.e. every cold start from scratch, no warm-start state. */
+/** Asks the iframe to purge its IndexedDB caches first, forcing a cold start. */
 let protocolSkipWorkerCache = false;
 
-/**
- * Set the sub-mode for the protocol iframe.
- */
 export function setProtocolSubMode(mode: ProtocolSubMode, opts: { skipWorkerCache?: boolean } = {}): void {
   protocolSubMode = mode;
   protocolSkipWorkerCache = opts.skipWorkerCache === true;
@@ -142,23 +129,19 @@ export function setProtocolSubMode(mode: ProtocolSubMode, opts: { skipWorkerCach
 export function getProtocolOrigin(): string {
   const hostname = window.location.hostname;
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+    if (import.meta.env.DEV) {
+      return `http://host.localhost:${DEV_PROTOCOL_PORT}`;
+    }
     const port = window.location.port.length > 0 ? window.location.port : '5173';
     return `http://host.localhost:${port}`;
   }
   return `https://host.${BASE_DOMAIN}`;
 }
 
-// Set per chain from the protocol iframe's unsolicited `smoldot-db`
-// broadcasts. A chain stays "unknown" on the gateway path, which runs no
-// light client, and until its store answers.
+// A chain stays "unknown" on the gateway path, which runs no light client, and until its store answers.
 const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
 
-/**
- * Whether one chain began from pre-existing smoldot state this page load.
- *
- * The host tags its resolution telemetry with this so a cold sync and a warm
- * resume are separate populations rather than one blended average.
- */
+/** Whether a chain began from existing smoldot state, so telemetry keeps cold syncs and warm resumes apart. */
 export function getSmoldotDbOutcome(chain: SmoldotDbChain): SmoldotDbOutcome | 'unknown' {
   return smoldotDbOutcomes.get(chain) ?? 'unknown';
 }
@@ -176,47 +159,49 @@ function resolveProtocolReady(): void {
 }
 
 /**
- * Tear down the cached iframe and ready state so the next request creates
- * a fresh one. Exposed for callers (e.g. the shared-mode bootstrap) that
- * may discover after the initial iframe load that the chosen sub-mode
- * was wrong and need a clean restart before chain operations run.
- *
- * Side effects callers should be aware of:
- *   - Any in-flight `postRequest()` whose response hasn't arrived will be
- *     orphaned: it will time out via the per-method timer instead of
- *     completing. Callers that have outstanding work should expect those
- *     rejections.
- *   - Any `waitForProtocolReady()` waiter is rejected immediately rather
- *     than waiting for `IFRAME_READY_TIMEOUT_MS`.
- *   - In `shared-worker` mode, removing the iframe drops its
- *     `SharedWorker` port too. The SharedWorker itself stays alive (it's
- *     shared across tabs), but this tab's connection cycles. Its pre-sync
- *     progress is preserved on the worker side, while the local `port` is
- *     gone and the next iframe load reopens a fresh one.
+ * Drops the iframe, its chain leases and ready state so the next request boots a fresh one, for a caller that finds
+ * the sub-mode wrong. Pending requests and ready waiters fail immediately. Requests are never replayed: a wallet
+ * mutation may have committed even if its response was lost. A SharedWorker keeps its sync progress; only this
+ * tab's port cycles.
  */
 export function resetProtocolFrame(): void {
   resetProtocolFrameState();
 }
 
 function resetProtocolFrameState(reason?: Error): void {
+  frameGeneration++;
+  const orphanedConnections = [...chainConnections];
+  chainConnections.clear();
+  const requests = [...pendingRequests.values()];
+  pendingRequests.clear();
+  const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
+  if (protocolIframe !== null) {
+    // The iframe holds the Web Lock. Retire the page's signer synchronously,
+    // before removing its lock owner lets another tab start signing.
+    broadcast(walletOwnerRevokedListeners, undefined, 'Wallet owner');
+  }
+  cancelFrameLoad?.(err);
   protocolIframe?.remove();
   protocolIframe = null;
-  // The byte meter of the rebuilt frame restarts at zero, and the monotonic gate
-  // would otherwise drop every report until it passed the old total.
+  // The rebuilt frame's byte meter restarts at zero, and the monotonic gate would drop its reports.
   lastNetBytesTotal = 0;
   hostFramePromise = null;
   protocolReadyPromise = null;
   protocolReadyWaitFailed = false;
   protocolReady = false;
-  // Reject any callers blocked on `waitForProtocolReady()` before we drop the
-  // resolvers. Otherwise their promises would hang until the 120s timeout.
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
-  if (orphaned.length > 0) {
-    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
-    for (const waiter of orphaned) {
-      waiter.reject(err);
-    }
+  for (const waiter of orphaned) {
+    waiter.reject(err);
+  }
+  for (const pending of requests) {
+    pending.reject(
+      reason ?? new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', pending.method),
+    );
+  }
+  // Notify after resetting readiness so a consumer cannot re-lease the retired frame.
+  for (const [id, connection] of orphanedConnections) {
+    haltRemote(id, connection, 'frame');
   }
 }
 
@@ -236,6 +221,11 @@ function bindMessageListener(): void {
     return;
   }
   listenerBound = true;
+  // The iframe cleans up its engine on navigation, including BFCache entry.
+  // Restoring the document must reconnect, never reuse its retired chain IDs.
+  window.addEventListener('pagehide', () => {
+    resetProtocolFrameState();
+  });
 
   window.addEventListener('message', (event: MessageEvent) => {
     if (!isProtocolEnvelope(event.data)) {
@@ -247,7 +237,7 @@ function bindMessageListener(): void {
     }
 
     const frameWindow = protocolIframe?.contentWindow;
-    if (frameWindow !== null && frameWindow !== undefined && event.source !== frameWindow) {
+    if (frameWindow === null || frameWindow === undefined || event.source !== frameWindow) {
       return;
     }
 
@@ -304,10 +294,7 @@ function bindMessageListener(): void {
       }
       case 'fatal':
       case 'init-failed': {
-        // Smoldot (or the protocol iframe) has died, either crashed
-        // mid-session (`fatal`) or failed to come up at all
-        // (`init-failed`). Either way every in-flight request is
-        // orphaned: the chain is gone, nothing will ever respond.
+        // Smoldot or the iframe died, so nothing will answer any request in flight.
         const kind = msg.kind === 'fatal' ? 'Fatal' : 'Init failed';
         log.error(`[dot.li protocol] ${kind}: ${msg.message}`);
         const err =
@@ -315,31 +302,7 @@ function bindMessageListener(): void {
             ? new ProtocolFatalError(`${kind}: ${msg.message}`)
             : new ProtocolInitFailedError(`${kind}: ${msg.message}`);
 
-        // Reject each pending request with the underlying cause so the
-        // loading UI fails fast instead of spinning until per-request
-        // timeouts.
-        for (const [id, pending] of pendingRequests) {
-          pendingRequests.delete(id);
-          pending.reject(err);
-        }
-
-        // Route through the same reset path used by iframe load failures
-        // so callers blocked on `waitForProtocolReady()`
-        // (`pendingReadyResolvers`) are rejected immediately rather than
-        // hanging until `IFRAME_READY_TIMEOUT_MS` even though the chain is
-        // already known dead. This also clears the iframe,
-        // `hostFramePromise`, and `protocolReadyPromise` so the next
-        // `ensureProtocolFrame()` call can attempt a clean re-boot (e.g.
-        // after the user switches settings) instead of being stuck on a
-        // poisoned cached rejection.
-        // Reset before halting: a `'frame'` listener that dials again must
-        // not attach to the dead frame.
-        const orphanedConnections = [...chainConnections];
-        chainConnections.clear();
         resetProtocolFrameState(err);
-        for (const [id, connection] of orphanedConnections) {
-          haltRemote(id, connection, 'frame');
-        }
         return;
       }
       case 'chain-message': {
@@ -350,8 +313,6 @@ function bindMessageListener(): void {
           );
           return;
         }
-        // Envelope ships `message` as a string. The provider contract
-        // wants the consumer to receive a parsed `JsonRpcMessage`.
         let parsed: JsonRpcMessage;
         try {
           parsed = JSON.parse(msg.message) as JsonRpcMessage;
@@ -376,7 +337,6 @@ function bindMessageListener(): void {
         return;
       }
       case 'request':
-        // Ignore inbound requests on the client side
         return;
       case 'ready':
         resolveProtocolReady();
@@ -411,9 +371,8 @@ function bindMessageListener(): void {
         }
         return;
       case 'smoldot-db':
-        // `isProtocolEnvelope` validates only namespace and kind, and these
-        // values become Sentry tags: gate them so a buggy frame cannot write
-        // unbounded tag values through the compile-time-only narrowing.
+        // These become Sentry tags and the envelope check covers only namespace and kind, so a buggy
+        // frame could otherwise write unbounded tag values.
         {
           const chain: string = msg.chain;
           const outcome: string = msg.outcome;
@@ -443,34 +402,25 @@ function createRequestId(): string {
 }
 
 const IFRAME_LOAD_TIMEOUT_MS = 30_000;
-// The iframe signals "ready" only after the SharedWorker pre-syncs the
-// chain. This must exceed `TIMEOUTS.SHARED_WORKER_READY` so the outer wait
-// doesn't race the inner presync.
+// Ready follows the SharedWorker presync, so this must exceed `TIMEOUTS.SHARED_WORKER_READY`.
 const IFRAME_READY_TIMEOUT_MS = 240_000;
-// NO automatic retries. The user picked this protocol path. If the iframe
-// load fails the cause must surface immediately so the user (or a
-// higher-level UI affordance) can decide whether to retry.
+// No automatic retries. A failed load surfaces at once so the user can decide whether to retry.
 
 function createHostIframe(): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    // Cleared here rather than on the teardown path. `resetProtocolFrameState`
-    // runs synchronously inside the `fatal` arm, ahead of the microtask that
-    // rejects the host's pending resolve, so clearing there would strip the
-    // tags from exactly the failures they exist to explain.
+    // Not cleared on teardown, which runs inside the `fatal` arm before the host's pending rejection
+    // and would strip the tags from the very failures they explain.
     smoldotDbOutcomes.clear();
     const iframe = document.createElement('iframe');
     const params = new URLSearchParams();
-    // Fall back to the stored Backend when the async
-    // setProtocolSubMode() has not run yet.
+    // The async setProtocolSubMode() may not have run yet.
     const mode: ProtocolSubMode = protocolSubMode ?? backendToSubMode(getBackend());
     params.set('mode', mode);
     params.set('network', getNetwork());
     if (protocolSkipWorkerCache) {
       params.set('skipWorkerCache', '1');
     }
-    // Carried on the URL rather than posted after load: the iframe boots its
-    // own Sentry client and starts emitting before any handshake completes, so
-    // an id that arrived by message would miss that first window.
+    // On the URL, not posted after load, because the iframe's Sentry client emits before any handshake.
     const resolutionId = getResolutionId();
     if (resolutionId !== null) {
       params.set('resolutionId', resolutionId);
@@ -481,32 +431,35 @@ function createHostIframe(): Promise<void> {
     iframe.tabIndex = -1;
     iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
 
-    const timer = setTimeout(() => {
+    const fail = (reason: Error): void => {
       cleanup();
       iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
+      reject(reason);
+    };
+    const timer = setTimeout(() => {
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
       cleanup();
-      protocolIframe = iframe;
       resolve();
     };
 
     const onError = (): void => {
-      cleanup();
-      iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
     };
 
     function cleanup(): void {
       clearTimeout(timer);
+      cancelFrameLoad = null;
       iframe.removeEventListener('load', onLoad);
       iframe.removeEventListener('error', onError);
     }
 
     iframe.addEventListener('load', onLoad, { once: true });
     iframe.addEventListener('error', onError, { once: true });
+    cancelFrameLoad = fail;
+    protocolIframe = iframe;
     document.body.appendChild(iframe);
   });
 }
@@ -514,18 +467,24 @@ function createHostIframe(): Promise<void> {
 async function ensureHostFrame(): Promise<void> {
   bindMessageListener();
 
-  if (protocolIframe?.contentWindow) {
-    return;
-  }
-
   if (hostFramePromise) {
     return hostFramePromise;
   }
 
+  if (protocolIframe?.contentWindow) {
+    return;
+  }
+
+  const generation = frameGeneration;
   hostFramePromise = (async () => {
     try {
       await createHostIframe();
     } catch (error: unknown) {
+      // A reset already settled this generation; its catch must not tear
+      // down a replacement frame that a caller has just started.
+      if (generation !== frameGeneration) {
+        throw error;
+      }
       m.count(S.PROTOCOL_IFRAME_READY, {
         outcome: 'error',
         phase: 'load',
@@ -535,8 +494,7 @@ async function ensureHostFrame(): Promise<void> {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Host iframe load failed:', error);
-      resetProtocolFrameState();
-      hostFramePromise = null;
+      resetProtocolFrameState(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   })();
@@ -577,7 +535,11 @@ function waitForProtocolReady(): Promise<void> {
 }
 
 export async function ensureProtocolFrame(): Promise<void> {
+  const generation = frameGeneration;
   await ensureHostFrame();
+  if (generation !== frameGeneration) {
+    throw new Error(PROTOCOL_ERRORS.FRAME_RESET);
+  }
 
   if (protocolReady) {
     return;
@@ -592,11 +554,7 @@ export async function ensureProtocolFrame(): Promise<void> {
     try {
       await waitForProtocolReady();
     } catch (error: unknown) {
-      // Do NOT auto-retry. The SharedWorker no longer retries its own
-      // presync either (see protocol-shared-worker.ts), so this failure
-      // surfaces the actual cause to the caller without silent recovery.
-      // The cached promise is released so an explicit user action (e.g.
-      // "Change settings") can try again.
+      // No auto-retry, so the real cause surfaces. Releasing the cached promise lets the user try again.
       m.count(S.PROTOCOL_IFRAME_READY, {
         phase: 'ready',
         outcome: 'error',
@@ -606,8 +564,10 @@ export async function ensureProtocolFrame(): Promise<void> {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Ready wait failed:', error);
-      protocolReadyPromise = null;
-      protocolReadyWaitFailed = true;
+      if (generation === frameGeneration) {
+        protocolReadyPromise = null;
+        protocolReadyWaitFailed = true;
+      }
       throw error;
     }
   })();
@@ -625,7 +585,11 @@ async function postRequest<M extends ProtocolRequestMethod>(
     method !== 'coreCustody' &&
     method !== 'walletOwner',
 ): Promise<unknown> {
+  const generation = frameGeneration;
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
+  if (generation !== frameGeneration) {
+    throw new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', method);
+  }
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
     throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
@@ -779,7 +743,6 @@ export async function resolveExecutableManifestRemote(
   })) as ManifestResult<ExecutableManifest>;
 }
 
-/** Remote proxy for the root-manifest reader. */
 export async function resolveRootManifestRemote(label: string): Promise<ManifestResult<RootManifest>> {
   return (await postResolverRequest('resolveRootManifest', {
     label,
@@ -833,8 +796,8 @@ export async function requestWalletOwner(operation: WalletOwnerOperation): Promi
   return typeof result === 'string' ? result : undefined;
 }
 
-/** Another tab asked for the test wallet this page runs. */
-export function subscribeWalletOwnerRevoked(listener: (lease: string) => void): () => void {
+/** Stop signing before releasing a lease, or before its owning frame is removed. */
+export function subscribeWalletOwnerRevoked(listener: (lease: string | undefined) => void): () => void {
   walletOwnerRevokedListeners.add(listener);
   return () => {
     walletOwnerRevokedListeners.delete(listener);
@@ -877,12 +840,7 @@ export async function compareExchangeSharedAuthStorage(
   return result;
 }
 
-/**
- * Shared mode storage lives on `host.<BASE_DOMAIN>` so the user's backend
- * and cache preferences travel with them across every subdomain of the
- * registrable root. Reads return `null` when the key has never been
- * written (caller decides the default).
- */
+/** Lives on `host.<BASE_DOMAIN>` so backend and cache preferences follow the user across subdomains. */
 export async function readSharedModeStorage(siteId: SiteId, key: string): Promise<string | null> {
   return (await postRequest('modeStorageRead', { siteId, key })) as string | null;
 }
@@ -896,22 +854,12 @@ export async function clearSharedModeStorage(siteId: SiteId, key: string): Promi
 }
 
 /**
- * Subscribe to cross-tab shared auth storage changes.
- *
- * Writes and clears performed by *sibling tabs* of the same root domain (e.g.
- * another `*.dot.li` tab) arrive here as notifications. The originating tab
- * does NOT receive its own writes via this channel. It already emits to local
- * listeners inline when its own `write`/`clear` resolves.
- *
- * Ensures the host iframe is created so it can relay `BroadcastChannel`
- * notifications from sibling host iframes. The returned function unsubscribes.
+ * Hears shared-auth writes from sibling tabs of the same root domain, relayed by the host iframe
+ * over `BroadcastChannel`. A tab's own writes do not arrive here.
  */
 export function subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
   sharedAuthListeners.add(listener);
-  // Best-effort iframe warm-up so the relay path is live. We intentionally
-  // don't await or surface errors. The caller's subscribe contract is
-  // synchronous, and the iframe will be lazily (re)created on the next
-  // explicit request if this warm-up fails.
+  // Not awaited, since subscribe is synchronous. A failed warm-up is retried by the next request.
   void ensureHostFrame().catch((error: unknown) => {
     log.warn('[dot.li protocol] Failed to ensure host frame for shared auth subscription:', error);
   });
@@ -920,13 +868,7 @@ export function subscribeSharedAuthStorage(listener: SharedAuthStorageListener):
   };
 }
 
-/**
- * Subscribe to what the chains report about their sync.
- *
- * Events arrive only after the origin- and source-gated message listener
- * validates the envelope, so callers never see spoofable raw messages.
- * Returns an unsubscribe function.
- */
+/** Events arrive only after the origin- and source-gated listener validates them. */
 export function onProtocolChainSync(listener: (event: ProtocolChainSyncEnvelope) => void): () => void {
   bindMessageListener();
   chainSyncListeners.add(listener);
@@ -935,29 +877,17 @@ export function onProtocolChainSync(listener: (event: ProtocolChainSyncEnvelope)
   };
 }
 
-/**
- * Whether a protocol frame is up: it has signalled ready and not been reset or
- * died since. Does not start a frame, so a consumer that must not boot one on
- * its own can check before it dials.
- */
+/** Whether a frame signalled ready and has not been reset or died since. Does not start a frame. */
 export function isProtocolReady(): boolean {
   return protocolReady;
 }
 
-/**
- * Whether a protocol frame is on its way up: one has been started, and since
- * then has not signalled ready, been reset or died, nor had its ready wait
- * time out or fail. A dial now waits on that frame rather than booting
- * another. Does not start a frame.
- */
+/** Whether a started frame is still on its way up, so a dial now waits on it. Does not start a frame. */
 export function isProtocolBooting(): boolean {
   return !protocolReady && !protocolReadyWaitFailed && (hostFramePromise !== null || protocolReadyPromise !== null);
 }
 
-/**
- * Subscribe to each time the protocol frame comes up. Does not start a frame.
- * Returns an unsubscribe function.
- */
+/** Fires each time the frame comes up. Does not start a frame. */
 export function onProtocolReady(listener: () => void): () => void {
   bindMessageListener();
   protocolReadyListeners.add(listener);
@@ -966,7 +896,6 @@ export function onProtocolReady(listener: () => void): () => void {
   };
 }
 
-/** Subscribe to per-chain telemetry facts from the light client. */
 export function onProtocolChainDetail(listener: (event: ProtocolChainDetailEnvelope) => void): () => void {
   bindMessageListener();
   chainDetailListeners.add(listener);
@@ -975,7 +904,6 @@ export function onProtocolChainDetail(listener: (event: ProtocolChainDetailEnvel
   };
 }
 
-/** Subscribe to the running byte total of the light client. */
 export function onProtocolNetBytes(listener: (event: ProtocolNetBytesEnvelope) => void): () => void {
   bindMessageListener();
   netBytesListeners.add(listener);
@@ -985,11 +913,8 @@ export function onProtocolNetBytes(listener: (event: ProtocolNetBytesEnvelope) =
 }
 
 /**
- * Whether a connection to this chain can actually be served.
- *
- * Wider than `isRemoteChainSupported`: the advertised set is curated for
- * dApps, while Bulletin stays connectable in gateway mode so the network
- * panel can watch its blocks over the configured RPC.
+ * Wider than the advertised `isRemoteChainSupported`, since gateway mode keeps Bulletin connectable for bitswap's
+ * content fetches through the frame.
  */
 export function isRemoteChainConnectable(genesisHash: string): boolean {
   const supported =
@@ -998,16 +923,13 @@ export function isRemoteChainConnectable(genesisHash: string): boolean {
 }
 
 export function isRemoteChainSupported(genesisHash: string): boolean {
-  // Advertise only what the *active* backend can actually serve. Gateway mode
-  // bridges a curated RPC subset, while smoldot can run any configured chain.
+  // Gateway mode bridges a curated RPC subset, while smoldot can run any configured chain.
   const supported =
     getBackend() === 'rpc-gateway' ? getActiveGatewaySupportedGenesisHashes() : getActiveSupportedGenesisHashes();
   return supported.has(genesisHash.toLowerCase());
 }
 
-/**
- * Notification-style requests (no `id`) get `null`, nothing to respond to.
- */
+/** `null` for a notification, which has no `id` to answer. */
 function buildJsonRpcError(
   request: JsonRpcRequest,
   error: string | ReturnType<typeof chainHaltedError>,
@@ -1022,7 +944,7 @@ function buildJsonRpcError(
   };
 }
 
-/** Call one of a remote connection's consumer callbacks; one that throws is logged. */
+/** A consumer callback that throws is logged, not propagated. */
 function guardConsumer(connectionId: string, label: string, call: () => void): void {
   try {
     call();
@@ -1034,11 +956,7 @@ function guardConsumer(connectionId: string, label: string, call: () => void): v
   }
 }
 
-/**
- * Tell one remote connection its chain is gone, once; a throwing listener is
- * logged. What it had not sent yet is answered as the broker answers what it
- * had: a halted chain as one to retry on the next connect, a dead frame not.
- */
+/** Unsent messages get the retryable halt error on a chain halt, and a plain close error on a dead frame. */
 function haltRemote(connectionId: string, connection: RemoteChainConnection, reason: RemoteChainHalt): void {
   for (const message of connection.pendingMessages) {
     const errResponse = buildJsonRpcError(
@@ -1058,21 +976,15 @@ function haltRemote(connectionId: string, connection: RemoteChainConnection, rea
 }
 
 /**
- * A remote chain provider. Its connections may also hear `onHalt`, once, with
- * the reason:
+ * A remote chain provider whose connections may hear `onHalt` once:
  *
- * - `'chain'`: the chain behind the connection halted, and is rebuilt on the
- *   next connect. By then each request the chain had in flight, and each one
- *   not yet sent, has an error whose `data` is `CHAIN_HALTED_ERROR_DATA`, and
- *   each follow its `stop`.
- * - `'frame'`: the protocol frame died, or none came up for this connection,
- *   or it refused the connection. Only the requests not yet sent are
- *   answered, with `Chain connection is closed`. Requests already sent are
- *   not, so a consumer without `onHalt` may wait on them forever.
+ * - `'chain'`: the chain halted and is rebuilt on the next connect. Every request in flight or unsent
+ *   gets an error with `CHAIN_HALTED_ERROR_DATA`, and every follow its `stop`.
+ * - `'frame'`: the frame died, never came up or refused the connection. Only unsent requests are
+ *   answered, so a consumer without `onHalt` may wait on the rest forever.
  *
- * Either way, later sends fail with `Chain connection is closed`. An answer
- * can still reach the consumer after `onHalt`, from a chain message already
- * on its way; it should be ignored.
+ * Later sends fail with `Chain connection is closed`. A message already on its way may still arrive
+ * after `onHalt` and should be ignored.
  */
 export type RemoteChainProvider = (
   onMessage: (message: JsonRpcMessage) => void,
@@ -1092,6 +1004,7 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
 
   return (onMessage, onHalt): JsonRpcConnection => {
     const connectionId = createRequestId();
+    const generation = frameGeneration;
     const remote: RemoteChainConnection = {
       onMessage,
       onHalt: onHalt ?? null,
@@ -1114,7 +1027,9 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         // frame now that the connect settled, not before, or the frame would
         // keep a connection opened after its disconnect.
         if (!isOpen()) {
-          postDisconnect(connectionId);
+          if (generation === frameGeneration) {
+            postDisconnect(connectionId);
+          }
           return;
         }
         remote.connected = true;
@@ -1138,11 +1053,8 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         if (!isOpen()) {
           return;
         }
-        // No frame came up, or it refused the connection. Either way the
-        // connection is as dead as one whose frame died, and halts the same
-        // way, so a consumer that caches it drops it instead of sending on it
-        // for good. Removed first, as the other halts do: a send made while
-        // the halt is being heard is answered at once, not queued and lost.
+        // Halts like a dead frame so a caching consumer drops it. Removed first so a send made during
+        // the halt is answered at once, not queued and lost.
         log.error('[dot.li protocol] Failed to connect remote chain:', error);
         chainConnections.delete(connectionId);
         haltRemote(connectionId, remote, 'frame');
@@ -1151,8 +1063,6 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
     return {
       send(message) {
         if (!isOpen()) {
-          // Connection was removed (failed or disconnected).
-          // Respond with an error so the caller doesn't hang.
           const errResponse = buildJsonRpcError(message, 'Chain connection is closed');
           if (errResponse !== null) {
             onMessage(errResponse);

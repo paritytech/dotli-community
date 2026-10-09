@@ -1,14 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Whether the loaded product declares chat support, read from the worker
-// executable manifest's `includes.chat` on `worker.<label>.<tld>`.
-//
-// The host shell primes this before rendering so the TrUAPI bridge can
-// pick the product connection's execution kind ("Chat" vs "Spa") when it
-// creates the provider, and the topbar can gate the chat button. The last
-// resolved value is cached in localStorage per label so warm loads (cached
-// CID) do not stall provider creation on a dotNS text-record read.
+// Whether the product declares `includes.chat` in its worker manifest. The bridge picks the connection's
+// execution kind from it, so the last value is cached per label to keep warm loads off a dotNS read.
 
 import { log } from './log.js';
 
@@ -37,7 +31,7 @@ function readCache(label: string): boolean | null {
 function writeCache(label: string, value: boolean): void {
   try {
     localStorage.setItem(`${CACHE_PREFIX}${label}`, value ? '1' : '0');
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode); only the warm-start shortcut is lost.
+    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable in private mode, which only loses the warm-start shortcut.
   } catch {
     /* capability still resolves for this load */
   }
@@ -55,12 +49,8 @@ function announce(label: string, chat: boolean): void {
 }
 
 /**
- * Prime the capability for the product being rendered. The cached value
- * answers immediately when present; `resolve` always runs to refresh the
- * cache, so a stale cache corrects itself on the next load. Within one load
- * every answer and announcement sticks to the same value, since the bridge
- * fixes the connection's execution kind from the first answer and a fresher
- * one cannot retroactively change what that connection can do.
+ * Prime the capability, answering from cache when present while `resolve` refreshes it for the next load.
+ * The first answer sticks for the whole load, because the bridge fixes the execution kind from it.
  */
 export function primeChatCapability(label: string, resolve: () => Promise<boolean>): void {
   activeLabel = label;
@@ -72,8 +62,7 @@ export function primeChatCapability(label: string, resolve: () => Promise<boolea
       return cached ?? value;
     },
     (err: unknown) => {
-      // An unreadable manifest means no chat this load; keep any cached
-      // value for the next one rather than overwriting it with a failure.
+      // Keep the cached value for the next load rather than overwriting it with a failure.
       log.child({ flow: 'chat' }).warn('[dot.li chat] worker manifest unreadable, chat is off for this load:', err);
       announce(label, cached ?? false);
       return cached ?? false;
@@ -92,10 +81,7 @@ export function setChatCapability(label: string, chat: boolean): void {
   announce(label, chat);
 }
 
-/**
- * Capability for `label`, resolving `false` when nothing was primed or a
- * different product is active.
- */
+/** Resolves `false` when nothing was primed or a different product is active. */
 export function chatCapabilityFor(label: string): Promise<boolean> {
   if (activeLabel !== label || activePromise === null) {
     return Promise.resolve(false);
@@ -103,7 +89,6 @@ export function chatCapabilityFor(label: string): Promise<boolean> {
   return activePromise;
 }
 
-/** Reset module state (tests only). */
 export function resetChatCapabilityForTests(): void {
   activeLabel = null;
   activePromise = null;

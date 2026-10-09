@@ -37,7 +37,6 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
  * the scrim cannot dismiss, as its Cancel (or else its danger reject) does.
  */
 export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
-  // The outlet re-creates this component per entry (keyed), so reading once is intended.
   // eslint-disable-next-line solid/reactivity -- keyed entry, read once
   const { id, view } = props.entry;
   const titleId = `overlay-modal-title-${String(id)}`;
@@ -86,8 +85,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
     }
   };
 
-  // Close always answers: the scrim's answer where it has one, else Cancel,
-  // else the danger reject, so no prompt shape leaves a dead button.
+  // Close always answers, so no prompt shape leaves a dead button.
   const close = (): void => {
     if (view.dismissOnBackdrop && view.dismissResult !== undefined) {
       settleModal(id, view.dismissResult);

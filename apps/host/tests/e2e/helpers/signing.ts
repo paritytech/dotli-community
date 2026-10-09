@@ -5,16 +5,18 @@ import { expect, type Page, type Frame, type Locator } from '@playwright/test';
 
 type PageLike = Page | Frame;
 
-/**
- * Click run-<testId>, click through dot.li's host-side dialogs, and wait for
- * the log entry to resolve. The signing-host CLI signs automatically once
- * the SignRequest hits the Statement Store.
- */
+/** A test authorizes a specific kind of host review, never any matching button on the page. */
+export interface HostDialogDecision {
+  title: string;
+  button: string;
+}
+
+/** The signing-host CLI signs once the SignRequest reaches the Statement Store, so only host dialogs need clicks. */
 export async function runWebSignedTest(
   hostPage: Page,
   productFrame: PageLike,
   testId: string,
-  dialogButtons: readonly string[],
+  dialogs: readonly HostDialogDecision[],
   opts: { timeoutMs?: number; preClickDelayMs?: number } = {},
 ): Promise<'success' | 'error'> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
@@ -35,17 +37,20 @@ export async function runWebSignedTest(
 
   const dialogController = new AbortController();
   const dialogTask =
-    dialogButtons.length > 0
-      ? clickHostDialogs(hostPage, dialogButtons, 60_000, preClickDelayMs, dialogController.signal).catch(() => {})
+    dialogs.length > 0
+      ? clickHostDialogs(hostPage, dialogs, 60_000, preClickDelayMs, dialogController.signal)
       : Promise.resolve();
 
-  const result = await waitForLogResult(entries, initialCount, testId, timeoutMs);
-  dialogController.abort();
-  await dialogTask;
+  const resultTask = waitForLogResult(entries, initialCount, testId, timeoutMs);
+  let result: 'success' | 'error';
+  try {
+    result = await Promise.race([resultTask, dialogTask.then(() => resultTask)]);
+  } finally {
+    dialogController.abort();
+    await dialogTask;
+  }
   if (result === 'error') {
-    // On failure, dump the visible buttons on the host page. Invaluable for
-    // diagnosing modal selector mismatches when the signer signs but
-    // Playwright can't find the Allow/Sign button to click.
+    // Shows a dialog selector mismatch, where the signer signed but no Allow or Sign button was found.
     const visibleButtons = await hostPage
       .locator('button:visible')
       .evaluateAll(els => els.map(e => e.textContent.trim().slice(0, 60)).filter(Boolean))
@@ -55,38 +60,26 @@ export async function runWebSignedTest(
   return result;
 }
 
-/**
- * Drive dot.li host-side dialogs through their lifecycle. Different operations
- * may show permission ("Allow") and confirmation ("Sign") dialogs in sequence.
- *
- * Strategy: poll for any of `buttonNames` to be visible. When one is, click
- * it. Keep polling until either no expected button has appeared for
- * `idleStopMs` (the flow has settled) or `timeoutMs` runs out. This handles
- * variable orderings and multiple sequential dialogs without needing the
- * caller to know the exact sequence.
- */
+/** Handles only the current test's declared reviews until its result or the existing dialog deadline. */
 async function clickHostDialogs(
   page: Page,
-  buttonNames: readonly string[],
+  dialogs: readonly HostDialogDecision[],
   timeoutMs: number,
   preClickDelayMs: number,
   signal: AbortSignal,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  const idleStopMs = 5_000; // declare done if no button appears for this long
-  let lastSeenAt = Date.now();
   const seen = new Set<string>();
+  // Re-read cancellation after awaits rather than narrowing a mutable signal to false.
+  const stopped = (): boolean => signal.aborted;
 
-  while (!signal.aborted && Date.now() < deadline) {
-    if (Date.now() - lastSeenAt > idleStopMs && seen.size > 0) {
-      // We've handled at least one dialog and nothing new has shown for a
-      // while, so assume the flow has moved past the modal phase.
-      return;
-    }
-
+  while (!stopped() && Date.now() < deadline) {
     let clickedThisPass = false;
-    for (const name of buttonNames) {
-      const btn = page.getByRole('button', { name, exact: true }).first();
+    for (const { title, button: name } of dialogs) {
+      const btn = page
+        .getByTestId('signing-modal')
+        .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+        .getByRole('button', { name, exact: true });
       const visible = await btn.isVisible({ timeout: 250 }).catch(() => false);
       if (!visible) {
         continue;
@@ -96,22 +89,14 @@ async function clickHostDialogs(
         console.log(`[signed] dialog "${name}" visible — pausing ${String(preClickDelayMs)}ms before click`);
         await page.waitForTimeout(preClickDelayMs);
       }
-      // The fixture's auto-allow poller clicks lasting-grant buttons too, and
-      // can close this modal during the pause. An unbounded click would then
-      // wait for a button that never returns and never reach the next dialog
-      // (e.g. "Sign"), so bound it and let the next pass move on.
+      if (stopped()) {
+        return;
+      }
       console.log(`[signed] dialog "${name}" — clicking`);
-      await btn.click({ timeout: 2_000 }).catch((e: unknown) => {
-        if (!signal.aborted) {
-          const reason = e instanceof Error ? e.message : String(e);
-          console.log(`[signed] dialog "${name}" click skipped: ${reason}`);
-        }
-      });
-      seen.add(name);
-      lastSeenAt = Date.now();
+      await btn.click({ timeout: 2_000 });
+      seen.add(`${title}: ${name}`);
       clickedThisPass = true;
-      // Brief pause to let the modal close before polling again, otherwise
-      // we'd see the same button still visible on the next iteration.
+      // Lets the modal close, or the next pass sees the same button.
       await page.waitForTimeout(500);
     }
 
@@ -120,11 +105,11 @@ async function clickHostDialogs(
     }
   }
 
-  if (signal.aborted) {
+  if (stopped()) {
     return;
   }
   if (seen.size === 0) {
-    console.log(`[signed] no host dialog appeared (looked for: ${buttonNames.join(', ')})`);
+    console.log(`[signed] no host dialog appeared (looked for: ${dialogs.map(({ title }) => title).join(', ')})`);
   } else {
     console.log(`[signed] dialog budget exhausted after seeing: ${[...seen].join(', ')}`);
   }

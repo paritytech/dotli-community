@@ -159,6 +159,19 @@ describe('Seity contacts references', () => {
     expect(drawer()?.querySelector('[data-testid="mood-ring"]')).toBeNull();
   });
 
+  it('removes a mood that expires while its drawer remains open without removing the photo', async () => {
+    const expiresAt = VECTOR.expect.mood.setAt + VECTOR.expect.mood.ttlSecs;
+    vi.setSystemTime((expiresAt - 60) * 1000);
+    await createProfilePlatform().presentProfile(product, { reference: VECTOR.reference });
+    await settle();
+    expect(drawer()?.querySelector('[data-testid="mood-ring"]')).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(drawer()?.querySelector('[data-testid="mood-ring"]')).toBeNull();
+    expect(drawer()?.querySelector('[data-testid="profile-drawer-mood"]')?.textContent).toBe('');
+    expect(drawer()?.querySelector('img')).not.toBeNull();
+  });
+
   it('reads the slot over the gateway RPC on the Trusted Providers backend', async () => {
     mocks.backend = 'rpc-gateway';
     mocks.resolveSeitySlotViaRpc.mockResolvedValue({

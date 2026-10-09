@@ -58,7 +58,7 @@ describe('describeNetworkStatus under a light client', () => {
     expect(line).toEqual({
       tone: 'warn',
       title: 'Connection is unstable',
-      detail: 'Hub and Identity are short on peers',
+      detail: 'Hub and Identity are behind',
     });
   });
 
@@ -70,7 +70,7 @@ describe('describeNetworkStatus under a light client', () => {
     const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
 
     // Then
-    expect(line.detail).toBe('Hub is short on peers');
+    expect(line.detail).toBe('Hub is behind');
   });
 
   it('As a user who went offline, the menu says so whatever the chains last reported', () => {
@@ -103,7 +103,7 @@ describe('describeNetworkStatus under a light client', () => {
     const line = describeNetworkStatus(health, false, 4, 'smoldot-shared-worker');
 
     // Then
-    expect(line.detail).toBe('Hub is short on peers');
+    expect(line.detail).toBe('Hub is behind');
   });
 });
 
@@ -168,6 +168,23 @@ describe('describeNetworkStatus under trusted providers', () => {
       tone: 'err',
       title: 'You are offline',
       detail: 'Trusted providers are out of reach. Retrying.',
+    });
+  });
+});
+
+describe('describeNetworkStatus with nothing in use', () => {
+  it('As a user whose app holds no chain, the menu says none is in use', () => {
+    // Given
+    const verdict: LiveVerdict = { text: 'Not in use', tone: 'quiet' };
+
+    // When
+    const line = describeNetworkStatus(verdict, false, 0, 'smoldot-direct');
+
+    // Then
+    expect(line).toEqual({
+      tone: 'quiet',
+      title: 'No chains in use',
+      detail: 'Chains appear here once the app connects to them.',
     });
   });
 });

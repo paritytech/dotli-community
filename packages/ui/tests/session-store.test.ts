@@ -11,6 +11,7 @@ import {
   emitPersistedSessionUiState,
   exportLocalWalletMnemonic,
   importLocalWalletMnemonic,
+  initializeSessionMode,
   LOCAL_WALLET_ENABLED_KEY,
   onStoredSessionChanged,
   readLocalWalletDisplay,
@@ -19,6 +20,8 @@ import {
   writeUiStateCache,
 } from '../src/host-callbacks/SessionStore.js';
 import { createAuthStateChanged } from '../src/host-callbacks/AuthState.js';
+import { getAuthState } from '../src/state/auth.js';
+import { resetAllStoresForTests } from '../src/state/create-store.js';
 import type { CoreStorage, CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import { must } from './support.js';
 import type { CoreCustodyOperation, SharedWalletOperation, SharedWalletState } from '@dotli/protocol';
@@ -84,8 +87,7 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
-// The core reports these as `Bytes32` (hex), so the UI state carries them
-// through unchanged rather than encoding them.
+// The core reports these as `Bytes32` hex, so the UI state carries them through unencoded.
 const SESSION_PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f' as const;
 const SESSION_IDENTITY_ACCOUNT_ID = '0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf' as const;
 
@@ -136,6 +138,8 @@ describe('session-store host callbacks', () => {
     sharedAuth.listeners.clear();
     sharedAuth.walletError = undefined;
     vi.restoreAllMocks();
+    // A fresh page starts Restoring until persisted Mobile state is read.
+    resetAllStoresForTests();
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
       value: {
@@ -159,23 +163,31 @@ describe('session-store host callbacks', () => {
     });
   });
 
-  it('does not report restoration failure before a wallet is configured', async () => {
-    // Given
-    buildFlags.debug = true;
-    sharedAuth.walletError = new Error('shared wallet unavailable');
+  describe.each([
+    { label: 'page core', initialize: initializeSessionMode },
+    { label: 'persisted UI', initialize: emitPersistedSessionUiState },
+  ])('$label session mode', ({ initialize }) => {
+    it('does not make an unconfigured debug wallet a dependency of Mobile', async () => {
+      buildFlags.debug = true;
+      sharedAuth.walletError = new Error('shared wallet unavailable');
+      await expect(initialize()).resolves.toBeUndefined();
+      // Tolerating an unused wallet must not bypass custody's strict restore.
+      await expect(readLocalWalletSecret()).rejects.toThrow('shared wallet unavailable');
+    });
 
-    // When / Then
-    await expect(emitPersistedSessionUiState()).resolves.toBeUndefined();
-  });
+    it('preserves restoration failures for a configured wallet', async () => {
+      buildFlags.debug = true;
+      localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, '1');
+      sharedAuth.walletError = new Error('shared wallet unavailable');
+      await expect(initialize()).rejects.toThrow('shared wallet unavailable');
+    });
 
-  it('preserves restoration failures for a configured wallet', async () => {
-    // Given
-    buildFlags.debug = true;
-    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, '1');
-    sharedAuth.walletError = new Error('shared wallet unavailable');
-
-    // When / Then
-    await expect(emitPersistedSessionUiState()).rejects.toThrow('shared wallet unavailable');
+    it('does not fall back to Mobile after a wallet conflict', async () => {
+      buildFlags.debug = true;
+      sharedAuth.walletError = new Error('shared wallet changed');
+      sharedAuth.walletError.name = 'WalletConflictError';
+      await expect(initialize()).rejects.toThrow('shared wallet changed');
+    });
   });
 
   it('As a dotli integrator, the host round-trips the host core session blob', async () => {
@@ -645,7 +657,7 @@ describe('session-store host callbacks', () => {
       await expect(exportLocalWalletMnemonic()).rejects.toThrow();
       await expect(importLocalWalletMnemonic('abandon '.repeat(11) + 'about')).rejects.toThrow();
       await emitPersistedSessionUiState();
-      expect(events).toEqual([]);
+      expect(events).toEqual([{ tag: 'Disconnected' }]);
       buildFlags.debug = true;
       const restored = await readLocalWalletSecret();
       expect(Array.from(restored ?? [])).toEqual(expected);
@@ -953,19 +965,20 @@ describe('session-store host callbacks', () => {
       events.push((event as CustomEvent).detail);
     });
 
-    // Nothing persisted: nothing emitted, even with a stale cache entry.
+    // Nothing persisted: signed out, even with a stale cache entry.
     sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     await emitPersistedSessionUiState();
-    expect(events).toEqual([]);
+    expect(events).toEqual([{ tag: 'Disconnected' }]);
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
-    // When
+    // When: a login persists the session, then a reload reads it back.
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     authStateChanged({
       tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
+    resetAllStoresForTests();
     events.length = 0;
 
     await emitPersistedSessionUiState();
@@ -1176,6 +1189,7 @@ describe('session-store host callbacks', () => {
       await writeUiStateCache({ connected: false });
       expect(readLocalWalletDisplay()).toBeUndefined();
       await setLocalWalletEnabled(false);
+      resetAllStoresForTests();
       window.addEventListener('dotli:truapi-auth-state', onAuth);
       await emitPersistedSessionUiState();
       expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
@@ -1183,6 +1197,38 @@ describe('session-store host callbacks', () => {
       window.removeEventListener('dotli:truapi-auth-state', onAuth);
       await deleteLocalWalletSecret();
     }
+  });
+
+  it('As a visitor without a saved session, boot ends the unknown state as signed out', async () => {
+    // When
+    await emitPersistedSessionUiState();
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
+  });
+
+  it('As a user pairing before boot read the saved session, finding none leaves my pairing alone', async () => {
+    // Given
+    createAuthStateChanged('myapp')({ tag: 'Pairing', value: { deeplink: 'polkadotapp://pair' } });
+
+    // When
+    await emitPersistedSessionUiState();
+
+    // Then
+    expect(getAuthState().tag).toBe('Pairing');
+  });
+
+  it('As a user whose session the core already reported, the saved copy read later does not override it', async () => {
+    // Given
+    const storage = createSessionStoreAdapters();
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    createAuthStateChanged('myapp')({ tag: 'Disconnected' });
+
+    // When
+    await emitPersistedSessionUiState();
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
   });
 
   it('As a dotli integrator, the host rehydrates a bare connected state when no cache exists', async () => {

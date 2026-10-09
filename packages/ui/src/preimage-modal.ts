@@ -24,7 +24,6 @@ export async function showPreimageSubmitModal(
   buttons.push({ label: 'Allow once', variant: 'primary', result: 'AllowOnce' });
   const { result } = await presentModal<PermissionDecision>(
     {
-      // The same upload glyph as the PreimageSubmit permission.
       icon: iconMarkup(PERMISSION_ICONS.PreimageSubmit),
       title: 'Submit Preimage',
       fields: [

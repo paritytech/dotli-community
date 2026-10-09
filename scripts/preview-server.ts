@@ -1,21 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//
-// Unified preview server for perf tests.
-// Routes by hostname to serve all builds from a single port:
-//   host.localhost:PORT   ->  dist/protocol/
-//   *.app.localhost:PORT  ->  dist/app/
-//   *.localhost:PORT      ->  dist/host/
-//
-// This mirrors production nginx routing where host.dot.li, *.app.dot.li,
-// and *.dot.li are served from separate builds.
+// Preview server for the Playwright suites: every build on one port, routed by hostname as nginx does.
 
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, extname } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
+import { MODE_SYNC_CORS, MODE_SYNC_PREFIX, handleModeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
 import { handleIdentityProxy, IDENTITY_PROXY_PREFIX } from './identity-proxy.ts';
 
@@ -26,12 +19,10 @@ const RUNTIME_CONFIG_PATH = '/dotli-network.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '5173', 10);
 const ROOT = join(import.meta.dirname, '..');
-// Monorepo layout: apps/host/dist/, apps/sandbox/dist/, apps/protocol/dist/
 const HOST_DIR = join(ROOT, 'apps/host/dist');
 const APP_DIR = join(ROOT, 'apps/sandbox/dist');
 const PROTOCOL_DIR = join(ROOT, 'apps/protocol/dist');
 
-// Verify builds exist. Warn for optional builds, exit for required ones.
 const REQUIRED_BUILDS = ['Host', 'App (sandbox)'] as const;
 for (const [label, dir] of [
   ['Host', HOST_DIR],
@@ -78,11 +69,8 @@ function serveFile(filePath: string, coep: boolean): Response | null {
     'Content-Type': mime,
     'Service-Worker-Allowed': '/',
     'Access-Control-Allow-Origin': '*',
-    // Loopback iframes across *.localhost subdomains (e.g. the protocol
-    // iframe at host.localhost loaded inside host-playground.localhost)
-    // are gated by Chrome's Private Network Access. Without this header
-    // the iframe never fires `load`, the protocol bridge handshake
-    // times out, and the pair flow can't surface the user-badge.
+    // Chrome's Private Network Access blocks loopback iframes across *.localhost subdomains without it, so the
+    // protocol bridge handshake times out.
     'Access-Control-Allow-Private-Network': 'true',
     'Cache-Control': 'no-cache',
   };
@@ -95,99 +83,14 @@ function serveFile(filePath: string, coep: boolean): Response | null {
   return new Response(body as BodyInit, { headers });
 }
 
-// Dev-only mode-sync store. Production puts mode preferences on the
-// `host.<BASE_DOMAIN>` iframe's localStorage (same-site iframes share
-// storage across *.dot.li subdomains). On localhost every subdomain is
-// its own site (the PSL lists `localhost`), so Chrome partitions the
-// iframe's localStorage per embedder and cross-subdomain sharing
-// breaks. This in-memory map gives the host shell a uniform store the
-// preview can hit from any subdomain, with no PSL and no partitioning.
-const modeStore = new Map<string, string>();
-const MODE_SYNC_PREFIX = '/__dotli-mode/';
-const MODE_SYNC_CORS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  // Chrome's Private Network Access gates cross-subdomain loopback
-  // requests (each `*.localhost` is its own site per PSL) and rejects
-  // them with "Permission was denied for this request to access the
-  // `loopback` address space" unless the server opts in. The mode-sync
-  // store is the cross-origin glue between the sandbox and the host
-  // shell, so without this header the host can't read its own auth /
-  // backend settings and every chain-dependent product call cascades
-  // into "Chain not supported" / disabled buttons.
-  'Access-Control-Allow-Private-Network': 'true',
-  'Access-Control-Max-Age': '600',
-  'Cache-Control': 'no-store',
-};
-
-// Both directions speak raw text. "No value" is HTTP 204, not a JSON
-// `null` body, which would force GET to disagree with PUT on encoding.
-// Bare URL (`/__dotli-mode/`) DELETE wipes everything. This is the
-// per-test reset used by Playwright fixtures.
-async function handleModeSync(req: Request, key: string): Promise<Response> {
-  const ok = (body: BodyInit | null, contentType?: string): Response => {
-    const headers: Record<string, string> = { ...MODE_SYNC_CORS };
-    if (contentType !== undefined) {
-      headers['Content-Type'] = contentType;
-    }
-    return new Response(body, { status: body === null ? 204 : 200, headers });
-  };
-  const empty = (status: number): Response => new Response(null, { status, headers: MODE_SYNC_CORS });
-
-  if (req.method === 'OPTIONS') {
-    return empty(204);
-  }
-
-  if (req.method === 'DELETE') {
-    if (key === '') {
-      modeStore.clear();
-    } else {
-      modeStore.delete(key);
-    }
-    return empty(204);
-  }
-
-  if (key === '') {
-    return new Response('Missing key', {
-      status: 400,
-      headers: MODE_SYNC_CORS,
-    });
-  }
-
-  if (req.method === 'GET') {
-    const value = modeStore.get(key);
-    return value === undefined ? empty(204) : ok(value, MIME['.txt']);
-  }
-  if (req.method === 'PUT') {
-    modeStore.set(key, await req.text());
-    return empty(204);
-  }
-  return new Response('Method not allowed', {
-    status: 405,
-    headers: MODE_SYNC_CORS,
-  });
-}
-
-// Dev-only Sentry sink, and the only way a test can observe what the
-// SharedWorker reports. Sentry is configured with `tunnel: "/t"`, so envelopes
-// are same-origin POSTs that land here instead of going to Sentry. Playwright
-// route interception is not an option: it covers pages and frames, and a
-// SharedWorker's requests are neither, which would hide the exact case
-// `network-transport.spec.ts` exists to check.
+// The Sentry tunnel sink, the only way a test can observe what the SharedWorker reports. Playwright route
+// interception misses SharedWorker requests.
 const METRICS_PATH = '/__dotli-metrics';
 const TUNNEL_PATH = '/t';
 const gaugePoints: { name: string; value: number; mode: string }[] = [];
 
-// A Sentry envelope is newline-delimited JSON: a header, then item
-// header/payload pairs. A malformed line must never turn into a non-200, or the
-// app under test starts behaving differently because it is being measured.
-//
-// Two shape details that are easy to get wrong. Metric NAMES carry the `dotli.`
-// prefix (`metrics.ts` adds it), but attribute KEYS do not: `mergeAttrs` passes
-// `setDefaults` keys through bare, and the `dotli.` prefix there applies only to
-// the Sentry tag mirror. And each attribute value is wrapped as
-// `{ value, type }` rather than being the bare value.
+// A malformed envelope line must never become a non-200, or measuring changes the app's behaviour. Metric names
+// carry the `dotli.` prefix but attribute keys do not, and attribute values are wrapped as `{ value, type }`.
 function readAttr(attrs: Record<string, unknown>, key: string): string | undefined {
   const wrapped = attrs[key] as { value?: unknown } | undefined;
   return typeof wrapped?.value === 'string' ? wrapped.value : undefined;
@@ -252,10 +155,7 @@ async function handle(req: Request): Promise<Response> {
     return handleModeSync(req, key);
   }
 
-  // Runtime network config, same path and same $DOTLI_NETWORK variable as the
-  // container. Must come before the static/SPA branches below: the fallback
-  // would answer with index.html, and a 200 of HTML where the injected
-  // <script> expects JavaScript fails as a syntax error, not a missing file.
+  // Ahead of the SPA fallback, whose index.html would fail as a script syntax error rather than a missing file.
   if (url.pathname === RUNTIME_CONFIG_PATH) {
     return new Response(runtimeNetworkConfigScriptBody(), {
       headers: {
@@ -270,37 +170,31 @@ async function handle(req: Request): Promise<Response> {
   const baseDir = isProtocol ? PROTOCOL_DIR : isApp ? APP_DIR : HOST_DIR;
   const fallback = 'index.html';
 
+  // As nginx does, the bare host's root is the landing page.
+  const isBare = !isProtocol && !isApp && !url.hostname.endsWith('.localhost');
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/') {
-    pathname = `/${fallback}`;
+    pathname = isBare ? '/landing.html' : `/${fallback}`;
   }
 
-  // Mirror nginx: COEP applies to the app and protocol builds (iframeable
-  // origins) and to the /__preview location on the host build, but not
-  // to the rest of the host build. Otherwise the /localhost:<port>
-  // proxy iframe gets blocked.
+  // As nginx does. COEP on the rest of the host build would block the /localhost:<port> proxy iframe.
   const coep = isApp || isProtocol || pathname.startsWith('/__preview');
 
-  // Try exact file
   const exact = join(baseDir, pathname);
   const res = serveFile(exact, coep);
   if (res) {
     return res;
   }
 
-  // Try directory index
   const res2 = serveFile(join(exact, 'index.html'), coep);
   if (res2) {
     return res2;
   }
 
-  // SPA fallback
   return serveFile(join(baseDir, fallback), coep) ?? new Response('Not Found', { status: 404 });
 }
 
-// node:http speaks IncomingMessage/ServerResponse; bridge them to the
-// fetch-style handler above. The URL takes its hostname from the Host header,
-// which is what the routing keys on.
+// The Request URL takes its hostname from the Host header, which the routing keys on.
 createServer((incoming, outgoing) => {
   void (async () => {
     const headers = new Headers();

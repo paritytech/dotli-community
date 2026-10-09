@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Focus and scroll helpers shared by the floating surfaces (floating/), the
-// modal layers (floating/ModalLayer.tsx) and the topbar's auto-hide
-// (topbar-autohide.ts). Solid-free.
+// Focus and scroll helpers for floating surfaces, modal layers and the topbar auto-hide. Solid-free.
 
 const TABBABLE = [
   'button:not([disabled])',
@@ -18,13 +16,11 @@ const TABBABLE = [
 export function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE))
     .filter(
-      // Match native tab order: unchecked radios are reached with arrow keys
-      // inside their group, not with Tab.
+      // Native tab order reaches unchecked radios with arrow keys, not Tab.
       el => !(el instanceof HTMLInputElement && el.type === 'radio' && !el.checked),
     )
     .filter(
-      // A negative tabindex leaves a control to arrow keys, as the options of
-      // a segmented control that are not pressed.
+      // A negative tabindex leaves a control to arrow keys, like unpressed segmented options.
       el => !(Number.parseInt(el.getAttribute('tabindex') ?? '0', 10) < 0),
     )
     .filter(
@@ -42,10 +38,8 @@ export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
     return;
   }
   const active = document.activeElement;
-  // By document position, not by index: the focus can sit on a control
-  // outside the Tab order (a tabindex -1 one, focused by a click or a
-  // script), and the browser tabs from there to the next stop after it,
-  // which may be outside.
+  // By document position, not index: focus can sit on a tabindex -1 control, and the browser
+  // tabs from there to the next stop after it, which may be outside.
   const side = ev.shiftKey ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING;
   const browserStaysInside =
     active !== null && surface.contains(active) && items.some(el => (active.compareDocumentPosition(el) & side) !== 0);
@@ -55,7 +49,7 @@ export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
   }
 }
 
-/** Focus the first element that takes focus; whether one did. */
+/** Focus the first element that takes focus, and report whether one did. */
 export function focusFirst(candidates: Iterable<HTMLElement | SVGElement>): boolean {
   for (const el of candidates) {
     el.focus();
@@ -66,12 +60,7 @@ export function focusFirst(candidates: Iterable<HTMLElement | SVGElement>): bool
   return false;
 }
 
-/**
- * Move focus into `surface` the way Radix's FocusScope does: the first of
- * `candidates` that takes focus (by default its tabbable controls, links
- * skipped), else the surface itself when it has a tabindex (only then can a
- * browser focus it).
- */
+/** Move focus into `surface` like Radix's FocusScope: the first candidate that takes focus, else the surface. */
 export function focusInto(
   surface: HTMLElement,
   candidates: HTMLElement[] = focusables(surface).filter(el => !(el instanceof HTMLAnchorElement)),
@@ -81,17 +70,12 @@ export function focusInto(
   }
 }
 
-/** Open dialogs holding the page's scroll lock. */
 let scrollLocks = 0;
 
 /**
- * Lock page scroll until the returned function is called (more calls do
- * nothing), with `data-scroll-locked` on the body, which global.css turns
- * into `overflow: hidden !important`, as Radix's react-remove-scroll does.
- * The body's inline style stays the page's own: bridge.ts hides its
- * overflow when the product frame attaches, maybe while a dialog is open,
- * and that must outlive the dialog. Counted, so dialogs closing in any
- * order unlock the page only when the last one closes.
+ * Lock page scroll through `data-scroll-locked` on the body until the last returned unlock runs.
+ * Not an inline style: bridge.ts hides the body's overflow inline when the product frame attaches, and that
+ * must outlive the dialog.
  */
 export function lockScroll(): () => void {
   scrollLocks += 1;
@@ -109,16 +93,12 @@ export function lockScroll(): () => void {
   };
 }
 
-/** Whether focus is lost (on the body) or still inside `surface`. */
 export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
   const active = document.activeElement;
   return active === null || active === document.body || surface?.contains(active) === true;
 }
 
-/**
- * Focus the trigger. A trigger the topbar has collapsed (reached through the
- * More menu) cannot take focus, so `fallback`, the More button, gets it.
- */
+/** Focus the trigger, or `fallback` (the More button) when the topbar has collapsed it into the More menu. */
 export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLElement | undefined): void {
   trigger?.focus();
   if (trigger !== undefined && document.activeElement !== trigger) {

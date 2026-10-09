@@ -7,13 +7,11 @@ import { resetModalsForTests } from '../../src/state/modals.js';
 import { resetToastsForTests } from '../../src/state/toasts.js';
 import { settle } from './solid.js';
 
-/** Wait until the lazily loaded overlays root has mounted and rendered. */
 export async function overlaysReady(): Promise<void> {
   await ensureOverlays();
   await settle();
 }
 
-/** Unmount the overlays root and forget queued dialogs and toasts. */
 export function resetOverlays(): void {
   disposeAppRoot('overlays');
   resetOverlayLoaderForTests();
@@ -22,7 +20,6 @@ export function resetOverlays(): void {
   document.getElementById('overlay-root')?.remove();
 }
 
-/** Each footer answer of the open dialog: its label and how it is drawn (`data-variant`). */
 export function footerVariants(): [string, string | undefined][] {
   return Array.from(
     document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'),

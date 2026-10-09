@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// One message row. Product text only ever lands as JSX text, so it cannot
-// inject markup; custom messages go through CustomMessage.tsx, whose
-// renderer maps a closed token vocabulary to DOM.
+// Product text only ever lands as JSX text, so it cannot inject markup.
 
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -19,9 +17,7 @@ export function MessageBubble(props: {
   now: number;
   onActionError: () => void;
 }): JSX.Element {
-  // Records are immutable and the list keys rows by seq, so read once;
-  // untrack both satisfies solid/reactivity and tells Solid's dev-mode
-  // strict checks this one-time snapshot is intentional.
+  // Records are immutable and rows are keyed by seq, so an untracked one-time read is intentional.
   const record = untrack(() => props.record);
   const content = record.content as ChatMessageContent;
 

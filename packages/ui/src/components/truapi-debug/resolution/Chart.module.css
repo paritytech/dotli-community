@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Resolution chart. The phase colours are the
-   network panel's block-health palette, so a chain that reads green there
-   reads green here. */
+/* Phase colours reuse the network panel's block-health palette. */
 
 .row {
   display: flex;
@@ -24,8 +22,7 @@
   white-space: nowrap;
 }
 
-/* A fixed basis, not `auto`: every track has to start and end at the same x
-   or the shared time axis above them lines up with nothing. */
+/* A fixed basis so every track lines up with the shared time axis. */
 .meta {
   flex: 0 0 190px;
   overflow: hidden;
@@ -103,8 +100,7 @@
 .block[data-phase='unknown'] {
   background: var(--td-line-hover);
 }
-/* The block a chain is still sitting in has no end yet, so it fades out
-   rather than drawing an edge the data does not have. */
+/* An open block has no end yet, so it fades out rather than draw an edge. */
 .block[data-open] {
   mask-image: linear-gradient(to right, #000 70%, transparent 100%);
 }

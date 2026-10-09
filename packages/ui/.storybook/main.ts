@@ -12,9 +12,7 @@ const config: StorybookConfig = {
   stories: ['../src/**/*.stories.tsx'],
   addons: ['@storybook/addon-docs', '@storybook/addon-a11y', '@storybook/addon-vitest'],
   core: { disableTelemetry: true },
-  // No Solid plugin here. The framework's viteFinal runs first and adds
-  // vite-plugin-solid, which from 3.0 re-exports the repo's @solidjs/vite-plugin,
-  // so a second one would compile every component twice.
+  // No Solid plugin here. The framework's viteFinal already adds one, and a second compiles every component twice.
   viteFinal: config =>
     mergeConfig(config, {
       css: { modules: cssModules() },

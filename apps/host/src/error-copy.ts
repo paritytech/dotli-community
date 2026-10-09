@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// User-facing copy for the host's error surfaces. Kept free of imports so the
-// Playwright specs, which run in Node, can assert on it without loading the
-// workspace barrels that `errors.ts` needs.
+// Free of imports so the Node-run Playwright specs can assert on it without loading the workspace barrels.
 
 export const HOST_ERRORS = {
   FATAL_PANIC: 'The light client (smoldot) crashed unexpectedly.',
@@ -29,12 +27,6 @@ export const HOST_ERRORS = {
   MANIFEST_INVALID: "This app's manifest is invalid, so dot.li can't tell how to open it.",
 } as const;
 
-/**
- * Headlines for the full-page error surface.
- *
- * The title says which layer gave up, the detail below it says why, so these
- * stay separate from the `HOST_ERRORS` copy that fills the detail line.
- */
 export const FAILOVER_BTN_LABELS = {
   'rpc-gateway': 'Try Trusted Provider',
   'smoldot-shared-worker': 'Try Light Client',
@@ -48,19 +40,14 @@ export const TRY_ANYWAY_BTN_LABEL = 'Try Anyway';
 
 export const GO_BACK_BTN_LABEL = 'Go Back';
 
-/**
- * Headlines for the full-page error surface.
- *
- * The title says which layer gave up, the detail below it says why, so these
- * stay separate from the `HOST_ERRORS` copy that fills the detail line.
- */
+/** The title says which layer gave up, the `HOST_ERRORS` detail line below it says why. */
 export const ERROR_TITLES = {
   HOST_UNAVAILABLE: 'Something went wrong on our side',
   /** The name never resolved, so there is nothing to download yet. */
   DOMAIN_UNREACHABLE: "Domain can't be reached",
-  /** The name resolved and the CID is known; the bytes are what went missing. */
+  /** The name resolved, but the bytes went missing. */
   CONTENT_UNAVAILABLE: "This app couldn't be downloaded",
-  /** The files arrived intact and are simply not a runnable app. */
+  /** The files arrived intact but are not a runnable app. */
   APP_UNUSABLE: "This app can't be opened",
   WALLET_IN_OTHER_TAB: 'Test wallet is open in another tab',
 } as const;

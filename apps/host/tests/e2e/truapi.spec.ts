@@ -3,12 +3,18 @@
 
 import { test, expect, openHostPlayground } from './fixtures/paired.js';
 import { waitForPlaygroundReady, runTestExpectSuccess } from './helpers/run-test.js';
-import { runWebSignedTest } from './helpers/signing.js';
+import { runWebSignedTest, type HostDialogDecision } from './helpers/signing.js';
 
-// Playwright destroys the worker process after a test failure, so the
-// worker-scoped pairing fixture re-pairs from scratch on every failed test
-// (~10-30s extra). Acceptable trade-off, preferred over `describe.serial`
-// which would skip every test after the first failure.
+// Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.
+
+// Core permission decisions and signing/resource reviews have separate authority.
+const lastingPermission: HostDialogDecision = { title: 'Permission Request', button: 'Always allow' };
+const resourceAllocation: HostDialogDecision = { title: 'Resource Allocation', button: 'Allow' };
+const preimageDecisions: readonly HostDialogDecision[] = [
+  lastingPermission,
+  resourceAllocation,
+  { title: 'Submit Preimage', button: 'Allow once' },
+];
 
 test.describe('dot.li > host-playground.dot', () => {
   test('Product is ready', async ({ productFrame }) => {
@@ -29,8 +35,7 @@ test.describe('dot.li > host-playground.dot', () => {
       await runTestExpectSuccess(productFrame, 'accounts-provider-connection-status');
     });
 
-    // Red on main since before the CLI swap: the product-side
-    // accounts-provider-alias check itself reports FAILED.
+    // The product-side alias check itself reports FAILED.
     test.fixme('Product Account Alias', async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, 'accounts-provider-alias');
     });
@@ -46,7 +51,11 @@ test.describe('dot.li > host-playground.dot', () => {
       const badge = pairedPage.getByTestId('user-badge');
       await expect(badge).toBeVisible({ timeout: 30_000 });
       await expect(badge).not.toHaveText('??', { timeout: 60_000 });
-      await runTestExpectSuccess(productFrame, 'get-user-id');
+      expect(
+        await runWebSignedTest(pairedPage, productFrame, 'get-user-id', [
+          { title: 'Identity Disclosure', button: 'Always allow' },
+        ]),
+      ).toBe('success');
     });
   });
 
@@ -69,8 +78,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Each allocation triggers an "Always allow" / "Allow" modal on the host that the user
-  // approves. The signing host is paired so the test only drives the modal.
+  // Each allocation opens a host permission modal, which is all these tests drive.
 
   test.describe('Allowances', () => {
     test('StatementStore Allowance', async ({ pairedPage, productFrame }) => {
@@ -82,7 +90,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'allowances-statement-store',
-        ['Always allow', 'Allow'],
+        [resourceAllocation],
         { timeoutMs: 90_000 },
       );
 
@@ -95,13 +103,9 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'allowances-bulletin',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 90_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-bulletin', [resourceAllocation], {
+        timeoutMs: 90_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -116,7 +120,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'allowances-smart-contract',
-        ['Always allow', 'Allow'],
+        [resourceAllocation],
         { timeoutMs: 90_000 },
       );
 
@@ -124,14 +128,13 @@ test.describe('dot.li > host-playground.dot', () => {
       expect(status).toBe('success');
     });
 
-    // Red on main since before the CLI swap: the combined allocation
-    // times out at 30s while the individual allowance tests pass.
+    // The combined allocation times out at 30s while the individual ones pass.
     test.fixme('All Allowances', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', ['Always allow', 'Allow'], {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', [resourceAllocation], {
         timeoutMs: 90_000,
       });
 
@@ -162,8 +165,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Remote-permission tests trigger an "Always allow" modal on the host the
-  // first time a given capability is requested in a session.
+  // The first request for a capability in a session opens a host permission modal.
 
   test.describe('Permissions', () => {
     test('Feature Check', async ({ productFrame }) => {
@@ -175,13 +177,9 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(60_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'remote-permission-remote',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 30_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'remote-permission-remote', [], {
+        timeoutMs: 30_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -192,13 +190,9 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(60_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'remote-permission-webrtc',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 30_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'remote-permission-webrtc', [], {
+        timeoutMs: 30_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -213,7 +207,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'remote-permission-chain-submit',
-        ['Always allow', 'Allow'],
+        [lastingPermission],
         { timeoutMs: 30_000 },
       );
 
@@ -230,7 +224,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'remote-permission-preimage-submit',
-        ['Always allow', 'Allow'],
+        [lastingPermission],
         { timeoutMs: 30_000 },
       );
 
@@ -247,7 +241,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'remote-permission-statement-submit',
-        ['Always allow', 'Allow'],
+        [lastingPermission],
         { timeoutMs: 30_000 },
       );
 
@@ -257,8 +251,13 @@ test.describe('dot.li > host-playground.dot', () => {
   });
 
   test.describe('Statements', () => {
-    test('As a product user, I can create an authorized statement proof', async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, 'statement-store-create-proof-authorized');
+    test('As a product user, I can create an authorized statement proof', async ({ pairedPage, productFrame }) => {
+      expect(
+        await runWebSignedTest(pairedPage, productFrame, 'statement-store-create-proof-authorized', [
+          resourceAllocation,
+          { title: 'Proof Permission', button: 'Allow' },
+        ]),
+      ).toBe('success');
     });
 
     test('As a product user, I can submit a statement', async ({ pairedPage, productFrame }) => {
@@ -270,7 +269,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'statement-store-submit',
-        ['Always allow', 'Allow'],
+        [lastingPermission, resourceAllocation, { title: 'Sign Statement', button: 'Sign' }],
         { timeoutMs: 90_000 },
       );
 
@@ -307,13 +306,11 @@ test.describe('dot.li > host-playground.dot', () => {
       // Then
       await pairedPage.waitForURL(/^http:\/\/truapi-playground\.localhost:\d+\//, { timeout: 15_000 });
 
-      // The page is shared by the worker, so put host-playground back for
-      // the tests that follow.
+      // The worker shares the page, so the following tests need host-playground back.
       await openHostPlayground(pairedPage);
     });
 
-    // Red on main since before the CLI swap: the iframe lands on
-    // /navigation?id=… while the assertion expects /page?id=….
+    // The iframe lands on /navigation?id= while the assertion expects /page?id=.
     test.fixme('As a product user, I can navigate within the current product', async ({ productFrame }) => {
       // Given
       const button = productFrame.locator('[data-testid="run-navigate-internal"]');
@@ -377,13 +374,9 @@ test.describe('dot.li > host-playground.dot', () => {
       // When
       // Upload consent is separate from signing permission; approve this
       // operation without granting a persistent automatic-upload budget.
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'preimage-factory',
-        ['Always allow', 'Allow', 'Allow once'],
-        { timeoutMs: 60_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', preimageDecisions, {
+        timeoutMs: 60_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -394,13 +387,9 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'preimage-submit',
-        ['Always allow', 'Allow', 'Allow once'],
-        { timeoutMs: 60_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', preimageDecisions, {
+        timeoutMs: 60_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -410,7 +399,7 @@ test.describe('dot.li > host-playground.dot', () => {
   test.describe('Notifications', () => {
     test('As a product user, I can allow and receive a push notification', async ({ pairedPage, productFrame }) => {
       // Given
-      const approvalButtons = ['Always allow', 'Allow'];
+      const approvalButtons = [lastingPermission];
 
       // When
       const status = await runWebSignedTest(pairedPage, productFrame, 'push-notification', approvalButtons, {
@@ -422,8 +411,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Placed after read-only tests so a signing failure doesn't cascade-
-  // affect Storage, Chain, Contract, etc. via fixture restarts.
+  // After the read-only tests, so a signing failure's fixture restart doesn't affect them.
 
   test.describe('Signing', () => {
     test('Sign Raw Message', async ({ pairedPage, productFrame }) => {
@@ -435,7 +423,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'wallet-sign-message',
-        ['Always allow', 'Allow', 'Sign'],
+        [{ title: 'Sign Message', button: 'Sign' }],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 
@@ -444,9 +432,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Funded operations (skipped, needs a faucet-funded account). Funded paths
-  // exercise transaction submission. Out of scope until we wire a faucet step
-  // into the fixture.
+  // Skipped until the fixture funds its account from a faucet.
   test.describe('Funded operations', () => {
     test.skip('Sign Batch Payload', async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, 'sign-batch-payload');
@@ -474,10 +460,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Device Permissions (skipped, mobile/system-level prompts). These hit
-  // native system permission prompts on iOS/Android. In headless Chromium
-  // they have no host-side equivalent. Listed for coverage parity with
-  // host-playground.
+  // Native mobile prompts with no headless Chromium equivalent, listed for parity with host-playground.
 
   test.describe('Device permissions', () => {
     test.skip('Camera', async ({ productFrame }) => {

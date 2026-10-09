@@ -1,12 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A browser WebSocket stand-in for driving @polkadot-api/ws-provider in
-// tests. Install it with `vi.stubGlobal('WebSocket', FakeWebSocket)` before
-// building a provider, and reset `FakeWebSocket.instances` between tests.
-// It plays a node that answers `rpc_methods` with `FakeWebSocket.methods`,
-// which @polkadot-api/ws-middleware probes on every new socket before it lets
-// other traffic through. Restore `methods` if a test changes it.
+// Stub it as the global `WebSocket` before building a provider, and reset `instances` between tests.
+// It answers the `rpc_methods` probe ws-middleware sends first, so restore `methods` after changing it.
 
 import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 
@@ -17,9 +13,7 @@ export class FakeWebSocket {
   static readonly OPEN = 1;
   static readonly CLOSING = 2;
   static readonly CLOSED = 3;
-  /** Every socket constructed since the last reset, oldest first. */
   static instances: FakeWebSocket[] = [];
-  /** The methods the fake server reports for `rpc_methods`. */
   static methods: string[] = [
     'chainHead_v1_follow',
     'chainHead_v1_unfollow',
@@ -79,18 +73,15 @@ export class FakeWebSocket {
     this.emit('close', { type: 'close' });
   }
 
-  /** The server accepts the connection. */
   open(): void {
     this.readyState = FakeWebSocket.OPEN;
     this.emit('open', { type: 'open' });
   }
 
-  /** The server sends `message`. */
   deliver(message: unknown): void {
     this.emit('message', { data: JSON.stringify(message) });
   }
 
-  /** The requests sent on this socket with `method`, in order. */
   requests(method: string): JsonRpcRequest[] {
     return this.sent.map(raw => JSON.parse(raw) as JsonRpcRequest).filter(message => message.method === method);
   }

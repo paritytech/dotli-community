@@ -16,11 +16,8 @@ export function parsePreviewTargetUrl(location: Pick<Location, 'pathname' | 'sea
 
   try {
     const target = new URL(raw);
-    // A localhost preview target is only honoured in debug builds. Proxying a
-    // visitor's localhost into the trusted host origin is gated behind the
-    // build-time `VITE_APP_DEBUG` flag (`DEBUG`); production builds (flag unset)
-    // never honour a localhost target. Webcontainer preview hosts are always
-    // allowed — they are public https origins, not loopback.
+    // Proxying a visitor's localhost into the trusted host origin is debug-only. Webcontainer preview
+    // hosts are public https origins, so they are always allowed.
     const targetIsAllowedLocalhost = DEBUG && dotNsUrl.parseLocalhostUrl(target.toString()) !== null;
     const isWebContainer = target.protocol === 'https:' && dotNsUrl.isWebcontainerPreviewHost(target.hostname);
 

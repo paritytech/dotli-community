@@ -1,24 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the shell says when a request from a product cannot be granted.
-//
-// Every message here leaves the shell. Some reach the visitor, the rest reach
-// the product error handler, which is why the wording is pinned in one
-// place: a product may branch on the text, so a reworded message is a breaking
-// change rather than a copy edit.
+// Messages that leave the shell. A product may branch on the text, so rewording one is a breaking change.
 
 export const ERRORS = {
   DECRYPTION_CANCELLED: 'User cancelled decryption',
-  /**
-   * @deprecated Nothing produces this since the alias permission modal was
-   * removed. Kept because a product may still match on the text.
-   */
+  /** @deprecated Nothing produces this. Kept because a product may still match on the text. */
   ALIAS_PERMISSION_DENIED: 'User denied alias permission',
-  /**
-   * @deprecated Nothing produces this since the alias permission modal was
-   * removed. Kept because a product may still match on the text.
-   */
+  /** @deprecated Nothing produces this. Kept because a product may still match on the text. */
   ALIAS_PERMISSION_DISMISSED: 'User dismissed alias permission dialog',
   IDENTITY_DISCLOSURE_DISMISSED: 'User dismissed identity disclosure dialog',
   PERMISSION_DIALOG_DISMISSED: 'User dismissed permission dialog',

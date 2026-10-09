@@ -1,7 +1,7 @@
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
 import type { GenericError } from "@parity/truapi";
 import type { ChainConnect, HopConnect } from "../runtime.js";
-export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "nativeCoinage", "contacts", "pickContact", "pickContacts", "placeContactLabels", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "compareExchangeCoreStorage", "coreStorageChanged", "featureSupported", "supportedChains", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "mediaBackendCapabilities", "mediaBackendCommand", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "receiverAuthority", "receiverConsent", "receiverChanged", "receiverCommand", "activationEvents", "acknowledgeActivation", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "presentProfile", "presentContactProfile", "placeContactAvatars", "confirmPermission", "confirmUserAction"];
+export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "nativeCoinage", "contacts", "pickContact", "pickContacts", "placeContactLabels", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "compareExchangeCoreStorage", "coreStorageChanged", "featureSupported", "supportedChains", "scheduleGameReminder", "cancelGameReminder", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "mediaBackendCapabilities", "mediaBackendCommand", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "receiverAuthority", "receiverConsent", "receiverChanged", "receiverCommand", "activationEvents", "acknowledgeActivation", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "presentProfile", "presentContactProfile", "placeContactAvatars", "confirmPermission", "confirmUserAction"];
 export type CallbackName = typeof CALLBACK_NAMES[number];
 export declare const SUBSCRIPTION_NAMES: readonly ["subscribeChatRooms", "subscribeLocale", "mediaBackendEvents", "subscribePocketCards", "lookupPreimage", "subscribeStorage", "subscribeTheme"];
 export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];
@@ -23,6 +23,8 @@ export interface OptionalCapabilities {
     coinageWallet?: boolean;
     /** Whether the host serves this capability. */
     contacts?: boolean;
+    /** Whether the host serves this capability. */
+    game?: boolean;
     /** Whether the host serves this capability. */
     identityBackend?: boolean;
     /** Whether the host serves this capability. */

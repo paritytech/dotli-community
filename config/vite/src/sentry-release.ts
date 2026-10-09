@@ -1,18 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The Sentry release name of a build, as semver.
-//
-// Sentry orders releases, and resolves "fixed in the next release", by
-// version only when the name is `package@semver`. A commit hash gives it
-// nothing to order by. The version comes from the newest `vX.Y.Z` tag the
-// build descends from, because the tag is the release's source of truth: the
-// package.json versions are synced to it only while a release deploys.
-//
-// A build of the tag itself is that release. Any later commit is a
-// prerelease of the next patch, so it sorts after the tag it builds on and
-// before whatever is released next, and its commit rides along as build
-// metadata.
+// Sentry orders releases only when the name is `package@semver`. A build of a tag is that release. A later commit
+// is a prerelease of the next patch, so it sorts between the two, with its commit as build metadata.
 
 import { execSync } from 'node:child_process';
 
@@ -32,8 +22,7 @@ export function releaseFromDescribe(describe: string): string | null {
   if (ahead === '0') {
     return `${PACKAGE}@${base}.${String(patch)}${pre === undefined ? '' : `-${pre}`}`;
   }
-  // After a prerelease tag the next version is not known, so the commits
-  // extend that prerelease instead, which still sorts before the next one.
+  // After a prerelease tag the next version is unknown, so the commits extend that prerelease.
   const version =
     pre === undefined
       ? `${base}.${String(Number(patch) + 1)}-dev.${String(ahead)}`
@@ -42,10 +31,8 @@ export function releaseFromDescribe(describe: string): string | null {
 }
 
 /**
- * Name this build's Sentry release in `VITE_SENTRY_RELEASE`, unless the
- * environment already did, so the runtime SDK and the sourcemap upload agree.
- * Left unset outside a git checkout with tags (a tarball, a shallow clone),
- * where the SDK falls back to the commit.
+ * Sets `VITE_SENTRY_RELEASE` unless already given, so the SDK and the sourcemap upload agree.
+ * Left unset without git tags, where the SDK falls back to the commit.
  */
 export function provideSentryRelease(cwd: string): string | undefined {
   const given = process.env['VITE_SENTRY_RELEASE'];
@@ -59,7 +46,7 @@ export function provideSentryRelease(cwd: string): string | undefined {
       stdio: ['ignore', 'pipe', 'ignore'],
     }).toString();
   } catch {
-    // No git, or no tag reachable from HEAD: there is no version to name.
+    // No git, or no tag reachable from HEAD.
     return undefined;
   }
   const release = releaseFromDescribe(describe);
@@ -71,10 +58,8 @@ export function provideSentryRelease(cwd: string): string | undefined {
 }
 
 /**
- * The `release` option for the Sentry sourcemap upload: the same name the SDK
- * reports, with its commits read from git, so Sentry can link a release to its
- * code and suspect commits. `ignoreMissing`, because the previous release may
- * be a name git has never heard of (the commit-named releases before these).
+ * The sourcemap upload's `release`, with commits read from git for suspect commits.
+ * `ignoreMissing` because the previous release may be a commit-named one git does not know.
  */
 export function sentryUploadRelease(
   cwd: string,

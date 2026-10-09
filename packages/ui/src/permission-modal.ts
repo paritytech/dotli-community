@@ -37,8 +37,8 @@ export const PERMISSION_DESCRIPTIONS: Record<PromptPermissionName | 'Calling', s
   IdentityDisclosure: 'Share your primary DotNS identity with this app',
   ProfileDisclosure:
     "Share this app's profile with app audiences or selected contacts, including personal sharing across recipients' apps",
-  ChainSubmit: 'Sign and submit on-chain transactions on your behalf',
-  PreimageSubmit: 'Store preimage data on-chain via the Bulletin network',
+  ChainSubmit: 'Sign and submit network transactions on your behalf',
+  PreimageSubmit: 'Store preimage data on the Bulletin network',
   StatementSubmit: 'Submit signed statements to the statement store',
 };
 
@@ -46,9 +46,9 @@ export const PERMISSION_DESCRIPTIONS: Record<PromptPermissionName | 'Calling', s
 export const MEDIA_CONSENT_NOTICE =
   'Only the trusted host handles call media. The application receives no camera, microphone, screen pixels, or raw browser capture permission.';
 
-/** The question asked before an app may reach the validators of one JAM network. */
+/** The question asked before an app may exchange peer messages for one JAM network. */
 export function jamPeersPermissionText(label: string, genesis: string): string {
-  return `Allow ${withActiveTld(label)} to connect to JAM network ${genesis.slice(0, 10)}… (read-only peer access, no accounts or signing)?`;
+  return `Allow ${withActiveTld(label)} to send and receive messages with app-selected peers for JAM network ${genesis.slice(0, 10)}… (no accounts or signing)?`;
 }
 
 interface PermissionPrompt {
@@ -60,10 +60,10 @@ interface PermissionPrompt {
   reloads: boolean;
 }
 
+/** `dismissed` stays apart from `denied` so a dismissal stores no denial. */
 export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
 export interface PermissionRequestModalOptions {
-  /** Offer "Allow once" alongside "Always allow" and "Deny". */
   allowOnce?: boolean;
   /**
    * Trusted host Media consent: the exact product id and scope fields. Media
@@ -72,9 +72,6 @@ export interface PermissionRequestModalOptions {
   media?: { productId: string; fields: readonly (readonly [string, string])[] };
 }
 
-/**
- * Show a permission request modal.
- */
 export async function showPermissionRequestModal(
   label: string,
   permission: PromptPermissionName | 'Calling',
@@ -145,7 +142,7 @@ async function showPermissionPrompt(
       ],
       ...(media !== undefined
         ? { notice: MEDIA_CONSENT_NOTICE, noticeIcon: 'info' as const }
-        : prompt.reloads
+        : prompt.reloads && !allowOnce
           ? { notice: 'Granting this permission will reload the application.' }
           : {}),
       buttons,

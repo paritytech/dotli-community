@@ -32,7 +32,10 @@
   text-overflow: ellipsis;
   text-transform: none;
 }
-/* Phones: the boards' 20 px chip. */
+/* After the tones, so it wins over each tone's color. */
+.chip[data-alert] {
+  color: var(--chrome-err-text);
+}
 @media (max-width: 560px) {
   :where(.chip) {
     height: var(--h-chip);

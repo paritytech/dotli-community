@@ -51,21 +51,15 @@ export interface ProtocolRequestEnvelope<M extends ProtocolRequestMethod = Proto
   method: M;
   payload: ProtocolRequestMap[M];
   /**
-   * Absolute wall-clock deadline for this request. Protocol handlers use the
-   * same deadline as the caller so an operation-specific error can cross the
-   * iframe boundary before the generic request timer wins.
+   * Absolute wall-clock deadline, shared with handlers so their specific error arrives before the caller's generic
+   * timeout.
    */
   deadlineMs?: number;
 }
 
 /**
- * Convert an untrusted request deadline into the resolver's remaining sync
- * budget. The grace period lets the typed resolver error cross postMessage
- * before the caller's generic request timeout fires.
- *
- * This is the only place the deadline is validated and normalized. Consumers
- * receive a finite, positive number or `undefined`, so they branch on presence
- * alone.
+ * Turns an untrusted deadline into the resolver's remaining sync budget, less a grace for the typed
+ * error to cross postMessage. The only place the deadline is validated.
  */
 export function getRequestSyncTimeoutMs(request: ProtocolRequestEnvelope): number | undefined {
   if (typeof request.deadlineMs !== 'number' || !Number.isFinite(request.deadlineMs)) {
@@ -94,14 +88,9 @@ export interface ProtocolErrorEnvelope {
   kind: 'response';
   id: string;
   ok: false;
-  /** Human-readable description of the failure, from `serializeError`. */
+  /** From `serializeError`. */
   error: string;
-  /**
-   * Class name of what the sender threw, such as `NetworkSyncTimeoutError`.
-   *
-   * Lets the receiver branch on the failure kind instead of matching
-   * substrings in `error`. Absent when the sender threw a non-`Error` value.
-   */
+  /** Class name of what the sender threw, so the receiver branches on it instead of matching `error` text. */
   errorName?: string;
   /** The sender's stack, for the report: the receiver rebuilds the error and has none of its own. */
   errorStack?: string;
@@ -126,16 +115,9 @@ export interface ProtocolReadyEnvelope {
 }
 
 /**
- * Unsolicited broadcast naming whether one chain's access began from
- * pre-existing smoldot state, sent once per chain as its store answers.
- *
- * "hit" covers two sources of pre-existing state that cost the tab the same
- * nothing: a stored finalized-database blob was loaded, or the tab joined a
- * SharedWorker whose chain was already synced. "miss" means the chain synced
- * from its chain-spec checkpoint. "unavailable" means the store could not
- * answer at all, which is a different population from a healthy first visit.
- * The blobs live in the protocol origin's IndexedDB, which the host origin
- * cannot read, so these messages are the host's only view of them.
+ * Whether a chain started from existing smoldot state, sent once per chain. "hit" is a loaded database
+ * or an already synced SharedWorker chain, "unavailable" a store that could not answer. The store lives
+ * in the protocol origin's IndexedDB, so this is the host's only view of it.
  */
 export type SmoldotDbChain = 'relay' | 'hub' | 'bulletin';
 export type SmoldotDbOutcome = 'hit' | 'miss' | 'unavailable';
@@ -147,37 +129,21 @@ export interface ProtocolSmoldotDbEnvelope {
   outcome: SmoldotDbOutcome;
 }
 
-/**
- * Unsolicited broadcast from the protocol iframe (or its SharedWorker) when
- * smoldot has crashed/panicked. A panic leaves every chain dead. Any
- * in-flight request would hang indefinitely, so the client rejects all
- * pending requests on receipt instead of waiting for a per-request timeout.
- */
+/** Smoldot panicked and every chain is dead, so the client rejects all pending requests at once. */
 export interface ProtocolFatalEnvelope {
   namespace: 'dotli:protocol';
   kind: 'fatal';
   message: string;
 }
 
-/**
- * Signals that the iframe failed to initialize before emitting any response.
- *
- * A dedicated kind avoids a sentinel id collision. No request was in flight
- * and no id is expected, so clients route it to the same path as
- * `kind: "fatal"`: reject everything pending, then block new work.
- */
+/** The iframe failed to initialize. Its own kind since no request id applies, handled like `fatal`. */
 export interface ProtocolInitFailedEnvelope {
   namespace: 'dotli:protocol';
   kind: 'init-failed';
   message: string;
 }
 
-/**
- * Unsolicited broadcast of what a chain reports about its own sync.
- *
- * Drives the host loading screen: milestones move the bar, peer counts feed
- * the detail line under it. Stops arriving once the chain is ready.
- */
+/** What a chain reports about its own sync, for the host loading screen. Stops once the chain is ready. */
 export interface ProtocolChainSyncEnvelope {
   namespace: 'dotli:protocol';
   kind: 'chain-sync';
@@ -193,12 +159,7 @@ export interface ProtocolChainSyncEnvelope {
   finalized?: number;
 }
 
-/**
- * Per-chain facts recorded once, for telemetry rather than for the screen.
- *
- * Kept apart from `chain-sync` because nothing in the loading UI reacts to
- * these. Folding them in would make every UI subscriber filter them out.
- */
+/** Per-chain facts for telemetry, kept apart from `chain-sync` so UI subscribers need not filter them. */
 export interface ProtocolChainDetailEnvelope {
   namespace: 'dotli:protocol';
   kind: 'chain-detail';
@@ -207,23 +168,14 @@ export interface ProtocolChainDetailEnvelope {
   peers?: ChainPeer[];
 }
 
-/**
- * Running total of bytes the light client has pulled off the network.
- *
- * Cumulative rather than a rate, so a dropped message costs nothing and the
- * host can pick whatever averaging window it wants.
- */
+/** Bytes the light client has received so far. Cumulative, so a dropped message costs nothing. */
 export interface ProtocolNetBytesEnvelope {
   namespace: 'dotli:protocol';
   kind: 'net-bytes';
   received: number;
 }
 
-// Unsolicited notification from the host iframe to its parent window when a
-// sibling tab writes or clears a shared-auth storage key. Drives cross-tab
-// `StorageAdapter.subscribe` callbacks. See `@dotli/protocol/client`
-// `subscribeSharedAuthStorage` and `apps/protocol/src/main.ts`'s
-// BroadcastChannel relay.
+/** A sibling tab changed a shared-auth key. Drives cross-tab `StorageAdapter.subscribe` callbacks. */
 export interface ProtocolAuthStorageChangedEnvelope {
   namespace: 'dotli:protocol';
   kind: 'auth-storage-changed';
@@ -283,18 +235,9 @@ const VALID_KINDS = new Set([
   'wallet-owner-revoked',
 ]);
 
-// postMessage data is untrusted and the envelope type alone cannot reject a
-// spoofed field, so the chain and the kind are checked at runtime. The lists
-// are repeated rather than imported because importing a value from the
-// resolver smoldot module would drag smoldot into every bundle that talks
-// to the protocol.
-//
-// They are written as `Record<T, true>` rather than an array with
-// `satisfies T[]`, because an array only proves every entry is valid and
-// says nothing about the ones missing. A kind added to the resolver and
-// forgotten here would then be dropped in silence. As a record, a missing
-// key fails typecheck, and `chainSyncKinds` in the tests fails too.
-/** Every chain the envelope accepts. Exhaustive against `ChainKey`. */
+// postMessage data is untrusted, so chain and kind are checked at runtime. The lists are copied because
+// importing them would pull smoldot into every protocol bundle. As `Record<T, true>`, a value missing
+// here fails typecheck instead of being dropped silently.
 export const ENVELOPE_CHAIN_KEYS = Object.keys({
   relay: true,
   'asset-hub': true,
@@ -302,7 +245,6 @@ export const ENVELOPE_CHAIN_KEYS = Object.keys({
   people: true,
 } satisfies Record<ChainKey, true>) as ChainKey[];
 
-/** Every milestone the envelope accepts. Exhaustive against `ChainSyncKind`. */
 export const ENVELOPE_SYNC_KINDS = Object.keys({
   firstPeer: true,
   bootstrapComplete: true,
@@ -316,19 +258,11 @@ export const ENVELOPE_SYNC_KINDS = Object.keys({
 
 const CHAIN_KEY_VALUES = new Set<string>(ENVELOPE_CHAIN_KEYS);
 
-// Typed wider than the union on purpose. This validates a postMessage payload,
-// where the declared type is a claim the sender makes rather than a fact, so a
-// narrowing comparison would be compiled away as dead.
+// Wider than the union on purpose, since the sender's declared type is a claim and a narrowed check would compile away.
 const CACHE_RESULT_VALUES = new Set<string>(['hit', 'miss']);
 const SYNC_KIND_VALUES = new Set<string>(ENVELOPE_SYNC_KINDS);
 
-/**
- * Whether a `chain-sync` envelope carries values the loading UI can trust.
- *
- * Rejects unknown chains and kinds, a peer count that is not a sane integer,
- * and any block height that is not a finite positive number, since those
- * drive the bar and would render as NaN.
- */
+/** Whether a `chain-sync` envelope is safe for the loading UI, where a bad height would render as NaN. */
 export function isChainSyncPayloadValid(msg: ProtocolChainSyncEnvelope): boolean {
   if (!CHAIN_KEY_VALUES.has(msg.chain) || !SYNC_KIND_VALUES.has(msg.syncKind)) {
     return false;
@@ -347,8 +281,7 @@ export function isChainSyncPayloadValid(msg: ProtocolChainSyncEnvelope): boolean
   return true;
 }
 
-// Peer ids and roles land in telemetry attributes, so a spoofed frame could
-// otherwise write unbounded junk into every span this page emits.
+// Peer ids and roles land in telemetry attributes, so a spoofed frame could write unbounded junk into spans.
 const MAX_PEER_ID_LENGTH = 128;
 const MAX_PEERS = 50;
 

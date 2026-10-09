@@ -21,6 +21,8 @@ export const CALLBACK_NAMES = [
     "coreStorageChanged",
     "featureSupported",
     "supportedChains",
+    "scheduleGameReminder",
+    "cancelGameReminder",
     "allowedHopEndpoints",
     "identityUsernameCandidates",
     "localizeTimestamps",
@@ -134,6 +136,12 @@ function contactsRawCallbacks(bridge) {
         placeContactLabels: (product, placed) => bridge.callbackRequest("placeContactLabels", [product, placed]),
     };
 }
+function gameRawCallbacks(bridge) {
+    return {
+        scheduleGameReminder: (product, startsAt) => bridge.callbackRequest("scheduleGameReminder", [product, startsAt]),
+        cancelGameReminder: (product) => bridge.callbackRequest("cancelGameReminder", [product]),
+    };
+}
 function identityBackendRawCallbacks(bridge) {
     return {
         identityUsernameCandidates: (username, peopleChainGenesisHash) => bridge.callbackRequest("identityUsernameCandidates", [username, peopleChainGenesisHash]),
@@ -177,6 +185,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, coinageWalletRawCallbacks(bridge));
     if (capabilities.contacts)
         Object.assign(callbacks, contactsRawCallbacks(bridge));
+    if (capabilities.game)
+        Object.assign(callbacks, gameRawCallbacks(bridge));
     if (capabilities.identityBackend)
         Object.assign(callbacks, identityBackendRawCallbacks(bridge));
     if (capabilities.media)
