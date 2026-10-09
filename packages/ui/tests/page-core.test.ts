@@ -10,6 +10,7 @@ interface MockRuntime {
   cancelPairing: ReturnType<typeof vi.fn>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
+  getPermissionAuthorizationStatuses: (productId: string, requests: unknown[]) => Promise<string[]>;
 }
 
 const mocks = vi.hoisted(() => ({
@@ -50,6 +51,8 @@ function makeRuntime(): MockRuntime {
     cancelPairing: vi.fn(),
     notifySessionStoreChanged: vi.fn(),
     dispose: vi.fn(),
+    getPermissionAuthorizationStatuses: () =>
+      Promise.reject(new TypeError('runtime.permissionAuthorizationStatuses is not a function')),
   };
   mocks.runtimes.push(runtime);
   return runtime;
@@ -120,6 +123,20 @@ describe('page core wallet mode', () => {
 
     // Then
     expect(mocks.createHostCallbacks).toHaveBeenCalledWith(expect.objectContaining({ local: true }));
+  });
+
+  it('As a local wallet user, I open a product and its permissions are answered without the signing worker', async () => {
+    // Given
+    mocks.readWalletBoot.mockResolvedValue(WALLET);
+    const { acquireCore } = await loadPageCore();
+
+    // When
+    await acquireCore();
+
+    // Then
+    await expect(
+      mocks.runtimes[0]?.getPermissionAuthorizationStatuses('app.dot', [{ tag: 'IdentityDisclosure' }]),
+    ).resolves.toEqual(['NotDetermined']);
   });
 
   it('As a Polkadot App user, I boot a core that keeps my paired session', async () => {

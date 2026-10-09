@@ -15,6 +15,7 @@ import { m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { loadSigningWorker } from './lazy.js';
 import { refreshLiteUsername } from './local-wallet-identity.js';
+import { holdPermissionsInMemory } from './signing-host-permissions.js';
 import { reportLocalWalletFailure, type LocalWalletBoot } from './wallet-boot.js';
 
 type CreateRuntime = typeof createWebWorkerPairingHostRuntime;
@@ -37,6 +38,7 @@ export async function bootLocalWalletCore(
     reportLocalWalletFailure(error, 'boot');
     throw new Error('Local wallet core failed to boot', { cause: error });
   }
+  holdPermissionsInMemory(runtime);
   try {
     await runtime.activateLocalSession(wallet.entropy, wallet.identity?.liteUsername ?? undefined);
   } catch (error) {
