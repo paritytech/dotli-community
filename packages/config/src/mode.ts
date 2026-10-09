@@ -215,7 +215,7 @@ export function getCacheNodeSettings(): CacheNodeSettings {
       };
       // eslint-disable-next-line no-restricted-syntax -- malformed JSON from an older build; defaults are the safe fallback.
     } catch {
-      /* malformed JSON. Fall back to defaults. */
+      /* Malformed JSON: the defaults apply. */
     }
   }
   return { ...DEFAULT_CACHE_NODES };

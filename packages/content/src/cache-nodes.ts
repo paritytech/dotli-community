@@ -123,8 +123,8 @@ interface SignedFields {
   content: string;
 }
 
-// The fields that a receipt and a read request share, after the prefix: the transfer id, the payer and provider keys
-// (32 raw bytes each) and the content id. Text fields have a u32 LE length first.
+// The fields that a receipt and a read request share, after the prefix. They are the transfer id, the payer and
+// provider keys (32 raw bytes each) and the content id. Text fields have a u32 LE length first.
 function signedFields(prefix: string, fields: SignedFields): Uint8Array {
   return concat(
     encoder.encode(prefix),
