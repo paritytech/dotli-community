@@ -498,6 +498,47 @@ export const services = [
         ],
     },
     {
+        name: "Expanded Card",
+        requiredExecution: "Widget",
+        methods: [
+            {
+                name: "set_face_shown",
+                type: "unary",
+                signature: "setFaceShown(request: HostExpandedCardSetFaceShownRequest): Promise<Result<undefined, S.CallErrorValue<VersionedHostExpandedCardSetFaceShownError>>>",
+                docUrl: "api/expanded_card/trait.ExpandedCard.html#method.set_face_shown",
+                description: "Show or hide the face above the calling Widget.\n\nSucceeds when the face is already in that state. Fails with\n`NotPresented` when the Widget is not shown under its card.",
+                requestDescription: "HostExpandedCardSetFaceShownRequest",
+                exampleSource: 'const result = await truapi.expandedCard.setFaceShown({ shown: false });\nassert(result.isOk(), "setFaceShown failed:", result);\nconsole.log("face hidden");',
+                requestType: "host-expanded-card-set-face-shown-request",
+            },
+        ],
+    },
+    {
+        name: "Game",
+        methods: [
+            {
+                name: "remind_next_game",
+                type: "unary",
+                signature: "remindNextGame(request: HostRemindNextGameRequest): Promise<Result<undefined, S.CallErrorValue<VersionedHostRemindNextGameError>>>",
+                docUrl: "api/game/trait.Game.html#method.remind_next_game",
+                description: "Remind the user when this product's next game starts.\n\nReplaces the reminder this product already holds. Served only to the\ngame product: any other product, or a host that cannot hold reminders,\ngets `Unsupported`. A `startsAt` that is not in the future fails with\n`StartsInPast`, and a reminder the host cannot hold fails as a host\nfailure carrying its reason.",
+                requestDescription: "HostRemindNextGameRequest",
+                exampleSource: 'const result = await truapi.game.remindNextGame({\n  startsAt: BigInt(Date.now() + 60_000),\n});\nassert(result.isOk(), "remindNextGame failed:", result);',
+                requestType: "host-remind-next-game-request",
+            },
+            {
+                name: "cancel_next_game",
+                type: "unary",
+                signature: "cancelNextGame(request: HostCancelNextGameRequest): Promise<Result<undefined, S.CallErrorValue<VersionedHostCancelNextGameError>>>",
+                docUrl: "api/game/trait.Game.html#method.cancel_next_game",
+                description: "Drop the reminder. Safe to call whether one is held or not.",
+                requestDescription: "HostCancelNextGameRequest",
+                exampleSource: 'const result = await truapi.game.cancelNextGame({});\nassert(result.isOk(), "cancelNextGame failed:", result);',
+                requestType: "host-cancel-next-game-request",
+            },
+        ],
+    },
+    {
         name: "Local Storage",
         methods: [
             {
@@ -849,6 +890,22 @@ export const services = [
                 exampleSource: 'const result = await truapi.resourceAllocation.request({\n  resources: [\n    { tag: "StatementStoreAllowance" },\n    { tag: "BulletinAllowance" },\n    { tag: "SmartContractAllowance", value: { tag: "Index", value: 0 } },\n    { tag: "AutoSigning" },\n  ],\n});\nassert(result.isOk(), "request failed:", result);\nassert(result.value.outcomes.length === 4, "missing allocation outcomes:", result.value);\n// Statement Store and Bulletin back this example\'s storage APIs.\nassert(\n  result.value.outcomes.slice(0, 2).every((outcome) => outcome === "Allocated"),\n  "statement-store or bulletin allowance was not allocated:",\n  result.value,\n);\n// Smart-contract allowance and auto-signing are host capabilities:\n// unsupported hosts report NotAvailable rather than rejecting the request.\nassert(\n  result.value.outcomes.slice(2).every((outcome) => outcome !== "Rejected"),\n  "an optional allocation was rejected:",\n  result.value,\n);\nconsole.log("resource allocation outcomes:", result.value.outcomes);',
                 requestType: "host-request-resource-allocation-request",
                 responseType: "host-request-resource-allocation-response",
+            },
+        ],
+    },
+    {
+        name: "Scanner",
+        methods: [
+            {
+                name: "scan",
+                type: "unary",
+                signature: "scan(request: HostScannerScanRequest): Promise<Result<HostScannerScanResponse, S.CallErrorValue<VersionedHostScannerScanError>>>",
+                docUrl: "api/scanner/trait.Scanner.html#method.scan",
+                description: "Ask the host to let the user scan one code.\n\nThe host ignores codes outside `formats` or without `prefix` and keeps\nthe viewfinder open. A host with no scanner answers `Unsupported`, and\ncancelling the call closes the viewfinder.",
+                requestDescription: "HostScannerScanRequest",
+                exampleSource: 'const result = await truapi.scanner.scan({\n  formats: ["Qr"],\n  prefix: "https://greenmarket.example/r/",\n  hint: "Point at the receipt\'s QR code",\n});\nassert(result.isOk(), "scanner.scan failed:", result);\nconst outcome = result.value.outcome;\nswitch (outcome.tag) {\n  case "Scanned":\n    console.log("scanned:", outcome.value.format, outcome.value.text);\n    break;\n  case "Dismissed":\n    console.log("the user closed the viewfinder; worth offering again");\n    break;\n}',
+                requestType: "host-scanner-scan-request",
+                responseType: "host-scanner-scan-response",
             },
         ],
     },

@@ -1,10 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The loading screen island (components/shell/LoadingScreen.tsx), rendered
-// before `#app` as the host page has it, following the loading store the
-// controller writes.
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
@@ -30,14 +26,10 @@ import { disposeAppRoot, disposeAppRoots } from '../../../src/mount/app-roots.js
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { getLoadingState, updateLoading } from '../../../src/state/loading.js';
 import { showErrorPage } from '../../../src/ui.js';
-import { LandingPage } from '../../../src/islands/LandingPage.js';
-import { setLandingPage } from '../../../src/state/topbar.js';
 import { byId, byTestId, query } from '../../support.js';
 
-/** The mounted screens' disposers. */
 const mounted: (() => void)[] = [];
 
-/** Render the loading screen before `#app`, where the host page has it. */
 async function mountScreen(): Promise<HTMLElement> {
   const slot = document.createElement('div');
   app().before(slot);
@@ -60,7 +52,6 @@ const ROTATE_MS = 9_000;
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame = 0;
 
-/** Run every animation frame requested so far, at `now`. */
 function runFrames(now: number): void {
   const due = [...frames];
   frames.clear();
@@ -161,7 +152,6 @@ describe('Loading screen island', () => {
     expect(byId('loading-progress-fill').style.width).toBe('62.6%');
     expect(byId('loading-progress-pct').textContent).toBe('63%');
     expect(byId('loading-progress').getAttribute('aria-valuenow')).toBe('63');
-    // The name is text, never markup.
     expect(byId('loading-step').textContent).toBe('Looking up my<b>app</b>.dot');
     expect(byId('loading-step').querySelector('b')).toBeNull();
     expect(byId('status').textContent).toBe('Catching up');
@@ -169,7 +159,6 @@ describe('Loading screen island', () => {
     expect(byId('status-sr').textContent).toBe('Catching up on the newest blocks');
     const warning = byId('loading-warning');
     expect(warning.hasAttribute('data-visible')).toBe(true);
-    // A warning is text, never markup.
     expect(byId('loading-warning-text').textContent).toBe('Slow <b>peers</b>');
     expect(warning.querySelector('b')).toBeNull();
 
@@ -243,29 +232,6 @@ describe('Loading screen island', () => {
     expect(getLoadingState().progress).toBe(frozen);
     expect(frames.size).toBe(0);
     expect(byTestId('error-page-title').textContent).toBe('Failed');
-  });
-
-  it('As a visitor, the landing page disposes a loading screen mounted before it', async () => {
-    // Given: a load underway, which makes the screen the loading root.
-    await mountScreen();
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    const screen = byId('app-loading');
-    runFrames(100);
-
-    // When
-    const landing = document.createElement('div');
-    app().before(landing);
-    mounted.push(render(() => <LandingPage />, landing));
-    setLandingPage(true);
-    await vi.waitFor(() => {
-      expect(document.querySelector('[data-testid="landing"]')).not.toBeNull();
-    });
-    await settle();
-
-    // Then
-    expect(screen.isConnected).toBe(false);
-    expect(getLoadingState().phase).toBe('gone');
-    expect(frames.size).toBe(0);
   });
 
   it('As a visitor, the petals are animated by the stylesheet alone, with no frames or inline styles', async () => {

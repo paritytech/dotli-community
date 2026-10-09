@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  getTopbarState,
-  setBlockingModalActive,
-  recordChainsButtonVisible,
-  setTopbarVisible,
-  topbarStore,
-} from '../../src/state/topbar.js';
+import { getTopbarState, setBlockingModalActive, setTopbarVisible, topbarStore } from '../../src/state/topbar.js';
 import { resetStores } from '../helpers/solid.js';
 
 describe('topbar store', () => {
@@ -16,15 +10,13 @@ describe('topbar store', () => {
     resetStores();
   });
 
-  it('As the shell, the topbar starts absent, visible, pinned, unblocked with nothing waiting, with the chains button hidden', () => {
+  it('As the shell, the topbar starts absent, visible, pinned and unblocked with nothing waiting', () => {
     expect(getTopbarState()).toEqual({
       present: false,
       visible: true,
       autoHide: false,
-      landing: false,
       blockingModalActive: false,
       blockingModalsWaiting: 0,
-      chainsButtonVisible: false,
       settingsOpen: false,
     });
   });
@@ -38,15 +30,6 @@ describe('topbar store', () => {
     expect(topbarStore.get()).toMatchObject({
       visible: false,
       blockingModalActive: true,
-      chainsButtonVisible: false,
     });
-  });
-
-  it('As the host, chains button visibility is recorded', () => {
-    // When
-    recordChainsButtonVisible(true);
-
-    // Then
-    expect(getTopbarState().chainsButtonVisible).toBe(true);
   });
 });

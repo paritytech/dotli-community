@@ -23,20 +23,17 @@ export interface SettingsState {
   network: Network;
   polkaVmAppsEnabled: boolean;
   enabledNetworks: Network[];
-  /** Whether this browser can run the shared-worker light client. */
   sharedWorkerAvailable: boolean;
-  /** Whether the backend verifies chain data (isVerifiedSession). */
+  /** Whether the backend verifies chain data. */
   verified: boolean;
 }
 
-// Null until the host seeds it, so nothing reads localStorage at import time
-// or during build-time rendering.
+// Null until the host seeds it, so nothing reads localStorage at import time or during build-time rendering.
 const settings = createSyncStore<SettingsState | null>('settings', null);
 
 export const settingsStore: ReadableStore<SettingsState | null> = settings;
 export const getSettingsState = settings.get;
 
-/** Read the persisted settings from the config getters. */
 function readSettings(): SettingsState {
   const backend = getBackend();
   return {
@@ -50,10 +47,7 @@ function readSettings(): SettingsState {
   };
 }
 
-/**
- * Snapshot the persisted settings. Changes go through the settings popover's
- * apply-and-reload path, so one snapshot per page load is enough.
- */
+/** Settings change only through apply-and-reload, so one snapshot per page load is enough. */
 export function initSettingsStore(): void {
   settings.set(readSettings());
 }

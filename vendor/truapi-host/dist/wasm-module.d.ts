@@ -44,6 +44,8 @@ export interface WorkerHostRuntime extends PermissionAuthorizationRuntime {
     deviceEncryptionKey(): Promise<Uint8Array>;
     productSubtreePublicKey(productId: string, timeoutMs?: number): Promise<Uint8Array | undefined>;
     clearProductState(productId: string): Promise<void>;
+    /** Only on a core built with `test-host`. */
+    setSubmitPreimagesLocally?(local: boolean): void;
     /**
      * Take one reference on the product's worker. The first one reports
      * `"Start"` through the runtime's `workerDemandChanged` callback.
@@ -69,8 +71,8 @@ export interface WorkerPairingHostRuntime extends WorkerHostRuntime {
  *
  * A signing host owns the user's keys and establishes sessions from local
  * entropy rather than by pairing with a wallet. It is present only in a core
- * built with `wasm-signing-host` (including `web` built with `--signing-host`),
- * which is why the constructor is optional on {@link WasmModuleShape}.
+ * built with `wasm-signing-host`: the testing bundle or a production `web`
+ * bundle built with `--signing-host`. The constructor is otherwise absent.
  */
 export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     activateLocalSession(secret: Uint8Array): Promise<void>;
@@ -90,14 +92,14 @@ export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     refreshLocalIdentity(activationId: string): Promise<LocalIdentity>;
     getWalletAllowanceSnapshot(activationId: string, productIds: string[]): Promise<WalletAllowanceSnapshot>;
     getNativeChatContacts(): Promise<NativeChatContactsSnapshot>;
-    /** Only on a core built with `wasm-signing-host`. */
+    /** Only on a core built with the non-production `test-host` feature. */
     setWithheldResources?(tags: string[]): void;
 }
 /** Module surface the wasm-pack glue exports. */
 export interface WasmModuleShape {
     default: (input?: unknown) => Promise<unknown>;
     WasmPairingHostRuntime: new (callbacks: unknown, hostConfig: unknown) => WorkerPairingHostRuntime;
-    /** Only in bundles built with `wasm-signing-host`. */
+    /** Only with `wasm-signing-host`; see {@link WorkerSigningHostRuntime}. */
     WasmSigningHostRuntime?: new (callbacks: unknown, hostConfig: unknown) => WorkerSigningHostRuntime;
     WasmProductRuntime: new (callbacks: unknown, runtimeConfig: unknown) => WorkerProductRuntime;
     setLogLevel?: (level: string) => void;

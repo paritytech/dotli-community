@@ -4,34 +4,26 @@
 import type { ChainBrokerManager } from '@dotli/protocol';
 
 /**
- * Hold a pool lease on each chain for no reason but to watch it.
+ * Holds an idle pool lease on each chain so its sync can be observed.
  *
- * Every other lease exists because something reads that chain. The relay is
- * the exception: smoldot runs it as the parent of the parachains, so papi never
- * dials it and no sync tap would ever attach. Its warp sync is both the slowest
- * part of a cold start and the only one that reports a true percentage, which
- * is worth one otherwise idle lease to observe.
- *
- * Returns a stop function that releases the leases. A genesis this network
- * does not define is skipped.
+ * The relay needs this because papi never dials it, yet its warp sync is the slowest cold-start step and the only one
+ * with a real percentage.
  */
 export function observeChains(pool: ChainBrokerManager, genesisHashes: readonly string[]): () => void {
   const connections: { disconnect(): void }[] = [];
   for (const genesisHash of genesisHashes) {
-    const provider = pool.getLocalProvider(genesisHash);
+    const provider = pool.getLocalProvider(genesisHash, 'sync-observer');
     if (provider === null) {
       continue;
     }
     connections.push(
       provider(() => {
-        // Nothing reads these chains. Responses to the requests the tap itself sent are
-        // consumed before they reach here. Anything else is chain chatter we
-        // opened the connection to provoke, not to handle.
+        // The tap consumes its own responses before here, the rest is chatter nobody reads.
       }),
     );
   }
   return () => {
-    // Emptied, so a second stop releases nothing again.
+    // Emptied so a second stop is a no-op.
     for (const connection of connections.splice(0)) {
       connection.disconnect();
     }

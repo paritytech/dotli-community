@@ -1,18 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Test helpers for probing the product Frame inside the sandbox iframe.
- *
- * The sandbox bootstrap calls `document.write` to swap the document with
- * the product HTML. Window/Frame identity is preserved across that swap,
- * so the same Frame returned by Playwright once `dotli:app:end` fires is
- * the product Frame we read `window.location` from.
- */
+// The sandbox swaps in the product HTML with `document.write`, which keeps the Frame, so the sandbox Frame is the
+// product Frame once `dotli:app:end` fires.
 
 import { expect, type Frame, type Page } from '@playwright/test';
-// From its source file, not the `@dotli/config` barrel, which cannot load in
-// Node (it reads `self.location` and `import.meta.env` at load).
+// From its source file: the `@dotli/config` barrel reads `self.location` and `import.meta.env` at load, so Node
+// cannot load it.
 import { SANDBOX_CONTRACT_PARAMS } from '../../../packages/config/src/host-sandbox-contract.js';
 
 export interface ProductLocation {
@@ -22,17 +16,9 @@ export interface ProductLocation {
   href: string;
 }
 
-/**
- * Wait for the sandbox iframe to attach without requiring it to finish loading.
- * Returns null on timeout. Use this when the caller wants to handle a missing
- * frame itself (e.g. perf harness logs a warning and continues).
- */
+/** Does not wait for the frame to finish loading. */
 export async function findAppFrame(page: Page, timeoutMs: number): Promise<Frame | null> {
-  // `page.frames()` checks the live frame tree which catches an iframe
-  // whose URL was set via `contentWindow.location` (not the DOM `src`
-  // attribute). The locator-based wait misses that case. Bounded poll
-  // with a short interval. Playwright's framework events fire between
-  // iterations.
+  // The live frame tree catches an iframe navigated through `contentWindow.location`, which a locator misses.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const frame = page.frames().find(f => f.url().includes('.app.localhost'));
@@ -44,13 +30,7 @@ export async function findAppFrame(page: Page, timeoutMs: number): Promise<Frame
   return null;
 }
 
-/**
- * Wait for the sandbox iframe to attach AND finish `document.write` so the
- * product's URL is the one the test should observe. Throws on timeout, and
- * right away when the sandbox shows its error page instead (a failed content
- * fetch never sets `dotli:app:end`, so waiting on the mark alone only ends at
- * the test timeout).
- */
+/** Throws at once on the sandbox's error page, since a failed fetch never sets `dotli:app:end`. */
 export async function getProductFrame(page: Page, timeoutMs: number): Promise<Frame> {
   const start = Date.now();
   const frame = await findAppFrame(page, timeoutMs);
@@ -64,8 +44,7 @@ export async function getProductFrame(page: Page, timeoutMs: number): Promise<Fr
       polling: 500,
     })
     .then(() => ({ kind: 'ok' as const }));
-  // Never settles when no error page shows up, so its own timeout cannot win
-  // the race with a misleading locator error.
+  // Never settles without an error page, so its own timeout cannot win the race with a misleading error.
   const failed = frame
     .getByTestId('error-page-title')
     .first()
@@ -75,8 +54,7 @@ export async function getProductFrame(page: Page, timeoutMs: number): Promise<Fr
       reason: await readErrorText(frame),
     }))
     .catch(() => new Promise<never>(() => undefined));
-  // Also enforced here: a sandbox frame that stopped answering has held
-  // `waitForFunction` past its own timeout until the 900s test timeout.
+  // A sandbox frame that stopped answering holds `waitForFunction` past its own timeout.
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<{ kind: 'timeout' }>(resolve => {
     timer = setTimeout(() => {
@@ -107,11 +85,6 @@ export async function getProductLocation(frame: Frame): Promise<ProductLocation>
   }));
 }
 
-/**
- * Assert that none of the host-to-sandbox contract keys leaked into the
- * product's `window.location.search`. Imports the contract names directly
- * so this can never drift from the source of truth.
- */
 export function assertNoContractKeys(search: string): void {
   const params = new URLSearchParams(search);
   for (const key of Object.values(SANDBOX_CONTRACT_PARAMS)) {
@@ -119,7 +92,7 @@ export function assertNoContractKeys(search: string): void {
   }
 }
 
-/** "title: detail" of the error page in `scope`, or "" when it has no title. */
+/** "title: detail", or "" when the page has no error title. */
 async function readErrorText(scope: Page | Frame): Promise<string> {
   const title =
     (await scope
@@ -139,7 +112,7 @@ async function readErrorText(scope: Page | Frame): Promise<string> {
   return `${title}: ${detail}`;
 }
 
-/** Wait for the host's error page; returns "title: detail" or "" on timeout. */
+/** "" on timeout. */
 export async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> {
   try {
     await page.getByTestId('error-page-title').first().waitFor({ timeout: timeoutMs });
@@ -149,15 +122,7 @@ export async function waitForErrorPage(page: Page, timeoutMs: number): Promise<s
   return readErrorText(page);
 }
 
-/**
- * Wait for an error page rendered INSIDE the sandbox iframe (e.g. validator
- * failures from `validateSandboxParams`). The sandbox calls `showError(...)`
- * which writes the `error-page-title` / `error-page-detail` test ids into the sandbox
- * Frame's DOM. This never reaches the host page, and `dotli:app:end` never
- * fires on validation failure, so the regular helpers don't apply.
- *
- * Returns "title: detail" or "" on timeout.
- */
+/** An error page inside the sandbox frame never reaches the host page or sets `dotli:app:end`. "" on timeout. */
 export async function waitForSandboxErrorPage(page: Page, timeoutMs: number): Promise<string> {
   const frame = await findAppFrame(page, timeoutMs);
   if (frame === null) {
@@ -171,12 +136,7 @@ export async function waitForSandboxErrorPage(page: Page, timeoutMs: number): Pr
   return readErrorText(frame);
 }
 
-/**
- * Race the shell's success path against the host error page. Throws when
- * the shell renders an error instead of completing, or when neither
- * outcome appears within `timeoutMs`. `label` is appended to the error
- * message so failing tests point at the right variant.
- */
+/** `label` names the failing variant in the thrown message. */
 export async function waitForResolutionOutcome(page: Page, timeoutMs: number, label: string): Promise<void> {
   const successPromise = getProductFrame(page, timeoutMs).then(() => ({
     kind: 'ok' as const,

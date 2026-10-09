@@ -28,6 +28,7 @@ export const ChatRichText = S.lazy(() => S.Struct({ text: S.Option(S.str), media
 export const ChatRoom = S.lazy(() => S.Struct({ roomId: S.str, participatingAs: ChatRoomParticipation }));
 export const ChatRoomParticipation = S.lazy(() => S.Status("RoomHost", "Bot"));
 export const ChatRoomRegistrationStatus = S.lazy(() => S.Status("New", "Exists"));
+export const CodeFormat = S.lazy(() => S.Status("Qr", "Aztec", "DataMatrix", "Pdf417", "Ean13", "Ean8", "UpcE", "Code128", "Code39", "Code93", "Itf", "Codabar"));
 export const CoinPaymentCheque = S.lazy(() => S.Struct({ id: S.Hex(32), amount: S.u32, encryptedSecrets: S.Hex() }));
 export const CoinPaymentClearingReference = S.lazy(() => S.Struct({ root: S.Hex(32), leaves: S.Vector(S.Tuple(S.Hex(32), S.Hex(32))) }));
 export const CoinPaymentError = S.lazy(() => S.Status("BalanceLow", "Denied", "BadCoins", "SnipedCoins", "PurseNotFound", "ReceivableNotFound", "UnsupportedChannel", "UserAgentCapabilityUnavailable", "Internal"));
@@ -72,6 +73,9 @@ export const VersionedHostAccountRingVrfSignResponse = S.lazy(() => S.indexedTag
 export const VersionedHostAccountSignVrfError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostAccountSignVrfError] }));
 export const VersionedHostAccountSignVrfRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostAccountSignVrfRequest] }));
 export const VersionedHostAccountSignVrfResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, VrfSignature] }));
+export const VersionedHostCancelNextGameError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
+export const VersionedHostCancelNextGameRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostCancelNextGameRequest] }));
+export const VersionedHostCancelNextGameResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
 export const VersionedHostChatActionSubscribeError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedHostChatActionSubscribeItem = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostChatActionSubscribeItem] }));
 export const VersionedHostChatActionSubscribeRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
@@ -135,6 +139,9 @@ export const VersionedHostDeriveEntropyResponse = S.lazy(() => S.indexedTaggedUn
 export const VersionedHostDevicePermissionError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedHostDevicePermissionRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostDevicePermissionRequest] }));
 export const VersionedHostDevicePermissionResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostDevicePermissionResponse] }));
+export const VersionedHostExpandedCardSetFaceShownError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostExpandedCardSetFaceShownError] }));
+export const VersionedHostExpandedCardSetFaceShownRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostExpandedCardSetFaceShownRequest] }));
+export const VersionedHostExpandedCardSetFaceShownResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
 export const VersionedHostFeatureSupportedError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedHostFeatureSupportedRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostFeatureSupportedRequest] }));
 export const VersionedHostFeatureSupportedResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostFeatureSupportedResponse] }));
@@ -248,6 +255,9 @@ export const VersionedHostPushNotificationCancelResponse = S.lazy(() => S.indexe
 export const VersionedHostPushNotificationError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPushNotificationError] }));
 export const VersionedHostPushNotificationRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPushNotificationRequest] }));
 export const VersionedHostPushNotificationResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPushNotificationResponse] }));
+export const VersionedHostRemindNextGameError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRemindNextGameError] }));
+export const VersionedHostRemindNextGameRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRemindNextGameRequest] }));
+export const VersionedHostRemindNextGameResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
 export const VersionedHostRendererActionSubscribeError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedHostRendererActionSubscribeItem = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRendererActionSubscribeItem] }));
 export const VersionedHostRendererActionSubscribeRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
@@ -257,6 +267,9 @@ export const VersionedHostRequestLoginResponse = S.lazy(() => S.indexedTaggedUni
 export const VersionedHostRequestResourceAllocationError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, ResourceAllocationError] }));
 export const VersionedHostRequestResourceAllocationRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRequestResourceAllocationRequest] }));
 export const VersionedHostRequestResourceAllocationResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRequestResourceAllocationResponse] }));
+export const VersionedHostScannerScanError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostScannerScanError] }));
+export const VersionedHostScannerScanRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostScannerScanRequest] }));
+export const VersionedHostScannerScanResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostScannerScanResponse] }));
 export const HostSignPayloadData = S.lazy(() => S.Struct({ blockHash: S.Hex(), blockNumber: S.Hex(), era: S.Hex(), genesisHash: S.Hex(), method: S.Hex(), nonce: S.Hex(), specVersion: S.Hex(), tip: S.Hex(), transactionVersion: S.Hex(), signedExtensions: S.Vector(S.str), version: S.u32, assetId: S.Option(S.Hex()), metadataHash: S.Option(S.Hex()), mode: S.Option(S.u32), withSignedTransaction: S.OptionBool }));
 export const VersionedHostSignPayloadError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] }));
 export const VersionedHostSignPayloadRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadRequest] }));
@@ -384,6 +397,7 @@ export const RowProps = S.lazy(() => S.Struct({ verticalAlignment: S.Option(Vert
 export const RuntimeApi = S.lazy(() => S.Struct({ name: S.str, version: S.u32 }));
 export const RuntimeSpec = S.lazy(() => S.Struct({ specName: S.str, implName: S.str, specVersion: S.u32, implVersion: S.u32, transactionVersion: S.Option(S.u32), apis: S.Vector(RuntimeApi) }));
 export const RuntimeType = S.lazy(() => S.TaggedUnion({ Valid: RuntimeSpec, Invalid: S.Struct({ error: S.str }) }));
+export const ScanOutcome = S.lazy(() => S.TaggedUnion({ Scanned: S.Struct({ text: S.str, format: CodeFormat }), Dismissed: S._void }));
 export const Shape = S.lazy(() => S.TaggedUnion({ Rounded: Size, Circle: S._void, Square: S._void }));
 export const SignedStatement = S.lazy(() => S.Struct({ proof: StatementProof, decryptionKey: S.Option(S.Hex(32)), expiry: S.Option(S.u64), channel: S.Option(S.Hex(32)), topics: S.Vector(S.Hex(32)), data: S.Option(S.Hex()) }));
 export const Size = S.lazy(() => S.compact);
@@ -416,6 +430,7 @@ export const HostAccountRingVrfSignError = S.lazy(() => S.TaggedUnion({ NotConne
 export const HostAccountRingVrfSignRequest = S.lazy(() => S.Struct({ keyHandle: ProductAccountId, message: S.Hex() }));
 export const HostAccountSignVrfError = S.lazy(() => S.TaggedUnion({ NotConnected: S._void, Rejected: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostAccountSignVrfRequest = S.lazy(() => S.Struct({ account: ProductAccountId, transcriptLabel: S.Hex(), items: S.Vector(VrfTranscriptItem) }));
+export const HostCancelNextGameRequest = S.lazy(() => S.Struct({}));
 export const HostChatActionSubscribeItem = S.lazy(() => S.Struct({ roomId: S.str, peer: S.str, payload: ChatActionPayload }));
 export const HostChatCreateRoomError = S.lazy(() => S.TaggedUnion({ PermissionDenied: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostChatCreateRoomRequest = S.lazy(() => S.Struct({ roomId: S.str, name: S.str, icon: S.str }));
@@ -458,6 +473,8 @@ export const HostDeriveEntropyRequest = S.lazy(() => S.Struct({ context: S.Hex()
 export const HostDeriveEntropyResponse = S.lazy(() => S.Struct({ entropy: S.Hex(32) }));
 export const HostDevicePermissionRequest = S.lazy(() => S.Status("Notifications", "Camera", "Microphone", "Bluetooth", "NFC", "Location", "Clipboard", "OpenUrl", "Biometrics"));
 export const HostDevicePermissionResponse = S.lazy(() => S.Struct({ granted: S.bool }));
+export const HostExpandedCardSetFaceShownError = S.lazy(() => S.TaggedUnion({ NotPresented: S._void, UserMoving: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostExpandedCardSetFaceShownRequest = S.lazy(() => S.Struct({ shown: S.bool }));
 export const HostFeatureSupportedRequest = S.lazy(() => S.TaggedUnion({ Chain: S.Struct({ genesisHash: S.Hex() }) }));
 export const HostFeatureSupportedResponse = S.lazy(() => S.Struct({ supported: S.bool }));
 export const HostGetLegacyAccountsResponse = S.lazy(() => S.Struct({ accounts: S.Vector(LegacyAccount) }));
@@ -506,12 +523,17 @@ export const HostPushNotificationCancelRequest = S.lazy(() => S.Struct({ id: S.u
 export const HostPushNotificationError = S.lazy(() => S.TaggedUnion({ ScheduleLimitReached: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPushNotificationRequest = S.lazy(() => S.Struct({ text: S.str, deeplink: S.Option(S.str), scheduledAt: S.Option(S.u64) }));
 export const HostPushNotificationResponse = S.lazy(() => S.Struct({ id: S.u32 }));
+export const HostRemindNextGameError = S.lazy(() => S.Status("StartsInPast"));
+export const HostRemindNextGameRequest = S.lazy(() => S.Struct({ startsAt: S.u64 }));
 export const HostRendererActionSubscribeItem = S.lazy(() => S.Struct({ context: RenderContext, actionId: S.str, payload: S.Hex() }));
 export const HostRequestLoginError = S.lazy(() => S.TaggedUnion({ Unknown: S.Struct({ reason: S.str }) }));
 export const HostRequestLoginRequest = S.lazy(() => S.Struct({ reason: S.Option(S.str) }));
 export const HostRequestLoginResponse = S.lazy(() => S.Status("Success", "AlreadyConnected", "Rejected"));
 export const HostRequestResourceAllocationRequest = S.lazy(() => S.Struct({ resources: S.Vector(AllocatableResource) }));
 export const HostRequestResourceAllocationResponse = S.lazy(() => S.Struct({ outcomes: S.Vector(AllocationOutcome) }));
+export const HostScannerScanError = S.lazy(() => S.TaggedUnion({ CameraUnavailable: S._void, Busy: S._void, NotVisible: S._void, InvalidRequest: S.Struct({ reason: S.str }), Unknown: S.Struct({ reason: S.str }) }));
+export const HostScannerScanRequest = S.lazy(() => S.Struct({ formats: S.Vector(CodeFormat), prefix: S.Option(S.str), hint: S.Option(S.str) }));
+export const HostScannerScanResponse = S.lazy(() => S.Struct({ outcome: ScanOutcome }));
 export const HostSignPayloadError = S.lazy(() => S.TaggedUnion({ FailedToDecode: S._void, Rejected: S._void, PermissionDenied: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostSignPayloadRequest = S.lazy(() => S.Struct({ account: ProductAccountId, payload: HostSignPayloadData }));
 export const HostSignPayloadResponse = S.lazy(() => S.Struct({ signature: S.Hex(), signedTransaction: S.Option(S.Hex()) }));

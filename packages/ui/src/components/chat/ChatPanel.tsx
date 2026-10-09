@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Contents of the docked chat panel. The panel itself (`aside#chat-panel`)
-// and the product-iframe width are ChatDock's, which loads this chunk; this
-// renders inside it and reads rooms, bots and messages from storage whenever
-// the chat-panel store says they may have changed.
+// The chat panel's contents. ChatDock owns the panel element and the product frame width.
 
 import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -96,8 +93,7 @@ function totalSeq(roomSeq: Readonly<Record<string, number>>): number {
 }
 
 function PanelBody(): JSX.Element {
-  // Slices, not the whole store: a width drag, a topbar toggle or the
-  // composer-focus flag must not re-run the rows and derivations below.
+  // Slices, so a width drag, a topbar toggle or the composer-focus flag never re-runs the rows below.
   const productId = useStore(chatPanelStore, currentChatProductId);
   const loggedIn = useStore(chatPanelStore, state => state.loggedIn);
   const label = useStore(chatPanelStore, state => state.label);
@@ -108,8 +104,7 @@ function PanelBody(): JSX.Element {
   const composerError = useStore(chatPanelStore, state => state.composerError);
   const [contacts, setContacts] = createSignal<ContactEntry[] | null>(null);
   const [messages, setMessages] = createSignal<ChatMessageRecord[]>([]);
-  // Kept apart so each clears when its own read works, and a failed
-  // conversation read never shows over the list.
+  // Separate, so each clears on its own read and a conversation error never shows over the list.
   const [contactsError, setContactsError] = createSignal(false);
   const [messagesError, setMessagesError] = createSignal(false);
   const [refresh, setRefresh] = createSignal(0);
@@ -147,19 +142,13 @@ function PanelBody(): JSX.Element {
     return id === null ? undefined : contacts()?.find(c => c.id === id);
   });
 
-  // Messages move the list's recency order, but the list is only re-read
-  // for them while it shows: a memo that holds the message count from the
-  // last time the list showed, so reading a conversation re-reads nothing
-  // and going back re-reads once, only if messages came in meanwhile.
+  // Messages reorder the list, but it re-reads for them only while it shows, and once on return if any arrived.
   const messageCount = createMemo(() => totalSeq(roomSeq()));
   const listMessageCount = createMemo<number>(previous =>
     activeContact() === undefined || previous === undefined ? messageCount() : previous,
   );
 
-  // Contacts: re-read when the product, the session, the room and bot lists,
-  // or (while the list shows) the messages change. A read acts only while it
-  // is current: a newer read, or the panel closing, drops an older one that
-  // resolves late.
+  // A newer read or the panel closing drops an older read that resolves late.
   const contactsKey = createMemo(() => {
     const id = productId();
     return id === null
@@ -177,8 +166,7 @@ function PanelBody(): JSX.Element {
         if (!live) {
           return;
         }
-        // A keyed list moves rows with insertBefore, which blurs a moved
-        // row; note the focused one to focus again after the update.
+        // A keyed list moves rows with insertBefore, which blurs them, so note the focused row.
         refocusRoomId = null;
         for (const [roomId, el] of rowEls) {
           if (el === document.activeElement) {
@@ -198,7 +186,7 @@ function PanelBody(): JSX.Element {
     };
   });
 
-  // After the rows move: focus the row that had it, if the move blurred it.
+  // Refocus the row a move blurred.
   createEffect(contacts, () => {
     const roomId = refocusRoomId;
     refocusRoomId = null;
@@ -208,7 +196,6 @@ function PanelBody(): JSX.Element {
     }
   });
 
-  // The open room vanished, or there are no contacts: back to the list.
   createEffect(
     () => {
       const list = contacts();
@@ -233,9 +220,7 @@ function PanelBody(): JSX.Element {
     return activeContact() === undefined ? 'list' : 'conversation';
   });
 
-  // Messages of the open room: re-read when that room gets a message (its
-  // roomSeq moves) or after sending. A message for another room leaves this
-  // key alone, so the conversation and its live custom renders stay put.
+  // A message for another room leaves this key alone, so the conversation and its live custom renders stay put.
   const messagesKey = createMemo(() => {
     const id = productId();
     const roomId = activeContact()?.id;
@@ -244,8 +229,7 @@ function PanelBody(): JSX.Element {
       : `${id}\u0000${roomId}\u0000${String(roomSeq()[roomId] ?? 0)}\u0000${String(refresh())}`;
   });
   let shownRoomId: string | null = null;
-  // Whether the reader is at the newest message. Only a scroll moves it, so
-  // content that grows under a reader at the bottom keeps them there.
+  // Whether the reader is at the newest message. Growth never clears it, so a reader at the bottom stays there.
   let stuck = true;
   createEffect(messagesKey, key => {
     const current = chatPanelStore.get();
@@ -263,8 +247,7 @@ function PanelBody(): JSX.Element {
       setMessagesError(false);
       setMessages([]);
     }
-    // As for contacts; the room check also drops a read for a room left in
-    // this same tick, before the effect re-runs (the store moves at once).
+    // The room check also drops a read for a room left this tick, before the effect re-runs.
     let live = true;
     chatMessages(id, roomId)
       .then(records => {
@@ -291,8 +274,6 @@ function PanelBody(): JSX.Element {
     }
   };
 
-  // After each message render: keep a reader at the newest message there,
-  // and focus the composer once after picking a room.
   createEffect(messages, () => {
     stickToBottom();
     if (chatPanelStore.get().focusComposer && inputEl !== undefined) {
@@ -301,10 +282,7 @@ function PanelBody(): JSX.Element {
     }
   });
 
-  // Follow any growth while the reader is at the bottom: the thread's height
-  // moves with a message added or removed, a custom tree drawn late, an
-  // image or a web font that loads late, or a reflow; the list's with the
-  // hint line or the window.
+  // Follows late growth too, such as custom trees, images, web fonts or a resized window.
   onSettled(() => {
     if (messagesEl === undefined || threadEl === undefined || typeof ResizeObserver === 'undefined') {
       return;

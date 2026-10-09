@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { requestBitswapBlock } from '../src/bitswap-bridge.js';
 
-/**
- * Drives the host side of the relay: captures what the bridge posts to its
- * parent, and lets a test answer as the host would.
- */
+/** Captures what the bridge posts to its parent. */
 function hostSide(): { posted: unknown[] } {
   const posted: unknown[] = [];
   vi.spyOn(window, 'parent', 'get').mockReturnValue({
@@ -16,11 +13,7 @@ function hostSide(): { posted: unknown[] } {
   return { posted };
 }
 
-/**
- * happy-dom's `PageTransitionEvent` constructor accepts `persisted` and then
- * reports it as `undefined`, so the flag has to be attached directly for the
- * handler's guard to see anything.
- */
+/** happy-dom's `PageTransitionEvent` drops `persisted`, so the flag is attached directly. */
 function pagehide(persisted: boolean): void {
   const event = new Event('pagehide');
   Object.defineProperty(event, 'persisted', { value: persisted });

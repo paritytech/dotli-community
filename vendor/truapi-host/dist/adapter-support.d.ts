@@ -33,8 +33,10 @@ export declare function coinageWalletHostAdapter(host: Required<CoinageWalletHos
  * A profile host built before `presentContactProfile` still shows a contact's
  * profile: without it, the contact's reference is presented as
  * `presentProfile` would. Empty-profile feedback requires the contact callback.
+ * Missing avatar placement draws nothing, matching the Rust platform default;
+ * resolving does not promise that any avatar was rendered.
  */
-export declare function profileHostAdapter(host: Required<ProfilePlatform> | undefined): Required<ProfilePlatform> | undefined;
+export declare function profileHostAdapter(host: ProfilePlatform | undefined): Required<ProfilePlatform> | undefined;
 /** Optional SDK embeddings must fail closed, never invent successful file handles. */
 export declare const unavailableNativeChatFilesHost: Required<NativeChatFilesHost>;
 export declare function hopConnectAdapter(host: Required<HopProvider>): HopConnect;

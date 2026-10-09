@@ -352,8 +352,7 @@ describe('isDevicePermission', () => {
   });
 
   it('rejects device permissions absent from the policy map', () => {
-    // Notifications is host-gated separately (see handleDevicePermission)
-    // but has no Permissions Policy directive. OpenUrl is auto-granted.
+    // Notifications is host-gated separately but has no Permissions Policy directive. OpenUrl is auto-granted.
     expect(isDevicePermission('Notifications')).toBe(false);
     expect(isDevicePermission('OpenUrl')).toBe(false);
   });

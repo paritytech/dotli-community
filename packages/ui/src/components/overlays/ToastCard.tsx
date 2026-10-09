@@ -19,7 +19,7 @@ export interface ToastCardProps {
 }
 
 export function ToastCard(props: ToastCardProps): JSX.Element {
-  // The id never changes for a card (the stack keys cards by id).
+  // The stack keys cards by id, so it never changes.
   const id = untrack(() => props.entry.id);
   const [entering, setEntering] = createSignal(true);
   // A leaving card keeps the layout it had when it started to leave.

@@ -1,19 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li Sandbox API Checker.
-//
-// Generates a self-contained IIFE script that monkey-patches restricted
-// browser APIs inside the dApp iframe. Violations are reported to the
-// parent window via postMessage (log-and-forward: the call still proceeds).
-//
-// Activated only when VITE_SANDBOX_CHECKER is set at build time.
-
-/**
- * Self-contained vanilla JS IIFE injected into dApp HTML.
- * Monkey-patches network, worker, service-worker, DOM, and wallet APIs.
- * Reports violations to parent via postMessage but lets calls proceed.
- */
+/** Injected into product HTML when VITE_SANDBOX_CHECKER is set. Reports restricted API use, lets the call run. */
 export const SANDBOX_CHECKER_SCRIPT = `<script>(function(){
 "use strict";
 function __dotliReport(api,details){
@@ -202,10 +190,6 @@ set:function(v){if(firstWrite){firstWrite=false}else{__dotliReport("Direct walle
 });
 })()</script>`;
 
-/**
- * Inject the sandbox checker script into HTML content.
- * Inserts after `<head>` if present, otherwise prepends to the HTML.
- */
 export function injectSandboxChecker(html: string): string {
   if (html.includes('<head>')) {
     return html.replace('<head>', '<head>' + SANDBOX_CHECKER_SCRIPT);

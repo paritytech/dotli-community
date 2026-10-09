@@ -18,34 +18,29 @@ export interface ModalProps {
   title: string;
   labelledBy?: string | undefined;
   initialFocus?: (() => HTMLElement | undefined) | undefined;
-  /** Where focus returns on close instead of what held it at opening (a trigger the browser may not focus on click). */
+  /** Overrides what held focus at opening, for a trigger the browser may not focus on click. */
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
   placement?: 'center' | 'topbar-end';
   scrim?: 'dark' | 'light';
   id?: string | undefined;
-  /** The card's own class (the auth modal's glass and width). */
+  /** On the card only. */
   class?: string | undefined;
-  /** On the card or sheet; the frame gets -backdrop, the scrim -scrim, the sheet head -sheet-head, -sheet-title, -sheet-close. */
+  /** On the card or sheet, with `-backdrop`, `-scrim` and `-sheet-*` variants. */
   testId: string;
-  /** Receives the dialog frame (AuthModal registers it as a topbar surface). */
-  frameRef?: (el: HTMLDialogElement) => void;
+  /** Receives the frame. */
+  frameRef?: (el: HTMLDivElement) => void;
   children: JSX.Element;
 }
 
 /**
- * A modal: a card (centred, or under the topbar's end) on wide screens and
- * a bottom sheet on a phone's, following the viewport while open. The
- * children are resolved once and moved between the two forms, so a field's
- * value and focus survive the switch.
+ * A card on wide screens and a bottom sheet on a phone, following the viewport while open. The children resolve
+ * once and move between the forms, so a field's value and focus survive the switch.
  */
 function ModalRoot(props: ModalProps): JSX.Element {
-  let frame: HTMLDialogElement | undefined;
-  // A client mount reads the form as it mounts, so a phone opening is a sheet
-  // from its first frame. Hydrating, it starts as the build-time render's wide
-  // form (that markup has no viewport) and takes the real one once settled.
+  let frame: HTMLDivElement | undefined;
+  // Hydration starts in the build-time wide form, which had no viewport, and takes the real one once settled.
   const [phone, setPhone] = createSignal(isHydrating() ? false : isPhoneViewport());
-  // A focused element is blurred as it moves between forms: what held focus
-  // in the dialog as the viewport crossed, given focus again once moved.
+  // Moving between forms blurs the focused element, so it is refocused once moved.
   let focusAcross: Element | null = null;
   onSettled(() => {
     setPhone(isPhoneViewport());
@@ -61,15 +56,14 @@ function ModalRoot(props: ModalProps): JSX.Element {
     if (held === null || frame === undefined) {
       return;
     }
-    // The card itself, or the sheet head's close, is gone: the new surface.
+    // The card itself or the sheet head's close is gone, so the new surface takes focus.
     const target = held.isConnected ? held : frame.querySelector('[data-modal-surface]');
     if (target instanceof HTMLElement && document.activeElement !== target) {
       target.focus();
     }
   });
 
-  // Created under InSheet once, so content that lays out as a sheet (Surface)
-  // follows the form as it moves rather than keep the one it was made in.
+  // Created under InSheet once, so Surface follows the form rather than keep the one it was made in.
   const content = children(() => <InSheet value={phone}>{props.children}</InSheet>);
   const layout = (): 'center' | 'sheet' | 'topbar-end' => (phone() ? 'sheet' : (props.placement ?? 'center'));
 
@@ -122,12 +116,9 @@ function ModalRoot(props: ModalProps): JSX.Element {
   );
 }
 
-/**
- * The icon tile over the centred title. The sheet drops it, as its head
- * carries the title there.
- */
+/** The sheet drops it, as its head carries the title. */
 function Head(props: {
-  /** The modal's `labelledBy`, which this title is. */
+  /** The modal's `labelledBy`. */
   titleId: string;
   title: string;
   /** Trusted SVG markup for the IconTile. */
@@ -144,12 +135,12 @@ function Head(props: {
   );
 }
 
-/** Between the head and the answers, the part that scrolls when it outgrows the window. */
+/** Scrolls when it outgrows the window. */
 function Body(props: { children: JSX.Element }): JSX.Element {
   return <div class={s['body']}>{props.children}</div>;
 }
 
-/** The row of equal-width answers, stacked in the sheet. Each child is one answer. */
+/** Equal-width answers, stacked in the sheet. */
 function Actions(props: { testId?: string; children: JSX.Element }): JSX.Element {
   return (
     <div class={s['actions']} data-testid={props.testId}>

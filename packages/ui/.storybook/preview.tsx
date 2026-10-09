@@ -25,10 +25,8 @@ const preview: Preview = {
       },
     },
   },
-  // The framework's default render passes its args store itself as props, so
-  // a prop no story sets but the component reads once in its body (Button's
-  // ref) is an untracked store read and trips STRICT_READ_UNTRACKED. A merge
-  // view checks `in` before it reads, as a call-site spread does in the app.
+  // The default render passes the args store itself as props, so a prop read once in the body
+  // is an untracked store read and trips STRICT_READ_UNTRACKED. A merge view checks `in` first.
   render: (args, context) => {
     const Component = context.component;
     if (Component === undefined) {
@@ -38,10 +36,8 @@ const preview: Preview = {
     return <Component {...props} />;
   },
   decorators: [
-    // Once per mount: the framework's story memo declines to render a story
-    // twice, so a decorator it re-runs on a globals change empties the canvas.
-    // `parameters.chrome` marks a chrome component's stories: the app renders
-    // only those under data-chrome, with its type step and focus colour.
+    // Once per mount, since the story memo will not render twice and a re-run on a globals change
+    // empties the canvas. `parameters.chrome` marks stories the app renders under data-chrome.
     createJSXDecorator((Story, context) => {
       document.body.style.background = 'var(--bg-page)';
       return (

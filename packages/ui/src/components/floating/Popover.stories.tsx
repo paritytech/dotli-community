@@ -29,7 +29,7 @@ function Harness(props: { content?: 'buttons' | 'failing'; handOver?: boolean })
     );
   return (
     <div style={{ display: 'flex', gap: '8px', 'justify-content': 'flex-end' }}>
-      {/* With `handOver`, as AuthButton when the session drops: the popover lets the button go, whose click then starts something else. */}
+      {/* With `handOver` the popover lets the button go, as AuthButton does when the session drops. */}
       {props.handOver === true ? (
         <Button
           testId="let-go"
@@ -79,8 +79,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Trusted input, a user's: the browser's invokers act on it only. Loaded on
- * use, so the stories still load in Storybook outside Vitest.
+ * Trusted input, which the browser's invokers require. Imported lazily so Storybook loads the stories outside Vitest.
  */
 const input = async () => (await import('vitest/browser')).userEvent;
 const press = async (testId: string) => {
@@ -107,8 +106,8 @@ export const PhoneSheet: Story = {
     await step('When I press the button on a phone', () => press('trigger'));
     await step('Then a bottom sheet titled Example opens, and no anchored layer', async () => {
       await waitFor(() => expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('Example'));
-      const sheet = document.getElementById('story-popover') as HTMLDialogElement;
-      await expect(sheet.open).toBe(true);
+      const sheet = document.getElementById('story-popover');
+      await expect(sheet).toHaveAttribute('data-open');
       await expect(document.querySelectorAll(':popover-open')).toHaveLength(0);
       await expect(onOpenChange.mock.calls).toEqual([[true]]);
     });
@@ -123,7 +122,7 @@ export const PhoneClosesReturnFocus: Story = {
   play: async ({ step }) => {
     const settled = async (calls: boolean[][]) => {
       await waitFor(() => expect(onOpenChange.mock.calls).toEqual(calls));
-      await waitFor(() => expect((document.getElementById('story-popover') as HTMLDialogElement).open).toBe(false));
+      await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
       await waitFor(() => expect(body.getByTestId('trigger')).toHaveFocus());
       // Both the sheet's restore and the popover's land on the trigger, and nothing moves it after.
       await new Promise(resolve => requestAnimationFrame(resolve));

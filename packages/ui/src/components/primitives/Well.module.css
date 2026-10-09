@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The mockup's .well, .list, .row, .kv and .callout. Every layout starts its
-   text 12 px from the left edge (the boards' 16 on phones), so wells line up
-   with choices and callouts. */
+/* Every layout shares the left text inset of choices and callouts, so they line up. */
 
 :where(.well) {
   box-sizing: border-box;
@@ -63,8 +61,7 @@
   flex: none;
   color: var(--chrome-text-muted);
 }
-/* A package name gives way before its version: the longest names outgrow
-   the desktop Settings column. */
+/* Long package names outgrow the Settings column, so the name truncates before its version. */
 .kv[data-dense] .key {
   flex: 0 1 auto;
   min-width: 0;
@@ -103,8 +100,7 @@
   position: absolute;
   inset: 0;
 }
-/* The row's ring replaces the global one, which out-specifies the :where
-   base's all: unset. */
+/* The global ring out-specifies the :where base's all: unset, so it is removed here. */
 .copy:focus-visible {
   outline: none;
 }
@@ -145,7 +141,6 @@
   margin: 0;
 }
 
-/* Phones: the boards' sizes. */
 @media (max-width: 560px) {
   :where(.well) {
     padding: var(--sp-3) var(--sp-4);

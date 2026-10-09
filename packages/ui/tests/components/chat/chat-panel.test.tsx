@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The docked chat panel's contents (components/chat/ChatPanel.tsx) over a
-// stand-in chat service, so the tests count storage reads and derivations.
-// tests/chat-panel.test.ts covers the panel end to end over IndexedDB.
+// The chat panel's contents over a stand-in service, to count storage reads and derivations.
+// tests/chat-panel.test.ts covers it end to end over IndexedDB.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
@@ -103,7 +102,6 @@ import { nth } from '../../helpers/nth.js';
 
 const PRODUCT = 'chatty.dot';
 
-/** Let reads resolve and their renders flush. */
 async function idle(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await settle();
@@ -156,7 +154,6 @@ let removeRules: (() => void) | undefined;
 let unregisterPanel: (() => void) | undefined;
 
 async function openPanel(roomCount = 20): Promise<void> {
-  // The docked panel, as ChatDock renders and registers it.
   const container = document.createElement('aside');
   container.id = 'chat-panel';
   document.body.append(container);
@@ -444,7 +441,6 @@ describe('chat panel, message reads', () => {
 });
 
 describe('chat panel, scrolling', () => {
-  /** A messages list of `height()` px in a 200 px viewport. */
   function sized(height: () => number): HTMLElement {
     const list = byId('chat-panel-messages');
     Object.defineProperty(list, 'scrollHeight', {
@@ -463,7 +459,6 @@ describe('chat panel, scrolling', () => {
     list.dispatchEvent(new Event('scroll'));
   }
 
-  /** Stand-in ResizeObservers: what each observes, and whether it is gone. */
   interface FakeObserver {
     callback: () => void;
     targets: Set<Element>;
@@ -496,7 +491,6 @@ describe('chat panel, scrolling', () => {
     };
   }
 
-  /** The wrapper around the bubbles, whose height is the conversation's. */
   function thread(): HTMLElement {
     const node = byId('chat-panel-messages').querySelector<HTMLElement>('[data-testid="chat-panel-thread"]');
     if (node === null) {
@@ -552,7 +546,6 @@ describe('chat panel, scrolling', () => {
     });
     await idle();
     expect(list.textContent).toContain('Poll');
-    // The thread grew, so the browser reports it.
     observers.observing(thread())?.callback();
 
     // Then

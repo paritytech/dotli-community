@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The mockup's .switch: a 38 x 22 track with a 16 px knob inset 3 px on
-   desktop, the boards' 44 x 26 with a 20 px knob on phones. On, the track
-   turns white and the knob dark, the same pair as the primary button. */
-
 :where(.switch) {
   box-sizing: border-box;
   display: flex;
@@ -17,7 +13,7 @@
   border-radius: var(--r-full);
   background: var(--chrome-fill-strong);
   box-shadow: inset 0 0 0 1px var(--chrome-ring);
-  /* No text: only so it holds no UA 13.333 px font size. */
+  /* No text, but drops the UA 13.333 px font size. */
   font: inherit;
   cursor: pointer;
   transition: background var(--dur-fast);

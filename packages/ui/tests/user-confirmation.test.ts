@@ -935,7 +935,8 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(byTestId('signing-modal-backdrop').tagName).toBe('DIALOG');
+    expect(byTestId('signing-modal-backdrop').getAttribute('role')).toBe('dialog');
+    expect(byTestId('signing-modal-backdrop').getAttribute('aria-modal')).toBe('true');
 
     // When: the key goes to the focused element, as a real one does.
     (document.activeElement ?? document.body).dispatchEvent(

@@ -10,15 +10,13 @@ export interface ThemeState {
   resolved: 'light' | 'dark';
 }
 
-// Dark is the stylesheet default; the real value is written at boot by the
-// theme-controller.ts (initTheme, called from initTopBar), which reads
-// localStorage and matchMedia.
+// Dark matches the stylesheet default until initTheme writes the stored or system preference at boot.
 const theme = createSyncStore<ThemeState>('theme', { pref: 'system', resolved: 'dark' }, { equals: shallowEqual });
 
 export const themeStore: ReadableStore<ThemeState> = theme;
 export const getThemeState = theme.get;
 
-/** Also dispatches `dotli:theme-changed`, which the TrUAPI theme bridge forwards. */
+/** The TrUAPI theme bridge forwards `dotli:theme-changed` to products. */
 export function setTheme(next: ThemeState): void {
   theme.set(next);
   window.dispatchEvent(new Event('dotli:theme-changed'));

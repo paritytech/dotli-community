@@ -3,7 +3,7 @@
 
 import { createSignal, onSettled, type Accessor } from 'solid-js';
 
-/** What makes the permissions re-read (and the button its class). */
+/** Events that re-read the permissions and the button's class. */
 export const REFRESH_EVENTS = [
   'dotli:product-loaded',
   'dotli:product-error',
@@ -12,9 +12,8 @@ export const REFRESH_EVENTS = [
 ] as const;
 
 /**
- * A count that moves on each event that may change the permissions, while
- * the calling component is mounted. Reads that key on it next to the
- * product's label run again even for the product already on show.
+ * A count that moves on each permission-changing event while mounted.
+ * A read keyed on it beside the product's label re-runs even for the product already on show.
  */
 export function createPermissionChanges(): Accessor<number> {
   const [changes, setChanges] = createSignal(0);

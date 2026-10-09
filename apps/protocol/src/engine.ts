@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The protocol iframe's request engine: resolution, warmup and remote chain connections.
-
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { StringJsonRpcConnection } from '@dotli/protocol';
 import type {
@@ -35,22 +33,16 @@ export interface ProtocolEngine {
 }
 
 export interface EngineOptions {
-  /** Factory for a chain's transport, keyed by genesis hash. */
   createChainProvider: (genesisHash: string, hooks?: ChainTransportHooks) => JsonRpcProvider | null;
   /** How long a chain outlives its last connection, in ms (`Infinity` keeps it). */
   destroyDelay: number;
-  /** Whether the given genesis hash is handled by this engine. */
   isChainSupported: (genesisHash: string) => boolean;
-  /**
-   * Called once right after the broker is created. Smoldot modes use this to
-   * route the resolver's Asset Hub reads through the broker's shared follow.
-   */
+  /** Smoldot modes route the resolver's Asset Hub reads through the broker's shared follow here. */
   onBrokerReady?: (broker: ChainBrokerManager) => void;
-  /** Called on `warmup` requests. If omitted, `warmup` resolves immediately. */
   onWarmup?: () => Promise<void>;
-  /** Resolver implementations. If omitted, resolution methods reject with a
-   *  clear error so hanging callers surface fast. Signatures mirror the
-   *  `@dotli/resolver` entry points so they can be wired by reference. */
+  /**
+   * Unset resolvers reject at once so callers do not hang. Signatures match `@dotli/resolver` for wiring by reference.
+   */
   resolveDotName?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveOwner?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveSeitySlot?: (lookupKey: `0x${string}`, opts?: ResolveOptions) => Promise<SeitySlot | null>;
@@ -68,7 +60,7 @@ export interface EngineOptions {
   resolveRootManifest?: (label: string, opts?: ResolveOptions) => Promise<ManifestResult<RootManifest>>;
 }
 
-/** Chain connections one protocol iframe holds: one tab's budget. */
+/** One tab's budget. */
 export const MAX_CONNS = 10;
 
 export function createEngine(options: EngineOptions): ProtocolEngine {
@@ -84,7 +76,6 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
     return `${origin} ${connectionId}`;
   }
 
-  /** Drop a connection from the engine's books, freeing its slot. */
   function forget(key: string): StringJsonRpcConnection | null {
     const connection = connections.get(key);
     connections.delete(key);
@@ -258,8 +249,8 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
             });
           },
           () => {
-            // The broker has answered this connection's pending requests and
-            // stopped its follows by now; the client drops it on `chain-halt`.
+            // The broker has already answered pending requests and stopped follows. The client drops it on `chain-
+            // halt`.
             if (forget(key) === null) {
               return;
             }

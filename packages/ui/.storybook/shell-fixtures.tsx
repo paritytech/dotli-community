@@ -9,16 +9,9 @@ import { isPhoneViewport } from '../src/phone-viewport.js';
 import { ActionGroup } from '../src/components/shell/topbar/ActionGroup.js';
 
 /**
- * The host page's bar, as far as the surfaces read it: they sit under
- * `#topbar` at its right edge. They read `--topbar-bottom` and
- * `--topbar-inline-end`, which topbar-status.ts writes from the bar's box
- * and which fall back to `--topbar-height` and 12px while unset. A bar that
- * is `--topbar-height` tall with a 12px inline padding is that same box, so
- * the fallbacks resolve as on the host page without a script.
- *
- * `room` is the width the action group has: a narrow one collapses its
- * items into More. `center` is the URL pill's place instead, mid-bar and
- * outside the action group, where the verification shield sits.
+ * The host bar as surfaces read it. Its box matches the `--topbar-bottom` and `--topbar-inline-end`
+ * fallbacks, so they resolve as on the host page without topbar-status.ts.
+ * `room` is the action group's width (narrow collapses into More), `center` the URL pill's place.
  */
 export function TopbarFrame(props: { children?: JSX.Element; room?: number; center?: boolean }): JSX.Element {
   return (

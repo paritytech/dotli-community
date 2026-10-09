@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -59,6 +59,7 @@ var init_host_callbacks = __esm({
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi.ProductAccountTxPayload }), LegacyAccount: import_truapi.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
+    ExpandedCardFaceOutcome = S.lazy(() => S.Status("Applied", "NotPresented", "UserMoving", "Unsupported"));
     HostChainEntry = S.lazy(() => S.Struct({ identifier: import_truapi.ChainIdentifier, genesisHash: import_truapi.Bytes32 }));
     HostChainSet = S.lazy(() => S.Struct({ network: S.str, chains: S.Vector(HostChainEntry) }));
     HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi.Bytes32, handles: S.Vector(import_truapi.Bytes32) }));
@@ -216,18 +217,22 @@ function coinageWalletHostAdapter(host) {
   };
 }
 function profileHostAdapter(host) {
-  if (host === void 0 || typeof host.presentContactProfile === "function")
+  if (host === void 0)
+    return void 0;
+  if (typeof host.presentContactProfile === "function" && typeof host.placeContactAvatars === "function")
     return host;
   return {
     presentProfile: (product, request) => host.presentProfile(product, request),
     presentContactProfile: (product, presented) => {
+      if (typeof host.presentContactProfile === "function")
+        return host.presentContactProfile(product, presented);
       if (presented.shared === void 0)
         return Promise.reject(new Error("Contact profile feedback is unavailable"));
       return host.presentProfile(product, {
         reference: presented.shared.reference
       });
     },
-    placeContactAvatars: (product, placed) => host.placeContactAvatars(product, placed)
+    placeContactAvatars: (product, placed) => typeof host.placeContactAvatars === "function" ? host.placeContactAvatars(product, placed) : Promise.resolve()
   };
 }
 function hopConnectAdapter(host) {
@@ -336,6 +341,7 @@ function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
   const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
   const contacts = contactsHostAdapter(callbacks.contacts);
+  const game = callbacks.game;
   const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
@@ -365,6 +371,10 @@ function createWasmRawCallbacks(callbacks) {
     clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
     featureSupported: async (request) => import_truapi2.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi2.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+    ...game ? {
+      scheduleGameReminder: async (product, startsAt) => await game.scheduleGameReminder(ProductContext.dec(product), startsAt),
+      cancelGameReminder: async (product) => await game.cancelGameReminder(ProductContext.dec(product))
+    } : {},
     allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
     hopConnect: hopConnectAdapter(hop),
     ...identityBackend ? {
@@ -2701,6 +2711,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             profile: host.profile !== void 0,
             identityBackend: host.identityBackend !== void 0,
             coinageWallet: callbacks.nativeCoinage !== void 0,
+            game: host.game !== void 0,
             contacts: host.contacts !== void 0
           },
           debuggerUrl: debuggerDial
@@ -2810,7 +2821,8 @@ function buildRuntime(state) {
                 pocket: callbacks.pocket !== void 0,
                 profile: callbacks.profile !== void 0,
                 identityBackend: callbacks.identityBackend !== void 0,
-                coinageWallet: state.rawCallbacks.nativeCoinage !== void 0
+                coinageWallet: state.rawCallbacks.nativeCoinage !== void 0,
+                game: callbacks.game !== void 0
               }
             }
           });
@@ -2909,12 +2921,19 @@ function buildRuntime(state) {
         granted
       }), false);
     },
+    setSubmitPreimagesLocally(local) {
+      return sendSessionActivationRequest(state, (requestId) => ({
+        kind: "setSubmitPreimagesLocally",
+        requestId,
+        local
+      }), false);
+    },
     setWithheldResources(tags) {
       return sendSessionActivationRequest(state, (requestId) => ({
         kind: "setWithheldResources",
         requestId,
         tags
-      }));
+      }), false);
     },
     resetSessionState() {
       return sendSessionActivationRequest(state, (requestId) => ({
@@ -4598,6 +4617,12 @@ function createMockHost(config = {}) {
       },
       async acknowledgeActivation() {
         throw new Error("notification activation is unsupported");
+      }
+    },
+    game: {
+      async scheduleGameReminder() {
+      },
+      async cancelGameReminder() {
       }
     },
     permissions: {

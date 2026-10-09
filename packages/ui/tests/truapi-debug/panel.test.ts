@@ -1,17 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Characterization suite for the TrUAPI debug panel.
-//
-// Pins what a developer (or the host page) observes today: markup, classes,
-// text, storage writes, iframe geometry, clipboard and download calls, and
-// row node identity under streaming load. The panel is obtained only through
-// `loadPanel()` so the same suite runs unchanged against a re-implementation.
-//
-// The bus and the panel keep module state, so every test resets the module
-// registry and imports both afresh (they then share one bus instance). Fake
-// timers drive `requestAnimationFrame`, the 1 s pending tick and the 500 ms
-// resolution tick.
+// Characterization suite for the debug panel, obtained only through `loadPanel()` so it runs unchanged against
+// a re-implementation. The bus and the panel keep module state, so each test imports both afresh.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPanel, type PanelModule } from './panel-entry.js';
@@ -35,8 +26,7 @@ let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
 beforeEach(async () => {
-  // Starting the fake clock at a fixed time keeps the 16 ms animation-frame
-  // grid aligned with it, so frame timings are reproducible.
+  // A fixed start keeps the 16 ms animation-frame grid aligned, so frame timings are reproducible.
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
   vi.resetModules();
   document.head.replaceChildren();
@@ -57,15 +47,13 @@ afterEach(() => {
     dispose();
   }
   disposers = [];
-  // happy-dom's default; a test that narrows the viewport must not leak it.
+  // happy-dom's default, which a test that narrows the viewport must not leak.
   setViewportWidth(1024);
   vi.restoreAllMocks();
   vi.useRealTimers();
   document.head.replaceChildren();
   document.body.replaceChildren();
 });
-
-// Helpers
 
 function mount(options?: SetupOptions): () => void {
   const dispose = panelModule.setupTruapiDebugPanel(options);
@@ -185,7 +173,7 @@ function selectedRows(): HTMLElement[] {
   return rows().filter(r => r.getAttribute('data-selection') === 'selected');
 }
 
-function tab(view: 'list' | 'timeline' | 'resolution' | 'archive'): HTMLElement {
+function tab(view: 'list' | 'timeline' | 'resolution' | 'archive' | 'diagnostics'): HTMLElement {
   return q(`[data-testid="td-tab"][data-view="${view}"]`);
 }
 
@@ -203,11 +191,7 @@ function stubPanelBox(width: number, height: number): void {
   });
 }
 
-/**
- * Hand the frame layout a stand-in product frame that records each style
- * declaration as written. happy-dom's CSS parser discards a `calc()` holding
- * a `var()`, so a real iframe would read back empty inset-aware values.
- */
+/** A stand-in product frame recording each style as written, since happy-dom drops a `calc()` holding a `var()`. */
 function attachFrame(withTopbar: boolean): Record<string, string> {
   if (withTopbar) {
     topbarState.setTopbarPresent();
@@ -232,8 +216,6 @@ function restoreClipboard(): void {
   delete (navigator as { clipboard?: unknown }).clipboard;
 }
 
-/** A request/response pair plus one system event, one frame apart. */
-/** The timeline box whose tooltip mentions `text`. */
 function timelineBox(text: string): SVGRectElement {
   const box = [
     ...panel().querySelectorAll<SVGRectElement>('[data-testid="td-timeline"] [data-testid="td-tl-segment"]'),
@@ -265,8 +247,6 @@ function seedMixedTraffic(): void {
   });
   frame();
 }
-
-// Tests
 
 describe('truapi debug panel: mount and dispose', () => {
   it('As a dotli developer, mounting shows the header controls, filters, tabs, views and detail pane', () => {
@@ -313,8 +293,8 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(byTestId('td-exclude-input', panel(), HTMLInputElement).placeholder).toBe('hide by method…');
 
     const tabs = [...root.querySelectorAll<HTMLElement>('[data-testid="td-tabs"] [data-testid="td-tab"]')];
-    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive']);
-    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false']);
+    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive', 'Diagnostics']);
+    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false']);
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
     expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
       'No events match the current filter.',
@@ -322,6 +302,7 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('[data-testid="td-timeline"]').hidden).toBe(true);
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(true);
     expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
     expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
       'Select an event on the left to inspect its payload.',
@@ -420,7 +401,6 @@ describe('truapi debug panel: event rows', () => {
     expect(byTestId('td-summary', anon).textContent).toBe('hello');
 
     expect(byTestId('td-tag', rowByTag('plain_tag')).getAttribute('data-kind')).toBe('plain');
-    // An empty payload has no summary span.
     expect(rowByTag('plain_tag').querySelector('[data-testid="td-summary"]')).toBeNull();
   });
 
@@ -1164,6 +1144,30 @@ describe('truapi debug panel: views', () => {
     // Then
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
     expect(panel().getAttribute('data-view')).toBe('list');
+  });
+
+  it('As a dotli developer, the Diagnostics tab takes the whole width and shows the diagnostics only while open', () => {
+    // Given
+    mount();
+    expect(panel().querySelector('[data-testid="td-diagnostics-rows"]')).toBeNull();
+
+    // When
+    click(tab('diagnostics'));
+
+    // Then
+    expect(tab('diagnostics').getAttribute('aria-selected')).toBe('true');
+    expect(panel().getAttribute('data-view')).toBe('diagnostics');
+    expect(q('[data-testid="td-list"]').hidden).toBe(true);
+    expect(q('[data-testid="td-detail"]').hidden).toBe(true);
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(false);
+    expect(q('[data-testid="td-diagnostics-rows"]').textContent).toContain(`Site${window.location.host}`);
+
+    // When
+    click(tab('list'));
+
+    // Then
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(true);
+    expect(panel().querySelector('[data-testid="td-diagnostics-rows"]')).toBeNull();
   });
 
   it('As a dotli developer, clicking a timeline box shows its whole group in the detail pane', () => {

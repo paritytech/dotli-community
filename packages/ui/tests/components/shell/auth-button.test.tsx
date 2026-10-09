@@ -6,7 +6,7 @@ import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { getAuthModalState } from '../../../src/state/auth-modal.js';
 import { authStore, setAuthState } from '../../../src/state/auth.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
-import { renderComponent } from '../../helpers/solid.js';
+import { renderComponent, resetStores } from '../../helpers/solid.js';
 import { byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { byId, recordEvents, settleAll, useAuthController } from './auth-harness.js';
@@ -21,13 +21,7 @@ async function renderButton(props: { showName?: boolean; idPrefix?: string } = {
   return byId(`${props.idPrefix ?? ''}auth-button`, HTMLButtonElement);
 }
 
-/**
- * What the button carries apart from styling: its id, label, no busy or
- * disabled state, the ARIA of a Radix-style trigger for what a click opens
- * (logged in, the user popover, and logged out, the auth modal), and its content:
- * the user icon and Sign in logged out, the avatar alone logged in (initials,
- * or the icon when the account has no username).
- */
+/** Asserts everything the button carries apart from styling, logged out or logged in. */
 function expectMarkup(button: Element, state: 'logged-out' | { initials: string | undefined }): void {
   const label = state === 'logged-out' ? 'Sign in with Polkadot Mobile' : 'Account';
   const account = state !== 'logged-out';
@@ -136,6 +130,45 @@ describe('AuthButton', () => {
     expect(button.hasAttribute('aria-busy')).toBe(false);
     expect(button.querySelector('[data-testid="user-badge"]')).toBeNull();
     expectMarkup(button, 'logged-out');
+  });
+
+  it('As a visitor whose session is still being read, I see a busy button that takes no clicks, then Sign in', async () => {
+    // Given
+    resetStores();
+    const button = await renderButton();
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.textContent.trim()).toBe('');
+    expect(button.getAttribute('aria-label')).toBe('Checking sign-in');
+    expect(button.title).toBe('Checking sign-in');
+
+    // When: the read finds no saved session.
+    setAuthState({ tag: 'Disconnected' });
+    await settleAll();
+
+    // Then
+    expectMarkup(button, 'logged-out');
+  });
+
+  it('As a returning user, the busy button turns into my badge without showing Sign in first', async () => {
+    // Given
+    resetStores();
+    const button = await renderButton();
+
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => {
+      seen.push(button.textContent);
+    });
+    observer.observe(button, { childList: true, subtree: true, characterData: true });
+
+    // When: the read finds my session.
+    setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
+    await settleAll();
+    observer.disconnect();
+
+    // Then
+    expectMarkup(button, { initials: 'AS' });
+    expect(seen.some(text => text.includes('Sign in'))).toBe(false);
   });
 
   it('As a logged-in user, I see my initials in the badge, with its ids, labels and ARIA state', async () => {

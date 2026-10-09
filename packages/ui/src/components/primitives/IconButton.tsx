@@ -5,8 +5,7 @@ import type { JSX } from '@solidjs/web';
 import type { StatusTone } from './StatusDot.js';
 import s from './IconButton.module.css';
 
-// Explicit props, not a rest spread of button attributes: splitting the rest
-// off pulls Solid's `omit` into the boot bundle.
+// Explicit props, not a rest spread: splitting the rest off pulls Solid's `omit` into the boot bundle.
 export interface IconButtonProps {
   ref?: (el: HTMLButtonElement) => void;
   onClick?: (ev: MouseEvent) => void;
@@ -17,13 +16,12 @@ export interface IconButtonProps {
   'aria-haspopup'?: 'dialog' | 'menu' | undefined;
   'aria-expanded'?: 'true' | 'false';
   'aria-controls'?: string;
-  /** The id of the `popover` this button opens and closes. */
   popovertarget?: string | undefined;
   style?: JSX.CSSProperties | undefined;
   badge?: boolean;
-  /** The badge's colour; white without one. */
+  /** The badge's colour, white without one. */
   badgeTone?: StatusTone;
-  /** The board's small round button on a fill (a toast's close), chrome inside or outside the bar. */
+  /** A small round button on a fill, such as a toast's close. */
   size?: 'sm';
   class?: string | undefined;
   testId?: string;
@@ -58,7 +56,7 @@ export function IconButton(props: IconButtonProps): JSX.Element {
   );
 }
 
-/** The board's close cross, for a small icon button, 16 px unless `size` says otherwise. */
+/** The close cross for a small icon button. */
 export function CloseIcon(props: { size?: number }): JSX.Element {
   return (
     <svg
