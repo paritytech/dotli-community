@@ -1,0 +1,89 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.view {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  background: var(--td-bg);
+  padding: 10px 12px 14px;
+  font-size: 11px;
+  color: var(--td-fg-strong);
+}
+
+.form,
+.local {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 480px;
+}
+
+.label {
+  color: var(--td-fg-muted);
+}
+
+.phrase {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--td-bg-raised);
+  border: 1px solid var(--td-line-strong);
+  border-radius: 3px;
+  color: var(--td-fg);
+  padding: 6px 8px;
+  font: inherit;
+  resize: vertical;
+}
+
+.phrase:focus-visible {
+  outline: 1px solid var(--td-focus);
+}
+
+.error,
+.failure {
+  margin: 0;
+  color: var(--td-danger);
+}
+
+.failure {
+  margin-bottom: 12px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.name {
+  color: var(--td-fg-muted);
+}
+
+.value {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.btn {
+  margin: 0;
+  background: var(--td-line);
+  border: 1px solid var(--td-line-strong);
+  color: var(--td-fg);
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--td-line-strong);
+  border-color: var(--td-line-hover);
+}
+
+.btn:disabled {
+  color: var(--td-fg-dim);
+  cursor: default;
+}

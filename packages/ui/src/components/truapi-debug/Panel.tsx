@@ -41,6 +41,7 @@ import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
+import { WalletView } from './WalletView.js';
 import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
@@ -491,6 +492,7 @@ export function Panel(props: {
           />
           <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
           <DiagnosticsView active={view() === 'diagnostics'} />
+          <WalletView active={view() === 'wallet'} />
         </div>
         <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!splitView()} />
         <DetailPane

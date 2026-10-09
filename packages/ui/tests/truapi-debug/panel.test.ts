@@ -293,8 +293,22 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(byTestId('td-exclude-input', panel(), HTMLInputElement).placeholder).toBe('hide by method…');
 
     const tabs = [...root.querySelectorAll<HTMLElement>('[data-testid="td-tabs"] [data-testid="td-tab"]')];
-    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive', 'Diagnostics']);
-    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false']);
+    expect(tabs.map(t => t.textContent)).toEqual([
+      'List',
+      'Timeline',
+      'Resolution',
+      'Archive',
+      'Diagnostics',
+      'Wallet',
+    ]);
+    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+      'false',
+      'false',
+    ]);
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
     expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
       'No events match the current filter.',
@@ -303,6 +317,7 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
     expect(q('[data-testid="td-diagnostics"]').hidden).toBe(true);
+    expect(q('[data-testid="td-wallet"]').hidden).toBe(true);
     expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
     expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
       'Select an event on the left to inspect its payload.',

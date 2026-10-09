@@ -95,7 +95,9 @@ wire discriminant against `@parity/truapi/wire-table`:
   role (e.g. `system_handshake_request`). These aren't payload-decoded. The detail pane shows the raw SCALE bytes as
   `{ wireId, bytes }`.
 - `signing_*` / `session_*` / `entropy_*` / `local_storage_*` — redacted regardless of decode registration. The detail
-  pane shows `{ redacted: true, byteLength }` only. Decoded contents, and even the raw bytes, never leave the tap.
+  pane shows `{ redacted: true, byteLength }` only. In local wallet mode the `signing_*` family and
+  `resource_allocation_request_*` are decoded instead, since the panel stands in for the phone's request screen.
+  `session_*`, `entropy_*` and `local_storage_*` stay redacted.
 - `wire_<id>` — fallback for discriminants absent from the wire table, with raw bytes.
 
 Adding payload decode for a new family is one linkage row in `debug-wire-describe.ts`, nothing else in the panel
@@ -142,6 +144,14 @@ its Y range.
 Each swimlane has its own horizontal scroll, so a chain with many concurrent operations can grow wide without pushing
 the whole view. Vertical scroll is shared across all swimlanes, so events at the same Y in different swimlanes occurred
 at the same moment.
+
+### Wallet
+
+Switches every app on the domain between Polkadot App and a local wallet. In Polkadot App mode it takes the recovery
+phrase from Polkadot App. "Use locally" saves its entropy, encrypted, in the protocol frame on `host.<domain>` and
+reloads, and each app's core then boots as a signing host on it. In local mode it shows the identity account and
+username, and "Use Polkadot App" forgets the wallet and reloads. Logging out from the topbar in local mode does the
+same.
 
 ## Filters
 
