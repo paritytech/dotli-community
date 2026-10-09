@@ -85,9 +85,10 @@ export function jamPeersGrantText(granted: readonly string[]): string[] {
   return [
     ...granted.map(
       genesis =>
-        `JAM network ${genesis}: read-only peer access (WebTransport) to its validators, granted for this app and closed when it stops.`,
+        `JAM network ${genesis}: send and receive messages (WebTransport) with app-selected peers, granted for this app and closed when it stops.`,
     ),
-    'Limits: 8 connections, 16 streams per connection, 1 MiB messages. Received bytes are unverified until the app checks them.',
+    'Limits: 8 pending or established connections, 8 distinct network decisions per execution, 16 streams per connection, 1 MiB messages.',
+    'The browser handshake does not bind peers to the genesis. Peer keys and endpoints are selected by the app; the app must verify chain data.',
     'This access carries no account, signing, storage or web access.',
   ];
 }

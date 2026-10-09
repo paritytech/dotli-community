@@ -922,7 +922,7 @@ export interface HostFrameResponseTarget {
 
 /**
  * Route one guest host frame. Every frame goes to the authenticated host port
- * except `JamPeerTransport` (trait 23) requests, which the execution-local peer
+ * except `JamPeerTransport` (trait 111) requests, which the execution-local peer
  * session answers once the host has granted the dialed JAM network. The
  * handshake is the one frame both must see: the peer session negotiates on a
  * copy and its reply is dropped, so the guest only ever observes the host's
