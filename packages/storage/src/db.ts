@@ -13,7 +13,7 @@ declare global {
 }
 
 const DB_NAME = 'dotli';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const BLOCKED_MESSAGE = 'Failed to open dotli DB: blocked by another tab';
 
@@ -74,6 +74,10 @@ function openFresh(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('block_meta')) {
         const store = db.createObjectStore('block_meta', { keyPath: 'cid' });
         store.createIndex('byLastUsed', 'lastUsed', { unique: false });
+      }
+      // v6: the local wallet, one encrypted record.
+      if (!db.objectStoreNames.contains('local_wallet')) {
+        db.createObjectStore('local_wallet', { keyPath: 'id' });
       }
     };
     req.onsuccess = () => {
