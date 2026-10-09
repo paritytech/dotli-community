@@ -7,6 +7,7 @@ import { isEncrypted, type ArchiveFiles } from '@dotli/content';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import type { ArchiveLoader } from './archive-source.js';
+import { Item, ItemList } from './shared/ItemList.js';
 import s from './ArchiveView.module.css';
 
 interface ArchiveFile {
@@ -188,28 +189,24 @@ export function ArchiveView(props: { active: boolean; load: ArchiveLoader }): JS
                 <div class={s['summary']} data-testid="td-archive-summary">
                   {`${String(archive().files.length)} ${archive().files.length === 1 ? 'file' : 'files'} · ${formatBytes(archive().total)}`}
                 </div>
-                <ul class={s['files']}>
+                <ItemList>
                   <For each={archive().files}>
                     {file => (
-                      <li>
-                        <button
-                          type="button"
-                          class={s['file']}
-                          data-testid="td-archive-file"
-                          data-active={selectedPath() === file.path ? '' : undefined}
-                          data-path={file.path}
-                          title={file.path}
-                          onClick={() => {
-                            setSelectedPath(file.path);
-                          }}
-                        >
-                          <span class={s['path']}>{file.path}</span>
-                          <span class={s['size']}>{formatBytes(file.bytes.length)}</span>
-                        </button>
-                      </li>
+                      <Item
+                        testId="td-archive-file"
+                        value={file.path}
+                        selected={selectedPath() === file.path}
+                        title={file.path}
+                        onSelect={() => {
+                          setSelectedPath(file.path);
+                        }}
+                      >
+                        <span class={s['path']}>{file.path}</span>
+                        <span class={s['size']}>{formatBytes(file.bytes.length)}</span>
+                      </Item>
                     )}
                   </For>
-                </ul>
+                </ItemList>
               </div>
               <div class={s['content']} data-testid="td-archive-content">
                 <Switch

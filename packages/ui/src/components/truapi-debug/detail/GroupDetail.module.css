@@ -39,11 +39,6 @@
 .tag[data-kind='subscription'] {
   color: var(--td-purple);
 }
-.latency {
-  color: var(--td-green);
-  margin-left: 6px;
-  font-size: 11px;
-}
 
 .layer {
   display: inline-flex;

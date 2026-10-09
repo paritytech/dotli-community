@@ -26,36 +26,6 @@
   font-size: 11px;
   border-bottom: 1px solid var(--td-line);
 }
-.files {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  min-height: 0;
-}
-.file {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  box-sizing: border-box;
-  width: 100%;
-  margin: 0;
-  padding: 3px 10px;
-  background: transparent;
-  border: none;
-  color: var(--td-fg);
-  font: inherit;
-  font-size: 11px;
-  text-align: left;
-  cursor: pointer;
-}
-.file:hover {
-  background: var(--td-bg-chip);
-}
-.file[data-active] {
-  background: var(--td-accent-bg);
-  color: var(--td-fg-strong);
-}
 .path {
   overflow: hidden;
   text-overflow: ellipsis;

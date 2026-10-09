@@ -15,22 +15,6 @@
   display: flex;
   margin: 0 0 12px;
 }
-.btn {
-  margin: 0;
-  background: var(--td-line);
-  border: 1px solid var(--td-line-strong);
-  color: var(--td-fg);
-  padding: 3px 10px;
-  font: inherit;
-  font-size: 11px;
-  border-radius: 3px;
-  cursor: pointer;
-}
-.btn:hover {
-  background: var(--td-line-strong);
-  border-color: var(--td-line-hover);
-}
-
 .sections {
   display: flex;
   flex-wrap: wrap;
@@ -42,41 +26,6 @@
   min-width: 0;
 }
 
-.group {
-  margin: 0 0 6px;
-  color: var(--td-fg-dim);
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.fields {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  column-gap: 16px;
-  margin: 0 0 12px;
-  padding: 0;
-  border-top: 1px solid var(--td-line);
-}
-/* Rows share the list's columns, so labels take the longest one's width. */
-.row {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--td-line);
-}
-.row:hover {
-  background: var(--td-bg-raised);
-}
-.name {
-  color: var(--td-fg-dim);
-  overflow-wrap: anywhere;
-}
-.value {
-  min-width: 0;
-  margin: 0;
-}
 .code {
   font-family: inherit;
   font-size: 11px;

@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 .handle {
+  grid-area: handle;
   cursor: ns-resize;
   background: transparent;
   transition: background 0.15s;
@@ -11,7 +12,6 @@
   background: var(--td-accent);
 }
 .handle[data-dock='right'] {
-  grid-area: handle;
   cursor: ew-resize;
 }
 .handle[data-collapsed] {

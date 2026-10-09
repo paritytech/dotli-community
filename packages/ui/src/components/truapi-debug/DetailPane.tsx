@@ -9,7 +9,7 @@ import type { JSX } from '@solidjs/web';
 import { correlationKeyOf, type EventSeq, type EventStore, type StoredEvent } from '@dotli/truapi-debug';
 import { GroupDetail } from './detail/GroupDetail.js';
 import { SingleDetail } from './detail/SingleDetail.js';
-import type { PanelView } from './Tabs.js';
+import type { PanelView } from './ViewTabs.js';
 import s from './DetailPane.module.css';
 
 type Content =

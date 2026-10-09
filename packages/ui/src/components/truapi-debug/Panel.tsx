@@ -33,13 +33,14 @@ import { getTopbarState } from '../../state/topbar.js';
 import { DiagnosticsView } from './Diagnostics.js';
 import { DetailPane } from './DetailPane.js';
 import { EventList, type Selection } from './EventList.js';
-import { Filters } from './Filters.js';
+import { EventFilters } from './EventFilters.js';
 import { Header } from './Header.js';
 import { BodySplitter, ResizeHandle } from './Resizers.js';
 import { ArchiveView } from './ArchiveView.js';
 import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
-import { Tabs, type PanelView } from './Tabs.js';
+import type { PanelSection } from './SectionTabs.js';
+import { ViewTabs, type PanelView } from './ViewTabs.js';
 import { TimelineView } from './TimelineView.js';
 import { WalletView } from './WalletView.js';
 import s from './Panel.module.css';
@@ -167,7 +168,11 @@ export function Panel(props: {
 
   const [snapshot, setSnapshot] = createSignal<Snapshot>(takeSnapshot());
   const [filters, setFilters] = createSignal<FilterState>(initialFilterState());
+  const [section, setSection] = createSignal<PanelSection>('truapi');
   const [view, setView] = createSignal<PanelView>('list');
+  const [resolutionCleared, setResolutionCleared] = createSignal(0);
+  const events = (): boolean => section() === 'truapi';
+  const listShown = (): boolean => events() && view() === 'list';
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [collapsed, setCollapsed] = createSignal(untrack(() => props.startCollapsed));
   const [dock, setDock] = createSignal<DockPosition>(readStoredDock());
@@ -209,6 +214,7 @@ export function Panel(props: {
   // Keyed on the recorder, not the store, so TrUAPI traffic does not redraw the Resolution view.
   const resolutionVersion = createMemo(() => {
     snapshot();
+    resolutionCleared();
     return recorder.version();
   });
 
@@ -234,7 +240,7 @@ export function Panel(props: {
     const anchor = list !== undefined && !wasAtBottom ? topRow(list, prevScrollTop) : null;
     const anchorTop = anchor?.offsetTop ?? 0;
     flush(update);
-    if (list !== undefined && view() === 'list' && list.querySelector('[data-seq]') !== null) {
+    if (list !== undefined && listShown() && list.querySelector('[data-seq]') !== null) {
       if (wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       } else if (anchor?.isConnected === true) {
@@ -355,19 +361,25 @@ export function Panel(props: {
     }
   };
 
-  const splitView = (): boolean => view() === 'list' || view() === 'timeline';
-
-  const selectView = (next: PanelView): void => {
-    if (next === view()) {
-      return;
-    }
+  /** Switches what the panel shows, keeping the list pinned and the detail pane in step. */
+  const show = (update: () => void): void => {
     // Hiding the pane under the cursor may fire no boundary event, which would strand the tooltip.
     tooltipEl?.removeAttribute('data-visible');
     commit(() => {
-      setView(next);
+      update();
       refreshSnapshot();
       refreshDetail();
     });
+  };
+  const selectSection = (next: PanelSection): void => {
+    if (next !== section()) {
+      show(() => setSection(next));
+    }
+  };
+  const selectView = (next: PanelView): void => {
+    if (next !== view()) {
+      show(() => setView(next));
+    }
   };
 
   /** Exports carry the filtered view, what the user currently sees. */
@@ -394,7 +406,8 @@ export function Panel(props: {
       class={s['panel']}
       data-dock={placement()}
       data-layout={stacked() ? 'stacked' : undefined}
-      data-view={view()}
+      data-section={section()}
+      data-view={events() ? view() : undefined}
       data-collapsed={collapsed() ? '' : undefined}
       ref={el => {
         panelEl = el;
@@ -402,6 +415,8 @@ export function Panel(props: {
     >
       <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
+        section={section()}
+        onSelectSection={selectSection}
         counts={counts()}
         paused={paused()}
         collapsed={collapsed()}
@@ -414,8 +429,12 @@ export function Panel(props: {
           flush(() => setPaused(next));
         }}
         onClear={() => {
+          if (section() === 'resolution') {
+            recorder.clear();
+            flush(() => setResolutionCleared(n => n + 1));
+            return;
+          }
           store.clear();
-          recorder.clear();
           // The detail pane rebuilds only on request, so rebuild now or the old event lingers.
           flush(() => {
             setSelection(null);
@@ -451,23 +470,22 @@ export function Panel(props: {
           refit();
         }}
       />
-      <Filters
+      <EventFilters
         filters={filters()}
         products={snapshot().products}
-        placement={placement()}
-        collapsed={collapsed()}
+        hidden={collapsed() || !events()}
         onChange={changeFilters}
       />
       <div class={s['body']} data-testid="td-body">
         <div class={s['views']} data-testid="td-views">
-          <Tabs view={view()} onSelect={selectView} />
+          <ViewTabs view={view()} hidden={!events()} onSelect={selectView} />
           <EventList
             events={visible()}
             allEvents={snapshot().events}
             refreshedAt={snapshot().takenAt}
             store={store}
             selection={selection()}
-            active={view() === 'list'}
+            active={listShown()}
             collapsed={collapsed()}
             onSelect={select}
             listRef={el => {
@@ -475,7 +493,7 @@ export function Panel(props: {
             }}
           />
           <TimelineView
-            active={view() === 'timeline'}
+            active={events() && view() === 'timeline'}
             events={visible()}
             selectedSeq={selection()?.seq ?? null}
             tooltip={() => tooltipEl}
@@ -483,24 +501,24 @@ export function Panel(props: {
             onSelect={select}
           />
           <ResolutionView
-            active={view() === 'resolution'}
+            active={section() === 'resolution'}
             collapsed={collapsed()}
             refresh={resolutionVersion()}
             recorder={recorder}
             tooltip={() => tooltipEl}
             panel={() => panelEl}
           />
-          <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
-          <DiagnosticsView active={view() === 'diagnostics'} />
-          <WalletView active={view() === 'wallet'} />
+          <ArchiveView active={section() === 'archive'} load={props.loadArchive} />
+          <DiagnosticsView active={section() === 'diagnostics'} />
+          <WalletView active={section() === 'wallet'} />
         </div>
-        <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!splitView()} />
+        <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!events()} />
         <DetailPane
           revision={detailRevision()}
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
-          hidden={!splitView()}
+          hidden={!events()}
           onSelectPair={seq => {
             select(seq);
             listEl?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });

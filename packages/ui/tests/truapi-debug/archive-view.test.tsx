@@ -34,7 +34,7 @@ function view(container: HTMLElement): HTMLElement {
 }
 
 function fileButton(container: HTMLElement, path: string): HTMLElement {
-  const el = container.querySelector<HTMLElement>(`[data-testid="td-archive-file"][data-path="${path}"]`);
+  const el = container.querySelector<HTMLElement>(`[data-testid="td-archive-file"][data-value="${path}"]`);
   if (el === null) {
     throw new Error(`no file ${path}`);
   }
@@ -76,7 +76,7 @@ describe('ArchiveView', () => {
     // Then
     expect(load).toHaveBeenCalledWith('bafyroot');
     const paths = [...container.querySelectorAll<HTMLElement>('[data-testid="td-archive-file"]')].map(
-      el => el.dataset['path'],
+      el => el.dataset['value'],
     );
     expect(paths).toEqual(['assets/app.js', 'index.html']);
     expect(byTestId('td-archive-summary', view(container)).textContent).toContain('2 files');
@@ -92,7 +92,7 @@ describe('ArchiveView', () => {
     await settle();
 
     // Then
-    expect(fileButton(container, 'index.html').hasAttribute('data-active')).toBe(true);
+    expect(fileButton(container, 'index.html').getAttribute('data-selection')).toBe('selected');
     expect(content(container).querySelector('pre')?.textContent).toBe('<h1>hi</h1>');
   });
 

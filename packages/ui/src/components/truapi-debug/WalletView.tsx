@@ -11,6 +11,8 @@ import { walletModeStore } from '../../state/wallet-mode.js';
 import { reportLocalWalletFailure } from '../../wallet-boot.js';
 import { switchToLocalWallet, switchToPolkadotApp } from '../../wallet-switch.js';
 import { useStore } from '../use-store.js';
+import { Button } from './shared/Button.js';
+import { KeyValue, KeyValueList } from './shared/KeyValueList.js';
 import s from './WalletView.module.css';
 
 export function WalletView(props: { active: boolean }): JSX.Element {
@@ -88,9 +90,9 @@ function ImportForm(): JSX.Element {
           </p>
         )}
       </Show>
-      <button class={s['btn']} type="submit" data-testid="td-wallet-use-local" disabled={saving()}>
+      <Button type="submit" testId="td-wallet-use-local" disabled={saving()}>
         Use locally
-      </button>
+      </Button>
     </form>
   );
 }
@@ -116,16 +118,14 @@ function LocalWallet(): JSX.Element {
 
   return (
     <section class={s['local']}>
-      <dl class={s['fields']}>
-        <dt class={s['name']}>Identity account</dt>
-        <dd class={s['value']}>
+      <KeyValueList>
+        <KeyValue name="Identity account">
           <code data-testid="td-wallet-account">{session()?.identityAccountId ?? 'Activating'}</code>
-        </dd>
-        <dt class={s['name']}>Username</dt>
-        <dd class={s['value']}>
+        </KeyValue>
+        <KeyValue name="Username">
           <code data-testid="td-wallet-username">{session()?.liteUsername ?? 'None'}</code>
-        </dd>
-      </dl>
+        </KeyValue>
+      </KeyValueList>
       <Show when={error()}>
         {message => (
           <p class={s['error']} data-testid="td-wallet-error" role="alert">
@@ -133,9 +133,9 @@ function LocalWallet(): JSX.Element {
           </p>
         )}
       </Show>
-      <button class={s['btn']} type="button" data-testid="td-wallet-use-app" disabled={leaving()} onClick={leave}>
+      <Button testId="td-wallet-use-app" disabled={leaving()} onClick={leave}>
         Use Polkadot App
-      </button>
+      </Button>
     </section>
   );
 }

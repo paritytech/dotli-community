@@ -1,0 +1,42 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.items {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+/* Before `.item`, so the row's divider and backgrounds win over the reset. */
+.button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--td-fg);
+  font: inherit;
+  text-align: left;
+}
+
+.item {
+  box-sizing: border-box;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--td-bg-raised);
+  cursor: pointer;
+}
+.item:hover {
+  background: var(--td-bg-raised);
+}
+.item[data-selection='selected'] {
+  background: var(--td-selected);
+}
+/* The event list's rows that belong with the selected one. */
+.item[data-selection='paired'] {
+  background: var(--td-paired);
+}

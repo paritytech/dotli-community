@@ -1,0 +1,40 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+.tabs[hidden] {
+  display: none;
+}
+
+.tab {
+  margin: 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--td-fg-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--td-fg-muted);
+}
+.tab[aria-selected='true'] {
+  border-bottom-color: var(--td-accent);
+  color: var(--td-fg-strong);
+}
+
+.primary {
+  padding: 0 8px;
+  font-family: system-ui, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+/* Nudged onto the strip's bottom border, so the selected underline replaces it. */
+.secondary {
+  padding: 3px 10px;
+  font-size: 11px;
+  transform: translateY(1px);
+}

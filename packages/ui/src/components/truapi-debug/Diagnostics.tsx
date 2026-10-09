@@ -13,6 +13,8 @@ import {
   packageVersions,
   type PackageVersion,
 } from '../../settings-actions.js';
+import { Button } from './shared/Button.js';
+import { KeyValue, KeyValueList, ListHeading } from './shared/KeyValueList.js';
 import s from './Diagnostics.module.css';
 
 const COPIED_MS = 1000;
@@ -40,39 +42,36 @@ function Value(props: { label: string; value: string; copyable: boolean }): JSX.
     });
   };
   return (
-    <dd class={s['value']}>
-      <Show when={props.copyable} fallback={<code class={s['code']}>{props.value}</code>}>
-        <button
-          class={s['copy']}
-          type="button"
-          title={`Click to copy ${props.label}`}
-          aria-label={`Copy ${props.label}`}
-          data-copied={copied() ? '' : undefined}
-          onClick={copy}
-        >
-          <code class={s['code']}>{copied() ? 'Copied' : props.value}</code>
-        </button>
-      </Show>
-    </dd>
+    <Show when={props.copyable} fallback={<code class={s['code']}>{props.value}</code>}>
+      <button
+        class={s['copy']}
+        type="button"
+        title={`Click to copy ${props.label}`}
+        aria-label={`Copy ${props.label}`}
+        data-copied={copied() ? '' : undefined}
+        onClick={copy}
+      >
+        <code class={s['code']}>{copied() ? 'Copied' : props.value}</code>
+      </button>
+    </Show>
   );
 }
 
 function Row(props: { label: string; value: string; copyable?: boolean }): JSX.Element {
   return (
-    <div class={s['row']} data-testid="td-diag-row">
-      <dt class={s['name']}>{props.label}</dt>
+    <KeyValue name={props.label} testId="td-diag-row">
       <Value label={props.label} value={props.value} copyable={props.copyable === true} />
-    </div>
+    </KeyValue>
   );
 }
 
 function PackageGroup(props: { title: string; packages: readonly PackageVersion[] }): JSX.Element {
   return (
     <Show when={props.packages.length > 0}>
-      <h3 class={s['group']}>{props.title}</h3>
-      <dl class={s['fields']}>
+      <ListHeading>{props.title}</ListHeading>
+      <KeyValueList>
         <For each={props.packages}>{pkg => <Row label={pkg.name} value={pkg.version} />}</For>
-      </dl>
+      </KeyValueList>
     </Show>
   );
 }
@@ -137,19 +136,14 @@ function Diagnostics(): JSX.Element {
   return (
     <>
       <div class={s['bar']}>
-        <button
-          class={s['btn']}
-          type="button"
-          onClick={share}
-          title="Open a new issue on paritytech/dotli pre-filled with these diagnostics"
-        >
+        <Button onClick={share} title="Open a new issue on paritytech/dotli pre-filled with these diagnostics">
           Share diagnostic
-        </button>
+        </Button>
       </div>
       <div class={s['sections']}>
         <section class={s['section']}>
-          <h3 class={s['group']}>Page</h3>
-          <dl class={s['fields']} data-testid="td-diagnostics-rows">
+          <ListHeading>Page</ListHeading>
+          <KeyValueList testId="td-diagnostics-rows">
             <For each={base}>
               {([label, value]) => (
                 <Row
@@ -159,13 +153,13 @@ function Diagnostics(): JSX.Element {
                 />
               )}
             </For>
-          </dl>
+          </KeyValueList>
         </section>
         <section class={s['section']} data-testid="td-packages">
-          <h3 class={s['group']}>Light client</h3>
-          <dl class={s['fields']}>
+          <ListHeading>Light client</ListHeading>
+          <KeyValueList>
             <Row label="@parity/truapi-provider" value={buildLightClientVersionLabel()} />
-          </dl>
+          </KeyValueList>
           <PackageGroup title="@polkadot-api" packages={polkadotApi} />
           <PackageGroup title="@parity/truapi" packages={parityTruapi} />
         </section>

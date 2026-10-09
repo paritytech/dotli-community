@@ -25,6 +25,9 @@ import {
 } from '@dotli/truapi-debug';
 
 import { createKeyedSignals, type KeyedSignals } from './keyed-signals.js';
+import { IdBadge } from './shared/IdBadge.js';
+import { itemClass, itemListClass } from './shared/ItemList.js';
+import { Latency } from './shared/Latency.js';
 import s from './EventList.module.css';
 
 /** Pending badges tick on a clock, since a stalled host is exactly one that emits no events. */
@@ -152,7 +155,7 @@ export function EventList(props: {
 
   return (
     <div
-      class={s['list']}
+      class={[itemListClass, s['list']]}
       data-testid="td-list"
       hidden={!props.active}
       role="list"
@@ -228,7 +231,7 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
 
   return (
     <div
-      class={s['row']}
+      class={[itemClass, s['row']]}
       data-testid="td-row"
       data-selection={selection()}
       data-system={ev.kind === 'system' ? '' : undefined}
@@ -244,21 +247,6 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
         <SystemCells event={ev} latency={latency} />
       )}
     </div>
-  );
-}
-
-function Latency(props: { text: string | null }): JSX.Element {
-  return (
-    <Show when={props.text}>
-      {text => (
-        <>
-          {' '}
-          <span class={s['latency']} data-testid="td-latency">
-            {text()}
-          </span>
-        </>
-      )}
-    </Show>
   );
 }
 
@@ -289,14 +277,7 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
           {data.productId}
         </span>
       )}
-      <span
-        class={s['rid']}
-        data-testid="td-rid"
-        style={{ color: data.ridColor }}
-        title={`requestId: ${data.requestId}`}
-      >
-        {data.ridShort}
-      </span>
+      <IdBadge id={data.requestId} testId="td-rid" title={`requestId: ${data.requestId}`} />
       <span class={s['tagAndSummary']}>
         <span class={s['tag']} data-testid="td-tag" data-kind={data.tagKind}>
           {data.displayTag}
@@ -329,9 +310,7 @@ function SystemCells(props: { event: StoredSystemEvent; latency: string | null }
       <span class={s['layer']} data-testid="td-layer-badge" data-layer={data.layer} title={`source: ${data.source}`}>
         {data.layer}
       </span>
-      <span class={s['rid']} data-testid="td-rid" style={{ color: data.ridColor }} title={`flowId: ${data.flowId}`}>
-        {data.flowIdShort}
-      </span>
+      <IdBadge id={data.flowId} testId="td-rid" title={`flowId: ${data.flowId}`} />
       <span class={s['tagAndSummary']}>
         <span class={s['tag']} data-testid="td-tag" data-kind="system">
           {data.eventText}

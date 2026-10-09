@@ -4,23 +4,15 @@
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { formatPayloadDetail, type ChainDetail } from '@dotli/truapi-debug';
-import { ChainCode, Field, Fields } from './Fields.js';
+import { Callout } from '../shared/Callout.js';
+import { Code } from '../shared/Code.js';
+import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
+import { SectionTitle } from '../shared/SectionTitle.js';
 import s from './Sections.module.css';
 
-export function SectionTitle(props: { children: string }): JSX.Element {
-  return (
-    <div class={s['title']} data-testid="td-detail-section-title">
-      {props.children}
-    </div>
-  );
-}
-
+/** What an event means, in prose. */
 export function Summary(props: { text: string }): JSX.Element {
-  return (
-    <div class={s['summary']} data-testid="td-detail-summary">
-      {props.text}
-    </div>
-  );
+  return <Callout testId="td-detail-summary">{props.text}</Callout>;
 }
 
 export function ChainSummary(props: { chain: ChainDetail | null }): JSX.Element {
@@ -42,13 +34,11 @@ export function ChainFields(props: { chain: ChainDetail | null }): JSX.Element {
       {chain => (
         <>
           <SectionTitle>Chain</SectionTitle>
-          <Fields testId="td-chain-head" chain>
+          <KeyValueList testId="td-chain-head">
             <For each={chain().fields}>
-              {field => (
-                <Field name={field.name}>{field.code ? <ChainCode>{field.value}</ChainCode> : field.value}</Field>
-              )}
+              {field => <KeyValue name={field.name}>{field.code ? <Code>{field.value}</Code> : field.value}</KeyValue>}
             </For>
-          </Fields>
+          </KeyValueList>
         </>
       )}
     </Show>

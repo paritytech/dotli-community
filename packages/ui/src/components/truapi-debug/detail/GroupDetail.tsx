@@ -19,7 +19,9 @@ import {
   type StoredTruapiEvent,
 } from '@dotli/truapi-debug';
 import { Explanation } from './Explanation.js';
-import { Field, Fields, IdValue } from './Fields.js';
+import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
+import { IdValue } from '../shared/IdBadge.js';
+import { Latency } from '../shared/Latency.js';
 import { ChainFields, ChainSummary, Payload, Summary } from './Sections.js';
 import s from './GroupDetail.module.css';
 
@@ -32,26 +34,26 @@ export function GroupDetail(props: {
   const duration = untrack(() => groupDuration(props.first, props.group));
   return (
     <>
-      <Fields testId="td-detail-head">
+      <KeyValueList testId="td-detail-head">
         {ev.kind === 'truapi' ? (
           <>
-            <Field name="requestId">
+            <KeyValue name="requestId">
               <IdValue id={correlationKeyOf(ev)} />
-            </Field>
-            <Field name="product">{ev.productId ?? '(no id)'}</Field>
+            </KeyValue>
+            <KeyValue name="product">{ev.productId ?? '(no id)'}</KeyValue>
           </>
         ) : (
           <>
-            <Field name="flowId">
+            <KeyValue name="flowId">
               <IdValue id={correlationKeyOf(ev)} />
-            </Field>
-            <Field name="source">{ev.source}</Field>
-            <Field name="layer">{ev.layer}</Field>
+            </KeyValue>
+            <KeyValue name="source">{ev.source}</KeyValue>
+            <KeyValue name="layer">{ev.layer}</KeyValue>
           </>
         )}
-        <Field name="group">{eventCountLabel(props.group.length)}</Field>
-        <Show when={duration}>{d => <Field name="duration">{d()}</Field>}</Show>
-      </Fields>
+        <KeyValue name="group">{eventCountLabel(props.group.length)}</KeyValue>
+        <Show when={duration}>{d => <KeyValue name="duration">{d()}</KeyValue>}</Show>
+      </KeyValueList>
       <For each={props.group}>
         {m => {
           const delta = memberDelta(m, props.first);
@@ -87,7 +89,7 @@ function TruapiMember(props: { member: StoredTruapiEvent; delta: string | null }
         <span class={s['tag']} data-testid="td-tag" data-kind={tagKind(m.tag)}>
           {m.tag}
         </span>
-        <Delta text={props.delta} />
+        <Latency text={props.delta} />
       </div>
       <ChainSummary chain={chain} />
       <ChainFields chain={chain} />
@@ -110,23 +112,11 @@ function SystemMember(props: { member: StoredSystemEvent; delta: string | null }
         <span class={s['tag']} data-testid="td-tag" data-kind="system">
           {m.event}
         </span>
-        <Delta text={props.delta} />
+        <Latency text={props.delta} />
       </div>
       <Summary text={summariseSystemEvent(m)} />
       <Explanation event={m} />
       <Payload payload={m.payload} />
     </div>
-  );
-}
-
-function Delta(props: { text: string | null }): JSX.Element {
-  return (
-    <Show when={props.text}>
-      {text => (
-        <span class={s['latency']} data-testid="td-latency">
-          {text()}
-        </span>
-      )}
-    </Show>
   );
 }

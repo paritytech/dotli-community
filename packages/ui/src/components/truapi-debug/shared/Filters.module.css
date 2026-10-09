@@ -1,7 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.filters {
+.bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -10,10 +10,7 @@
   border-bottom: 1px solid var(--td-line);
   background: var(--td-bg-bar);
 }
-.filters[data-dock='right'] {
-  grid-area: filters;
-}
-.filters[data-collapsed] {
+.bar[hidden] {
   display: none;
 }
 
@@ -46,6 +43,11 @@
   accent-color: var(--td-accent);
 }
 
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .chip {
   margin: 0;
   background: var(--td-bg-chip);

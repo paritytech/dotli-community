@@ -5,6 +5,8 @@ import { createSignal, flush, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DockPosition } from '@dotli/truapi-debug';
 import { exportFilename } from '@dotli/truapi-debug';
+import { Button } from './shared/Button.js';
+import { SectionTabs, type PanelSection } from './SectionTabs.js';
 import s from './Header.module.css';
 
 const DEBUG_SESSION_KEY = 'dotli:truapi-debug';
@@ -88,6 +90,8 @@ function DockBottomIcon(): JSX.Element {
 }
 
 export function Header(props: {
+  section: PanelSection;
+  onSelectSection: (section: PanelSection) => void;
   counts: string;
   paused: boolean;
   collapsed: boolean;
@@ -170,83 +174,58 @@ export function Header(props: {
   };
 
   const dockLabel = (): string => (props.dock === 'right' ? 'Dock to bottom' : 'Dock to right');
+  const events = (): boolean => props.section === 'truapi';
+  const clearable = (): boolean => events() || props.section === 'resolution';
 
   return (
     <div class={s['header']} data-testid="td-header" data-dock={props.placement}>
-      <span class={s['title']} data-testid="td-title">
-        TrUAPI Debug
-      </span>
-      <span class={s['counts']} data-testid="td-counts">
+      <SectionTabs section={props.section} onSelect={props.onSelectSection} />
+      <span class={s['counts']} data-testid="td-counts" hidden={!events()}>
         {props.counts}
       </span>
       <span class={s['spacer']} />
-      <button
-        class={s['btn']}
-        data-testid="td-pause"
-        data-active={props.paused ? '' : undefined}
-        type="button"
-        onClick={() => {
-          props.onTogglePause();
-        }}
-      >
+      <Button testId="td-pause" hidden={!events()} active={props.paused} onClick={props.onTogglePause}>
         {props.paused ? 'Resume' : 'Pause'}
-      </button>
-      <button
-        class={s['btn']}
-        data-testid="td-clear"
-        type="button"
-        onClick={() => {
-          props.onClear();
-        }}
-      >
+      </Button>
+      <Button testId="td-clear" hidden={!clearable()} onClick={props.onClear}>
         Clear
-      </button>
-      <button
-        class={[s['btn'], s['icon'], s['glyph']]}
-        data-testid="td-export"
-        type="button"
+      </Button>
+      <Button
+        testId="td-export"
+        icon
+        hidden={!events()}
         title="Download as JSON"
-        aria-label="Download as JSON"
+        label="Download as JSON"
         onClick={exportDownload}
       >
         <ExportIcon />
-      </button>
-      <button
-        class={[s['btn'], s['icon'], s['glyph']]}
-        data-testid="td-copy"
-        type="button"
+      </Button>
+      <Button
+        testId="td-copy"
+        icon
+        hidden={!events()}
         title="Copy to clipboard"
-        aria-label="Copy to clipboard"
+        label="Copy to clipboard"
         disabled={copyDisabled()}
         onClick={copyToClipboard}
       >
         <Show when={copyMark()} fallback={<CopyIcon />}>
           {copyMark()}
         </Show>
-      </button>
-      <button
-        class={[s['btn'], s['icon'], s['glyph'], s['dock']]}
-        data-testid="td-dock"
-        type="button"
+      </Button>
+      <Button
+        testId="td-dock"
+        icon
+        class={s['dock']}
         title={dockLabel()}
-        aria-label={dockLabel()}
-        onClick={() => {
-          props.onToggleDock();
-        }}
+        label={dockLabel()}
+        onClick={props.onToggleDock}
       >
         {props.dock === 'right' ? <DockBottomIcon /> : <DockRightIcon />}
-      </button>
-      <button
-        class={[s['btn'], s['icon']]}
-        data-testid="td-collapse"
-        type="button"
-        title="Collapse"
-        onClick={() => {
-          props.onToggleCollapse();
-        }}
-      >
+      </Button>
+      <Button testId="td-collapse" icon title="Collapse" onClick={props.onToggleCollapse}>
         {props.collapsed ? '▲' : '▼'}
-      </button>
+      </Button>
       <button
         class={s['close']}
         data-testid="td-close"

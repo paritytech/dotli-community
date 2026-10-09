@@ -1,11 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.list {
-  min-height: 0;
-  overflow: auto;
-  scrollbar-width: thin;
-}
 /* Beats global.css's :focus-visible whatever the sheet order (dev loads it last). */
 .list:focus-visible {
   outline: none;
@@ -16,9 +11,6 @@
   grid-template-columns: 72px 16px 90px 58px minmax(0, 1fr);
   align-items: baseline;
   gap: 8px;
-  padding: 3px 10px;
-  border-bottom: 1px solid var(--td-bg-raised);
-  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -28,22 +20,12 @@
   grid-template-columns: 72px max-content 90px minmax(0, 1fr);
   border-left: 2px solid var(--td-system-edge);
 }
-.row:hover {
-  background: var(--td-bg-raised);
-}
-.row[data-selection='selected'] {
-  background: var(--td-selected);
-}
-.row[data-selection='paired'] {
-  background: var(--td-paired);
-}
 
 .time,
 .arrowIn,
 .arrowOut,
 .product,
 .layer,
-.rid,
 .tagAndSummary {
   min-width: 0;
 }
@@ -69,18 +51,6 @@
   color: var(--td-fg-faint);
   font-style: italic;
 }
-.rid {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: var(--td-rid-bg);
-  border: 1px solid var(--td-rid-line);
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .tagAndSummary {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -103,11 +73,6 @@
 .summary {
   color: var(--td-fg-dim);
   margin-left: 8px;
-  font-size: 11px;
-}
-.latency {
-  color: var(--td-green);
-  margin-left: 6px;
   font-size: 11px;
 }
 
