@@ -13,6 +13,7 @@ import {
 } from './LocalStorage.js';
 import { createProductOperations } from './ProductOperations.js';
 import { createPreimageAdapters } from './Preimage.js';
+import { createPreimageReadAdapter } from './PreimageRead.js';
 import { createChainConnect } from './Chain.js';
 import { createFeatureSupported } from './FeatureSupported.js';
 import { createSupportedChains } from './SupportedChains.js';
@@ -69,6 +70,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     theme: { subscribeTheme: createThemeSubscribe() },
     locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),
+    preimageRead: createPreimageReadAdapter(),
     chain: { connect: createChainConnect() },
     // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),

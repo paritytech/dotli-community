@@ -269,6 +269,13 @@ This **must** complete before \`document.write\` for multi-file archives — oth
 **This event is the key anchor for the "host sends 300 handshake requests" window.** The gap between the host's \`bridge:setup_ready\` and \`sandbox:document_written\` is exactly the window during which the product cannot yet respond to anything. \`totalMs\` is wall-clock from sandbox \`main()\` to this point.`,
   },
 
+  'preimage:cache_read': {
+    title: 'A preimage was read through cache nodes',
+    body: `The experimental cache-node setting is on (Settings, Experimental, Cache nodes), so a preimage lookup asks cache nodes before Bulletin. The host orders the nodes of the provider set: nodes that failed in the last 30 s go last, the others by measured latency, and the content's home nodes at half their latency. It sends each a read request that the payer signs, and checks the bytes against the key.
+
+The node that served is paid with a signed receipt. \`origin\` tells where that node got the content: \`local\` (it had it), \`peer:<id>\` (from another cache node) or \`source\` (from Bulletin, during this read). When no node has the preimage, the host reads Bulletin as before.`,
+  },
+
   'chain:phase': {
     title: 'A chain changed lifecycle phase',
     body: `One of the light client's chains moved to a new phase. These are derived from smoldot's \`lifecycle_unstable_follow\` stream, which reports a phase, a live peer count and a health verdict, and are the same milestones the loading screen advances on:

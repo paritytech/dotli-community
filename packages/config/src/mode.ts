@@ -22,8 +22,21 @@ export interface CacheSettings {
   skipWorkerCache: boolean;
 }
 
+/**
+ * Experimental: read preimages through cache nodes before Bulletin. The cache nodes are a prototype
+ * (github.com/paritytech/cache); the demo product cache-demo.paseo shows them.
+ */
+export interface CacheNodeSettings {
+  enabled: boolean;
+  /** The provider set: a cache node's `GET /providers`, or a JSON file of the same shape. */
+  providersUrl: string;
+  /** The payer's 32-byte sr25519 seed as hex. Empty: the public test payer `dotli`. For development only. */
+  payerSeed: string;
+}
+
 export const BACKEND_KEY = 'dotli:chain-backend';
 export const CACHE_KEY = 'dotli:cache-settings';
+export const CACHE_NODES_KEY = 'dotli:cache-nodes';
 
 export function isSharedWorkerAvailable(): boolean {
   return typeof SharedWorker !== 'undefined';
@@ -177,4 +190,29 @@ export function getCacheSettings(): CacheSettings {
 
 export function setCacheSettings(settings: CacheSettings): void {
   storage.setItem(CACHE_KEY, JSON.stringify(settings));
+}
+
+const DEFAULT_CACHE_NODES: CacheNodeSettings = { enabled: false, providersUrl: '', payerSeed: '' };
+
+/** A field missing or of the wrong type falls back to `DEFAULT_CACHE_NODES`. */
+export function getCacheNodeSettings(): CacheNodeSettings {
+  const stored = storage.getItem(CACHE_NODES_KEY);
+  if (stored !== null) {
+    try {
+      const parsed = JSON.parse(stored) as Partial<CacheNodeSettings>;
+      return {
+        enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : DEFAULT_CACHE_NODES.enabled,
+        providersUrl: typeof parsed.providersUrl === 'string' ? parsed.providersUrl : DEFAULT_CACHE_NODES.providersUrl,
+        payerSeed: typeof parsed.payerSeed === 'string' ? parsed.payerSeed : DEFAULT_CACHE_NODES.payerSeed,
+      };
+      // eslint-disable-next-line no-restricted-syntax -- malformed JSON from an older build; defaults are the safe fallback.
+    } catch {
+      /* malformed JSON. Fall back to defaults. */
+    }
+  }
+  return { ...DEFAULT_CACHE_NODES };
+}
+
+export function setCacheNodeSettings(settings: CacheNodeSettings): void {
+  storage.setItem(CACHE_NODES_KEY, JSON.stringify(settings));
 }

@@ -69,6 +69,10 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'failover:chain_backend':
       return `Chain backend failover: ${str(p['from'])} → ${str(p['to'])} (reason: ${str(p['reason'])}).`;
 
+    case 'preimage:cache_read':
+      return p['outcome'] === 'served'
+        ? `Cache node ${str(p['node'])} served ${str(p['cid'])} (origin ${str(p['origin'])}, rank ${str(p['rank'])}, ${str(p['latencyMs'])} ms).`
+        : `No cache node had ${str(p['cid'])}; reading from Bulletin.`;
     case 'chain:phase': {
       const reason = typeof p['reason'] === 'string' ? ` (${p['reason']})` : '';
       const peers = typeof p['peers'] === 'number' ? `, ${String(p['peers'])} peers` : '';

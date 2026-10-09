@@ -4,7 +4,37 @@
 // The consumer renders multi-event flows (same `flowId`) as boxes and single-event flows as pills.
 
 export type DotliDebugEvent =
-  BootEvent | ResolveEvent | RenderEvent | BridgeEvent | FailoverEvent | MainEvent | SandboxEvent | ChainEvent;
+  | BootEvent
+  | ResolveEvent
+  | RenderEvent
+  | BridgeEvent
+  | FailoverEvent
+  | MainEvent
+  | SandboxEvent
+  | ChainEvent
+  | PreimageEvent;
+
+/** A preimage read through cache nodes (Settings, Experimental, Cache nodes). One event for each read, a pill. */
+export interface PreimageEvent {
+  layer: 'preimage';
+  event: 'cache_read';
+  flowId: string;
+  timestamp: number;
+  payload: {
+    key: string;
+    cid: string;
+    outcome: 'served' | 'missed';
+    /** The name, or else the API URL, of the cache node that served. */
+    node?: string;
+    /** Where the node got the content: local, peer:<id>, source or unknown. */
+    origin?: string;
+    rank?: number;
+    home?: boolean;
+    latencyMs: number;
+    /** One entry for each node asked: "<node>: <outcome>". */
+    attempts: string[];
+  };
+}
 
 /**
  * Forwarded from the sandbox iframe as `postMessage({ type: "dotli:debug-event", event })`.

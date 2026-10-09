@@ -11,6 +11,7 @@ import {
   setNetwork,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Backend,
+  type CacheNodeSettings,
   type CacheSettings,
   type Network,
 } from '@dotli/config';
@@ -55,6 +56,8 @@ const DEFAULT_CACHE = {
   skipArchiveCache: false,
   skipWorkerCache: false,
 };
+
+const DEFAULT_CACHE_NODES: CacheNodeSettings = { enabled: false, providersUrl: '', payerSeed: '' };
 
 let cleanups: (() => void)[] = [];
 
@@ -213,12 +216,13 @@ function expectRadioGroup(section: Element, label: string): Element {
   return group;
 }
 
-type Category = 'general' | 'network' | 'advanced';
+type Category = 'general' | 'network' | 'advanced' | 'experimental';
 
 const CATEGORY_LABELS: [Category, string][] = [
   ['general', 'General'],
   ['network', 'Network'],
   ['advanced', 'Advanced'],
+  ['experimental', 'Experimental'],
 ];
 
 function expectCategories(control: Element | undefined, selected: Category): void {
@@ -226,7 +230,7 @@ function expectCategories(control: Element | undefined, selected: Category): voi
   expect(control?.getAttribute('role')).toBe('group');
   expect(control?.getAttribute('aria-label')).toBe('Settings category');
   const buttons = Array.from(must(control, 'the category control').children);
-  expect(buttons.map(b => b.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON']);
+  expect(buttons.map(b => b.tagName)).toEqual(CATEGORY_LABELS.map(() => 'BUTTON'));
   expect(buttons.map(b => b.getAttribute('data-testid'))).toEqual(
     CATEGORY_LABELS.map(([value]) => `settings-category-${value}`),
   );
@@ -327,6 +331,18 @@ function expectAdvanced(sections: Element[], at: number, settings: Settings): nu
   return next;
 }
 
+function expectExperimental(sections: Element[], at: number): number {
+  const nodes = nth(sections, at);
+  expect(tags(nodes)).toEqual(['DIV', 'DIV', 'LABEL', 'LABEL']);
+  expectHeader(nodes.children[0], 'Cache nodes');
+  const well = nth(nodes.children, 1);
+  expect(well.getAttribute('data-testid')).toBe('mode-cache-nodes');
+  expectCacheRow(well.children[0], 'Read preimages through cache nodes', DEFAULT_CACHE_NODES.enabled);
+  expect(byTestId('mode-cache-nodes-url')).toBeInstanceOf(HTMLInputElement);
+  expect(byTestId('mode-cache-nodes-seed')).toBeInstanceOf(HTMLInputElement);
+  return at + 1;
+}
+
 /** The category control, then only the selected category's sections. */
 function expectSections(container: Element, settings: Settings, category: Category): void {
   const sections = Array.from(container.children);
@@ -336,7 +352,9 @@ function expectSections(container: Element, settings: Settings, category: Catego
       ? expectGeneral(sections, 1)
       : category === 'network'
         ? expectNetwork(sections, 1, settings)
-        : expectAdvanced(sections, 1, settings);
+        : category === 'advanced'
+          ? expectAdvanced(sections, 1, settings)
+          : expectExperimental(sections, 1);
   expect(sections).toHaveLength(end);
 }
 
@@ -628,11 +646,13 @@ describe('The settings popover island', () => {
         chain: 'rpc-gateway',
         network: 'previewnet',
         cache: { ...DEFAULT_CACHE, skipWorkerCache: true },
+        cacheNodes: DEFAULT_CACHE_NODES,
       },
       {
         chain: 'smoldot-direct',
         network: 'paseo-next-v2',
         cache: DEFAULT_CACHE,
+        cacheNodes: DEFAULT_CACHE_NODES,
       },
     );
     expect(applyButton().disabled).toBe(true);
@@ -662,8 +682,8 @@ describe('The settings popover island', () => {
     // Then
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(
-      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
-      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
+      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE, cacheNodes: DEFAULT_CACHE_NODES },
+      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, cacheNodes: DEFAULT_CACHE_NODES },
     );
   });
 
@@ -724,6 +744,57 @@ describe('The settings popover island', () => {
     expect(applyButton().disabled).toBe(true);
   });
 
+  it('As a dotli user, I turn cache nodes on in Experimental with a provider set URL, and Save and apply applies it', async () => {
+    // Given
+    await renderPopover();
+    await openPopover();
+    await showCategory('experimental');
+    expectPopoverMatches(
+      {
+        chain: 'smoldot-direct',
+        network: 'paseo-next-v2',
+        cache: DEFAULT_CACHE,
+        enabledNetworks: ['paseo-next-v2', 'previewnet'],
+        sharedWorkerSupported: typeof SharedWorker !== 'undefined',
+        debugOn: false,
+      },
+      { category: 'experimental' },
+    );
+    const type = (testId: string, value: string): void => {
+      const input = byTestId(testId) as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    // When the switch is on but the URL is not http(s)
+    toggle('Read preimages through cache nodes').click();
+    type('mode-cache-nodes-url', 'localhost:18081');
+    await settle();
+
+    // Then Save and apply stays off, and the panel says why
+    expect([applyButton().disabled, byTestId('mode-cache-nodes-error').textContent]).toEqual([
+      true,
+      'The provider set needs an http(s) URL, and a seed is 64 hex digits.',
+    ]);
+
+    // When the URL is a provider set
+    type('mode-cache-nodes-url', 'http://localhost:18081/providers');
+    await settle();
+    applyButton().click();
+    await settle();
+
+    // Then the draft carries the setting
+    expect(actions.applyAndReset).toHaveBeenCalledWith(
+      {
+        chain: 'smoldot-direct',
+        network: 'paseo-next-v2',
+        cache: DEFAULT_CACHE,
+        cacheNodes: { enabled: true, providersUrl: 'http://localhost:18081/providers', payerSeed: '' },
+      },
+      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, cacheNodes: DEFAULT_CACHE_NODES },
+    );
+  });
+
   it('As a dotli user, Clear all caches runs the full wipe with the saved settings', async () => {
     // Given
     setBackend('rpc-gateway');
@@ -742,6 +813,7 @@ describe('The settings popover island', () => {
       chain: 'rpc-gateway',
       network: 'paseo-next-v2',
       cache: DEFAULT_CACHE,
+      cacheNodes: DEFAULT_CACHE_NODES,
     };
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {

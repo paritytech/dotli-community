@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getSettingsState, initSettingsStore } from '../../src/state/settings.js';
 import {
   getBackend,
+  getCacheNodeSettings,
   getCacheSettings,
   isSharedWorkerAvailable,
   isVerifiedSession,
@@ -32,6 +33,7 @@ describe('settings store', () => {
     expect(getSettingsState()).toEqual({
       backend: getBackend(),
       cache: getCacheSettings(),
+      cacheNodes: getCacheNodeSettings(),
       network: getNetwork(),
       enabledNetworks: getEnabledNetworks(),
       sharedWorkerAvailable: isSharedWorkerAvailable(),

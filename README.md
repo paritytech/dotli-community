@@ -151,6 +151,25 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
 
+### Cache nodes (experimental)
+
+**Settings → Experimental → Cache nodes** makes preimage reads ask cache nodes before Bulletin. Cache nodes are a
+prototype (`paritytech/cache`): Metanode servers that keep verified copies of Bulletin preimages near their users. The
+setting takes a provider set URL, such as a cache node's `GET /providers`, and an optional payer seed for development.
+Empty means the public test payer `dotli`.
+
+- **Order.** For each read, the host orders the nodes as the CLI host does (`packages/content/src/cache-nodes.ts`).
+  Nodes that failed in the last 30 s go last. The others go by measured latency, with the content's three home nodes at
+  half their latency. Every fourth read tries an unmeasured node first.
+- **Read and payment.** The host sends each node a read request signed by the payer, and checks the bytes against the
+  key. It pays the node that served with a signed receipt. If no node has the preimage, the host reads Bulletin as
+  before.
+- **Debug panel.** Each read shows as a `preimage.cache_read` event.
+- **`Preimage.read`.** The core's call for one read through a chosen route, with a report: `Auto`, `Bulletin`, `Cache`,
+  or one cache node. `packages/ui/src/host-callbacks/PreimageRead.ts` serves it. It needs the `@parity/truapi-host` of
+  host-rust-core `lc/cache-prototype` (`npm run link:truapi`).
+- **Locally.** `scripts/demo-local.sh` in the cache repository runs three cache nodes for `http://localhost:5173`.
+
 ### Product chat
 
 Products that declare `includes.chat` in their `worker.<label>.<tld>` executable manifest get a Worker-kind TrUAPI

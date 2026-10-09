@@ -28,6 +28,7 @@
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
+    "@scure/sr25519": "^2.4.0",
     "ipfs-unixfs": "^13.1.2",
     "multiformats": "^14.0.5"
   }
