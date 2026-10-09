@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // `Preimage.read`: one read of a preimage through a route that the product chooses, with a report of every source that
-// the host asked. Products that show or measure the cache use it (the demo product cache-demo.paseo). The route is the
-// host's normal order (`Auto`: cache nodes when the setting is on, then Bulletin), Bulletin only, cache nodes only, or
-// one cache node. With `skipHostCaches` the page's own preimage cache does not answer, so the read measures the network.
+// the host asked. Products that show or measure the cache use it (the demo product cache-demo.paseo). There are four
+// routes. `Auto` is the host's normal order: cache nodes when the setting is on, then Bulletin. The other routes are
+// Bulletin only, cache nodes only, and one cache node. With `skipHostCaches` the page's own preimage cache does not
+// answer, so the read measures the network.
 
 import type { PreimageReadHost } from '@parity/truapi-host';
 import type {
