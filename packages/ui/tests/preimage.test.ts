@@ -55,7 +55,7 @@ describe('preimage host callbacks', () => {
     try {
       const { lookupPreimage } = createPreimageAdapters('myapp');
 
-      // When the product looks the key up, and no poll interval passes
+      // When the product asks for the key, and no poll interval passes
       const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
       await iterator.next();
       const foundPromise = iterator.next();
@@ -63,7 +63,7 @@ describe('preimage host callbacks', () => {
       const found = await foundPromise;
       await iterator.return?.();
 
-      // Then the cache node served it, was paid with a receipt, and the Bulletin backend was never asked
+      // Then the cache node served it and got a receipt, and the host did not ask the Bulletin backend
       expect({
         value: yielded(found)._unsafeUnwrap(),
         urls,
