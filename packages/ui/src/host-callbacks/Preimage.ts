@@ -4,13 +4,24 @@ import type { PreimageHost } from '@parity/truapi-host';
 import { hashToCid, fetchFromIpfs, assertBlockMatchesCid, bitswapGet } from '@dotli/content';
 
 import { getBackend } from '@dotli/config';
-import { serializeError, log, toHex } from '@dotli/shared';
+import { fromHex, serializeError, log, toHex } from '@dotli/shared';
 
+import { getCacheNodes, reportCacheRead } from './cache-nodes.js';
 import { createResultStream } from './result-stream.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const INITIAL_POLL_DELAY_MS = 1000;
 const preimageCache = new Map<string, Uint8Array>();
+
+/** The value under `key` (0x hex) that this page already read, if any. A preimage read can answer from it. */
+export function cachedPreimage(key: string): Uint8Array | undefined {
+  return preimageCache.get(key);
+}
+
+/** Keep a value that a preimage read found, so later lookups of `key` (0x hex) answer from memory. */
+export function rememberPreimage(key: string, value: Uint8Array): void {
+  preimageCache.set(key, value);
+}
 
 function noop(): void {
   return;
@@ -57,6 +68,22 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
 
         const cid = hashToCid(key);
         const cidString = cid.toString();
+        // Cache nodes first, when the setting is on. A miss falls through to Bulletin in the same attempt.
+        const cache = getCacheNodes();
+        if (cache !== null) {
+          const started = Date.now();
+          const read = await cache.read(fromHex(key), cidString);
+          reportCacheRead(key, cidString, read, Date.now() - started);
+          if (aborter.signal.aborted) {
+            return;
+          }
+          if (read.value !== undefined) {
+            preimageCache.set(key, read.value);
+            push(read.value);
+            stopPolling();
+            return;
+          }
+        }
         const backend = getBackend();
         let data: Uint8Array;
         try {
@@ -106,7 +133,8 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
       };
 
       intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
-      initialTimeoutId = setTimeout(() => void poll(), INITIAL_POLL_DELAY_MS);
+      // Cache nodes answer in milliseconds, so with them the first attempt does not wait.
+      initialTimeoutId = setTimeout(() => void poll(), getCacheNodes() === null ? INITIAL_POLL_DELAY_MS : 0);
 
       return () => {
         stopPolling();

@@ -43,3 +43,38 @@
     height: 16px;
   }
 }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font: var(--fw-regular) var(--fs-small, var(--fs-body)) / var(--lh-body) var(--font-sans);
+}
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--h-control-sm);
+  margin: 0;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-full);
+  outline: none;
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+  color: var(--chrome-text);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-mono, var(--font-sans));
+}
+.input::placeholder {
+  color: var(--chrome-text-muted);
+  opacity: 1;
+}
+.input:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 0;
+}
+.error {
+  margin: 0;
+  color: var(--danger, var(--chrome-text));
+}

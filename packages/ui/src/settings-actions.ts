@@ -8,11 +8,13 @@ import { formatAppVersion, getActiveAppManifest, getActiveRootManifest, log, mar
 import { isRemoteChainSupported } from '@dotli/protocol';
 import {
   getCacheSettings,
+  setCacheNodeSettings,
   setCacheSettings,
   getBackend,
   setBackend,
   BACKEND_LABELS,
   type Backend,
+  type CacheNodeSettings,
   type CacheSettings,
   getNetwork,
   setNetwork,
@@ -33,6 +35,7 @@ export interface ModeDraft {
   chain: Backend;
   network: Network;
   cache: CacheSettings;
+  cacheNodes: CacheNodeSettings;
 }
 
 /**
@@ -50,6 +53,7 @@ export async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setCacheNodeSettings(draft.cacheNodes);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         sessionStorage.setItem('dotli:pending-reset:protocol', '1');
@@ -62,6 +66,7 @@ export async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setCacheNodeSettings(draft.cacheNodes);
 
       const cidTurnedOff = draft.cache.skipCidCache && !prior.cache.skipCidCache;
       const archiveTurnedOff = draft.cache.skipArchiveCache && !prior.cache.skipArchiveCache;

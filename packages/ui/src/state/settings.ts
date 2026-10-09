@@ -3,10 +3,12 @@
 
 import {
   getBackend,
+  getCacheNodeSettings,
   getCacheSettings,
   isSharedWorkerAvailable,
   isVerifiedSession,
   type Backend,
+  type CacheNodeSettings,
   type CacheSettings,
   getEnabledNetworks,
   getNetwork,
@@ -18,6 +20,7 @@ import { createSyncStore, type ReadableStore } from './create-store.js';
 export interface SettingsState {
   backend: Backend;
   cache: CacheSettings;
+  cacheNodes: CacheNodeSettings;
   network: Network;
   enabledNetworks: Network[];
   sharedWorkerAvailable: boolean;
@@ -36,6 +39,7 @@ function readSettings(): SettingsState {
   return {
     backend,
     cache: getCacheSettings(),
+    cacheNodes: getCacheNodeSettings(),
     network: getNetwork(),
     enabledNetworks: getEnabledNetworks(),
     sharedWorkerAvailable: isSharedWorkerAvailable(),

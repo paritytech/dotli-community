@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   fetchFromIpfs: vi.fn(() => Promise.resolve({ data: new Uint8Array() })),
   bitswapGet: vi.fn<typeof bitswapGet>(() => Promise.resolve(new Uint8Array())),
   getBackend: vi.fn(() => 'rpc-gateway'),
+  getCacheNodeSettings: vi.fn(() => ({ enabled: false, providersUrl: '', payerSeed: '' })),
 }));
 
 vi.mock('../../content/src/ipfs.js', () => ({
@@ -20,6 +21,7 @@ vi.mock('../../content/src/bitswap.js', () => ({
 
 vi.mock('../../config/src/mode.js', () => ({
   getBackend: mocks.getBackend,
+  getCacheNodeSettings: mocks.getCacheNodeSettings,
 }));
 
 describe('preimage host callbacks', () => {
@@ -28,6 +30,53 @@ describe('preimage host callbacks', () => {
     mocks.fetchFromIpfs.mockResolvedValue({ data: new Uint8Array() });
     mocks.bitswapGet.mockResolvedValue(new Uint8Array());
     mocks.getBackend.mockReturnValue('rpc-gateway');
+    mocks.getCacheNodeSettings.mockReturnValue({ enabled: false, providersUrl: '', payerSeed: '' });
+  });
+
+  it('As a reader with cache nodes on, the host reads a preimage from a cache node at once, and Bulletin is not asked', async () => {
+    // Given a provider set with one cache node that has the value
+    vi.useFakeTimers();
+    const data = new TextEncoder().encode('a preimage that a cache node keeps');
+    const key = blake2b(data, { dkLen: 32 });
+    const node = { id: '07'.repeat(32), api: 'http://cache-node', name: 'A', region: 'local' };
+    mocks.getCacheNodeSettings.mockReturnValue({ enabled: true, providersUrl: 'http://set/providers', payerSeed: '' });
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      urls.push(url);
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json([node]));
+      }
+      if (url === 'http://cache-node/acquire') {
+        return Promise.resolve(new Response(data, { status: 200, headers: { 'x-cache-origin': 'local' } }));
+      }
+      return Promise.resolve(Response.json('Charged'));
+    });
+    try {
+      const { lookupPreimage } = createPreimageAdapters('myapp');
+
+      // When the product looks the key up, and no poll interval passes
+      const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
+      await iterator.next();
+      const foundPromise = iterator.next();
+      await vi.advanceTimersByTimeAsync(0);
+      const found = await foundPromise;
+      await iterator.return?.();
+
+      // Then the cache node served it, was paid with a receipt, and the Bulletin backend was never asked
+      expect({
+        value: yielded(found)._unsafeUnwrap(),
+        urls,
+        bulletin: mocks.fetchFromIpfs.mock.calls.length,
+      }).toEqual({
+        value: data,
+        urls: ['http://set/providers', 'http://cache-node/acquire', 'http://cache-node/receipt'],
+        bulletin: 0,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 
   it('As a dotli integrator, the host emits a miss immediately for an uncached lookup', async () => {

@@ -3,7 +3,13 @@
 
 import { createMemo, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
+import {
+  BACKEND_LABELS,
+  type Backend,
+  type CacheNodeSettings,
+  NETWORK_NAME_TO_SERVICES_CONFIG,
+  type Network,
+} from '@dotli/config';
 
 import { applyAndReset, dotliVersion, isTruapiDebugEnabled, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
@@ -32,13 +38,22 @@ const TRANSPORTS: readonly Transport[] = [
   { value: 'rpc-gateway', description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
 ];
 
-type Category = 'general' | 'network' | 'advanced';
+type Category = 'general' | 'network' | 'advanced' | 'experimental';
 
 const CATEGORIES: readonly SegmentOption<Category>[] = [
   { value: 'general', label: 'General', testId: 'settings-category-general' },
   { value: 'network', label: 'Network', testId: 'settings-category-network' },
   { value: 'advanced', label: 'Advanced', testId: 'settings-category-advanced' },
+  { value: 'experimental', label: 'Experimental', testId: 'settings-category-experimental' },
 ];
+
+const SEED_PATTERN = /^(0x)?[0-9a-fA-F]{64}$/;
+
+/** A provider set URL must be http(s); a payer seed is empty (the test payer) or 32 bytes of hex. */
+function cacheNodesValid(settings: CacheNodeSettings): boolean {
+  const seedValid = settings.payerSeed === '' || SEED_PATTERN.test(settings.payerSeed);
+  return !settings.enabled || (/^https?:\/\/\S+$/.test(settings.providersUrl) && seedValid);
+}
 
 type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
 
@@ -107,20 +122,27 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
     chain: saved.backend,
     network: saved.network,
     cache: saved.cache,
+    cacheNodes: saved.cacheNodes,
   };
   const [chain, setChain] = createSignal<Backend>(persisted.chain);
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
+  const [cacheNodes, setCacheNodes] = createSignal<CacheNodeSettings>(persisted.cacheNodes);
   const [category, setCategory] = createSignal<Category>('general');
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
 
   const dirty = createMemo(() => {
     const draft = cache();
+    const nodes = cacheNodes();
     return (
-      chain() !== persisted.chain ||
-      network() !== persisted.network ||
-      CACHES.some(([key]) => draft[key] !== persisted.cache[key])
+      cacheNodesValid(nodes) &&
+      (chain() !== persisted.chain ||
+        network() !== persisted.network ||
+        CACHES.some(([key]) => draft[key] !== persisted.cache[key]) ||
+        nodes.enabled !== persisted.cacheNodes.enabled ||
+        nodes.providersUrl !== persisted.cacheNodes.providersUrl ||
+        nodes.payerSeed !== persisted.cacheNodes.payerSeed)
     );
   });
 
@@ -143,6 +165,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         chain: untrack(chain),
         network: untrack(network),
         cache: untrack(cache),
+        cacheNodes: untrack(cacheNodes),
       },
       persisted,
     );
@@ -267,6 +290,58 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               </Button>
             </div>
           </Show>
+        </Show>
+        <Show when={category() === 'experimental'}>
+          <Stack>
+            <SectionLabel text="Cache nodes" />
+            <Well layout="controls" testId="mode-cache-nodes">
+              <Row label="Read preimages through cache nodes">
+                <Switch
+                  label="Read preimages through cache nodes"
+                  checked={cacheNodes().enabled}
+                  onChange={enabled => {
+                    setCacheNodes(c => ({ ...c, enabled }));
+                  }}
+                />
+              </Row>
+            </Well>
+            <label class={s['field']}>
+              <span>Provider set URL</span>
+              <input
+                type="url"
+                class={s['input']}
+                data-testid="mode-cache-nodes-url"
+                placeholder="http://localhost:18081/providers"
+                value={cacheNodes().providersUrl}
+                spellcheck={false}
+                onInput={event => {
+                  const providersUrl = event.currentTarget.value.trim();
+                  setCacheNodes(c => ({ ...c, providersUrl }));
+                }}
+              />
+            </label>
+            <label class={s['field']}>
+              <span>Payer seed (development only; empty: the public test payer "dotli")</span>
+              <input
+                type="text"
+                class={s['input']}
+                data-testid="mode-cache-nodes-seed"
+                placeholder="0x… 32 bytes"
+                value={cacheNodes().payerSeed}
+                autocomplete="off"
+                spellcheck={false}
+                onInput={event => {
+                  const payerSeed = event.currentTarget.value.trim();
+                  setCacheNodes(c => ({ ...c, payerSeed }));
+                }}
+              />
+            </label>
+            <Show when={!cacheNodesValid(cacheNodes())}>
+              <p class={s['error']} role="alert" data-testid="mode-cache-nodes-error">
+                The provider set needs an http(s) URL, and a seed is 64 hex digits.
+              </p>
+            </Show>
+          </Stack>
         </Show>
       </div>
       <SurfaceFoot

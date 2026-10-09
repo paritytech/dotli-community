@@ -10,6 +10,7 @@ import {
   isLocalhost,
   BACKEND_KEY,
   CACHE_KEY,
+  CACHE_NODES_KEY,
   configureModeStorage,
   getBackend,
   localStorageAdapter,
@@ -26,7 +27,7 @@ import {
 } from '@dotli/protocol';
 import { log } from '@dotli/shared';
 
-const SHARED_KEYS: readonly string[] = [BACKEND_KEY, CACHE_KEY];
+const SHARED_KEYS: readonly string[] = [BACKEND_KEY, CACHE_KEY, CACHE_NODES_KEY];
 
 let bootstrapped = false;
 

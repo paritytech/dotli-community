@@ -3,6 +3,26 @@
 
 export { packArchive, parseIpfsResponse, type ArchiveFiles } from './archive.js';
 export { bitswapGet, listenForSandboxBitswap, onContentProgress } from './bitswap.js';
+export {
+  CacheNodes,
+  homeNodes,
+  orderProviders,
+  parseOrigin,
+  parseProviders,
+  payerFromSeed,
+  readMessage,
+  receiptMessage,
+  rendezvousScore,
+  testPayerSeed,
+  type CacheAttempt,
+  type CacheNodesOptions,
+  type CacheOrigin,
+  type CacheOutcome,
+  type CacheProvider,
+  type CacheQuality,
+  type CacheRead,
+  type CacheServed,
+} from './cache-nodes.js';
 export { decryptContent, isEncrypted } from './decrypt.js';
 export { CONTENT_ERRORS } from './errors.js';
 export { type FetchResult } from './fetch.js';
