@@ -19,6 +19,7 @@ import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { spaFallback } from '@config/vite/spa-fallback';
+import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
@@ -309,9 +310,10 @@ export default defineConfig({
       // After previewCoepHeaders, which needs the `/__preview` path this rewrites to `/`.
       spaFallback({ landing: '/landing' }),
       sentry(),
+      truapiSigningWorker(),
     ],
     worker: {
-      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
+      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true'), truapiSigningWorker()],
       rolldownOptions: rolldownOptions(),
     },
     define: {

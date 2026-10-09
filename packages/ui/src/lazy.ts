@@ -14,3 +14,4 @@ export type TruapiDebugMountModule = typeof TruapiDebugMountNamespace;
 export const loadTruapiDebugMount = (): Promise<TruapiDebugMountModule> => import('./components/truapi-debug/mount.js');
 export type SharedModeModule = typeof SharedModeNamespace;
 export const loadSharedMode = (): Promise<SharedModeModule> => import('./shared-mode.js');
+export const loadSigningWorker = (): Promise<{ default: new () => Worker }> => import('./signing-worker.js?worker');
