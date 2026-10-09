@@ -16,7 +16,9 @@
       "sourceArchiveSha256": "e509d4fb8e26efce4120dcb53c7fffe5c56cafeedf3869774463528d53bcfe60",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasmSha256": "68213199e6fb0736bcb1a46234cb4a941368c665be75c25e09c60aecd2fdf57a",
-      "wasmFeatures": ["wasm-signing-host"]
+      "wasmFeatures": [
+        "wasm-signing-host"
+      ]
     }
   },
   "wasmUpstreamRevision": "e48777643c52278769a6bac724c7f6577cb87197",
