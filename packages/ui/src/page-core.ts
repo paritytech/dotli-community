@@ -8,9 +8,11 @@ import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { log } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { loadLocalWalletCore } from './lazy.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
+import { readWalletBoot } from './wallet-boot.js';
 
 export interface PageProduct {
   label: string;
@@ -122,21 +124,26 @@ function createCore(product: PageProduct): Core {
   const blockingModalScope = modalCoordinator.createScope();
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let unsubscribeStore: (() => void) | null = null;
-  const runtime = Promise.all([import('@parity/truapi-host/web'), import('@parity/truapi-host/worker-runtime?worker')])
-    .then(([{ createWebWorkerPairingHostRuntime }, { default: HostWorker }]) =>
-      createWebWorkerPairingHostRuntime(
-        new HostWorker(),
-        createHostCallbacks({
-          label: product.label,
-          pairingLabel: product.pairing?.label,
-          pairingDotSuffix: product.pairing?.dotSuffix,
-          pairingHostGlobal: product.pairing?.hostGlobal,
-          blockingModalScope,
-        }),
-        { hostConfig },
-      ),
-    )
-    .then(booted => {
+  const callbacks = createHostCallbacks({
+    label: product.label,
+    pairingLabel: product.pairing?.label,
+    pairingDotSuffix: product.pairing?.dotSuffix,
+    pairingHostGlobal: product.pairing?.hostGlobal,
+    blockingModalScope,
+  });
+  // The wallet read and the host chunk load in parallel, so a Polkadot App boot waits on whichever is slower.
+  const runtime = Promise.all([readWalletBoot(), import('@parity/truapi-host/web')]).then(
+    async ([wallet, { createWebWorkerPairingHostRuntime }]) => {
+      if (wallet !== null) {
+        const { bootLocalWalletCore } = await loadLocalWalletCore();
+        const booted = await bootLocalWalletCore(createWebWorkerPairingHostRuntime, callbacks, hostConfig, wallet, () =>
+          cores.has(core),
+        );
+        log.event('wallet core booted', { flow: 'wallet', local: true });
+        return booted;
+      }
+      const { default: HostWorker } = await import('@parity/truapi-host/worker-runtime?worker');
+      const booted = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacks, { hostConfig });
       log.event('wallet core booted', { flow: 'wallet' });
       // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
       unsubscribeStore = onStoredSessionChanged(() => {
@@ -148,7 +155,8 @@ function createCore(product: PageProduct): Core {
         }
       });
       return booted;
-    });
+    },
+  );
   const core: Core = {
     product,
     runtime,

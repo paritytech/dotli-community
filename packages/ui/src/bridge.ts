@@ -44,6 +44,9 @@ export { setPageProduct } from './page-core.js';
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';
+import { getWalletMode } from './state/wallet-mode.js';
+import { reportLocalWalletFailure } from './wallet-boot.js';
+import { switchToPolkadotApp } from './wallet-switch.js';
 import { describeWireFrame } from './debug-wire-describe.js';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { registerChatConnection } from './chat/service.js';
@@ -165,6 +168,13 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
   (window as typeof window & { __dotliTruapiBridgeReady?: boolean }).__dotliTruapiBridgeReady = true;
   window.addEventListener('dotli:truapi-disconnect-request', () => {
     log.event('logout requested', { flow: 'wallet' });
+    if (getWalletMode() === 'local') {
+      // A local session lives only in memory, so logging out means leaving local mode.
+      switchToPolkadotApp().catch((error: unknown) => {
+        reportLocalWalletFailure(error, 'forget');
+      });
+      return;
+    }
     void disconnectSession();
   });
 
