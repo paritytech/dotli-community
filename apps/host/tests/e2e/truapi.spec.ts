@@ -426,7 +426,13 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'wallet-sign-message',
-        [{ title: 'Sign Message', button: 'Sign' }],
+        [
+          // app.wallet.connect() may need both reviews in a fresh worker before signing.
+          { title: 'Identity Disclosure', button: 'Allow once' },
+          productAccount,
+          { title: 'Permission Request', button: 'Allow once' },
+          { title: 'Sign Message', button: 'Sign' },
+        ],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 

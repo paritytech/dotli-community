@@ -450,7 +450,9 @@ prompt. They must not call the administrative permission setter: settings writes
 doing both would invalidate the user's own answer. E2E tests select a specific review title and decision only during the
 operation under test, with no worker-wide auto-approval. Lasting remote and notification grants remain explicit
 `Always allow` interactions; preimage upload review is separate from the remote permission and resource-allocation
-review.
+review. Raw-message signing also drives the wallet connection's `Identity Disclosure` (`Allow once`) and
+`Product Account` (`Allow`) reviews and the signing `Permission Request` (`Allow once`), so it does not depend on
+permissions left by earlier tests or a previous worker.
 
 Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
 ready before boot finishes rewriting the URL. Backend, cache flags and URL are read as one snapshot; the assertion waits
