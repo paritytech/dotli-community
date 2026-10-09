@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import s from './Tabs.module.css';
 import { WALLET_TAB_ID } from './wallet/WalletView.js';
 
-export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'diagnostics' | 'wallet';
+export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'runtime' | 'diagnostics' | 'wallet';
 
 const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'list', label: 'List' },
@@ -20,6 +20,8 @@ export function Tabs(props: {
   view: PanelView;
   /** Show the debug-build Wallet tab. */
   wallet?: boolean;
+  /** Show the Runtime tab while a PolkaVM product reports diagnostics. */
+  runtime?: boolean;
   onSelect: (view: PanelView) => void;
 }): JSX.Element {
   return (
@@ -41,6 +43,21 @@ export function Tabs(props: {
           </button>
         )}
       </For>
+      <Show when={props.runtime}>
+        <button
+          class={s['tab']}
+          data-testid="td-tab"
+          role="tab"
+          aria-selected={props.view === 'runtime' ? 'true' : 'false'}
+          data-view="runtime"
+          type="button"
+          onClick={() => {
+            props.onSelect('runtime');
+          }}
+        >
+          Runtime
+        </button>
+      </Show>
       <Show when={props.wallet}>
         <button
           id={WALLET_TAB_ID}

@@ -44,7 +44,6 @@ import {
   showLocalhostPill,
   showProductPill,
   recordRecentLabel,
-  showNotification,
   initScheduledNotifications,
   loadTruapiDebugMount,
   loadBridge,
@@ -77,15 +76,15 @@ import {
   resolveRootManifestRemote,
 } from '@dotli/protocol';
 import {
-  evictCachedCid,
-  getCachedCid,
-  setCachedCid,
+  getCachedInstalledExecutable,
+  reconcileInstalledExecutable,
+  setCachedInstalledExecutable,
+  type InstalledExecutable,
   deleteCachedBlock,
   getCachedBlock,
   pruneBlockCache,
   putCachedBlock,
 } from '@dotli/storage';
-
 import {
   dur,
   elapsed,
@@ -98,7 +97,6 @@ import {
   serializeError,
   dotNsUrl,
 } from '@dotli/shared';
-
 import {
   BASE_DOMAIN,
   BLOCK_CACHE_MAX_BYTES,
@@ -118,7 +116,7 @@ import {
   writeSettingsToSearch,
 } from '@dotli/config';
 
-import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import type { DotliDebugEvent, PolkaVmDebugSnapshot } from '@dotli/truapi-debug';
 import {
   describeError,
   FAILOVER_BTN_LABELS,
@@ -129,13 +127,7 @@ import {
   trustedProviderWarning,
   TRY_ANYWAY_BTN_LABEL,
 } from './errors.js';
-import {
-  assertLaunchable,
-  fromCache,
-  revalidateCachedProduct,
-  toCache,
-  type ProductManifests,
-} from './manifest-gate.js';
+import { assertLaunchable, fromCache, toCache, type ProductManifests } from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 
 const resolveLog = log.child({ flow: 'resolve' });
@@ -193,6 +185,7 @@ const RESERVED_HOST_PARAMS = [
   'skipArchiveCache',
   'skipCidCache',
   'skipWorkerCache',
+  'polkaVmEnabled',
   'fullReset',
   'v',
   DOTLI_PRODUCT_ID_PARAM,
@@ -218,6 +211,32 @@ function setShieldState(state: ShieldState): void {
   }
 }
 
+function installedExecutableFromManifests(
+  contenthash: string,
+  manifests: ProductManifests,
+): InstalledExecutable | null {
+  const raw = toCache(manifests);
+  return raw.app === null ? null : { contenthash, executableManifest: raw.app, rootManifest: raw.root };
+}
+
+async function resolveAppContenthash(
+  label: string,
+  chainBackend: Backend,
+  onProgress?: (message: string) => void,
+): Promise<string | null> {
+  const resolve = chainBackend === 'rpc-gateway' ? (await loadRpcResolve()).resolveDotNameViaRpc : resolveDotNameRemote;
+  const contenthash = await resolve(`app.${label}`, onProgress);
+  if (contenthash !== null) {
+    return contenthash;
+  }
+  log.event('App subname has no contenthash, trying the base name', { flow: 'resolve' });
+  return resolve(label, onProgress);
+}
+
+/**
+ * Read the product's root manifest at `<label>.<tld>` and its app manifest at
+ * `app.<label>.<tld>`, through the user's selected backend (smoldot or RPC).
+ */
 async function readProductManifests(label: string, chainBackend: Backend): Promise<ProductManifests> {
   if (chainBackend === 'rpc-gateway') {
     const mod = await loadRpcResolve();
@@ -385,11 +404,78 @@ function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
   });
 }
 
-/** The sandbox's origin cannot reach `emitDotliDebugEvent`. Sees every window message, so others must pass through. */
-function listenForSandboxDebugEvents(emit: EmitFn): void {
+const POLKAVM_DEBUG_NUMBER_FIELDS = [
+  'translationMs',
+  'compilationMs',
+  'startupMs',
+  'firstFrameMs',
+  'translatedWasmBytes',
+  'frames',
+  'fps',
+  'updates',
+  'updateP50Ms',
+  'updateP95Ms',
+  'updateMaxMs',
+  'audioChunks',
+  'audioSamples',
+] as const satisfies readonly (keyof PolkaVmDebugSnapshot)[];
+
+function isPolkaVmDebugSnapshot(value: unknown): value is PolkaVmDebugSnapshot {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  const snapshot = value as Partial<Record<keyof PolkaVmDebugSnapshot, unknown>>;
+  if (snapshot.backend !== 'compiler' && snapshot.backend !== 'interpreter' && snapshot.backend !== 'starting') {
+    return false;
+  }
+  if (
+    typeof snapshot.cacheHit !== 'boolean' ||
+    typeof snapshot.startupStage !== 'string' ||
+    snapshot.startupStage.length > 128
+  ) {
+    return false;
+  }
+  if (
+    (snapshot.compilerFallbackReason !== undefined && typeof snapshot.compilerFallbackReason !== 'string') ||
+    (snapshot.compilerFallbackStage !== undefined && typeof snapshot.compilerFallbackStage !== 'string')
+  ) {
+    return false;
+  }
+  for (const field of POLKAVM_DEBUG_NUMBER_FIELDS) {
+    const metric = snapshot[field];
+    if (typeof metric !== 'number' || !Number.isFinite(metric) || metric < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Accept debug messages from the active product iframe. Lifecycle events enter
+ * the event timeline; PolkaVM metrics update the panel's live Runtime view.
+ * Runtime snapshots are source-checked and structurally validated because the
+ * product iframe is an untrusted, cross-origin message sender.
+ */
+function listenForSandboxDebugMessages(
+  emitEvent: EmitFn,
+  emitPolkaVmSnapshot: (snapshot: PolkaVmDebugSnapshot) => void,
+): void {
   window.addEventListener('message', (event: MessageEvent) => {
-    const data = event.data as { type?: unknown; event?: unknown } | null | undefined;
-    if (data === null || data === undefined || typeof data !== 'object' || data.type !== 'dotli:debug-event') {
+    const data = event.data as { type?: unknown; event?: unknown; metrics?: unknown } | null | undefined;
+    if (data === null || data === undefined || typeof data !== 'object') {
+      return;
+    }
+
+    if (data.type === 'dotli:polkavm-metrics') {
+      const productFrame = document.querySelector<HTMLIFrameElement>('#app iframe');
+      if (event.source !== productFrame?.contentWindow || !isPolkaVmDebugSnapshot(data.metrics)) {
+        return;
+      }
+      emitPolkaVmSnapshot(data.metrics);
+      return;
+    }
+
+    if (data.type !== 'dotli:debug-event') {
       return;
     }
     const payload = data.event as (DotliDebugEvent & { layer?: unknown }) | null | undefined;
@@ -397,71 +483,12 @@ function listenForSandboxDebugEvents(emit: EmitFn): void {
       return;
     }
     try {
-      emit(payload);
+      emitEvent(payload);
       // eslint-disable-next-line no-restricted-syntax -- best-effort forwarder. A malformed event from the sandbox must never break the host.
     } catch {
       /* ignore: a malformed event shouldn't kill the host */
     }
   });
-}
-
-/** `onScreen` is false when the cached copy was refused rather than rendered, so an eviction has no page to reload. */
-async function runBackgroundRevalidate(
-  label: string,
-  servedCid: string,
-  chainBackend: Backend,
-  onScreen: boolean,
-): Promise<void> {
-  const stopTimer = m.timer(S.CACHE_REVALIDATE_LATENCY);
-  try {
-    const decision = await revalidateCachedProduct(
-      servedCid,
-      async () =>
-        chainBackend === 'rpc-gateway'
-          ? (await loadRpcResolve()).resolveDotNameViaRpc(label)
-          : resolveDotNameRemote(label),
-      () => readProductManifests(label, chainBackend),
-    );
-    stopTimer();
-    if (decision.kind === 'keep') {
-      m.count(S.CACHE_REVALIDATE_MATCH);
-      return;
-    }
-    if (decision.kind === 'update') {
-      await setCachedCid(label, getNetwork(), decision.cid, decision.manifests);
-      m.count(S.CACHE_REVALIDATE_UPDATE);
-      log.event('Cached app is outdated', { flow: 'resolve', served: servedCid, latest: decision.cid });
-      showNotification({
-        label: 'New version available',
-        text: 'This site has been updated. Reload to see the latest version.',
-        dismissMs: 0,
-        action: {
-          label: 'Reload',
-          onClick: () => {
-            markContinuation('app_update');
-            window.location.reload();
-          },
-        },
-      });
-      return;
-    }
-    // Cleared, or redeployed with manifests this host cannot read. Reloading takes the cold path, which shows why.
-    await evictCachedCid(label);
-    m.count(S.CACHE_REVALIDATE_CLEARED);
-    log.event('Cached app evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
-    if (onScreen) {
-      markContinuation('app_update');
-      window.location.reload();
-    }
-  } catch (err) {
-    stopTimer();
-    m.count(S.CACHE_REVALIDATE_ERROR);
-    captureException(err, {
-      flow: 'resolve',
-      step: 'cache_revalidate',
-      tags: { kind: 'cid_cache_revalidate_error', surface: 'host_cache_revalidate' },
-    });
-  }
 }
 
 /**
@@ -563,7 +590,7 @@ async function main(): Promise<void> {
 
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
   boot.step = 'debug_bus';
-  const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
+  const { emitDotliDebugEvent, emitPolkaVmDebugSnapshot, enableDotliDebugBuffering } = await loadDotliDebugBus();
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
@@ -572,7 +599,10 @@ async function main(): Promise<void> {
   const bootFlowId = createBootFlowId();
   if (debugMode.enabled) {
     startMainThreadMonitor(bootFlowId, emitDotliDebugEvent);
-    listenForSandboxDebugEvents(emitDotliDebugEvent);
+    // Forward sandbox lifecycle and PolkaVM runtime diagnostics into the
+    // docked panel. The active iframe source check keeps unrelated window
+    // messages out of the live runtime view.
+    listenForSandboxDebugMessages(emitDotliDebugEvent, emitPolkaVmDebugSnapshot);
   }
 
   const productIdOverride = parseLocalProductIdOverride();
@@ -841,6 +871,18 @@ async function main(): Promise<void> {
   const contentFetchPhase = chainBackend === 'rpc-gateway' ? 2 : 4;
   setLoadingDomain(label);
   advancePhase(0);
+  const network = getNetwork();
+  let manifestsPromise: Promise<ProductManifests> | undefined;
+  const manifestsForLaunch = (): Promise<ProductManifests> => {
+    if (manifestsPromise === undefined) {
+      manifestsPromise = readProductManifests(label, chainBackend);
+      // CID and manifest reads run in parallel. Awaiting this same promise
+      // below preserves the rejection even if contenthash resolution fails first.
+      void manifestsPromise.catch(() => undefined);
+    }
+    return manifestsPromise;
+  };
+  let resolvedContenthash: string | undefined;
 
   // Subscribed outside the backend gate: a gateway trace with no chain events is the point, not a gap.
   const trace = startResolutionTrace({
@@ -1165,9 +1207,12 @@ async function main(): Promise<void> {
   // Read in the catch below, so a warm-path failure is not counted against the cold path.
   let cidCache: CidCacheResult | 'unknown' = 'unknown';
 
-  // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
+  // Installed executable hits still revalidate against the selected network,
+  // so their light-client cache outcomes remain relevant. Only gateway mode
+  // runs no light client. Track each chain independently: relay and Asset Hub
+  // gate resolution, while Bulletin gates the sandbox content fetch.
   const smoldotDbCacheTags = (): Record<string, string> => {
-    const inapplicable = cidCache === 'hit' || chainBackend === 'rpc-gateway';
+    const inapplicable = chainBackend === 'rpc-gateway';
     return {
       smoldotdb_relay_cache: inapplicable ? 'n/a' : getSmoldotDbOutcome('relay'),
       smoldotdb_hub_cache: inapplicable ? 'n/a' : getSmoldotDbOutcome('hub'),
@@ -1201,83 +1246,145 @@ async function main(): Promise<void> {
 
   try {
     enterStep('cid_cache_read');
-    const cached = cacheSettings.skipCidCache ? null : await getCachedCid(label, getNetwork());
-    const cachedCid = cached?.cid ?? null;
+    const cacheResult = cacheSettings.skipCidCache
+      ? ({ kind: 'miss' } as const)
+      : await getCachedInstalledExecutable(label, network, 'app');
+    if (cacheResult.kind === 'error') {
+      resolveLog.warn('[dot.li installed-executable-cache] read failed; resolving without cache:', cacheResult.cause);
+      captureException(cacheResult.cause, {
+        flow: 'resolve',
+        step: 'cid_cache_read',
+        tags: { kind: 'installed_executable_cache_read_error' },
+      });
+    }
+    const cachedExecutable = cacheResult.kind === 'hit' ? cacheResult.executable : null;
+    cidCache = cachedExecutable !== null ? 'hit' : cacheSettings.skipCidCache ? 'skipped' : 'miss';
+    trace.cidCache(cidCache);
     emitDotliDebugEvent({
       layer: 'boot',
-      event: 'cid_cache_checked',
+      event: 'installed_executable_cache_checked',
       flowId: bootFlowId,
       timestamp: Date.now(),
-      payload: {
-        label,
-        hit: cachedCid !== null,
-        ...(cachedCid !== null ? { cid: cachedCid } : {}),
-      },
+      payload:
+        cachedExecutable === null
+          ? { label, hit: false }
+          : { label, hit: true, contenthash: cachedExecutable.contenthash },
     });
-    cidCache = cachedCid !== null ? 'hit' : cacheSettings.skipCidCache ? 'skipped' : 'miss';
-    trace.cidCache(cidCache);
-    if (cached !== null) {
-      m.count(S.CACHE_HIT);
-      log.event('CID cache hit', { flow: 'resolve', cid: cached.cid });
-      trace.nameResolved(cached.cid);
-      // A copy that no longer passes is refused but kept: only a cleanup or a redeploy drops cached manifests.
-      const cachedManifests = fromCache(cached.manifests);
-      enterStep('cached_launch_gate');
+    if (cachedExecutable !== null) {
+      log.event('Installed executable cache hit', { flow: 'resolve', contenthash: cachedExecutable.contenthash });
+      // A hit is never launched on trust: the contenthash and both manifests
+      // are read again from the chain and judged by today's validator first.
+      const cachedManifests = fromCache({
+        root: cachedExecutable.rootManifest,
+        app: cachedExecutable.executableManifest,
+      });
+      enterStep('cached_revalidate');
+      const stopRevalidate = m.timer(S.CACHE_REVALIDATE_LATENCY);
+      let freshContenthash: string | null;
+      let freshManifests: ProductManifests;
       try {
-        assertLaunchable(cachedManifests.root, cachedManifests.app);
-      } catch (err) {
-        requestIdleCallback(() => {
-          void runBackgroundRevalidate(label, cached.cid, chainBackend, false);
-        });
-        throw err;
+        const [contenthashResult, manifestResult] = await Promise.allSettled([
+          resolveAppContenthash(label, chainBackend),
+          readProductManifests(label, chainBackend),
+        ]);
+        if (contenthashResult.status === 'rejected') {
+          throw contenthashResult.reason;
+        }
+        freshContenthash = contenthashResult.value;
+        if (manifestResult.status === 'rejected') {
+          if (freshContenthash !== null && freshContenthash !== cachedExecutable.contenthash) {
+            throw manifestResult.reason;
+          }
+          if (freshContenthash !== null) {
+            m.count(S.CACHE_REVALIDATE_ERROR);
+            resolveLog.warn(
+              '[dot.li installed-executable-cache] manifest revalidation failed; reusing the cached record:',
+              manifestResult.reason,
+            );
+          }
+          freshManifests = cachedManifests;
+        } else {
+          freshManifests = manifestResult.value;
+        }
+        manifestsPromise = Promise.resolve(freshManifests);
+      } catch (error) {
+        m.count(S.CACHE_REVALIDATE_ERROR);
+        throw error;
+      } finally {
+        stopRevalidate();
       }
-      await m.span(S.E2E_FAST, async () => {
-        setShieldState(shieldState);
-        enterStep('render_chunk_load');
-        const { renderAppSubdomain } = await renderChunkPromise;
-        advancePhase(contentFetchPhase);
-        enterStep('render_handoff');
-        settleOnContent();
-        await renderAppSubdomain(cached.cid, label);
+      const outcome = await reconcileInstalledExecutable(
+        label,
+        network,
+        'app',
+        cachedExecutable,
+        freshContenthash,
+        toCache(freshManifests),
+      );
+      if (outcome.kind === 'cleared') {
+        stopStatusTick();
+        trace.nameResolved(null);
+        showNoContentError(label);
+        endJourney();
+        trace.finish('no_content');
+        performance.mark('dotli:main:end');
+        return;
+      }
+      enterStep('cached_launch_gate');
+      assertLaunchable(freshManifests.root, freshManifests.app);
+      if (outcome.kind === 'match') {
+        m.count(S.CACHE_HIT);
+        trace.nameResolved(cachedExecutable.contenthash);
+        // Wrap the warm-path render in a span so its duration is queryable
+        // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
+        await m.span(S.E2E_FAST, async () => {
+          setShieldState(shieldState);
+          enterStep('render_chunk_load');
+          const { renderAppSubdomain } = await renderChunkPromise;
+          advancePhase(contentFetchPhase);
+          enterStep('render_handoff');
+          settleOnContent();
+          await renderAppSubdomain(cachedExecutable.contenthash, label, cachedExecutable.executableManifest);
+        });
+        forgetError();
+        void recordRecentLabel(label);
+        void applyProductBranding(label, freshManifests).catch((err: unknown) => {
+          resolveLog.warn(`[dot.li manifest] branding failed for ${withActiveTld(label)}:`, err);
+        });
+        performance.mark('dotli:main:end');
+        log.event('Sandbox mounted', { flow: 'resolve', path: 'cache', total_ms: Math.round(performance.now() - T0) });
+        emitDotliDebugEvent({
+          layer: 'boot',
+          event: 'ready',
+          flowId: bootFlowId,
+          timestamp: Date.now(),
+          payload: {
+            label,
+            totalMs: performance.now() - T0,
+            path: 'fast',
+          },
+        });
+        handedOff();
+        return;
+      }
+      resolvedContenthash = outcome.contenthash;
+      log.event('Installed executable changed on chain', {
+        flow: 'resolve',
+        served: cachedExecutable.contenthash,
+        latest: resolvedContenthash,
       });
-      forgetError();
-      void recordRecentLabel(label);
-      void applyProductBranding(label, cachedManifests).catch((err: unknown) => {
-        resolveLog.warn(`[dot.li manifest] branding failed for ${withActiveTld(label)}:`, err);
-      });
-      performance.mark('dotli:main:end');
-      log.event('Sandbox mounted', { flow: 'resolve', path: 'cache', total_ms: Math.round(performance.now() - T0) });
-      emitDotliDebugEvent({
-        layer: 'boot',
-        event: 'ready',
-        flowId: bootFlowId,
-        timestamp: Date.now(),
-        payload: {
-          label,
-          totalMs: performance.now() - T0,
-          path: 'fast',
-        },
-      });
-      handedOff();
-      // Keeps the cache honest without blocking the render.
-      requestIdleCallback(() => {
-        void runBackgroundRevalidate(label, cached.cid, chainBackend, true);
-      });
-      return;
+      cidCache = 'miss';
+      trace.cidCache(cidCache);
     }
     if (cidCache === 'miss') {
       m.count(S.CACHE_MISS);
     }
     log.event(cidCache === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
+    const manifestsRead = manifestsForLaunch();
 
     // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
     const coldStartMs = performance.now();
     performance.mark('dotli:resolve:start');
-    // In parallel with the CID, and awaited before anything renders, so a refused product is never downloaded.
-    const manifestsRead = readProductManifests(label, chainBackend);
-    manifestsRead.catch(() => {
-      /* Awaited below. A CID failure first must not leave this unhandled. */
-    });
     enterStep('name_resolve');
     const resolveStart = performance.now();
 
@@ -1303,35 +1410,37 @@ async function main(): Promise<void> {
       });
     };
 
-    // The app subname first, then the base label when the subname has no contenthash.
-    let cid: string | null;
-    log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend: chainBackend });
-    if (chainBackend !== 'rpc-gateway') {
-      const { statusToPhase } = await loadResolve();
-      const onResolveProgress = (msg: string): void => {
-        // The resolver owns the mapping from its status text to a phase.
-        const phase = statusToPhase(msg);
-        const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
-        if (mappedPhase !== undefined) {
-          advancePhase(mappedPhase);
-        }
-        emitPhase(msg, phase ?? 'progress');
-        // Developer-facing text, so it stays in the debug stream and never reaches the headline.
-      };
-      cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
-      if (cid === null) {
-        log.event('App subname has no contenthash, trying the base name', { flow: 'resolve' });
-        cid = await resolveDotNameRemote(label, onResolveProgress);
-      }
-    } else {
-      const { resolveDotNameViaRpc } = await loadRpcResolve();
-      const onResolveProgress = (msg: string): void => {
-        emitPhase(msg, 'progress');
-      };
-      cid = await resolveDotNameViaRpc(`app.${label}`, onResolveProgress);
-      if (cid === null) {
-        log.event('App subname has no contenthash, trying the base name', { flow: 'resolve' });
-        cid = await resolveDotNameViaRpc(label, onResolveProgress);
+    /**
+     * Try the app subname first, fall back to the base label when the
+     * subname has no contenthash.
+     */
+    let cid: string | null = resolvedContenthash ?? null;
+    if (resolvedContenthash === undefined) {
+      log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend: chainBackend });
+      if (chainBackend !== 'rpc-gateway') {
+        const { statusToPhase } = await loadResolve();
+        const onResolveProgress = (msg: string): void => {
+          // Progress events arrive as opaque strings across the iframe
+          // boundary. The resolver package owns the authoritative mapping from
+          // status text to ResolvePhase, so we defer to it instead of
+          // maintaining a parallel regex here.
+          const phase = statusToPhase(msg);
+          const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
+          if (mappedPhase !== undefined) {
+            advancePhase(mappedPhase);
+          }
+          emitPhase(msg, phase ?? 'progress');
+          // These strings are the resolver talking to a developer, which is how
+          // "Walking dag-pb via bitswap..." reached the headline. They stay in
+          // the debug stream and move the bar. The stage messages say the same
+          // thing to the user.
+        };
+        cid = await resolveAppContenthash(label, chainBackend, onResolveProgress);
+      } else {
+        const onResolveProgress = (msg: string): void => {
+          emitPhase(msg, 'progress');
+        };
+        cid = await resolveAppContenthash(label, chainBackend, onResolveProgress);
       }
     }
 
@@ -1376,10 +1485,10 @@ async function main(): Promise<void> {
     log.event('Manifests read', { flow: 'resolve', root: manifests.root.kind, app: manifests.app.kind });
     enterStep('launch_gate');
     assertLaunchable(manifests.root, manifests.app);
-
-    if (!cacheSettings.skipCidCache) {
+    const installedExecutable = installedExecutableFromManifests(cid, manifests);
+    if (!cacheSettings.skipCidCache && installedExecutable !== null) {
       requestIdleCallback(() => {
-        void setCachedCid(label, getNetwork(), cid, toCache(manifests));
+        void setCachedInstalledExecutable(label, network, 'app', installedExecutable);
       });
     }
 
@@ -1390,7 +1499,7 @@ async function main(): Promise<void> {
     advancePhase(contentFetchPhase);
     enterStep('render_handoff');
     settleOnContent();
-    await renderAppSubdomain(cid, label);
+    await renderAppSubdomain(cid, label, toCache(manifests).app);
     forgetError();
     void recordRecentLabel(label);
     void applyProductBranding(label, manifests).catch((err: unknown) => {

@@ -40,7 +40,11 @@
   padding: 0;
 }
 
+/* Positioned and isolated, so the tint blends with the effect's own content
+   and nothing behind it. */
 .effect {
+  position: relative;
+  isolation: isolate;
   display: inline-block;
   box-sizing: border-box;
   max-width: 100%;
@@ -48,24 +52,14 @@
   padding: 0;
 }
 
-/* Raw colors on purpose: a decorative constant, the same in both themes. */
-.effect[data-effect='rainbow'] {
-  background: linear-gradient(90deg, #ff5f6d, #ffc371, #47e3a0, #4facfe, #b06ab3, #ff5f6d);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: rainbow-shift 6s linear infinite;
-}
-@keyframes rainbow-shift {
-  to {
-    background-position: 200% 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .effect[data-effect='rainbow'] {
-    animation: none;
-  }
+/* A decorative constant, the same in both themes. The hue turns in Effect
+   (CustomNode.tsx), unless the user prefers reduced motion. */
+.tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: color;
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
 }
 
 .text {

@@ -17,16 +17,21 @@ export {
 export { isExpectedDbError } from './db.js';
 export {
   RECENT_KEY,
-  clearCidCache,
-  evictCachedCid,
-  getCachedCid,
+  clearInstalledExecutableCache,
+  evictCachedInstalledExecutable,
+  getCachedInstalledExecutable,
   getRecentLabels,
   parseRecentLabels,
+  reconcileInstalledExecutable,
   serializeRecentLabels,
-  setCachedCid,
+  setCachedInstalledExecutable,
   withRecentLabel,
   writeRecentLabels,
   type CachedManifests,
+  type ExecutableModality,
+  type InstalledExecutable,
+  type InstalledExecutableCacheResult,
+  type RevalidateOutcome,
 } from './cid-cache.js';
 export {
   allocateId,

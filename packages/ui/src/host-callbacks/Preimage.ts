@@ -74,7 +74,7 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
           log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
           return;
         }
-        if (data.length === 0) {
+        if (aborter.signal.aborted || data.length === 0) {
           return;
         }
         try {

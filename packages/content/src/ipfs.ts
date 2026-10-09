@@ -42,9 +42,9 @@ export async function fetchFromIpfs(
 export async function fetchCarFromIpfs(cid: string, gateway: string = defaultGateway()): Promise<Uint8Array> {
   const url = `${gateway}/ipfs/${cid}?format=car`;
 
-  const response = await fetch(url, {
-    headers: { Accept: 'application/vnd.ipld.car' },
-  });
+  // The URL selects CAR format. A media-specific Accept header bypasses the
+  // gateway's immutable-URL cache even though it returns the same archive.
+  const response = await fetch(url);
 
   if (!response.ok) {
     throw new Error(`IPFS CAR fetch failed: HTTP ${httpStatus(response)} from ${gatewayHost(gateway)} for ${cid}`);

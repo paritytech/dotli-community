@@ -4,7 +4,7 @@
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { defineConfig } from 'astro/config';
 import type { AstroIntegration } from 'astro';
-import type { Plugin, PluginOption } from 'vite';
+import { build as viteBuild, type Plugin, type PluginOption } from 'vite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { execSync } from 'node:child_process';
@@ -18,9 +18,11 @@ import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
+import { SANDBOX_SCHEMA_VERSION } from '../../packages/config/src/host-sandbox-version.ts';
 import { spaFallback } from '@config/vite/spa-fallback';
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
+import { notificationWorker } from './notification-build.js';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
@@ -45,6 +47,38 @@ provideSentryRelease(import.meta.dirname);
 
 const OUT_DIR = 'dist';
 const APP_URL = process.env['VITE_APP_URL'] ?? '';
+const HOST_UPDATE_SCRIPT = `assets/host-update-${process.env['VITE_COMMIT_SHA'] ?? 'dev'}.js`;
+
+function hostUpdateWorker(): AstroIntegration {
+  return {
+    name: 'host-update-worker',
+    hooks: {
+      // Finish before astroPwa generates the importing service worker.
+      // A release-specific URL avoids stale HTTP-cached importScripts.
+      'astro:build:done': async ({ dir }) => {
+        await viteBuild({
+          configFile: false,
+          define: {
+            __HOST_SANDBOX_SCHEMA_VERSION__: JSON.stringify(SANDBOX_SCHEMA_VERSION),
+          },
+          build: {
+            emptyOutDir: false,
+            outDir: fileURLToPath(dir),
+            lib: {
+              entry: resolve(import.meta.dirname, 'src/host-update.ts'),
+              formats: ['iife'],
+              name: 'DotliHostUpdate',
+              fileName: () => HOST_UPDATE_SCRIPT,
+            },
+            sourcemap: false,
+            minify: true,
+          },
+          logLevel: 'warn',
+        });
+      },
+    },
+  };
+}
 
 /** Direct `dependencies` only, so Diagnostics lists just what dot.li code imports. Maps a package to its dependents. */
 function collectWorkspaceDependencies(): Map<string, Set<string>> {
@@ -256,7 +290,14 @@ export default defineConfig({
     astroSolid(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
-    // src/pwa.ts prompts for updates.
+    hostUpdateWorker(),
+    // Build the classic notification handler before Workbox imports it.
+    notificationWorker(),
+    // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
+    // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
+    // cross-origin and outside this SW's reach by design. Compatible host
+    // sessions keep prompt-style updates. The imported upgrade worker replaces
+    // incompatible cached shells without touching wallet or application storage.
     astroPwa({
       injectRegister: false,
       registerType: 'prompt',
@@ -282,11 +323,21 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
-        // Loaded only on demand. Precaching would make every installed shell download them after each release. The
-        // worker lives on product hosts only, which never show the landing page.
-        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm', 'landing.html'],
+        // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
+        // ring-VRF operation first needs it. Precaching it would make every
+        // installed shell download it after each release.
+        // Imported service-worker code must bypass the shell precache.
+        globIgnores: [
+          '**/truapi_provider_bg*.wasm',
+          '**/truapi_verifiable_bg*.wasm',
+          '**/host-update-*.js',
+          '**/host-notifications.js',
+          'landing.html',
+        ],
+        importScripts: [HOST_UPDATE_SCRIPT, 'host-notifications.js'],
         cleanupOutdatedCaches: true,
-        // Prompted updates need the waiting SW to sit idle until the user opts in.
+        // The upgrade worker overrides these only for outdated shells;
+        // matching-contract sessions still opt into an ordinary update.
         skipWaiting: false,
         clientsClaim: false,
         maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,

@@ -20,7 +20,7 @@ import {
   setPermissionStatus,
 } from '../src/permissions.js';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
-import { createPromptPermission } from '../src/host-callbacks/PromptPermission.js';
+import { createPromptPermission, decidePromptPermission } from '../src/host-callbacks/PromptPermission.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { byTestId } from './support.js';
 
@@ -623,6 +623,19 @@ describe('three-way permission prompts', () => {
     expect(promptButtonTexts()).toEqual(['Deny', 'Allow']);
     await clickPromptButton('Deny');
     await expect(response).resolves.toBe('Deny');
+  });
+
+  it('As a mediated camera user, I can allow one scan without making the grant durable', async () => {
+    const response = decidePromptPermission('myapp', 'Camera', {
+      kind: 'Device',
+      limiter: { allow: () => true },
+      gatedByIframe: false,
+    });
+
+    await clickPromptButton('Allow once');
+
+    await expect(response).resolves.toBe('AllowOnce');
+    expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
   });
 
   it('As a product, an existing grant is answered without being upgraded to a lasting one', async () => {

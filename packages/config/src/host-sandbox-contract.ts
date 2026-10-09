@@ -1,14 +1,40 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The sandbox cannot read the host's localStorage, so the host passes every user decision as a URL param and the
-// sandbox rejects any value it doesn't recognize instead of defaulting.
-// The sandbox origin is keyed on the dotNS label, not the CID, so all versions of a product share an origin.
-// A new required param bumps SANDBOX_SCHEMA_VERSION, so a stale host can't feed a fresh sandbox.
+// Host to sandbox URL contract.
+//
+// The sandbox runs on `<label>.app.<root>` and cannot read the host's
+// localStorage (different origin). The host MUST thread every user
+// decision through URL params on the iframe load, and the sandbox MUST
+// reject any contract value it doesn't recognize. A silent default on
+// the sandbox side would re-introduce the "user picked X, got Y"
+// regression class that the determinism audit eliminated.
+//
+// The sandbox origin is keyed on the dotns label (not the CID) so all
+// versions of a product share an origin. The host owns dotns resolution
+// and threads the resolved CID through `?cid=`. The sandbox does not
+// re-resolve.
+//
+// Schema v5 (current):
+//
+//   Required:
+//     ?v=<schema version integer>
+//     ?cid=<IPFS content id the host resolved from the dotns label>
+//     ?chainBackend=<"smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway">
+//     ?network=<"paseo-next-v2" | "previewnet">
+//     ?polkaVmEnabled=<"0" | "1">
+//
+//   Optional:
+//     ?fullReset=<"0" | "1">
+//     ?executableManifest=<exact UTF-8 App executable text record>
+//     ?resolutionId=<correlation id for the telemetry of this page load>
+//
+// When we add a new required param, bump SANDBOX_SCHEMA_VERSION and
+// have the validator reject unmatched versions so stale host builds
+// don't feed malformed params to fresh sandbox deploys.
 
 import { NetworkName, isValidNetwork, type Network } from './network.js';
-
-export const SANDBOX_SCHEMA_VERSION = 3;
+import { SANDBOX_SCHEMA_VERSION } from './host-sandbox-version.js';
 
 // A cheap charset gate. The sandbox parses the CID and hash-verifies fetched content against it.
 const CID_PATTERN = /^[a-zA-Z0-9]+$/;
@@ -26,7 +52,9 @@ export const SANDBOX_CONTRACT_PARAMS = {
   cid: 'cid',
   chainBackend: 'chainBackend',
   network: 'network',
+  polkaVmEnabled: 'polkaVmEnabled',
   fullReset: 'fullReset',
+  executableManifest: 'executableManifest',
   resolutionId: 'resolutionId',
   v: 'v',
 } as const;
@@ -35,13 +63,21 @@ export interface SandboxParams {
   cid: string;
   chainBackend: 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
   network: Network;
+  polkaVmEnabled: boolean;
   fullReset: boolean;
+  executableManifest: string | null;
   /** Telemetry only, so never required: no sandbox should fail to boot over a trace id. */
   resolutionId: string | null;
 }
 
 export type SandboxParamsResult =
-  { ok: true; params: SandboxParams } | { ok: false; reason: string; recoverable?: boolean };
+  | { ok: true; params: SandboxParams }
+  | {
+      ok: false;
+      reason: string;
+      recoverable?: boolean;
+      hostUpdateRequired?: boolean;
+    };
 
 /**
  * Validates a sandbox URL against the host-to-sandbox contract. The caller shows the reason and stops.
@@ -49,12 +85,18 @@ export type SandboxParamsResult =
  * fixes by re-rendering the iframe. A present but invalid param means a broken host build, so it stays fatal.
  */
 export function validateSandboxParams(search: URLSearchParams): SandboxParamsResult {
-  // An explicit version must match. A host too old to send one fails the required params below.
+  // A contract carrying a CID is an active host launch and must identify its
+  // schema. A URL with no contract keys is the supported post-boot reload
+  // shape; let the missing-CID path below ask the host to reconstruct it.
   const version = search.get(SANDBOX_CONTRACT_PARAMS.v);
-  if (version !== null && version !== String(SANDBOX_SCHEMA_VERSION)) {
+  if (
+    (version === null && search.has(SANDBOX_CONTRACT_PARAMS.cid)) ||
+    (version !== null && version !== String(SANDBOX_SCHEMA_VERSION))
+  ) {
     return {
       ok: false,
-      reason: `Sandbox contract version mismatch (got v=${version}, expected v=${String(SANDBOX_SCHEMA_VERSION)}). Reload from the host to pick up the matching build.`,
+      hostUpdateRequired: true,
+      reason: `Sandbox contract version mismatch (got ${version === null ? 'no version' : `v=${version}`}, expected v=${String(SANDBOX_SCHEMA_VERSION)}). Update dot.li to load the matching host build.`,
     };
   }
 
@@ -107,11 +149,33 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
     };
   }
 
+  const polkaVmRaw = search.get(SANDBOX_CONTRACT_PARAMS.polkaVmEnabled);
+  if (polkaVmRaw === null || !VALID_BOOLEAN_FLAGS.has(polkaVmRaw)) {
+    return {
+      ok: false,
+      reason:
+        polkaVmRaw === null
+          ? 'Missing required URL param `polkaVmEnabled`. The host did not specify whether the experimental runtime is enabled.'
+          : `Invalid polkaVmEnabled "${polkaVmRaw}" — expected "0" or "1".`,
+    };
+  }
+
   const resetRaw = search.get(SANDBOX_CONTRACT_PARAMS.fullReset);
   if (resetRaw !== null && !VALID_BOOLEAN_FLAGS.has(resetRaw)) {
     return {
       ok: false,
       reason: `Invalid fullReset "${resetRaw}" — expected "0" or "1".`,
+    };
+  }
+
+  const executableManifest = search.get(SANDBOX_CONTRACT_PARAMS.executableManifest);
+  if (
+    executableManifest !== null &&
+    (executableManifest.length === 0 || new TextEncoder().encode(executableManifest).byteLength > 64 * 1024)
+  ) {
+    return {
+      ok: false,
+      reason: 'Invalid executableManifest — expected a non-empty App manifest within 65536 UTF-8 bytes.',
     };
   }
 
@@ -131,7 +195,9 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
       cid,
       chainBackend: chainBackend as 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway',
       network,
+      polkaVmEnabled: polkaVmRaw === '1',
       fullReset: resetRaw === '1',
+      executableManifest,
       resolutionId,
     },
   };

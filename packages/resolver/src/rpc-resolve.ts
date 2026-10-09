@@ -6,6 +6,7 @@
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
+
 import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
 import { log } from '@dotli/shared';
@@ -55,9 +56,12 @@ function ensureClient(onStatus?: StatusCallback): Promise<Api> {
   if (clientPromise !== null) {
     return clientPromise;
   }
-  clientPromise = doCreateClient(onStatus).finally(() => {
-    clientPromise = null;
+  const creating = doCreateClient(onStatus).finally(() => {
+    if (clientPromise === creating) {
+      clientPromise = null;
+    }
   });
+  clientPromise = creating;
   return clientPromise;
 }
 
@@ -89,16 +93,23 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
     throw err;
   }
 
-  // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
+  // If the chainHead follow dies (server emits stop, follow errors, WS
+  // disconnect), invalidate the cached client so the next `ensureClient`
+  // redials. Without this, every subsequent read returns `null` silently
+  // (the "name not found" path) even though the upstream is dead.
+  clientInstance = client;
+  apiInstance = api;
   api.onStop(() => {
+    if (apiInstance !== api) {
+      return;
+    }
     log.warn('[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client');
     destroyRpcClient();
   });
+  await api.whenReady();
 
-  clientInstance = client;
-  apiInstance = api;
   onStatus?.('Connected to Asset Hub RPC');
-  return apiInstance;
+  return api;
 }
 
 export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
@@ -180,15 +191,19 @@ export function getConnectedAssetHubRpcEndpoint(): string | null {
 
 /** Idempotent. A network switch must call it, so the old network's follow cannot answer new reads. */
 export function destroyRpcClient(): void {
-  if (clientInstance !== null) {
+  const api = apiInstance;
+  const client = clientInstance;
+  clientInstance = null;
+  apiInstance = null;
+  clientPromise = null;
+
+  if (client !== null) {
     try {
-      apiInstance?.destroy();
-      clientInstance.destroy();
-      // eslint-disable-next-line no-restricted-syntax -- the socket may already be gone, and the references below must still clear.
+      api?.destroy();
+      client.destroy();
+      // eslint-disable-next-line no-restricted-syntax -- teardown can race a dead transport; cached references were cleared before notifying onStop.
     } catch {
       /* already dead */
     }
-    clientInstance = null;
-    apiInstance = null;
   }
 }

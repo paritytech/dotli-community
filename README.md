@@ -62,6 +62,13 @@ name.app.paseo.li        App build (CID from URL contract, content fetch, render
 Each product gets its own `<label>.app.paseo.li` origin, so versions of the same product share an origin while different
 products stay isolated for SW/storage/security purposes.
 
+The iframe bridge deduplicates TrUAPI readiness retries by the SDK's public `connectionId`. Replacing an already-adopted
+port on a queued retry disconnects the product, so only a new connection identifier triggers reconnection. A genuine
+document reload supplies a new identifier. The existing source-window and origin checks still apply; the identifier is
+not an authority token. The PolkaVM sandbox creates a fresh identifier whenever it needs a new Host port, including
+in-page restarts. This reconnects even when the previous guest never used its port, rather than mistaking the new
+request for an ID-less legacy retry.
+
 ### What it does
 
 1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected
@@ -70,6 +77,8 @@ products stay isolated for SW/storage/security purposes.
    `bitswap_v1_get` JSON-RPC or an IPFS gateway.
 3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request
    accounts, sign transactions, connect to chains, and use scoped storage.
+4. **Runs** verified framebuffer PolkaVM products by translating `app.polkavm` to WebAssembly at load time inside a
+   worker, with a bounded interpreter fallback.
 
 ```
 host-playground.paseo.li
@@ -108,6 +117,9 @@ gateway backend reads the same storage over a public RPC node instead.)
 Both resolution backends retry stopped chain generations at the resolver boundary, up to four attempts with the
 remaining original sync budget. Protocol callers do not add another retry.
 
+The browser regression injects a stop into a real RPC storage read; replacing the whole resolver would bypass this
+recovery boundary.
+
 The host shares one replaying transport per chain through the chain pool and broker; request ids, subscription tokens,
 and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement
 subscriptions. Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than
@@ -135,17 +147,139 @@ When a CID points to an IPFS directory (not a single file):
    archive
 5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) just work
 
+## How PolkaVM apps work
+
+An archive whose `manifest.json` declares `runtime.kind: "polkavm"` never executes package-owned HTML. The sandbox
+instead creates a host-owned canvas, loads the verified `app.polkavm` and immutable package assets, and translates the
+program to WebAssembly inside a worker. Keyboard, pointer, framebuffer, PCM-audio, asset, save, and UI integration
+traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the neutral
+`host_frame_send`/`host_frame_poll` ABI; the browser worker exposes the same transport as
+`host-frame-request`/`host-frame-response` messages.
+
+Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
+in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
+
+App manifest v2 uses runtime ABI 1 with framebuffer, Tri2D, WebGPU Raster, and bounded capability negotiation; TrUAPI,
+MotionSample v1, text, IME, focus, and wheel input use the same pinned browser runtime as native Hosts. UI output v1
+applies cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S) navigation cross an origin-checked parent
+channel; the Host consumes at most one command per trusted input while browser transient activation remains live, with a
+five-second upper bound to accommodate cold guest execution. It does not grant the app iframe clipboard permission.
+Guests request relative-pointer capture through the runtime; desktop Pointer Lock begins on the next primary click.
+
+Host-mediated camera input keeps the camera outside the guest iframe and does not reload the app when approved. Unlike a
+Rust permission callback, this host-side request explicitly commits **Always allow** and **Deny** to the canonical
+permission store. **Allow once** applies only to the current capture request; dismissing or cancelling a pending review
+stores no decision. Core permission callbacks remain return-only, so their own approval cannot invalidate the pending
+Rust prompt.
+
+The host relays safe-area and keyboard insets in physical pixels over an authenticated parent channel. Safe-area insets
+reserve only the titlebar and OS edges still inside the actual app frame: desktop apps retain their full-size canvas
+under the floating titlebar, while already-offset tablet/phone frames do not receive the same spacing twice. The
+host-owned Menu button, app menu and status text use that boundary in CSS pixels. The expanded titlebar band remains
+reserved while the bar folds or reveals, so controls do not jump during its animation.
+
+On coarse-pointer (touch) devices, a guest that declares keyboard and pointer input and requests capture gets host-owned
+FPS controls instead of requiring Pointer Lock. The left stick sends WASD movement/strafe keys; the right stick
+continuously sends relative look input. Buttons provide Fire (left mouse), Grapple (Q), Jump (Space), Reload (R),
+Start/Continue (Enter), and Run (Shift). These are standard key/button mappings, not new guest actions or a new ABI;
+their meaning remains guest-defined. Skyhook also uses R to restart.
+
+Contacts are independent, so movement, aiming, and firing can overlap. Cancelling one contact releases only its input;
+focus loss, backgrounding, resizing, and disabling controls release all held virtual input and stop aiming. Physical
+keyboard/mouse input remains independent of virtual holds. The default overlay respects safe-area insets and is absent
+on desktop-only devices and apps that do not request capture; ordinary apps continue receiving raw multi-touch records.
+
+Halo (`halo.app.<host>`, WebGPU Raster) uses its own host-owned compatibility layout, following the same HID
+keyboard/pointer approach as Epoca's iOS SNES controls. **Controls** opens an Xbox-to-keyboard/pointer reference and an
+**On-screen buttons** toggle. Buttons start enabled on coarse-pointer devices, and can be enabled on mouse/pen devices
+without pretending they have touch hardware. The choice lasts for the current execution. This is not direct Gamepad API
+support: Steam Input users can map their controllers to the keys and mouse actions in the reference.
+
+Halo's left pad sends WASD and the right pad sends relative aim; its action buttons cover fire, grenade, jump, melee,
+use/reload, weapon change, crouch, zoom, the original White/Black buttons, Start and Back. When the guest releases
+capture for its menus, gameplay buttons give way to arrow-key navigation, Accept (Enter) and Back (Backspace). Mode
+changes release held input before changing bindings. The host app menu pauses and hides virtual controls. Halo's
+controls respect both the host-relayed safe area and browser safe-area insets; other games retain their existing layout.
+
+Apps register file handlers at runtime through `host_file_register`; manifest declarations do not authorize file
+delivery. The sandbox follows the current execution's `file-registrations` and exposes **Open file** and drag/drop only
+when ready. Packaged content starts normally without selecting a file. A guest `file-input-request` opens the app menu;
+the user clicks **Open file** to supply the browser activation required for the native picker. The host asks for
+explicit consent and routes the file to that execution's current registration, not to another product or a stale
+handler.
+
+After file approval, a host-owned loading overlay names the selected file. Once delivery is ready, the paused menu
+offers **Resume and load**. While waiting for Resume, the overlay explicitly reports paused loading, hides its spinner
+and removes the busy state; resuming restores the activity indicator. Reopening the menu during loading pauses that
+indicator again. The overlay clears when the guest presents new content after delivery. Restoring an old WebGPU/Tri2D
+surface on Resume does not finish loading. Guests that decode before switching levels must defer gameplay frames during
+preparation. Delivery rejection clears the overlay and keeps the recovery menu available. This is an activity indicator,
+not a percentage estimate of guest-side decoding.
+
+Inline and relaunch handlers receive bounded bytes. Stream handlers receive the original browser `Blob`, without a
+whole-file read or upload by the host; the runtime manages bounded reads and private OPFS caches. Cache creation and
+cleanup errors are recoverable and reported separately from fatal runtime errors. Stopping cancels pending selection,
+waits for the runtime's cleanup acknowledgement, and only then terminates its worker; an unresponsive worker is forcibly
+terminated after one second with an explicit warning that cache cleanup could not be confirmed. Browser process death or
+abrupt document destruction cannot guarantee a cleanup acknowledgement.
+
+Only a runtime `file-input-delivery` with outcome `relaunch` authorizes restarting with its session-only mount. Retry
+preserves that selection; **Return to launcher** restores the original package. Save storage remains isolated by product
+origin and, for mounted/relaunch content, the file digest, so different cartridges do not share save data. Stream/inline
+selection does not change the save namespace. Picker cancellation and released file streams do not cancel or invalidate
+an unrelated camera request.
+
+While a guest text field is active, native paste shortcuts (`Cmd+V`, `Ctrl+V`, `Ctrl+Shift+V`, or `Shift+Insert`, where
+supported by the browser) deliver plain text through bounded text-input records. They do not also invoke the guest's
+internal clipboard paste action. Copy shortcuts remain guest-defined and use the origin- and activation-checked
+UI-output channel above.
+
+The browser artifacts are byte-for-byte copies of the `@parity/polkavm-browser-runtime` package pinned in
+`scripts/polkavm-runtime.lock.json`. The package already uses the `polkavm-` paths this Host serves, so synchronization
+verifies and copies them without renaming. Wasm and worker URLs include their pinned asset SHA-256, preventing an old
+force-cached Wasm binary from being reused with an updated worker. The translation cache identity is derived from the
+same lockfile. Translated Wasm bytes are cached in product-origin IndexedDB by the SHA-256 of the PolkaVM program and
+the pinned translator revision. The credentialless sandbox's translation cache and cartridge saves belong to the current
+top-level document's ephemeral storage partition; they are not durable across host-page reloads. In-page restarts can
+reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
+translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
+
+The current pin is the GitHub-only `0.3.2-rc.9` release candidate. It combines bounded WebGPU recovery,
+replacement-device resize limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and
+forward dispatch. Exact binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe
+offscreen resources, streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays
+separately pinned; these runtime changes do not replace its Chat, profile, transport or Media APIs. Synchronization
+verifies the package's complete checksum inventory, including its session API and type declarations, but serves only the
+host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt`
+alongside those artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
+
+The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
+frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
+Update p95 must remain below 28.6ms; cold/warm first-frame limits remain 3,000/1,000ms, with audio and translation cache
+checks unchanged. This replaces the instantaneous `FPS >= 35` gate explicitly; earlier failures remain recorded.
+
+Runtime failures are reported from the sandbox to Sentry with the resolved CID, program SHA-256, pinned browser-runtime
+revision, active backend, startup stage, graphics profile, and trap program counter when present. The existing
+resolution ID correlates the failure with the host and protocol events for the same load; app bytes and imported file
+contents are never attached.
+
 ## Caching and verification
 
-dotli uses a two-layer cache for fast repeat visits:
+dotli uses three cache layers:
 
-1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
+1. **Installed executable cache** (host IndexedDB) — stores the contenthash and exact root/executable manifests
+   together, keyed by network, modality, and label. The host revalidates the record before selecting the runtime; a
+   changed contenthash never runs with the previous contenthash's manifest. Entries predating root-manifest storage
+   resolve again. Unknown manifest versions, invalid records, and apps without their root manifest are rejected before
+   content downloads; supported App v1 and web/PolkaVM App v2 retain their runtime-specific validation.
 2. **Block cache** (host IndexedDB) — keeps the content blocks the host relays to the sandbox, hash-checked against
-   their CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is
-   credentialless, so its storage is dropped on reload
+   their CIDs. The credentialless sandbox retains its archive in partitioned IndexedDB across service-worker restarts,
+   but not across top-level host-page reloads.
+3. **PolkaVM translation cache** (sandbox IndexedDB) — stores translated Wasm bytes keyed by translator version and
+   program digest for the current top-level document's lifetime.
 
-On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield
-shows how the current page was loaded:
+Warm visits reuse a validated installed executable and locally cached content blocks. The topbar shield shows how the
+current page was loaded:
 
 | Shield           | Meaning                                                                       |
 | ---------------- | ----------------------------------------------------------------------------- |
@@ -154,6 +288,22 @@ shows how the current page was loaded:
 
 If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification
 with a **Reload** action rather than swapping content silently.
+
+The host PWA caches its shell separately from the cross-origin sandbox. On a worker update, open host pages report their
+sandbox-contract version. Matching hosts keep the normal update prompt. Legacy, incompatible, or nonresponsive hosts are
+reloaded at the same URL after the new shell finishes installing, without clearing wallet/app storage or product caches.
+This lets an already cached host recover even when it cannot understand the newer sandbox's update request; the
+sandbox's strict contract validation remains unchanged. As with any host reload, in-memory app state and credentialless
+iframe storage restart; persistent host storage is retained.
+
+Astro builds the release-specific classic upgrade worker after its static pages and before Workbox emits `host-sw.js`.
+Browser validation and Node-loaded build configuration share the version in
+`packages/config/src/host-sandbox-version.ts`; the build does not import browser network configuration.
+
+Failed host-worker update checks are handled and logged as warnings, leaving the active worker, current page, and
+persistent storage intact. The existing 15-minute and visible-tab checks can retry later; failures do not start an
+additional retry loop or bypass reload consent. A required sandbox-contract update remains pending after a failed check
+and still activates automatically once a compatible replacement finishes installing.
 
 ## TrUAPI bridge
 
@@ -170,6 +320,35 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
+
+A fresh product-document handshake retires the previous native execution before attaching its replacement. Pending
+permission prompts and execution-local grants cannot cross that boundary; repeated readiness messages with the same
+connection identifier remain idempotent. Connection creation is single-flight, and a superseded result is closed rather
+than attached to a newer document. The host keeps its wallet lease while replacing the product execution, so this does
+not sign the user out or discard lasting grants.
+
+### Ordinary notification activation
+
+Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
+host-owned IndexedDB, scoped to the product execution, authenticated account, network and executable artifact. OS
+notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
+the host entry page. It does not navigate the product's route.
+
+The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
+`{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
+consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
+product, account, network or artifact cannot read or acknowledge the retained activation.
+
+Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
+URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
+replacing a direct iframe cannot inherit an earlier execution's notification activations.
+
+Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
+opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
+is bounded to 256 records; a full queue never evicts an unacknowledged clicked event to accept a new notification.
+In-page toasts remain actionable when OS permission or service-worker notification delivery is unavailable. OS focus and
+window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
+supply one.
 
 ### Product chat
 
@@ -277,13 +456,24 @@ Settings browser checks await address-bar canonicalization with Playwright's URL
 ready before boot finishes rewriting the URL. Backend, cache flags and URL are read as one snapshot; the assertion waits
 through an intentional settings reload within the existing ten-second deadline.
 
-Bitswap unit fixtures load a fresh module before installing each case's provider and attach result assertions before
-advancing the fake clock. Cold module loading cannot resume a timed-out case against the next case's provider.
+Bitswap unit fixtures load a fresh module before installing each case's provider, relay, or fake clock. Relay
+installation is synchronous, so a timed-out import cannot install a listener after teardown. Protocol fixtures use the
+real halt-error definitions without loading the browser transport implementation.
 
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:4321` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
   via the host
+
+### Product locale and local time
+
+The host reports the browser's language and IANA time zone through Locale, including changes detected on focus,
+visibility, language changes, and a visible-tab minute timer. Locale's timestamp batch API formats each instant using
+that zone's historical offset and daylight-saving rules; its canonical Gregorian local date is independent of the
+display language. Products should use that date for day grouping rather than slicing a UTC timestamp.
+
+The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
+bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
 
 ### Running the functional browser suite locally
 
@@ -298,34 +488,173 @@ VITE_METRICS=true npm run --workspace apps/host test:functional
 
 Both metric settings are required: without them the transport ownership cases either skip or collect no samples.
 
+Functional CI retains JSON results and failure screenshots/traces in `functional-results-<attempt>` for three days. Open
+a failed test's `trace.zip` with `npx playwright show-trace` to distinguish RPC/manifest resolution, gateway delivery,
+and sandbox startup failures. The suite still resolves and loads the real published playground.
+
+Gateway CAR requests select their representation with `?format=car`, leaving the browser's default Accept header intact.
+A media-specific Accept header bypasses the Paseo gateway's immutable-content cache despite returning the same archive.
+URL-based format selection follows [IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block
+verification remain unchanged.
+
+### Qualifying a PolkaVM runtime update locally
+
+Keep `vendor/truapi-host.lock.json` and the vendored host SDK unchanged when qualifying a runtime-only update. The
+qualification suite uses the real host bridge and SDK; only name resolution and content-addressed CAR delivery are local
+fixtures. Nothing is published, signed, or deployed.
+
+```bash
+npm ci
+npx playwright install chromium
+npm run prepare:polkavm-qualification
+VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
+npm run test:polkavm-qualification
+```
+
+Preparation archives the exact app-kit commit in `apps/host/tests/functional/fixtures/polkavm/qualification.lock.json`
+into an isolated build directory under ignored `dist/polkavm-qualification/`. It does not use an arbitrary existing app
+bundle. Install the recorded Rust nightlies with `rust-src`, `polkatool`, Clang, and LLVM tools first; the lock records
+the producer's Node/npm/compiler versions. `PVM_CLANG`, `PVM_LLVM_AR`, and `PVM_LLVM_RANLIB` can select the
+corresponding executables. `--source <clean-checkout>` avoids fetching app-kit, but still requires the exact pinned
+revision and copies it into the isolated build. Dependencies remain locked and sccache is disabled.
+
+The source pin uses the migrated `host_frame_*` guest SDK. Each fixture records the guest SDK revision, CAR CID, and
+CAR/manifest/program SHA-256 hashes. Freedoom Phase 1 mounts only `game/freedoom1.wad`; Phase 2 mounts only
+`game/freedoom2.wad`. The same engine selects its campaign by filename, not by examining replacement WAD bytes. Both
+CARs include the campaign's licenses.
+
+An intentional source/toolchain refresh uses `npm run prepare:polkavm-qualification -- --record-artifacts`. Review the
+changed lock, then rerun preparation without that flag: ordinary preparation fails on toolchain or artifact mismatches.
+This verifies repeat builds with the recorded toolchain, not cross-platform reproducibility; the pinned Doom build
+enumerates C sources in filesystem order. Verified prepared fixtures can be copied to another browser test machine
+without rebuilding them.
+
+The suite covers handshake and private-storage write/read/clear through the unchanged SDK, both campaigns'
+rendering/input/audio, file-consent cancellation and approval, warm compiler-cache restart, real tab background/resume,
+and worker teardown. It runs headed to exercise actual visibility changes; use
+`xvfb-run -a npm run test:polkavm-qualification` on a display-less Linux runner. Playwright results attach
+fixture/runtime/SDK provenance, screenshots, passive worker observations, browser logs, and teardown evidence. Each
+story gets a fresh Chromium profile, connected with Playwright's `noDefaults: true` so its usual focus emulation cannot
+force background tabs to remain visible. Visibility is observed from the browser, never synthesized. Guest input waits
+for the host loading overlay to disappear and uses canvas-relative, actionability-checked clicks. Use Playwright's
+matching Chromium build; a system-browser override is not equivalent qualification evidence.
+
+These fixtures do **not** qualify cartridge-save isolation: that needs a save-capable cartridge guest and two distinct
+cartridge contents. Wallet signing and native hosts are also outside this suite.
+
 ### Running the host-playground E2E locally
 
-The product E2E suite can load a source checkout through dotli's localhost proxy instead of resolving the published
-`host-playground.dot` CID. Use a `truapi-host` CLI built from the same source revision as the vendored SDK, recorded in
-`vendor/truapi-host.lock.json`. CI checks out that revision, generates its sources, and builds `truapi-host-cli`. Point
-`SIGNING_HOST_BIN` at that binary rather than mixing the feature SDK with a published pairing-only release. Build dotli
-without linking a different SDK checkout, then run the host workspace suite with the product paths:
+The product E2E suite loads the source checkout through dotli's localhost proxy. CI pins
+[host-playground](https://github.com/paritytech/host-playground) to `f56294cea4430163bf16ec068844b1327441073c`, installs
+its frozen dependency lock, and links its TrUAPI consumers to this repository's installed `@parity/truapi` with
+`node scripts/link-truapi-local.ts --product-vendor`. This runs the existing product behavior checks against the pinned
+SDK rather than the independently deployed `host-playground.dot`. The deployed smoke suite below checks that separate
+boundary. The product still calls the real host; no SDK responses are mocked. The pinned fixture requests bare host
+patterns for `Remote` permissions; scheme-bearing URLs are intentionally rejected by the core before prompting.
+
+CI and local Playwright runs use Node.js 26 and npm 12.
+
+Local runs expect the product at `../../../host-playground` relative to this repository by default. The signing host
+must match `upstreamRevision` in `vendor/truapi-host.lock.json`, not the latest released CLI. CI checks out that exact
+[host-rust-core](https://github.com/paritytech/host-rust-core) commit, installs its `nightly-toolchain` pin with
+`rustfmt` (or `nightly` for older feature SDK sources), generates its sources, and builds `truapi-host` locally.
+
+To build the matching binary in a fresh sibling checkout, install Rust stable and Node.js 26/npm 12, then run from this
+repository:
+
+```bash
+revision="$(jq -er '.upstreamRevision' vendor/truapi-host.lock.json)"
+git clone --no-checkout https://github.com/paritytech/host-rust-core ../host-rust-core-e2e
+git -C ../host-rust-core-e2e fetch --depth=1 origin "$revision"
+git -C ../host-rust-core-e2e checkout --detach "$revision"
+(
+  cd ../host-rust-core-e2e
+  toolchain=nightly
+  if [[ -f nightly-toolchain ]]; then
+    read -r toolchain < nightly-toolchain
+  fi
+  rustup toolchain install "$toolchain" --profile minimal --component rustfmt
+  npm ci --ignore-scripts
+  RUSTUP_TOOLCHAIN=stable TRUAPI_SKIP_PACKAGE_BUILD=1 ./scripts/codegen.sh
+  cargo +stable build --locked -p truapi-host-cli --bin truapi-host
+)
+export SIGNING_HOST_BIN="$(pwd)/../host-rust-core-e2e/target/debug/truapi-host"
+export TRUAPI_HOST_NO_UPDATE=1
+echo "Signing-host source: https://github.com/paritytech/host-rust-core/commit/$revision"
+"$SIGNING_HOST_BIN" --version
+```
+
+Set `SIGNING_HOST_BIN` to the source-matched binary. Build dotli without linking a different SDK checkout, then run the
+host workspace suite with the product paths:
 
 ```bash
 VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
+SIGNING_HOST_NETWORK=paseo-next-v2 \
+NEXT_PUBLIC_NETWORK_GENESIS_HASH=0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a \
 npm run --workspace apps/host test:e2e:local
 ```
 
 The root `npm run test:e2e:local` shortcut instead links a local SDK checkout through `npm run link:truapi`; use it only
 when deliberately developing against that checkout. Set `TRUAPI_REPO` to select it.
 
-The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND=smoldot-shared-worker` to exercise the SharedWorker light
-client, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
-`apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a fresh lowercase username base: an
-unsuccessful attempt may already have claimed its name, so retries must not request the same name again. Account
-provisioning and ring inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed.
-Captured CLI diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach
-the CLI's private account/session files to reports.
+The product's `NEXT_PUBLIC_NETWORK_GENESIS_HASH` must select the same Asset Hub as the host and `SIGNING_HOST_NETWORK`;
+the fixture otherwise defaults to Previewnet and its chain queries are rejected by a Paseo host.
+
+The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same flow through either light-client backend:
+
+```bash
+E2E_CHAIN_BACKEND=smoldot-shared-worker npm run --workspace apps/host test:e2e:local
+```
+
+`SIGNING_HOST_BIN` also accepts an existing locally built binary; use an absolute path because the E2E command runs from
+`apps/host`. Without it the suite looks up `truapi-host` on `PATH`; ensure that binary was built from the same lock
+revision and disable self-updates with `TRUAPI_HOST_NO_UPDATE=1`. Rebuild when the lock revision changes, including when
+switching between generic and Chat branches. Set `SIGNING_HOST_NETWORK` when testing against a non-default network. The
+CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a
+fresh lowercase username base: an unsuccessful attempt may already have claimed its name. Account provisioning and ring
+inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI diagnostics
+redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach the CLI's private
+account/session files to reports.
 
 Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
 process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
+
+### Checking a deployed host
+
+The deployment smoke suites load published products through the deployed host, not the localhost fixture. The TrUAPI
+suite exercises 19 wallet-free capabilities without pairing a signer or writing to the chain; it does not replace paired
+E2E.
+
+The deployment workflow runs both suites against each deployed environment: `paseoli.dev` for `main`, the selected
+development environment for a deployment-labelled PR, and both `paseo.li` and `testnet.li` for a published release.
+
+The PolkaVM playground smoke passively verifies a canonical handshake request and its correlated `Result::Ok` reply, not
+merely increasing request/response counters. Input waits for a rendered frame and host loader dismissal, then uses an
+actionability-checked canvas click. Wire/provenance attachments retain raw and decoded frames and executed-program
+hashes on success and failure. A passing local fixture does not qualify a different published guest binary.
+
+The Duke and Quake gameplay checks require actual browser Pointer Lock, not just a capture request. Duke starts directly
+in a level, so its smoke does not send menu-navigation keys. The initial canvas click may already capture the pointer
+and clear the armed flag; otherwise the check waits for arming and clicks to acquire capture.
+
+PolkaVM execution is opt-in on `dot.li` and on by default on every other shell (`paseo.fyi`, `paseo.li`, previews,
+localhost); **Settings → Experimental → PolkaVM apps** overrides the site default either way. Testnet product smoke
+scenarios exercise a fresh visit without opting in. On production `dot.li`, the smoke explicitly enables the toggle with
+**Save & Apply** first. An existing saved choice, including an opt-out on a testnet, remains authoritative. The site
+default applies only when no valid preference has been saved.
+
+```bash
+cd apps/host
+DOTLI_SMOKE_ROOT=paseo.fyi DOTLI_WEBGPU=1 npm run test:smoke:products -- --output=test-results/products
+DOTLI_SMOKE_ROOT=paseo.fyi npm run test:smoke:truapi -- --output=test-results/truapi
+```
+
+The deployment workflow keeps the two suites' output directories separate and uploads failure screenshots, error
+contexts, and Playwright traces as `deployed-product-smoke-<environment>-<attempt>`, retained for three days. Inspect
+that artifact when a published product fails to load or a capability fails; a green localhost E2E run does not qualify
+the deployed bundle.
 
 ### Running an approved build
 
@@ -531,6 +860,9 @@ Before deploying it for real use cases, **you are responsible** for:
 - **Securing** your own fork or deployment environment (keys, secrets, network configuration)
 - **Tracking** the latest tagged release/commits for security fixes; older releases are not backported (exceptions might
   apply)
+
+Secret Scan covers all fetched branch history. `.gitleaks.toml` documents the public chain data and throwaway test
+vectors excluded from credential checks.
 
 For Parity's security disclosure process, and **Bug Bounty** program, feel free to visit: https://parity.io/bug-bounty
 

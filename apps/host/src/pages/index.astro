@@ -18,11 +18,12 @@ import s from './index.module.css';
     {/* Opens the shared IndexedDB during HTML parse, overlapping module loading. src/db.ts takes window.__dotliDb. */}
     <script is:inline>
       window.__dotliDb = new Promise(function (resolve, reject) {
-        const req = indexedDB.open('dotli', 5);
+        const req = indexedDB.open('dotli', 6);
         req.onupgradeneeded = function () {
           const db = req.result;
-          if (!db.objectStoreNames.contains('cids')) {
-            db.createObjectStore('cids', { keyPath: 'label' });
+          // v6 combines main's block stores with removal of the old CID-only cache.
+          if (db.objectStoreNames.contains('cids')) {
+            db.deleteObjectStore('cids');
           }
           if (!db.objectStoreNames.contains('chains')) {
             db.createObjectStore('chains', { keyPath: 'chain' });

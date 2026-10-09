@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+export { decodeChainAnnotations, type ChainAnnotations } from './chain-decode.js';
 export {
   chainDetail,
   eventCountLabel,
@@ -16,11 +17,14 @@ export {
 export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
 export {
   emitDotliDebugEvent,
+  emitPolkaVmDebugSnapshot,
+  clearPolkaVmDebugSnapshot,
+  onPolkaVmDebugSnapshot,
   hasDotliDebugListeners,
   onDotliDebugEvent,
   type DotliDebugBusEvent,
 } from './dotli-debug-bus.js';
-export { type DotliDebugEvent } from './dotli-debug-types.js';
+export { type DotliDebugEvent, type PolkaVmDebugSnapshot, type PolkaVmDebugMessage } from './dotli-debug-types.js';
 export {
   EventStore,
   correlationKeyOf,

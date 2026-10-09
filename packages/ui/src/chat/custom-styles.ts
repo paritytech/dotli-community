@@ -127,7 +127,7 @@ function shapeToBorderRadius(shape: Shape | undefined): string | undefined {
     case 'Circle':
       return '50%';
     case 'Square':
-      return '0';
+      return '0px';
   }
 }
 
@@ -184,14 +184,10 @@ export function modifierStyle(modifiers: Modifier[]): CustomStyle {
         style['min-height'] = px(mod.value);
         break;
       case 'FillWidth':
-        if (mod.value) {
-          style['width'] = '100%';
-        }
+        style['width'] = mod.value ? '100%' : '';
         break;
       case 'FillHeight':
-        if (mod.value) {
-          style['height'] = '100%';
-        }
+        style['height'] = mod.value ? '100%' : '';
         break;
       // The wire carries a u8 alpha, and CSS wants the unit interval.
       case 'Opacity':

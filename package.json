@@ -29,12 +29,17 @@
     "set-version": "node scripts/set-version.ts",
     "link:truapi": "node scripts/link-truapi-local.ts",
     "unlink:truapi": "node scripts/unlink-truapi-local.ts",
+    "sync:polkavm-runtime": "node scripts/sync-polkavm-runtime-assets.ts",
+    "check:polkavm-runtime": "node scripts/sync-polkavm-runtime-assets.ts --check",
+    "prepare:polkavm-qualification": "node scripts/prepare-polkavm-qualification.ts",
+    "test:polkavm-qualification": "npm run check:polkavm-runtime && npm run --workspace apps/host test:polkavm-qualification",
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +",
     "prepare": "husky"
   },
   "devDependencies": {
     "@config/eslint": "*",
     "@config/vite": "*",
+    "@parity/polkavm-browser-runtime": "https://github.com/paritytech/polkavm-host-runtime/releases/download/v0.3.2-rc.9/parity-polkavm-browser-runtime-0.3.2-rc.9.tgz",
     "@types/node": "^26.6.4",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",

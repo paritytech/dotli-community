@@ -84,12 +84,13 @@ afterEach(() => {
 });
 
 describe('toast stack', () => {
-  it('As a dotli user, a toast renders its tinted icon, text, link, action and close button', async () => {
+  it('As a dotli user, a toast renders its tinted icon, text, activation, action and close button', async () => {
     // Given
     const onClick = vi.fn();
+    const onActivate = vi.fn();
     pushToast(
       input('Update available', {
-        deeplink: 'https://dot.li/',
+        onActivate,
         tone: 'err',
         action: { label: 'Reload', onClick },
       }),
@@ -104,10 +105,6 @@ describe('toast stack', () => {
     expect(card.dataset['id']).toBe('0');
     expect(byTestId('notif-icon', card).getAttribute('data-tone')).toBe('err');
     expect(byTestId('notif-title', card).textContent).toBe('Update available');
-    const body = query(card, 'a[data-testid="notif-body"]', HTMLAnchorElement);
-    expect(body.href).toBe('https://dot.li/');
-    expect(body.target).toBe('_blank');
-    expect(body.rel).toBe('noopener');
     expect(byTestId('notif-card-close', card).getAttribute('aria-label')).toBe('Dismiss');
     expect(byTestId('notif-cards').getAttribute('aria-live')).toBe('polite');
     expect(byTestId('notif-cards').getAttribute('role')).toBe('status');
@@ -115,12 +112,14 @@ describe('toast stack', () => {
     expect(byTestId('notif-close-all').style.display).toBe('none');
 
     // When
+    fireEvent.click(byTestId('notif-body', card, HTMLButtonElement));
     fireEvent.click(byTestId('notif-action', card, HTMLButtonElement));
     fireEvent.animationEnd(card);
     await settle();
 
     // Then
     expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onActivate).toHaveBeenCalledTimes(1);
     expect(card.hasAttribute('data-entering')).toBe(false);
   });
 
@@ -208,22 +207,21 @@ describe('toast stack', () => {
     expect(visibleTitles()).toEqual(['B', 'C', 'D']);
   });
 
-  it('As a dotli user, clicking a link inside a toast does not expand the stack', async () => {
+  it('As a dotli user, activating a notification does not expand the stack', async () => {
     // Given
-    pushToast(input('A', { deeplink: 'https://dot.li/' }));
-    pushToast(input('B', { deeplink: 'https://dot.li/' }));
+    const onActivate = vi.fn();
+    pushToast(input('A', { onActivate }));
+    pushToast(input('B', { onActivate }));
     await mountStack();
-    const link = query(document, 'a[data-testid="notif-body"]', HTMLAnchorElement);
-    link.addEventListener('click', event => {
-      event.preventDefault();
-    });
+    const body = byTestId('notif-body', document, HTMLButtonElement);
 
     // When
-    fireEvent.click(link);
+    fireEvent.click(body);
     await settle();
 
     // Then
     expect(toastsStore.get().expanded).toBe(false);
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli user, dismiss all plays every exit and removes the stack once they finish', async () => {

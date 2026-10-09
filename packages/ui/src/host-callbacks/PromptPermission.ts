@@ -1,6 +1,6 @@
-// The core keeps "Allow once" for the current execution, so it is offered only where the core is the
-// gate. A grant gated by the iframe `allow` attribute reloads the product into a new execution, which
-// would drop it. Auto-grants answer `AllowOnce` so the core records nothing the user never saw.
+// Core callbacks keep "Allow once" for the current execution; host-mediated input uses it for one request.
+// A grant gated by the iframe `allow` attribute reloads into a new execution, which would drop it.
+// Auto-grants answer `AllowOnce` so the core records nothing the user never saw.
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions } from '@parity/truapi-host';
@@ -59,13 +59,14 @@ export function createPromptPermission(
 interface PromptOptions {
   kind: 'Device' | 'Remote';
   limiter: { allow: () => boolean };
+  gatedByIframe?: boolean;
 }
 
-function decidePromptPermission(
+export function decidePromptPermission(
   label: string,
   name: EnforceablePermissionName,
   options: PromptOptions,
-  modalScope: BlockingModalScope,
+  modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Promise<PermissionDecision> {
   return modalScope.enqueue(signal => decidePromptPermissionWhenActive(label, name, options, signal));
 }
@@ -76,9 +77,8 @@ async function decidePromptPermissionWhenActive(
   options: PromptOptions,
   signal: AbortSignal,
 ): Promise<PermissionDecision> {
-  const { kind, limiter } = options;
-  // A grant reloads the product.
-  const gatedByIframe = isDevicePermission(name);
+  const { kind, limiter, gatedByIframe = isDevicePermission(name) } = options;
+  // Grants enforced by the iframe `allow` attribute require a reload.
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === 'granted') {
@@ -108,8 +108,8 @@ async function decidePromptPermissionWhenActive(
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
-  // The core commits the returned decision against the prompt's original authority.
-  // An administrative settings write here would invalidate that very prompt.
+  // Core callbacks must return the decision without an administrative write, which would invalidate
+  // their pending prompt. Host-mediated consumers without a core prompt commit durable answers themselves.
   if (decision === 'denied') {
     return 'Deny';
   }

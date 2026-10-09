@@ -14,22 +14,33 @@ export {
   SITE_ID,
   isLocalhost,
   isSandboxOrigin,
+  sandboxOriginForLabel,
   type SiteId,
 } from './config.js';
-export { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, validateSandboxParams } from './host-sandbox-contract.js';
+export {
+  SANDBOX_CONTRACT_PARAMS,
+  validateSandboxParams,
+  type SandboxParams,
+  type SandboxParamsResult,
+} from './host-sandbox-contract.js';
+export { SANDBOX_SCHEMA_VERSION } from './host-sandbox-version.js';
 export {
   BACKEND_KEY,
   BACKEND_LABELS,
   CACHE_KEY,
+  POLKAVM_APPS_KEY,
   configureModeStorage,
+  defaultPolkaVmAppsEnabled,
   getBackend,
   getCacheSettings,
+  getPolkaVmAppsEnabled,
   isSharedWorkerAvailable,
   isVerifiedSession,
   localStorageAdapter,
   migrateLegacyOn,
   setBackend,
   setCacheSettings,
+  setPolkaVmAppsEnabled,
   type Backend,
   type CacheSettings,
   type ModeStorage,

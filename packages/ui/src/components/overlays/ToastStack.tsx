@@ -67,7 +67,7 @@ export function ToastStack(): JSX.Element {
 
   const onStackClick = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
-    if (!expanded() && many() && cards !== undefined && cards.contains(target) && target.closest('a') === null) {
+    if (!expanded() && many() && cards !== undefined && cards.contains(target) && target.closest('button') === null) {
       setToastsExpanded(true);
     }
   };

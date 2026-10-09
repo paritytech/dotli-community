@@ -22,7 +22,15 @@ vi.mock('@dotli/metrics', async importOriginal => ({
   ...sentry,
 }));
 
-vi.mock('../src/notification.js', () => ({ showNotification: vi.fn() }));
+// Every due record belongs to a live notification of the current account, so
+// the poller reaches its claim.
+vi.mock('@dotli/storage/notification-activations', () => ({
+  findNotification: vi.fn(() => Promise.resolve({ scope: {} })),
+}));
+vi.mock('../src/notification-activation.js', () => ({
+  notificationContextIsCurrent: () => true,
+  presentProductNotification: vi.fn(() => Promise.resolve()),
+}));
 
 const closing = (): DOMException =>
   new DOMException(

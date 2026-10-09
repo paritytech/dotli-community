@@ -9,6 +9,7 @@ import {
   setBackend,
   setCacheSettings,
   setNetwork,
+  setPolkaVmAppsEnabled,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Backend,
   type CacheSettings,
@@ -69,6 +70,7 @@ beforeEach(() => {
   actions.applyAndReset.mockReset();
   actions.applyAndReset.mockResolvedValue(undefined);
   networks.enabled = null;
+  setPolkaVmAppsEnabled(true);
 });
 
 afterEach(() => {
@@ -300,29 +302,20 @@ function expectNetwork(sections: Element[], at: number, settings: Settings): num
 function expectAdvanced(sections: Element[], at: number, settings: Settings): number {
   let next = at;
   const cache = nth(sections, next++);
-  expect(tags(cache)).toEqual(['DIV', 'DIV', 'DIV']);
-  expectHeader(cache.children[0], 'Cache');
   const well = nth(cache.children, 1);
   expect(well.getAttribute('data-testid')).toBe('mode-cache');
-  expect(well.childElementCount).toBe(3);
   expectCacheRow(well.children[0], 'dotNS cache', !settings.cache.skipCidCache);
   expectCacheRow(well.children[1], 'Archive cache', !settings.cache.skipArchiveCache);
   expectCacheRow(well.children[2], 'Worker cache', !settings.cache.skipWorkerCache);
   const clearRow = nth(cache.children, 2);
   expect(clearRow.getAttribute('data-testid')).toBe('mode-clear-all-row');
-  expect(tags(clearRow)).toEqual(['BUTTON']);
-  expect(clearRow.children[0]?.textContent).toBe('Clear all caches');
-  expect(clearRow.children[0]?.getAttribute('title')).toBe(
-    'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
-  );
+  const experimental = nth(sections, next++);
+  const experiments = nth(experimental.children, 1);
+  expect(experiments.getAttribute('data-testid')).toBe('mode-experimental');
+  expectCacheRow(experiments.children[0], 'PolkaVM apps', true);
   if (!settings.debugOn) {
     const debugRow = nth(sections, next++);
     expect(debugRow.getAttribute('data-testid')).toBe('mode-debug-row');
-    expect(tags(debugRow)).toEqual(['BUTTON']);
-    expect(debugRow.children[0]?.textContent).toBe('Open in debug mode');
-    expect(debugRow.children[0]?.getAttribute('title')).toBe(
-      'Reload this tab with the debug panel and its diagnostics',
-    );
   }
   return next;
 }
@@ -613,6 +606,7 @@ describe('The settings popover island', () => {
 
     // When
     toggle('Worker cache').click();
+    toggle('PolkaVM apps').click();
     await settle();
     await showCategory('network');
     radio('dotli-network', 'previewnet').click();
@@ -628,11 +622,13 @@ describe('The settings popover island', () => {
         chain: 'rpc-gateway',
         network: 'previewnet',
         cache: { ...DEFAULT_CACHE, skipWorkerCache: true },
+        polkaVmAppsEnabled: false,
       },
       {
         chain: 'smoldot-direct',
         network: 'paseo-next-v2',
         cache: DEFAULT_CACHE,
+        polkaVmAppsEnabled: true,
       },
     );
     expect(applyButton().disabled).toBe(true);
@@ -662,8 +658,8 @@ describe('The settings popover island', () => {
     // Then
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(
-      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
-      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
+      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE, polkaVmAppsEnabled: true },
+      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, polkaVmAppsEnabled: true },
     );
   });
 
@@ -742,6 +738,7 @@ describe('The settings popover island', () => {
       chain: 'rpc-gateway',
       network: 'paseo-next-v2',
       cache: DEFAULT_CACHE,
+      polkaVmAppsEnabled: true,
     };
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {

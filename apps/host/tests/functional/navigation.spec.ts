@@ -145,12 +145,12 @@ test.describe('Sandbox URL hygiene: host contract keys never reach the product',
   }) => {
     // Given
     await seedBackend(page);
-    // Warms the CID cache.
+    // First visit installs the network-scoped v1 executable record.
     await page.goto(`${HOST_BY_LABEL}/?a=b`);
     await getProductFrame(page, TIMEOUT_MS);
 
     // When
-    // Second visit takes the cache-hit code path in apps/host/src/main.ts.
+    // Second visit validates and reuses the installed-executable pair.
     await page.goto(`${HOST_BY_LABEL}/?a=b`);
 
     // Then

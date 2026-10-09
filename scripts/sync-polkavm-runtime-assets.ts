@@ -1,0 +1,212 @@
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { copyFile, readFile, readdir, writeFile } from 'node:fs/promises';
+import { basename, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+interface RuntimeLock {
+  package: string;
+  packageVersion: string;
+  upstreamRepository: string;
+  upstreamRevision: string;
+  polkavmRepository: string;
+  polkavmRevision: string;
+  abi: {
+    runtime: number;
+    graphics: number;
+    input: number;
+    audio: number;
+  };
+  assets: Record<string, string>;
+}
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const checkOnly = process.argv[2] === '--check';
+if (process.argv.length > 2 && !checkOnly) {
+  throw new Error('usage: sync-polkavm-runtime-assets.ts [--check]');
+}
+
+const lock = JSON.parse(await readFile(resolve(root, 'scripts/polkavm-runtime.lock.json'), 'utf8')) as RuntimeLock;
+const destination = resolve(root, 'apps/sandbox/public/polkavm-runtime');
+const require = createRequire(import.meta.url);
+
+// The @parity/polkavm-browser-runtime package ships artifacts under the exact
+// `polkavm-` paths this Host serves. Every file is verified against the package checksum
+// manifest before it is copied; the checksum manifest itself is preserved
+// byte-for-byte.
+// Package export subpath every servable artifact is resolved through. Which of
+// them this host actually serves is the lockfile's decision.
+const runtimeExports = new Map([
+  ['polkavm-browser-runtime.wasm', 'runtime.wasm'],
+  ['polkavm-worker.js', 'worker'],
+  ['polkavm-gpu-worker.js', 'gpu-worker'],
+]);
+const legalInventory = ['LICENSE-MPL-2.0', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.txt'];
+// Artifacts the package manifest covers. The translated backend, the runtime
+// core, and the worker entry are embedded inside `polkavm-worker.js`, so they
+// are attested but never served on their own.
+const packageInventory = [
+  'polkavm-browser-runtime.wasm',
+  'polkavm-worker.js',
+  'polkavm-gpu-worker.js',
+  'polkavm-wasm-translated.js',
+  'polkavm-runtime-core.js',
+  'polkavm-wasm-worker-entry.js',
+  'polkavm-computer.js',
+  'session.js',
+  'session.d.ts',
+  'file-input-router.js',
+  'file-input-router.d.ts',
+  ...legalInventory,
+];
+const generatedInventory = ['SHA256SUMS', 'SOURCE.json'];
+const synchronizedInventory = Object.keys(lock.assets);
+const runtimeAssets = synchronizedInventory.filter(
+  name => !generatedInventory.includes(name) && !legalInventory.includes(name),
+);
+for (const name of runtimeAssets) {
+  if (!runtimeExports.has(name)) {
+    throw new Error(`runtime lock names an unknown artifact ${name}`);
+  }
+}
+
+function sorted(values: Iterable<string>): string[] {
+  return [...values].sort();
+}
+
+function sha256(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function requireExactInventory(actual: Iterable<string>, expected: Iterable<string>, description: string): void {
+  const actualNames = sorted(actual);
+  const expectedNames = sorted(expected);
+  if (actualNames.length !== expectedNames.length || actualNames.some((name, index) => name !== expectedNames[index])) {
+    throw new Error(`${description} inventory is ${actualNames.join(', ')}, expected ${expectedNames.join(', ')}`);
+  }
+}
+
+function parseChecksumManifest(
+  contents: string,
+  expectedInventory: Iterable<string>,
+  description: string,
+): Map<string, string> {
+  const checksums = new Map<string, string>();
+  for (const line of contents.trimEnd().split('\n')) {
+    const match = /^([0-9a-f]{64}) {2}([^/\0]+)$/.exec(line);
+    const digest = match?.[1];
+    const name = match?.[2];
+    if (digest === undefined || name === undefined || basename(name) !== name) {
+      throw new Error(`invalid ${description} line: ${line}`);
+    }
+    if (checksums.has(name)) {
+      throw new Error(`duplicate ${description} entry: ${name}`);
+    }
+    checksums.set(name, digest);
+  }
+  requireExactInventory(checksums.keys(), expectedInventory, description);
+  return checksums;
+}
+
+/** The vendored provenance record, derived from the lockfile alone. */
+function provenanceRecord(): string {
+  return `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      upstreamPackage: lock.package,
+      upstreamVersion: lock.packageVersion,
+      upstreamRepository: lock.upstreamRepository,
+      upstreamRevision: lock.upstreamRevision,
+      polkavmRepository: lock.polkavmRepository,
+      polkavmRevision: lock.polkavmRevision,
+      abi: lock.abi,
+      assetChecksums: 'SHA256SUMS',
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+for (const name of [...generatedInventory, ...legalInventory]) {
+  if (lock.assets[name] === undefined) {
+    throw new Error(`runtime lock is missing ${name}`);
+  }
+}
+if (runtimeAssets.length === 0) {
+  throw new Error('runtime lock names no runtime artifacts');
+}
+
+if (!checkOnly) {
+  let checksumsPath;
+  try {
+    checksumsPath = require.resolve(`${lock.package}/checksums`);
+  } catch {
+    throw new Error(
+      `${lock.package} is not installed; install the ${lock.packageVersion} release tarball before synchronizing runtime assets`,
+    );
+  }
+  const installedPackage = JSON.parse(
+    await readFile(resolve(dirname(dirname(checksumsPath)), 'package.json'), 'utf8'),
+  ) as { version: string };
+  const installedVersion = installedPackage.version;
+  if (installedVersion !== lock.packageVersion) {
+    throw new Error(`${lock.package} ${installedVersion} is installed, expected ${lock.packageVersion}`);
+  }
+  const packageChecksums = parseChecksumManifest(
+    await readFile(checksumsPath, 'utf8'),
+    packageInventory,
+    'package SHA256SUMS',
+  );
+  for (const name of runtimeAssets) {
+    const path = resolve(destination, name);
+    const exportedPath = runtimeExports.get(name);
+    if (exportedPath === undefined) {
+      throw new Error(`runtime lock names an unknown artifact ${name}`);
+    }
+    await copyFile(require.resolve(`${lock.package}/${exportedPath}`), path);
+    const digest = sha256(await readFile(path));
+    if (digest !== packageChecksums.get(name)) {
+      throw new Error(`${name} does not match the package SHA256SUMS`);
+    }
+  }
+  for (const name of legalInventory) {
+    await copyFile(resolve(dirname(checksumsPath), name), resolve(destination, name));
+  }
+  await copyFile(checksumsPath, resolve(destination, 'SHA256SUMS'));
+  await writeFile(resolve(destination, 'SOURCE.json'), provenanceRecord());
+}
+
+requireExactInventory(await readdir(destination), synchronizedInventory, 'vendored runtime directory');
+
+const actualDigests = new Map<string, string>();
+for (const [name, expected] of Object.entries(lock.assets)) {
+  const actual = sha256(await readFile(resolve(destination, name)));
+  if (actual !== expected) {
+    throw new Error(`${name} has unexpected digest ${actual}`);
+  }
+  actualDigests.set(name, actual);
+}
+
+// The package manifest also attests the notices shipped with the runtime.
+const vendoredChecksums = parseChecksumManifest(
+  await readFile(resolve(destination, 'SHA256SUMS'), 'utf8'),
+  packageInventory,
+  'vendored SHA256SUMS',
+);
+for (const name of [...runtimeAssets, ...legalInventory]) {
+  if (vendoredChecksums.get(name) !== actualDigests.get(name)) {
+    throw new Error(`${name} does not match the vendored SHA256SUMS`);
+  }
+  if (lock.assets[name] !== vendoredChecksums.get(name)) {
+    throw new Error(`${name} lock digest does not match the vendored SHA256SUMS`);
+  }
+}
+
+const provenance = await readFile(resolve(destination, 'SOURCE.json'), 'utf8');
+if (provenance !== provenanceRecord()) {
+  throw new Error('PolkaVM runtime provenance does not match the lockfile');
+}
+
+console.log(
+  `${checkOnly ? 'Verified' : 'Synchronized'} ${lock.package} ${lock.packageVersion} assets from upstream revision ${lock.upstreamRevision}`,
+);

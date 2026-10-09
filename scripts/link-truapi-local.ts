@@ -11,11 +11,16 @@ const truapiRoot = resolve(
     ) ??
     resolve(dotliRoot, '../..'),
 );
+// CI keeps dotli's installed SDK untouched and only links the product fixture
+// to the installed dependency graph of the immutable vendored distribution.
+const productVendorOnly = process.argv.includes('--product-vendor');
 
 const packages = [
   {
     name: '@parity/truapi',
-    path: resolve(truapiRoot, 'js/packages/truapi'),
+    path: productVendorOnly
+      ? resolve(dotliRoot, 'node_modules/@parity/truapi')
+      : resolve(truapiRoot, 'js/packages/truapi'),
   },
   {
     name: '@parity/truapi-host',
@@ -43,41 +48,56 @@ function assertPackage(expectedName: string, path: string): void {
   }
 }
 
-// What `npm link` would do, minus the global registry detour and the reinstall it triggers.
-for (const pkg of packages) {
-  assertPackage(pkg.name, pkg.path);
-  const target = resolve(dotliRoot, 'node_modules', pkg.name);
-  rmSync(target, { force: true, recursive: true });
-  mkdirSync(dirname(target), { recursive: true });
-  symlinkSync(pkg.path, target, 'junction');
+if (productVendorOnly) {
+  assertPackage(packages[0].name, packages[0].path);
+} else {
+  // Link directly without npm's global registry detour or reinstall.
+  for (const pkg of packages) {
+    assertPackage(pkg.name, pkg.path);
+    const target = resolve(dotliRoot, 'node_modules', pkg.name);
+    rmSync(target, { force: true, recursive: true });
+    mkdirSync(dirname(target), { recursive: true });
+    symlinkSync(pkg.path, target, 'junction');
+  }
+
+  // Workspace-local packages would shadow the selected SDK.
+  for (const [workspace, name] of [
+    ['packages/ui', 'truapi'],
+    ['packages/ui', 'truapi-host'],
+    ['apps/sandbox', 'truapi'],
+    ['apps/sandbox', 'truapi-host'],
+    ['packages/resolver', 'truapi-provider'],
+  ] as const) {
+    rmSync(resolve(dotliRoot, workspace, 'node_modules/@parity', name), {
+      force: true,
+      recursive: true,
+    });
+  }
 }
 
-// Workspace-local installs shadow the root link, so drop them.
-for (const [workspace, name] of [
-  ['packages/ui', 'truapi'],
-  ['packages/ui', 'truapi-host'],
-  ['packages/resolver', 'truapi-provider'],
-] as const) {
-  rmSync(resolve(dotliRoot, workspace, 'node_modules/@parity', name), {
-    force: true,
-    recursive: true,
-  });
-}
-
-// host-playground's product-sdk-host nests an older @parity/truapi. A second client over the same MessagePort
-// collides on request ids, so point the nested one at this checkout.
-const shouldLinkProduct = process.env['E2E_PRODUCT_REPO'] !== undefined || process.env['E2E_PRODUCT_URL'] !== undefined;
+// host-playground's published product-sdk-host currently nests an older
+// @parity/truapi. The local E2E must use one current client instance; loading
+// a second client over the same MessagePort causes request-id collisions and
+// reproduces the alias card's stuck-pending symptom. Point that nested runtime
+// at this checkout when the local product checkout is available. Link the
+// product root too so every consumer resolves the same client instance.
+const shouldLinkProduct =
+  productVendorOnly || process.env['E2E_PRODUCT_REPO'] !== undefined || process.env['E2E_PRODUCT_URL'] !== undefined;
 const productRoot = resolve(process.env['E2E_PRODUCT_REPO'] ?? resolve(dotliRoot, '../../../host-playground'));
 if (shouldLinkProduct && existsSync(resolve(productRoot, 'package.json'))) {
-  const nestedTruapi = resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
-  const nestedParent = dirname(nestedTruapi);
+  const productTruapiPaths = [
+    resolve(productRoot, 'node_modules/@parity/truapi'),
+    resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi'),
+  ];
   if (!existsSync(resolve(productRoot, 'node_modules/@parity/product-sdk-host'))) {
     throw new Error(`Install host-playground dependencies before linking: ${productRoot}`);
   }
-  rmSync(nestedTruapi, { force: true, recursive: true });
-  mkdirSync(nestedParent, { recursive: true });
-  symlinkSync(packages[0].path, nestedTruapi, 'junction');
-  console.log(`Linked host-playground's nested @parity/truapi: ${productRoot}`);
+  for (const path of productTruapiPaths) {
+    rmSync(path, { force: true, recursive: true });
+    mkdirSync(dirname(path), { recursive: true });
+    symlinkSync(packages[0].path, path, 'junction');
+  }
+  console.log(`Linked host-playground's @parity/truapi: ${productRoot}`);
 } else if (shouldLinkProduct) {
   throw new Error(`E2E_PRODUCT_REPO does not contain package.json: ${productRoot}`);
 }

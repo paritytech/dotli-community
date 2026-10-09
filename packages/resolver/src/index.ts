@@ -14,11 +14,27 @@ export {
 export { type ResolverErrorName } from './errors.js';
 // From the schema module, not `./manifest.js`, which would drag the chain-storage code onto the eager path.
 export {
+  parseExecutableManifest,
+  parseRootManifest,
   toExecutableManifestResult,
   toRootManifestResult,
+  validateExecutableManifest,
+  validateRootManifest,
+  type AppManifest,
+  type AppManifestV1,
+  type AppManifestV2,
+  type AppVersion,
+  type ExecutableKind,
   type ExecutableManifest,
+  type FileInputHandler,
+  type FileInputRequirement,
   type ManifestResult,
+  type PolkaVmAppManifestV2,
   type RootManifest,
+  type WebAppManifestV2,
+  type WidgetManifest,
+  type WorkerManifest,
+  type ValidationResult,
 } from './manifest-types.js';
 export { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome } from './provider.js';
 export {

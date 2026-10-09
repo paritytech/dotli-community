@@ -4,6 +4,8 @@
 // smoldot-direct runs smoldot in the protocol iframe, smoldot-shared-worker in a SharedWorker that tabs share.
 // rpc-gateway uses a trusted JSON-RPC node and an IPFS gateway, with no smoldot.
 
+import type { SiteId } from './config.js';
+
 export type Backend = 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
 
 /** Settings panel labels. Here rather than in the topbar because error copy names these controls, and copies drift. */
@@ -24,6 +26,7 @@ export interface CacheSettings {
 
 export const BACKEND_KEY = 'dotli:chain-backend';
 export const CACHE_KEY = 'dotli:cache-settings';
+export const POLKAVM_APPS_KEY = 'dotli:experimental-polkavm-apps';
 
 export function isSharedWorkerAvailable(): boolean {
   return typeof SharedWorker !== 'undefined';
@@ -177,4 +180,30 @@ export function getCacheSettings(): CacheSettings {
 
 export function setCacheSettings(settings: CacheSettings): void {
   storage.setItem(CACHE_KEY, JSON.stringify(settings));
+}
+
+/**
+ * Production (`dot.li`) keeps the experimental PolkaVM App runtime opt-in.
+ * Every other shell — `paseo.fyi`, `paseo.li`, previews, localhost — is a
+ * test environment where the runtime is on unless the user turned it off.
+ */
+export function defaultPolkaVmAppsEnabled(siteId: SiteId): boolean {
+  return siteId !== 'dot.li';
+}
+
+/** Whether the PolkaVM App runtime runs: the user's choice, else the site default. */
+export function getPolkaVmAppsEnabled(siteId: SiteId): boolean {
+  const stored = storage.getItem(POLKAVM_APPS_KEY);
+  if (stored === '1') {
+    return true;
+  }
+  if (stored === '0') {
+    return false;
+  }
+  return defaultPolkaVmAppsEnabled(siteId);
+}
+
+/** Persist the user's experimental PolkaVM App runtime preference. */
+export function setPolkaVmAppsEnabled(enabled: boolean): void {
+  storage.setItem(POLKAVM_APPS_KEY, enabled ? '1' : '0');
 }

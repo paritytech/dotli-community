@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environments: ${{ steps.plan.outputs.environments }}
+      smoke_environments: ${{ steps.plan.outputs.smoke_environments }}
       ref: ${{ steps.plan.outputs.ref }}
     steps:
       - id: plan
@@ -35,10 +36,12 @@ jobs:
           case "$EVENT_NAME" in
             release)
               echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
+              echo 'smoke_environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
               ;;
             push)
               echo 'environments=["paseoli.dev"]' >> "$GITHUB_OUTPUT"
+              echo 'smoke_environments=["paseoli.dev"]' >> "$GITHUB_OUTPUT"
               echo "ref=" >> "$GITHUB_OUTPUT"
               ;;
             pull_request)
@@ -55,6 +58,12 @@ jobs:
                   | select(IN($allowed[])) ]
                 | unique')"
               echo "environments=$ENVS" >> "$GITHUB_OUTPUT"
+              # Smoke whatever this label actually deployed. The old filter
+              # named `westendli.dev`, which no PR label can select, so a
+              # label deploy shipped published products without ever loading
+              # one — that is how a broken product reached paseo.fyi unnoticed.
+              SMOKE_ENVS="$ENVS"
+              echo "smoke_environments=$SMOKE_ENVS" >> "$GITHUB_OUTPUT"
               echo "ref=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
               ;;
           esac
@@ -77,6 +86,8 @@ jobs:
 
       - name: Type check
         run: npx turbo run typecheck
+      - name: Verify PolkaVM runtime assets
+        run: npm run check:polkavm-runtime
 
       - name: Unit tests
         run: npx turbo run test
@@ -158,3 +169,48 @@ jobs:
             | jq -e 'type == "object" and (.attester | type == "string" and test("^0x[0-9a-fA-F]{64}$"))'
         env:
           DEPLOY_SITE: ${{ matrix.environment }}
+
+  product-smoke:
+    name: Smoke ${{ matrix.environment }} products
+    needs: [plan, deploy]
+    if: needs.plan.outputs.smoke_environments != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.plan.outputs.smoke_environments) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.ref || github.sha }}
+
+      - name: Setup Playwright
+        uses: ./.github/actions/setup-playwright
+
+      - name: Smoke published PolkaVM products
+        working-directory: apps/host
+        run: npm run test:smoke:products -- --output=test-results/products
+        env:
+          DOTLI_SMOKE_ROOT: ${{ matrix.environment }}
+          DOTLI_WEBGPU: '1'
+
+      # Capability coverage against the deployed host: the paired E2E suite
+      # only ever talks to a local build, so without this a deployment could
+      # serve a host the published products cannot call.
+      - name: Smoke published TrUAPI capabilities
+        # Run even when a product smoke fails: a broken published product
+        # and a broken host capability are separate findings.
+        if: ${{ !cancelled() }}
+        working-directory: apps/host
+        run: npm run test:smoke:truapi -- --output=test-results/truapi
+        env:
+          DOTLI_SMOKE_ROOT: ${{ matrix.environment }}
+
+      - name: Retain deployed product smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deployed-product-smoke-${{ matrix.environment }}-${{ github.run_attempt }}
+          path: apps/host/test-results/
+          retention-days: 3
+          if-no-files-found: ignore

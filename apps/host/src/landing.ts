@@ -33,6 +33,7 @@ async function main(): Promise<void> {
       log.event('TrUAPI debug panel enabled', { flow: 'boot' });
     });
   }
+  performance.mark('dotli:main:end');
   log.event('Route: landing page', { flow: 'boot' });
 }
 

@@ -44,6 +44,7 @@ export function Field(props: {
       class={[s['field'], props.class]}
       data-mono={props.mono === true ? '' : undefined}
       data-warning={props.warning === true ? '' : undefined}
+      role={props.warning === true ? 'alert' : undefined}
       data-testid={props.testId}
     >
       <span class={s['label']} data-testid={props.labelTestId}>

@@ -27,6 +27,9 @@ import {
   matches,
   type FilterState,
   panelDockInset,
+  clearPolkaVmDebugSnapshot,
+  onPolkaVmDebugSnapshot,
+  type PolkaVmDebugSnapshot,
 } from '@dotli/truapi-debug';
 
 import type { ResolutionRecorder } from '@dotli/truapi-debug';
@@ -43,6 +46,7 @@ import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
+import { RuntimeBadge, RuntimeView } from './RuntimeView.js';
 import { createWalletController } from './wallet/controller.js';
 import { WalletView } from './wallet/WalletView.js';
 import s from './Panel.module.css';
@@ -181,6 +185,7 @@ export function Panel(props: {
   const stacked = createMemo(() => placement() === 'right' || narrow());
   const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
+  const [runtimeSnapshot, setRuntimeSnapshot] = createSignal<PolkaVmDebugSnapshot | null>(null);
 
   let filtered: {
     events: readonly StoredEvent[];
@@ -374,6 +379,22 @@ export function Panel(props: {
     });
   };
 
+  const unsubscribeRuntime = onPolkaVmDebugSnapshot(next => {
+    // Startup replay can run while this component is mounting; do not force
+    // a nested flush. Solid settles live samples without touching the store.
+    setRuntimeSnapshot(next);
+    if (next === null && untrack(view) === 'runtime') {
+      untrack(() => {
+        selectView('list');
+      });
+    }
+  });
+  window.addEventListener('dotli:product-loaded', clearPolkaVmDebugSnapshot);
+  onCleanup(() => {
+    unsubscribeRuntime();
+    window.removeEventListener('dotli:product-loaded', clearPolkaVmDebugSnapshot);
+  });
+
   /** Exports carry the filtered view, what the user currently sees. */
   const exportJson = (): string => {
     const all = store.list();
@@ -397,10 +418,7 @@ export function Panel(props: {
   // secrets and invalidates late reads, while disposal removes all listeners.
   const wallet = untrack(() => (DEBUG ? props.wallet : undefined));
   const walletController = wallet === undefined ? undefined : createWalletController(wallet, store);
-  const openWallet = (): void => {
-    if (walletController === undefined) {
-      return;
-    }
+  const openView = (next: 'wallet' | 'runtime'): void => {
     if (collapsed()) {
       if (panelEl !== undefined && expandedHeight !== '') {
         panelEl.style.height = expandedHeight;
@@ -411,8 +429,14 @@ export function Panel(props: {
         refreshSnapshot();
       });
     }
-    selectView('wallet');
+    selectView(next);
     refit();
+  };
+  const openWallet = (): void => {
+    if (walletController === undefined) {
+      return;
+    }
+    openView('wallet');
     walletController.focus();
   };
   createEffect(
@@ -449,6 +473,15 @@ export function Panel(props: {
                 expanded: walletController.ui().opened,
                 onOpen: openWallet,
               }
+        }
+        runtimeEntry={
+          <RuntimeBadge
+            snapshot={runtimeSnapshot()}
+            dock={placement()}
+            onOpen={() => {
+              openView('runtime');
+            }}
+          />
         }
         counts={counts()}
         paused={paused()}
@@ -509,7 +542,13 @@ export function Panel(props: {
       />
       <div class={s['body']} data-testid="td-body">
         <div class={s['views']} data-testid="td-views">
-          <Tabs view={view()} wallet={walletController !== undefined} onSelect={selectView} />
+          <Tabs
+            view={view()}
+            wallet={walletController !== undefined}
+            runtime={runtimeSnapshot() !== null}
+            onSelect={selectView}
+          />
+          <RuntimeView snapshot={runtimeSnapshot()} active={view() === 'runtime' && !collapsed()} />
           <Show when={walletController}>{controller => <WalletView controller={controller()} />}</Show>
           <EventList
             events={visible()}

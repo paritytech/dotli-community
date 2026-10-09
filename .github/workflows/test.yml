@@ -27,6 +27,9 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
+      - name: Verify PolkaVM runtime assets
+        run: npm run check:polkavm-runtime
+
       - name: Run tests
         run: npx turbo run test
 
@@ -76,18 +79,40 @@ jobs:
         working-directory: apps/host
         env:
           VITE_METRICS: 'true'
-        run:
-          npx playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts
-          tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts
-          tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts
-          tests/functional/host-settings.spec.ts || true
+        run: npm run test:functional || true
 
       - name: Apply functional threshold
         working-directory: apps/host
         run: |
-          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
-          if [ "$TOTAL" -lt 12 ]; then
-            echo "::error::expected at least 12 tests, got $TOTAL."
+          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          if [ "$TOTAL" -lt 11 ]; then
+            echo "::error::expected at least 11 executed tests, got $TOTAL."
+            exit 1
+          fi
+          RUNTIME_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          RUNTIME_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select((.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") and .ok == false)] | length' tests/functional/results.json)
+          echo "Executed PolkaVM functional specs: $RUNTIME_EXECUTED"
+          echo "PolkaVM functional failures: $RUNTIME_FAILED"
+          if [ "$RUNTIME_EXECUTED" -lt 4 ]; then
+            echo "::error::expected at least 4 executed PolkaVM functional specs, got $RUNTIME_EXECUTED."
+            exit 1
+          fi
+          if [ "$RUNTIME_FAILED" -gt 0 ]; then
+            echo "::error::PolkaVM functional specs must have 0 failures"
+            exit 1
+          fi
+          UPGRADE_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          UPGRADE_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          UPGRADE_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
+          if [ "$UPGRADE_EXECUTED" -lt 2 ] || [ "$UPGRADE_FAILED" -gt 0 ] || [ "$UPGRADE_SKIPPED" -gt 0 ]; then
+            echo "::error::host-upgrade.spec.ts must execute its upgrade scenarios without failures or skips (executed: $UPGRADE_EXECUTED, failed: $UPGRADE_FAILED, skipped: $UPGRADE_SKIPPED)"
+            exit 1
+          fi
+          PWA_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          PWA_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          echo "Executed service-worker recovery specs: $PWA_EXECUTED (failed: $PWA_FAILED)"
+          if [ "$PWA_EXECUTED" -lt 3 ] || [ "$PWA_FAILED" -gt 0 ]; then
+            echo "::error::all three service-worker update recovery paths must execute with 0 failures"
             exit 1
           fi
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
@@ -127,7 +152,19 @@ jobs:
             exit 1
           fi
 
-  # host-playground product tests, with pairing and signing handled headlessly by the truapi-host CLI.
+      - name: Upload functional results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: functional-results-${{ github.run_attempt }}
+          path: |
+            apps/host/tests/functional/results.json
+            apps/host/tests/functional/test-results/
+          retention-days: 3
+
+  # E2E run of the pinned host-playground source against the local preview
+  # server. The product client and signing CLI use the same SDK as dotli;
+  # the independently deployed host-playground.dot can use an older wire codec.
   e2e-product:
     name: E2E
     runs-on: ubuntu-latest
@@ -138,8 +175,12 @@ jobs:
     env:
       # Must match the host's `defaultNetwork()`.
       SIGNING_HOST_NETWORK: paseo-next-v2
-      # The CLI self-updates by default, which would make CI runs nondeterministic.
+      # The product must query the same Asset Hub as the host and signing CLI.
+      NEXT_PUBLIC_NETWORK_GENESIS_HASH: '0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a'
+      # The CLI self-updates by default; keep CI runs deterministic.
       TRUAPI_HOST_NO_UPDATE: '1'
+      E2E_PRODUCT_REPO: ${{ github.workspace }}/.build/e2e-host-playground
+      E2E_PRODUCT_URL: http://localhost:5199
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -148,6 +189,7 @@ jobs:
         uses: ./.github/actions/setup-playwright
 
       # Build from the same immutable source as this branch's vendored SDK.
+
       - name: Resolve signing-host source
         id: signing-host-source
         run: |
@@ -190,6 +232,22 @@ jobs:
           workspaces: .signing-host-src -> target
           save-if: ${{ github.event_name == 'push' }}
 
+      - name: Checkout product fixture source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: paritytech/host-playground
+          ref: f56294cea4430163bf16ec068844b1327441073c
+          path: .build/e2e-host-playground
+          persist-credentials: false
+
+      - name: Install product fixture dependencies
+        working-directory: .build/e2e-host-playground
+        run: |
+          npm install --global yarn@1.22.22
+          yarn install --frozen-lockfile
+
+      - name: Link product fixture to the pinned SDK
+        run: node scripts/link-truapi-local.ts --product-vendor
       - name: Generate signing-host sources
         working-directory: .signing-host-src
         run: |
@@ -207,6 +265,8 @@ jobs:
         env:
           # Required, or the host throws on boot and every test times out.
           VITE_NETWORKS: paseo-next-v2,previewnet
+          # The fixture is served through dotli's existing loopback-only proxy.
+          VITE_APP_DEBUG: 'true'
         run: npx turbo run build
 
       # Exit code 99 means pairing and signing infrastructure is down, not dot.li, so it soft-passes.

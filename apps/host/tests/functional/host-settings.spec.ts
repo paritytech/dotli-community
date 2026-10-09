@@ -10,12 +10,12 @@ import { setupTest } from './helpers/context.js';
 import { waitForResolutionOutcome } from '../product-frame.js';
 import {
   cachedBlockCount,
-  hasCachedCid,
+  hasCachedInstalledExecutable,
   hostBlockCacheHits,
   hostBlockCacheReads,
   hostResolveStarted,
   trackBlockCacheReads,
-  waitForCachedCid,
+  waitForCachedInstalledExecutable,
 } from './helpers/cache.js';
 import { BACKENDS, CACHE_ENABLED, SKIP_ARCHIVE_ONLY, SKIP_CID_ONLY, updateCacheSettings } from './fixtures/settings.js';
 import { test } from './helpers/shared-mode-reset.js';
@@ -224,7 +224,7 @@ test.describe('Settings works', () => {
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
+    test(`As a user on ${backend} with the dotNS cache on, revisiting validates my installed executable before reuse`, async ({
       browser,
     }) => {
       // Given
@@ -235,13 +235,14 @@ test.describe('Settings works', () => {
       await page.goto(BASE_URL, { waitUntil: 'commit' });
       await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
       expect(await hostResolveStarted(page)).toBe(true);
-      await waitForCachedCid(page, DOMAIN, 5_000);
+      await waitForCachedInstalledExecutable(page, DOMAIN, 5_000);
 
       try {
         // When
         await page.reload({ waitUntil: 'commit' });
 
-        // Then
+        // Then the installed-executable path reuses the paired manifest after
+        // re-reading contenthash, without entering the full cold resolver.
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
         expect(await hostResolveStarted(page)).toBe(false);
       } finally {
@@ -259,7 +260,7 @@ test.describe('Settings works', () => {
       });
       await page.goto(BASE_URL, { waitUntil: 'commit' });
       await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
-      await waitForCachedCid(page, DOMAIN, 5_000);
+      await waitForCachedInstalledExecutable(page, DOMAIN, 5_000);
 
       try {
         // When
@@ -269,14 +270,121 @@ test.describe('Settings works', () => {
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
         expect(await hostResolveStarted(page)).toBe(true);
-        expect(await hasCachedCid(page, DOMAIN)).toBe(true);
+        expect(await hasCachedInstalledExecutable(page, DOMAIN)).toBe(true);
       } finally {
         await context.close();
       }
     });
   }
 
-  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache.
+  test('As a warm user, a changed contenthash never reuses the old manifest', async ({ browser }) => {
+    const { context, page } = await setupTest(browser, {
+      backend: 'rpc-gateway',
+      cacheSeed: CACHE_ENABLED,
+    });
+    await page.goto(BASE_URL, { waitUntil: 'commit' });
+    await waitForResolutionOutcome(page, TIMEOUT_MS, 'rpc-gateway');
+    await waitForCachedInstalledExecutable(page, DOMAIN, 5_000);
+    const frame = page.locator(`iframe[src*="${DOMAIN}.app.localhost"]`);
+    const firstSrc = await frame.getAttribute('src');
+    const currentContenthash = firstSrc === null ? null : new URL(firstSrc).searchParams.get('cid');
+    expect(currentContenthash).not.toBeNull();
+    const staleManifest = '{"$v":1,"kind":"app","appVersion":[99,0,0]}';
+
+    try {
+      await page.evaluate(
+        async ({ label, executableManifest }) => {
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const open = indexedDB.open('dotli-installed-executables', 1);
+            open.onsuccess = () => {
+              resolve(open.result);
+            };
+            open.onerror = () => {
+              reject(open.error ?? new Error('DB open failed'));
+            };
+          });
+          const rootManifest = await new Promise<string | null>((resolve, reject) => {
+            const read = db.transaction('installed_executables', 'readonly');
+            const request = read.objectStore('installed_executables').get(['paseo-next-v2', 'app', label]);
+            request.onsuccess = () => {
+              const existing = request.result as { rootManifest?: string | null } | undefined;
+              if (existing?.rootManifest === undefined) {
+                reject(new Error('Expected a complete installed record before seeding the stale contenthash'));
+                return;
+              }
+              resolve(existing.rootManifest);
+            };
+            request.onerror = () => {
+              reject(request.error ?? new Error('cache read failed'));
+            };
+          });
+          const tx = db.transaction('installed_executables', 'readwrite');
+          const completed = new Promise<void>((resolve, reject) => {
+            tx.oncomplete = () => {
+              resolve();
+            };
+            tx.onerror = () => {
+              reject(tx.error ?? new Error('cache seed failed'));
+            };
+          });
+          tx.objectStore('installed_executables').put({
+            network: 'paseo-next-v2',
+            modality: 'app',
+            label,
+            contenthash: 'bafy-stale',
+            executableManifest,
+            rootManifest,
+            timestamp: Date.now(),
+          });
+          await completed;
+        },
+        { label: DOMAIN, executableManifest: staleManifest },
+      );
+
+      await page.reload({ waitUntil: 'commit' });
+      await waitForResolutionOutcome(page, TIMEOUT_MS, 'rpc-gateway');
+      await waitForCachedInstalledExecutable(page, DOMAIN, 5_000);
+
+      const refreshedSrc = await frame.getAttribute('src');
+      expect(refreshedSrc === null ? null : new URL(refreshedSrc).searchParams.get('cid')).toBe(currentContenthash);
+      const cached = await page.evaluate(async label => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const open = indexedDB.open('dotli-installed-executables', 1);
+          open.onsuccess = () => {
+            resolve(open.result);
+          };
+          open.onerror = () => {
+            reject(open.error ?? new Error('DB open failed'));
+          };
+        });
+        return await new Promise<{
+          contenthash: string;
+          executableManifest: string;
+        }>((resolve, reject) => {
+          const tx = db.transaction('installed_executables', 'readonly');
+          const request = tx.objectStore('installed_executables').get(['paseo-next-v2', 'app', label]);
+          request.onsuccess = () => {
+            resolve(
+              request.result as {
+                contenthash: string;
+                executableManifest: string;
+              },
+            );
+          };
+          request.onerror = () => {
+            reject(request.error ?? new Error('cache read failed'));
+          };
+        });
+      }, DOMAIN);
+      expect(cached.contenthash).toBe(currentContenthash);
+      expect(cached.executableManifest).not.toBe(staleManifest);
+    } finally {
+      await context.close();
+    }
+  });
+
+  // The gateway backend fetches from an IPFS gateway inside the sandbox, not
+  // through the host's bitswap relay, so it has no block cache to check.
   const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
 
   for (const backend of RELAYED_BACKENDS) {

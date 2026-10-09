@@ -8,14 +8,28 @@ export function hostResolveStarted(page: Page): Promise<boolean> {
   return page.evaluate(() => performance.getEntriesByType('mark').some(m => m.name === 'dotli:resolve:start'));
 }
 
-/** Shared by `page.evaluate` and `page.waitForFunction` below, so the two IDB queries cannot drift. */
-const cachedCidExists = (label: string): Promise<boolean> =>
-  new Promise<boolean>(resolve => {
-    const open = indexedDB.open('dotli');
+interface InstalledExecutableScope {
+  label: string;
+  network: string;
+}
+
+/**
+ * Browser-side check for a cached app executable under a network-scoped label.
+ */
+const cachedInstalledExecutableExists = ({ label, network }: InstalledExecutableScope): Promise<boolean> => {
+  return new Promise<boolean>(resolve => {
+    const open = indexedDB.open('dotli-installed-executables', 1);
     open.onsuccess = () => {
       try {
-        const tx = open.result.transaction('cids', 'readonly');
-        const req = tx.objectStore('cids').get(label);
+        const tx = open.result.transaction('installed_executables', 'readonly');
+        tx.oncomplete = () => {
+          open.result.close();
+        };
+        tx.onabort = () => {
+          open.result.close();
+          resolve(false);
+        };
+        const req = tx.objectStore('installed_executables').get([network, 'app', label]);
         req.onsuccess = () => {
           resolve(req.result !== undefined);
         };
@@ -23,6 +37,7 @@ const cachedCidExists = (label: string): Promise<boolean> =>
           resolve(false);
         };
       } catch {
+        open.result.close();
         resolve(false);
       }
     };
@@ -30,15 +45,22 @@ const cachedCidExists = (label: string): Promise<boolean> =>
       resolve(false);
     };
   });
+};
 
-export function hasCachedCid(page: Page, label: string): Promise<boolean> {
-  return page.evaluate(cachedCidExists, label);
+/** Snapshot whether the host has a cached installed app executable. */
+export function hasCachedInstalledExecutable(page: Page, label: string, network = 'paseo-next-v2'): Promise<boolean> {
+  return page.evaluate(cachedInstalledExecutableExists, { label, network });
 }
 
-/** The host writes the CID in an idle callback after `dotli:app:end`, so a quick warm reload would race it. */
-export async function waitForCachedCid(page: Page, label: string, timeoutMs: number): Promise<void> {
+/** Wait until the host commits the complete installed executable record. */
+export async function waitForCachedInstalledExecutable(
+  page: Page,
+  label: string,
+  timeoutMs: number,
+  network = 'paseo-next-v2',
+): Promise<void> {
   await expect
-    .poll(() => hasCachedCid(page, label), {
+    .poll(() => hasCachedInstalledExecutable(page, label, network), {
       timeout: timeoutMs,
       intervals: [200],
     })

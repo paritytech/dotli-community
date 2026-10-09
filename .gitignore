@@ -76,7 +76,15 @@ deploy.env
 opencode.json
 GEMINI.md
 
-# Prebuilt vendored SDK packages ship to CI despite the rules above (debug branch only).
+# Vendored TrUAPI packages ship their prebuilt client and host artifacts.
+!vendor/truapi/dist
+!vendor/truapi/dist/**
+!vendor/truapi-host/dist
+!vendor/truapi-host/dist/**
+
+# Vendored SDK packages (debug branch only).
+# Override the generic `dist` / `.papi/descriptors` rules so the
+# prebuilt packages under vendor/truapi-debug/ ship to CI.
 !vendor/truapi-debug/**/dist
 !vendor/truapi-debug/**/dist/**
 !vendor/truapi-debug/**/.papi

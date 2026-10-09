@@ -526,7 +526,15 @@ async function runWarmIterations(browser: Browser, total: number): Promise<Singl
   return runs;
 }
 
-/** A second site in a primed session: shared HTTP and wasm caches, but its own CID cache, SW and IndexedDB. */
+/**
+ * Run lukewarm iterations: prime with DOMAIN_A, then measure DOMAIN_B.
+ *
+ * "Lukewarm" means a different .dot site in the same browser session. The
+ * browser has already compiled WASM, cached JS chunks (HTTP cache), and
+ * warmed up network stacks, but DOMAIN_B has no installed-executable record, no SW archive,
+ * and a separate SW/IDB origin. This measures the benefit of infrastructure
+ * reuse across different .dot sites.
+ */
 async function runLukewarmIterations(browser: Browser, total: number): Promise<SingleRun[]> {
   const runs: SingleRun[] = [];
 

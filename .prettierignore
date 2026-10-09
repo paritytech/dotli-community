@@ -3,5 +3,6 @@ node_modules/
 package-lock.json
 tests/results/
 docs/
+apps/sandbox/public/polkavm-runtime/
 vendor/
 storybook-static/

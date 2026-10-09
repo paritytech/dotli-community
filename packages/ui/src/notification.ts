@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { presentToast } from './overlays/load.js';
+import { dismissToast } from './state/toasts.js';
 import type { StatusTone } from './components/primitives/StatusDot.js';
 
 type NoticeTone = Exclude<StatusTone, 'quiet'>;
@@ -32,12 +33,14 @@ export interface NotificationParams {
   text: string;
   label: string;
   deeplink?: string | undefined;
+  /** Host-owned activation handler. Product callbacks never supply executable code. */
+  onActivate?: () => void;
   /** SVG stroked in currentColor to take the tone. */
   icon?: string;
   tone?: NoticeTone;
   /** 0 keeps it until closed. */
   dismissMs?: number;
-  /** Also fire a browser Notification when the tab is hidden. Default true. */
+  /** Send browser Notification API when the tab is hidden or unfocused. Default: true. */
   browserNotification?: boolean;
   onDismiss?: () => void;
   action?: { label: string; onClick: () => void };
@@ -47,19 +50,34 @@ function sanitizeText(raw: string): string {
   return raw.trim().slice(0, 200);
 }
 
-function validateDeeplink(dl: string | undefined): string | undefined {
-  if (dl === undefined || dl === '') {
-    return undefined;
+function notificationActivation(params: NotificationParams): (() => void) | undefined {
+  if (params.onActivate) {
+    return params.onActivate;
   }
-  try {
-    const u = new URL(dl);
-    return u.protocol === 'https:' || u.protocol === 'http:' ? dl : undefined;
-  } catch {
-    return undefined;
+  let url: URL | undefined;
+  if (params.deeplink !== undefined && params.deeplink.trim() !== '') {
+    try {
+      url = new URL(params.deeplink);
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+        return undefined;
+      }
+      if (url.username !== '' || url.password !== '') {
+        return undefined;
+      }
+    } catch {
+      return undefined;
+    }
   }
+  return () => {
+    window.focus();
+    if (url !== undefined) {
+      window.open(url.href, '_blank', 'noopener');
+    }
+  };
 }
 
-function fireBrowserNotification(text: string, deeplink: string | undefined, label: string): void {
+// Browser Notification, used as a supplement when the tab is hidden or unfocused.
+function fireBrowserNotification(text: string, activate: (() => void) | undefined, label: string): void {
   if (!('Notification' in window)) {
     return;
   }
@@ -67,10 +85,8 @@ function fireBrowserNotification(text: string, deeplink: string | undefined, lab
   const show = (): void => {
     const n = new Notification(label, { body: text });
     n.onclick = () => {
-      window.focus();
-      if (deeplink !== undefined && deeplink !== '') {
-        window.open(deeplink, '_blank');
-      }
+      activate?.();
+      n.close();
     };
     setTimeout(() => {
       n.close();
@@ -88,26 +104,29 @@ function fireBrowserNotification(text: string, deeplink: string | undefined, lab
   }
 }
 
-export function showNotification(params: NotificationParams): void {
+export function showNotification(params: NotificationParams): () => void {
   const text = sanitizeText(params.text);
   if (!text) {
-    return;
+    return () => undefined;
   }
-  const deeplink = validateDeeplink(params.deeplink);
+  const onActivate = notificationActivation(params);
   const tone = params.tone ?? 'info';
 
-  presentToast({
+  const id = presentToast({
     text,
     label: params.label,
     icon: params.icon ?? toneIcon(tone),
     tone,
     dismissMs: params.dismissMs ?? NOTIFICATION_DISMISS_MS,
-    ...(deeplink === undefined ? {} : { deeplink }),
+    ...(onActivate === undefined ? {} : { onActivate }),
     ...(params.onDismiss === undefined ? {} : { onDismiss: params.onDismiss }),
     ...(params.action === undefined ? {} : { action: params.action }),
   });
 
-  if ((params.browserNotification ?? true) && document.visibilityState !== 'visible') {
-    fireBrowserNotification(text, deeplink, params.label);
+  if ((params.browserNotification ?? true) && (document.visibilityState !== 'visible' || !document.hasFocus())) {
+    fireBrowserNotification(text, onActivate, params.label);
   }
+  return () => {
+    dismissToast(id);
+  };
 }

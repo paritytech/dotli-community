@@ -59,6 +59,7 @@ const validContract = {
   [SANDBOX_CONTRACT_PARAMS.cid]: CID,
   [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'rpc-gateway',
   [SANDBOX_CONTRACT_PARAMS.network]: 'paseo-next-v2',
+  [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: '1',
 };
 
 function doneMessage(posted: unknown[]): unknown {
@@ -120,8 +121,9 @@ describe('sandbox load failure reporting', () => {
   });
 
   it('As an operator, a host that sends a contract this sandbox cannot use is reported', async () => {
-    // Given a host built against another contract version
-    const posted = await bootSandbox({ ...validContract, [SANDBOX_CONTRACT_PARAMS.v]: '999' });
+    // Given a host that names a backend this sandbox does not know. (A newer
+    // contract version first asks the host to update instead.)
+    const posted = await bootSandbox({ ...validContract, [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'carrier-pigeon' });
 
     // Then the load ends as a contract failure, reported as one
     await vi.waitFor(() => {
@@ -146,7 +148,7 @@ describe('sandbox reload prompts', () => {
 
   it('As a sandbox user, a part of the app that fails to load offers a reload in an error toast', async () => {
     // Given
-    const posted = await bootSandbox({ ...validContract, [SANDBOX_CONTRACT_PARAMS.v]: '999' });
+    const posted = await bootSandbox({ ...validContract, [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'carrier-pigeon' });
     await vi.waitFor(() => {
       expect(doneMessage(posted)).toBeDefined();
     });

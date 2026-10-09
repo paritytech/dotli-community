@@ -123,6 +123,8 @@ export function Header(props: {
   counts: string;
   /** Debug builds with the experimental wallet only. */
   wallet?: WalletEntryState | undefined;
+  /** The PolkaVM runtime badge, while a PolkaVM product reports diagnostics. */
+  runtimeEntry?: JSX.Element | undefined;
   paused: boolean;
   collapsed: boolean;
   dock: DockPosition;
@@ -234,6 +236,7 @@ export function Header(props: {
       <span class={s['counts']} data-testid="td-counts">
         {props.counts}
       </span>
+      {props.runtimeEntry}
       <span class={s['spacer']} />
       <button
         class={s['btn']}

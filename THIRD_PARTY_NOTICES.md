@@ -6,14 +6,15 @@ license. Packages are grouped by SPDX license identifier and listed alphabetical
 each package are retained in its distribution under `node_modules`.
 
 GPL-family components (GPL-3.0 with the Classpath linking exception) are compatible with this project's AGPL-3.0
-outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0) or source-available (FSL-1.1-MIT)
-terms is used to build the application and is not redistributed as part of it.
+outbound license. The shipped `@parity/polkavm-browser-runtime` artifacts remain under MPL-2.0. Their full license,
+dependency notices, per-file hashes and source provenance are served beside the runtime. Build-time-only tooling under
+source-available FSL-1.1-MIT terms is not redistributed as part of the application.
 
 The vendored `@parity/truapi` and `@parity/truapi-host` packages are MIT-licensed. Their license texts are retained in
 `vendor/truapi/LICENSE` and `vendor/truapi-host/LICENSE`, including the production web Wasm distribution. Exact source
 revision, package versions and artifact hashes are recorded in `vendor/truapi-host.lock.json`.
 
-> Generated from the resolved dependency tree (910 distinct third-party packages) by `scripts/third-party-notices.ts`.
+> Generated from the resolved dependency tree (933 distinct third-party packages) by `scripts/third-party-notices.ts`.
 > Platform-specific binary packages (for example `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;
 > other platforms resolve their own equivalents under the same licenses. Regenerate after dependency changes.
 
@@ -64,44 +65,45 @@ revision, package versions and artifact hashes are recorded in `vendor/truapi-ho
 @emmetio/stream-reader, @emmetio/stream-reader-utils, @emnapi/core, @emnapi/runtime, @emnapi/wasi-threads,
 @ensdomains/content-hash, @esbuild/linux-x64, @eslint-community/eslint-utils, @eslint-community/regexpp, @eslint/js,
 @img/colour, @jridgewell/gen-mapping, @jridgewell/remapping, @jridgewell/resolve-uri, @jridgewell/source-map,
-@jridgewell/sourcemap-codec, @jridgewell/trace-mapping, @keyv/bigmap, @keyv/serialize, @mdx-js/react,
-@napi-rs/lzma-linux-x64-gnu, @napi-rs/wasm-runtime, @noble/ciphers, @noble/curves, @noble/hashes, @oslojs/encoding,
-@oxc-parser/binding-linux-x64-gnu, @oxc-project/types, @oxc-resolver/binding-linux-x64-gnu, @pkgr/core, @polka/url,
-@polkadot-api/cli, @polkadot-api/codegen, @polkadot-api/ink-contracts, @polkadot-api/json-rpc-provider,
-@polkadot-api/json-rpc-provider-proxy, @polkadot-api/known-chains, @polkadot-api/logs-provider,
-@polkadot-api/merkleize-metadata, @polkadot-api/metadata-builders, @polkadot-api/metadata-compatibility,
-@polkadot-api/observable-client, @polkadot-api/pjs-signer, @polkadot-api/raw-client, @polkadot-api/raw-tx-creator,
-@polkadot-api/signers-common, @polkadot-api/sm-provider, @polkadot-api/smoldot, @polkadot-api/substrate-bindings,
-@polkadot-api/substrate-client, @polkadot-api/tx-creator, @polkadot-api/utils, @polkadot-api/wasm-executor,
-@polkadot-api/ws-middleware, @polkadot-api/ws-provider, @polkadot-labs/hdkd, @polkadot-labs/hdkd-helpers,
-@prettier/parse-srcset, @rolldown/binding-linux-x64-gnu, @rolldown/pluginutils, @rollup/plugin-babel,
-@rollup/plugin-node-resolve, @rollup/plugin-replace, @rollup/plugin-terser, @rollup/pluginutils,
-@rollup/rollup-linux-x64-gnu, @rx-state/core, @scure/base, @scure/bip39, @scure/sr25519, @sec-ant/readable-stream,
-@sentry/browser, @sentry/browser-utils, @sentry/bundler-plugins, @sentry/conventions, @sentry/core, @sentry/feedback,
-@sentry/replay, @sentry/replay-canvas, @sentry/vite-plugin, @shikijs/core, @shikijs/engine-javascript,
-@shikijs/engine-oniguruma, @shikijs/langs, @shikijs/primitive, @shikijs/themes, @shikijs/types,
-@shikijs/vscode-textmate, @sindresorhus/merge-streams, @solidjs/babel-plugin, @solidjs/compiler,
-@solidjs/compiler-linux-x64-gnu, @solidjs/compiler-wasm32-wasi, @solidjs/signals, @solidjs/testing-library,
-@solidjs/vite-plugin, @solidjs/web, @storybook/addon-a11y, @storybook/addon-docs, @storybook/addon-vitest,
-@storybook/builder-vite, @storybook/global, @storybook/icons, @storybook/react-dom-shim, @testing-library/dom,
-@testing-library/jest-dom, @testing-library/user-event, @turbo/linux-64, @tybys/wasm-util, @types/aria-query,
-@types/babel__core, @types/babel__generator, @types/babel__template, @types/babel__traverse, @types/bun, @types/chai,
-@types/deep-eql, @types/esrecurse, @types/estree, @types/estree-jsx, @types/hast, @types/json-schema, @types/mdast,
-@types/mdx, @types/nlcst, @types/node, @types/normalize-package-data, @types/qrcode, @types/react, @types/resolve,
-@types/trusted-types, @types/unist, @types/whatwg-mimetype, @types/ws, @typescript-eslint/eslint-plugin,
-@typescript-eslint/parser, @typescript-eslint/project-service, @typescript-eslint/scope-manager,
-@typescript-eslint/tsconfig-utils, @typescript-eslint/type-utils, @typescript-eslint/types,
-@typescript-eslint/typescript-estree, @typescript-eslint/utils, @typescript-eslint/visitor-keys, @vitest/browser,
-@vitest/browser-playwright, @vitest/expect, @vitest/mocker, @vitest/pretty-format, @vitest/spy, @vitest/ui,
-@vitest/utils, @volar/kit, @volar/language-core, @volar/language-server, @volar/language-service, @volar/source-map,
-@volar/typescript, @vscode/emmet-helper, @vscode/l10n, @webcontainer/env, acorn, acorn-jsx, agent-base, ajv,
-ajv-draft-04, ajv-i18n, am-i-vibing, ansi-regex, ansi-styles, array-buffer-byte-length, arraybuffer.prototype.slice,
-assertion-error, ast-types, astro, astro-eslint-parser, async, async-function, available-typed-arrays,
-babel-plugin-polyfill-corejs2, babel-plugin-polyfill-corejs3, babel-plugin-polyfill-regenerator, bail, balanced-match,
-brace-expansion, browserslist, buffer-from, buffer-image-size, bun-types, bundle-name, cacheable, call-bind,
-call-bind-apply-helpers, call-bound, camelcase, ccount, chai, chalk, character-entities-html4,
+@jridgewell/sourcemap-codec, @jridgewell/trace-mapping, @keystonehq/alias-sampling, @keyv/bigmap, @keyv/serialize,
+@mdx-js/react, @napi-rs/lzma-linux-x64-gnu, @napi-rs/wasm-runtime, @ngraveio/bc-ur, @noble/ciphers, @noble/curves,
+@noble/hashes, @oslojs/encoding, @oxc-parser/binding-linux-x64-gnu, @oxc-project/types,
+@oxc-resolver/binding-linux-x64-gnu, @pkgr/core, @polka/url, @polkadot-api/cli, @polkadot-api/codegen,
+@polkadot-api/ink-contracts, @polkadot-api/json-rpc-provider, @polkadot-api/json-rpc-provider-proxy,
+@polkadot-api/known-chains, @polkadot-api/logs-provider, @polkadot-api/merkleize-metadata,
+@polkadot-api/metadata-builders, @polkadot-api/metadata-compatibility, @polkadot-api/observable-client,
+@polkadot-api/pjs-signer, @polkadot-api/raw-client, @polkadot-api/raw-tx-creator, @polkadot-api/signers-common,
+@polkadot-api/sm-provider, @polkadot-api/smoldot, @polkadot-api/substrate-bindings, @polkadot-api/substrate-client,
+@polkadot-api/tx-creator, @polkadot-api/utils, @polkadot-api/wasm-executor, @polkadot-api/ws-middleware,
+@polkadot-api/ws-provider, @polkadot-labs/hdkd, @polkadot-labs/hdkd-helpers, @prettier/parse-srcset,
+@rolldown/binding-linux-x64-gnu, @rolldown/pluginutils, @rollup/plugin-babel, @rollup/plugin-node-resolve,
+@rollup/plugin-replace, @rollup/plugin-terser, @rollup/pluginutils, @rollup/rollup-linux-x64-gnu, @rx-state/core,
+@scure/base, @scure/bip39, @scure/sr25519, @sec-ant/readable-stream, @sentry/browser, @sentry/browser-utils,
+@sentry/bundler-plugins, @sentry/conventions, @sentry/core, @sentry/feedback, @sentry/replay, @sentry/replay-canvas,
+@sentry/vite-plugin, @shikijs/core, @shikijs/engine-javascript, @shikijs/engine-oniguruma, @shikijs/langs,
+@shikijs/primitive, @shikijs/themes, @shikijs/types, @shikijs/vscode-textmate, @sindresorhus/merge-streams,
+@solidjs/babel-plugin, @solidjs/compiler, @solidjs/compiler-linux-x64-gnu, @solidjs/compiler-wasm32-wasi,
+@solidjs/signals, @solidjs/testing-library, @solidjs/vite-plugin, @solidjs/web, @storybook/addon-a11y,
+@storybook/addon-docs, @storybook/addon-vitest, @storybook/builder-vite, @storybook/global, @storybook/icons,
+@storybook/react-dom-shim, @testing-library/dom, @testing-library/jest-dom, @testing-library/user-event,
+@turbo/linux-64, @tybys/wasm-util, @types/aria-query, @types/babel__core, @types/babel__generator,
+@types/babel__template, @types/babel__traverse, @types/bun, @types/chai, @types/deep-eql, @types/esrecurse,
+@types/estree, @types/estree-jsx, @types/hast, @types/json-schema, @types/mdast, @types/mdx, @types/nlcst, @types/node,
+@types/normalize-package-data, @types/qrcode, @types/react, @types/resolve, @types/trusted-types, @types/unist,
+@types/whatwg-mimetype, @types/ws, @typescript-eslint/eslint-plugin, @typescript-eslint/parser,
+@typescript-eslint/project-service, @typescript-eslint/scope-manager, @typescript-eslint/tsconfig-utils,
+@typescript-eslint/type-utils, @typescript-eslint/types, @typescript-eslint/typescript-estree, @typescript-eslint/utils,
+@typescript-eslint/visitor-keys, @vitest/browser, @vitest/browser-playwright, @vitest/expect, @vitest/mocker,
+@vitest/pretty-format, @vitest/spy, @vitest/ui, @vitest/utils, @volar/kit, @volar/language-core, @volar/language-server,
+@volar/language-service, @volar/source-map, @volar/typescript, @vscode/emmet-helper, @vscode/l10n, @webcontainer/env,
+@zxing/browser, @zxing/library, acorn, acorn-jsx, agent-base, ajv, ajv-draft-04, ajv-i18n, am-i-vibing, ansi-regex,
+ansi-styles, array-buffer-byte-length, arraybuffer.prototype.slice, assert, assertion-error, ast-types, astro,
+astro-eslint-parser, async, async-function, available-typed-arrays, babel-plugin-polyfill-corejs2,
+babel-plugin-polyfill-corejs3, babel-plugin-polyfill-regenerator, bail, balanced-match, base64-js, bignumber.js,
+brace-expansion, browserslist, buffer, buffer-from, buffer-image-size, bun-types, bundle-name, cacheable, call-bind,
+call-bind-apply-helpers, call-bound, camelcase, cbor-sync, ccount, chai, chalk, character-entities-html4,
 character-entities-legacy, check-error, chokidar, ci-info, cli-cursor, cli-spinners, clsx, color-convert, color-name,
-comma-separated-tokens, commander, common-tags, convert-source-map, cookie, cookie-es, core-js-compat, cross-spawn,
+comma-separated-tokens, commander, common-tags, convert-source-map, cookie, cookie-es, core-js-compat, crc, cross-spawn,
 crossws, crypto-random-string, css-tree, css.escape, cssesc, csso, csstype, data-view-buffer, data-view-byte-length,
 data-view-byte-offset, debug, decamelize, deep-eql, deep-is, deepmerge, default-browser, default-browser-id,
 define-data-property, define-lazy-prop, define-properties, defu, dequal, destr, detect-indent, devalue, devlop,
@@ -115,53 +117,54 @@ function.prototype.name, functions-have-names, generator-function, gensync, get-
 get-proto, get-stream, get-symbol-description, get-tsconfig, globals, globalthis, gopd, h3, happy-dom, has-bigints,
 has-property-descriptors, has-proto, has-symbols, has-tostringtag, hashery, hasown, hast-util-to-html,
 hast-util-whitespace, hookified, html-entities, html-escaper, html-tags, html-void-elements, https-proxy-agent, husky,
-ignore, imurmurhash, indent-string, index-to-position, inline-style-parser, internal-slot, iron-webcrypto,
+ignore, imurmurhash, indent-string, index-to-position, inline-style-parser, internal-slot, iron-webcrypto, is-arguments,
 is-array-buffer, is-async-function, is-bigint, is-boolean-object, is-callable, is-core-module, is-data-view,
 is-date-object, is-docker, is-document.all, is-extglob, is-finalizationregistry, is-fullwidth-code-point,
-is-generator-function, is-glob, is-html, is-inside-container, is-interactive, is-map, is-module, is-negative-zero,
-is-number-object, is-obj, is-plain-obj, is-regex, is-regexp, is-set, is-shared-array-buffer, is-stream, is-string,
-is-symbol, is-typed-array, is-unicode-supported, is-weakmap, is-weakref, is-weakset, is-what, is-wsl, isarray, js-sha3,
-js-tokens, jsesc, json-schema-traverse, json-stable-stringify-without-jsonify, json5, jsonc-parser, jsonfile,
-jsonpointer, kebab-case, keyv, kleur, known-css-properties, leven, levn, lint-staged, locate-path, lodash.debounce,
-log-symbols, loupe, lz-string, magic-string, magicast, math-intrinsics, mdast-util-to-hast, merge-anything,
-micromark-util-character, micromark-util-encode, micromark-util-sanitize-uri, micromark-util-symbol,
-micromark-util-types, mimic-function, min-indent, mrmime, ms, muggle-string, nanoevents, nanoid, natural-compare,
-neotraverse, neverthrow, nlcst-to-string, node-fetch, node-fetch-native, node-mock-http, node-releases, normalize-path,
-npm-run-path, object-inspect, object-keys, object.assign, obug, ofetch, ohash, onetime, oniguruma-parser,
-oniguruma-to-es, open, optionator, ora, own-keys, oxc-parser, oxc-resolver, p-limit, p-locate, p-queue, p-timeout,
-p-try, package-manager-detector, parse-json, parse-ms, parse5, path-browserify, path-exists, path-key, path-parse,
-pathe, pathval, picomatch, pngjs, polkadot-api, possible-typed-array-names, postcss, postcss-selector-parser,
-prelude-ls, prettier, prettier-plugin-astro, pretty-bytes, pretty-format, pretty-ms, prismjs, process-ancestry,
-progress, property-information, proxy-from-env, punycode, qified, qrcode, radix3, react, react-dom, react-is, read-pkg,
-readdirp, recast, redent, reflect.getprototypeof, regenerate, regenerate-unicode-properties, regex, regex-recursion,
-regex-utilities, regexp.prototype.flags, regexpu-core, regjsgen, request-light, require-directory, require-from-string,
-resolve, resolve-pkg-maps, restore-cursor, retext-smartypants, rolldown, rollup, rollup-plugin-esbuild, run-applescript,
-s.color, safe-array-concat, safe-push-apply, safe-regex-test, sass-formatter, satteri, scale-ts, scheduler, seroval,
-seroval-plugins, set-function-length, set-function-name, set-proto, shebang-command, shebang-regex, shiki, side-channel,
-side-channel-list, side-channel-map, side-channel-weakmap, sirv, sisteransi, smob, solid-js, sort-keys,
-source-map-support, space-separated-tokens, spdx-expression-parse, std-env, stdin-discarder, stop-iteration-iterator,
-storybook, storybook-solidjs-vite, string-argv, string-width, string.prototype.matchall, string.prototype.trim,
-string.prototype.trimend, string.prototype.trimstart, stringify-entities, strip-ansi, strip-comments,
-strip-final-newline, strip-indent, style-to-object, suf-log, supports-preserve-symlinks-flag, svgo, synckit, tagged-tag,
-temp-dir, tempy, tiny-inflate, tiny-invariant, tinybench, tinyclip, tinyexec, tinyglobby, tinyrainbow, tinyspy,
-totalist, tr46, trim-lines, trough, ts-api-utils, ts-dedent, tsc-prog, turbo, type-check, typed-array-buffer,
+is-generator-function, is-glob, is-html, is-inside-container, is-interactive, is-map, is-module, is-nan,
+is-negative-zero, is-number-object, is-obj, is-plain-obj, is-regex, is-regexp, is-set, is-shared-array-buffer,
+is-stream, is-string, is-symbol, is-typed-array, is-unicode-supported, is-weakmap, is-weakref, is-weakset, is-what,
+is-wsl, isarray, js-sha3, js-tokens, jsesc, json-schema-traverse, json-stable-stringify-without-jsonify, json5,
+jsonc-parser, jsonfile, jsonpointer, kebab-case, keyv, kleur, known-css-properties, leven, levn, lint-staged,
+locate-path, lodash.debounce, log-symbols, loupe, lz-string, magic-string, magicast, math-intrinsics,
+mdast-util-to-hast, merge-anything, micromark-util-character, micromark-util-encode, micromark-util-sanitize-uri,
+micromark-util-symbol, micromark-util-types, mimic-function, min-indent, mrmime, ms, muggle-string, nanoevents, nanoid,
+natural-compare, neotraverse, neverthrow, nlcst-to-string, node-fetch, node-fetch-native, node-mock-http, node-releases,
+normalize-path, npm-run-path, object-inspect, object-is, object-keys, object.assign, obug, ofetch, ohash, onetime,
+oniguruma-parser, oniguruma-to-es, open, optionator, ora, own-keys, oxc-parser, oxc-resolver, p-limit, p-locate,
+p-queue, p-timeout, p-try, package-manager-detector, parse-json, parse-ms, parse5, path-browserify, path-exists,
+path-key, path-parse, pathe, pathval, picomatch, pngjs, polkadot-api, possible-typed-array-names, postcss,
+postcss-selector-parser, prelude-ls, prettier, prettier-plugin-astro, pretty-bytes, pretty-format, pretty-ms, prismjs,
+process-ancestry, progress, property-information, proxy-from-env, punycode, qified, qrcode, radix3, react, react-dom,
+react-is, read-pkg, readdirp, recast, redent, reflect.getprototypeof, regenerate, regenerate-unicode-properties, regex,
+regex-recursion, regex-utilities, regexp.prototype.flags, regexpu-core, regjsgen, request-light, require-directory,
+require-from-string, resolve, resolve-pkg-maps, restore-cursor, retext-smartypants, rolldown, rollup,
+rollup-plugin-esbuild, run-applescript, s.color, safe-array-concat, safe-buffer, safe-push-apply, safe-regex-test,
+sass-formatter, satteri, scale-ts, scheduler, seroval, seroval-plugins, set-function-length, set-function-name,
+set-proto, shebang-command, shebang-regex, shiki, side-channel, side-channel-list, side-channel-map,
+side-channel-weakmap, sirv, sisteransi, smob, solid-js, sort-keys, source-map-support, space-separated-tokens,
+spdx-expression-parse, std-env, stdin-discarder, stop-iteration-iterator, storybook, storybook-solidjs-vite,
+string-argv, string-width, string.prototype.matchall, string.prototype.trim, string.prototype.trimend,
+string.prototype.trimstart, stringify-entities, strip-ansi, strip-comments, strip-final-newline, strip-indent,
+style-to-object, suf-log, supports-preserve-symlinks-flag, svgo, synckit, tagged-tag, temp-dir, tempy, tiny-inflate,
+tiny-invariant, tinybench, tinyclip, tinyexec, tinyglobby, tinyrainbow, tinyspy, to-buffer, totalist, tr46, trim-lines,
+trough, ts-api-utils, ts-custom-error, ts-dedent, tsc-prog, turbo, type-check, typed-array-buffer,
 typed-array-byte-length, typed-array-byte-offset, typed-array-length, typesafe-path, typescript-auto-import-cache,
 typescript-eslint, ufo, ultrahtml, unbox-primitive, uncrypto, undici, undici-types,
 unicode-canonical-property-names-ecmascript, unicode-match-property-ecmascript, unicode-match-property-value-ecmascript,
 unicode-property-aliases-ecmascript, unicorn-magic, unified, unifont, unique-string, unist-util-is, unist-util-position,
 unist-util-stringify-position, unist-util-visit, unist-util-visit-parents, universalify, unplugin, unplugin-utils,
-unstorage, upath, update-browserslist-db, use-sync-external-store, util-deprecate, varint, verkit, vfile, vfile-message,
-vite, vite-plugin-pwa, vite-plugin-solid, vite-plugin-wasm, vitefu, vitest, volar-service-css, volar-service-emmet,
-volar-service-html, volar-service-prettier, volar-service-typescript, volar-service-typescript-twoslash-queries,
-volar-service-yaml, vscode-css-languageservice, vscode-html-languageservice, vscode-json-languageservice,
-vscode-jsonrpc, vscode-languageserver, vscode-languageserver-protocol, vscode-languageserver-textdocument,
-vscode-languageserver-types, vscode-nls, vscode-uri, webpack-virtual-modules, whatwg-mimetype, whatwg-url,
-which-boxed-primitive, which-builtin-type, which-collection, which-command, which-typed-array, why-is-node-running,
-word-wrap, workbox-background-sync, workbox-broadcast-update, workbox-build, workbox-cacheable-response, workbox-core,
-workbox-expiration, workbox-google-analytics, workbox-navigation-preload, workbox-precaching, workbox-range-requests,
-workbox-recipes, workbox-routing, workbox-strategies, workbox-streams, workbox-sw, workbox-window, wrap-ansi,
-write-json-file, write-package, ws, wsl-utils, xxhash-wasm, yaml-language-server, yargs, yocto-queue, yoctocolors, zod,
-zwitch
+unstorage, upath, update-browserslist-db, use-sync-external-store, util, util-deprecate, varint, verkit, vfile,
+vfile-message, vite, vite-plugin-pwa, vite-plugin-solid, vite-plugin-wasm, vitefu, vitest, volar-service-css,
+volar-service-emmet, volar-service-html, volar-service-prettier, volar-service-typescript,
+volar-service-typescript-twoslash-queries, volar-service-yaml, vscode-css-languageservice, vscode-html-languageservice,
+vscode-json-languageservice, vscode-jsonrpc, vscode-languageserver, vscode-languageserver-protocol,
+vscode-languageserver-textdocument, vscode-languageserver-types, vscode-nls, vscode-uri, webpack-virtual-modules,
+whatwg-mimetype, whatwg-url, which-boxed-primitive, which-builtin-type, which-collection, which-command,
+which-typed-array, why-is-node-running, word-wrap, workbox-background-sync, workbox-broadcast-update, workbox-build,
+workbox-cacheable-response, workbox-core, workbox-expiration, workbox-google-analytics, workbox-navigation-preload,
+workbox-precaching, workbox-range-requests, workbox-recipes, workbox-routing, workbox-strategies, workbox-streams,
+workbox-sw, workbox-window, wrap-ansi, write-json-file, write-package, ws, wsl-utils, xxhash-wasm, yaml-language-server,
+yargs, yocto-queue, yoctocolors, zod, zwitch
 
 ## Apache-2.0
 
@@ -170,7 +173,7 @@ zwitch
 @img/sharp-linux-x64, @novasamatech/host-substrate-chain-connection, @novasamatech/storage-adapter, @playwright/test,
 @trickfilm400/rollup-plugin-off-main-thread, @typescript/typescript6, aria-query, axobject-query,
 baseline-browser-mapping, cborg, detect-libc, ejs, eslint-visitor-keys, expect-type, fake-indexeddb, filelist,
-human-signals, jake, jsqr, playwright, playwright-core, rxjs, sharp, spdx-correct, typescript,
+human-signals, jake, jsbi, jsqr, playwright, playwright-core, rxjs, sharp, spdx-correct, typescript,
 validate-npm-package-license, web-vitals
 
 ## Apache-2.0 OR MIT
@@ -182,12 +185,20 @@ uint8arraylist, uint8arrays
 
 @parity/truapi-provider
 
+## Unlicense OR Apache-2.0
+
+@zxing/text-encoding
+
+## MIT AND BSD-3-Clause
+
+sha.js
+
 ## ISC
 
 @emmetio/html-matcher, @ungap/structured-clone, anymatch, at-least-node, boolbase, cliui, electron-to-chromium, flatted,
 foreground-child, get-caller-file, get-own-enumerable-property-symbols, github-slugger, glob-parent, graceful-fs,
-hosted-git-info, idb, isexe, lru-cache, minimatch, piccolore, picocolors, require-main-filename, semver, set-blocking,
-signal-exit, simple-statistics, which, which-module, write-file-atomic, y18n, yallist, yaml, yargs-parser
+hosted-git-info, idb, inherits, isexe, lru-cache, minimatch, piccolore, picocolors, require-main-filename, semver,
+set-blocking, signal-exit, simple-statistics, which, which-module, write-file-atomic, y18n, yallist, yaml, yargs-parser
 
 ## BSD-2-Clause
 
@@ -197,7 +208,7 @@ uri-js, webidl-conversions
 
 ## BSD-3-Clause
 
-deepmerge-ts, diff, esquery, fast-uri, serialize-javascript, smol-toml, source-map, source-map-js
+deepmerge-ts, diff, esquery, fast-uri, ieee754, serialize-javascript, smol-toml, source-map, source-map-js
 
 ## 0BSD
 
@@ -234,7 +245,7 @@ smoldot
 
 ## MPL-2.0
 
-axe-core, lightningcss, lightningcss-linux-x64-gnu
+@parity/polkavm-browser-runtime, axe-core, lightningcss, lightningcss-linux-x64-gnu
 
 ## FSL-1.1-MIT
 

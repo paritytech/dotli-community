@@ -3,7 +3,8 @@
 
 .stack {
   position: fixed;
-  right: var(--sp-4);
+  /* Clear the notch, and the home indicator or the phone bar below. */
+  right: calc(var(--sp-4) + var(--safe-right));
   bottom: calc(var(--sp-4) + var(--content-bottom));
   /* Under the header (1000), scrims, popovers and modals (1400 up), the docked chat (900) and the debug
      panel (950), so a toast never covers a prompt or the chat's composer. */
@@ -16,7 +17,7 @@
 /* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .stack {
-    left: var(--sp-4);
+    left: calc(var(--sp-4) + var(--safe-left));
     width: auto;
   }
 }

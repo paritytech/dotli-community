@@ -16,6 +16,20 @@
 }
 .header[data-dock='right'] {
   grid-area: header;
+  /* The right column is narrow: the runtime badge needs the counts' room. */
+  gap: 4px;
+  padding: 0 6px;
+}
+.header[data-dock='right'] .counts {
+  display: none;
+}
+.header[data-dock='right'] .btn {
+  padding-right: 6px;
+  padding-left: 6px;
+}
+.header[data-dock='right'] .icon {
+  padding-right: 5px;
+  padding-left: 5px;
 }
 
 .title,

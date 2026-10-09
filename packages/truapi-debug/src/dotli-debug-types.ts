@@ -6,6 +6,37 @@
 export type DotliDebugEvent =
   BootEvent | ResolveEvent | RenderEvent | BridgeEvent | FailoverEvent | MainEvent | SandboxEvent | ChainEvent;
 
+/** Latest PolkaVM runtime diagnostics reported by the product sandbox.
+ * Snapshots replace one another in the debug panel instead of entering the
+ * event timeline, which keeps continuously sampled FPS data out of the event
+ * ring buffer. */
+export interface PolkaVmDebugSnapshot {
+  backend: 'compiler' | 'interpreter' | 'starting';
+  /** Present only when compiler startup failed, not for a forced interpreter. */
+  compilerFallbackReason?: string;
+  compilerFallbackStage?: string;
+  cacheHit: boolean;
+  translationMs: number;
+  compilationMs: number;
+  startupMs: number;
+  startupStage: string;
+  firstFrameMs: number;
+  translatedWasmBytes: number;
+  frames: number;
+  fps: number;
+  updates: number;
+  updateP50Ms: number;
+  updateP95Ms: number;
+  updateMaxMs: number;
+  audioChunks: number;
+  audioSamples: number;
+}
+
+export interface PolkaVmDebugMessage {
+  type: 'dotli:polkavm-metrics';
+  metrics: PolkaVmDebugSnapshot;
+}
+
 /**
  * Forwarded from the sandbox iframe as `postMessage({ type: "dotli:debug-event", event })`.
  * Without them the sandbox's content fetch is a silent gap on the host.
@@ -201,13 +232,13 @@ export type BootEvent =
     }
   | {
       layer: 'boot';
-      event: 'cid_cache_checked';
+      event: 'installed_executable_cache_checked';
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
         hit: boolean;
-        cid?: string;
+        contenthash?: string;
       };
     }
   | {

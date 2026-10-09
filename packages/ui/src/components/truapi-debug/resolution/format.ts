@@ -85,9 +85,9 @@ export function summaryFacts(model: ResolutionModel): Fact[] {
       hint: 'The best rate seen between two byte samples, taken about a second apart. That makes it a one-second average, not a true peak.',
     },
     {
-      key: 'CID cache',
-      value: cacheValue(s.cidCache),
-      hint: 'Whether the content id for this name was already saved from an earlier visit, letting the load skip the chain lookup entirely. “Skipped” means the cache is turned off in settings.',
+      key: 'executable cache',
+      value: cacheValue(s.executableCache),
+      hint: 'Whether the executable manifest and contenthash for this name were saved from an earlier visit. A hit still requires chain revalidation before reuse. “Skipped” means the cache is turned off in settings.',
     },
     {
       key: 'archive cache',

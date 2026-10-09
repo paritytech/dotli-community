@@ -1,7 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The one "dotli" IndexedDB connection, pre-opened during HTML parse by an inline script (`window.__dotliDb`).
+// dot.li shared IndexedDB connection.
+//
+// Single "dotli" database for smoldot and host application state.
+// Pre-opened during HTML parse via an inline <script> (window.__dotliDb).
+//
+// The pre-opened-handle path does not silently fall back to a fresh open
+// when it rejects. A silent fallback would hide quota errors,
+// upgrade-blocked, or origin-denied situations from operators. We log and
+// capture the underlying rejection before falling back, so the warm-start
+// failure is visible even though we still return a working DB.
 
 import { log } from '@dotli/shared';
 import { captureException, recordExpected } from '@dotli/metrics';
@@ -13,7 +22,7 @@ declare global {
 }
 
 const DB_NAME = 'dotli';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const BLOCKED_MESSAGE = 'Failed to open dotli DB: blocked by another tab';
 
@@ -27,8 +36,9 @@ function openFresh(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains('cids')) {
-        db.createObjectStore('cids', { keyPath: 'label' });
+      // v6: replace the legacy CID-only store with scoped installed executables.
+      if (db.objectStoreNames.contains('cids')) {
+        db.deleteObjectStore('cids');
       }
       if (!db.objectStoreNames.contains('chains')) {
         db.createObjectStore('chains', { keyPath: 'chain' });

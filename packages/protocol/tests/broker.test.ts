@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -19,7 +19,7 @@ function createManager(createTransport: ChainPoolOptions['createTransport']): Ch
 interface ProviderHarness {
   provider: JsonRpcProvider;
   sent: JsonRpcRequest[];
-  disconnect: ReturnType<typeof vi.fn>;
+  disconnect: Mock;
   emit: (message: JsonRpcMessage) => void;
 }
 
@@ -91,16 +91,16 @@ describe('chain pool brokering', () => {
       JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
-        method: 'chainHead_v1_header',
-        params: ['token-a', '0xabc'],
+        method: 'chainSpec_v1_genesisHash',
+        params: [],
       }),
     );
     connectionB?.send(
       JSON.stringify({
         jsonrpc: '2.0',
         id: 7,
-        method: 'chainHead_v1_header',
-        params: ['token-b', '0xdef'],
+        method: 'chainSpec_v1_genesisHash',
+        params: [],
       }),
     );
 
@@ -113,7 +113,6 @@ describe('chain pool brokering', () => {
     expect(messagesA).toEqual([JSON.stringify({ jsonrpc: '2.0', id: 1, result: 'header-a' })]);
     expect(messagesB).toEqual([JSON.stringify({ jsonrpc: '2.0', id: 7, result: 'header-b' })]);
   });
-
   it('rewrites subscription tokens per client and routes follow events', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
@@ -205,6 +204,67 @@ describe('chain pool brokering', () => {
 
     manager.disconnectAll();
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes legacy extrinsic updates only to their owner and releases the watch', () => {
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote('people', 'sender', message => messagesA.push(message));
+    manager.connectRemote('people', 'receiver', message => messagesB.push(message));
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'author_submitAndWatchExtrinsic',
+        params: ['0x0102'],
+      }),
+    );
+    const upstream = harness.sent[0];
+    if (upstream?.id === undefined) {
+      throw new Error('Expected the upstream watch request');
+    }
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'author_extrinsicUpdate',
+      params: { subscription: 'up-legacy', result: 'ready' },
+    });
+    harness.emit({ jsonrpc: '2.0', id: upstream.id, result: 'up-legacy' });
+    const response: unknown = JSON.parse(messagesA[0] ?? '{}');
+    if (
+      response === null ||
+      typeof response !== 'object' ||
+      !('result' in response) ||
+      typeof response.result !== 'string'
+    ) {
+      throw new Error('Expected a subscription token');
+    }
+    const localToken = response.result;
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'author_extrinsicUpdate',
+      params: { subscription: 'up-legacy', result: { inBlock: '0xabc' } },
+    });
+    expect(messagesA.slice(1).map((message): unknown => JSON.parse(message))).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'author_extrinsicUpdate',
+        params: { subscription: localToken, result: 'ready' },
+      },
+      {
+        jsonrpc: '2.0',
+        method: 'author_extrinsicUpdate',
+        params: { subscription: localToken, result: { inBlock: '0xabc' } },
+      },
+    ]);
+    expect(messagesB).toEqual([]);
+    connectionA?.disconnect();
+    expect(harness.sent[1]).toMatchObject({
+      method: 'author_unwatchExtrinsic',
+      params: ['up-legacy'],
+    });
+    manager.disconnectAll();
   });
 
   it('releases transactionWatch subscriptions on disconnect', () => {
@@ -801,15 +861,15 @@ describe('chain pool brokering', () => {
     localConnection?.send({
       jsonrpc: '2.0',
       id: 'local-1',
-      method: 'chainHead_v1_header',
-      params: ['token', '0xabc'],
+      method: 'chainSpec_v1_genesisHash',
+      params: [],
     });
     remoteConnection?.send(
       JSON.stringify({
         jsonrpc: '2.0',
         id: 'remote-1',
-        method: 'chainHead_v1_header',
-        params: ['token', '0xdef'],
+        method: 'chainSpec_v1_genesisHash',
+        params: [],
       }),
     );
 
@@ -836,7 +896,6 @@ describe('chain pool brokering', () => {
       }),
     ]);
   });
-
   it('isolates concurrent statement-store subscriptions with duplicate client ids', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
@@ -953,15 +1012,23 @@ describe('chain pool brokering', () => {
         result: { event: 'newBlock', blockHash: '0xblock' },
       },
     });
-    // Finalizing past it leaves the sessions as its only holders.
-    harness.emit({
-      jsonrpc: '2.0',
-      method: 'chainHead_v1_followEvent',
-      params: {
-        subscription: 'up-a',
-        result: { event: 'finalized', finalizedBlockHashes: ['0xblock', '0xnext'], prunedBlockHashes: [] },
+    // Current forks belong to the replay snapshot too. Finalize past this
+    // block before checking that the last consumer can release its history.
+    for (const result of [
+      { event: 'newBlock', blockHash: '0xnext', parentBlockHash: '0xblock' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xnext' },
+      {
+        event: 'finalized',
+        finalizedBlockHashes: ['0xblock', '0xnext'],
+        prunedBlockHashes: [],
       },
-    });
+    ]) {
+      harness.emit({
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: 'up-a', result },
+      });
+    }
 
     // Still held by the second tab, so nothing is forwarded.
     connectionA?.send(
@@ -1041,15 +1108,21 @@ describe('chain pool brokering', () => {
         result: { event: 'newBlock', blockHash: '0xblock' },
       },
     });
-    // Finalizing past it leaves the sessions as its only holders.
-    harness.emit({
-      jsonrpc: '2.0',
-      method: 'chainHead_v1_followEvent',
-      params: {
-        subscription: 'up-a',
-        result: { event: 'finalized', finalizedBlockHashes: ['0xblock', '0xnext'], prunedBlockHashes: [] },
+    for (const result of [
+      { event: 'newBlock', blockHash: '0xnext', parentBlockHash: '0xblock' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xnext' },
+      {
+        event: 'finalized',
+        finalizedBlockHashes: ['0xblock', '0xnext'],
+        prunedBlockHashes: [],
       },
-    });
+    ]) {
+      harness.emit({
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: 'up-a', result },
+      });
+    }
 
     // A still holds the block, so nothing is forwarded.
     connectionB?.send(
