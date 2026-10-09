@@ -11,6 +11,7 @@ import { ERRORS } from './errors.js';
 import type { DotliAuthState } from './host-callbacks/AuthState.js';
 import { authStore, setLoggedIn } from './state/auth.js';
 import { resetAuthModal, updateAuthModal } from './state/auth-modal.js';
+import { isExperimentalWalletActive } from './host-callbacks/SessionStore.js';
 
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
@@ -34,10 +35,12 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
   });
 
   setLoggedIn(false);
+  document.documentElement.classList.toggle('experimental-wallet-active', isExperimentalWalletActive());
 }
 
 /** `Disconnected` only updates the session, so an unrelated disconnect never closes an active pairing. */
 function applyAuthState(state: DotliAuthState): void {
+  document.documentElement.classList.toggle('experimental-wallet-active', isExperimentalWalletActive());
   // The tag and failure kind only: a failure's reason can carry wallet text.
   log.event('auth state', {
     flow: 'wallet',
@@ -48,6 +51,10 @@ function applyAuthState(state: DotliAuthState): void {
     case 'Restoring':
       break;
     case 'Disconnected':
+      setLoggedIn(false);
+      break;
+    case 'WalletUnavailable':
+      closeAuthModal({ skipTruapiCancel: true });
       setLoggedIn(false);
       break;
     case 'Pairing':
@@ -193,6 +200,10 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
 }
 
 export function startLogin(): void {
+  if (isExperimentalWalletActive()) {
+    window.dispatchEvent(new Event('dotli:wallet-open'));
+    return;
+  }
   if (openAuthModal()) {
     requestTruapiLogin();
   }

@@ -7,7 +7,10 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { log } from '@dotli/shared';
-import { createBootFlowId, reportBootFailure, startHost } from './startup.js';
+import { DEBUG } from '@dotli/config';
+import { loadTruapiDebugMount } from '@dotli/ui';
+import { loadDotliDebugBus } from '@dotli/truapi-debug';
+import { createBootFlowId, reportBootFailure, resolveTruapiDebugMode, startHost } from './startup.js';
 
 async function main(): Promise<void> {
   // No nested dot.li.
@@ -15,7 +18,21 @@ async function main(): Promise<void> {
     return;
   }
 
-  await startHost(createBootFlowId());
+  const debugMode = resolveTruapiDebugMode();
+  const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
+  if (debugMode.enabled) {
+    enableDotliDebugBuffering();
+  }
+  const { bridgeModule } = await startHost(createBootFlowId(), emitDotliDebugEvent);
+  if (debugMode.enabled) {
+    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
+      setupTruapiDebugPanel({
+        startCollapsed: !debugMode.explicit,
+        ...(DEBUG ? { experimentalWallet: bridgeModule.experimentalWalletControls } : {}),
+      });
+      log.event('TrUAPI debug panel enabled', { flow: 'boot' });
+    });
+  }
   log.event('Route: landing page', { flow: 'boot' });
 }
 

@@ -8,7 +8,9 @@
 //   which already run inside Solid's update pass and would re-enter it.
 // - The detail pane rebuilds only on user actions (`detailRevision`), never on traffic.
 
-import { createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, flush, onCleanup, onSettled, Show, untrack } from 'solid-js';
+import { DEBUG } from '@dotli/config';
+import type { ExperimentalWalletControls } from '@dotli/truapi-debug';
 import type { JSX } from '@solidjs/web';
 import {
   readStoredDock,
@@ -41,6 +43,8 @@ import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
+import { createWalletController } from './wallet/controller.js';
+import { WalletView } from './wallet/WalletView.js';
 import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
@@ -145,6 +149,7 @@ export function Panel(props: {
   /** Kept apart from the ring buffer so a busy session cannot evict the load the Resolution view draws. */
   resolution: ResolutionRecorder;
   startCollapsed: boolean;
+  wallet?: ExperimentalWalletControls | undefined;
   loadArchive: ArchiveLoader;
 }): JSX.Element {
   const store = untrack(() => props.store);
@@ -387,6 +392,41 @@ export function Panel(props: {
     return buildExport(events, meta);
   };
 
+  // Like ResolutionView, the Wallet view's DOM is owned by this Solid root.
+  // Keep the safety-sensitive controller across tab swaps; visibility clears
+  // secrets and invalidates late reads, while disposal removes all listeners.
+  const wallet = untrack(() => (DEBUG ? props.wallet : undefined));
+  const walletController = wallet === undefined ? undefined : createWalletController(wallet, store);
+  const openWallet = (): void => {
+    if (walletController === undefined) {
+      return;
+    }
+    if (collapsed()) {
+      if (panelEl !== undefined && expandedHeight !== '') {
+        panelEl.style.height = expandedHeight;
+      }
+      commit(() => {
+        setCollapsed(false);
+        setCollapsedCounts(null);
+        refreshSnapshot();
+      });
+    }
+    selectView('wallet');
+    refit();
+    walletController.focus();
+  };
+  createEffect(
+    () => view() === 'wallet' && !collapsed(),
+    visible => walletController?.setVisible(visible),
+  );
+  if (walletController !== undefined) {
+    window.addEventListener('dotli:wallet-open', openWallet);
+  }
+  onCleanup(() => {
+    window.removeEventListener('dotli:wallet-open', openWallet);
+    walletController?.dispose();
+  });
+
   return (
     <div
       id={PANEL_ID}
@@ -401,6 +441,15 @@ export function Panel(props: {
     >
       <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
+        wallet={
+          walletController === undefined
+            ? undefined
+            : {
+                name: walletController.ui().entryName,
+                expanded: walletController.ui().opened,
+                onOpen: openWallet,
+              }
+        }
         counts={counts()}
         paused={paused()}
         collapsed={collapsed()}
@@ -455,11 +504,13 @@ export function Panel(props: {
         products={snapshot().products}
         placement={placement()}
         collapsed={collapsed()}
+        hidden={view() === 'wallet'}
         onChange={changeFilters}
       />
       <div class={s['body']} data-testid="td-body">
         <div class={s['views']} data-testid="td-views">
-          <Tabs view={view()} onSelect={selectView} />
+          <Tabs view={view()} wallet={walletController !== undefined} onSelect={selectView} />
+          <Show when={walletController}>{controller => <WalletView controller={controller()} />}</Show>
           <EventList
             events={visible()}
             allEvents={snapshot().events}

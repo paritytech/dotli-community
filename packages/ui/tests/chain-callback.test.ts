@@ -271,9 +271,7 @@ describe('createChainConnect', () => {
   it('As a dotli integrator, a halted chain transport answers a request in flight', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
-    connection.send(
-      JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainHead_v1_header', params: ['tok', '0xabc'] }),
-    );
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainSpec_v1_genesisHash', params: [] }));
     const upstream = must(mocks.upstreams[0], 'upstream');
     expect(upstream.sent).toHaveLength(1);
 
@@ -285,7 +283,7 @@ describe('createChainConnect', () => {
     const responses = connection.responses()[Symbol.asyncIterator]();
     expect(JSON.parse(yielded(await responses.next()))).toMatchObject({
       id: 'truapi:9',
-      error: { message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
     connection.close();
     expect((await responses.next()).done).toBe(true);
@@ -358,6 +356,49 @@ describe('createChainConnect', () => {
 
     // Then
     expect(must(mocks.upstreams[0], 'upstream').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends a pending response read when its consumer closes', async () => {
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    const pending = connection.responses()[Symbol.asyncIterator]().next();
+    connection.close();
+    expect(await pending).toEqual({ done: true, value: undefined });
+    expect(must(mocks.upstreams[0], 'upstream').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wait again when closed while suspended after yielding a response', async () => {
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'read', method: 'system_health', params: [] }));
+    const upstream = must(mocks.upstreams[0], 'upstream');
+    const id = must(must(upstream.sent[0], 'request').id, 'id');
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    upstream.emit({ jsonrpc: '2.0', id, result: { peers: 2 } });
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({
+      jsonrpc: '2.0',
+      id: 'read',
+      result: { peers: 2 },
+    });
+    connection.close();
+    upstream.emit({ jsonrpc: '2.0', id, result: 'stale' });
+    expect(await responses.next()).toEqual({ done: true, value: undefined });
+    expect(upstream.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects sends after close instead of leaving core requests pending', async () => {
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    connection.close();
+    expect(() => {
+      connection.send(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'late',
+          method: 'system_health',
+          params: [],
+        }),
+      );
+    }).toThrow();
+    expect(must(mocks.upstreams[0], 'upstream').sent).toEqual([]);
+    connection.close();
   });
 
   it('As a dotli integrator, a chain the RPC backend cannot reach is refused before any transport is built', () => {

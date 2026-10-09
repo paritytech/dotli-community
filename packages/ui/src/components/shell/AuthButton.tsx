@@ -14,6 +14,27 @@ import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './AuthButton.module.css';
 
+/** The debug-only test wallet's avatar: a wallet on amber, whatever the session. */
+function ExperimentalWalletBadge(): JSX.Element {
+  return (
+    <span class={[s['avatar'], s['experimental']].join(' ')} data-testid="user-badge-experimental">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        aria-hidden="true"
+      >
+        <path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a2 2 0 0 1-2-2V6" />
+        <path d="M20 12h-4a2 2 0 0 0 0 4h4" />
+      </svg>
+    </span>
+  );
+}
+
+/** The popover's body, its own chunk. */
 const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountContent' });
 
 /**
@@ -23,22 +44,42 @@ const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountCont
  * under way while logged in included. The trigger ARIA follows the click: the Popover writes it while
  * `Connected`, this component writes it for the auth modal otherwise.
  *
- * `idPrefix` keeps the landing page's ids apart from the topbar's build-time markup on the same page.
+ * With the debug-only experimental test wallet active, it shows the wallet
+ * badge instead, and a click opens the debug panel's Wallet tab
+ * (`dotli:wallet-open`, `aria-controls="td-wallet-view"`) rather than the
+ * popover, the auth modal or a Mobile login.
+ *
+ * `idPrefix` sets another instance's ids apart (the landing page's, whose
+ * page also holds the topbar's build-time markup).
  */
 export function AuthButton(props: { idPrefix?: string | undefined; showName?: boolean | undefined }): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = useAccount();
   const authModal = useStore(authModalStore);
-  const opensPopover = account.connected;
+  /**
+   * A click toggles the user popover, else opens the auth modal (see
+   * onClick), so the ARIA says so.
+   */
+  const opensPopover = (): boolean => !account.experimental() && account.connected();
+  /** The name beside the avatar, with `showName`: the username, else the shortened account. */
   const shownName = (): string | undefined => {
     const session = props.showName === true && account.loggedIn() ? account.session() : undefined;
     return session === undefined ? undefined : sessionDisplayName(session);
   };
   const label = (): string =>
-    account.restoring() ? 'Checking sign-in' : account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile';
+    account.experimental()
+      ? 'Open Wallet tab — experimental test wallet'
+      : account.restoring()
+        ? 'Checking sign-in'
+        : account.loggedIn()
+          ? 'Account'
+          : 'Sign in with Polkadot Mobile';
   // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
+    if (account.experimental()) {
+      return label();
+    }
     const session = account.loggedIn() ? account.session() : undefined;
     const initials = session === undefined ? undefined : sessionInitials(session);
     const visible = [initials, shownName()].filter(part => part !== undefined).join(' ');
@@ -48,9 +89,14 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
     const el = untrack(button);
     return el === undefined ? undefined : setAuthModalTrigger(el);
   });
-  // While connected the Popover's own trigger listener takes the click.
+  // The experimental test wallet's click opens the debug panel's Wallet tab,
+  // whatever its auth state, so an unavailable wallet stays reachable without
+  // entering Mobile pairing. Otherwise, while connected the click is the
+  // popover's (the trigger's own listener), else it starts the login.
   const onClick = (): void => {
-    if (getAuthState().tag !== 'Connected') {
+    if (account.experimental()) {
+      window.dispatchEvent(new Event('dotli:wallet-open'));
+    } else if (getAuthState().tag !== 'Connected') {
       startLogin();
     }
   };
@@ -73,39 +119,43 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
           loading={account.restoring()}
           title={label()}
           aria-label={ariaLabel()}
-          aria-haspopup={opensPopover() ? undefined : 'dialog'}
-          aria-expanded={opensPopover() ? undefined : authModal().open ? 'true' : 'false'}
-          aria-controls={opensPopover() ? undefined : 'auth-modal-backdrop'}
-          variant={account.loggedIn() ? 'secondary' : 'primary'}
+          aria-haspopup={opensPopover() || account.experimental() ? undefined : 'dialog'}
+          aria-expanded={opensPopover() || account.experimental() ? undefined : authModal().open ? 'true' : 'false'}
+          aria-controls={account.experimental() ? 'td-wallet-view' : opensPopover() ? undefined : 'auth-modal-backdrop'}
+          variant={account.experimental() || account.loggedIn() ? 'secondary' : 'primary'}
           class={
-            account.loggedIn()
-              ? [s['chip'], shownName() === undefined ? s['avatarOnly'] : undefined].join(' ').trim()
-              : s['signIn']
+            account.experimental()
+              ? [s['chip'], s['avatarOnly']].join(' ')
+              : account.loggedIn()
+                ? [s['chip'], shownName() === undefined ? s['avatarOnly'] : undefined].join(' ').trim()
+                : s['signIn']
           }
         >
-          <Show
-            when={account.loggedIn() && account.session()}
-            fallback={
-              <>
-                <UserIcon />
-                <span class={s['label']}>Sign in</span>
-              </>
-            }
-          >
-            {session => (
-              <>
-                <span
-                  class={s['avatar']}
-                  data-testid="user-badge"
-                  data-anon={sessionInitials(session()) === undefined ? '' : undefined}
-                >
-                  <Show when={sessionInitials(session())} fallback={<UserIcon />}>
-                    {initials => <>{initials()}</>}
-                  </Show>
-                </span>
-                <Show when={shownName()}>{name => <span class={s['name']}>{name()}</span>}</Show>
-              </>
-            )}
+          <Show when={!account.experimental()} fallback={<ExperimentalWalletBadge />}>
+            <Show
+              when={account.loggedIn() && account.session()}
+              fallback={
+                <>
+                  <UserIcon />
+                  <span class={s['label']}>Sign in</span>
+                </>
+              }
+            >
+              {session => (
+                <>
+                  <span
+                    class={s['avatar']}
+                    data-testid="user-badge"
+                    data-anon={sessionInitials(session()) === undefined ? '' : undefined}
+                  >
+                    <Show when={sessionInitials(session())} fallback={<UserIcon />}>
+                      {initials => <>{initials()}</>}
+                    </Show>
+                  </span>
+                  <Show when={shownName()}>{name => <span class={s['name']}>{name()}</span>}</Show>
+                </>
+              )}
+            </Show>
           </Show>
         </Button>
       </TopbarItem>

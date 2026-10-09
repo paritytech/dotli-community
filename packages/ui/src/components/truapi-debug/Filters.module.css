@@ -13,7 +13,8 @@
 .filters[data-dock='right'] {
   grid-area: filters;
 }
-.filters[data-collapsed] {
+.filters[data-collapsed],
+.filters[hidden] {
   display: none;
 }
 

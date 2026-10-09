@@ -4,7 +4,8 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  min-width: 0;
+  gap: 6px;
   padding: 0 12px;
   border-bottom: 1px solid var(--td-line);
   background: var(--td-bg-raised);
@@ -61,7 +62,34 @@
   color: var(--td-fg-bright);
 }
 .btn:disabled {
+  opacity: 0.5;
   cursor: default;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--td-focus);
+  outline-offset: 2px;
+}
+
+/* The debug-build wallet entry: a wallet glyph, or a known username cut to
+   fit beside the title. */
+.wallet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  max-width: min(180px, 40%);
+  overflow: hidden;
+}
+.walletName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.walletIcon {
+  display: flex;
+}
+.walletIcon[hidden] {
+  display: none;
 }
 .icon {
   padding: 2px 8px;

@@ -31,6 +31,14 @@ import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
+import { withTrustedSubmitFallback } from './light-client-submit-fallback.js';
+
+// This explicit submit-only fallback is independent of the selected light
+// client. Its lazy RPC leases use the same canonical replay/watch policy.
+const trustedSubmitPool = createChainPool({
+  createTransport: createCoreRpcChainProvider,
+  destroyDelay: 0,
+});
 import { recordBestBlock, recordChainActivity } from '../network-monitor.js';
 
 /** Every backend switch reloads the page, so a pool entry never outlives its backend. */
@@ -39,10 +47,15 @@ export function createHostChainPool(destroyDelay?: number): ChainPool {
     // Unset, an idle chain closes after the pool's default minute. Reopening is cheap on every
     // backend, since the frame keeps the light client's chain.
     ...(destroyDelay === undefined ? {} : { destroyDelay }),
-    createTransport: (genesisHash, hooks) =>
-      getBackend() === 'rpc-gateway'
-        ? createCoreRpcChainProvider(genesisHash, hooks)
-        : createFrameChainTransport(genesisHash, hooks),
+    createTransport: (genesisHash, hooks) => {
+      if (getBackend() === 'rpc-gateway') {
+        return createCoreRpcChainProvider(genesisHash, hooks);
+      }
+      const lightClient = createFrameChainTransport(genesisHash, hooks);
+      return lightClient === null
+        ? null
+        : withTrustedSubmitFallback(lightClient, () => trustedSubmitPool.getLocalProvider(genesisHash), genesisHash);
+    },
   });
 }
 
@@ -188,12 +201,12 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
 
   return {
     send(request: string): void {
+      if (closed) {
+        throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
+      }
       const parsed: unknown = JSON.parse(request);
       if (!isJsonRpcRequest(parsed)) {
         throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST);
-      }
-      if (closed) {
-        return;
       }
       const connection = lease ?? reopen();
       if (connection === null) {

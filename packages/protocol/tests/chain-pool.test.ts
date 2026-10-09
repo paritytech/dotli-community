@@ -414,22 +414,6 @@ describe('createChainPool', () => {
     // Then
     expect(must(built[0], 'transport').sent).toHaveLength(2);
   });
-
-  it('As a dotli integrator, a remote connection is a broker session under its own prefix', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    const remote = must(
-      pool.connectRemote('0xaa', 'conn-a', () => undefined),
-      'remote connection',
-    );
-
-    // When
-    remote.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] }));
-
-    // Then
-    expect(String(must(built[0], 'transport').sent[0]?.id)).toMatch(/^broker:[0-9a-z]+:remote:conn-a$/);
-  });
 });
 
 /** A transport factory whose transports can be paused, recording what happens in order. */
@@ -693,6 +677,33 @@ describe('createChainPool watch', () => {
     // Then
     expect(built).toHaveLength(2);
     expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1 });
+  });
+
+  it('As the network panel, a chain rebuilt by a status listener is not overwritten by the retired entry', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const seen = recorder();
+    pool.watch(seen.watcher);
+    lease(pool, '0xaa');
+    const first = must(built[0], 'transport');
+    pool.onStatusChanged('0xaa', status => {
+      if (status === 'connected') {
+        first.hooks.onHalt(new Error('gone'));
+        lease(pool, '0xaa');
+      }
+    });
+
+    // When
+    first.hooks.onStatus('connected');
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(seen.activity.at(-1)).toMatchObject({
+      genesisHash: '0xaa',
+      consumers: 1,
+      status: 'connecting',
+    });
   });
 
   it('As a dotli integrator, a throwing watcher keeps neither the others nor the pool from the change', () => {

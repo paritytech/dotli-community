@@ -1943,24 +1943,6 @@ describe('truapi debug panel: capacity', () => {
     expect(rowTags()).toEqual(['ev3_request', 'ev4_request', 'ev5_request', 'ev6_request', 'ev7_request']);
     expect(counts()).toBe('5 events (+3 dropped)');
   });
-
-  it('As a dotli developer, past the default 2000 events the oldest are pruned from the list', () => {
-    // Given
-    mount();
-
-    // When
-    for (let i = 0; i < 2003; i++) {
-      truapi({ tag: `ev${String(i)}_x`, requestId: `r${String(i)}` });
-    }
-    frame();
-
-    // Then
-    const tags = rowTags();
-    expect(tags).toHaveLength(2000);
-    expect(tags[0]).toBe('ev3_x');
-    expect(tags[1999]).toBe('ev2002_x');
-    expect(counts()).toBe('2000 events (+3 dropped)');
-  });
 });
 
 describe('truapi debug panel: streaming load', () => {

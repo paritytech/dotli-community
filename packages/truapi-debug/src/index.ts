@@ -49,3 +49,11 @@ export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData } from '.
 export { summariseSystemEvent } from './system-summary.js';
 export { buildTimeline, type TimelineLane } from './timeline.js';
 export { loadDotliDebugBus } from './lazy.js';
+export { isAllocationEvent, observedAllocations, type AllocationOutcome } from './wallet-allocations.js';
+export type {
+  ExperimentalWalletControls,
+  InspectorIdentity,
+  InspectorProduct,
+  InspectorResource,
+  LocalIdentityProgress,
+} from './wallet-types.js';

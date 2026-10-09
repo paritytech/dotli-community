@@ -157,7 +157,8 @@ describe('protocol SharedWorker', () => {
   let event: Mock<(name: string, attrs?: Record<string, unknown>) => void>;
   let error: Mock<(...args: unknown[]) => void>;
   let open: Mock<SpanOpen>;
-  // Each fresh worker adds a `connect` listener to the shared window, removed after each test.
+  let closeWorker: Mock<() => void>;
+  // Each fresh worker adds listeners to the shared window, removed after each test.
   let added: Parameters<typeof self.addEventListener>[];
 
   async function bootWorker(): Promise<void> {
@@ -194,6 +195,8 @@ describe('protocol SharedWorker', () => {
       added.push(args);
       addEventListener(...args);
     });
+    closeWorker = vi.fn<() => void>();
+    vi.spyOn(self, 'close').mockImplementation(closeWorker);
     window.name = 'dotli-protocol-paseo-next-v2';
     resolver.presync = () => Promise.resolve();
   });
@@ -380,5 +383,55 @@ describe('protocol SharedWorker', () => {
       step: 'worker_port_send',
       tags: { envelope_kind: 'response' },
     });
+  });
+
+  it('halts every attached tab on an uncaught worker error and fences late results from the retired generation', async () => {
+    const pending = deferred();
+    resolver.resolveDotName = async () => {
+      await pending.promise;
+      return null;
+    };
+    await bootWorker();
+    const first = connect();
+    const second = connect();
+    first.receive({
+      type: 'relay-request',
+      envelope: {
+        namespace: 'dotli:protocol',
+        kind: 'request',
+        id: 'pending-read',
+        method: 'resolveDotName',
+        payload: { label: 'example' },
+      },
+      origin: 'https://example.dot.li',
+    });
+
+    self.dispatchEvent(new ErrorEvent('error', { message: FATAL }));
+    pending.resolve();
+    await flush();
+    first.receive({
+      type: 'relay-request',
+      envelope: { namespace: 'dotli:protocol', kind: 'request', id: 'late-read', method: 'warmup', payload: {} },
+      origin: 'https://example.dot.li',
+    });
+    self.dispatchEvent(new ErrorEvent('error', { message: 'second failure' }));
+
+    expect(heard(first)).toEqual([{ type: 'ready' }, fatalRelay]);
+    expect(heard(second)).toEqual([{ type: 'ready' }, fatalRelay]);
+    expect(closeWorker).toHaveBeenCalledTimes(1);
+    expect(heard(connect())).toEqual([]);
+  });
+
+  it('retires a crashed worker during pre-sync without announcing ready when that old sync completes', async () => {
+    const pending = deferred();
+    resolver.presync = () => pending.promise;
+    await bootWorker();
+    const waiting = connect();
+    self.dispatchEvent(new ErrorEvent('error', { message: FATAL }));
+    pending.resolve();
+    await flush();
+
+    expect(heard(waiting)).toEqual([fatalRelay]);
+    expect(closeWorker).toHaveBeenCalledTimes(1);
   });
 });

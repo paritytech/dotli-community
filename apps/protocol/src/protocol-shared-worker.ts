@@ -95,6 +95,23 @@ const syncForwarders = new Map<MessagePort, () => void>();
 let engineReady = false;
 // Set once the engine is dead for good. Every later port is told this, never `ready`.
 let presyncFailureMessage: string | null = null;
+let workerStopped = false;
+
+// An uncaught worker error is terminal, not a socket reconnect. Tell every
+// attached frame before retiring this worker, so the host's existing frame
+// halt/backoff path can take a fresh lease without replacing its native Core.
+self.addEventListener('error', event => {
+  if (workerStopped) {
+    return;
+  }
+  workerStopped = true;
+  engineReady = false;
+  const message = event.message || 'Protocol SharedWorker crashed';
+  presyncFailureMessage = message;
+  broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
+  pendingPorts.length = 0;
+  self.close();
+});
 
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 let networkInitFailure: string | null = null;
@@ -114,6 +131,9 @@ enableSyncReporting(['relay', 'asset-hub', 'bulletin', 'people']);
 // `fatal` lets every tab reject in-flight requests at once instead of timing out. The engine stays dead, so later
 // ports get the cause like a failed pre-sync.
 onProviderFatal(message => {
+  if (workerStopped) {
+    return;
+  }
   log.error(`${TAG} Light client died, broadcasting fatal to ${String(ports.size)} port(s): ${message}`);
   engineReady = false;
   presyncFailureMessage = message;
@@ -182,9 +202,6 @@ async function presync(): Promise<void> {
 
     // Legacy-account auth reads People, which otherwise races its warp sync on a cold start. Resolution does not
     // need People, so this must not gate ready.
-    setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(pool, getActiveServicesConfig().people.genesis, 'People'),
-    );
     void waitForPeopleFinalized().catch((err: unknown) => {
       log.warn(`${TAG} People chain warm failed (retried on demand)`, err);
     });
@@ -221,6 +238,11 @@ function broadcastToPorts(envelope: ProtocolEnvelope): void {
 }
 
 function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
+  // Promise continuations and queued chain events belong to the retired
+  // worker generation. Only its terminal notification may still leave it.
+  if (workerStopped && envelope.kind !== 'fatal') {
+    return;
+  }
   try {
     const msg: SWRelayResponse = { type: 'relay-response', envelope };
     port.postMessage(msg);
@@ -416,6 +438,10 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
       return;
     }
 
+    case 'walletStorage':
+    case 'walletOwner':
+      throw new Error('Wallet storage is only available through the trusted protocol iframe');
+
     default: {
       const _method: never = request.method;
       throw new Error(`Unknown protocol method: ${_method as string}`);
@@ -455,6 +481,9 @@ function cleanStalePorts(): void {
 }
 
 self.addEventListener('connect', event => {
+  if (workerStopped) {
+    return;
+  }
   const port = event.ports[0];
   if (port === undefined) {
     return;
@@ -469,6 +498,9 @@ self.addEventListener('connect', event => {
   });
 
   port.addEventListener('message', (msgEvent: MessageEvent) => {
+    if (workerStopped) {
+      return;
+    }
     const data = msgEvent.data as { type?: string } | null;
 
     // Sent from the iframe's beforeunload.

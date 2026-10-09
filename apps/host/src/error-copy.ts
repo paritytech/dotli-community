@@ -19,6 +19,10 @@ export const HOST_ERRORS = {
   MODULE_FETCH_FAILED: "Couldn't load app resources — reload to retry.",
   CHAIN_SPEC_REJECTED: "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
+  WALLET_IN_OTHER_TAB:
+    'Only one tab can use the test wallet at a time, and the tab that has it did not hand it over. Close that tab, then reload this one.',
+  WALLET_PAUSED: 'Paused: the test wallet is in use in another tab. Click or type here to use it in this tab.',
+  WALLET_RESUMING: 'Moving the test wallet to this tab…',
   MANIFEST_UNSUPPORTED_VERSION: "This app is published in a format dot.li doesn't support yet.",
   MANIFEST_INVALID: "This app's manifest is invalid, so dot.li can't tell how to open it.",
 } as const;
@@ -45,4 +49,5 @@ export const ERROR_TITLES = {
   CONTENT_UNAVAILABLE: "This app couldn't be downloaded",
   /** The files arrived intact but are not a runnable app. */
   APP_UNUSABLE: "This app can't be opened",
+  WALLET_IN_OTHER_TAB: 'Test wallet is open in another tab',
 } as const;

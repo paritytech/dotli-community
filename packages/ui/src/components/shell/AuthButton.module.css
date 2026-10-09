@@ -57,6 +57,12 @@
   width: 14px;
   height: 14px;
 }
+/* The experimental test wallet's badge: amber, so a test wallet is never
+   mistaken for a real account. */
+.experimental {
+  background: #fef3c7;
+  color: #713f12;
+}
 .name {
   min-width: 0;
   overflow: hidden;

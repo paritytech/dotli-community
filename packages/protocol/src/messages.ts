@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
-// Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from '@dotli/config';
+import type { SharedWalletOperation, SharedWalletState } from './wallet-storage.js';
+import type { WalletOwnerOperation } from './wallet-owner.js';
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
@@ -15,11 +16,18 @@ export interface ProtocolRequestMap {
   };
   resolveRootManifest: { label: string };
   authStorageRead: { siteId: string; key: string };
-  authStorageWrite: { siteId: string; key: string; value: string };
+  authStorageWrite: {
+    siteId: string;
+    key: string;
+    value: string;
+    walletRevision?: string | null;
+  };
   authStorageClear: { siteId: string; key: string };
   modeStorageRead: { siteId: string; key: string };
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };
+  walletStorage: { siteId: string; operation: SharedWalletOperation };
+  walletOwner: { siteId: string; operation: WalletOwnerOperation };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };
@@ -167,6 +175,21 @@ export interface ProtocolAuthStorageChangedEnvelope {
   value: string | null;
 }
 
+export interface ProtocolWalletStorageChangedEnvelope {
+  namespace: 'dotli:protocol';
+  kind: 'wallet-storage-changed';
+  siteId: string;
+  state: SharedWalletState;
+}
+
+/** Another tab asked for the test wallet; stop it, then release the lease. */
+export interface ProtocolWalletOwnerRevokedEnvelope {
+  namespace: 'dotli:protocol';
+  kind: 'wallet-owner-revoked';
+  siteId: string;
+  lease: string;
+}
+
 export type ProtocolEnvelope =
   | ProtocolRequestEnvelope
   | ProtocolProgressEnvelope
@@ -181,7 +204,9 @@ export type ProtocolEnvelope =
   | ProtocolChainSyncEnvelope
   | ProtocolChainDetailEnvelope
   | ProtocolNetBytesEnvelope
-  | ProtocolAuthStorageChangedEnvelope;
+  | ProtocolAuthStorageChangedEnvelope
+  | ProtocolWalletStorageChangedEnvelope
+  | ProtocolWalletOwnerRevokedEnvelope;
 
 const VALID_KINDS = new Set([
   'request',
@@ -197,6 +222,8 @@ const VALID_KINDS = new Set([
   'chain-detail',
   'net-bytes',
   'auth-storage-changed',
+  'wallet-storage-changed',
+  'wallet-owner-revoked',
 ]);
 
 // postMessage data is untrusted, so chain and kind are checked at runtime. The lists are copied because

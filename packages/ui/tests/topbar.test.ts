@@ -78,19 +78,44 @@ describe('topbar boot rehydration', () => {
     const { initTopBar } = await import('../src/topbar.js');
     const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
     initTopBar();
-    await flushMicrotasks();
 
     // Then: the stores the auth islands render, whenever they mount.
-    expect(getAuthState()).toEqual({
-      tag: 'Connected',
-      session: {
-        connected: true,
-        publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
-        liteUsername: 'pgherveou.04',
-        primaryUsername: 'pgherveou.04',
-      },
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({
+        tag: 'Connected',
+        session: {
+          connected: true,
+          publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+          liteUsername: 'pgherveou.04',
+          primaryUsername: 'pgherveou.04',
+        },
+      });
     });
     expect(getLoggedIn()).toBe(true);
+  });
+
+  it('As a wallet user, failed restoration shows the failure without an unhandled rejection or replay', async () => {
+    // Given
+    installTopbarDom();
+    // Load after beforeEach's module reset so the spy and topbar share this test's stores.
+    const store = await import('../src/host-callbacks/SessionStore.js');
+    const error = new Error('Protocol frame state reset before ready signal');
+    const restore = vi.spyOn(store, 'emitPersistedSessionUiState').mockRejectedValue(error);
+    const { log } = await import('@dotli/shared');
+    const warning = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const { initTopBar } = await import('../src/topbar.js');
+    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
+
+    // When
+    initTopBar();
+
+    // Then: Vitest also fails the test if restoration leaves a rejection unhandled.
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'WalletUnavailable', reason: error.message });
+    });
+    expect(getLoggedIn()).toBe(false);
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledWith('[dot.li] saved wallet restoration failed:', error);
   });
 
   it('As a dotli integrator, the host stays logged out when no session is persisted', async () => {

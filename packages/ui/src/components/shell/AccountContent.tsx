@@ -62,7 +62,7 @@ export function AccountContent(): JSX.Element {
           </Show>
         </span>
         <div class={s['text']}>
-          <div class={s['label']}>Welcome back</div>
+          <div class={s['label']}>{account.experimental() ? 'Experimental test wallet' : 'Welcome back'}</div>
           <div
             class={s['name']}
             id={id('username')}
@@ -72,16 +72,25 @@ export function AccountContent(): JSX.Element {
           </div>
         </div>
       </div>
-      {/* A bare address with no explanation reads as a rendering bug. */}
-      <Show when={account.loggedIn() && (username() ?? '').length === 0}>
+      {/* Explains the username-less state instead of leaving a bare
+          address that reads as a rendering bug. */}
+      <Show when={!account.experimental() && account.loggedIn() && (username() ?? '').length === 0}>
         <Callout icon={<InfoIcon />}>
           <span id={id('hint')}>No username found for this account on this network.</span>
+        </Callout>
+      </Show>
+      <Show when={account.experimental()}>
+        <Callout icon={<InfoIcon />}>
+          <span id={id('experimental-hint')}>
+            Testing only. Open Debug → Wallet for username, allowances and Recovery settings. Disconnect to sign in with
+            Polkadot Mobile.
+          </span>
         </Callout>
       </Show>
       <hr class={s['divider']} />
       <Button id={id('disconnect')} block onClick={onDisconnect}>
         <LogOutIcon />
-        Log out
+        {account.experimental() ? 'Disconnect test wallet' : 'Log out'}
       </Button>
     </Surface>
   );

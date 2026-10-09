@@ -91,14 +91,14 @@
 }
 
 .panel[data-dock='right'] {
-  top: 0;
+  top: max(var(--safe-top, 0px), var(--debug-content-top, var(--topbar-height, 0px)));
   right: 0;
   bottom: 0;
   left: auto;
   width: 480px;
   height: auto;
   max-height: none;
-  max-width: 80vw;
+  max-width: min(80vw, max(320px, calc(100vw - 240px)));
   border-top: none;
   border-left: 1px solid var(--td-line);
   grid-template-columns: 5px minmax(0, 1fr);
@@ -134,9 +134,17 @@
 /* Views with nothing to select for the detail pane take the whole width. */
 .panel[data-view='resolution'] .body,
 .panel[data-view='archive'] .body,
+.panel[data-view='wallet'] .body,
 .panel[data-view='diagnostics'] .body {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
+}
+/* Wallet hides the filter bar, so its row goes to the body. */
+.panel[data-view='wallet']:not([data-collapsed]) {
+  grid-template-rows: 5px 32px 1fr;
+}
+.panel[data-dock='right'][data-view='wallet']:not([data-collapsed]) {
+  grid-template-rows: 32px 0 1fr;
 }
 
 .views {

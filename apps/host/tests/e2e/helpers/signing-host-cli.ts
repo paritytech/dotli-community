@@ -7,6 +7,7 @@ import type { Readable, Writable } from 'node:stream';
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 // Pairing deeplinks carry the handshake secret. Scrub them from logs.
 const PAIRING_DEEPLINK = /polkadotapp:\/\/pair\?[^\s'"]+/g;
+const RECOVERY_PHRASE = /((?:recovery[ _-]?phrase|seed[ _-]?phrase|mnemonic)["']?\s*[:=]\s*)[^\r\n]+/gi;
 
 export interface SigningHostConfig {
   binary: string;
@@ -39,7 +40,9 @@ export function signingHostVersion(binary: string): string | null {
 }
 
 export function sanitizeSigningHostOutput(text: string): string {
-  return text.replace(PAIRING_DEEPLINK, '<pairing deeplink>');
+  const mnemonic = process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim();
+  const scrubbed = mnemonic !== undefined && mnemonic !== '' ? text.replaceAll(mnemonic, '<recovery phrase>') : text;
+  return scrubbed.replace(PAIRING_DEEPLINK, '<pairing deeplink>').replace(RECOVERY_PHRASE, '$1<redacted>');
 }
 
 // Answers the handshake, then keeps auto-signing SignRequests until SIGTERMed.
