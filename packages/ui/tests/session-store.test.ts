@@ -780,4 +780,40 @@ describe('session-store host callbacks', () => {
     // Then
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBe(JSON.stringify(CONNECTED_DETAIL));
   });
+
+  it('As a local wallet user, my core never reads, writes or clears the paired session', async () => {
+    // Given
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const storage = createSessionStoreAdapters({ local: true });
+
+    // When
+    const read = await storage.readCoreStorage(AUTH_SESSION_KEY);
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9, 9]));
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
+
+    // Then
+    expect(read).toBeUndefined();
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe('0x010203');
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBe(JSON.stringify(CONNECTED_DETAIL));
+  });
+
+  it('As a Polkadot App user back from a local wallet, my core reads, writes and clears the paired session', async () => {
+    // Given
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const storage = createSessionStoreAdapters();
+
+    // When
+    const read = await storage.readCoreStorage(AUTH_SESSION_KEY);
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9, 9]));
+    const written = sharedAuth.storage.get(STORAGE_KEY);
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
+
+    // Then
+    expect(Array.from(read ?? [])).toEqual([1, 2, 3]);
+    expect(written).toBe('0x0909');
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBeUndefined();
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
+  });
 });

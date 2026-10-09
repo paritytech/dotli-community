@@ -30,6 +30,8 @@ export interface CreateHostCallbacksOptions {
   pairingDotSuffix?: boolean | undefined;
   pairingHostGlobal?: boolean | undefined;
   blockingModalScope?: BlockingModalScope;
+  /** For a local wallet core, whose storage must not touch the paired session. */
+  local?: boolean | undefined;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
@@ -39,6 +41,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
+    local,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
@@ -55,7 +58,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: createSessionStoreAdapters(),
+    coreStorage: createSessionStoreAdapters({ local }),
     auth: {
       authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
         dotSuffix: pairingDotSuffix,

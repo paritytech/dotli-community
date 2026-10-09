@@ -129,13 +129,15 @@ function createCore(product: PageProduct): Core {
   const blockingModalScope = modalCoordinator.createScope();
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let unsubscribeStore: (() => void) | null = null;
-  const callbacks = createHostCallbacks({
-    label: product.label,
-    pairingLabel: product.pairing?.label,
-    pairingDotSuffix: product.pairing?.dotSuffix,
-    pairingHostGlobal: product.pairing?.hostGlobal,
-    blockingModalScope,
-  });
+  const callbacksFor = (local: boolean): ReturnType<typeof createHostCallbacks> =>
+    createHostCallbacks({
+      label: product.label,
+      pairingLabel: product.pairing?.label,
+      pairingDotSuffix: product.pairing?.dotSuffix,
+      pairingHostGlobal: product.pairing?.hostGlobal,
+      blockingModalScope,
+      local,
+    });
   // The wallet read, the host chunk and the worker wrapper load in parallel, so a Polkadot App boot waits on
   // whichever is slower. The wrapper fetches its worker script only when constructed, so local mode pays nothing.
   const runtime = Promise.all([
@@ -145,13 +147,17 @@ function createCore(product: PageProduct): Core {
   ]).then(async ([wallet, { createWebWorkerPairingHostRuntime }, { default: HostWorker }]) => {
     if (wallet !== null) {
       const { bootLocalWalletCore } = await loadLocalWalletCore();
-      const booted = await bootLocalWalletCore(createWebWorkerPairingHostRuntime, callbacks, hostConfig, wallet, () =>
-        cores.has(core),
+      const booted = await bootLocalWalletCore(
+        createWebWorkerPairingHostRuntime,
+        callbacksFor(true),
+        hostConfig,
+        wallet,
+        () => cores.has(core),
       );
       log.event('wallet core booted', { flow: 'wallet', local: true });
       return booted;
     }
-    const booted = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacks, { hostConfig });
+    const booted = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacksFor(false), { hostConfig });
     log.event('wallet core booted', { flow: 'wallet' });
     // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
     unsubscribeStore = onStoredSessionChanged(() => {

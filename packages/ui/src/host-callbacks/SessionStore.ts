@@ -144,16 +144,29 @@ export function emitPersistedSessionUiState(): void {
   })();
 }
 
-export function createSessionStoreAdapters(): CoreStorage {
+export interface SessionStoreOptions {
+  /**
+   * A local wallet core holds its session in memory, so its `AuthSession` slot is a no-op. The paired session stays
+   * as it was for the switch back.
+   */
+  local?: boolean | undefined;
+}
+
+export function createSessionStoreAdapters(options: SessionStoreOptions = {}): CoreStorage {
+  const skips = (key: CoreStorageKey): boolean => options.local === true && key.tag === 'AuthSession';
   return {
     async readCoreStorage(key) {
-      return readCoreStorageValue(key);
+      return skips(key) ? undefined : readCoreStorageValue(key);
     },
     async writeCoreStorage(key, value) {
-      await writeCoreStorageValue(key, value);
+      if (!skips(key)) {
+        await writeCoreStorageValue(key, value);
+      }
     },
     async clearCoreStorage(key) {
-      await clearCoreStorageValue(key);
+      if (!skips(key)) {
+        await clearCoreStorageValue(key);
+      }
     },
   };
 }

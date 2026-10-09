@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   readWalletBoot: vi.fn(),
   reportLocalWalletFailure: vi.fn(),
   refreshLiteUsername: vi.fn(),
+  createHostCallbacks: vi.fn(() => ({})),
 }));
 
 vi.mock('@parity/truapi-host/web', () => ({
@@ -32,7 +33,7 @@ vi.mock('../src/wallet-boot.js', () => ({
   reportLocalWalletFailure: mocks.reportLocalWalletFailure,
 }));
 vi.mock('../src/local-wallet-identity.js', () => ({ refreshLiteUsername: mocks.refreshLiteUsername }));
-vi.mock('../src/host-callbacks/handlers.js', () => ({ createHostCallbacks: () => ({}) }));
+vi.mock('../src/host-callbacks/handlers.js', () => ({ createHostCallbacks: mocks.createHostCallbacks }));
 vi.mock('../src/host-callbacks/SessionStore.js', () => ({ onStoredSessionChanged: () => () => {} }));
 vi.mock('../../metrics/src/metrics.js', () => ({ m: { count: vi.fn() }, getResolutionId: vi.fn(() => null) }));
 
@@ -107,6 +108,30 @@ describe('page core wallet mode', () => {
     expect(options.hostConfig.networkSuffix).toBe('paseo');
     expect(mocks.runtimes[0]?.activateLocalSession).toHaveBeenCalledWith(ENTROPY, 'alice.42');
     expect(mocks.runtimes[0]?.notifySessionStoreChanged).not.toHaveBeenCalled();
+  });
+
+  it('As a local wallet user, I boot a core whose storage leaves my paired session alone', async () => {
+    // Given
+    mocks.readWalletBoot.mockResolvedValue(WALLET);
+    const { acquireCore } = await loadPageCore();
+
+    // When
+    await acquireCore();
+
+    // Then
+    expect(mocks.createHostCallbacks).toHaveBeenCalledWith(expect.objectContaining({ local: true }));
+  });
+
+  it('As a Polkadot App user, I boot a core that keeps my paired session', async () => {
+    // Given
+    mocks.readWalletBoot.mockResolvedValue(null);
+    const { acquireCore } = await loadPageCore();
+
+    // When
+    await acquireCore();
+
+    // Then
+    expect(mocks.createHostCallbacks).toHaveBeenCalledWith(expect.objectContaining({ local: false }));
   });
 
   it('As a local wallet user whose username changed, I am activated again with the new name', async () => {
