@@ -375,9 +375,15 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', ['Always allow', 'Allow'], {
-        timeoutMs: 60_000,
-      });
+      // Upload consent is separate from signing permission; approve this
+      // operation without granting a persistent automatic-upload budget.
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'preimage-factory',
+        ['Always allow', 'Allow', 'Allow once'],
+        { timeoutMs: 60_000 },
+      );
 
       // Then
       expect(status).toBe('success');
@@ -388,9 +394,13 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', ['Always allow', 'Allow'], {
-        timeoutMs: 60_000,
-      });
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'preimage-submit',
+        ['Always allow', 'Allow', 'Allow once'],
+        { timeoutMs: 60_000 },
+      );
 
       // Then
       expect(status).toBe('success');

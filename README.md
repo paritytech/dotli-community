@@ -352,6 +352,8 @@ budgets still require per-upload review. **Ask per upload** and **Revoke automat
 without preventing individually reviewed uploads; granting again does not reset the rolling budget. Changing this
 consent does not replace the product iframe. Resetting permissions retains the account selected when the reset began,
 rather than applying a delayed result to a newly selected account.
+The Preimage Factory and Submit E2E cases approve each upload with **Allow once**; the ordinary signing/permission
+approval alone is insufficient. These cases do not opt the test account into bounded automatic uploads.
 
 ### Ordinary notification activation
 
