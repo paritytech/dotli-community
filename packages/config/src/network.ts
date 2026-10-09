@@ -41,7 +41,6 @@ export interface BulletinService extends ChainService {
 export interface ServicesConfig {
   readonly label: string;
   readonly description: string;
-  readonly identityBackendBaseUrl: string;
   readonly relay: ChainService;
   readonly assethub: ChainService;
   readonly bulletin: BulletinService;
@@ -53,8 +52,6 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PASEO]: {
     label: 'Paseo',
     description: 'Paseo Next Network',
-    // Same-origin proxy to https://identity.dotspark.app/api/v1.
-    identityBackendBaseUrl: '/__dotli-identity/paseo',
     relay: {
       genesis: '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd',
       rpcs: [
@@ -91,8 +88,6 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PREVIEWNET]: {
     label: 'Previewnet',
     description: 'Product Preview Network',
-    // Same-origin proxy to https://identity-previewnet.dotspark.app/api/v1.
-    identityBackendBaseUrl: '/__dotli-identity/testnet',
     relay: {
       genesis: '0x860145753657e73c29b9388ffa0a8aebc643ea87434b4b271b6c3c3cc9e6bf92',
       rpcs: ['wss://previewnet.substrate.dev/relay/alice', 'wss://previewnet.substrate.dev/relay/bob'],
@@ -127,8 +122,6 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  * Runtime overrides for the tables above, set by a blocking script so every reader stays synchronous.
  * - Endpoints only. `genesis` and `dotns` are the trust root for name resolution, so an override can only move to
  *   another node of the same chain.
- * - Identity backends receive public account proofs, never wallet entropy. Registration still verifies chain
- *   ownership, not HTTP acceptance. Root-relative proxy paths, HTTPS and loopback HTTP are allowed.
  * - Patches existing networks, so `NetworkName` stays a closed union.
  * - Arrays replace, never concatenate, so a fork's endpoint is never pooled with public ones.
  * The smoldot backends sync from chain specs and ignore `rpcs`. Anything unrecognised throws, because a silently
@@ -202,25 +195,6 @@ function asString(value: unknown, path: string): string {
   return value;
 }
 
-function asIdentityBackendUrl(value: unknown, path: string): string {
-  const raw = asString(value, path);
-  const relative = raw.startsWith('/') && !raw.startsWith('//') && !raw.includes('\\');
-  const url = relative ? new URL(raw, 'https://dotli.invalid') : new URL(raw);
-  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if (
-    (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) ||
-    url.username !== '' ||
-    url.password !== '' ||
-    url.search !== '' ||
-    url.hash !== ''
-  ) {
-    throw new Error(
-      `${path} must be a root-relative proxy path or HTTPS base URL (HTTP only on loopback), without credentials, query or fragment.`,
-    );
-  }
-  return (relative ? url.pathname : url.toString()).replace(/\/+$/, '');
-}
-
 // Field by field rather than a deep merge, so nothing walks the prototype chain and what an override can reach stays
 // legible. `genesis` and `blockTimeMs` are never read from the patch.
 
@@ -248,14 +222,10 @@ function mergeBulletin(base: BulletinService, patch: unknown, path: string): Bul
 
 function mergeNetwork(base: ServicesConfig, patch: unknown, path: string): ServicesConfig {
   const p = asObject(patch, path);
-  checkFields(p, ['label', 'identityBackendBaseUrl', 'relay', 'assethub', 'bulletin', 'people'], path);
+  checkFields(p, ['label', 'relay', 'assethub', 'bulletin', 'people'], path);
   return {
     ...base,
     label: p['label'] === undefined ? base.label : asString(p['label'], `${path}.label`),
-    identityBackendBaseUrl:
-      p['identityBackendBaseUrl'] === undefined
-        ? base.identityBackendBaseUrl
-        : asIdentityBackendUrl(p['identityBackendBaseUrl'], `${path}.identityBackendBaseUrl`),
     relay: p['relay'] === undefined ? base.relay : mergeChain(base.relay, p['relay'], `${path}.relay`),
     assethub:
       p['assethub'] === undefined ? base.assethub : mergeChain(base.assethub, p['assethub'], `${path}.assethub`),

@@ -93,7 +93,7 @@ export const config = defineConfig([
           patterns: [
             {
               regex: '^\\.{1,2}/.*\\.tsx?$',
-              message: 'Import the `.js` path. Only Node-loaded build configs and src/vite.ts use `.ts`.',
+              message: 'Import the `.js` path. Only files Node loads directly (vite.config.ts, src/vite.ts) use `.ts`.',
             },
           ],
         },
@@ -101,7 +101,7 @@ export const config = defineConfig([
     },
   },
   {
-    files: ['**/vite.config.ts', '**/astro.config.ts', '**/src/vite.ts'],
+    files: ['**/vite.config.ts', '**/src/vite.ts'],
     rules: {
       'no-restricted-imports': 'off',
     },

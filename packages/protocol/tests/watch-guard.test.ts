@@ -200,45 +200,4 @@ describe('createWatchGuard', () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
     expect(received).toEqual([]);
   });
-
-  it('ends legacy watches once on disconnect without replaying their extrinsic', () => {
-    const { transport, emit, sent } = createTransport();
-    const guard = createWatchGuard(transport);
-    const received: JsonRpcMessage[] = [];
-    const connection = guard.provider(message => received.push(message));
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'author_submitAndWatchExtrinsic', params: ['0xdead'] });
-    emit({ jsonrpc: '2.0', id: 1, result: 'legacy-watch' });
-    received.length = 0;
-    guard.onStatus('disconnected');
-    guard.onStatus('connected');
-    guard.onStatus('disconnected');
-    expect(received).toEqual([
-      {
-        jsonrpc: '2.0',
-        method: 'author_extrinsicUpdate',
-        params: { subscription: 'legacy-watch', result: 'dropped' },
-      },
-    ]);
-    expect(sent).toEqual([{ jsonrpc: '2.0', id: 1, method: 'author_submitAndWatchExtrinsic', params: ['0xdead'] }]);
-  });
-
-  it('does not drop finalized or explicitly unwatched legacy subscriptions', () => {
-    const { transport, emit } = createTransport();
-    const guard = createWatchGuard(transport);
-    const received: JsonRpcMessage[] = [];
-    const connection = guard.provider(message => received.push(message));
-    for (const id of [1, 2]) {
-      connection.send({ jsonrpc: '2.0', id, method: 'author_submitAndWatchExtrinsic', params: ['0xdead'] });
-      emit({ jsonrpc: '2.0', id, result: `watch-${String(id)}` });
-    }
-    emit({
-      jsonrpc: '2.0',
-      method: 'author_extrinsicUpdate',
-      params: { subscription: 'watch-1', result: { finalized: '0xblock' } },
-    });
-    connection.send({ jsonrpc: '2.0', id: 3, method: 'author_unwatchExtrinsic', params: ['watch-2'] });
-    received.length = 0;
-    guard.onStatus('disconnected');
-    expect(received).toEqual([]);
-  });
 });

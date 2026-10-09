@@ -4,7 +4,6 @@
 import { createMemo, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { TruapiSessionUiState } from '../../host-callbacks/SessionStore.js';
-import { isExperimentalWalletActive, readLocalWalletDisplay } from '../../host-callbacks/SessionStore.js';
 import { authStore, loggedInStore } from '../../state/auth.js';
 import { useStore } from '../use-store.js';
 
@@ -18,7 +17,6 @@ export interface Account {
   session: Accessor<TruapiSessionUiState | undefined>;
   /** True while the auth state is `Connected` (authStore). */
   connected: Accessor<boolean>;
-  experimental: Accessor<boolean>;
   /** True until boot has read the saved session (authStore). */
   restoring: Accessor<boolean>;
 }
@@ -31,21 +29,10 @@ export function useAccount(): Account {
     return state.tag === 'Connected' ? state.session : prev;
   });
   const connected = createMemo(() => auth().tag === 'Connected');
-  const experimental = createMemo(() => {
-    auth();
-    return typeof window !== 'undefined' && isExperimentalWalletActive();
-  });
   return {
     loggedIn,
-    session: () => {
-      if (experimental() && !connected()) {
-        const cached = readLocalWalletDisplay();
-        return cached === undefined ? undefined : { ...cached, connected: false };
-      }
-      return last() ?? (loggedIn() ? { connected: true } : undefined);
-    },
+    session: () => last() ?? (loggedIn() ? { connected: true } : undefined),
     connected,
-    experimental,
     restoring: () => auth().tag === 'Restoring',
   };
 }

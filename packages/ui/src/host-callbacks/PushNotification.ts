@@ -33,15 +33,5 @@ export function createNotificationAdapters(label: string): Required<Notification
     await cancelNotification(label, id);
   };
 
-  return {
-    pushNotification,
-    cancelNotification: cancelPushNotification,
-    // Browser notifications navigate directly, without an account-bound activation queue.
-    activationEvents() {
-      return Promise.reject(new Error('Notification activation queues are not supported by this browser host'));
-    },
-    acknowledgeActivation() {
-      return Promise.reject(new Error('Notification activation queues are not supported by this browser host'));
-    },
-  };
+  return { pushNotification, cancelNotification: cancelPushNotification };
 }

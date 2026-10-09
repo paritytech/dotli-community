@@ -9,7 +9,6 @@ import { setAuthState } from '../state/auth.js';
 export type DotliAuthState =
   | { tag: 'Restoring' }
   | { tag: 'Disconnected' }
-  | { tag: 'WalletUnavailable'; reason: string }
   | {
       tag: 'Pairing';
       deeplink: string;

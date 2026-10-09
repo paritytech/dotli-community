@@ -4,15 +4,7 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import './pwa.js';
-import {
-  boot,
-  createBootFlowId,
-  reportBootFailure,
-  resolveTruapiDebugMode,
-  startHost,
-  T0,
-  type EmitFn,
-} from './startup.js';
+import { boot, createBootFlowId, reportBootFailure, startHost, T0, type EmitFn } from './startup.js';
 import { parseDotLabel } from './dot-label.js';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import {
@@ -204,7 +196,7 @@ let shieldVerified = false;
 // Signed out, the bar folds all the same: sign-in stays one reveal away.
 function bindTopbarAutoHide(): void {
   window.addEventListener('dotli:authenticated', () => {
-    if (shieldVerified && !(DEBUG && document.documentElement.classList.contains('experimental-wallet-active'))) {
+    if (shieldVerified) {
       armTopbarAutoHide();
     }
   });
@@ -213,9 +205,7 @@ function bindTopbarAutoHide(): void {
 function setShieldState(state: ShieldState): void {
   setVerificationShieldState(state);
   shieldVerified = true;
-  if (!(DEBUG && document.documentElement.classList.contains('experimental-wallet-active'))) {
-    armTopbarAutoHide();
-  }
+  armTopbarAutoHide();
 }
 
 async function readProductManifests(label: string, chainBackend: Backend): Promise<ProductManifests> {
@@ -313,6 +303,36 @@ function loadRpcResolve(): Promise<RpcResolveModule> {
   return ready;
 }
 type RenderChunk = RenderModule;
+
+/**
+ * `?debug=true|off` wins and persists, stripped from the URL so the sandbox's strict validator never sees it. Then the
+ * stored choice, then the build's `DEBUG`. An `explicit` opt-in starts expanded.
+ */
+function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
+  try {
+    const url = new URL(window.location.href);
+    const param = url.searchParams.get('debug');
+    if (param === 'true' || param === 'off') {
+      sessionStorage.setItem('dotli:truapi-debug', param === 'off' ? '0' : '1');
+      url.searchParams.delete('debug');
+      const rewritten =
+        url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash;
+      history.replaceState(null, '', rewritten);
+    }
+    const persisted = sessionStorage.getItem('dotli:truapi-debug');
+    if (persisted === '1') {
+      return { enabled: true, explicit: true };
+    }
+    if (persisted === '0') {
+      return { enabled: false, explicit: true };
+    }
+    return { enabled: DEBUG, explicit: false };
+    // eslint-disable-next-line no-restricted-syntax -- URL or sessionStorage may be unavailable in exotic environments such as Safari private mode, so fall through to the build-time default.
+  } catch {
+    /* ignore */
+  }
+  return { enabled: DEBUG, explicit: false };
+}
 
 /** Event-loop stalls and a heartbeat for the debug panel, until the bridge handshakes or MAX_MONITOR_MS passes. */
 function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
@@ -567,6 +587,14 @@ async function main(): Promise<void> {
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
+    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
+      setupTruapiDebugPanel({
+        startCollapsed: !debugMode.explicit,
+        // As the sandbox relay serves blocks: from the block cache, else over bitswap.
+        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
+      });
+      log.event('TrUAPI debug panel enabled', { flow: 'boot' });
+    });
   }
 
   const bootFlowId = createBootFlowId();
@@ -575,29 +603,14 @@ async function main(): Promise<void> {
     listenForSandboxDebugEvents(emitDotliDebugEvent);
   }
 
-  const productIdOverride = parseLocalProductIdOverride();
-  const pageProduct =
-    label !== null ? { label } : pageHost !== null ? { label: pageHost, productId: productIdOverride } : undefined;
-  const { chainBackend, cacheSettings, bridgeModule } = await startHost(bootFlowId, emitDotliDebugEvent, pageProduct);
+  const { chainBackend, cacheSettings, bridgeModule } = await startHost(bootFlowId, emitDotliDebugEvent);
 
-  // Wallet verification may acquire the page core as soon as the debug view
-  // mounts. Its product selection must already be installed.
-  if (debugMode.enabled) {
-    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
-      setupTruapiDebugPanel({
-        startCollapsed: !debugMode.explicit,
-        // The Archive tab reads the product's blocks the way the sandbox
-        // relay serves them: from the block cache, else over bitswap.
-        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
-        ...(DEBUG ? { experimentalWallet: bridgeModule.experimentalWalletControls } : {}),
-      });
-      log.event('TrUAPI debug panel enabled', { flow: 'boot' });
-    });
-  }
+  const productIdOverride = parseLocalProductIdOverride();
 
   if (previewTargetUrl !== null && pageHost !== null) {
     boot.step = 'preview_render';
     log.event('Route: preview', { flow: 'boot', host: pageHost });
+    bridgeModule.setPageProduct({ label: pageHost, productId: productIdOverride });
 
     initScheduledNotifications({ label: pageHost });
 
@@ -636,6 +649,7 @@ async function main(): Promise<void> {
   if (localhostUrl !== null && pageHost !== null) {
     boot.step = 'localhost_render';
     log.event('Route: localhost proxy', { flow: 'boot', host: pageHost });
+    bridgeModule.setPageProduct({ label: pageHost, productId: productIdOverride });
 
     initScheduledNotifications({ label: pageHost });
 
@@ -649,9 +663,7 @@ async function main(): Promise<void> {
 
     shieldVerified = true;
     bindTopbarAutoHide();
-    if (!(DEBUG && document.documentElement.classList.contains('experimental-wallet-active'))) {
-      armTopbarAutoHide();
-    }
+    armTopbarAutoHide();
 
     // The product iframe got the deep path, so the URL bar must not show it stale.
     history.replaceState(
@@ -698,6 +710,8 @@ async function main(): Promise<void> {
     attempt_number: String(attempt.attemptNumber),
     entry: attempt.entry,
   });
+  // Before resolution, so a login clicked meanwhile boots the product's core rather than a second one.
+  bridgeModule.setPageProduct({ label });
 
   initScheduledNotifications({ label });
 

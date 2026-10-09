@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createSubmitRateLimiter } from '../src/host-callbacks/rate-limit.js';
-import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -92,7 +91,6 @@ describe('createSubmitRateLimiter', () => {
 
 describe('prompt rate limiting across host callbacks', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date'] });
     vi.clearAllMocks();
     localStorage.clear();
     document.body.innerHTML = '';
@@ -104,13 +102,10 @@ describe('prompt rate limiting across host callbacks', () => {
     });
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('As a dotli integrator, the host rate limits permission prompts per callback surface', async () => {
     // Given: a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
+    const { createHostCallbacks } = await import('../src/host-callbacks/handlers.js');
     const { permissions } = createHostCallbacks({ label: 'myapp' });
 
     // When: camera prompts exhaust the whole window budget.
@@ -128,6 +123,7 @@ describe('prompt rate limiting across host callbacks', () => {
 
   it('As a dotli user, delivering notifications never spends the prompt budget', async () => {
     // Given
+    const { createHostCallbacks } = await import('../src/host-callbacks/handlers.js');
     const { permissions, notifications } = createHostCallbacks({
       label: 'myapp',
     });

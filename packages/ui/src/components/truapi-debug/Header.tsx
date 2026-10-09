@@ -6,43 +6,11 @@ import type { JSX } from '@solidjs/web';
 import type { DockPosition } from '@dotli/truapi-debug';
 import { exportFilename } from '@dotli/truapi-debug';
 import s from './Header.module.css';
-import { WALLET_VIEW_ID } from './wallet/WalletView.js';
 
 const DEBUG_SESSION_KEY = 'dotli:truapi-debug';
 const COPY_FLASH_MS = 1200;
 
-/** The header's wallet button: what it shows and what it opens. */
-export interface WalletEntryState {
-  /** A known full or Lite username, or empty for the icon. */
-  name: string;
-  /** The Wallet tab is on screen. */
-  expanded: boolean;
-  onOpen: () => void;
-}
-
-function walletTitle(name: string): string {
-  return name === '' ? 'Open wallet' : `Open wallet: ${name}`;
-}
-
 // Lucide glyphs.
-function WalletIcon(): JSX.Element {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a2 2 0 0 1-2-2V6" />
-      <path d="M20 12h-4a2 2 0 0 0 0 4h4" />
-    </svg>
-  );
-}
-
 function ExportIcon(): JSX.Element {
   return (
     <svg
@@ -121,8 +89,6 @@ function DockBottomIcon(): JSX.Element {
 
 export function Header(props: {
   counts: string;
-  /** Debug builds with the experimental wallet only. */
-  wallet?: WalletEntryState | undefined;
   paused: boolean;
   collapsed: boolean;
   dock: DockPosition;
@@ -207,27 +173,6 @@ export function Header(props: {
 
   return (
     <div class={s['header']} data-testid="td-header" data-dock={props.placement}>
-      <Show when={props.wallet}>
-        {wallet => (
-          <button
-            class={`${s['btn'] ?? ''} ${s['icon'] ?? ''} ${s['wallet'] ?? ''}`}
-            data-testid="td-wallet-entry"
-            type="button"
-            title={walletTitle(wallet().name)}
-            aria-label={walletTitle(wallet().name)}
-            aria-controls={WALLET_VIEW_ID}
-            aria-expanded={wallet().expanded ? 'true' : 'false'}
-            onClick={() => {
-              wallet().onOpen();
-            }}
-          >
-            <span class={s['walletIcon']} aria-hidden="true" hidden={wallet().name !== ''}>
-              <WalletIcon />
-            </span>
-            <span class={s['walletName']}>{wallet().name}</span>
-          </button>
-        )}
-      </Show>
       <span class={s['title']} data-testid="td-title">
         TrUAPI Debug
       </span>

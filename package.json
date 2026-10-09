@@ -56,8 +56,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "file:vendor/truapi",
-    "@parity/truapi-host": "file:vendor/truapi-host"
+    "@parity/truapi": "0.24.0"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2"

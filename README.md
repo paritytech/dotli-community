@@ -84,9 +84,8 @@ through a Service Worker that acts as a virtual file system.
 
 ### What it doesn't do
 
-- Production builds are **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation,
-  and signing is delegated to the connected Polkadot App session. Debug builds also offer an explicitly experimental
-  [test wallet](#experimental-test-wallet).
+- It is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is
+  delegated to the connected Polkadot App session.
 - It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and
   dotNS records are read directly from the contract storage.
 - It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally
@@ -104,25 +103,6 @@ through a Service Worker that acts as a virtual file system.
 
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
-
-Both resolution backends retry stopped chain generations at the resolver boundary, up to four attempts with the
-remaining original sync budget. Protocol callers do not add another retry.
-
-The host shares one replaying transport per chain through the chain pool and broker; request ids, subscription tokens,
-and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement
-subscriptions. Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than
-resubmitting a transaction. The provider's heartbeat owns reconnection; there is no second health-request keepalive.
-Smoldot terminal loss retires the pool entry, errors pending requests, stops follows, and ends subscriptions before
-notifying each lease. The protocol iframe and SharedWorker use the same transport hooks while retaining their long-lived
-chain pools. The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing
-dropped legacy-extrinsic case (see ADR 0002).
-
-The native connection stays open across a halt: queued requests receive terminal errors, existing follows stop, and the
-same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
-retires its URL generation under a shared-origin Web Lock before the iframe reports fatal. Tabs in the same storage
-partition share the replacement generation; late callbacks cannot retire it. Recovery does not require closing other
-tabs. The debug test wallet is an exception when its protocol iframe is removed: that iframe owns its exclusive signing
-lock, so the wallet core must stop before removal and acquire a new lock before retrying.
 
 ## How multi-file SPAs work
 
@@ -193,13 +173,6 @@ inside a rendered tree flow back on `renderer.action_subscribe`; taps on `Action
 The host creates one TrUAPI bridge for the rendered product iframe. dApp-in-dApp iframes are opaque to the host and must
 use the top-level product's shared Rust core/provider context rather than separate host-created bridges.
 
-Product connections share one page core, including its authentication, session storage, and native Wallet owner. Each
-connection has its own interactive callbacks and blocking-modal scope. Closing a connection, losing its port, or failing
-provider creation disposes its active and queued consent immediately, even while a replacement connection keeps the core
-alive. Late consent responses and auth changes from the retired connection cannot authorize or update the replacement.
-Core retirement also disposes pending connection scopes before provider creation finishes; replacing an iframe does not
-recreate the native Wallet or reset its signing watermark.
-
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
 replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
@@ -229,26 +202,12 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the generic TrUAPI 0.24.0 wallet SDK from source `76a637aaf00cc3235a899f0d77dccdfac6ad5472`,
-recorded in `vendor/truapi-host.lock.json`. The browser wallet uses the production `--web-only --signing-host` build,
-without `test-host`. Its archive inventory comes from `npm pack`, with stale compiled files lacking a matching upstream
-TypeScript source and non-web Wasm removed in a temporary staging directory before packing. The recorded archive hashes
-precede the local `@parity/truapi=file:../truapi` dependency override. No PolkaVM browser runtime or Chat, Profile or
-Jam layer is included. Locale timestamp batches use the SDK's browser `Intl` implementation. Notifications still
-navigate directly on activation, so the new account-bound activation queue API reports unsupported rather than
-acknowledging lost events. Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the
-wallet signer. Recovery opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by
-the removed frame. Allowance inspection batches historical ring membership reads while preserving finalized snapshots,
-complete ring validation and identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To
-iterate against a matching local truapi checkout instead, run:
+The TrUAPI packages are installed from their published `@parity` packages. To iterate against a local truapi checkout
+instead, run:
 
 ```bash
 npm run link:truapi
 ```
-
-The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either page
-loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity before
-binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
 
 When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
 
@@ -262,70 +221,47 @@ Return to the package versions recorded in `package-lock.json` with:
 npm run unlink:truapi
 ```
 
-UI test fixtures await `overlaysReady()` before interacting with lazy permission dialogs. Rate-limit cases use a
-controlled clock so module loading and machine load do not consume the permission window. Retention behavior uses a
-small explicit capacity; large timeline workloads have separate work-bound tests.
-
-Permission callbacks return `AllowOnce`, `AllowAlways`, or `Deny`; the core records that answer against the active
-prompt. They must not call the administrative permission setter: settings writes deliberately retire pending consent, so
-doing both would invalidate the user's own answer. E2E tests select a specific review title and decision only during the
-operation under test, with no worker-wide auto-approval. Lasting remote and notification grants remain explicit
-`Always allow` interactions; preimage upload review is separate from the remote permission and resource-allocation
-review.
-
-Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
-ready before boot finishes rewriting the URL. Backend, cache flags and URL are read as one snapshot; the assertion waits
-through an intentional settings reload within the existing ten-second deadline.
-
-Bitswap unit fixtures load a fresh module before installing each case's provider and attach result assertions before
-advancing the fake clock. Cold module loading cannot resume a timed-out case against the next case's provider.
-
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:4321` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
   via the host
 
-### Running the functional browser suite locally
-
-Use the same instrumentation as CI. Metrics enable the light-client ownership checks, and the loopback Sentry DSN lets
-the preview server collect their same-origin `/t` envelopes without contacting an external collector.
-
-```bash
-VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true VITE_METRICS=true \
-VITE_SENTRY_DSN=http://publickey@127.0.0.1:5173/1 npm run build
-VITE_METRICS=true npm run --workspace apps/host test:functional
-```
-
-Both metric settings are required: without them the transport ownership cases either skip or collect no samples.
-
 ### Running the host-playground E2E locally
 
-The product E2E suite can load a source checkout through dotli's localhost proxy instead of resolving the published
-`host-playground.dot` CID. Use a `truapi-host` CLI built from the same source revision as the vendored SDK, recorded in
-`vendor/truapi-host.lock.json`. CI checks out that revision, generates its sources, and builds `truapi-host-cli`. Point
-`SIGNING_HOST_BIN` at that binary rather than mixing the feature SDK with a published pairing-only release. Build dotli
-without linking a different SDK checkout, then run the host workspace suite with the product paths:
+The product E2E suite can load the source checkout directly through dotli's localhost proxy instead of resolving the
+published `host-playground.dot` CID. By default it expects the product at `../../../host-playground` relative to this
+repository, and the `truapi-host` CLI from [host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
 
 ```bash
-VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
-E2E_PRODUCT_REPO=/path/to/host-playground \
-E2E_PRODUCT_URL=http://localhost:5199 \
-npm run --workspace apps/host test:e2e:local
+curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
 ```
 
-The root `npm run test:e2e:local` shortcut instead links a local SDK checkout through `npm run link:truapi`; use it only
-when deliberately developing against that checkout. Set `TRUAPI_REPO` to select it.
+```bash
+npm run test:e2e:local
+```
 
-The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND=smoldot-shared-worker` to exercise the SharedWorker light
-client, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
-`apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a fresh lowercase username base: an
-unsuccessful attempt may already have claimed its name, so retries must not request the same name again. Account
-provisioning and ring inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed.
-Captured CLI diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach
-the CLI's private account/session files to reports.
+Override either checkout or server when needed:
 
-Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
-process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
+```bash
+E2E_PRODUCT_REPO=/path/to/host-playground \
+E2E_PRODUCT_URL=http://localhost:5199 \
+npm run test:e2e:local
+```
+
+The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same flow through either light-client backend:
+
+```bash
+E2E_CHAIN_BACKEND=smoldot-shared-worker npm run test:e2e:local
+```
+
+Set `SIGNING_HOST_BIN` to a locally built binary (e.g. `../host-rust-core/target/debug/truapi-host`) instead of
+installing, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
+`apps/host/tests/e2e/.auth/signing-host`, so repeat runs reuse one test account; the first run registers a fresh lite
+username on-chain and can take a few minutes.
+
+The command builds dotli with its debug-only localhost proxy enabled, starts both preview servers through Playwright,
+extracts the login QR deeplink, pairs a headless `truapi-host signing-host` process that auto-signs for the rest of the
+run, and runs the same host-product suite used in CI.
 
 ### Running an approved build
 
@@ -344,13 +280,8 @@ is deployed; rebuild from that tag to verify a deployment.
 ## Debug panel
 
 dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI
-host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk and stylesheet are
-dynamically imported together, so its initial dock measurement uses the styled size even on a cold load. Users who never
-see the panel pay no download cost.
-
-The **Archive** tab explores the current product's files. Light-client reads use the host block cache before bitswap;
-gateway mode uses the IPFS gateway. Its lazy mount retains a static stylesheet side-effect import so layout is measured
-only after the panel CSS arrives.
+host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so
+users who never see it pay no download cost.
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at
 `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in
@@ -359,114 +290,6 @@ clears it. Use `?debug=off` to silence it explicitly within the same session.
 
 See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources,
 views, filters, correlation keys, and how to add a new instrumentation hook.
-
-### Experimental test wallet
-
-Only builds compiled with `VITE_APP_DEBUG=true` offer the **Wallet** tab in the debug pane. Its compact header button
-shows a wallet icon until an active full/Lite username is known, then only the username; click it to expand the pane and
-select Wallet. Status changes do not change this button; verification, pending claims, and errors appear inside the
-Wallet tab. Wallet shares the pane's existing bottom/right docking and resizing controls. Right docking reserves page
-width for both the landing page and product content. There is no separate wallet window or docking preference. Normal
-login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does
-**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved. In a debug
-build, unavailable wallet storage does not block Mobile startup when no wallet is configured. A configured wallet's
-restoration failure or a wallet conflict is still surfaced; it never silently switches the signing identity.
-
-Start with **Use test wallet** and accept the warning to create or reuse a browser-local test identity. Username
-controls appear only after activation completes. A newly created or imported wallet looks up its Lite username on chain
-automatically once; if that lookup fails, the next load retries it. An existing Lite username replaces the claim form;
-**Check username** verifies its on-chain ownership without submitting another registration. Account identifiers are
-collapsed under **Account details**. While active, the account badge also opens the Wallet tab. Choose **Switch back to
-Mobile** to stop using the test wallet without deleting it. The normal login button then signs in with Polkadot Mobile.
-Mode changes reload the page to terminate the previous signing workers. Wallet tracks one active identity; it is not a
-multi-identity wallet manager.
-
-The encrypted wallet is shared by trusted product hosts under the same root domain, through the protocol origin's
-IndexedDB. Browser profiles and different root domains remain isolated; moving an identity between them requires an
-explicit recovery-phrase import. Existing origin-local wallets migrate only into an empty shared store or when they
-match it. Conflicting wallets are preserved for recovery, and a deleted shared wallet cannot be silently restored by an
-old origin-local copy.
-
-Wallet identity belongs to the page's single host-owned native core, not the current product. It is available on the
-landing page before any product loads. Product startup or replacement preserves wallet identity queries and claim
-monitoring. Product accounts and permissions remain isolated by their native product connections within that core.
-
-A full page reload restarts the native session. If this origin previously received an identity, the Wallet tab and
-account badge immediately restore its public display metadata for the current wallet revision and network. The Wallet
-tab marks it **verifying**, while the debug header button retains only the known username. This cache does not
-authenticate the wallet or authorize claims, signing, or product permissions. Native verification replaces the cached
-identity and names, including confirmed absence; a failed check retains the last-known display with an explicit failure
-state in the Wallet tab. First visits without cached metadata still require native initialization.
-
-If the native worker fails, the host retires the entire page core, including its product connections, and marks the
-cached wallet identity as display-only. The product iframe remains visible, but its native connection is unavailable.
-Verification failures do not open a Mobile pairing dialog or silently restart the wallet. **Retry wallet verification**
-explicitly creates and verifies a fresh page core before enabling username and resource operations again; reload or
-rerender the product to reconnect its iframe.
-
-**Claim username** submits an explicitly confirmed registration on the selected network through the same-origin identity
-proxy. The Wallet tab reports actual checking, authentication, submission, and confirmation stages with elapsed time. A
-failed confirmation read shows an automatic retry state with expandable technical details; acceptance alone is never
-shown as success. Switching tabs, collapsing the pane, or replacing a product does not cancel monitoring. The header
-button shows the name only once it is reported by the wallet identity, not while a claim is pending. An accepted claim
-is not resubmitted or reported as failed merely because confirmation is slow. Chain confirmation updates the claimed
-state and shows a notification, including while another tab is selected. Disconnecting, replacing the wallet, or
-reloading the entire page ends that session's monitoring. **Check username** discovers an existing registration,
-including after importing a phrase in another profile; it is not needed to poll an in-progress claim. Unknown,
-last-known, confirmed-unclaimed, pending, confirmed-claimed, and failed states are distinguished. Confirmed public
-metadata is shared with other product hosts; live native sessions refresh in place without resetting their permissions.
-A product-account refresh failure is reported separately from the confirmed wallet claim. Cached names are rechecked on
-chain before being restored to a native session.
-
-**Wallet** shows the network and wallet identity independently of the **Current product** section, which shows the
-product account public key, native derivation context, and permissions. Allowance controls use the running product's
-native resource-allocation API and require an explicit request confirmation; native approval remains in charge. The API
-exposes allocation outcomes, not remaining quota, balances, amounts or fees. Results are labeled as last observed
-outcomes, and uncertain results are not retried automatically.
-
-Use the existing **List**, **Timeline**, and **Resolution** tabs for activity and diagnostics. Wallet does not duplicate
-their event viewer or capture controls.
-
-Under **Debug → Wallet → Recovery**, **Reveal recovery phrase** requires confirmation before displaying a selectable
-phrase for manual backup. Recovery is collapsed by default. Existing 32-byte wallets export as 24 English BIP-39 words
-without changing their identity. Nothing is automatically copied or downloaded; hiding the phrase, closing Recovery,
-switching away from Wallet, collapsing or closing the pane, or hiding the page clears sensitive controls. Import and
-deletion controls are confined to Recovery.
-
-**Import / replace test wallet** accepts checksum-valid English BIP-39 phrases of 12, 15, 18, 21 or 24 words, without a
-passphrase or custom derivation path. It uses native Polkadot host/Substrate derivation, not Bitcoin/Ethereum seed
-derivation. Importing an exported phrase restores the same account keys on the same network, but not permissions; use
-**Check username** to rediscover its registered name. Back up the previous test wallet before replacing it. Successful
-import replaces the shared wallet for trusted product hosts, clears wallet-bound experimental session/signing grants,
-activates the imported wallet and reloads open tabs; Mobile pairing and grants remain separate.
-
-**Delete test wallet** requires confirmation and removes the shared wallet's stored entropy, experimental
-session/signing grants and this origin's preserved legacy copy. Without a recovery phrase backup, deleting the wallet or
-clearing site data permanently loses access.
-
-Only one tab of a browser profile runs the test wallet at a time, because two tabs starting their own wallet cores would
-claim allowances twice and overwrite each other's state. Opening an app with the test wallet in another tab moves it
-there automatically: the tab that had it stops its wallet first, then hands it over. That tab keeps its app on screen
-with a **Paused** banner and takes the wallet back the next time you click or type in it; background activity never
-moves the wallet, so two tabs cannot bounce it between them. If the tab that has it does not respond, the new tab shows
-**Test wallet is open in another tab**; close the other tab and reload. Ownership requires the browser's Web Locks API;
-there is no unlocked fallback. A handover acknowledges release only after the previous owner's signing workers,
-including workers still booting, have stopped. An unresponsive owner is never forcibly bypassed after a timeout.
-Protocol-frame reset and page hiding (including entry into the back/forward cache) also retire signing workers before
-their frame-owned lock is released. Returning to that page requires fresh wallet verification and a new ownership lease.
-After a handover, only the banner's user-initiated reload can reacquire ownership; background identity requests are
-rejected.
-
-Safari keeps each app's storage separate, so there every app has its own test wallet and the one-tab rule only covers
-tabs of the same app. Importing the same recovery phrase into two apps runs two copies of one wallet with nothing
-coordinating them; avoid using both at once. When another app already has a wallet, the wallet panel warns that **Use
-test wallet** would start a different one. Chrome, Brave and other Chromium browsers share one wallet across apps.
-
-This is experimental custody, not a secure vault: malicious scripts on any trusted host origin can recover the shared
-keys despite encryption. Wallet secrets never enter sandbox origins or HTTP mode synchronization. Never use valuable
-funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
-
-Keep `VITE_APP_DEBUG` unset or false in production builds.
 
 ## Sandbox API Checker
 

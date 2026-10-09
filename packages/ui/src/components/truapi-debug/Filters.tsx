@@ -24,8 +24,6 @@ export function Filters(props: {
   products: readonly (string | undefined)[];
   placement: DockPosition;
   collapsed: boolean;
-  /** The active view does not filter events (Wallet). */
-  hidden: boolean;
   onChange: (next: FilterState) => void;
 }): JSX.Element {
   const update = (patch: Partial<FilterState>): void => {
@@ -36,13 +34,7 @@ export function Filters(props: {
   const invalid = (query: string): 'true' | undefined => (compileQuery(query).invalid ? 'true' : undefined);
 
   return (
-    <div
-      class={s['filters']}
-      data-testid="td-filters"
-      data-dock={props.placement}
-      data-collapsed={on(props.collapsed)}
-      hidden={props.hidden}
-    >
+    <div class={s['filters']} data-testid="td-filters" data-dock={props.placement} data-collapsed={on(props.collapsed)}>
       <div class={s['group']}>
         <span class={s['label']}>show</span>
         <label class={s['check']}>

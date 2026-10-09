@@ -8,7 +8,7 @@ import { config } from '@config/eslint/vite';
 
 // The root lints only scripts/. Every workspace lints itself.
 export default defineConfig([
-  { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**', 'vendor/**'] },
+  { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**'] },
   ...config,
   {
     languageOptions: {

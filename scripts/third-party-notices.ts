@@ -52,11 +52,7 @@ each package are retained in its distribution under \`node_modules\`.
 
 GPL-family components (GPL-3.0 with the Classpath linking exception) are compatible with this project's AGPL-3.0
 outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0) or source-available (FSL-1.1-MIT)
-terms is used to build the application and is not redistributed as part of it.
-
-The vendored \`@parity/truapi\` and \`@parity/truapi-host\` packages are MIT-licensed. Their license texts are retained
-in \`vendor/truapi/LICENSE\` and \`vendor/truapi-host/LICENSE\`, including the production web Wasm distribution.
-Exact source revision, package versions and artifact hashes are recorded in \`vendor/truapi-host.lock.json\`.`;
+terms is used to build the application and is not redistributed as part of it.`;
 
 interface LockEntry {
   name?: string;

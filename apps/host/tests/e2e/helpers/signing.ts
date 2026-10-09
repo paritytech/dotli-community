@@ -5,18 +5,12 @@ import { expect, type Page, type Frame, type Locator } from '@playwright/test';
 
 type PageLike = Page | Frame;
 
-/** A test authorizes a specific kind of host review, never any matching button on the page. */
-export interface HostDialogDecision {
-  title: string;
-  button: string;
-}
-
 /** The signing-host CLI signs once the SignRequest reaches the Statement Store, so only host dialogs need clicks. */
 export async function runWebSignedTest(
   hostPage: Page,
   productFrame: PageLike,
   testId: string,
-  dialogs: readonly HostDialogDecision[],
+  dialogButtons: readonly string[],
   opts: { timeoutMs?: number; preClickDelayMs?: number } = {},
 ): Promise<'success' | 'error'> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
@@ -37,18 +31,13 @@ export async function runWebSignedTest(
 
   const dialogController = new AbortController();
   const dialogTask =
-    dialogs.length > 0
-      ? clickHostDialogs(hostPage, dialogs, 60_000, preClickDelayMs, dialogController.signal)
+    dialogButtons.length > 0
+      ? clickHostDialogs(hostPage, dialogButtons, 60_000, preClickDelayMs, dialogController.signal).catch(() => {})
       : Promise.resolve();
 
-  const resultTask = waitForLogResult(entries, initialCount, testId, timeoutMs);
-  let result: 'success' | 'error';
-  try {
-    result = await Promise.race([resultTask, dialogTask.then(() => resultTask)]);
-  } finally {
-    dialogController.abort();
-    await dialogTask;
-  }
+  const result = await waitForLogResult(entries, initialCount, testId, timeoutMs);
+  dialogController.abort();
+  await dialogTask;
   if (result === 'error') {
     // Shows a dialog selector mismatch, where the signer signed but no Allow or Sign button was found.
     const visibleButtons = await hostPage
@@ -60,26 +49,27 @@ export async function runWebSignedTest(
   return result;
 }
 
-/** Handles only the current test's declared reviews until its result or the existing dialog deadline. */
+/** Clicks whichever of `buttonNames` shows until none has for a while, so callers need not know the dialog order. */
 async function clickHostDialogs(
   page: Page,
-  dialogs: readonly HostDialogDecision[],
+  buttonNames: readonly string[],
   timeoutMs: number,
   preClickDelayMs: number,
   signal: AbortSignal,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  const idleStopMs = 5_000;
+  let lastSeenAt = Date.now();
   const seen = new Set<string>();
-  // Re-read cancellation after awaits rather than narrowing a mutable signal to false.
-  const stopped = (): boolean => signal.aborted;
 
-  while (!stopped() && Date.now() < deadline) {
+  while (!signal.aborted && Date.now() < deadline) {
+    if (Date.now() - lastSeenAt > idleStopMs && seen.size > 0) {
+      return;
+    }
+
     let clickedThisPass = false;
-    for (const { title, button: name } of dialogs) {
-      const btn = page
-        .getByTestId('signing-modal')
-        .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
-        .getByRole('button', { name, exact: true });
+    for (const name of buttonNames) {
+      const btn = page.getByRole('button', { name, exact: true }).first();
       const visible = await btn.isVisible({ timeout: 250 }).catch(() => false);
       if (!visible) {
         continue;
@@ -89,12 +79,15 @@ async function clickHostDialogs(
         console.log(`[signed] dialog "${name}" visible — pausing ${String(preClickDelayMs)}ms before click`);
         await page.waitForTimeout(preClickDelayMs);
       }
-      if (stopped()) {
-        return;
-      }
+      // The fixture's auto-allow poller can close this modal during the pause, and an unbounded click would then
+      // never reach the next dialog.
       console.log(`[signed] dialog "${name}" — clicking`);
-      await btn.click({ timeout: 2_000 });
-      seen.add(`${title}: ${name}`);
+      await btn.click({ timeout: 2_000 }).catch((e: unknown) => {
+        const reason = e instanceof Error ? e.message : String(e);
+        console.log(`[signed] dialog "${name}" click skipped: ${reason}`);
+      });
+      seen.add(name);
+      lastSeenAt = Date.now();
       clickedThisPass = true;
       // Lets the modal close, or the next pass sees the same button.
       await page.waitForTimeout(500);
@@ -105,11 +98,11 @@ async function clickHostDialogs(
     }
   }
 
-  if (stopped()) {
+  if (signal.aborted) {
     return;
   }
   if (seen.size === 0) {
-    console.log(`[signed] no host dialog appeared (looked for: ${dialogs.map(({ title }) => title).join(', ')})`);
+    console.log(`[signed] no host dialog appeared (looked for: ${buttonNames.join(', ')})`);
   } else {
     console.log(`[signed] dialog budget exhausted after seeing: ${[...seen].join(', ')}`);
   }

@@ -45,7 +45,6 @@ window.addEventListener('vite:preloadError', event => {
 
 import { log, serializeError } from '@dotli/shared';
 import {
-  DEBUG,
   SITE_ID,
   TIMEOUTS,
   type SiteId,
@@ -69,20 +68,12 @@ import {
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
-  isSharedWalletOperation,
-  isSharedWalletState,
-  createWalletOwner,
-  isWalletOwnerOperation,
-  type WalletOwner,
 } from '@dotli/protocol';
-import { handleWalletOperation, WALLET_DB_NAME, withSharedWalletRevision } from './wallet-storage.js';
 
 import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
-import protocolSharedWorkerUrl from './protocol-shared-worker.ts?sharedworker&url';
-import { sharedWorkerGeneration } from './shared-worker-generation.js';
 import { errorResponse } from './error-response.js';
 
 initSentry('protocol');
@@ -229,155 +220,15 @@ function bindSharedAuthListener(): void {
     // On every request, in case the parent navigated.
     parentOrigin = event.origin;
 
-    void handleSharedAuthRequest(data, event.origin, response => {
-      postToSource(event.source, event.origin, response);
-    }).catch((error: unknown) => {
+    try {
+      handleSharedAuthRequest(data, event.origin, response => {
+        postToSource(event.source, event.origin, response);
+      });
+    } catch (error: unknown) {
       countSharedReject('auth', 'validation');
       postToSource(event.source, event.origin, errorResponse(data.id, error));
-    });
-  });
-}
-
-/** Debug-only secret RPC. Only the validated trusted parent may use it. */
-function bindSharedWalletListener(): void {
-  if (!DEBUG) {
-    return;
-  }
-  const channel = new BroadcastChannel('dotli:shared-wallet');
-  let walletOwner: WalletOwner | undefined;
-  channel.addEventListener('message', (event: MessageEvent) => {
-    const data: unknown = event.data;
-    if (
-      !isProtocolEnvelope(data) ||
-      data.kind !== 'wallet-storage-changed' ||
-      data.siteId !== SITE_ID ||
-      !isSharedWalletState(data.state) ||
-      parentOrigin === null ||
-      !isSharedAuthOriginAllowed(parentOrigin) ||
-      window.parent === window
-    ) {
-      return;
     }
-    // Explicit construction ensures no secret-bearing extra fields get relayed.
-    window.parent.postMessage(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'wallet-storage-changed',
-        siteId: SITE_ID,
-        state: {
-          version: data.state.version,
-          revision: data.state.revision,
-          enabled: data.state.enabled,
-          hasWallet: data.state.hasWallet,
-          storedInOtherApp: data.state.storedInOtherApp,
-        },
-      },
-      parentOrigin,
-    );
   });
-  window.addEventListener('message', (event: MessageEvent) => {
-    const request: unknown = event.data;
-    if (
-      !isProtocolEnvelope(request) ||
-      request.kind !== 'request' ||
-      (request.method !== 'walletStorage' && request.method !== 'walletOwner')
-    ) {
-      return;
-    }
-    if (event.source !== window.parent || !isSharedAuthOriginAllowed(event.origin)) {
-      return;
-    }
-    parentOrigin = event.origin;
-    void (async () => {
-      const payload: unknown = request.payload;
-      if (typeof payload !== 'object' || payload === null || !('siteId' in payload) || !('operation' in payload)) {
-        throw new Error('Invalid wallet operation');
-      }
-      assertSharedAuthSiteId(payload.siteId);
-      if (request.method === 'walletOwner') {
-        if (!isWalletOwnerOperation(payload.operation)) {
-          throw new Error('Invalid wallet owner operation');
-        }
-        walletOwner ??= createPageWalletOwner();
-        const lease = await walletOwner.handle(payload.operation, request.deadlineMs);
-        postToSource(event.source, event.origin, {
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: lease,
-        });
-        return;
-      }
-      if (!isSharedWalletOperation(payload.operation)) {
-        throw new Error('Invalid wallet operation');
-      }
-      const result = await handleWalletOperation(
-        payload.operation,
-        state => {
-          try {
-            channel.postMessage({
-              namespace: 'dotli:protocol',
-              kind: 'wallet-storage-changed',
-              siteId: SITE_ID,
-              state,
-            });
-          } catch (error: unknown) {
-            // The write itself succeeded and is answered, so the host never
-            // hears that other tabs missed it.
-            captureException(error, { flow: 'storage', step: 'wallet_revision_broadcast' });
-          }
-        },
-        request.deadlineMs,
-      );
-      try {
-        postToSource(event.source, event.origin, {
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-      } finally {
-        result.secret?.fill(0);
-      }
-    })().catch((error: unknown) => {
-      postToSource(event.source, event.origin, errorResponse(request.id, error));
-    });
-  });
-}
-
-// One tab of the profile runs the test wallet. The lease lives here, on the
-// host origin every app page shares, and ends when this page goes away.
-function createPageWalletOwner(): WalletOwner {
-  if (typeof navigator.locks === 'undefined') {
-    throw new Error('Shared wallets require secure-context Web Locks');
-  }
-  const owner = createWalletOwner({
-    locks: navigator.locks,
-    channel: new BroadcastChannel('dotli:test-wallet-owner'),
-    randomId: () => crypto.randomUUID(),
-  });
-  owner.onRevoked(lease => {
-    if (parentOrigin === null || window.parent === window) {
-      void owner.handle({ action: 'release', lease });
-      return;
-    }
-    // The page stops its wallet workers, then releases the lease itself.
-    window.parent.postMessage(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'wallet-owner-revoked',
-        siteId: SITE_ID,
-        lease,
-      },
-      parentOrigin,
-    );
-  });
-  window.addEventListener('pagehide', () => {
-    owner.releaseAll();
-  });
-  return owner;
 }
 
 function signalReady(): void {
@@ -436,7 +287,7 @@ function getRequestedNetwork(): RequestedNetwork {
 /** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
 async function purgeWorkerCaches(): Promise<void> {
   // Throws rather than continuing, which would boot smoldot against the stale DB.
-  const keep: Record<string, true> = { dotli: true, 'dotli-sw': true, [WALLET_DB_NAME]: true, 'dotli-core': true };
+  const KEEP = new Set(['dotli', 'dotli-sw']);
   if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
     throw new Error(
       'Browser does not expose indexedDB.databases() — cannot fully purge worker caches. ' +
@@ -446,7 +297,7 @@ async function purgeWorkerCaches(): Promise<void> {
   const dbs = await indexedDB.databases();
   const targets = dbs
     .map(db => db.name)
-    .filter((name): name is string => name !== undefined && name !== '' && !Object.hasOwn(keep, name));
+    .filter((name): name is string => name !== undefined && name !== '' && !KEEP.has(name));
   await Promise.all(
     targets.map(
       name =>
@@ -574,70 +425,32 @@ function signalError(message: string): void {
 async function initSharedWorkerMode(network: Network): Promise<void> {
   const swStartTime = performance.now();
 
-  // The URL import keeps Vite's worker bundling while allowing a fresh URL
-  // after a crash. Reusing the closed worker's exact URL/name can attach to a
-  // retired Chromium worker without starting it. All tabs share this network
-  // generation; the name still supplies the worker's validated network.
-  const generation = await sharedWorkerGeneration(network);
-  const workerUrl = new URL(protocolSharedWorkerUrl, import.meta.url);
-  workerUrl.searchParams.set('generation', generation);
-  const worker = new SharedWorker(workerUrl, {
+  // Vite only rewrites a literal `new URL` argument, so the network travels in the worker name, not a query param.
+  const worker = new SharedWorker(new URL('./protocol-shared-worker.ts', import.meta.url), {
     type: 'module',
     name: `dotli-protocol-${network}`,
   });
   const port = worker.port;
-  let halted = false;
-  // Set while the ready wait below is pending.
-  let failReadyWait: ((error: Error, reason: string) => void) | null = null;
-  // Every terminal failure of the worker ends here: its script failing to
-  // load, an uncaught error inside it, or a fatal it reports. Logging alone
-  // would leave the host's native consumer on a dead lease, so the host
-  // always hears of it through its typed frame halt path, and a pending ready
-  // wait fails now with the cause rather than at the timeout with none.
-  const halt = (message: string, reason: string): void => {
-    if (halted) {
-      return;
-    }
-    halted = true;
-    port.close();
-    // Commit the replacement identity before the host can boot another
-    // frame. The lock serializes simultaneous fatals from every attached tab.
-    void sharedWorkerGeneration(network, generation)
-      .catch((error: unknown) => {
-        message = `${message}; SharedWorker generation retirement failed: ${serializeError(error)}`;
-      })
-      .then(() => {
-        failReadyWait?.(new Error(message), reason);
-        if (window.parent !== window) {
-          window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'fatal', message }, '*');
-        }
-      });
-  };
 
-  // Fires when the worker script cannot be fetched or evaluated. Uncaught
-  // errors inside a running worker go to its own handlers, which report them
-  // as a fatal below.
+  let failReadyWait: ((error: Error) => void) | null = null;
+
+  // Fires only when the worker script cannot be fetched or evaluated.
   worker.addEventListener('error', event => {
     const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
     const error = new Error(`SharedWorker failed to start${detail}`);
     log.error('[dot.li protocol] SharedWorker error event', error);
-    halt(error.message, 'load_failed');
+    if (failReadyWait !== null) {
+      // Fails now with the cause instead of at the ready timeout. The host reports the resulting `init-failed`.
+      failReadyWait(error);
+      return;
+    }
+    // After ready nothing waits on the worker's start, so the host would never hear of it.
+    captureException(error, { flow: 'protocol', step: 'shared_worker_error' });
   });
 
   // Before the ready wait, because `smoldot-db` arrives during pre-sync and MessagePort events are not replayed.
   port.addEventListener('message', (event: MessageEvent) => {
-    if (halted) {
-      return;
-    }
     const data = event.data as SWOutbound | null;
-    if (data?.type === 'relay-response' && (data.envelope.kind === 'fatal' || data.envelope.kind === 'init-failed')) {
-      halt(data.envelope.message, 'worker_fatal');
-      return;
-    }
-    if (data?.type === 'error') {
-      halt(`SharedWorker error: ${data.message}`, 'worker_reported');
-      return;
-    }
     if (data?.type === 'relay-response' && window.parent !== window) {
       window.parent.postMessage(data.envelope, '*');
     }
@@ -662,39 +475,30 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     }
 
     function onMessage(event: MessageEvent): void {
-      if (halted) {
-        return;
-      }
       const data = event.data as SWOutbound | null;
       if (data?.type === 'ready') {
         settle('ok');
+      } else if (data?.type === 'error') {
+        settle('error', new Error(`SharedWorker error: ${data.message}`), 'worker_reported');
       }
     }
 
     const timer = setTimeout(() => {
       settle('timeout', new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
     }, TIMEOUTS.SHARED_WORKER_READY);
-    failReadyWait = (error, reason) => {
-      settle('error', error, reason);
+    failReadyWait = error => {
+      settle('error', error, 'load_failed');
     };
     port.addEventListener('message', onMessage);
     port.start();
   });
 
   window.addEventListener('message', (event: MessageEvent) => {
-    if (halted) {
-      return;
-    }
     const data: unknown = event.data;
     if (!isProtocolEnvelope(data) || data.kind !== 'request') {
       return;
     }
-    if (
-      isSharedAuthRequestMethod(data.method) ||
-      isSharedModeRequestMethod(data.method) ||
-      data.method === 'walletStorage' ||
-      data.method === 'walletOwner'
-    ) {
+    if (isSharedAuthRequestMethod(data.method) || isSharedModeRequestMethod(data.method)) {
       return;
     }
     if (!isAllowedOrigin(event.origin)) {
@@ -716,10 +520,6 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   signalReady();
 
   window.addEventListener('beforeunload', () => {
-    if (halted) {
-      return;
-    }
-    halted = true;
     try {
       port.postMessage({ type: 'disconnect' });
       // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal, the port may already be closed.
@@ -893,12 +693,7 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
     if (!isProtocolEnvelope(data) || data.kind !== 'request') {
       return;
     }
-    if (
-      isSharedAuthRequestMethod(data.method) ||
-      isSharedModeRequestMethod(data.method) ||
-      data.method === 'walletStorage' ||
-      data.method === 'walletOwner'
-    ) {
+    if (isSharedAuthRequestMethod(data.method) || isSharedModeRequestMethod(data.method)) {
       return;
     }
     if (!isAllowedOrigin(event.origin)) {
@@ -1023,11 +818,7 @@ function bindSharedModeListener(): void {
   });
 }
 
-async function handleSharedAuthRequest(
-  request: ProtocolRequestEnvelope,
-  origin: string,
-  respond: ResponseCallback,
-): Promise<void> {
+function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback): void {
   if (!isSharedAuthRequestMethod(request.method)) {
     throw new Error(`Not a shared auth request: ${request.method as string}`);
   }
@@ -1056,19 +847,8 @@ async function handleSharedAuthRequest(
       if (typeof payload.value !== 'string') {
         throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_AUTH_VALUE);
       }
-      const { siteId, key, value } = payload;
-      const commit = (): void => {
-        localStorage.setItem(buildSharedAuthStorageKey(siteId, key), value);
-        broadcastSharedAuthChange(siteId, key, value);
-      };
-      if (payload.walletRevision !== undefined) {
-        if (!DEBUG) {
-          throw new Error('Experimental wallets require a debug build');
-        }
-        await withSharedWalletRevision(payload.walletRevision, commit, request.deadlineMs);
-      } else {
-        commit();
-      }
+      localStorage.setItem(buildSharedAuthStorageKey(payload.siteId, payload.key), payload.value);
+      broadcastSharedAuthChange(payload.siteId, payload.key, payload.value);
       respond({
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -1100,7 +880,6 @@ async function handleSharedAuthRequest(
 bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();
-bindSharedWalletListener();
 
 void init().catch((err: unknown) => {
   log.error('[dot.li protocol] Init failed:', err);
