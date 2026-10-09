@@ -34,12 +34,10 @@ type Store = Map<string, PermissionAuthorizationStatus>;
 let unregisterMyapp: (() => void) | null = null;
 let myappStore: Store;
 let myappBatchReads = 0;
-let myappWrites = 0;
 
 beforeEach(() => {
   myappStore = new Map();
   myappBatchReads = 0;
-  myappWrites = 0;
   unregisterMyapp = registerTestProvider('myapp', myappStore);
 });
 
@@ -58,9 +56,6 @@ function registerTestProvider(label: string, store: Store): () => void {
       return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
     },
     setPermissionAuthorizationStatus(request, status) {
-      if (label === 'myapp') {
-        myappWrites += 1;
-      }
       const key = requestKey(request);
       if (status === 'NotDetermined') {
         store.delete(key);
@@ -545,7 +540,7 @@ describe('three-way permission prompts', () => {
     expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
   });
 
-  it('As a dotli user, always allowing transactions returns the durable decision to the core', async () => {
+  it('As a dotli user, always allowing transactions saves the grant', async () => {
     // Given
     const events: unknown[] = [];
     const onPermissionChanged = (e: Event): void => {
@@ -561,13 +556,12 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowAlways');
-    expect(myappWrites).toBe(0);
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
+    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('granted');
     expect(events).toEqual([{ label: 'myapp', permission: 'ChainSubmit' }]);
     window.removeEventListener('dotli:permission-changed', onPermissionChanged);
   });
 
-  it('As a dotli user, denying transactions returns the refusal to the core', async () => {
+  it('As a dotli user, denying transactions saves the refusal', async () => {
     // Given
     const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
       permission: { tag: 'ChainSubmit' },
@@ -578,8 +572,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('Deny');
-    expect(myappWrites).toBe(0);
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
+    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('denied');
   });
 
   it('As a dotli user, I can allow a single notification', async () => {
@@ -593,24 +586,6 @@ describe('three-way permission prompts', () => {
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
   });
-
-  for (const permission of ['ChainSubmit', 'PreimageSubmit', 'StatementSubmit', 'Notifications', 'Camera'] as const) {
-    for (const decision of ['AllowAlways', 'Deny'] as const) {
-      it(`As a product, ${permission} returns ${decision} without invalidating the active core prompt`, async () => {
-        const callbacks = createPromptPermission('myapp');
-        const response =
-          permission === 'Notifications' || permission === 'Camera'
-            ? callbacks.devicePermission(PRODUCT, permission)
-            : callbacks.remotePermission(PRODUCT, { permission: { tag: permission } });
-
-        await clickPromptButton(decision === 'Deny' ? 'Deny' : permission === 'Camera' ? 'Allow' : 'Always allow');
-
-        await expect(response).resolves.toBe(decision);
-        expect(myappWrites).toBe(0);
-        expect(myappStore.size).toBe(0);
-      });
-    }
-  }
 
   it('As a dotli user, a camera prompt offers no one-time grant because granting reloads the app', async () => {
     // When
@@ -670,7 +645,6 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).rejects.toThrow('User dismissed permission dialog');
     expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
-    expect(myappWrites).toBe(0);
   });
 });
 
@@ -682,7 +656,6 @@ function promptButtonTexts(): string[] {
 }
 
 async function clickPromptButton(text: string): Promise<void> {
-  await overlaysReady();
   await vi.waitFor(() => {
     expect(promptButtonTexts()).toContain(text);
   });

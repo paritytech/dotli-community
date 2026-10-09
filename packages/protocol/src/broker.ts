@@ -6,7 +6,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { log, serializeError } from '@dotli/shared';
+import { log } from '@dotli/shared';
 import { chainHaltedError } from './chain-halted.js';
 
 /** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
@@ -108,8 +108,6 @@ interface BrokerConnection {
 const TOKEN_METHODS = new Map<string, string>([
   ['transaction_v1_broadcast', 'transaction_v1_stop'],
   ['transactionWatch_v1_submitAndWatch', 'transactionWatch_v1_unwatch'],
-  // Legacy watch still used by the native core's allowance registration.
-  ['author_submitAndWatchExtrinsic', 'author_unwatchExtrinsic'],
   ['statement_subscribeStatement', 'statement_unsubscribeStatement'],
 ]);
 const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
@@ -175,7 +173,7 @@ function cloneWithRewrittenFirstParam(request: JsonRpcRequest, rewrittenToken: s
 }
 
 function releaseResultFor(method: string): unknown {
-  return method === 'statement_unsubscribeStatement' || method === 'author_unwatchExtrinsic' ? true : null;
+  return method === 'statement_unsubscribeStatement' ? true : null;
 }
 
 export interface ChainBrokerManager {
@@ -225,9 +223,6 @@ function brokerWarn(kind: string, message: string): void {
 
 export class ChainBroker {
   private readonly provider: JsonRpcProvider;
-  private readonly onError: (error: unknown) => void;
-  private upstreamGeneration = 0;
-  private halted = false;
   private readonly onEmpty: () => void;
   private upstream: JsonRpcConnection | null = null;
   private readonly sessions = new Map<string, Session>();
@@ -241,9 +236,8 @@ export class ChainBroker {
   private requestCounter = 0;
   private tokenCounter = 0;
 
-  constructor(provider: JsonRpcProvider, onEmpty: () => void, onError: (error: unknown) => void) {
+  constructor(provider: JsonRpcProvider, onEmpty: () => void) {
     this.provider = provider;
-    this.onError = onError;
     this.onEmpty = onEmpty;
   }
 
@@ -252,11 +246,7 @@ export class ChainBroker {
   }
 
   private sendUpstream(obj: unknown): void {
-    try {
-      this.upstream?.send(obj as UpstreamJsonRpcRequest);
-    } catch (error) {
-      this.onError(error);
-    }
+    this.upstream?.send(obj as UpstreamJsonRpcRequest);
   }
 
   connect(
@@ -268,11 +258,9 @@ export class ChainBroker {
     if (this.sessions.has(sessionId)) {
       throw new Error(`Duplicate broker session: ${sessionId}`);
     }
-    if (this.halted) {
-      throw new Error('Chain transport halted');
-    }
 
     brokerLog(`Session ${sessionId} connecting (${String(this.sessions.size)} existing sessions)`);
+    this.ensureUpstream();
     this.sessions.set(sessionId, {
       id: sessionId,
       onMessage,
@@ -281,20 +269,9 @@ export class ChainBroker {
       wireMode,
       onHalt,
     });
-    try {
-      if (!this.ensureUpstream()) {
-        throw new Error('Chain transport halted while connecting');
-      }
-    } catch (error) {
-      this.onError(error);
-      throw error;
-    }
 
     return {
       send: message => {
-        if (this.halted) {
-          throw new Error('Chain transport halted');
-        }
         this.sendFromSession(sessionId, message);
       },
       disconnect: () => {
@@ -311,114 +288,72 @@ export class ChainBroker {
     this.onEmpty();
   }
 
-  private ensureUpstream(): boolean {
-    if (this.halted) {
-      return false;
-    }
-    if (this.upstream !== null) {
-      return true;
-    }
-    const generation = this.upstreamGeneration;
-    brokerLog(`Connecting to upstream provider... (sessions: [${[...this.sessions.keys()].join(',')}])`);
-    const connection = this.provider(message => {
-      if (generation === this.upstreamGeneration) {
-        this.handleUpstreamMessage(message);
-      }
-    });
-    // A provider may halt synchronously while opening. Never resurrect it.
-    if (generation !== this.upstreamGeneration) {
-      connection.disconnect();
-      return false;
-    }
-    this.upstream = connection;
-    return true;
-  }
-
-  /** Retire the transport and answer every consumer before announcing its halt. */
+  /**
+   * The transport is gone for good. Each session first gets an error per request in flight and a
+   * `stop` per established follow (transaction watches already got `dropped` from the watch guard).
+   * The upstream is dropped without unsubscribing, as nothing is left to unsubscribe from.
+   */
   halt(error?: unknown): void {
-    if (this.halted) {
-      return;
-    }
-    this.halted = true;
-    const deliveries: { session: Session; message: unknown }[] = [];
-    const enqueue = (sessionId: string, message: unknown): void => {
-      const session = this.sessions.get(sessionId);
-      if (session?.connected === true) {
-        deliveries.push({ session, message });
-      }
-    };
-    const reason = chainHaltedError();
-    for (const pending of this.pending.values()) {
-      if (pending.method !== 'chainHead_v1_follow' && pending.clientId !== null) {
-        enqueue(pending.sessionId, buildJsonRpcError(pending.clientId, reason));
-      }
-    }
-    for (const follow of this.sharedFollows.values()) {
-      const awaitingTokens = new Set(follow.pendingLocals.map(local => local.localToken));
-      for (const local of follow.pendingLocals) {
-        if (local.requestId !== null) {
-          enqueue(local.sessionId, buildJsonRpcError(local.requestId, reason));
-        }
-      }
-      for (const localToken of follow.localTokens) {
-        const local = this.localFollowTokens.get(localToken);
-        if (local !== undefined && !awaitingTokens.has(localToken)) {
-          enqueue(local.sessionId, {
-            jsonrpc: '2.0',
-            method: 'chainHead_v1_followEvent',
-            params: { subscription: localToken, result: { event: 'stop' } },
-          });
-        }
-      }
-    }
-    for (const owned of this.localToOwned.values()) {
-      let method: string;
-      let payload: { result: unknown } | { error: { code: number; message: string } };
-      switch (owned.releaseMethod) {
-        case 'statement_unsubscribeStatement':
-          // jsonrpsee SubscriptionPayloadError, not a StatementEvent.
-          method = 'statement_statement';
-          payload = { error: reason };
-          break;
-        case 'author_unwatchExtrinsic':
-          method = 'author_extrinsicUpdate';
-          payload = { result: 'dropped' };
-          break;
-        case 'transactionWatch_v1_unwatch':
-          method = 'transactionWatch_v1_watchEvent';
-          payload = { result: { event: 'error', error: reason.message } };
-          break;
-        default:
-          // transaction_v1_broadcast returns a cancellation handle, not a subscription.
-          continue;
-      }
-      enqueue(owned.sessionId, {
-        jsonrpc: '2.0',
-        method,
-        params: { subscription: owned.localToken, ...payload },
-      });
-    }
-    // Clear ownership before callbacks: a consumer may synchronously acquire a
-    // replacement lease. Neither stale messages nor old cleanup can touch it.
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
-    this.disconnectUpstream();
-    this.onEmpty();
-    for (const { session, message } of deliveries) {
-      try {
-        this.sendToSession(session, message);
-      } catch (error) {
-        brokerWarn('halt_terminal_handler', `Terminal message handler threw: ${serializeError(error)}`);
-      }
-    }
     for (const session of sessions) {
+      try {
+        this.answerHaltedSession(session);
+        // eslint-disable-next-line no-restricted-syntax -- a throwing message handler must not keep its session from hearing the halt.
+      } catch {
+        /* the session still hears the halt */
+      }
       session.connected = false;
       try {
         session.onHalt?.(error);
-      } catch (error) {
-        brokerWarn('halt_handler', `Halt handler threw: ${serializeError(error)}`);
+        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one session's handler must not keep the others from hearing the halt.
+      } catch {
+        /* the other sessions still hear the halt */
       }
     }
+    this.disconnectUpstream();
+    this.onEmpty();
+  }
+
+  private answerHaltedSession(session: Session): void {
+    for (const entry of this.pending.values()) {
+      if (entry.sessionId === session.id && entry.clientId !== null) {
+        this.sendToSession(session, buildJsonRpcError(entry.clientId, chainHaltedError()));
+      }
+    }
+    for (const sharedFollow of this.sharedFollows.values()) {
+      for (const pendingLocal of sharedFollow.pendingLocals) {
+        if (pendingLocal.sessionId === session.id && pendingLocal.requestId !== null) {
+          this.sendToSession(session, buildJsonRpcError(pendingLocal.requestId, chainHaltedError()));
+        }
+      }
+    }
+    for (const [localToken, followToken] of this.localFollowTokens) {
+      if (followToken.sessionId !== session.id) {
+        continue;
+      }
+      if ((this.sharedFollows.get(followToken.followKey)?.upstreamToken ?? null) === null) {
+        continue;
+      }
+      this.sendToSession(session, {
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: localToken, result: { event: 'stop' } },
+      });
+    }
+  }
+
+  private ensureUpstream(): void {
+    if (this.upstream !== null) {
+      return;
+    }
+    brokerLog(`Connecting to upstream provider... (sessions: [${[...this.sessions.keys()].join(',')}])`);
+    this.upstream = this.provider(message => {
+      this.handleUpstreamMessage(message);
+    });
+    brokerLog(
+      `Upstream provider connected (send=${typeof this.upstream.send}, disconnect=${typeof this.upstream.disconnect})`,
+    );
   }
 
   private sendFromSession(sessionId: string, message: unknown): void {
@@ -449,13 +384,6 @@ export class ChainBroker {
     if (!isRequestMessage(parsed)) {
       brokerWarn('session_not_request', `sendFromSession: not a request from session ${sessionId}`);
       this.sendToSession(session, buildJsonRpcError(null, 'Invalid JSON-RPC request'));
-      return;
-    }
-
-    if (!this.ensureUpstream()) {
-      if (parsed.id !== undefined) {
-        this.sendToSession(session, buildJsonRpcError(parsed.id, chainHaltedError()));
-      }
       return;
     }
 
@@ -889,15 +817,6 @@ export class ChainBroker {
         ? eventResult['event']
         : 'unknown'
       : '?';
-    const terminal =
-      eventType === 'stop' ||
-      (message.method === 'transactionWatch_v1_watchEvent' &&
-        (eventType === 'finalized' || eventType === 'error' || eventType === 'invalid' || eventType === 'dropped')) ||
-      (message.method === 'author_extrinsicUpdate' &&
-        (eventResult === 'invalid' ||
-          eventResult === 'dropped' ||
-          (isJsonRpcObject(eventResult) &&
-            ('finalized' in eventResult || 'usurped' in eventResult || 'finalityTimeout' in eventResult))));
     const localTokens = [...ownedLocals];
     for (const localToken of localTokens) {
       const owned = this.localToOwned.get(localToken);
@@ -906,9 +825,6 @@ export class ChainBroker {
       }
 
       const session = this.sessions.get(owned.sessionId);
-      if (terminal) {
-        this.releaseOwnedToken(localToken, false);
-      }
       if (session?.connected !== true) {
         brokerWarn(
           'subscription_disconnected_session',
@@ -926,6 +842,13 @@ export class ChainBroker {
           subscription: owned.localToken,
         },
       });
+    }
+
+    if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
+      brokerLog(`Token stopped by upstream: ${upstreamToken}`);
+      for (const localToken of localTokens) {
+        this.releaseOwnedToken(localToken, false);
+      }
     }
   }
 
@@ -1035,12 +958,6 @@ export class ChainBroker {
   }
 
   private disconnectUpstream(): void {
-    this.upstreamGeneration += 1;
-    const upstream = this.upstream;
-    this.upstream = null;
-    for (const session of this.sessions.values()) {
-      session.ownedTokens.clear();
-    }
     this.pending.clear();
     this.localToOwned.clear();
     this.upstreamToOwned.clear();
@@ -1048,7 +965,8 @@ export class ChainBroker {
     this.localFollowTokens.clear();
     this.sharedFollows.clear();
     this.upstreamFollowTokens.clear();
-    upstream?.disconnect();
+    this.upstream?.disconnect();
+    this.upstream = null;
   }
 
   private handleLocalFollowRequest(session: Session, request: JsonRpcRequest): void {

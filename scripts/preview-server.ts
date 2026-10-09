@@ -10,7 +10,6 @@ import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
 import { MODE_SYNC_CORS, MODE_SYNC_PREFIX, handleModeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
-import { handleIdentityProxy, IDENTITY_PROXY_PREFIX } from './identity-proxy.ts';
 
 // Node's types have no global `BodyInit`, so take it from `Response` itself.
 type BodyInit = NonNullable<ConstructorParameters<typeof Response>[0]>;
@@ -137,9 +136,6 @@ function handleMetrics(req: Request): Response {
 
 async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  if (url.pathname.startsWith(IDENTITY_PROXY_PREFIX)) {
-    return handleIdentityProxy(req);
-  }
 
   if (url.pathname === TUNNEL_PATH) {
     collectEnvelope(await req.text());

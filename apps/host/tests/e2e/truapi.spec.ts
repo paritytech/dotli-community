@@ -3,18 +3,9 @@
 
 import { test, expect, openHostPlayground } from './fixtures/paired.js';
 import { waitForPlaygroundReady, runTestExpectSuccess } from './helpers/run-test.js';
-import { runWebSignedTest, type HostDialogDecision } from './helpers/signing.js';
+import { runWebSignedTest } from './helpers/signing.js';
 
 // Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.
-
-// Core permission decisions and signing/resource reviews have separate authority.
-const lastingPermission: HostDialogDecision = { title: 'Permission Request', button: 'Always allow' };
-const resourceAllocation: HostDialogDecision = { title: 'Resource Allocation', button: 'Allow' };
-const preimageDecisions: readonly HostDialogDecision[] = [
-  lastingPermission,
-  resourceAllocation,
-  { title: 'Submit Preimage', button: 'Allow' },
-];
 
 test.describe('dot.li > host-playground.dot', () => {
   test('Product is ready', async ({ productFrame }) => {
@@ -51,11 +42,7 @@ test.describe('dot.li > host-playground.dot', () => {
       const badge = pairedPage.getByTestId('user-badge');
       await expect(badge).toBeVisible({ timeout: 30_000 });
       await expect(badge).not.toHaveText('??', { timeout: 60_000 });
-      expect(
-        await runWebSignedTest(pairedPage, productFrame, 'get-user-id', [
-          { title: 'Identity Disclosure', button: 'Always allow' },
-        ]),
-      ).toBe('success');
+      await runTestExpectSuccess(productFrame, 'get-user-id');
     });
   });
 
@@ -90,7 +77,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'allowances-statement-store',
-        [resourceAllocation],
+        ['Always allow', 'Allow'],
         { timeoutMs: 90_000 },
       );
 
@@ -103,9 +90,13 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-bulletin', [resourceAllocation], {
-        timeoutMs: 90_000,
-      });
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'allowances-bulletin',
+        ['Always allow', 'Allow'],
+        { timeoutMs: 90_000 },
+      );
 
       // Then
       expect(status).toBe('success');
@@ -120,7 +111,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'allowances-smart-contract',
-        [resourceAllocation],
+        ['Always allow', 'Allow'],
         { timeoutMs: 90_000 },
       );
 
@@ -134,7 +125,7 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', [resourceAllocation], {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', ['Always allow', 'Allow'], {
         timeoutMs: 90_000,
       });
 
@@ -177,9 +168,13 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(60_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'remote-permission-remote', [], {
-        timeoutMs: 30_000,
-      });
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'remote-permission-remote',
+        ['Always allow', 'Allow'],
+        { timeoutMs: 30_000 },
+      );
 
       // Then
       expect(status).toBe('success');
@@ -190,9 +185,13 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(60_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'remote-permission-webrtc', [], {
-        timeoutMs: 30_000,
-      });
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'remote-permission-webrtc',
+        ['Always allow', 'Allow'],
+        { timeoutMs: 30_000 },
+      );
 
       // Then
       expect(status).toBe('success');
@@ -207,7 +206,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'remote-permission-chain-submit',
-        [lastingPermission],
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
@@ -224,7 +223,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'remote-permission-preimage-submit',
-        [lastingPermission],
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
@@ -241,7 +240,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'remote-permission-statement-submit',
-        [lastingPermission],
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
@@ -251,13 +250,8 @@ test.describe('dot.li > host-playground.dot', () => {
   });
 
   test.describe('Statements', () => {
-    test('As a product user, I can create an authorized statement proof', async ({ pairedPage, productFrame }) => {
-      expect(
-        await runWebSignedTest(pairedPage, productFrame, 'statement-store-create-proof-authorized', [
-          resourceAllocation,
-          { title: 'Proof Permission', button: 'Allow' },
-        ]),
-      ).toBe('success');
+    test('As a product user, I can create an authorized statement proof', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'statement-store-create-proof-authorized');
     });
 
     test('As a product user, I can submit a statement', async ({ pairedPage, productFrame }) => {
@@ -269,7 +263,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'statement-store-submit',
-        [lastingPermission, resourceAllocation, { title: 'Sign Statement', button: 'Sign' }],
+        ['Always allow', 'Allow'],
         { timeoutMs: 90_000 },
       );
 
@@ -372,7 +366,7 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', preimageDecisions, {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', ['Always allow', 'Allow'], {
         timeoutMs: 60_000,
       });
 
@@ -385,7 +379,7 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', preimageDecisions, {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', ['Always allow', 'Allow'], {
         timeoutMs: 60_000,
       });
 
@@ -397,7 +391,7 @@ test.describe('dot.li > host-playground.dot', () => {
   test.describe('Notifications', () => {
     test('As a product user, I can allow and receive a push notification', async ({ pairedPage, productFrame }) => {
       // Given
-      const approvalButtons = [lastingPermission];
+      const approvalButtons = ['Always allow', 'Allow'];
 
       // When
       const status = await runWebSignedTest(pairedPage, productFrame, 'push-notification', approvalButtons, {
@@ -421,7 +415,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'wallet-sign-message',
-        [{ title: 'Sign Message', button: 'Sign' }],
+        ['Always allow', 'Allow', 'Sign'],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 

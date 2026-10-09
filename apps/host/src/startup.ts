@@ -33,7 +33,6 @@ import {
   BACKEND_KEY,
   CACHE_KEY,
   NETWORK_KEY,
-  DEBUG,
   getBackend,
   getCacheSettings,
   getNetwork,
@@ -47,31 +46,6 @@ import {
 } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { describeError, RELOAD_BTN_LABEL } from './errors.js';
-import { HOST_ERRORS } from './error-copy.js';
-import { WALLET_OWNER_REVOKED_EVENT } from '@dotli/protocol';
-import { onNextInteraction } from './wallet-handover.js';
-import walletPaused from './WalletPausedBanner.module.css';
-
-// Another tab took the test wallet. Keep this app on screen, paused, and take
-// the wallet back when the user next interacts with this tab: reloading asks
-// the other tab to hand it over.
-let walletPausedShown = false;
-function showWalletPaused(): void {
-  if (walletPausedShown) {
-    return;
-  }
-  walletPausedShown = true;
-  const banner = document.createElement('div');
-  banner.className = walletPaused['banner'] ?? '';
-  banner.setAttribute('role', 'status');
-  banner.textContent = HOST_ERRORS.WALLET_PAUSED;
-  document.body.append(banner);
-  onNextInteraction(() => {
-    banner.textContent = HOST_ERRORS.WALLET_RESUMING;
-    window.location.reload();
-  });
-}
-window.addEventListener(WALLET_OWNER_REVOKED_EVENT, showWalletPaused);
 
 const bootLog = log.child({ flow: 'boot' });
 
@@ -257,41 +231,10 @@ export function createBootFlowId(): string {
     : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 }
 
-/**
- * `?debug=true|off` wins and persists, stripped from the URL so the sandbox's strict validator never sees it. Then the
- * stored choice, then the build's `DEBUG`. An `explicit` opt-in starts expanded.
- */
-export function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
-  try {
-    const url = new URL(window.location.href);
-    const param = url.searchParams.get('debug');
-    if (param === 'true' || param === 'off') {
-      sessionStorage.setItem('dotli:truapi-debug', param === 'off' ? '0' : '1');
-      url.searchParams.delete('debug');
-      const rewritten =
-        url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash;
-      history.replaceState(null, '', rewritten);
-    }
-    const persisted = sessionStorage.getItem('dotli:truapi-debug');
-    if (persisted === '1') {
-      return { enabled: true, explicit: true };
-    }
-    if (persisted === '0') {
-      return { enabled: false, explicit: true };
-    }
-    return { enabled: DEBUG, explicit: false };
-    // eslint-disable-next-line no-restricted-syntax -- URL or sessionStorage may be unavailable in exotic environments such as Safari private mode, so fall through to the build-time default.
-  } catch {
-    /* ignore */
-  }
-  return { enabled: DEBUG, explicit: false };
-}
-
-/** Shared boot; debug events stay inert unless the page opts into buffering. */
+/** `emitDotliDebugEvent` feeds the shell's debug panel. The landing page has none. */
 export async function startHost(
   bootFlowId: string,
   emitDotliDebugEvent: EmitFn = () => undefined,
-  pageProduct?: Parameters<BridgeModule['setPageProduct']>[0],
 ): Promise<HostStartup> {
   // One id for the debug panel's flow and the Sentry trace, so the two line up.
   setResolutionId(bootFlowId);
@@ -368,10 +311,6 @@ export async function startHost(
 
   boot.step = 'bridge_load';
   const bridgeModule = await loadBridge();
-  // Binding listeners can resume the test wallet immediately, so scope its core before any resume or login.
-  if (pageProduct !== undefined) {
-    bridgeModule.setPageProduct(pageProduct);
-  }
   bridgeModule.initBridgeEventListeners(blockingModalCoordinator);
 
   boot.step = 'topbar';

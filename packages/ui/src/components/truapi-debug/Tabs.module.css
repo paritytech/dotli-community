@@ -5,9 +5,6 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  /* The Wallet tab can overflow a narrow pane: scroll rather than clip. */
-  overflow-x: auto;
-  min-width: 0;
   padding: 0 10px;
   border-bottom: 1px solid var(--td-line);
   background: var(--td-bg-bar);
@@ -30,8 +27,4 @@
 .tab[aria-selected='true'] {
   color: var(--td-fg-strong);
   border-bottom-color: var(--td-accent);
-}
-.tab:focus-visible {
-  outline: 2px solid var(--td-focus);
-  outline-offset: 2px;
 }

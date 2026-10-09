@@ -98,22 +98,6 @@ describe('notification host callbacks', () => {
     expect(mocks.cancelNotification).toHaveBeenCalledWith('myapp', 7);
   });
 
-  it('As a product, I receive an explicit failure for unsupported activation queues', async () => {
-    // Given
-    const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
-    const adapters = createNotificationAdapters('myapp');
-
-    // When
-    const activations = adapters.activationEvents();
-    const acknowledgement = adapters.acknowledgeActivation({ sequence: 1n });
-
-    // Then
-    await expect(activations).rejects.toThrow('Notification activation queues are not supported');
-    await expect(acknowledgement).rejects.toThrow('Notification activation queues are not supported');
-    expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
-    expect(mocks.scheduleNotification).not.toHaveBeenCalled();
-  });
-
   it('As a dotli integrator, the host rejects when the schedule limit is reached', async () => {
     // Given
     mocks.scheduleNotification.mockResolvedValue({ ok: false });

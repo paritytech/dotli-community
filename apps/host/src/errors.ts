@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { WALLET_OWNER_BUSY_ERROR } from '@dotli/protocol';
 import { ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
-import { getActiveServicesConfig, BACKEND_LABELS } from '@dotli/config';
+import { getActiveServicesConfig, getBackend, BACKEND_LABELS } from '@dotli/config';
 
 import { endpointHost, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
@@ -80,7 +79,6 @@ export type ErrorKind =
   | 'hub-sync-timeout'
   | 'light-client-timeout'
   | 'rpc-timeout'
-  | 'wallet-in-other-tab'
   | 'unknown';
 
 export interface ErrorDescription {
@@ -97,6 +95,9 @@ export interface ErrorDescription {
 const CONNECTIVITY_TIPS = ['Checking your internet connection.'] as const;
 
 const BITSWAP_TIPS = ['Waiting a moment as the app may still be spreading across the network.'] as const;
+
+// A failed shared light client stays dead while another tab keeps it open, so a reload alone rejoins it.
+const SHARED_WORKER_TIPS = ['Closing other dot.li tabs, then reloading.', ...CONNECTIVITY_TIPS] as const;
 
 // Quotes the Settings label verbatim, and names the mode the visitor is not already in.
 const switchTransportTip = (isP2p: boolean): string =>
@@ -139,9 +140,6 @@ function classifyError(
   // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
   const msg = err instanceof Error ? err.message : String(err);
 
-  if (err instanceof Error && err.name === WALLET_OWNER_BUSY_ERROR) {
-    return walletInOtherTab();
-  }
   if (err instanceof ProtocolFatalError) {
     return {
       kind: 'protocol-fatal',
@@ -274,6 +272,7 @@ function classifyError(
       kind: 'protocol-init-failed',
       message: HOST_ERRORS.SW_FAILED_TO_START,
       recovery: 'switch-backend',
+      ...(getBackend() === 'smoldot-shared-worker' ? { tips: SHARED_WORKER_TIPS } : {}),
     };
   }
   if (msg.includes('timed out') || msg.includes('Timed out')) {
@@ -298,15 +297,4 @@ function classifyError(
     };
   }
   return { kind: 'unknown', message: msg, recovery: 'switch-backend' };
-}
-
-/** The tab running the test wallet did not hand it over in time. */
-export function walletInOtherTab(): ErrorDescription {
-  return {
-    kind: 'wallet-in-other-tab',
-    title: ERROR_TITLES.WALLET_IN_OTHER_TAB,
-    message: HOST_ERRORS.WALLET_IN_OTHER_TAB,
-    recovery: 'reload',
-    tips: [],
-  };
 }

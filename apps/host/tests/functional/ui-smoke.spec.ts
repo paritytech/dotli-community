@@ -427,29 +427,4 @@ test.describe('Shell UI smoke', () => {
 
     await context.close();
   });
-
-  test('The debug panel waits for its stylesheet instead of appearing with unstyled geometry', async ({ page }) => {
-    const stylesheet = Promise.withResolvers<undefined>();
-    let requested = false;
-    await page.route('**/*.css', async route => {
-      const response = await route.fetch();
-      const body = await response.text();
-      // The panel's CSS modules are hashed; its own --td-* palette is not.
-      if (body.includes('--td-bg:')) {
-        requested = true;
-        await stylesheet.promise;
-      }
-      await route.fulfill({ response, body });
-    });
-
-    const panel = page.locator('#truapi-debug-panel');
-    try {
-      await page.goto(`${LANDING_URL}?debug=true`, { waitUntil: 'commit' });
-      await expect.poll(() => requested).toBe(true);
-      await expect(panel).toBeHidden();
-    } finally {
-      stylesheet.resolve(undefined);
-    }
-    await expect(panel).toBeVisible();
-  });
 });

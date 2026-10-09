@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
+import { createClient, DisjointError, RpcError, type SubstrateClient } from '@polkadot-api/substrate-client';
 import type { JsonRpcProvider } from 'polkadot-api';
 import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
 import { namehash, toHex, decodeIpfsContenthashResult } from './abi.js';
 import { ContenthashDecodeError, NetworkSyncTimeoutError, UnsupportedContenthashCodecError } from './errors.js';
-import { raceSyncTimeout, withSyncBudget, withHaltRetry } from './sync-deadline.js';
+import { raceSyncTimeout, withSyncBudget } from './sync-deadline.js';
 import { log } from '@dotli/shared';
 
 import { m, spans as S } from '@dotli/metrics';
@@ -214,6 +214,49 @@ export async function waitForPeopleFinalized(onStatus?: StatusCallback): Promise
     return api;
   })();
   await peoplePromise;
+}
+
+// Repeats `CHAIN_HALTED_ERROR_DATA` from `@dotli/protocol`, which the resolver must not import.
+const CHAIN_HALTED_ERROR_DATA = 'dotli:chain-halted';
+
+/**
+ * The follow's `stop` already dropped the client, so a retry gets a rebuilt chain. A halt shows as the pool's
+ * marked answer, as `ApiStoppedError`, or as papi's `DisjointError` for an operation already running.
+ */
+function isChainHalt(err: unknown): boolean {
+  if (err instanceof RpcError) {
+    return err.data === CHAIN_HALTED_ERROR_DATA;
+  }
+  return err instanceof DisjointError || (err instanceof Error && err.name === 'ApiStoppedError');
+}
+
+/**
+ * A light client resuming from a stored database stops its stale-head follows on catch-up, up to twice,
+ * so one retry is not enough. Bounded so a chain that dies instantly cannot spin a caller with no deadline.
+ */
+const MAX_HALT_ATTEMPTS = 4;
+
+/** Every retry gets what is left of the caller's budget, not a fresh one. */
+async function withHaltRetry<T>(opts: ResolveOptions, read: (opts: ResolveOptions) => Promise<T>): Promise<T> {
+  const started = performance.now();
+  const budget = opts.syncTimeoutMs;
+  for (let attempt = 1; ; attempt++) {
+    const attemptOpts =
+      attempt === 1 || budget === undefined
+        ? opts
+        : { ...opts, syncTimeoutMs: Math.max(1, Math.floor(budget - (performance.now() - started))) };
+    try {
+      return await read(attemptOpts);
+    } catch (err) {
+      if (!isChainHalt(err) || attempt === MAX_HALT_ATTEMPTS) {
+        throw err;
+      }
+      log.warn(
+        `[dot.li resolve] Chain halted mid-resolution, retrying on a rebuilt chain (attempt ${String(attempt + 1)}/${String(MAX_HALT_ATTEMPTS)}): ${err instanceof Error ? err.message : String(err)}`,
+        err,
+      );
+    }
+  }
 }
 
 export function resolveDotName(label: string, opts: ResolveOptions = {}): Promise<string | null> {

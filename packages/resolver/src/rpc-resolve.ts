@@ -12,7 +12,7 @@ import { log } from '@dotli/shared';
 
 import { namehash, toHex, decodeIpfsContenthashResult } from './abi.js';
 import { ContenthashDecodeError, UnsupportedContenthashCodecError } from './errors.js';
-import { raceSyncTimeout, withHaltRetry, withSyncBudget } from './sync-deadline.js';
+import { raceSyncTimeout } from './sync-deadline.js';
 import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
 import type { StatusCallback } from './access-raw-storage.js';
 import { createRawApi, type Api } from './api.js';
@@ -21,21 +21,6 @@ import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
 
 export type { StatusCallback } from './access-raw-storage.js';
-
-const RPC_SYNC_OPTIONS = { syncTimeoutMs: TIMEOUTS.HUB_FINALIZED_SYNC };
-
-/** Share the light-client recovery policy without importing its runtime. */
-function withRpcClient<T>(read: (api: Api) => Promise<T>, onStatus?: StatusCallback): Promise<T> {
-  return withHaltRetry(RPC_SYNC_OPTIONS, async attempt => {
-    const api = await withSyncBudget(
-      ensureClient(onStatus),
-      'Asset Hub RPC',
-      attempt.syncTimeoutMs,
-      TIMEOUTS.HUB_FINALIZED_SYNC,
-    );
-    return read(api);
-  });
-}
 
 let assetHubProviderFactory: (() => JsonRpcProvider) | null = null;
 
@@ -101,76 +86,72 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   return apiInstance;
 }
 
-export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
-  return withRpcClient(async api => {
-    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-    const node = namehash(domain);
+export async function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
+  const api = await ensureClient(onStatus);
 
-    onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
-    const t0 = performance.now();
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+  const node = namehash(domain);
 
-    const dotns = getActiveServicesConfig().dotns;
-    const contenthashBytes = await readMappingBytes(
-      api,
-      dotns.DOTNS_CONTENT_RESOLVER,
-      node,
-      dotns.STORAGE_SLOTS.CONTENTHASH,
-    );
+  onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
+  const t0 = performance.now();
 
-    log.event('Contenthash read', {
-      flow: 'resolve',
-      found: contenthashBytes !== null,
-      ms: Math.round(performance.now() - t0),
-    });
+  const dotns = getActiveServicesConfig().dotns;
+  const contenthashBytes = await readMappingBytes(
+    api,
+    dotns.DOTNS_CONTENT_RESOLVER,
+    node,
+    dotns.STORAGE_SLOTS.CONTENTHASH,
+  );
 
-    if (contenthashBytes === null) {
+  log.event('Contenthash read', {
+    flow: 'resolve',
+    found: contenthashBytes !== null,
+    ms: Math.round(performance.now() - t0),
+  });
+
+  if (contenthashBytes === null) {
+    onStatus?.(`Domain "${domain}" not found or no content set`);
+    return null;
+  }
+
+  const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
+  switch (decoded.kind) {
+    case 'ok':
+      onStatus?.(`Resolved "${domain}" via Trusted Provider`);
+      return decoded.cid;
+    case 'empty':
       onStatus?.(`Domain "${domain}" not found or no content set`);
       return null;
-    }
-
-    // Mirror the smoldot-side resolver in distinguishing "not registered" /
-    // "non-IPFS contenthash" / "decode error".
-    const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
-    switch (decoded.kind) {
-      case 'ok':
-        onStatus?.(`Resolved "${domain}" via Trusted Provider`);
-        return decoded.cid;
-      case 'empty':
-        onStatus?.(`Domain "${domain}" not found or no content set`);
-        return null;
-      case 'unsupported-codec':
-        throw new UnsupportedContenthashCodecError(domain, decoded.codec);
-      case 'decode-error':
-        throw new ContenthashDecodeError(domain, decoded.cause);
-    }
-  }, onStatus);
+    case 'unsupported-codec':
+      throw new UnsupportedContenthashCodecError(domain, decoded.codec);
+    case 'decode-error':
+      throw new ContenthashDecodeError(domain, decoded.cause);
+  }
 }
 
-export function resolveExecutableManifestViaRpc(
+export async function resolveExecutableManifestViaRpc(
   label: string,
   kind: ExecutableKind,
 ): Promise<ManifestResult<ExecutableManifest>> {
-  return withRpcClient(api => {
-    const dotns = getActiveServicesConfig().dotns;
-    return readExecutableManifest(api, dotns, label, kind);
-  });
+  const api = await ensureClient();
+  const dotns = getActiveServicesConfig().dotns;
+  return readExecutableManifest(api, dotns, label, kind);
 }
 
-export function resolveRootManifestViaRpc(label: string): Promise<ManifestResult<RootManifest>> {
-  return withRpcClient(api => {
-    const dotns = getActiveServicesConfig().dotns;
-    return readRootManifest(api, dotns, label);
-  });
+export async function resolveRootManifestViaRpc(label: string): Promise<ManifestResult<RootManifest>> {
+  const api = await ensureClient();
+  const dotns = getActiveServicesConfig().dotns;
+  return readRootManifest(api, dotns, label);
 }
 
-export function resolveOwnerViaRpc(label: string): Promise<string | null> {
-  return withRpcClient(api => {
-    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-    const node = namehash(domain);
+export async function resolveOwnerViaRpc(label: string): Promise<string | null> {
+  const api = await ensureClient();
 
-    const dotns = getActiveServicesConfig().dotns;
-    return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
-  });
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+  const node = namehash(domain);
+
+  const dotns = getActiveServicesConfig().dotns;
+  return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
 }
 
 /** The node actually answering, which may not be the first configured one, since the transport rotates. */

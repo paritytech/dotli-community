@@ -1,13 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Entry of the lazily loaded TrUAPI debug panel. The host imports the chunk
-// with its CSS-module stylesheet, so dock measurements run only after CSS is
-// ready.
+// Entry of the lazily loaded debug panel, imported by the host only in debug mode.
 
 import { flush } from 'solid-js';
-import { DEBUG } from '@dotli/config';
-import type { ExperimentalWalletControls } from '@dotli/truapi-debug';
 import { onDotliDebugEvent, type DotliDebugBusEvent, EventStore, createResolutionRecorder } from '@dotli/truapi-debug';
 
 import { mountRoot } from '../../mount/root.js';
@@ -22,12 +18,7 @@ export interface SetupOptions {
   capacity?: number;
   /** Set when debug mode is auto-enabled in dev, so the panel does not cover content unasked. */
   startCollapsed?: boolean;
-  /** Compile-time debug builds only; runtime debug opt-ins cannot enable custody. */
-  experimentalWallet?: ExperimentalWalletControls;
-  /**
-   * Where the Archive tab reads blocks on the light client: the host's own
-   * source, cache first. Without one it reads over the IPFS gateway.
-   */
+  /** Without one the Archive tab reads over the IPFS gateway. */
   blockSource?: BlockSource;
 }
 
@@ -76,7 +67,6 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
         store={store}
         resolution={resolution}
         startCollapsed={options.startCollapsed ?? false}
-        wallet={DEBUG ? options.experimentalWallet : undefined}
         loadArchive={productArchiveLoader(options.blockSource)}
       />
     ),

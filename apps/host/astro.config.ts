@@ -20,7 +20,6 @@ import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config'
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { spaFallback } from '@config/vite/spa-fallback';
 import { stripAnalytics } from '@dotli/metrics/vite';
-import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
@@ -303,27 +302,6 @@ export default defineConfig({
     plugins: [
       stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
       wasm(),
-      {
-        name: 'dotli-identity-proxy',
-        configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
-              void handleNodeIdentityProxy(req, res);
-            } else {
-              next();
-            }
-          });
-        },
-        configurePreviewServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
-              void handleNodeIdentityProxy(req, res);
-            } else {
-              next();
-            }
-          });
-        },
-      },
       // Serves /dotli-network.js under `astro dev`.
       runtimeNetworkConfigScript(),
       buildInfo('host'),
