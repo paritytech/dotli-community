@@ -9,12 +9,14 @@
 // flyout, is a shell island (components/shell/) that renders these stores
 // when it mounts. No framework here: this runs on the startup path.
 //
+import { log } from '@dotli/shared';
 import { setBlockSource } from './network-monitor.js';
 import { createBlockSource } from './block-source.js';
 import { startNetworkStore } from './state/network.js';
 import { initNetworkHealth, setNetworkHealthWatched } from './state/network-health.js';
 import { initChatPanelState } from './state/chat-panel.js';
 import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
+import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
 import { getTopbarState, recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
@@ -41,7 +43,13 @@ export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBl
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
   scheduleIdle(() => {
-    void emitPersistedSessionUiState();
+    void emitPersistedSessionUiState().catch((error: unknown) => {
+      log.warn('[dot.li] Persisted wallet restoration failed:', error);
+      dispatchAuthState({
+        tag: 'WalletUnavailable',
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
   });
 }
 

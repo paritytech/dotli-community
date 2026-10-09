@@ -30,6 +30,11 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
   `'frame'`, and nothing redials by itself, except a product's own requests,
   which may boot a new frame at most once per backoff window (1 s, doubling
   to 30 s, back to 1 s only for a frame that stayed up more than 30 s).
+- Resetting the protocol iframe rejects pending requests immediately and clears
+  their deadlines. Requests still waiting for the old frame to load or become
+  ready fail with that generation; wallet mutations are never replayed into its
+  replacement. Idle wallet-state refresh failures report `WalletUnavailable`
+  rather than becoming unhandled promise rejections.
 
 ## Where chains are used
 

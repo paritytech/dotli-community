@@ -107,6 +107,34 @@ describe('topbar boot rehydration', () => {
     expect(getLoggedIn()).toBe(true);
   });
 
+  it('As a wallet user, failed idle restoration shows the failure without an unhandled rejection or replay', async () => {
+    // Given
+    installTopbarDom();
+    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
+      callback();
+      return 0;
+    });
+    // Load after beforeEach's module reset so the spy and topbar share this test's stores.
+    const store = await import('../src/host-callbacks/SessionStore.js');
+    const error = new Error('Protocol frame state reset before ready signal');
+    const restore = vi.spyOn(store, 'emitPersistedSessionUiState').mockRejectedValue(error);
+    const { log } = await import('@dotli/shared');
+    const warning = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const { initTopBar } = await import('../src/topbar.js');
+    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
+
+    // When
+    initTopBar();
+
+    // Then: Vitest also fails the test if the idle task leaves a rejection unhandled.
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'WalletUnavailable', reason: error.message });
+    });
+    expect(getLoggedIn()).toBe(false);
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledWith('[dot.li] Persisted wallet restoration failed:', error);
+  });
+
   it('As a dotli integrator, the host stays logged out when no session is persisted', async () => {
     // Given
     installTopbarDom();

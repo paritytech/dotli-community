@@ -83,6 +83,8 @@ export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => voi
 let protocolIframe: HTMLIFrameElement | null = null;
 let hostFramePromise: Promise<void> | null = null;
 let protocolReadyPromise: Promise<void> | null = null;
+let frameGeneration = 0;
+let cancelFrameLoad: ((reason: Error) => void) | null = null;
 // The frame's last ready wait timed out or failed, and the frame was not reset
 // since: it is not on its way up any more.
 let protocolReadyWaitFailed = false;
@@ -181,10 +183,9 @@ function resolveProtocolReady(): void {
  * was wrong and need a clean restart before chain operations run.
  *
  * Side effects callers should be aware of:
- *   - Any in-flight `postRequest()` whose response hasn't arrived will be
- *     orphaned: it will time out via the per-method timer instead of
- *     completing. Callers that have outstanding work should expect those
- *     rejections.
+ *   - Any in-flight `postRequest()` is rejected immediately and its timer
+ *     cleared. Requests are never replayed: a wallet mutation may already
+ *     have committed even though its response was lost.
  *   - Any `waitForProtocolReady()` waiter is rejected immediately rather
  *     than waiting for `IFRAME_READY_TIMEOUT_MS`.
  *   - In `shared-worker` mode, removing the iframe drops its
@@ -198,6 +199,9 @@ export function resetProtocolFrame(): void {
 }
 
 function resetProtocolFrameState(reason?: Error): void {
+  frameGeneration++;
+  const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
+  cancelFrameLoad?.(err);
   protocolIframe?.remove();
   protocolIframe = null;
   // The byte meter of the rebuilt frame restarts at zero, and the monotonic gate
@@ -207,15 +211,16 @@ function resetProtocolFrameState(reason?: Error): void {
   protocolReadyPromise = null;
   protocolReadyWaitFailed = false;
   protocolReady = false;
-  // Reject any callers blocked on `waitForProtocolReady()` before we drop the
-  // resolvers. Otherwise their promises would hang until the 120s timeout.
+  for (const [id, pending] of pendingRequests) {
+    pendingRequests.delete(id);
+    pending.reject(
+      reason ?? new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', pending.method),
+    );
+  }
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
-  if (orphaned.length > 0) {
-    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
-    for (const waiter of orphaned) {
-      waiter.reject(err);
-    }
+  for (const waiter of orphaned) {
+    waiter.reject(err);
   }
 }
 
@@ -246,7 +251,7 @@ function bindMessageListener(): void {
     }
 
     const frameWindow = protocolIframe?.contentWindow;
-    if (frameWindow !== null && frameWindow !== undefined && event.source !== frameWindow) {
+    if (frameWindow === null || frameWindow === undefined || event.source !== frameWindow) {
       return;
     }
 
@@ -313,14 +318,6 @@ function bindMessageListener(): void {
           msg.kind === 'fatal'
             ? new ProtocolFatalError(`${kind}: ${msg.message}`)
             : new ProtocolInitFailedError(`${kind}: ${msg.message}`);
-
-        // Reject each pending request with the underlying cause so the
-        // loading UI fails fast instead of spinning until per-request
-        // timeouts.
-        for (const [id, pending] of pendingRequests) {
-          pendingRequests.delete(id);
-          pending.reject(err);
-        }
 
         // Route through the same reset path used by iframe load failures
         // so callers blocked on `waitForProtocolReady()`
@@ -480,32 +477,35 @@ function createHostIframe(): Promise<void> {
     iframe.tabIndex = -1;
     iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
 
-    const timer = setTimeout(() => {
+    const fail = (reason: Error): void => {
       cleanup();
       iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
+      reject(reason);
+    };
+    const timer = setTimeout(() => {
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
       cleanup();
-      protocolIframe = iframe;
       resolve();
     };
 
     const onError = (): void => {
-      cleanup();
-      iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
     };
 
     function cleanup(): void {
       clearTimeout(timer);
+      cancelFrameLoad = null;
       iframe.removeEventListener('load', onLoad);
       iframe.removeEventListener('error', onError);
     }
 
     iframe.addEventListener('load', onLoad, { once: true });
     iframe.addEventListener('error', onError, { once: true });
+    cancelFrameLoad = fail;
+    protocolIframe = iframe;
     document.body.appendChild(iframe);
   });
 }
@@ -513,18 +513,24 @@ function createHostIframe(): Promise<void> {
 async function ensureHostFrame(): Promise<void> {
   bindMessageListener();
 
-  if (protocolIframe?.contentWindow) {
-    return;
-  }
-
   if (hostFramePromise) {
     return hostFramePromise;
   }
 
+  if (protocolIframe?.contentWindow) {
+    return;
+  }
+
+  const generation = frameGeneration;
   hostFramePromise = (async () => {
     try {
       await createHostIframe();
     } catch (error: unknown) {
+      // A reset already settled this generation; its catch must not tear
+      // down a replacement frame that a caller has just started.
+      if (generation !== frameGeneration) {
+        throw error;
+      }
       m.count(S.PROTOCOL_IFRAME_READY, {
         outcome: 'error',
         phase: 'load',
@@ -534,8 +540,7 @@ async function ensureHostFrame(): Promise<void> {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Host iframe load failed:', error);
-      resetProtocolFrameState();
-      hostFramePromise = null;
+      resetProtocolFrameState(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   })();
@@ -576,7 +581,11 @@ function waitForProtocolReady(): Promise<void> {
 }
 
 export async function ensureProtocolFrame(): Promise<void> {
+  const generation = frameGeneration;
   await ensureHostFrame();
+  if (generation !== frameGeneration) {
+    throw new Error(PROTOCOL_ERRORS.FRAME_RESET);
+  }
 
   if (protocolReady) {
     return;
@@ -605,8 +614,10 @@ export async function ensureProtocolFrame(): Promise<void> {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Ready wait failed:', error);
-      protocolReadyPromise = null;
-      protocolReadyWaitFailed = true;
+      if (generation === frameGeneration) {
+        protocolReadyPromise = null;
+        protocolReadyWaitFailed = true;
+      }
       throw error;
     }
   })();
@@ -623,7 +634,11 @@ async function postRequest<M extends ProtocolRequestMethod>(
     method !== 'walletStorage' &&
     method !== 'walletOwner',
 ): Promise<unknown> {
+  const generation = frameGeneration;
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
+  if (generation !== frameGeneration) {
+    throw new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', method);
+  }
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
     throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
