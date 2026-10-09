@@ -81,6 +81,8 @@ export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => voi
 let protocolIframe: HTMLIFrameElement | null = null;
 let hostFramePromise: Promise<void> | null = null;
 let protocolReadyPromise: Promise<void> | null = null;
+let frameGeneration = 0;
+let cancelFrameLoad: ((reason: Error) => void) | null = null;
 // The last ready wait failed and no reset followed, so the frame is not on its way up.
 let protocolReadyWaitFailed = false;
 const pendingRequests = new Map<string, PendingRequest>();
@@ -157,14 +159,16 @@ function resolveProtocolReady(): void {
 
 /**
  * Drops the iframe, its chain leases and ready state so the next request boots a fresh one, for a caller that finds
- * the sub-mode wrong. Pending requests and ready waiters fail immediately. A SharedWorker keeps its sync progress,
- * only this tab's port cycles.
+ * the sub-mode wrong. Pending requests and ready waiters fail immediately. Requests are never replayed: a wallet
+ * mutation may have committed even if its response was lost. A SharedWorker keeps its sync progress; only this
+ * tab's port cycles.
  */
 export function resetProtocolFrame(): void {
   resetProtocolFrameState();
 }
 
 function resetProtocolFrameState(reason?: Error): void {
+  frameGeneration++;
   const orphanedConnections = [...chainConnections];
   chainConnections.clear();
   const requests = [...pendingRequests.values()];
@@ -175,6 +179,7 @@ function resetProtocolFrameState(reason?: Error): void {
     // before removing its lock owner lets another tab start signing.
     broadcast(walletOwnerRevokedListeners, undefined, 'Wallet owner');
   }
+  cancelFrameLoad?.(err);
   protocolIframe?.remove();
   protocolIframe = null;
   // The rebuilt frame's byte meter restarts at zero, and the monotonic gate would drop its reports.
@@ -185,13 +190,13 @@ function resetProtocolFrameState(reason?: Error): void {
   protocolReady = false;
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
-  if (orphaned.length > 0) {
-    for (const waiter of orphaned) {
-      waiter.reject(err);
-    }
+  for (const waiter of orphaned) {
+    waiter.reject(err);
   }
   for (const pending of requests) {
-    pending.reject(err);
+    pending.reject(
+      reason ?? new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', pending.method),
+    );
   }
   // Notify after resetting readiness so a consumer cannot re-lease the retired frame.
   for (const [id, connection] of orphanedConnections) {
@@ -231,7 +236,7 @@ function bindMessageListener(): void {
     }
 
     const frameWindow = protocolIframe?.contentWindow;
-    if (frameWindow !== null && frameWindow !== undefined && event.source !== frameWindow) {
+    if (frameWindow === null || frameWindow === undefined || event.source !== frameWindow) {
       return;
     }
 
@@ -425,32 +430,35 @@ function createHostIframe(): Promise<void> {
     iframe.tabIndex = -1;
     iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
 
-    const timer = setTimeout(() => {
+    const fail = (reason: Error): void => {
       cleanup();
       iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
+      reject(reason);
+    };
+    const timer = setTimeout(() => {
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
       cleanup();
-      protocolIframe = iframe;
       resolve();
     };
 
     const onError = (): void => {
-      cleanup();
-      iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
     };
 
     function cleanup(): void {
       clearTimeout(timer);
+      cancelFrameLoad = null;
       iframe.removeEventListener('load', onLoad);
       iframe.removeEventListener('error', onError);
     }
 
     iframe.addEventListener('load', onLoad, { once: true });
     iframe.addEventListener('error', onError, { once: true });
+    cancelFrameLoad = fail;
+    protocolIframe = iframe;
     document.body.appendChild(iframe);
   });
 }
@@ -458,18 +466,24 @@ function createHostIframe(): Promise<void> {
 async function ensureHostFrame(): Promise<void> {
   bindMessageListener();
 
-  if (protocolIframe?.contentWindow) {
-    return;
-  }
-
   if (hostFramePromise) {
     return hostFramePromise;
   }
 
+  if (protocolIframe?.contentWindow) {
+    return;
+  }
+
+  const generation = frameGeneration;
   hostFramePromise = (async () => {
     try {
       await createHostIframe();
     } catch (error: unknown) {
+      // A reset already settled this generation; its catch must not tear
+      // down a replacement frame that a caller has just started.
+      if (generation !== frameGeneration) {
+        throw error;
+      }
       m.count(S.PROTOCOL_IFRAME_READY, {
         outcome: 'error',
         phase: 'load',
@@ -479,8 +493,7 @@ async function ensureHostFrame(): Promise<void> {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Host iframe load failed:', error);
-      resetProtocolFrameState();
-      hostFramePromise = null;
+      resetProtocolFrameState(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   })();
@@ -521,7 +534,11 @@ function waitForProtocolReady(): Promise<void> {
 }
 
 export async function ensureProtocolFrame(): Promise<void> {
+  const generation = frameGeneration;
   await ensureHostFrame();
+  if (generation !== frameGeneration) {
+    throw new Error(PROTOCOL_ERRORS.FRAME_RESET);
+  }
 
   if (protocolReady) {
     return;
@@ -546,8 +563,10 @@ export async function ensureProtocolFrame(): Promise<void> {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Ready wait failed:', error);
-      protocolReadyPromise = null;
-      protocolReadyWaitFailed = true;
+      if (generation === frameGeneration) {
+        protocolReadyPromise = null;
+        protocolReadyWaitFailed = true;
+      }
       throw error;
     }
   })();
@@ -564,7 +583,11 @@ async function postRequest<M extends ProtocolRequestMethod>(
     method !== 'walletStorage' &&
     method !== 'walletOwner',
 ): Promise<unknown> {
+  const generation = frameGeneration;
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
+  if (generation !== frameGeneration) {
+    throw new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', method);
+  }
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
     throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
@@ -896,6 +919,7 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
 
   return (onMessage, onHalt): JsonRpcConnection => {
     const connectionId = createRequestId();
+    const generation = frameGeneration;
     const remote: RemoteChainConnection = {
       onMessage,
       onHalt: onHalt ?? null,
@@ -918,7 +942,9 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         // frame now that the connect settled, not before, or the frame would
         // keep a connection opened after its disconnect.
         if (!isOpen()) {
-          postDisconnect(connectionId);
+          if (generation === frameGeneration) {
+            postDisconnect(connectionId);
+          }
           return;
         }
         remote.connected = true;
