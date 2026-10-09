@@ -428,6 +428,26 @@ export declare const CONTACTS_PICK: {
     readonly method: 0;
     readonly kind: "request";
 };
+export declare const GAME_REMIND_NEXT_GAME: {
+    readonly trait: 21;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const GAME_CANCEL_NEXT_GAME: {
+    readonly trait: 21;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const EXPANDED_CARD_SET_FACE_SHOWN: {
+    readonly trait: 23;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const SCANNER_SCAN: {
+    readonly trait: 25;
+    readonly method: 0;
+    readonly kind: "request";
+};
 export declare const JAM_PEER_TRANSPORT_DIAL: {
     readonly trait: 111;
     readonly method: 0;

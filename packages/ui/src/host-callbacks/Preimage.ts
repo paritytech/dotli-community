@@ -1,6 +1,4 @@
-// Preimage lookup adapter — polls the user-selected content backend
-// (Helia P2P or IPFS gateway) until the preimage is found or the
-// subscription is dropped.
+// Polls the selected content backend until the preimage is found or the subscription drops.
 
 import type { PreimageHost } from '@parity/truapi-host';
 import { hashToCid, fetchFromIpfs, assertBlockMatchesCid, bitswapGet } from '@dotli/content';
@@ -25,10 +23,8 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
 
     const cached = preimageCache.get(key);
     if (cached) {
-      // Emits the hit and then stays open without ever completing, same as
-      // the polling path after it finds a value. That matches the core's
-      // contract: it consumes lookupPreimage as a long-lived subscription
-      // and cancels it from the product side, never waiting for `done`.
+      // Stays open after the hit, like the polling path, because the core cancels lookupPreimage from
+      // the product side and never waits for `done`.
       return createResultStream<Uint8Array | undefined>([cached], () => noop);
     }
 
@@ -36,10 +32,8 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
     return createResultStream<Uint8Array | undefined>([undefined], (push, pushError) => {
       let intervalId: ReturnType<typeof setInterval> | null = null;
       let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
-      // Clearing the timers does not reach a lookup already running, and a
-      // retrying bitswapGet can now run for minutes. Without this the
-      // product drops the subscription and the loop keeps fetching for a
-      // consumer that has gone.
+      // Clearing the timers does not reach a running lookup, and a retrying bitswapGet can keep
+      // fetching for minutes after the consumer has gone.
       const aborter = new AbortController();
       const stopPolling = (): void => {
         stopped = true;
@@ -73,8 +67,7 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
             data = result.data;
           }
         } catch (err) {
-          // Teardown aborts the in-flight lookup, so this is the expected
-          // end of a dropped subscription rather than a failure to report.
+          // Teardown aborts the in-flight lookup, so this ends a dropped subscription, not a failure.
           if (aborter.signal.aborted) {
             return;
           }
@@ -97,10 +90,8 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
         push(data);
         stopPolling();
       };
-      // A lookup can now outlive the poll interval, because bitswapGet
-      // retries a CID whose providers have not attached yet. Without this
-      // guard every tick during that wait starts another lookup for the same
-      // key, each opening its own retry budget.
+      // bitswapGet retries a CID whose providers have not attached yet, so a lookup can outlive the
+      // poll interval, and each tick would open another retry budget for the same key.
       let inFlight = false;
       const poll = async (): Promise<void> => {
         if (stopped || inFlight) {

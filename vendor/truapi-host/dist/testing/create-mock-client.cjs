@@ -547,7 +547,7 @@ var require_index_cjs = __commonJS({
 });
 
 // dist/generated/host-callbacks.js
-var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -560,6 +560,7 @@ var init_host_callbacks = __esm({
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi3.ProductAccountTxPayload }), LegacyAccount: import_truapi3.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
+    ExpandedCardFaceOutcome = S.lazy(() => S.Status("Applied", "NotPresented", "UserMoving", "Unsupported"));
     HostChainEntry = S.lazy(() => S.Struct({ identifier: import_truapi3.ChainIdentifier, genesisHash: import_truapi3.Bytes32 }));
     HostChainSet = S.lazy(() => S.Struct({ network: S.str, chains: S.Vector(HostChainEntry) }));
     HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi3.Bytes32, handles: S.Vector(import_truapi3.Bytes32) }));
@@ -681,6 +682,7 @@ __export(host_callbacks_adapter_exports, {
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
   const contacts = callbacks.contacts;
+  const game = callbacks.game;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
   return {
@@ -701,6 +703,10 @@ function createWasmRawCallbacks(callbacks) {
     clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
     featureSupported: async (request) => import_truapi4.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi4.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+    ...game ? {
+      scheduleGameReminder: async (product, startsAt) => await game.scheduleGameReminder(ProductContext.dec(product), startsAt),
+      cancelGameReminder: async (product) => await game.cancelGameReminder(ProductContext.dec(product))
+    } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi4.HostLocaleSubscribeItem.enc(item)), sendError),
     localizeTimestamps: async (request) => import_truapi4.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi4.HostLocaleLocalizeTimestampsRequest.dec(request))),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
@@ -2052,6 +2058,12 @@ function createMockHost(config = {}) {
       },
       async acknowledgeActivation() {
         throw new Error("notification activation is unsupported");
+      }
+    },
+    game: {
+      async scheduleGameReminder() {
+      },
+      async cancelGameReminder() {
       }
     },
     permissions: {

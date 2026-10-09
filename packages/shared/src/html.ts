@@ -2,17 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * dotNS label validator.
- *
- * Contract (closed set, no silent acceptance):
- *   - Lowercase ASCII `a-z 0-9` and interior `-` only.
- *   - Length 1..63 (DNS label cap).
- *   - No leading or trailing hyphen.
- *   - No IDN, Unicode, or uppercase input. Callers that take user input
- *     must NFC-normalize and lowercase BEFORE validating. This function
- *     deliberately does not normalize its input, because a helper that
- *     silently case-folds would hide inputs that disagree with the
- *     canonical network registration form.
+ * A dotNS label. Callers normalize and lowercase user input first, because folding here would hide input
+ * that disagrees with the registered form.
  */
 const DOT_LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -23,10 +14,6 @@ export type DotLabelResult =
       reason: 'empty' | 'too-long' | 'uppercase' | 'leading-hyphen' | 'trailing-hyphen' | 'invalid-char' | 'non-ascii';
     };
 
-/**
- * Return a specific failure reason instead of a bare boolean so log
- * lines and UI validation messages can say why a label was rejected.
- */
 export function validateDotLabel(label: string): DotLabelResult {
   if (label.length === 0) {
     return { ok: false, reason: 'empty' };
@@ -37,7 +24,7 @@ export function validateDotLabel(label: string): DotLabelResult {
   if (label !== label.toLowerCase()) {
     return { ok: false, reason: 'uppercase' };
   }
-  // eslint-disable-next-line no-control-regex
+  // eslint-disable-next-line no-control-regex -- the range covers all of ASCII, NUL included.
   if (/[^\x00-\x7f]/.test(label)) {
     return { ok: false, reason: 'non-ascii' };
   }
@@ -53,7 +40,6 @@ export function validateDotLabel(label: string): DotLabelResult {
   return { ok: true };
 }
 
-/** Backwards-compatible boolean wrapper over `validateDotLabel`. */
 export function isValidDotLabel(label: string): boolean {
   return validateDotLabel(label).ok;
 }

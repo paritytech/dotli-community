@@ -1,24 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li top bar auto-hide
-//
-// The bar folds into its status capsule a moment after the product's content
-// shows on desktop, signed in or not (never over the loading screen or an
-// error page), and at once when the user presses or tabs into the app. It
-// never folds at a phone's width (PHONE_QUERY), where it is the phone bar,
-// and returns on pointer hover, on keyboard focus, and on the reveal
-// shortcut, so home, settings, permissions and login never become
-// mouse-only.
-//
-// The timing and the input handling live here, framework-free; what shows
-// is the topbar store's: the bar's script (apps/host/src/components/
-// Topbar.astro) folds it and sets its shortcut from `visible` and
-// `autoHide`, and the TopbarReveal island renders the reveal control and the
-// hover target over the capsule. The bar registers its element
-// (registerTopbarElement) and the popovers theirs (state/topbar-surfaces.ts),
-// for the focus and open checks.
-//
+// On desktop the bar folds into its capsule once product content shows, and returns on hover, focus and
+// the reveal shortcut so its controls never become mouse-only. Timing and input only, the store drives what shows.
+
 import { isMobileDevice } from '@dotli/shared';
 import { focusables } from './components/focus.js';
 import { currentProductFrame, setTopbarLayout } from './product-frame-layout.js';
@@ -27,10 +12,9 @@ import { productStore } from './state/product.js';
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
 
-/** The board's auto-hide delay. */
 const HIDE_DELAY_MS = 2000;
 
-/** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
+/** Advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
 
 /** The always-reachable reveal control, one Tab past the app frame. */
@@ -40,17 +24,10 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let blurTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
-/** The product's own content is on screen, as the host reports it. */
 let contentShown = false;
-/** The bar (the host page's `#topbar`), while bound. */
 let bar: HTMLElement | undefined;
-/** The reveal control (the TopbarReveal island's), while mounted. */
 let revealButton: HTMLElement | undefined;
 
-/**
- * Register the bar's element; returns the unregister. From here on the bar
- * lays the frame out for the viewport it is in.
- */
 export function registerTopbarElement(el: HTMLElement): () => void {
   bar = el;
   syncFrameLayout();
@@ -63,7 +40,6 @@ export function registerTopbarElement(el: HTMLElement): () => void {
   };
 }
 
-/** Register the reveal control; returns the unregister. */
 export function registerTopbarRevealButton(el: HTMLElement): () => void {
   revealButton = el;
   return () => {
@@ -73,19 +49,13 @@ export function registerTopbarRevealButton(el: HTMLElement): () => void {
   };
 }
 
-/**
- * On desktop the pill and the capsule float over a full-height frame, as the
- * board draws them, so the product never relayouts on a fold or a reveal.
- * The phone bar and a touch device's bar never fold (armTopbarAutoHide), so
- * the frame keeps clear of them rather than sit under them for good.
- */
+/** Bars that never fold keep the frame clear of them, rather than sitting over it for good. */
 function syncFrameLayout(): void {
   setTopbarLayout({ offset: isPhoneViewport() || isMobileDevice() });
 }
 
 function setVisible(next: boolean): void {
-  // The hidden bar keeps its tab stops on purpose: tabbing into it is what
-  // reveals it again for keyboard users.
+  // The hidden bar keeps its tab stops, since tabbing into it is what reveals it for keyboard users.
   setTopbarVisible(next);
 }
 
@@ -108,7 +78,6 @@ function topbarHoldsFocus(): boolean {
   return bar?.contains(active) === true || active === revealButton || topbarSurfaceContains(active);
 }
 
-/** True while the user is working in the bar, so it must stay on screen. */
 function isBusy(): boolean {
   return topbarHoldsFocus() || anyTopbarSurfaceOpen();
 }
@@ -117,7 +86,6 @@ function canAutoHide(): boolean {
   return getTopbarState().autoHide && contentShown && !isMobileDevice() && !isPhoneViewport();
 }
 
-/** Hide the bar after the delay, unless it is pinned or in use then. */
 export function scheduleTopbarHide(): void {
   cancelHide();
   if (!canAutoHide()) {
@@ -125,8 +93,6 @@ export function scheduleTopbarHide(): void {
   }
   hideTimer = setTimeout(() => {
     hideTimer = null;
-    // Focus or an open popover during the delay defers the hide rather than
-    // pulling the controls out from under the user.
     if (isBusy()) {
       scheduleTopbarHide();
       return;
@@ -135,13 +101,11 @@ export function scheduleTopbarHide(): void {
   }, HIDE_DELAY_MS);
 }
 
-/** Show the bar (a hover, a focus in it). */
 export function revealTopbar(): void {
   cancelHide();
   setVisible(true);
 }
 
-/** Show the bar and focus its first control (the reveal shortcut or control). */
 export function revealTopbarAndFocus(): void {
   revealTopbar();
   if (bar !== undefined) {
@@ -149,11 +113,6 @@ export function revealTopbarAndFocus(): void {
   }
 }
 
-/**
- * The window crossed the phone width: as the phone bar it comes back and
- * stays, with the frame above it, and as the pill it folds away again
- * after the delay, floating over the full-height frame.
- */
 function onViewportChange(): void {
   if (isPhoneViewport()) {
     revealTopbar();
@@ -162,7 +121,7 @@ function onViewportChange(): void {
   }
 }
 
-/** Hand focus back to the app so it never parks on an offscreen control. */
+/** So focus never parks on an offscreen control. */
 function releaseFocusToApp(): void {
   const frame = currentProductFrame();
   if (frame !== null) {
@@ -173,8 +132,7 @@ function releaseFocusToApp(): void {
 }
 
 function isRevealShortcut(event: KeyboardEvent): boolean {
-  // `code` carries the physical key, which matters because macOS turns
-  // Option+Shift+T into a dead key. Fall back to `key` when it is missing.
+  // `code` first, because macOS turns Option+Shift+T into a dead key.
   const isT = event.code === 'KeyT' || event.key.toLowerCase() === 't';
   return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && isT;
 }
@@ -188,8 +146,7 @@ function onKeyDown(event: KeyboardEvent): void {
     revealTopbarAndFocus();
     return;
   }
-  // Nothing to toggle while the bar is pinned, and an open popover owns
-  // Escape for its own dismissal, so leave both alone.
+  // An open popover owns its own dismissal.
   if (!canAutoHide() || anyTopbarSurfaceOpen()) {
     return;
   }
@@ -200,11 +157,6 @@ function onKeyDown(event: KeyboardEvent): void {
   setVisible(false);
 }
 
-/**
- * The user pressed or tabbed into the app: the bar folds at once, as it does
- * for the shortcut. With a popover of the bar still open it waits for it, as
- * the timer does.
- */
 function foldForApp(): void {
   if (!canAutoHide()) {
     return;
@@ -235,7 +187,6 @@ function bindListeners(): void {
   listeners = new AbortController();
   const { signal } = listeners;
 
-  // Every error page marks the product failed (state/product.ts).
   const unsubscribe = productStore.subscribe(() => {
     if (productStore.get().status === 'error') {
       setProductContentShown(false);
@@ -243,7 +194,6 @@ function bindListeners(): void {
   });
   signal.addEventListener('abort', unsubscribe);
 
-  // Tabbing into the offscreen bar reveals it, leaving it re-arms the timer.
   document.addEventListener('focusin', syncFocus, { signal });
   document.addEventListener(
     'focusout',
@@ -260,10 +210,8 @@ function bindListeners(): void {
     { signal },
   );
   document.addEventListener('keydown', onKeyDown, { signal });
-  // A press or a Tab into the cross-origin app frame is seen here only as
-  // focus leaving this window for the frame, which is how the popovers and
-  // the toasts read it too. Checked on the next tick, after the popovers that
-  // close on blur have closed.
+  // A press or Tab into the cross-origin frame shows only as this window's blur. Checked on the next
+  // tick, after popovers that close on blur have closed.
   window.addEventListener(
     'blur',
     () => {
@@ -283,11 +231,7 @@ function bindListeners(): void {
   signal.addEventListener('abort', watchPhoneViewport(onViewportChange));
 }
 
-/**
- * Start auto-hiding the bar. Safe to call repeatedly: listeners bind once
- * and the hide timer restarts. No-op on touch devices, which have no hover
- * to bring the bar back, and on a page without the bar.
- */
+/** Safe to call repeatedly. A no-op on touch devices, which have no hover to bring the bar back. */
 export function armTopbarAutoHide(): void {
   if (isMobileDevice() || !getTopbarState().present) {
     return;
@@ -297,11 +241,7 @@ export function armTopbarAutoHide(): void {
   scheduleTopbarHide();
 }
 
-/**
- * Report whether the product's content is on screen: once the sandbox has
- * loaded it, or a local or preview frame has rendered. The bar folds only
- * over it, and comes back and stays for a loading screen or a failure.
- */
+/** The bar folds only over product content, never a loading screen or failure. */
 export function setProductContentShown(shown: boolean): void {
   contentShown = shown;
   if (shown) {
@@ -311,14 +251,10 @@ export function setProductContentShown(shown: boolean): void {
   }
 }
 
-/**
- * Drop every listener and reset the state. The host arms once per session and
- * never needs this, tests do.
- */
+/** Tests only, the host arms once per session. */
 export function disposeTopbarAutoHide(): void {
   setTopbarAutoHide(false);
   cancelHide();
-  // A focus check queued by focusout must not run against a disposed bar.
   if (focusoutTimer !== null) {
     clearTimeout(focusoutTimer);
     focusoutTimer = null;

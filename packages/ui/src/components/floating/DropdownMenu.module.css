@@ -1,12 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The menu is FloatingLayer's glass holding a column of rows. A plain class,
-   not :where(): the layer's reset (padding 0) is a :where() rule, and the
-   menu's inset must win over it whatever order the stylesheets load in.
-   The layout is on the base rule, not on [data-open], so it holds through
-   the close transition while allow-discrete keeps `display: flex`;
-   otherwise the rows briefly stack sideways on the way out. */
+/* A plain class so the inset beats the layer's :where() reset whatever the load order. The layout sits on the
+   base rule, not [data-open], so the rows don't stack sideways during the close transition. */
 .menu {
   flex-direction: column;
   gap: 0;
@@ -54,7 +50,6 @@
   color: var(--chrome-text-muted);
 }
 
-/* Phones: the boards' 8 px inset and 44 px rows. */
 @media (max-width: 560px) {
   .menu {
     padding: var(--sp-2);

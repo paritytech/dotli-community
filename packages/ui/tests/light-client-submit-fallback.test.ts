@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { withTrustedSubmitFallback } from '../src/host-callbacks/light-client-submit-fallback.js';
 
 type Message = Record<string, unknown>;
@@ -72,6 +72,10 @@ function setup(): SubmitScenario {
 }
 
 describe('withTrustedSubmitFallback', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('resends a dropped extrinsic unchanged and relays inclusion once the light client has the block', async () => {
     const { light, trusted, received } = setup();
 
@@ -132,6 +136,71 @@ describe('withTrustedSubmitFallback', () => {
       expect(received.at(-1)).toEqual(update('light-sub', 'invalid'));
     });
     expect(trusted.disconnect).toHaveBeenCalled();
+  });
+
+  it.each(['missing', 'unknown'] as const)('drops unverified inclusion when the header stays %s', async response => {
+    vi.useFakeTimers();
+    const { light, trusted, received } = setup();
+    light.emit(update('light-sub', 'dropped'));
+    trusted.emit({ jsonrpc: '2.0', id: trusted.sent[0]?.['id'], result: 'rpc-sub' });
+    trusted.emit(update('rpc-sub', { inBlock: '0xblock' }));
+    trusted.emit(update('rpc-sub', { finalized: '0xblock' }));
+    await vi.advanceTimersByTimeAsync(0);
+    const lookupId = light.sent.at(-1)?.['id'];
+    for (let elapsed = 0; elapsed < 30_000; elapsed += 1_000) {
+      if (response === 'unknown') {
+        light.emit({ jsonrpc: '2.0', id: light.sent.at(-1)?.['id'], result: null });
+      }
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    expect(received.slice(1)).toEqual([update('light-sub', 'dropped')]);
+    expect(trusted.disconnect).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    light.emit({ jsonrpc: '2.0', id: lookupId, result: { number: '0x1' } });
+    trusted.emit(update('rpc-sub', { finalized: '0xblock' }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(received.slice(1)).toEqual([update('light-sub', 'dropped')]);
+  });
+
+  it.each(['unwatch', 'disconnect'] as const)('cancels fallback on %s', async action => {
+    vi.useFakeTimers();
+    const { light, trusted, received, connection } = setup();
+    light.emit(update('light-sub', 'dropped'));
+    trusted.emit({ jsonrpc: '2.0', id: trusted.sent[0]?.['id'], result: 'rpc-sub' });
+    trusted.emit(update('rpc-sub', { inBlock: '0xblock' }));
+    trusted.emit(update('rpc-sub', { finalized: '0xblock' }));
+    await vi.advanceTimersByTimeAsync(0);
+    const lookupId = light.sent.at(-1)?.['id'];
+    if (action === 'disconnect') {
+      connection.disconnect();
+    } else {
+      connection.send({
+        jsonrpc: '2.0',
+        id: 'truapi:2',
+        method: 'author_unwatchExtrinsic',
+        params: ['light-sub'],
+      });
+    }
+    light.emit({ jsonrpc: '2.0', id: lookupId, result: { number: '0x1' } });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(received).toHaveLength(1);
+    expect(trusted.disconnect).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('retires a completed fallback and ignores duplicate trusted updates', async () => {
+    const { light, trusted, received, connection } = setup();
+    light.emit(update('light-sub', 'dropped'));
+    trusted.emit({ jsonrpc: '2.0', id: trusted.sent[0]?.['id'], result: 'rpc-sub' });
+    trusted.emit(update('rpc-sub', 'invalid'));
+    await vi.waitFor(() => {
+      expect(received.at(-1)).toEqual(update('light-sub', 'invalid'));
+    });
+    trusted.emit(update('rpc-sub', 'ready'));
+    await Promise.resolve();
+    expect(received.slice(1)).toEqual([update('light-sub', 'invalid')]);
+    connection.disconnect();
+    expect(trusted.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('closes the trusted watch when the core unwatches', () => {

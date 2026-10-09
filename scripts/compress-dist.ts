@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Post-build script: generate .br and .gz pre-compressed files for dist/assets.
-// Uses Node's built-in zlib, so no extra dependencies are needed.
-// Run with: node scripts/compress-dist.ts
+// Writes .br and .gz siblings for nginx to serve precompressed.
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { createBrotliCompress, createGzip, constants } from 'node:zlib';
@@ -14,7 +12,7 @@ import { createWriteStream } from 'node:fs';
 
 const DIST = process.env['DIST'] ?? 'dist';
 const COMPRESS_EXTENSIONS = new Set(['.js', '.wasm', '.json', '.css', '.html', '.scale']);
-const MIN_SIZE = 1024; // Skip files smaller than 1KB
+const MIN_SIZE = 1024;
 
 interface FileEntry {
   path: string;

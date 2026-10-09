@@ -3,13 +3,11 @@
 
 import { resolve } from 'node:path';
 
-// Shared paths so globalSetup, the worker fixture, and globalTeardown agree
-// on where the once-per-run pairing artifacts live. Gitignored.
+// The once-per-run pairing artifacts, shared by globalSetup, the worker fixture and globalTeardown. Gitignored.
 export const AUTH_DIR = resolve(import.meta.dirname, '..', '.auth');
 export const STATE_FILE = resolve(AUTH_DIR, 'state.json');
 export const SESSION_FILE = resolve(AUTH_DIR, 'session.json');
-// Persists across runs so local runs reuse one test account instead of
-// registering a new lite username (and burning allowance slots) each time.
+// Persists across runs so local runs reuse one test account instead of burning allowance on a new username.
 export const SIGNING_HOST_STATE_DIR = resolve(AUTH_DIR, 'signing-host');
 
 export interface PersistedSession {

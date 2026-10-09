@@ -31,11 +31,12 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          # Environments a PR label is allowed to target (development only).
+          # PR labels may target only these development environments.
           ALLOWED='["paseoli.dev","paseo.fyi"]'
           case "$EVENT_NAME" in
             release)
               echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
+              echo 'smoke_environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
               ;;
             push)
@@ -44,8 +45,7 @@ jobs:
               echo "ref=" >> "$GITHUB_OUTPUT"
               ;;
             pull_request)
-              # On `labeled` only the just-added label triggers a deploy; on
-              # `synchronize` (new commit) consider all labels currently on the PR.
+              # On `labeled` only the added label counts, on `synchronize` every label on the PR.
               if [ "$ACTION" = "labeled" ]; then
                 CANDIDATES="$(jq -nc --arg l "$ADDED_LABEL" '[$l]')"
               else
@@ -105,14 +105,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.ref || github.sha }}
-          # Tags and history: the Sentry release is named from the newest
-          # vX.Y.Z tag (`git describe`), and its upload reads the commits since
-          # the previous release.
+          # The Sentry release is named from the newest tag, and its upload reads the commits since the previous one.
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 
-      # Sync every workspace package.json to the release tag
       - name: Sync package versions to release tag
         if: github.event_name == 'release'
         run: node scripts/set-version.ts "${{ github.event.release.tag_name }}"

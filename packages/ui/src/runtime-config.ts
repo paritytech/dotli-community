@@ -20,8 +20,7 @@ function getPlatformType(userAgent: string = navigator.userAgent): string {
   return 'Unknown';
 }
 
-// The window origin deliberately plays no part here: `productId` comes
-// solely from the label (or the explicit override).
+// The window origin deliberately plays no part in `productId`.
 export function createTruapiRuntimeConfig(
   label: string,
   productId: string = labelToProductId(label),

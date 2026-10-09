@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The single place the characterization suite obtains the TrUAPI debug
-// panel from. Swapping the panel implementation means changing this one
-// import; every test goes through `loadPanel()`.
+// The one place the suite gets the panel from, so a re-implementation swaps this import only.
 
 export interface PanelModule {
   setupTruapiDebugPanel: (options?: { capacity?: number; startCollapsed?: boolean }) => () => void;

@@ -3,10 +3,7 @@
 
 import { beforeAll } from 'vitest';
 
-/**
- * Load Popover's and DropdownMenu's surface chunks, from the current module
- * graph (a file that resets its modules calls it again after the reset).
- */
+/** Loads the surface chunks from the current module graph, so a file that resets its modules calls it again. */
 export async function preloadFloatingSurfaces(): Promise<void> {
   const [popover, menu] = await Promise.all([
     import('../../src/components/floating/Popover.js'),
@@ -16,10 +13,8 @@ export async function preloadFloatingSurfaces(): Promise<void> {
 }
 
 /**
- * For a file whose tests open a Popover or DropdownMenu and read its surface
- * in the same tick, as they could while it was eager: the chunks load once,
- * ahead of the file's tests. Imported in the hook, so the file's `vi.mock`s
- * apply to the shells' graph.
+ * Loads the surface chunks before the file's tests, for tests that read a surface in the tick it opens. Imported in
+ * the hook, so the file's `vi.mock`s apply to the surfaces' graph.
  */
 export function useFloatingSurfaces(): void {
   beforeAll(preloadFloatingSurfaces);

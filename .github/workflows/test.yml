@@ -33,8 +33,7 @@ jobs:
       - name: Run tests
         run: npx turbo run test
 
-  # Stories double as browser tests (axe included), so this needs Chromium.
-  # Playwright is installed from apps/host's pin, which packages/ui matches.
+  # Stories run as browser tests. Playwright comes from apps/host's pin, which packages/ui matches.
   stories:
     name: Stories
     runs-on: ubuntu-latest
@@ -68,17 +67,11 @@ jobs:
 
       - name: Build
         env:
-          # Required build-time config (see packages/config/src/network.ts).
-          # Without it the host shell throws on boot and never mounts the
-          # protocol/app iframes, so every test times out. deploy.yml supplies
-          # this from repo vars; the test build needs its own value.
+          # Required, or the host throws on boot and every test times out.
           VITE_NETWORKS: paseo-next-v2,previewnet
-          # deploy.yml builds with metrics on, so this is the shape that ships.
-          # network-transport.spec.ts also needs it: `m.gauge` compiles to a
-          # no-op without it and the spec skips itself.
+          # As deployed. network-transport.spec.ts skips itself without it.
           VITE_METRICS: 'true'
-          # Sentry no-ops on an unset DSN and would tunnel nothing. Never
-          # dialled: `tunnel: "/t"` keeps every envelope same-origin.
+          # Sentry no-ops without a DSN. Never dialled, as `tunnel: "/t"` keeps envelopes same-origin.
           VITE_SENTRY_DSN: http://publickey@127.0.0.1:5173/1
         run: npx turbo run build
 
@@ -108,6 +101,13 @@ jobs:
             echo "::error::PolkaVM functional specs must have 0 failures"
             exit 1
           fi
+          UPGRADE_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          UPGRADE_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          UPGRADE_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
+          if [ "$UPGRADE_EXECUTED" -lt 2 ] || [ "$UPGRADE_FAILED" -gt 0 ] || [ "$UPGRADE_SKIPPED" -gt 0 ]; then
+            echo "::error::host-upgrade.spec.ts must execute its upgrade scenarios without failures or skips (executed: $UPGRADE_EXECUTED, failed: $UPGRADE_FAILED, skipped: $UPGRADE_SKIPPED)"
+            exit 1
+          fi
           PWA_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
           PWA_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           echo "Executed service-worker recovery specs: $PWA_EXECUTED (failed: $PWA_FAILED)"
@@ -120,10 +120,7 @@ jobs:
           TRANSPORT_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           SMOKE_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "ui-smoke.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           SETTINGS_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-settings.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          # A skipped spec is `.ok == true` and still counts toward TOTAL, so the
-          # failure gate below cannot see one. network-transport.spec.ts skips
-          # itself without VITE_METRICS, which is exactly how it would silently
-          # stop running.
+          # A skipped spec counts as ok, and network-transport.spec.ts skips itself without VITE_METRICS.
           TRANSPORT_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
           echo "loading.spec.ts failures: $LOADING_FAILED"
           echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
@@ -176,9 +173,7 @@ jobs:
     timeout-minutes: 60
     if: ${{ github.event.sender.type != 'Bot' }}
     env:
-      # Must match the host's `defaultNetwork()` in
-      # `packages/config/src/network.ts`. Setting explicitly so a host
-      # network bump can't silently leave the CLI on the wrong chain.
+      # Must match the host's `defaultNetwork()`.
       SIGNING_HOST_NETWORK: paseo-next-v2
       # The product must query the same Asset Hub as the host and signing CLI.
       NEXT_PUBLIC_NETWORK_GENESIS_HASH: '0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a'
@@ -201,12 +196,12 @@ jobs:
           set -euo pipefail
           revision="$(jq -er '.upstreamRevision | select(type == "string") | select(test("^[0-9a-f]{40}$"))' vendor/truapi-host.lock.json)"
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
-          echo "Signing-host source: https://github.com/paritytech/host-rust-core/commit/$revision"
+          echo "Signing-host source: https://github.com/paritytech/trinity-user-agents/commit/$revision"
 
       - name: Checkout signing-host source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: paritytech/host-rust-core
+          repository: paritytech/trinity-user-agents
           ref: ${{ steps.signing-host-source.outputs.revision }}
           path: .signing-host-src
           persist-credentials: false
@@ -214,7 +209,6 @@ jobs:
       - name: Resolve signing-host codegen toolchain
         id: signing-host-codegen
         run: |
-          # Older feature SDK sources use nightly; refreshed sources declare a pin.
           toolchain=nightly
           if [[ -f .signing-host-src/nightly-toolchain ]]; then
             read -r toolchain < .signing-host-src/nightly-toolchain
@@ -269,19 +263,13 @@ jobs:
 
       - name: Build
         env:
-          # Required build-time config (see packages/config/src/network.ts).
-          # Without it the host shell throws on boot and never mounts the
-          # protocol/app iframes, so every test times out. deploy.yml supplies
-          # this from repo vars; the test build needs its own value.
+          # Required, or the host throws on boot and every test times out.
           VITE_NETWORKS: paseo-next-v2,previewnet
           # The fixture is served through dotli's existing loopback-only proxy.
           VITE_APP_DEBUG: 'true'
         run: npx turbo run build
 
-      # Exit code 99 from playwright = pairing/signing infrastructure down
-      # (signal raised by apps/host/tests/e2e/global-setup.ts after retries:
-      # testnet chains or the identity backend, not dot.li). Treat as
-      # soft-pass with a clear annotation so it doesn't block a PR.
+      # Exit code 99 means pairing and signing infrastructure is down, not dot.li, so it soft-passes.
       - name: Run E2E
         id: e2e
         working-directory: apps/host
@@ -303,11 +291,6 @@ jobs:
           name: e2e-product-results
           path: apps/host/tests/e2e/test-results/
 
-      # Build a punch list of failed tests + a one-line count summary from
-      # the json reporter output. We do this on failure() so the sticky
-      # comment below can include the actual test names instead of just
-      # "suite failed". jq escapes for safe interpolation into env vars
-      # consumed by the next step.
       - name: Extract failed tests
         if: failure() && github.event_name == 'pull_request'
         id: failed
@@ -319,8 +302,7 @@ jobs:
             echo "summary=suite did not produce results" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # `.ok == true` is true for both passed AND skipped specs in
-          # Playwright's JSON; subtract the skipped count to get actual passes.
+          # Skipped specs count as ok in Playwright's JSON.
           OK=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.ok == true)] | length' "$R")
           FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.ok == false)] | length' "$R")
           SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.tests[]?.results[]?.status == "skipped")] | length' "$R")
@@ -333,10 +315,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "summary=$PASSED passed, $FAILED failed, $SKIPPED skipped" >> "$GITHUB_OUTPUT"
 
-      # Comment on the PR only when the suite fails. A green run leaves no
-      # noise; a red one drops a sticky note listing which tests failed so
-      # the reviewer doesn't have to scroll the job log. If a prior red run
-      # left a sticky note and this run is green, delete the stale note.
       - name: Post failure note on PR
         if: failure() && github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
@@ -358,10 +336,7 @@ jobs:
           header: e2e-product
           delete: true
 
-      # Signing-unavailable surfaces as a distinct sticky comment so the
-      # reviewer can tell at a glance that the suite didn't actually run.
-      # Separate header from the failure note so the two can coexist
-      # without overwriting each other across runs.
+      # Its own header, so it and the failure note never overwrite each other.
       - name: Post signing-unavailable note on PR
         if: steps.e2e.outputs.signing_unavailable == 'true' && github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5

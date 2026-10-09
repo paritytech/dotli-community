@@ -271,6 +271,10 @@ export type CreateTransactionReview =
  */
 export type DevicePermissionStatus = "Granted" | "Denied" | "NotDetermined" | "NotApplicable";
 /**
+ * What the host did with a request to show or hide the expanded card face.
+ */
+export type ExpandedCardFaceOutcome = "Applied" | "NotPresented" | "UserMoving" | "Unsupported";
+/**
  * One chain a host serves: a protocol chain role mapped to the concrete
  * chain of the host's configured environment.
  */
@@ -749,6 +753,10 @@ export declare const CreateTransactionReview: S.Codec<CreateTransactionReview>;
  */
 export declare const DevicePermissionStatus: S.Codec<DevicePermissionStatus>;
 /**
+ * What the host did with a request to show or hide the expanded card face.
+ */
+export declare const ExpandedCardFaceOutcome: S.Codec<ExpandedCardFaceOutcome>;
+/**
  * One chain a host serves: a protocol chain role mapped to the concrete
  * chain of the host's configured environment.
  */
@@ -1014,8 +1022,8 @@ export interface CoreAdmin {
      */
     getPermissionAuthorizationStatuses(requests: Array<PermissionAuthorizationRequest>): Promise<Array<PermissionAuthorizationStatus>>;
     /**
-     * Update a stored permission authorization status. `NotDetermined` clears
-     * the stored value so the next product request prompts again.
+     * Update a stored permission authorization status. `NotDetermined` resets
+     * the decision to ask again, retaining a tombstone against legacy re-import.
      */
     setPermissionAuthorizationStatus(request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus): Promise<void>;
     /**
@@ -1104,6 +1112,19 @@ export interface CoreStorage {
     clearCoreStorage(key: CoreStorageKey): Promise<void>;
 }
 /**
+ * Host control of the card face drawn above an opened card's Widget.
+ *
+ * Carried per connection on `ConnectionAdapters`, because the host owns one
+ * drawer per product execution. A connection without one tells products
+ * `Unsupported`.
+ */
+export interface ExpandedCardHost {
+    /**
+     * Show (`true`) or hide (`false`) the face above the calling Widget.
+     */
+    setExpandedCardFaceShown(shown: boolean): Promise<ExpandedCardFaceOutcome>;
+}
+/**
  * Feature-support probing. The host answers whether it can service a given
  * capability (currently scoped to per-chain support).
  */
@@ -1117,6 +1138,32 @@ export interface Features {
      * `get_chain_info` requests against the returned set.
      */
     supportedChains(): Promise<HostChainSet>;
+}
+/**
+ * Host-implemented adapter that holds a product's next-game reminder.
+ * Optional: a host that omits it leaves Game requests answered `Unsupported`.
+ * See `OptionalPlatform`.
+ *
+ * The core serves only the game product and refuses a start that is not in
+ * the future before it calls here; it asks for no per-product consent. The
+ * host asks the OS for what the reminder needs, rings an alarm where the OS
+ * allows one and delivers an ordinary notification otherwise, and may add the
+ * game to the user's calendar. A host keeps one reminder per product: a
+ * schedule replaces the reminder the same product already holds and leaves
+ * other products' reminders alone. The host keeps each reminder across app
+ * kill and device reboot and drops it once its game has started.
+ */
+export interface GamePlatform {
+    /**
+     * Hold `starts_at` (Unix milliseconds, UTC) as the product's reminder,
+     * replacing any it holds. An error, including an OS that allows neither
+     * alarms nor notifications, reaches the product as a host failure.
+     */
+    scheduleGameReminder(product: ProductContext, startsAt: bigint): Promise<void>;
+    /**
+     * Drop the product's reminder. Idempotent: dropping none succeeds.
+     */
+    cancelGameReminder(product: ProductContext): Promise<void>;
 }
 /**
  * A live JSON-RPC connection to a chain.
@@ -1387,6 +1434,7 @@ export interface HostCallbacks {
     productOperations: ProductOperations;
     chat?: ChatPlatform;
     contacts?: ContactsPlatform;
+    game?: GamePlatform;
     permissionStatus?: PermissionStatusHost;
     pocket?: PocketPlatform;
 }
@@ -1406,6 +1454,7 @@ export interface RequiredHostCallbacks {
     productOperations: Required<ProductOperations>;
     chat?: Required<ChatPlatform>;
     contacts?: Required<ContactsPlatform>;
+    game?: Required<GamePlatform>;
     permissionStatus?: Required<PermissionStatusHost>;
     pocket?: Required<PocketPlatform>;
 }

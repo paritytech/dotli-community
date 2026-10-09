@@ -4,9 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as MetricsModule from '@dotli/metrics';
 
-// `getHandle` is not exercised here. It calls `init()` against the real
-// truapi-provider wasm, which is not something a unit test should boot. The
-// heartbeat is exported separately so its timing can be driven directly.
+// Driven directly, since `getHandle` would boot the real truapi-provider wasm.
 
 const gauge = vi.fn();
 

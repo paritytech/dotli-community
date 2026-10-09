@@ -11,7 +11,6 @@ import s from './DropdownMenu.module.css';
 
 const ITEM = '[role="menuitem"]';
 
-/** The menu's items that can take focus, in order. */
 function items(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(ITEM)).filter(
     el =>
@@ -19,11 +18,7 @@ function items(root: HTMLElement): HTMLElement[] {
   );
 }
 
-/**
- * Arrows (wrapping), Home, End and typeahead on the first letter. Tab stays
- * put in the anchored menu; a sheet's Tab is its dialog's, for the head's
- * close button.
- */
+/** Tab stays put in the anchored menu. In a sheet, Tab is the dialog's, to reach the head's close button. */
 function moveFocus(ev: KeyboardEvent, root: HTMLElement, holdTab: boolean): void {
   if (ev.key === 'Tab') {
     if (holdTab) {
@@ -66,10 +61,8 @@ function focusHovered(ev: PointerEvent): void {
 }
 
 /**
- * DropdownMenu's lazy chunk: the menu's keys, hover focus and opening focus,
- * and the sheet hand-off its items run. It loads Popover's chunk as it
- * mounts: a More row opening a popover then renders it in the hand-off's
- * frame, so its sheet takes More's place.
+ * DropdownMenu's lazy chunk. It loads Popover's chunk on mount so a More row's popover renders in the hand-off's
+ * frame and its sheet takes More's place.
  */
 export function DropdownMenuSurface(props: {
   state: MenuState;
@@ -77,9 +70,9 @@ export function DropdownMenuSurface(props: {
   placement?: Placement | undefined;
   children: JSX.Element;
 }): JSX.Element {
-  // A failure is left to the opening that renders it, which reports it.
+  // The opening that renders it reports a failure.
   preloadPopoverSurface().catch(() => undefined);
-  /** Where focus goes as the menu opens: the first item for a key, else the menu. */
+  /** The first item when opened by key, else the menu. */
   const openingFocus = (menu: HTMLElement, root: HTMLElement): HTMLElement => {
     const keyboard = props.state.keyboard.value;
     props.state.keyboard.value = false;

@@ -20,8 +20,7 @@ export function Field(props: {
 }): JSX.Element {
   let value: HTMLSpanElement | undefined;
   const [overflows, setOverflows] = createSignal(false);
-  // Safari makes no scroller focusable, so a value that scrolls takes the tab
-  // stop itself. One that fits is plain text, as in Chrome and Firefox.
+  // Safari never makes a scroller focusable, so an overflowing value takes the tab stop itself.
   const measure = (): void => {
     setOverflows(value !== undefined && value.scrollHeight > value.clientHeight);
   };

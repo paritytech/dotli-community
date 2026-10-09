@@ -1,18 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Resolution view of the TrUAPI debug panel.
-//
-// Draws the model `buildResolution` makes from the recorder. This component
-// decides when to redraw: when the recorder changes while visible (not on
-// TrUAPI traffic, which it does not record), and on a tick, because the
-// block a chain is still sitting in has to keep growing toward now while a
-// chain that has gone quiet emits nothing to redraw on.
-//
-// A redraw that builds the same model as the last one stops there, so a
-// finished load costs nothing to redraw. A changed model reaches components
-// keyed by fact, chain role and position, which rewrite only the values that
-// moved. A node the cursor is on stays put, and so does its tooltip.
+// Redraws when the recorder changes while visible, and on a tick, because a chain's open block must keep
+// growing while the chain emits nothing. An unchanged model stops the redraw, so a finished load costs nothing.
 
 import { createEffect, createSignal, flush, onCleanup, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -22,11 +12,9 @@ import { Chart } from './resolution/Chart.js';
 import { Summary } from './resolution/Summary.js';
 import s from './ResolutionView.module.css';
 
-/** How often the Resolution view redraws the open block of an in-flight load. */
 const RESOLUTION_TICK_MS = 500;
 
-/** What a redraw compares against the last one. Every empty model looks the
- *  same on screen, whatever moment it was built at. */
+/** Every empty model looks the same on screen, whenever it was built. */
 function drawnKey(model: ResolutionModel): string {
   return model.flowId === null ? '' : JSON.stringify(model);
 }
@@ -34,8 +22,7 @@ function drawnKey(model: ResolutionModel): string {
 export function ResolutionView(props: {
   active: boolean;
   collapsed: boolean;
-  /** The recorder's version as of the last panel refresh; a change redraws
-   *  while on screen. */
+  /** The recorder's version as of the last panel refresh. */
   refresh: number;
   recorder: ResolutionRecorder;
   tooltip: () => HTMLElement | undefined;
@@ -57,8 +44,7 @@ export function ResolutionView(props: {
     setModel(next);
   };
 
-  // Re-runs only when one of these changes: an effect's function runs on
-  // every compute, so the compute reads nothing that moves with traffic.
+  // The compute reads nothing that moves with traffic, since the effect re-runs on every compute change.
   createEffect(
     () => (props.active && !props.collapsed ? props.refresh : null),
     refresh => {
@@ -68,11 +54,7 @@ export function ResolutionView(props: {
     },
   );
 
-  // A collapsed panel is not on screen, so it redraws nothing. Outside
-  // Solid's update pass, so it applies its write at once, as the effect's
-  // does.
-  // Only a load still running grows with time, so a finished or empty one
-  // skips the rebuild; a new load arrives through the refresh effect.
+  // Only a running load grows with time. A new load arrives through the refresh effect.
   const tick = window.setInterval(() => {
     if (props.active && !props.collapsed && model()?.summary.outcome === 'running') {
       flush(draw);

@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The password prompt's parts: its caption, its error and the board's
-   password .input. floating/Modal.module.css draws the modal around them.
-   Desktop sizes by default, the boards' in the phone block. */
+/* The password prompt's parts. floating/Modal.module.css draws the modal around them. */
 
 .caption {
   margin: 0;
@@ -44,7 +42,7 @@
   outline-offset: 0;
 }
 
-/* PHONE_QUERY in phone-viewport.ts: the boards' 44 px input. */
+/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .input {
     height: var(--h-control);

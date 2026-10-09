@@ -41,7 +41,7 @@ const wallet = vi.hoisted(() => {
 
 const owner = vi.hoisted(() => ({
   requests: [] as { action: string; lease?: string }[],
-  revoked: new Set<(lease: string) => void>(),
+  revoked: new Set<(lease: string | undefined) => void>(),
 }));
 
 vi.mock('@dotli/config', async original => ({
@@ -58,7 +58,7 @@ vi.mock('../../protocol/src/client.js', async original => ({
     owner.requests.push(operation);
     return Promise.resolve(operation.action === 'acquire' ? 'page-lease' : undefined);
   },
-  subscribeWalletOwnerRevoked: (listener: (lease: string) => void) => {
+  subscribeWalletOwnerRevoked: (listener: (lease: string | undefined) => void) => {
     owner.revoked.add(listener);
     return () => owner.revoked.delete(listener);
   },
@@ -66,6 +66,7 @@ vi.mock('../../protocol/src/client.js', async original => ({
 vi.mock('../src/host-callbacks/SessionStore.js', async original => ({
   ...(await original<Record<string, unknown>>()),
   initializeLocalWalletState: async () => {},
+  initializeSessionMode: async () => {},
   isExperimentalWalletActive: () => true,
   localWalletContext: () => ({ network: 'westend', revision: wallet.revision }),
   isCurrentLocalWallet: (context: { revision: string }) => context.revision === wallet.revision,
@@ -481,12 +482,12 @@ describe('host-owned experimental identity', () => {
     window.addEventListener('dotli:test-wallet-owner-revoked', paused);
     const disposedAtRelease: boolean[] = [];
     const release = owner.requests.push.bind(owner.requests);
-    owner.requests.push = (...items) => {
+    vi.spyOn(owner.requests, 'push').mockImplementation((...items) => {
       if (items.some(item => item.action === 'release')) {
         disposedAtRelease.push(wallet.sessions.every(s => s.disposed));
       }
       return release(...items);
-    };
+    });
 
     for (const listener of owner.revoked) {
       listener('page-lease');
@@ -499,6 +500,27 @@ describe('host-owned experimental identity', () => {
       lease: 'page-lease',
     });
     window.removeEventListener('dotli:test-wallet-owner-revoked', paused);
+    const requestsBeforeRetry = owner.requests.slice();
+    await expect(controls.getIdentity()).rejects.toThrow('Reload to use it here');
+    expect(owner.requests).toEqual(requestsBeforeRetry);
+  });
+
+  it('As a wallet user, I reacquire the signer after the protocol frame retires', async () => {
+    const { experimentalWalletControls: controls } = boot();
+    await controls.getIdentity();
+    const paused = vi.fn();
+    window.addEventListener('dotli:test-wallet-owner-revoked', paused);
+    // The protocol client reports both explicit resets and pagehide through this boundary.
+    for (const listener of owner.revoked) {
+      listener(undefined);
+    }
+    expect(nth(wallet.sessions, 0).disposed).toBe(true);
+    expect(auth.at(-1)).toMatchObject({ tag: 'WalletUnavailable' });
+    expect(owner.requests).toEqual([{ action: 'acquire' }]);
+    expect(paused).not.toHaveBeenCalled();
+    await controls.getIdentity();
+    expect(owner.requests).toEqual([{ action: 'acquire' }, { action: 'acquire' }]);
+    expect(nth(wallet.sessions, 1).disposed).toBe(false);
   });
 
   it('publishes restored native identity without trusting a disk username or emitting bare Connected', async () => {

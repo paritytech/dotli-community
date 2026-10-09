@@ -9,17 +9,11 @@ import { useStore } from '../use-store.js';
 import s from './LoadingScreen.module.css';
 
 /**
- * The loading screen (`#app-loading`), an island (see src/islands/) the host
- * page paints first and hydrates. It renders the loading store, which
- * loading-controller.ts writes, so progress made before it hydrates shows
- * once it has. It fades while the screen is dismissed and renders nothing
- * once it is gone (the `"loading"` app root disposed): the island stays on
- * the page, outside `#app`.
+ * Island the host page paints first. It renders the loading store, so progress made before hydration shows
+ * once it hydrates.
  */
 export function LoadingScreen(): JSX.Element {
-  // One selector per field, so a line is only written when it changes:
-  // writing an unchanged live region could make a screen reader announce it
-  // again.
+  // One selector per field: writing an unchanged live region could make a screen reader announce it again.
   const progress = useStore(loadingStore, state => state.progress);
   const shown = createMemo(() => Math.round(progress()));
   const step = useStore(loadingStore, state => state.step);
@@ -41,9 +35,8 @@ export function LoadingScreen(): JSX.Element {
           </div>
           <div class={s['text']} id="loading-text">
             <div class={s['status']} id="loading-status">
-              {/* Both lines are hidden from screen readers, which get whole
-                sentences from the element below: the explanation is typed a
-                character at a time. */}
+              {/* The explanation is typed a character at a time, so screen readers get whole sentences
+                from the element below instead. */}
               <p id="loading-step" class={s['step']} aria-hidden="true">
                 <For each={step()}>
                   {part =>
