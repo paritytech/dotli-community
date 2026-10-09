@@ -19,7 +19,7 @@ import {
 
 import { log, serializeError } from '@dotli/shared';
 import { getResolutionId, m, spans as S } from '@dotli/metrics';
-import type { SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
+import type { LocalWalletIdentity, LocalWalletReadResult, SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
 import {
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
@@ -31,7 +31,7 @@ import {
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
 } from './messages.js';
-import { isSharedAuthRequestMethod, isSharedModeRequestMethod } from './auth-storage.js';
+import { isSharedAuthRequestMethod, isSharedModeRequestMethod, isSharedWalletRequestMethod } from './auth-storage.js';
 
 import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
 
@@ -519,7 +519,9 @@ async function postRequest<M extends ProtocolRequestMethod>(
   method: M,
   payload: ProtocolRequestMap[M],
   onProgress?: (message: string) => void,
-  needsProtocolReady = !isSharedAuthRequestMethod(method) && !isSharedModeRequestMethod(method),
+  needsProtocolReady = !isSharedAuthRequestMethod(method) &&
+    !isSharedModeRequestMethod(method) &&
+    !isSharedWalletRequestMethod(method),
 ): Promise<unknown> {
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
@@ -655,6 +657,23 @@ export async function writeSharedModeStorage(siteId: SiteId, key: string, value:
 
 export async function clearSharedModeStorage(siteId: SiteId, key: string): Promise<void> {
   await postRequest('modeStorageClear', { siteId, key });
+}
+
+/** The record lives on `host.<BASE_DOMAIN>`, so one import covers every app on the domain. */
+export async function readSharedLocalWallet(siteId: SiteId): Promise<LocalWalletReadResult> {
+  return (await postRequest('localWalletRead', { siteId })) as LocalWalletReadResult;
+}
+
+export async function saveSharedLocalWallet(siteId: SiteId, entropy: Uint8Array): Promise<void> {
+  await postRequest('localWalletSave', { siteId, entropy });
+}
+
+export async function updateSharedLocalWalletIdentity(siteId: SiteId, identity: LocalWalletIdentity): Promise<void> {
+  await postRequest('localWalletIdentity', { siteId, identity });
+}
+
+export async function forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
+  await postRequest('localWalletForget', { siteId });
 }
 
 /**

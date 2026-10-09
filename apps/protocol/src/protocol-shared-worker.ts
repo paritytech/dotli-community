@@ -43,6 +43,7 @@ import {
   requireBrokerLocalProvider,
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
+  isSharedWalletRequestMethod,
   getRequestSyncTimeoutMs,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
@@ -284,6 +285,10 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
     throw new Error(
       `Shared mode-storage requests must be handled on host.dot.li, not the SharedWorker: ${request.method}`,
     );
+  }
+
+  if (isSharedWalletRequestMethod(request.method)) {
+    throw new Error(`Local wallet requests must be handled on host.dot.li, not the SharedWorker: ${request.method}`);
   }
 
   const syncTimeoutMs = getRequestSyncTimeoutMs(request);

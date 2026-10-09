@@ -16,6 +16,7 @@ import {
   type ChainBrokerManager,
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
+  isSharedWalletRequestMethod,
   getRequestSyncTimeoutMs,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
@@ -87,7 +88,11 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
     respond: ResponseCallback,
   ): Promise<void> {
     // Both engine-facing listeners filter these out, so reaching here means a filter is broken.
-    if (isSharedAuthRequestMethod(request.method) || isSharedModeRequestMethod(request.method)) {
+    if (
+      isSharedAuthRequestMethod(request.method) ||
+      isSharedModeRequestMethod(request.method) ||
+      isSharedWalletRequestMethod(request.method)
+    ) {
       throw new Error(`Shared storage request reached the chain engine: ${request.method}`);
     }
 
