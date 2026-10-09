@@ -5,35 +5,35 @@
    product's preference. */
 
 :root {
-  --text-strong: rgba(255, 255, 255, 0.95);
-  --text: rgba(255, 255, 255, 0.86);
-  --text-secondary: rgba(255, 255, 255, 0.65);
-  --text-muted: rgba(255, 255, 255, 0.5);
-  --text-faint: rgba(255, 255, 255, 0.35);
-  --bg-page: #0a0a0a;
-  --surface: #161616;
+  --text-strong: #f4f4f5;
+  --text: #dadbe0;
+  --text-secondary: #a9abb3;
+  --text-muted: #9ea1aa;
+  --text-faint: #80838a;
+  --bg-page: #0b0c0f;
+  --surface: #1a1b20;
   --fill-subtle: rgba(255, 255, 255, 0.04);
   --fill: rgba(255, 255, 255, 0.07);
   --fill-strong: rgba(255, 255, 255, 0.12);
   --border-subtle: rgba(255, 255, 255, 0.08);
-  --border: rgba(255, 255, 255, 0.14);
-  --border-focus: rgba(255, 255, 255, 0.5);
-  --inverse-bg: #fafafa;
+  --border: rgba(255, 255, 255, 0.16);
+  --border-focus: rgba(255, 255, 255, 0.48);
+  --inverse-bg: #f7f7f8;
   --inverse-bg-hover: #ffffff;
-  --inverse-fg: #0a0a0a;
-  --danger: #f87171;
-  --neutral-solid: #8f8f8f;
+  --inverse-fg: #0b0c0f;
+  --danger: var(--chrome-err-text);
+  --neutral-solid: #8c8f98;
 
   /* Global because chat/custom-styles.ts writes them into a product's custom chat message inline styles. */
-  --chat-fg-primary: rgba(255, 255, 255, 0.92);
-  --chat-fg-secondary: rgba(255, 255, 255, 0.6);
-  --chat-fg-tertiary: rgba(255, 255, 255, 0.4);
-  --chat-bg-surface-main: rgb(24, 24, 24);
+  --chat-fg-primary: #f4f4f5;
+  --chat-fg-secondary: #a9abb3;
+  --chat-fg-tertiary: #83868e;
+  --chat-bg-surface-main: #1a1b20;
   --chat-bg-surface-container: rgba(255, 255, 255, 0.07);
   --chat-bg-surface-nested: rgba(255, 255, 255, 0.13);
-  --chat-fg-success: #4ade80;
-  --chat-fg-error: #f87171;
-  --chat-fg-warning: #fbbf24;
+  --chat-fg-success: var(--chrome-ok-text);
+  --chat-fg-error: var(--chrome-err-text);
+  --chat-fg-warning: var(--chrome-warn-text);
 
   /* `viewport-fit=cover` needs an inset per edge. Inline styles set from JS repeat the px fallback,
      because they do not ship with this file. */
@@ -53,7 +53,7 @@
    toolbar from it, which never collapses over the product's iframe. */
 @media (max-width: 560px) {
   body[data-host] {
-    --bg-page: #18181b;
+    --bg-page: #121317;
   }
   :root {
     --topbar-height: calc(var(--h-bar) + var(--safe-bottom));
@@ -68,49 +68,49 @@
   }
 }
 
-/* Text ratios are against the lightest the glass gets, --chrome-top over a white product page (#2e2e32). */
+/* Contrast is APCA Lc against the lightest the glass gets, --chrome-top over a white product page (#32343a). */
 :root {
-  --chrome-top: rgba(40, 40, 44, 0.97);
-  --chrome-bottom: rgba(24, 24, 27, 0.98);
+  --chrome-top: rgba(44, 46, 52, 0.97);
+  --chrome-bottom: rgba(18, 19, 23, 0.98);
   --chrome-glass: linear-gradient(180deg, var(--chrome-top) 0%, var(--chrome-bottom) 100%);
   --chrome-blur: blur(32px) saturate(150%);
-  --chrome-solid: #2a2a2e;
+  --chrome-solid: #282a30;
   --chrome-well: rgba(0, 0, 0, 0.3);
-  --chrome-well-strong: rgba(0, 0, 0, 0.45);
+  --chrome-well-strong: rgba(0, 0, 0, 0.48);
   --chrome-fill: rgba(255, 255, 255, 0.07);
   --chrome-fill-strong: rgba(255, 255, 255, 0.12);
   --chrome-line: rgba(255, 255, 255, 0.08);
   --chrome-ring-subtle: rgba(255, 255, 255, 0.06);
-  --chrome-ring: rgba(255, 255, 255, 0.14);
-  --chrome-ring-strong: rgba(255, 255, 255, 0.5);
+  --chrome-ring: rgba(255, 255, 255, 0.16);
+  --chrome-ring-strong: rgba(255, 255, 255, 0.48);
 
-  --chrome-text: #f4f4f5; /* 12.3:1 */
-  --chrome-text-muted: #c4c4ca; /* 7.8:1, 9.4:1 on --chrome-well */
-  --chrome-on-primary: #141416; /* 13.1:1 on --chrome-primary */
-  --chrome-primary: linear-gradient(180deg, #fafafa 0%, #d9d9dd 100%);
-  --chrome-primary-hover: linear-gradient(180deg, #ffffff 0%, #e3e3e7 100%);
-  --chrome-avatar: linear-gradient(160deg, #4e4e55 0%, #2a2a2f 100%); /* initials 7.5:1 */
-  --chrome-focus: #96b8ff;
+  --chrome-text: #f4f4f5; /* Lc 95 */
+  --chrome-text-muted: #d4d5db; /* Lc 75, 78 on --chrome-well */
+  --chrome-on-primary: #0b0c0f; /* Lc 85 on --chrome-primary */
+  --chrome-primary: linear-gradient(180deg, #f7f7f8 0%, #dadbe0 100%);
+  --chrome-primary-hover: linear-gradient(180deg, #ffffff 0%, #f4f4f5 100%);
+  --chrome-avatar: linear-gradient(160deg, #585b62 0%, #2c2e34 100%); /* initials Lc 81 */
+  --chrome-focus: #78a9ff;
   --chrome-focus-ring: 2px solid var(--chrome-focus);
 
-  /* Status marks, 3:1 or more. */
-  --chrome-ok: #4cc38a;
-  --chrome-warn: #f0a93b;
-  --chrome-err: #f2555a;
-  --chrome-info: #7aa2ff;
-  --chrome-idle: #a1a1aa;
+  /* Status marks, Lc 45 or more on their own tint. Berlin hues at one lightness and chroma, so no tone outshouts another. */
+  --chrome-ok: #6bc880;
+  --chrome-warn: #e69f42;
+  --chrome-err: #fa8b85;
+  --chrome-info: #7eafff;
+  --chrome-idle: #aaacb4;
   --chrome-action: #ffffff;
-  --chrome-action-dim: #5e5e66;
-  --chrome-ok-text: #9ff0c6; /* 10.1:1 */
-  --chrome-warn-text: #ffd48a; /* 9.7:1 */
-  --chrome-err-text: #ffb8ba; /* 8.3:1 */
+  --chrome-action-dim: #5f6269; /* Lc 15 */
+  --chrome-ok-text: #b5edbf; /* Lc 75 on its tint */
+  --chrome-warn-text: #ffd9ae; /* Lc 75 on its tint */
+  --chrome-err-text: #ffd5d1; /* Lc 75 on its tint */
   --chrome-tint: 16%;
   --chrome-tint-strong: 22%;
   /* A red tint, never solid red, so the primary action stays the brightest. */
   --chrome-danger-fill: color-mix(in srgb, var(--chrome-err) var(--chrome-tint), transparent);
   --chrome-danger-fill-strong: color-mix(in srgb, var(--chrome-err) var(--chrome-tint-strong), transparent);
   --chrome-danger-ring: color-mix(in srgb, var(--chrome-err) 45%, transparent);
-  --chrome-danger-text: #ffd0d1; /* 7.5:1 on --chrome-danger-fill-strong */
+  --chrome-danger-text: #ffdad7; /* Lc 75 on --chrome-danger-fill-strong */
 
   --chrome-shadow-pop:
     inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 24px 48px rgba(0, 0, 0, 0.32),
@@ -131,11 +131,11 @@
   --chrome-shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.35);
   --chrome-shadow-tile: 0 8px 24px rgba(0, 0, 0, 0.3);
 
-  --chrome-scrim: rgba(0, 0, 0, 0.45);
+  --chrome-scrim: rgba(0, 0, 0, 0.48);
   --chrome-scrim-light: rgba(0, 0, 0, 0.06); /* behind a desktop popover */
   /* Black on white, so phones can scan it. */
   --qr-bg: #ffffff;
-  --qr-ink: #141416;
+  --qr-ink: #0b0c0f;
 }
 /* Unblurred, the translucent glass would let the page show through. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
