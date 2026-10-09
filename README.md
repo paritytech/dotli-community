@@ -165,7 +165,9 @@ through the product's authenticated port to the shared page core. The host's Sol
 genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions
 are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
 signing, storage, or arbitrary web access. Peer access permits sending and receiving messages; it is not a read-only
-network permission.
+network permission. JAM permission callbacks return the decision without an administrative permission write, leaving the
+canonical Rust core to persist it against the pending product/genesis request. Administrative settings changes remain a
+separate operation that deliberately invalidates stale consent.
 
 The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
 the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
@@ -456,22 +458,20 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the integrated TrUAPI 0.24.0 SDK from source
-`e48777643c52278769a6bac724c7f6577cb87197`, recorded in `vendor/truapi-host.lock.json`.
-The browser wallet uses the production `--web-only --signing-host` build, without `test-host`. Its archive inventory
-comes from `npm pack`, with stale compiled files lacking a matching upstream TypeScript source and non-web Wasm
-removed in a temporary staging directory before packing. The recorded archive hashes precede the local
-`@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound notification activation
-are preserved above the generic browser runtime and wallet layer. This integration combines Profile disclosure,
-contacts and presentation fences with the separate JamPeerTransport layer and background receiving.
-Replacing a product document retires its execution, receiving registration, avatars and labels immediately;
-the new execution receives fresh capability callbacks.
-Locale timestamp batches use the SDK's browser `Intl` implementation.
+This branch vendors the integrated TrUAPI 0.24.0 SDK from source `e48777643c52278769a6bac724c7f6577cb87197`, recorded in
+`vendor/truapi-host.lock.json`. The browser wallet uses the production `--web-only --signing-host` build, without
+`test-host`. Its archive inventory comes from `npm pack`, with stale compiled files lacking a matching upstream
+TypeScript source and non-web Wasm removed in a temporary staging directory before packing. The recorded archive hashes
+precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
+notification activation are preserved above the generic browser runtime and wallet layer. This integration combines
+Profile disclosure, contacts and presentation fences with the separate JamPeerTransport layer and background receiving.
+Replacing a product document retires its execution, receiving registration, avatars and labels immediately; the new
+execution receives fresh capability callbacks. Locale timestamp batches use the SDK's browser `Intl` implementation.
 Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery
 opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame.
 Allowance inspection batches historical ring membership reads while preserving finalized snapshots, complete ring
-validation and identity-activation fences.
-Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
+validation and identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a
+matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi

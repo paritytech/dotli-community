@@ -546,6 +546,7 @@ describe('three-way permission prompts', () => {
 
       // Then
       await expect(response).resolves.toBe(decision);
+      expect(myappWrites).toBe(0);
     }
     const dismissed = createPromptPermission('myapp').remotePermission(PRODUCT, {
       permission: { tag: 'JamPeers', value: { genesis } },
@@ -649,7 +650,6 @@ describe('three-way permission prompts', () => {
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
   });
-
 
   it('As a product, an existing grant is answered without being upgraded to a lasting one', async () => {
     // Given: the status can reflect a pending one-time grant, so answering

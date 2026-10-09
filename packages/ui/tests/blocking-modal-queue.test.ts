@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfirmation.js';
+import { createPromptPermission } from '../src/host-callbacks/PromptPermission.js';
 import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
 import { registerPermissionAuthorizationProvider } from '../src/permissions.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
