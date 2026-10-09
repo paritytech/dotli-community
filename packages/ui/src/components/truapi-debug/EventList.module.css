@@ -8,7 +8,7 @@
 
 .row {
   display: grid;
-  grid-template-columns: 72px 16px 90px 58px minmax(0, 1fr);
+  grid-template-columns: max-content 16px 90px 58px minmax(0, 1fr);
   align-items: baseline;
   gap: 8px;
   white-space: nowrap;
@@ -17,7 +17,7 @@
 }
 /* A layer badge replaces the arrow and product. */
 .row[data-system] {
-  grid-template-columns: 72px max-content 90px minmax(0, 1fr);
+  grid-template-columns: max-content max-content 90px minmax(0, 1fr);
   border-left: 2px solid var(--td-system-edge);
 }
 
@@ -56,7 +56,7 @@
   white-space: nowrap;
 }
 .pending[data-slow] {
-  background: var(--td-accent-bg);
+  background: var(--td-pink-bg);
   color: var(--td-pink);
   border-color: var(--td-pink-line);
 }
