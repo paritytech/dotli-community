@@ -73,6 +73,8 @@ function ImportForm(): JSX.Element {
         data-testid="td-wallet-phrase"
         rows={3}
         autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
         spellcheck="false"
         value={phrase()}
         onInput={event => {
@@ -96,16 +98,19 @@ function ImportForm(): JSX.Element {
 function LocalWallet(): JSX.Element {
   const auth = useStore(authStore);
   const [leaving, setLeaving] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
   const session = (): { identityAccountId?: string; liteUsername?: string } | undefined => {
     const state = auth();
     return state.tag === 'Connected' ? state.session : undefined;
   };
 
   const leave = (): void => {
+    setError(null);
     setLeaving(true);
     switchToPolkadotApp().catch((failure: unknown) => {
       reportLocalWalletFailure(failure, 'forget');
       setLeaving(false);
+      setError('Could not switch back. Try again.');
     });
   };
 
@@ -121,6 +126,13 @@ function LocalWallet(): JSX.Element {
           <code data-testid="td-wallet-username">{session()?.liteUsername ?? 'None'}</code>
         </dd>
       </dl>
+      <Show when={error()}>
+        {message => (
+          <p class={s['error']} data-testid="td-wallet-error" role="alert">
+            {message()}
+          </p>
+        )}
+      </Show>
       <button class={s['btn']} type="button" data-testid="td-wallet-use-app" disabled={leaving()} onClick={leave}>
         Use Polkadot App
       </button>

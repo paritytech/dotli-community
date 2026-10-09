@@ -21,4 +21,6 @@ export const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
   resolveOwner: 90_000,
   resolveExecutableManifest: 90_000,
   resolveRootManifest: 90_000,
+  // Boot waits on it, so a protocol frame too old to answer must not hold the page for the default budget.
+  localWalletRead: 5_000,
 };

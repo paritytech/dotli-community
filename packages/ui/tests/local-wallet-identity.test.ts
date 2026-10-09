@@ -10,8 +10,10 @@ const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const mocks = vi.hoisted(() => ({
   updateSharedLocalWalletIdentity: vi.fn(() => Promise.resolve()),
   readLiteUsername: vi.fn(),
+  reportLocalWalletFailure: vi.fn(),
 }));
 vi.mock('@dotli/protocol', () => ({ updateSharedLocalWalletIdentity: mocks.updateSharedLocalWalletIdentity }));
+vi.mock('../src/wallet-boot.js', () => ({ reportLocalWalletFailure: mocks.reportLocalWalletFailure }));
 vi.mock('../../metrics/src/metrics.js', () => ({ m: { count: vi.fn() }, getResolutionId: vi.fn(() => null) }));
 
 type Identity = typeof LocalWalletIdentity;
@@ -106,5 +108,20 @@ describe('refreshLiteUsername', () => {
 
     // Then
     expect(mocks.readLiteUsername).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a page with several cores whose name could not be saved, I report it once and still use the new name', async () => {
+    // Given
+    mocks.readLiteUsername.mockResolvedValue('alice.42');
+    mocks.updateSharedLocalWalletIdentity.mockRejectedValueOnce(new Error('frame gone'));
+    const { refreshLiteUsername } = await load();
+
+    // When
+    const names = await Promise.all([refreshLiteUsername(wallet(undefined)), refreshLiteUsername(wallet(undefined))]);
+
+    // Then
+    expect(names).toEqual(['alice.42', 'alice.42']);
+    expect(mocks.reportLocalWalletFailure).toHaveBeenCalledTimes(1);
+    expect(mocks.reportLocalWalletFailure).toHaveBeenCalledWith(expect.any(Error), 'identity-save');
   });
 });

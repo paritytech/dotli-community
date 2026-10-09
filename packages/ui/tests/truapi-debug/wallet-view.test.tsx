@@ -85,6 +85,23 @@ describe('WalletView', () => {
     expect(walletSwitch.switchToPolkadotApp).toHaveBeenCalledTimes(1);
   });
 
+  it('As a local wallet user whose switch back failed, I am told to try again', async () => {
+    // Given
+    walletSwitch.switchToPolkadotApp.mockRejectedValueOnce(new Error('frame gone'));
+    setWalletModeState({ mode: 'local', failure: null });
+    renderComponent(() => <WalletView active />);
+    await settle();
+
+    // When
+    byTestId('td-wallet-use-app', document, HTMLButtonElement).click();
+    await settle();
+
+    // Then
+    expect(byTestId('td-wallet-error').textContent).toBe('Could not switch back. Try again.');
+    expect(byTestId('td-wallet-error').getAttribute('role')).toBe('alert');
+    expect(byTestId('td-wallet-use-app', document, HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('As a user whose local wallet could not start, I see why', async () => {
     // Given
     setWalletModeState({ mode: 'app', failure: 'Local wallet could not be decrypted and was forgotten' });

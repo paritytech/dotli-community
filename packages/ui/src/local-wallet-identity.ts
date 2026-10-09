@@ -11,7 +11,7 @@ import { log } from '@dotli/shared';
 import { hexToBytes } from '@parity/truapi/scale';
 import { loadBridge } from './lazy.js';
 import { authStore, getAuthState } from './state/auth.js';
-import type { LocalWalletBoot } from './wallet-boot.js';
+import { reportLocalWalletFailure, type LocalWalletBoot } from './wallet-boot.js';
 
 type ReadLiteUsername = (identityAccountId: string) => Promise<string | null>;
 
@@ -88,7 +88,13 @@ async function readChange(wallet: LocalWalletBoot): Promise<string | null | unde
   if (cached?.identityAccountId === identityAccountId && cached.liteUsername === name) {
     return undefined;
   }
-  await updateSharedLocalWalletIdentity(SITE_ID, { identityAccountId, liteUsername: name });
+  try {
+    await updateSharedLocalWalletIdentity(SITE_ID, { identityAccountId, liteUsername: name });
+  } catch (error) {
+    // Reported here, once for every core sharing this read. The name still holds for this page, and the next boot
+    // reads it again.
+    reportLocalWalletFailure(error, 'identity-save');
+  }
   const activatedWith = cached?.liteUsername ?? null;
   return name === activatedWith ? undefined : name;
 }

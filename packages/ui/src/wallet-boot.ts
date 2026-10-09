@@ -16,7 +16,11 @@ const UNAVAILABLE = 'Local wallet could not be read, so this page uses Polkadot 
 
 let read: Promise<LocalWalletBoot | null> | null = null;
 
-export function reportLocalWalletFailure(error: unknown, reason: string): void {
+/** A closed set, so the metric's `reason` tag stays bounded. */
+export type LocalWalletFailureReason =
+  'read' | 'unreadable' | 'save' | 'forget' | 'boot' | 'activate' | 'reactivate' | 'identity-save';
+
+export function reportLocalWalletFailure(error: unknown, reason: LocalWalletFailureReason): void {
   log.error(`[dot.li wallet] local wallet ${reason} failed:`, error);
   captureException(error, { flow: 'wallet', step: 'local_wallet', tags: { reason } });
   m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'error', reason });
