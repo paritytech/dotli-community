@@ -4,6 +4,7 @@
 import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
 import { TIMEOUTS } from '@dotli/config';
 import type { SharedWalletOperation, SharedWalletState } from './wallet-storage.js';
+import type { CoreCustodyOperation } from './core-custody.js';
 import type { WalletOwnerOperation } from './wallet-owner.js';
 
 export interface ProtocolRequestMap {
@@ -27,6 +28,7 @@ export interface ProtocolRequestMap {
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };
   walletStorage: { siteId: string; operation: SharedWalletOperation };
+  coreCustody: { siteId: string; operation: CoreCustodyOperation };
   walletOwner: { siteId: string; operation: WalletOwnerOperation };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };

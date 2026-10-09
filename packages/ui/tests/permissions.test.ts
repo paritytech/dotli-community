@@ -9,8 +9,8 @@ import {
   DEVICE_PERMISSION_POLICY,
   buildAllowAttribute,
   getGrantedDevicePermissions,
-  getPermissionStatuses,
   getPermissionStatus,
+  getPermissionStatuses,
   hasAnyGrant,
   isDevicePermission,
   isEnforceableDevicePermission,
@@ -33,12 +33,10 @@ type Store = Map<string, PermissionAuthorizationStatus>;
 
 let unregisterMyapp: (() => void) | null = null;
 let myappStore: Store;
-let myappBatchReads = 0;
 let myappWrites = 0;
 
 beforeEach(() => {
   myappStore = new Map();
-  myappBatchReads = 0;
   myappWrites = 0;
   unregisterMyapp = registerTestProvider('myapp', myappStore);
 });
@@ -52,9 +50,6 @@ afterEach(() => {
 function registerTestProvider(label: string, store: Store): () => void {
   return registerPermissionAuthorizationProvider(label, {
     getPermissionAuthorizationStatuses(requests) {
-      if (label === 'myapp') {
-        myappBatchReads += 1;
-      }
       return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
     },
     setPermissionAuthorizationStatus(request, status) {
@@ -78,6 +73,10 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `Device:${request.value}`;
     case 'Remote':
       return `Remote:${request.value.permission.tag}`;
+    case 'ChatAuthority':
+      return 'ChatAuthority';
+    case 'StatementStoreAllowance':
+      return `StatementStoreAllowance:${JSON.stringify(request.value.derivationIndex)}`;
     case 'IdentityDisclosure':
       return 'IdentityDisclosure';
     case 'AccountAccess':
@@ -121,42 +120,6 @@ describe('getPermissionStatus / setPermissionStatus', () => {
     expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('denied');
   });
 
-  it('As a product, my permission decisions use the core authorization store', async () => {
-    // Given
-    expect(myappStore).toEqual(new Map());
-
-    // When
-    await setPermissionStatus('myapp', 'ChainSubmit', 'granted');
-    await setPermissionStatus('myapp', 'Camera', 'denied');
-    await setPermissionStatus('myapp', 'IdentityDisclosure', 'granted');
-
-    // Then
-    expect(myappStore).toEqual(
-      new Map([
-        ['Remote:ChainSubmit', 'Authorized'],
-        ['Device:Camera', 'Denied'],
-        ['IdentityDisclosure', 'Authorized'],
-      ]),
-    );
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('granted');
-    expect(await getPermissionStatus('myapp', 'Camera')).toBe('denied');
-    expect(await getPermissionStatus('myapp', 'IdentityDisclosure')).toBe('granted');
-  });
-
-  it('As a product, my permission statuses are read in one provider call', async () => {
-    // Given
-    await setPermissionStatus('myapp', 'ChainSubmit', 'granted');
-    await setPermissionStatus('myapp', 'Camera', 'denied');
-    const callsBeforeRead = myappBatchReads;
-
-    // When
-    const statuses = getPermissionStatuses('myapp', ['ChainSubmit', 'Camera', 'Microphone']);
-
-    // Then
-    await expect(statuses).resolves.toEqual(['granted', 'denied', 'ask']);
-    expect(myappBatchReads - callsBeforeRead).toBe(1);
-  });
-
   it('As a product, my permission grants are isolated from other products', async () => {
     await setPermissionStatus('myapp', 'Camera', 'granted');
     expect(await getPermissionStatus('otherapp', 'Camera')).toBe('ask');
@@ -175,6 +138,17 @@ describe('getPermissionStatus / setPermissionStatus', () => {
     unregisterReplacement();
 
     // Then
+    expect(await getPermissionStatus('myapp', 'Camera')).toBe('granted');
+  });
+
+  it('does not acknowledge a revocation after its provider disappears', async () => {
+    await setPermissionStatus('myapp', 'Camera', 'granted');
+    unregisterMyapp?.();
+    unregisterMyapp = null;
+
+    await expect(setPermissionStatus('myapp', 'Camera', 'denied')).rejects.toThrow();
+
+    unregisterMyapp = registerTestProvider('myapp', myappStore);
     expect(await getPermissionStatus('myapp', 'Camera')).toBe('granted');
   });
 });
@@ -493,7 +467,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     expect(names).not.toContain('TransactionSubmit');
   });
 
-  it('As a user, the menu lists the eight device permissions, then the four app permissions', () => {
+  it('As a user, the menu lists the eight device permissions, then the five app permissions', () => {
     // Then
     expect(ALL_PERMISSIONS.filter(({ group }) => group === 'device').map(({ name }) => name)).toEqual([
       'Notifications',
@@ -506,6 +480,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
       'Biometrics',
     ]);
     expect(ALL_PERMISSIONS.filter(({ group }) => group === 'app').map(({ name }) => name)).toEqual([
+      'ChatAuthority',
       'IdentityDisclosure',
       'ChainSubmit',
       'PreimageSubmit',

@@ -1,9 +1,11 @@
 import type {
   AccountAccessReview,
   AccountAliasReview,
+  ChatAuthorityReview,
   CreateProofReview,
   CreateTransactionReview,
   IdentityDisclosureReview,
+  MainPurseChatPaymentReview,
   PermissionDecision,
   PreimageSubmitReview,
   ProductSubtreeReview,
@@ -24,6 +26,7 @@ import type {
   RingLocationJunction,
 } from '@parity/truapi';
 import { hexToBytes } from '@parity/truapi/scale';
+import { getActiveServicesConfig } from '@dotli/config';
 import { iconMarkup, PERMISSION_ICONS } from '../permission-icons.js';
 import { showPreimageSubmitModal } from '../preimage-modal.js';
 import { ERRORS } from '../errors.js';
@@ -114,6 +117,10 @@ function confirmationDisplay(label: string, review: ModalReview): { fields: Conf
     case 'IdentityDisclosure':
     case 'ProductSubtree':
       return { fields: createRequestingProductFields(review.value) };
+    case 'ChatAuthority':
+      return { fields: createChatAuthorityFields(review.value) };
+    case 'MainPurseChatPayment':
+      return { fields: createMainPurseChatPaymentFields(review.value) };
     case 'ResourceAllocation':
       return { fields: createResourceAllocationFields(review.value) };
   }
@@ -289,6 +296,68 @@ function createRequestingProductFields(review: IdentityDisclosureReview | Produc
   return [{ label: 'Requesting product', value: review.productId }];
 }
 
+function createChatAuthorityFields(review: ChatAuthorityReview): ConfirmationField[] {
+  return [
+    { label: 'Requesting product', value: review.productId },
+    {
+      label: 'Permission',
+      value: 'Bind its device account to your wallet Chat identity and encrypt or decrypt Chat routing data',
+    },
+  ];
+}
+
+function createMainPurseChatPaymentFields(review: MainPurseChatPaymentReview): ConfirmationField[] {
+  const services = getActiveServicesConfig();
+  if (
+    services.coinage === undefined ||
+    review.coinageInstanceId !== services.coinage.instanceId ||
+    formatBytes(review.genesisHash) !== services.people.genesis.toLowerCase()
+  ) {
+    throw new Error('Main-purse payment does not match the configured chain and asset');
+  }
+  // Keep u64 amounts exact through the review; Number loses cents above 2^53.
+  const symbol = services.coinage.symbol;
+  const amount = (cents: bigint): string =>
+    `${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, '0')} ${symbol}`;
+  return [
+    { label: 'Requesting product', value: review.callingProductId },
+    {
+      label: 'Recipient',
+      value: review.recipientUsername ?? 'Unnamed identity',
+    },
+    {
+      label: 'Recipient identity',
+      value: formatBytes(review.recipientIdentity),
+      mono: true,
+    },
+    { label: 'Recipient amount', value: amount(review.amountCents) },
+    {
+      label: 'Maximum purse debit (including fees)',
+      value: amount(review.maxDebitCents),
+    },
+    {
+      label: 'Chain genesis',
+      value: formatBytes(review.genesisHash),
+      mono: true,
+    },
+    {
+      label: 'Coinage asset instance',
+      value: String(review.coinageInstanceId),
+    },
+    {
+      label: 'Payment operation',
+      value: formatBytes(review.operationId),
+      mono: true,
+    },
+    {
+      label: 'One-time payment',
+      value:
+        'Spend from your main purse for this payment only. Chat access and automatic signing never approve payments.',
+      warning: true,
+    },
+  ];
+}
+
 function formatResource(resource: AllocatableResource): string {
   return resource.tag === 'SmartContractAllowance'
     ? `SmartContractAllowance / ${formatDerivationIndex(resource.value)}`
@@ -342,6 +411,20 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
         title: 'Identity Disclosure',
         action: 'Allow',
         cancelAction: 'Deny',
+      };
+    case 'ChatAuthority':
+      return {
+        title: 'Chat Identity Authority',
+        action: 'Allow',
+        cancelAction: 'Deny',
+        icon: iconMarkup(PERMISSION_ICONS.ChatAuthority),
+      };
+    case 'MainPurseChatPayment':
+      return {
+        title: 'Send Main-Purse Payment',
+        action: 'Send payment',
+        cancelAction: 'Reject',
+        icon: PEN_ICON,
       };
     case 'ProductSubtree':
       return {

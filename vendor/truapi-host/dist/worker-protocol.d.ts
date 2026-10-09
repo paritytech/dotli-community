@@ -1,5 +1,5 @@
 import type { OptionalCapabilities } from "./generated/worker-callbacks.js";
-import type { LogLevel, PermissionAuthorizationStatus } from "./runtime.js";
+import type { LogLevel, NativeChatContactsSnapshot, PermissionAuthorizationStatus } from "./runtime.js";
 import type { WalletAllowanceSnapshot } from "./wallet-allowances.js";
 import type { CallbackName, SubscriptionName } from "./generated/worker-callbacks.js";
 /**
@@ -7,6 +7,10 @@ import type { CallbackName, SubscriptionName } from "./generated/worker-callback
  * hand-written protocol aligned with the Rust platform callback catalog.
  */
 export type { CallbackName, SubscriptionName, } from "./generated/worker-callbacks.js";
+/** Shared cap includes connections still opening or closing during an open. */
+export declare const MAX_JSON_RPC_CONNECTIONS = 64;
+/** Wallet custody belongs to the runtime, never a product-specific callback bundle. */
+export declare const COINAGE_WALLET_CALLBACKS: Readonly<Partial<Record<CallbackName, true>>>;
 /**
  * Positional arguments for a callback. The wasm core calls each callback
  * at a fixed arity; a uniform `unknown[]` keeps the wire protocol simple.
@@ -134,6 +138,9 @@ export type MainToWorker = {
     requestId: number;
     productIds: string[];
 } | {
+    kind: "getNativeChatContacts";
+    requestId: number;
+} | {
     kind: "registerLocalLiteUsername";
     requestId: number;
     baseUsername: string;
@@ -221,6 +228,9 @@ export type MainToWorker = {
     connId: number;
     json: string;
 } | {
+    kind: "chainClosed";
+    connId: number;
+} | {
     kind: "dispose";
 };
 /**
@@ -304,6 +314,16 @@ export type WorkerToMain = {
     snapshot: WalletAllowanceSnapshot;
 } | {
     kind: "walletAllowanceSnapshotResponse";
+    requestId: number;
+    ok: false;
+    error: string;
+} | {
+    kind: "nativeChatContactsResponse";
+    requestId: number;
+    ok: true;
+    snapshot: NativeChatContactsSnapshot;
+} | {
+    kind: "nativeChatContactsResponse";
     requestId: number;
     ok: false;
     error: string;
@@ -437,6 +457,11 @@ export type WorkerToMain = {
     kind: "chainConnectStart";
     connId: number;
     genesisHash: string;
+} | {
+    kind: "hopConnectStart";
+    connId: number;
+    genesisHash: string;
+    endpoint: string;
 } | {
     kind: "chainSend";
     connId: number;

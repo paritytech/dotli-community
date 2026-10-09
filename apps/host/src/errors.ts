@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { WALLET_OWNER_BUSY_ERROR } from '@dotli/protocol';
+import { CORE_CUSTODY_BUSY_ERROR, WALLET_OWNER_BUSY_ERROR } from '@dotli/protocol';
 import { ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
 import { getActiveServicesConfig, BACKEND_LABELS } from '@dotli/config';
 
@@ -139,7 +139,7 @@ function classifyError(
   // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
   const msg = err instanceof Error ? err.message : String(err);
 
-  if (err instanceof Error && err.name === WALLET_OWNER_BUSY_ERROR) {
+  if (err instanceof Error && (err.name === WALLET_OWNER_BUSY_ERROR || err.name === CORE_CUSTODY_BUSY_ERROR)) {
     return walletInOtherTab();
   }
   if (err instanceof ProtocolFatalError) {

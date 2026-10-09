@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfirmation.js';
@@ -23,6 +23,17 @@ afterEach(() => {
 describe('blocking modal queue', () => {
   it('As a dotli integrator, the host serializes user confirmation and device permission prompts', async () => {
     // Given
+    let status: 'NotDetermined' | 'Denied' | 'Authorized' = 'NotDetermined';
+    const unregister = registerPermissionAuthorizationProvider('localhost:3000', {
+      getPermissionAuthorizationStatuses(requests) {
+        return Promise.resolve(requests.map(() => status));
+      },
+      setPermissionAuthorizationStatus(_request, next) {
+        status = next;
+        return Promise.resolve();
+      },
+    });
+    onTestFinished(unregister);
     const scope = createBlockingModalCoordinator().createScope();
     const callbacks = createHostCallbacks({
       label: 'localhost:3000',

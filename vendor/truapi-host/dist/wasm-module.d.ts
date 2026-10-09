@@ -1,6 +1,7 @@
 import type { PermissionAuthorizationRuntime } from "./worker-permission-authorization.js";
 import type { LocalIdentity } from "./worker-protocol.js";
 import type { WalletAllowanceSnapshot } from "./wallet-allowances.js";
+import type { NativeChatContactsSnapshot } from "./runtime.js";
 /** Cancellable handle on one live render stream inside the core. */
 export interface WorkerRendererSubscription {
     cancel(): void;
@@ -58,6 +59,7 @@ export interface WorkerHostRuntime extends PermissionAuthorizationRuntime {
 }
 /** The long-lived pairing-host runtime product cores are created from. */
 export interface WorkerPairingHostRuntime extends WorkerHostRuntime {
+    getNativeChatContacts(): Promise<NativeChatContactsSnapshot>;
     cancelPairing(): void;
     notifySessionStoreChanged(): void;
     activateStoredSession(): Promise<void>;
@@ -79,7 +81,7 @@ export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
      * `account.get_user_id` answers with.
      */
     activateLocalSessionWithIdentity(secret: Uint8Array, liteUsername?: string): Promise<void>;
-    /** Only on a core built with `test-host`. */
+    /** Only on a core built with the non-production `test-host` feature. */
     setGrantAllowancesUnchecked?(granted: boolean): void;
     localIdentityContext(): {
         activationId: string;
@@ -89,7 +91,8 @@ export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     localLiteRegistrationBody(activationId: string, usernameBase: string, verifier: Uint8Array): Promise<string>;
     refreshLocalIdentity(activationId: string): Promise<LocalIdentity>;
     getWalletAllowanceSnapshot(activationId: string, productIds: string[]): Promise<WalletAllowanceSnapshot>;
-    /** Only on a core built with `test-host`. */
+    getNativeChatContacts(): Promise<NativeChatContactsSnapshot>;
+    /** Only on a core built with the non-production `test-host` feature. */
     setWithheldResources?(tags: string[]): void;
 }
 /** Module surface the wasm-pack glue exports. */

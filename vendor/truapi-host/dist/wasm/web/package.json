@@ -6,11 +6,12 @@
   ],
   "description": "TrUAPI trait and type definitions, and the runtime hosts embed",
   "version": "0.24.0",
-  "license": "MIT",
+  "license": "MIT AND AGPL-3.0-only",
   "files": [
     "truapi_server_bg.wasm",
     "truapi_server.js",
     "truapi_server.d.ts",
+    "LICENSE-AGPL-3.0",
     "snippets"
   ],
   "main": "truapi_server.js",

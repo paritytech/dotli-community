@@ -362,10 +362,12 @@ be tested without publishing a manifest.
 
 Custom messages (`ChatMessageContent::Custom`) render live: when a custom message cell scrolls into view, the panel asks
 the product to draw it through the Renderer service (`renderer.render`, with a `ChatMessage` render context) and renders
-the streamed tree with the host's own design system (`src/chat/custom-renderer.ts`). The tree is a closed vocabulary of
-layouts and design tokens, so a product can never inject markup, styles, or URLs. Button taps and text-field edits
-inside a rendered tree flow back on `renderer.action_subscribe`; taps on `Actions`-content buttons flow back as
-`ActionTriggered` chat actions.
+the streamed tree with the host's Solid components (`packages/ui/src/components/chat/CustomMessage.tsx` and
+`CustomNode.tsx`). The tree is a closed vocabulary of layouts and design tokens, so a product can never inject markup,
+styles, or URLs. Button taps and text-field edits inside a rendered tree flow back on `renderer.action_subscribe`; taps
+on `Actions`-content buttons flow back as `ActionTriggered` chat actions. Replacing a streamed tree aborts its image
+loads and revokes its object URLs; scrolling a message out of view or closing the panel releases its render subscription
+and tree resources.
 
 ### App iframe model
 
@@ -408,18 +410,18 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the generic TrUAPI 0.24.0 wallet SDK from source `76a637aaf00cc3235a899f0d77dccdfac6ad5472`,
-recorded in `vendor/truapi-host.lock.json`. The browser wallet uses the production `--web-only --signing-host` build,
-without `test-host`. Its archive inventory comes from `npm pack`, with stale compiled files lacking a matching upstream
+This branch vendors the Chat TrUAPI 0.24.0 SDK from source `a0711ac26a795bea35764447f8d5bf36648f55af`, recorded in
+`vendor/truapi-host.lock.json`. The browser wallet uses the production `--web-only --signing-host` build, without
+`test-host`. Its archive inventory comes from `npm pack`, with stale compiled files lacking a matching upstream
 TypeScript source and non-web Wasm removed in a temporary staging directory before packing. The recorded archive hashes
-precede the local `@parity/truapi=file:../truapi` dependency override. No PolkaVM browser runtime or Chat, Profile or
-Jam layer is included. Locale timestamp batches use the SDK's browser `Intl` implementation. Notifications still
-navigate directly on activation, so the new account-bound activation queue API reports unsupported rather than
-acknowledging lost events. Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the
-wallet signer. Recovery opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by
-the removed frame. Allowance inspection batches historical ring membership reads while preserving finalized snapshots,
-complete ring validation and identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To
-iterate against a matching local truapi checkout instead, run:
+precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
+notification activation are preserved above the generic browser runtime and wallet layer; Profile and Jam remain
+separate feature layers. Locale timestamp batches use the SDK's browser `Intl` implementation. Explicit protocol-frame
+resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery opens fresh connection IDs
+instead of sending read-only allowance queries through IDs owned by the removed frame. Allowance inspection batches
+historical ring membership reads while preserving finalized snapshots, complete ring validation and identity-activation
+fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout
+instead, run:
 
 ```bash
 npm run link:truapi
@@ -475,7 +477,7 @@ that zone's historical offset and daylight-saving rules; its canonical Gregorian
 display language. Products should use that date for day grouping rather than slicing a UTC timestamp.
 
 The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
-bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
+bundle, and production browser WASM digest. Each browser stack layer vendors its matching native feature layer.
 
 ### Running the functional browser suite locally
 
@@ -650,6 +652,11 @@ scenarios exercise a fresh visit without opting in. On production `dot.li`, the 
 **Save & Apply** first. An existing saved choice, including an opt-out on a testnet, remains authoritative. The site
 default applies only when no valid preference has been saved.
 
+The `echat` smoke stays signed out: it cancels the initial sign-in request, uses the guest's Retry button to open a
+fresh host prompt, cancels again, and checks redraw and resize. Each cancellation checks for a redraw relative to the
+pre-click frame count: a demand-driven UI may finish that redraw before its host response is observed and need not
+publish another frame while idle. The game scenarios retain their continuous rendering, audio, and input checks.
+
 ```bash
 cd apps/host
 DOTLI_SMOKE_ROOT=paseo.fyi DOTLI_WEBGPU=1 npm run test:smoke:products -- --output=test-results/products
@@ -758,6 +765,22 @@ native resource-allocation API and require an explicit request confirmation; nat
 exposes allocation outcomes, not remaining quota, balances, amounts or fees. Results are labeled as last observed
 outcomes, and uncertain results are not retried automatically.
 
+Native Chat uses the wallet-owned main purse, private device records and a durable product index in the protocol
+origin's IndexedDB. Closing a product connection does not stop receiving while the page's wallet core remains alive. A
+page-product change retires the previous signer and releases its custody before starting the replacement; reload
+restores only previously authorized devices, without prompting for fresh Chat authority in the background. Each payment
+requires a new host review of the authenticated product and recipient, exact amount, maximum debit including fees,
+selected chain and Coinage asset, and payment operation. Chat or automatic-signing grants never approve spending.
+Private core records are authenticated-encrypted at rest; immutable attachment source Blobs are private to the trusted
+host but are not encrypted at rest. They never enter product storage or the product RPC interface.
+
+Contacts are read from the active native wallet and People-chain binding, never from a product-provided roster. The
+Solid host picker cancels when its connection closes or the session, roster, wallet or network changes, and revalidates
+a selection before returning a contact handle. Product prompts have connection-owned modal scopes; authentication,
+private storage and attachment custody stay with the one page core.
+
+Picker rows show verified contact names, with a generic label for unnamed contacts; raw account IDs are not displayed.
+
 Use the existing **List**, **Timeline**, and **Resolution** tabs for activity and diagnostics. Wallet does not duplicate
 their event viewer or capture controls.
 
@@ -769,14 +792,16 @@ deletion controls are confined to Recovery.
 
 **Import / replace test wallet** accepts checksum-valid English BIP-39 phrases of 12, 15, 18, 21 or 24 words, without a
 passphrase or custom derivation path. It uses native Polkadot host/Substrate derivation, not Bitcoin/Ethereum seed
-derivation. Importing an exported phrase restores the same account keys on the same network, but not permissions; use
-**Check username** to rediscover its registered name. Back up the previous test wallet before replacing it. Successful
-import replaces the shared wallet for trusted product hosts, clears wallet-bound experimental session/signing grants,
-activates the imported wallet and reloads open tabs; Mobile pairing and grants remain separate.
+derivation. Importing an exported phrase restores the same account keys on the same network, but not permissions; its
+registered username is looked up automatically. Back up the previous test wallet before replacing it. Successful import
+replaces the shared wallet for trusted product hosts, clears wallet-bound experimental session/signing grants, activates
+the imported wallet and reloads open tabs; Mobile pairing and grants remain separate.
 
-**Delete test wallet** requires confirmation and removes the shared wallet's stored entropy, experimental
-session/signing grants and this origin's preserved legacy copy. Without a recovery phrase backup, deleting the wallet or
-clearing site data permanently loses access.
+**Delete test wallet** requires confirmation and removes the shared wallet's stored entropy and this origin's preserved
+legacy copy, while retiring experimental session/signing grants. Wallet-scoped purse and Chat records are retained
+separately, not silently erased by identity replacement or deletion; restoring the same identity still requires fresh
+permissions. A recovery phrase restores identity keys, not a backup of private purse or Chat records. Clearing site data
+can therefore destroy private state even when the phrase is backed up.
 
 Only one tab of a browser profile runs the test wallet at a time, because two tabs starting their own wallet cores would
 claim allowances twice and overwrite each other's state. Opening an app with the test wallet in another tab moves it

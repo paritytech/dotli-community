@@ -6,10 +6,8 @@
 // request takes a new lease, which rebuilds the chain through a backoff.
 
 import { bytesToHex } from '@parity/truapi/scale';
-import type { JsonRpcConnection, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import type { ChainProvider } from '@parity/truapi-host';
-import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
-import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcRequest, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { ChainProvider, HopProvider, PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getActiveServicesConfig, getBackend } from '@dotli/config';
 import {
   chainHaltedError,
@@ -254,5 +252,85 @@ export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvid
       throw new Error(`Unsupported ${backend} chain: ${genesisHash}`);
     }
     return Promise.resolve(toConnection(genesisHash, pool));
+  };
+}
+
+/** HOP is a separate trusted transport, not a fallback chain RPC provider. */
+export function createHopProvider(): Required<HopProvider> {
+  return {
+    allowedHopEndpoints(genesisHash) {
+      const bulletin = getActiveServicesConfig().bulletin;
+      return Promise.resolve(
+        bytesToHex(genesisHash) === bulletin.genesis.toLowerCase() ? [...(bulletin.hopEndpoints ?? [])] : [],
+      );
+    },
+    async connectHop(genesisHash, endpoint) {
+      const bulletin = getActiveServicesConfig().bulletin;
+      if (
+        bytesToHex(genesisHash) !== bulletin.genesis.toLowerCase() ||
+        bulletin.hopEndpoints?.includes(endpoint) !== true
+      ) {
+        throw new Error('HOP endpoint is not configured for this Bulletin chain');
+      }
+      const socket = new WebSocket(endpoint);
+      const opened = Promise.withResolvers<undefined>();
+      const queue: string[] = [];
+      let stopped = false;
+      let wake: (() => void) | undefined;
+      const close = (): void => {
+        if (stopped) {
+          return;
+        }
+        stopped = true;
+        socket.close();
+        opened.reject(new Error('HOP connection closed before opening'));
+        wake?.();
+      };
+      socket.onopen = () => {
+        opened.resolve(undefined);
+      };
+      socket.onerror = close;
+      socket.onclose = close;
+      socket.onmessage = (event: MessageEvent<unknown>) => {
+        if (stopped) {
+          return;
+        }
+        if (typeof event.data !== 'string') {
+          close();
+          return;
+        }
+        queue.push(event.data);
+        wake?.();
+        wake = undefined;
+      };
+      await opened.promise;
+      return {
+        send(request) {
+          if (stopped || socket.readyState !== WebSocket.OPEN) {
+            throw new Error('HOP connection is closed');
+          }
+          socket.send(request);
+        },
+        async *responses() {
+          try {
+            while (!stopped) {
+              const response = queue.shift();
+              if (response !== undefined) {
+                yield response;
+                continue;
+              }
+              const next = Promise.withResolvers<undefined>();
+              wake = () => {
+                next.resolve(undefined);
+              };
+              await next.promise;
+            }
+          } finally {
+            close();
+          }
+        },
+        close,
+      };
+    },
   };
 }

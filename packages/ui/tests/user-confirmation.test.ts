@@ -1,13 +1,15 @@
-import type { UserConfirmation } from '@parity/truapi-host';
-import { afterEach, describe, expect, it } from 'vitest';
+import type { UserConfirmationReview } from '@parity/truapi-host';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfirmation.js';
+import * as network from '@dotli/config';
+import { hexToBytes } from '@parity/truapi/scale';
+import { NetworkName } from '../../config/src/network.js';
 import { PERMISSION_ICONS } from '../src/permission-icons.js';
 import { footerVariants, overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { byTestId, query } from './support.js';
 
-type UserConfirmationReview = Parameters<Required<UserConfirmation>['confirmUserAction']>[0];
-
 afterEach(() => {
+  vi.restoreAllMocks();
   resetOverlays();
   document.body.replaceChildren();
 });
@@ -23,6 +25,105 @@ function modalFields(): Record<string, string> {
 }
 
 describe('user confirmation modal', () => {
+  it('reviews each main-purse spend separately without rounding u64 cents', async () => {
+    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO];
+    vi.spyOn(network, 'getActiveServicesConfig').mockReturnValue(services);
+    const { confirmUserAction } = createUserConfirmationAdapters('egui-chat.paseo');
+    const review = {
+      tag: 'MainPurseChatPayment',
+      value: {
+        callingProductId: 'egui-chat.paseo',
+        recipientIdentity: new Uint8Array(32).fill(7),
+        recipientUsername: 'recipient.paseo',
+        amountCents: 9007199254740993n,
+        maxDebitCents: 9007199254740994n,
+        genesisHash: hexToBytes(services.people.genesis),
+        coinageInstanceId: 0,
+        operationId: new Uint8Array(32).fill(9),
+      },
+    } satisfies UserConfirmationReview;
+    const first = confirmUserAction(review);
+    await overlaysReady();
+    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Send Main-Purse Payment');
+    expect(byTestId('permission-modal-icon').querySelector(`path[d="${PERMISSION_ICONS.ChainSubmit}"]`)).not.toBeNull();
+    expect(modalFields()).toMatchObject({
+      'Requesting product': 'egui-chat.paseo',
+      'Recipient identity': `0x${'07'.repeat(32)}`,
+      'Recipient amount': '90071992547409.93 pUSD',
+      'Maximum purse debit (including fees)': '90071992547409.94 pUSD',
+      'Chain genesis': services.people.genesis,
+      'Coinage asset instance': '0',
+      'Payment operation': `0x${'09'.repeat(32)}`,
+    });
+    byTestId('signing-btn-sign').click();
+    await expect(first).resolves.toBe(true);
+    const second = confirmUserAction({
+      ...review,
+      value: { ...review.value, operationId: new Uint8Array(32).fill(10) },
+    });
+    await overlaysReady();
+    expect(document.querySelector('[data-testid="signing-modal"]')).not.toBeNull();
+    expect(footerVariants()).toEqual([
+      ['Reject', 'danger'],
+      ['Send payment', 'primary'],
+    ]);
+    byTestId('signing-btn-cancel').click();
+    await expect(second).resolves.toBe(false);
+  });
+
+  it('does not offer approval for a payment on an unconfigured chain or asset', async () => {
+    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO];
+    vi.spyOn(network, 'getActiveServicesConfig').mockReturnValue(services);
+    const { confirmUserAction } = createUserConfirmationAdapters('egui-chat.paseo');
+    const value = {
+      callingProductId: 'egui-chat.paseo',
+      recipientIdentity: new Uint8Array(32).fill(7),
+      amountCents: 1n,
+      maxDebitCents: 1n,
+      genesisHash: hexToBytes(services.people.genesis),
+      coinageInstanceId: 0,
+      operationId: new Uint8Array(32).fill(9),
+    };
+    await expect(
+      confirmUserAction({
+        tag: 'MainPurseChatPayment',
+        value: { ...value, genesisHash: new Uint8Array(32) },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      confirmUserAction({
+        tag: 'MainPurseChatPayment',
+        value: { ...value, coinageInstanceId: 1 },
+      }),
+    ).rejects.toThrow();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
+  });
+
+  it('As a dotli user, the Chat identity authority prompt names the product under the Chat icon', async () => {
+    // Given
+    const { confirmUserAction } = createUserConfirmationAdapters('egui-chat.paseo');
+
+    // When
+    const confirmation = confirmUserAction({ tag: 'ChatAuthority', value: { productId: 'egui-chat.paseo' } });
+    await overlaysReady();
+
+    // Then
+    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Chat Identity Authority');
+    expect(
+      byTestId('permission-modal-icon').querySelector(`path[d="${PERMISSION_ICONS.ChatAuthority}"]`),
+    ).not.toBeNull();
+    expect(modalFields()).toEqual({
+      'Requesting product': 'egui-chat.paseo',
+      Permission: 'Bind its device account to your wallet Chat identity and encrypt or decrypt Chat routing data',
+    });
+
+    // When
+    byTestId('signing-btn-sign').click();
+
+    // Then
+    await expect(confirmation).resolves.toBe(true);
+  });
+
   it('As a dotli integrator, the host shows concurrent confirmation requests one at a time', async () => {
     // Given
     const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');

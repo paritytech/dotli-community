@@ -42,6 +42,9 @@ const wallet = vi.hoisted(() => {
 const owner = vi.hoisted(() => ({
   requests: [] as { action: string; lease?: string }[],
   revoked: new Set<(lease: string | undefined) => void>(),
+  custody: undefined as string | undefined,
+  custodyGate: undefined as Promise<void> | undefined,
+  custodyStarted: false,
 }));
 
 vi.mock('@dotli/config', async original => ({
@@ -54,6 +57,21 @@ vi.mock('../../shared/src/chat-capability.js', () => ({
 vi.mock('../src/notification.js', () => ({ showNotification: vi.fn() }));
 vi.mock('../../protocol/src/client.js', async original => ({
   ...(await original<Record<string, unknown>>()),
+  requestCoreCustody: async (operation: { action: string; lease?: string }) => {
+    if (operation.action === 'acquire') {
+      owner.custodyStarted = true;
+      await owner.custodyGate;
+      if (owner.custody !== undefined) {
+        throw new Error('A signing runtime already owns this wallet in this page');
+      }
+      owner.custody = crypto.randomUUID();
+      return owner.custody;
+    }
+    if (operation.action === 'release' && operation.lease === owner.custody) {
+      owner.custody = undefined;
+    }
+    return undefined;
+  },
   requestWalletOwner: (operation: { action: string; lease?: string }) => {
     owner.requests.push(operation);
     return Promise.resolve(operation.action === 'acquire' ? 'page-lease' : undefined);
@@ -94,6 +112,7 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
   },
 }));
 vi.mock('@parity/truapi-host/web', () => ({
+  createBrowserNativeChatFilesHost: () => ({ dispose: vi.fn() }),
   createWebWorkerPairingHostRuntime: vi.fn(),
   createWebWorkerSigningHostRuntime: (_worker: unknown, callbacks: RequiredHostCallbacks) => {
     let closeError: Error | undefined;
@@ -140,6 +159,7 @@ vi.mock('@parity/truapi-host/web', () => ({
       });
     };
     return Promise.resolve({
+      notifyContactsChanged: assertLive,
       activateLocalSession: () =>
         Promise.resolve().then(() => {
           publish();
@@ -297,6 +317,9 @@ describe('host-owned experimental identity', () => {
     wallet.sessions.length = 0;
     owner.requests.length = 0;
     owner.revoked.clear();
+    owner.custody = undefined;
+    owner.custodyGate = undefined;
+    owner.custodyStarted = false;
     auth.length = 0;
     localStorage.clear();
     localStorage.setItem('dotli:local-wallet-enabled', '1');
@@ -317,6 +340,9 @@ describe('host-owned experimental identity', () => {
     // Dispose the same freshly imported page core, not a static older module.
     const { disposePageCores } = await import('../src/page-core.js');
     disposePageCores();
+    await vi.waitFor(() => {
+      expect(owner.custody).toBeUndefined();
+    });
     const { resetOverlays } = await import('./helpers/overlays.js');
     resetOverlays();
     for (const [type, listener] of pageListeners) {
@@ -324,6 +350,26 @@ describe('host-owned experimental identity', () => {
     }
     pageListeners = [];
     vi.restoreAllMocks();
+  });
+
+  it('releases late custody before a replacement core starts signing', async () => {
+    const { experimentalWalletControls: controls } = boot();
+    const gate = Promise.withResolvers<undefined>();
+    owner.custodyGate = gate.promise;
+    const first = controls.getIdentity();
+    const rejected = expect(first).rejects.toThrow('Wallet or network changed');
+    await vi.waitFor(() => {
+      expect(owner.custodyStarted).toBe(true);
+    });
+    // Use this test's reset module instance, not a statically retained core.
+    const { disposePageCores } = await import('../src/page-core.js');
+    disposePageCores();
+    const replacement = controls.getIdentity();
+    gate.resolve(undefined);
+    await rejected;
+    await expect(replacement).resolves.toMatchObject({ identityAccountId: wallet.account });
+    expect(wallet.sessions).toHaveLength(1);
+    expect(nth(wallet.sessions, 0).disposed).toBe(false);
   });
 
   it('queries and claims identity before a product exists', async () => {
