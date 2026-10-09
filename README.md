@@ -229,25 +229,26 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the generic TrUAPI 0.24.0 wallet SDK from source
-`398ee10256bc5f7188d0361eb49bc53cd89a1161`, recorded in `vendor/truapi-host.lock.json`.
-The browser wallet uses the production `--web-only --signing-host` build, without `test-host`. Its archive inventory
-comes from `npm pack`, with stale compiled files lacking a matching upstream TypeScript source and non-web Wasm
-removed in a temporary staging directory before packing. The recorded archive hashes precede the local
-`@parity/truapi=file:../truapi` dependency override. No PolkaVM browser runtime or Chat, Profile or Jam layer is included.
-Locale timestamp batches use the SDK's browser `Intl` implementation. Notifications still navigate directly on
-activation, so the new account-bound activation queue API reports unsupported rather than acknowledging lost events.
-Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery
-opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame.
-Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
+This branch vendors the generic TrUAPI 0.24.0 wallet SDK from source `76a637aaf00cc3235a899f0d77dccdfac6ad5472`,
+recorded in `vendor/truapi-host.lock.json`. The browser wallet uses the production `--web-only --signing-host` build,
+without `test-host`. Its archive inventory comes from `npm pack`, with stale compiled files lacking a matching upstream
+TypeScript source and non-web Wasm removed in a temporary staging directory before packing. The recorded archive hashes
+precede the local `@parity/truapi=file:../truapi` dependency override. No PolkaVM browser runtime or Chat, Profile or
+Jam layer is included. Locale timestamp batches use the SDK's browser `Intl` implementation. Notifications still
+navigate directly on activation, so the new account-bound activation queue API reports unsupported rather than
+acknowledging lost events. Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the
+wallet signer. Recovery opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by
+the removed frame. Allowance inspection batches historical ring membership reads while preserving finalized snapshots,
+complete ring validation and identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To
+iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
 ```
 
-The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either
-page loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity
-before binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
+The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either page
+loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity before
+binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
 
 When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
 
@@ -292,10 +293,10 @@ Both metric settings are required: without them the transport ownership cases ei
 ### Running the host-playground E2E locally
 
 The product E2E suite can load a source checkout through dotli's localhost proxy instead of resolving the published
-`host-playground.dot` CID. Use a `truapi-host` CLI built from the same source revision as the vendored SDK, recorded
-in `vendor/truapi-host.lock.json`. CI checks out that revision, generates its sources, and builds `truapi-host-cli`.
-Point `SIGNING_HOST_BIN` at that binary rather than mixing the feature SDK with a published pairing-only release.
-Build dotli without linking a different SDK checkout, then run the host workspace suite with the product paths:
+`host-playground.dot` CID. Use a `truapi-host` CLI built from the same source revision as the vendored SDK, recorded in
+`vendor/truapi-host.lock.json`. CI checks out that revision, generates its sources, and builds `truapi-host-cli`. Point
+`SIGNING_HOST_BIN` at that binary rather than mixing the feature SDK with a published pairing-only release. Build dotli
+without linking a different SDK checkout, then run the host workspace suite with the product paths:
 
 ```bash
 VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
@@ -309,8 +310,8 @@ when deliberately developing against that checkout. Set `TRUAPI_REPO` to select 
 
 The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND=smoldot-shared-worker` to exercise the SharedWorker light
 client, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
-`apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a fresh lowercase username base:
-an unsuccessful attempt may already have claimed its name, so retries must not request the same name again. Account
+`apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a fresh lowercase username base: an
+unsuccessful attempt may already have claimed its name, so retries must not request the same name again. Account
 provisioning and ring inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed.
 Captured CLI diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach
 the CLI's private account/session files to reports.
