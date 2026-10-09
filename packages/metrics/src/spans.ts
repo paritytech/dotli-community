@@ -103,3 +103,6 @@ export const WASM_LOAD = 'wasm.load';
  * because the error envelope the listener answers with is easy to miss.
  */
 export const SHARED_STORAGE_REJECTED = 'shared_storage.rejected';
+
+/** Local wallet boot, activation and identity steps. Tagged `outcome` and, on failure, `reason`. */
+export const WALLET_LOCAL_ACTIVATE = 'wallet.local_activate';
