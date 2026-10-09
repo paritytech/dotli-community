@@ -33,9 +33,11 @@ type Store = Map<string, PermissionAuthorizationStatus>;
 
 let unregisterMyapp: (() => void) | null = null;
 let myappStore: Store;
+let myappWrites = 0;
 
 beforeEach(() => {
   myappStore = new Map();
+  myappWrites = 0;
   unregisterMyapp = registerTestProvider('myapp', myappStore);
 });
 
@@ -51,6 +53,9 @@ function registerTestProvider(label: string, store: Store): () => void {
       return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
     },
     setPermissionAuthorizationStatus(request, status) {
+      if (label === 'myapp') {
+        myappWrites += 1;
+      }
       const key = requestKey(request);
       if (status === 'NotDetermined') {
         store.delete(key);
@@ -552,6 +557,43 @@ describe('three-way permission prompts', () => {
     await expect(dismissed).rejects.toThrow('User dismissed permission dialog');
   });
 
+  it('As a dotli user, always allowing transactions returns the durable decision to the core', async () => {
+    // Given
+    const events: unknown[] = [];
+    const onPermissionChanged = (e: Event): void => {
+      events.push((e as CustomEvent).detail);
+    };
+    window.addEventListener('dotli:permission-changed', onPermissionChanged);
+    const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
+      permission: { tag: 'ChainSubmit' },
+    });
+
+    // When
+    await clickPromptButton('Always allow');
+
+    // Then
+    await expect(response).resolves.toBe('AllowAlways');
+    expect(myappWrites).toBe(0);
+    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
+    expect(events).toEqual([{ label: 'myapp', permission: 'ChainSubmit' }]);
+    window.removeEventListener('dotli:permission-changed', onPermissionChanged);
+  });
+
+  it('As a dotli user, denying transactions returns the refusal to the core', async () => {
+    // Given
+    const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
+      permission: { tag: 'ChainSubmit' },
+    });
+
+    // When
+    await clickPromptButton('Deny');
+
+    // Then
+    await expect(response).resolves.toBe('Deny');
+    expect(myappWrites).toBe(0);
+    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
+  });
+
   it('As a dotli user, I can allow a single notification', async () => {
     // Given
     const response = createPromptPermission('myapp').devicePermission(PRODUCT, 'Notifications');
@@ -563,6 +605,24 @@ describe('three-way permission prompts', () => {
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
   });
+
+  for (const permission of ['ChainSubmit', 'PreimageSubmit', 'StatementSubmit', 'Notifications', 'Camera'] as const) {
+    for (const decision of ['AllowAlways', 'Deny'] as const) {
+      it(`As a product, ${permission} returns ${decision} without invalidating the active core prompt`, async () => {
+        const callbacks = createPromptPermission('myapp');
+        const response =
+          permission === 'Notifications' || permission === 'Camera'
+            ? callbacks.devicePermission(PRODUCT, permission)
+            : callbacks.remotePermission(PRODUCT, { permission: { tag: permission } });
+
+        await clickPromptButton(decision === 'Deny' ? 'Deny' : permission === 'Camera' ? 'Allow' : 'Always allow');
+
+        await expect(response).resolves.toBe(decision);
+        expect(myappWrites).toBe(0);
+        expect(myappStore.size).toBe(0);
+      });
+    }
+  }
 
   it('As a dotli user, a camera prompt offers no one-time grant because granting reloads the app', async () => {
     // When
@@ -582,7 +642,6 @@ describe('three-way permission prompts', () => {
       kind: 'Device',
       limiter: { allow: () => true },
       gatedByIframe: false,
-      commitOwner: 'host',
     });
 
     await clickPromptButton('Allow once');
@@ -591,20 +650,6 @@ describe('three-way permission prompts', () => {
     expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
   });
 
-  it.each([
-    ['Always allow', 'AllowAlways', 'granted'],
-    ['Deny', 'Deny', 'denied'],
-  ] as const)('remembers a host-initiated camera decision: %s', async (button, decision, status) => {
-    const response = decidePromptPermission('myapp', 'Camera', {
-      kind: 'Device',
-      limiter: { allow: () => true },
-      gatedByIframe: false,
-      commitOwner: 'host',
-    });
-    await clickPromptButton(button);
-    await expect(response).resolves.toBe(decision);
-    expect(await getPermissionStatus('myapp', 'Camera')).toBe(status);
-  });
 
   it('As a product, an existing grant is answered without being upgraded to a lasting one', async () => {
     // Given: the status can reflect a pending one-time grant, so answering
@@ -651,6 +696,7 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).rejects.toThrow('User dismissed permission dialog');
     expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
+    expect(myappWrites).toBe(0);
   });
 });
 

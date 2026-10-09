@@ -33,23 +33,23 @@ interface ChainBackendState {
 }
 
 /**
- * Waits for the address bar too, since boot stores the default backend before it applies the link's, so the stored
- * value alone can match too early.
+ * Reads and checks one snapshot: a URL-driven settings reset can replace the document while the assertion runs.
+ * Boot stores defaults before applying the link, so both storage and the address bar must agree.
  */
 async function readChainBackendState(page: Page, expected: string): Promise<ChainBackendState> {
-  await page.waitForFunction(
-    e => {
-      const inUrl = new URL(window.location.href).searchParams.get('chainBackend');
-      return localStorage.getItem('dotli:chain-backend') === e && (inUrl === null || inUrl === e);
-    },
-    expected,
-    { timeout: 10_000 },
-  );
-  return page.evaluate(() => ({
-    chainBackend: localStorage.getItem('dotli:chain-backend'),
-    cacheSettings: localStorage.getItem('dotli:cache-settings'),
-    url: window.location.href,
-  }));
+  let state!: ChainBackendState;
+  await expect(async () => {
+    const snapshot = await page.evaluate(() => ({
+      chainBackend: localStorage.getItem('dotli:chain-backend'),
+      cacheSettings: localStorage.getItem('dotli:cache-settings'),
+      url: window.location.href,
+    }));
+    expect(snapshot.chainBackend).toBe(expected);
+    const inUrl = new URL(snapshot.url).searchParams.get('chainBackend');
+    expect(inUrl === null || inUrl === expected).toBe(true);
+    state = snapshot;
+  }).toPass({ timeout: 10_000 });
+  return state;
 }
 
 async function disableSharedWorker(page: Page): Promise<void> {

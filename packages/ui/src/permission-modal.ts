@@ -112,7 +112,7 @@ async function showPermissionPrompt(
         { label: 'Permission', value: prompt.description },
         ...(prompt.detail === undefined ? [] : [{ label: 'JAM network genesis', value: prompt.detail, mono: true }]),
       ],
-      ...(prompt.reloads ? { notice: 'Granting this permission will reload the application.' } : {}),
+      ...(prompt.reloads && !allowOnce ? { notice: 'Granting this permission will reload the application.' } : {}),
       buttons,
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
