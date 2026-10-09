@@ -104,6 +104,10 @@ through a Service Worker that acts as a virtual file system.
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
+Multi-slot reads use one pinned block and contract child trie per attempt. If a peer reports an inaccessible operation,
+the resolver discards the partial result and retries the entire read at the current best block, within the existing
+30-second retry window. It never combines slots or child tries from different attempts.
+
 ## How multi-file SPAs work
 
 When a CID points to an IPFS directory (not a single file):
