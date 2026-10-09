@@ -41,7 +41,7 @@ import { chatCapabilityFor, log } from '@dotli/shared';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { createIframeHost } from '@parity/truapi-host/web';
-import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
+import { buildAllowAttribute, registerPermissionAuthorizationProvider, setPermissionStatus } from './permissions.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { LoginRequestError } from './login-request-error.js';
 import { attachProductFrame } from './product-frame-layout.js';
@@ -81,7 +81,7 @@ export { setPageProduct } from './page-core.js';
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';
 import { describeWireFrame } from './debug-wire-describe.js';
-import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { throwIfAborted, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createRendererImageLoader, registerChatConnection } from './chat/service.js';
 import { showNotification } from './notification.js';
 import { registerProductNotificationTarget } from './notification-activation.js';
@@ -153,6 +153,11 @@ const mediatedInputHost = new MediatedInputHost({
         },
         scope,
       );
+      throwIfAborted(signal);
+      // This host-mediated capture has no pending Rust permission callback to commit its answer.
+      if (decision !== 'AllowOnce') {
+        await setPermissionStatus(label, 'Camera', decision === 'AllowAlways' ? 'granted' : 'denied');
+      }
       return decision !== 'Deny';
     } finally {
       signal.removeEventListener('abort', abort);

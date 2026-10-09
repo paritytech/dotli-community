@@ -58,7 +58,9 @@ export async function showPermissionRequestModal(
         { label: 'Application', value: withActiveTld(label) },
         { label: 'Permission', value: PERMISSION_DESCRIPTIONS[permission] },
       ],
-      ...(isDevicePermission(permission) ? { notice: 'Granting this permission will reload the application.' } : {}),
+      ...(isDevicePermission(permission) && !allowOnce
+        ? { notice: 'Granting this permission will reload the application.' }
+        : {}),
       buttons,
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
