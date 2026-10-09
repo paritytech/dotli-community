@@ -24,9 +24,9 @@ test.describe('dot.li > host-playground.dot', () => {
 
   test.describe('Accounts', () => {
     test('Get Product Account', async ({ pairedPage, productFrame }) => {
-      expect(
-        await runWebSignedTest(pairedPage, productFrame, 'accounts-provider-product', [productAccount]),
-      ).toBe('success');
+      expect(await runWebSignedTest(pairedPage, productFrame, 'accounts-provider-product', [productAccount])).toBe(
+        'success',
+      );
     });
 
     test('Product Signer', async ({ pairedPage, productFrame }) => {
