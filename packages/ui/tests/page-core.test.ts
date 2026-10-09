@@ -7,6 +7,7 @@ import type * as PageCoreNamespace from '../src/page-core.js';
 
 interface MockRuntime {
   activateLocalSession: ReturnType<typeof vi.fn>;
+  cancelPairing: ReturnType<typeof vi.fn>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 }
@@ -45,6 +46,7 @@ const WALLET = {
 function makeRuntime(): MockRuntime {
   const runtime = {
     activateLocalSession: vi.fn(() => Promise.resolve()),
+    cancelPairing: vi.fn(),
     notifySessionStoreChanged: vi.fn(),
     dispose: vi.fn(),
   };
@@ -179,5 +181,36 @@ describe('page core wallet mode', () => {
     await expect(lease).rejects.toThrow(/activation failed/);
     expect(mocks.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(mocks.reportLocalWalletFailure).toHaveBeenCalledWith(expect.any(Error), 'activate');
+  });
+
+  it('As a local wallet user, I close the login modal and my core never receives a pairing cancel', async () => {
+    // Given
+    mocks.readWalletBoot.mockResolvedValue(WALLET);
+    const { setWalletModeState } = await import('../src/state/wallet-mode.js');
+    setWalletModeState({ mode: 'local', failure: null });
+    const { acquireCore, cancelPairing } = await loadPageCore();
+    await acquireCore();
+
+    // When
+    cancelPairing();
+    await Promise.resolve();
+
+    // Then
+    expect(mocks.runtimes[0]?.cancelPairing).not.toHaveBeenCalled();
+  });
+
+  it('As a Polkadot App user, I close the login modal and my core cancels the pairing', async () => {
+    // Given
+    mocks.readWalletBoot.mockResolvedValue(null);
+    const { acquireCore, cancelPairing } = await loadPageCore();
+    await acquireCore();
+
+    // When
+    cancelPairing();
+
+    // Then
+    await vi.waitFor(() => {
+      expect(mocks.runtimes[0]?.cancelPairing).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -12,6 +12,7 @@ import { loadLocalWalletCore } from './lazy.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
+import { getWalletMode } from './state/wallet-mode.js';
 import { readWalletBoot } from './wallet-boot.js';
 
 export interface PageProduct {
@@ -104,6 +105,10 @@ export async function acquireCore(): Promise<CoreLease> {
 }
 
 export function cancelPairing(): void {
+  // A signing runtime has no pairing to cancel.
+  if (getWalletMode() === 'local') {
+    return;
+  }
   for (const core of cores) {
     core.runtime.then(
       runtime => {
