@@ -108,6 +108,13 @@ jobs:
             echo "::error::PolkaVM functional specs must have 0 failures"
             exit 1
           fi
+          UPGRADE_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          UPGRADE_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          UPGRADE_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-upgrade.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
+          if [ "$UPGRADE_EXECUTED" -lt 2 ] || [ "$UPGRADE_FAILED" -gt 0 ] || [ "$UPGRADE_SKIPPED" -gt 0 ]; then
+            echo "::error::host-upgrade.spec.ts must execute its upgrade scenarios without failures or skips (executed: $UPGRADE_EXECUTED, failed: $UPGRADE_FAILED, skipped: $UPGRADE_SKIPPED)"
+            exit 1
+          fi
           PWA_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
           PWA_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           echo "Executed service-worker recovery specs: $PWA_EXECUTED (failed: $PWA_FAILED)"

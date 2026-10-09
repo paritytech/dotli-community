@@ -20,11 +20,11 @@ export {
 } from './config.js';
 export {
   SANDBOX_CONTRACT_PARAMS,
-  SANDBOX_SCHEMA_VERSION,
   validateSandboxParams,
   type SandboxParams,
   type SandboxParamsResult,
 } from './host-sandbox-contract.js';
+export { SANDBOX_SCHEMA_VERSION } from './host-sandbox-version.js';
 export {
   BACKEND_KEY,
   BACKEND_LABELS,

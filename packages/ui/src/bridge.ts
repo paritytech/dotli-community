@@ -299,6 +299,7 @@ function inspectorProductContext(): InspectorProductContext | null {
   }
   assertInspectorWallet(wallet);
   const generation = renderGeneration;
+  const core = host.core;
   return {
     product,
     host,
@@ -309,7 +310,7 @@ function inspectorProductContext(): InspectorProductContext | null {
         : labelToProductId(product.label),
     assertCurrent(): void {
       assertInspectorWallet(wallet);
-      if (currentProduct !== product || currentHost !== host || generation !== renderGeneration) {
+      if (currentProduct !== product || currentHost !== host || generation !== renderGeneration || host.core !== core) {
         throw new Error(
           'The product changed during the Wallet tab operation. An allocation already submitted may have completed; check its outcome before making another request.',
         );
@@ -1514,9 +1515,14 @@ async function createHost(args: {
     lease.release();
     throw error;
   }
-  const coreProvider = wrapCoreProviderForDebug(connection);
-  const unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
-  const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
+  let coreProvider: CoreProviderBase | null = wrapCoreProviderForDebug(connection);
+  let unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
+  let unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
+  let executionGeneration = 0;
+  let disposed = false;
+  let hasProductPort = false;
+  let pendingPort: MessagePort | null = null;
+  let connecting = false;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   let productProbeCleanup: (() => void) | null = null;
@@ -1538,9 +1544,10 @@ async function createHost(args: {
     disposePipe = null;
     productProvider = null;
   };
-  const connectProductPort = (port: MessagePort): void => {
-    cleanupProductSide();
-    productPortUsed = false;
+  const bindProductPort = (port: MessagePort): void => {
+    if (coreProvider === null) {
+      throw new Error('The product execution is not connected.');
+    }
     const provider = createMessagePortProvider(port);
     productProvider = provider;
     unsubscribeProductPortUse = provider.subscribe(() => {
@@ -1550,11 +1557,101 @@ async function createHost(args: {
     });
     disposePipe = pipeProviders(provider, coreProvider, pipeArgs);
   };
-  const cleanupCoreSide = (): void => {
+  const retireExecution = (): void => {
+    const previous = coreProvider;
+    coreProvider = null;
     unregisterPermissions();
+    unregisterPermissions = noop;
     unregisterChat();
+    unregisterChat = noop;
+    previous?.dispose();
+  };
+  const connectPendingPort = (): void => {
+    const port = pendingPort;
+    if (disposed || connecting || port === null) {
+      return;
+    }
+    connecting = true;
+    const generation = executionGeneration;
+    void lease
+      .connect(chatCapable ? 'Worker' : 'App')
+      .then(next => {
+        if (disposed || generation !== executionGeneration) {
+          next.close();
+          port.close();
+          return;
+        }
+        connection = next;
+        try {
+          coreProvider = wrapCoreProviderForDebug(next);
+          unregisterChat = chatCapable ? registerProductChat(next, args.archiveCid) : noop;
+          unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
+          pendingPort = null;
+          bindProductPort(port);
+        } catch (error) {
+          next.close();
+          throw error;
+        }
+      })
+      .catch((error: unknown) => {
+        port.close();
+        if (disposed || generation !== executionGeneration) {
+          return;
+        }
+        cleanupCoreSide();
+        log.error('[dot.li] Product execution reconnect failed:', error);
+        showNotification({
+          label: 'dot.li',
+          text: 'The app could not reconnect to the host.',
+          browserNotification: false,
+          dismissMs: 0,
+          action: {
+            label: 'Reload',
+            onClick: () => {
+              window.location.reload();
+            },
+          },
+        });
+      })
+      .finally(() => {
+        connecting = false;
+        // Coalesce documents replaced during startup without creating an
+        // unbounded number of native executions. Failed current starts stop.
+        connectPendingPort();
+      });
+  };
+  const connectProductPort = (port: MessagePort): void => {
+    if (disposed) {
+      port.close();
+      return;
+    }
     cleanupProductSide();
-    coreProvider.dispose();
+    pendingPort?.close();
+    pendingPort = null;
+    productPortUsed = false;
+    if (!hasProductPort) {
+      hasProductPort = true;
+      bindProductPort(port);
+      return;
+    }
+
+    // A fresh document must not inherit prompts, one-use grants or resources
+    // from its predecessor. Keep the wallet lease, but replace its execution.
+    retireExecution();
+    executionGeneration++;
+    pendingPort = port;
+    connectPendingPort();
+  };
+  const cleanupCoreSide = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    executionGeneration++;
+    pendingPort?.close();
+    pendingPort = null;
+    cleanupProductSide();
+    retireExecution();
     lease.release();
   };
   try {
@@ -1628,8 +1725,15 @@ async function createHost(args: {
       productProbeCleanup = null;
     };
     return {
-      core: coreProvider,
-      wallet: connection.wallet,
+      get core() {
+        if (coreProvider === null) {
+          throw new Error('The product execution is not connected.');
+        }
+        return coreProvider;
+      },
+      get wallet() {
+        return connection.wallet;
+      },
       generation: renderGeneration,
       iframe: host.iframe,
       dispose() {

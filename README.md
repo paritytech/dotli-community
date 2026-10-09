@@ -236,10 +236,11 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the `0.3.2-rc.7` release candidate, including exact binary32 add/multiply intrinsics and direct
-translated float continuation, while retaining the heap-backed fiber-stack fix, resize-safe offscreen resources,
-runtime-registered streamed file input, private caches, and gas-sliced translated updates. The TrUAPI host SDK remains
-separately pinned; these runtime changes do not replace its Chat, profile, transport, or Media APIs. Synchronization
+The current pin is the GitHub-only `0.3.2-rc.9` release candidate. It combines bounded WebGPU recovery, replacement-device
+resize limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and forward dispatch.
+Exact binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe offscreen resources,
+streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays separately pinned;
+these runtime changes do not replace its Chat, profile, transport or Media APIs. Synchronization
 verifies the package's complete checksum inventory, including its session API and type declarations, but serves only the
 host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt`
 alongside those artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
@@ -280,6 +281,17 @@ current page was loaded:
 If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification
 with a **Reload** action rather than swapping content silently.
 
+The host PWA caches its shell separately from the cross-origin sandbox. On a worker update, open host pages report their
+sandbox-contract version. Matching hosts keep the normal update prompt. Legacy, incompatible, or nonresponsive hosts are
+reloaded at the same URL after the new shell finishes installing, without clearing wallet/app storage or product caches.
+This lets an already cached host recover even when it cannot understand the newer sandbox's update request; the
+sandbox's strict contract validation remains unchanged. As with any host reload, in-memory app state and credentialless
+iframe storage restart; persistent host storage is retained.
+
+Astro builds the release-specific classic upgrade worker after its static pages and before Workbox emits `host-sw.js`.
+Browser validation and Node-loaded build configuration share the version in
+`packages/config/src/host-sandbox-version.ts`; the build does not import browser network configuration.
+
 Failed host-worker update checks are handled and logged as warnings, leaving the active worker, current page, and
 persistent storage intact. The existing 15-minute and visible-tab checks can retry later; failures do not start an
 additional retry loop or bypass reload consent. A required sandbox-contract update remains pending after a failed check
@@ -300,6 +312,12 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
+
+A fresh product-document handshake retires the previous native execution before attaching its replacement. Pending
+permission prompts and execution-local grants cannot cross that boundary; repeated readiness messages with the same
+connection identifier remain idempotent. Connection creation is single-flight, and a superseded result is closed rather
+than attached to a newer document. The host keeps its wallet lease while replacing the product execution, so this does
+not sign the user out or discard lasting grants.
 
 ### Ordinary notification activation
 
@@ -576,6 +594,9 @@ process that auto-signs for the rest of the run, and runs the same host-product 
 The deployment smoke suites load published products through the deployed host, not the localhost fixture. The TrUAPI
 suite exercises 19 wallet-free capabilities without pairing a signer or writing to the chain; it does not replace paired
 E2E.
+
+The deployment workflow runs both suites against each deployed environment: `paseoli.dev` for `main`, the selected
+development environment for a deployment-labelled PR, and both `paseo.li` and `testnet.li` for a published release.
 
 The PolkaVM playground smoke passively verifies a canonical handshake request and its correlated `Result::Ok` reply, not
 merely increasing request/response counters. Input waits for a rendered frame and host loader dismissal, then uses an

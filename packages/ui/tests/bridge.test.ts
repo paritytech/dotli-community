@@ -5,6 +5,7 @@ import 'fake-indexeddb/auto';
 import { MessageChannel as NodeMessageChannel, MessagePort as NodeMessagePort } from 'node:worker_threads';
 import type * as TruapiHostWeb from '@parity/truapi-host/web';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
+import type { RequiredHostCallbacks } from '@parity/truapi-host';
 import { waitForTruapiPort } from '../../../apps/sandbox/src/polkavm-runtime.js';
 import { afterEach, assert, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent } from '@solidjs/testing-library';
@@ -858,6 +859,61 @@ describe('bridge render lifecycle', () => {
     };
   }
 
+  it('cancels prior-document permission prompts while keeping the wallet available to the replacement', async ({
+    onTestFinished,
+  }) => {
+    const product = await renderWithProductPort('document-permission');
+    const { disposePageCores } = await import('../src/page-core.js');
+    const { overlaysReady: readyOverlays, resetOverlays: resetCurrentOverlays } = await import('./helpers/overlays.js');
+    onTestFinished(() => {
+      disposePageCores();
+      resetCurrentOverlays();
+      product.productPort.close();
+      for (const port of product.inits()) {
+        port.close();
+      }
+    });
+    product.ready('first');
+    const runtime = nth(mocks.coreRuntimes, 0);
+    const callbacks = nth(runtime.createProvider.mock.calls, 0)[1] as RequiredHostCallbacks;
+    const productContext = { productId: 'document-permission.paseo', executionKind: 'App' as const };
+    const permission = callbacks.permissions.devicePermission(productContext, 'Notifications');
+    const outcome = permission.catch((error: unknown) => error);
+    await readyOverlays();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-modal"]')).not.toBeNull();
+    });
+
+    product.ready('second');
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
+    });
+    await expect(outcome).resolves.toMatchObject({ name: 'AbortError' });
+    expect(runtime.dispose).not.toHaveBeenCalled();
+
+    await waitForProviderRequests(2);
+    const supersededCallbacks = nth(runtime.createProvider.mock.calls, 1)[1] as RequiredHostCallbacks;
+    product.ready('third');
+    product.ready('fourth');
+    expect(mocks.coreProviderDefers).toHaveLength(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await waitForProviderRequests(3);
+    await expect(
+      supersededCallbacks.permissions.devicePermission(productContext, 'Notifications'),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    nth(mocks.coreProviderDefers, 2).resolve(makeProvider());
+    const nextCallbacks = nth(runtime.createProvider.mock.calls, 2)[1] as RequiredHostCallbacks;
+    const nextPermission = nextCallbacks.permissions.devicePermission(productContext, 'Notifications');
+    await readyOverlays();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-btn-sign"]')).not.toBeNull();
+    });
+    const allowOnce = document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]');
+    assert(allowOnce);
+    fireEvent.click(allowOnce);
+    await expect(nextPermission).resolves.toBe('AllowOnce');
+  });
+
   it('treats connectionId-less ready repeats as retries until the product uses its port', async () => {
     const product = await renderWithProductPort('legacy-ready');
     // Pre-0.23 clients retry ready every 50 ms without a connectionId and
@@ -880,11 +936,15 @@ describe('bridge render lifecycle', () => {
     expect(product.inits()).toHaveLength(1);
 
     const replacement = nth(product.inits(), 0);
+    await waitForProviderRequests(2);
+    const replacementCore = makeProvider();
+    nth(mocks.coreProviderDefers, 1).resolve(replacementCore);
     const replacementFrame = new Uint8Array([9, 9]);
     replacement.postMessage(replacementFrame);
     await vi.waitFor(() => {
-      expect(product.core.postMessage).toHaveBeenCalledWith(replacementFrame);
+      expect(replacementCore.postMessage).toHaveBeenCalledWith(replacementFrame);
     });
+    expect(product.core.postMessage).not.toHaveBeenCalledWith(replacementFrame);
     product.ready();
     expect(product.inits()).toHaveLength(2);
     product.productPort.close();
@@ -953,11 +1013,15 @@ describe('bridge render lifecycle', () => {
       delete sandbox.__HOST_API_PORT__;
       const replacement = await waitForTruapiPort(sandbox, window, parentOrigin, 1_000);
       expect(replacement).not.toBe(first);
+      await waitForProviderRequests(2);
+      const replacementCore = makeProvider();
+      nth(mocks.coreProviderDefers, 1).resolve(replacementCore);
       const frame = new Uint8Array([9, 9]);
       replacement.postMessage(frame);
       await vi.waitFor(() => {
-        expect(core.postMessage).toHaveBeenCalledWith(frame);
+        expect(replacementCore.postMessage).toHaveBeenCalledWith(frame);
       });
+      expect(core.postMessage).not.toHaveBeenCalled();
     } finally {
       sandbox.__HOST_API_PORT__?.close();
       delete sandbox.__HOST_API_PORT__;

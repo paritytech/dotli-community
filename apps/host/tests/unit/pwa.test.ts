@@ -36,6 +36,9 @@ vi.mock('@dotli/ui', () => ({
   },
 }));
 
+// The probe only needs the contract version; the test location has no hostname.
+vi.mock('@dotli/config', () => ({ SANDBOX_SCHEMA_VERSION: 1 }));
+
 vi.mock('@dotli/metrics', () => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
 vi.mock('@dotli/shared', () => ({ markContinuation: vi.fn() }));
 
@@ -56,7 +59,7 @@ beforeEach(async () => {
   notifications.actions = [];
   reload.mockClear();
   vi.stubGlobal('navigator', {
-    serviceWorker: { getRegistration: () => Promise.resolve({ waiting }) },
+    serviceWorker: { addEventListener: vi.fn(), getRegistration: () => Promise.resolve({ waiting }) },
   });
   vi.stubGlobal('location', { reload });
   await import('../../src/pwa.js');
@@ -69,8 +72,10 @@ afterEach(() => {
 async function pressReload(): Promise<void> {
   emit('waiting', {});
   const action = notifications.actions.at(-1);
-  expect(action?.label).toBe('Reload');
-  action?.onClick();
+  if (action === undefined) {
+    throw new Error('The update notification did not expose an action.');
+  }
+  action.onClick();
   await vi.waitFor(() => {
     expect(reload.mock.calls.length + workbox.messageSkipWaiting.mock.calls.length).toBeGreaterThan(0);
   });

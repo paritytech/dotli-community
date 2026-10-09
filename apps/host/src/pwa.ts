@@ -21,6 +21,7 @@ import { Workbox } from 'workbox-window';
 import { captureException, recordExpected } from '@dotli/metrics';
 import { showNotification } from '@dotli/ui';
 import { markContinuation } from '@dotli/shared';
+import { SANDBOX_SCHEMA_VERSION } from '@dotli/config';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -34,7 +35,22 @@ function checkForUpdate(registration: ServiceWorkerRegistration): void {
 }
 
 if ('serviceWorker' in navigator) {
-  const wb = new Workbox('/host-sw.js');
+  const wb = new Workbox('/host-sw.js', { updateViaCache: 'none' });
+  navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
+    const data = event.data;
+    const reply = event.ports.at(0);
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('type' in data) ||
+      data.type !== 'dotli:host-contract-version' ||
+      reply === undefined
+    ) {
+      return;
+    }
+    reply.postMessage({ version: SANDBOX_SCHEMA_VERSION });
+    reply.close();
+  });
   let hostUpdateRequired = false;
   let applyingUpdate = false;
 

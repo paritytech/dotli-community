@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 // Node-loaded specs use the side-effect-free contract, not the browser config barrel.
-import { SANDBOX_SCHEMA_VERSION } from '../../../../packages/config/src/host-sandbox-contract.js';
+import { SANDBOX_SCHEMA_VERSION } from '../../../../packages/config/src/host-sandbox-version.js';
 import {
   archiveCar,
   installRepeatedTruapiPortResponder,

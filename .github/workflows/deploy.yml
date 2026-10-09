@@ -36,6 +36,7 @@ jobs:
           case "$EVENT_NAME" in
             release)
               echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
+              echo 'smoke_environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
               ;;
             push)
