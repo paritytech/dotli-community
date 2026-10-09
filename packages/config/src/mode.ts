@@ -201,7 +201,7 @@ function defaultCacheNodes(): CacheNodeSettings {
   return { enabled: providersUrl !== '', providersUrl, payerSeed: '' };
 }
 
-/** A field missing or of the wrong type falls back to the default. */
+/** A field that is not there or that has the wrong type gets the default value. */
 export function getCacheNodeSettings(): CacheNodeSettings {
   const DEFAULT_CACHE_NODES = defaultCacheNodes();
   const stored = storage.getItem(CACHE_NODES_KEY);

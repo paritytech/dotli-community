@@ -7,10 +7,10 @@
 // bytes gets no receipt. The messages are those of the cache prototype (cache/src/payment.rs) and of the CLI host
 // (truapi-host-cli, cache_lookup.rs). The three share test vectors.
 //
-// The provider order: providers that failed in the last 30 s go last. The others go by the latency measured here, a
-// moving average with a prior of 50 ms. The content's home nodes count at half their latency: the 3 providers that rank
-// highest by blake2b-256(CID || endpoint id), the rank that the cache nodes use too. Every fourth read tries an
-// unmeasured provider first.
+// The provider order: providers that failed in the last 30 s go last. The others go by the latency that this host
+// measured: an average with more weight on recent reads, and 50 ms before the first read. The home nodes of the content
+// count at half their latency. They are the 3 providers with the highest blake2b-256(CID || endpoint id), the rank that
+// the cache nodes use too. Every fourth read tries an unmeasured provider first.
 
 import { blake2b } from '@noble/hashes/blake2.js';
 import { getPublicKey, secretFromSeed, sign } from '@scure/sr25519';
@@ -62,7 +62,7 @@ export interface CacheQuality {
   latencyMs?: number;
   successes: number;
   failures: number;
-  /** Not kept across page loads: a recent failure should not outlive the page. */
+  /** For this page only: a new page load forgets recent failures. */
   failedAt?: number;
 }
 
@@ -145,7 +145,7 @@ export function receiptMessage(fields: SignedFields): Uint8Array {
   return concat(signedFields(RECEIPT_PREFIX, fields), Uint8Array.of(0), u64(0), u64(0), u64(0));
 }
 
-/** A payer from a 32-byte seed, expanded the way Substrate expands an sr25519 mini secret key. */
+/** A payer from a 32-byte seed. The function expands the seed as Substrate expands an sr25519 mini secret key. */
 export function payerFromSeed(seed: Uint8Array): { secret: Uint8Array; id: string } {
   const secret = secretFromSeed(seed);
   return { secret, id: toHex(getPublicKey(secret)) };
@@ -178,7 +178,7 @@ export function homeNodes(contentId: string, ids: string[]): string[] {
   return ranked.slice(0, CACHE_HOMES).map(entry => entry.id);
 }
 
-/** The order in which to ask `providers` for content whose home nodes are `homes`. */
+/** The order in which the host asks `providers` for content with the home nodes `homes`. */
 export function orderProviders(
   providers: CacheProvider[],
   homes: string[],
@@ -206,7 +206,7 @@ export function orderProviders(
   return ordered;
 }
 
-/** `local`, `source`, or `peer:<64 hex>` from the `x-cache-origin` header. Anything else is unknown. */
+/** `local`, `source`, or `peer:<64 hex>` from the `x-cache-origin` header. Other text is unknown. */
 export function parseOrigin(header: string | null): CacheOrigin {
   if (header === 'local') {
     return { kind: 'local' };
@@ -331,7 +331,7 @@ export class CacheNodes {
       }
       if (!response.ok) {
         const reason = `${String(response.status)}: ${(await response.text().catch(() => '')).slice(0, 200)}`;
-        // A provider that the payer cannot pay is not a failing provider.
+        // A provider that refuses the payer did not fail.
         if (response.status !== 402) {
           measured.failures += 1;
           measured.failedAt = Date.now();

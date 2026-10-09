@@ -68,7 +68,7 @@ function createPreimageLookupSubscribe(label: string): Required<PreimageHost>['l
 
         const cid = hashToCid(key);
         const cidString = cid.toString();
-        // Cache nodes first, when the setting is on. A miss falls through to Bulletin in the same attempt.
+        // Cache nodes first, when the setting is on. After a miss, the same attempt reads Bulletin.
         const cache = getCacheNodes();
         if (cache !== null) {
           const started = Date.now();

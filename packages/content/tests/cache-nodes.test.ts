@@ -24,13 +24,13 @@ const CID = 'bafk2bzaceb2yf3stdn7wptwblupjbssdhdp2czormoqyiwkcrq35uhvzgcgp4';
 const SEVENS = '07'.repeat(32);
 
 describe('cache node messages', () => {
-  // The same vectors are in the cache (src/payment.rs, src/logic.rs) and in the CLI host (cache_lookup.rs).
+  // The cache (src/payment.rs, src/logic.rs) and the CLI host (cache_lookup.rs) have the same vectors.
   it('As a user agent that pays cache nodes, I derive the same payer and sign the same bytes as the cache and the CLI host', () => {
     // Given the payer of the seed [1; 32] and the provider [7; 32]
     const payer = payerFromSeed(new Uint8Array(32).fill(1));
     const fields = { transfer: 't-1', payer: payer.id, provider: SEVENS, content: CID };
 
-    // When the messages are encoded
+    // When the host encodes the messages
     const shared = `03000000742d31${payer.id}${SEVENS}3e000000${toHex(new TextEncoder().encode(CID))}`;
 
     // Then they are the shared vectors
@@ -79,7 +79,8 @@ describe('provider order', () => {
     const plain = ids(orderProviders([a, b, c, d], [b.id], quality, false, now));
     const exploring = ids(orderProviders([a, b, c, d], [b.id], quality, true, now));
 
-    // Then the home node (40 / 2 = 20 ms) beats the fast one, the unmeasured one counts 50 ms, and the failing one is last
+    // Then the home node (40 / 2 = 20 ms) beats the fast one, the unmeasured one counts 50 ms, and the failed one is
+    // last
     expect({ plain, exploring }).toEqual({
       plain: ['http://node-2', 'http://node-1', 'http://node-4', 'http://node-3'],
       exploring: ['http://node-4', 'http://node-2', 'http://node-1', 'http://node-3'],
@@ -136,7 +137,7 @@ describe('CacheNodes.read', () => {
     const read = await cache.read(key, CID);
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    // Then the third node served it, and only it got a receipt, signed by the payer over the receipt message
+    // Then the third node served it, and only it got a receipt, with the payer's signature over the receipt message
     const receipt = requests.find(r => r.url.endsWith('/receipt'));
     const body = receipt?.body as { receipt: { transfer: string }; signature: string };
     const message = receiptMessage({
