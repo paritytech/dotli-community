@@ -381,6 +381,10 @@ The matching foreground product polls `notifications.activationEvents()` and rec
 consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
 product, account, network or artifact cannot read or acknowledge the retained activation.
 
+Notification authority follows live native auth transitions, not the UI-state cache or shared-session storage hints. An
+unchanged stored-session reload emits no new auth transition and leaves ordinary notifications usable. A native account
+change, disconnection or explicit logout invalidates the previous scope.
+
 Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
 URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
 replacing a direct iframe cannot inherit an earlier execution's notification activations.

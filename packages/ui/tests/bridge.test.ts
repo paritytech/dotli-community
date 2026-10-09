@@ -306,6 +306,44 @@ describe('bridge render lifecycle', () => {
     spy.mockRestore();
   });
 
+  it.each(['account change', 'disconnect', 'logout'] as const)(
+    'preserves unchanged session notification authority until %s',
+    async transition => {
+      const { renderAppSubdomain } = await import('../src/bridge.js');
+      const { notificationContext, notificationContextIsCurrent } = await import('../src/notification-activation.js');
+      const { findNotification } = await import('@dotli/storage/notification-activations');
+      const render = renderAppSubdomain('verified-cid', 'myapp');
+      await waitForProviderRequests(1);
+      const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+      callbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+      });
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+      await render;
+      const originalScope = notificationContext('myapp').scope;
+      window.dispatchEvent(new Event('dotli:truapi-session-store-changed'));
+      const refreshed = await callbacks.notifications.pushNotification({ text: 'After unchanged refresh' });
+      expect((await findNotification('myapp', refreshed.id))?.scope).toEqual(originalScope);
+
+      if (transition === 'account change') {
+        callbacks.auth.authStateChanged({
+          tag: 'Connected',
+          value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'33'.repeat(32)}` },
+        });
+      } else if (transition === 'disconnect') {
+        callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+      } else {
+        window.dispatchEvent(new Event('dotli:logged-out'));
+      }
+      expect(notificationContextIsCurrent(originalScope)).toBe(false);
+      await expect(callbacks.notifications.pushNotification({ text: 'After auth invalidation' })).rejects.toThrow(
+        'authenticated account',
+      );
+    },
+    10_000,
+  );
+
   it('keeps notification grants in place and reloads only a changed committed iframe policy', async () => {
     const { renderIframe } = await import('../src/bridge.js');
     const { labelToProductId } = await import('../src/runtime-config.js');
