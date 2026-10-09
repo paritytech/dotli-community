@@ -57,6 +57,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Sized to its text, not stretched across the column. */
+.local {
+  align-self: flex-start;
+  margin-top: var(--sp-1);
+}
 /* A shortened account is code, not a name. */
 .name[data-address] {
   font-family: var(--font-mono);

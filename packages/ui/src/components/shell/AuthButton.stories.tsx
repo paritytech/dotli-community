@@ -5,6 +5,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { TopbarFrame, expectPhone, openSurface } from '../../../.storybook/shell-fixtures.js';
 import { resetAllStoresForTests } from '../../state/create-store.js';
 import { setAuthState, setLoggedIn } from '../../state/auth.js';
+import { setWalletModeState } from '../../state/wallet-mode.js';
 import { AuthButton } from './AuthButton.js';
 
 const open = openSurface({ trigger: 'auth-button', surface: 'user-popover' });
@@ -41,5 +42,12 @@ export const OpenPhone: Story = {
   play: async ctx => {
     await expectPhone(ctx.step);
     await open(ctx);
+  },
+};
+
+/** Signed in with a local wallet, whose keys live in this browser. */
+export const LocalWallet: Story = {
+  beforeEach: () => {
+    setWalletModeState({ mode: 'local', failure: null });
   },
 };

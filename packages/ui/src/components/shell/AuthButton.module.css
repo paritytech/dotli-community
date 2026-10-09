@@ -57,6 +57,12 @@
   width: 14px;
   height: 14px;
 }
+/* Inset, so the bar's tight padding and the phone-sized circle never clip it. */
+.avatar[data-wallet='local'] {
+  box-shadow:
+    inset 0 0 0 2px var(--chrome-warn),
+    var(--chrome-shadow-raised);
+}
 .name {
   min-width: 0;
   overflow: hidden;
