@@ -2009,7 +2009,6 @@ export async function renderAppSubdomain(
   });
 }
 
-
 function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoading = false): void {
   stopMotionRelay();
   mediatedInputHost.stop();
