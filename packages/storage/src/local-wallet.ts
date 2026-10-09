@@ -92,14 +92,31 @@ export async function loadLocalWallet(): Promise<LocalWallet | null> {
   return { entropy: new Uint8Array(plain), identity: record.identity };
 }
 
-/** Without a record, as after a switch back in another tab, there is nothing to update. */
+/**
+ * Reads and writes in one transaction, so a forget that commits meanwhile cannot be undone by a put.
+ * Without a record, as after a switch back in another tab, there is nothing to update.
+ */
 export async function updateLocalWalletIdentity(identity: LocalWalletIdentity): Promise<void> {
-  const record = await readRecord();
-  if (record === undefined) {
-    return;
-  }
-  await write(store => {
-    store.put({ ...record, identity });
+  const db = await getDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const req = store.get(RECORD_ID);
+    req.onsuccess = () => {
+      const record = req.result as LocalWalletRecord | undefined;
+      if (record !== undefined) {
+        store.put({ ...record, identity });
+      }
+    };
+    tx.oncomplete = () => {
+      resolve();
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error('local wallet identity update failed'));
+    };
+    tx.onabort = () => {
+      reject(tx.error ?? new Error('local wallet identity update aborted'));
+    };
   });
 }
 
