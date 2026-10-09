@@ -136,32 +136,34 @@ function createCore(product: PageProduct): Core {
     pairingHostGlobal: product.pairing?.hostGlobal,
     blockingModalScope,
   });
-  // The wallet read and the host chunk load in parallel, so a Polkadot App boot waits on whichever is slower.
-  const runtime = Promise.all([readWalletBoot(), import('@parity/truapi-host/web')]).then(
-    async ([wallet, { createWebWorkerPairingHostRuntime }]) => {
-      if (wallet !== null) {
-        const { bootLocalWalletCore } = await loadLocalWalletCore();
-        const booted = await bootLocalWalletCore(createWebWorkerPairingHostRuntime, callbacks, hostConfig, wallet, () =>
-          cores.has(core),
-        );
-        log.event('wallet core booted', { flow: 'wallet', local: true });
-        return booted;
-      }
-      const { default: HostWorker } = await import('@parity/truapi-host/worker-runtime?worker');
-      const booted = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacks, { hostConfig });
-      log.event('wallet core booted', { flow: 'wallet' });
-      // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
-      unsubscribeStore = onStoredSessionChanged(() => {
-        booted.notifySessionStoreChanged();
-      });
-      queueMicrotask(() => {
-        if (cores.has(core)) {
-          booted.notifySessionStoreChanged();
-        }
-      });
+  // The wallet read, the host chunk and the worker wrapper load in parallel, so a Polkadot App boot waits on
+  // whichever is slower. The wrapper fetches its worker script only when constructed, so local mode pays nothing.
+  const runtime = Promise.all([
+    readWalletBoot(),
+    import('@parity/truapi-host/web'),
+    import('@parity/truapi-host/worker-runtime?worker'),
+  ]).then(async ([wallet, { createWebWorkerPairingHostRuntime }, { default: HostWorker }]) => {
+    if (wallet !== null) {
+      const { bootLocalWalletCore } = await loadLocalWalletCore();
+      const booted = await bootLocalWalletCore(createWebWorkerPairingHostRuntime, callbacks, hostConfig, wallet, () =>
+        cores.has(core),
+      );
+      log.event('wallet core booted', { flow: 'wallet', local: true });
       return booted;
-    },
-  );
+    }
+    const booted = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacks, { hostConfig });
+    log.event('wallet core booted', { flow: 'wallet' });
+    // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
+    unsubscribeStore = onStoredSessionChanged(() => {
+      booted.notifySessionStoreChanged();
+    });
+    queueMicrotask(() => {
+      if (cores.has(core)) {
+        booted.notifySessionStoreChanged();
+      }
+    });
+    return booted;
+  });
   const core: Core = {
     product,
     runtime,
