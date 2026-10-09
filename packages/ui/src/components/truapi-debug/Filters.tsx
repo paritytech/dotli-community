@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Filter bar of the TrUAPI debug panel: kind checkboxes, direction chips,
-// product chips and the include / exclude queries. Semantics live in
-// `@dotli/truapi-debug/filters`; this component only edits the state.
+// Only edits the filter state. Matching lives in `@dotli/truapi-debug`.
 
 import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -16,14 +14,13 @@ const DIRECTIONS: readonly { dir: DirectionFilter; label: string }[] = [
   { dir: 'incoming', label: '◀ in' },
 ];
 
-/** Stable key per product chip; `undefined` is the events without an id. */
 function productKey(p: string | undefined): string {
   return p ?? '__anon';
 }
 
 export function Filters(props: {
   filters: FilterState;
-  /** Distinct product ids, sorted, `undefined` last. */
+  /** Sorted, `undefined` last. */
   products: readonly (string | undefined)[];
   placement: DockPosition;
   collapsed: boolean;
@@ -107,8 +104,7 @@ export function Filters(props: {
           >
             all
           </button>
-          {/* Keyed by product, so traffic from a known product keeps every
-              chip node and an in-flight click on one is never dropped. */}
+          {/* Keyed so traffic keeps chip nodes and an in-flight click is never dropped. */}
           <For each={props.products} keyed={productKey}>
             {product => (
               <button

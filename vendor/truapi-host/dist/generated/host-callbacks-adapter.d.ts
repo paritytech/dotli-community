@@ -23,6 +23,8 @@ export interface RawCallbacks {
     clearCoreStorage(key: Uint8Array): Promise<void>;
     featureSupported(request: Uint8Array): Promise<Uint8Array>;
     supportedChains(): Promise<Uint8Array>;
+    scheduleGameReminder?(product: Uint8Array, startsAt: bigint): Promise<void>;
+    cancelGameReminder?(product: Uint8Array): Promise<void>;
     allowedHopEndpoints?(bulletinGenesisHash: Uint8Array): Promise<Uint8Array>;
     hopConnect?: HopConnect;
     identityUsernameCandidates?(username: string, peopleChainGenesisHash: Uint8Array): Promise<Uint8Array>;

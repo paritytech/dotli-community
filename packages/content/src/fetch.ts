@@ -1,17 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li content fetching.
-//
-// Two paths:
-//   - bitswap-rpc: smoldot's `bitswap_v1_get` via the protocol bridge.
-//     dag-pb directories are walked block-by-block locally using the
-//     UnixFS walker in `archive.ts`.
-//   - gateway: HTTPS fetch from a trusted IPFS gateway (CAR for dag-pb,
-//     plain GET for raw).
-//
-// UnixFS walking lives in `archive.ts`, driven by an injected `BlockSource`.
-
 import { dur, log } from '@dotli/shared';
 
 import { m, spans as S } from '@dotli/metrics';
@@ -19,25 +8,15 @@ import { CID } from 'multiformats/cid';
 
 export type StatusCallback = (status: string) => void;
 
-/**
- * Async block source for the bitswap-rpc fetch path. Given a CID string,
- * returns the raw block bytes. Smoldot internally hash-verifies before
- * returning.
- */
 export type BitswapBlockSource = (cid: string) => Promise<Uint8Array>;
 
 import { isCarFile, parseIpfsResponse, walkUnixFsDag, type ArchiveFiles, type BlockSource } from './archive.js';
 import { defaultGateway, fetchFromIpfs, fetchCarFromIpfs, gatewayHost } from './ipfs.js';
 import { assertBlockMatchesCid, rootVerifyingBlockSource } from './verify.js';
 
-// CID codec constants
 const CODEC_DAG_PB = 0x70;
 const CODEC_RAW = 0x55;
 
-/**
- * Fetch content via smoldot's `bitswap_v1_get`, walking dag-pb directories
- * block-by-block locally. Smoldot hash-verifies each block before returning.
- */
 async function fetchViaBitswapRpc(
   cidString: string,
   blockSource: BitswapBlockSource,
@@ -74,22 +53,15 @@ async function fetchViaBitswapRpc(
   return result;
 }
 
-/** The bitswap read itself, without metrics. */
 async function readViaBitswap(rootCid: CID, blockSource: BlockSource, onStatus?: StatusCallback): Promise<FetchResult> {
-  // Defense-in-depth: don't trust smoldot's bitswap_v1_get verification
-  // blindly — re-check that the root block hashes to the on-chain root CID.
-  // Interior blocks are left to smoldot to avoid re-hashing the whole DAG on
-  // this default path (the root check alone anchors the rest of the DAG,
-  // since every link is followed by CID).
+  // Defense in depth over smoldot's own checks. Only the root is re-hashed, since every link is followed by CID.
   const rootVerifyingSource = rootVerifyingBlockSource(rootCid, blockSource);
 
   if (rootCid.code === CODEC_RAW) {
     onStatus?.('Fetching block via bitswap...');
     const bytes = await rootVerifyingSource(rootCid);
     if (isCarFile(bytes)) {
-      // Some uploaders pack a CAR archive under a raw-codec CID. Honor that
-      // and unpack into a multi-file archive instead of presenting the raw
-      // CAR bytes as `index.html`.
+      // Some uploaders pack a whole CAR under a raw-codec CID.
       return toFetchResult(await parseIpfsResponse(bytes));
     }
     return { type: 'single', content: bytes };
@@ -122,16 +94,6 @@ function classifyBitswapError(err: unknown): 'not-found' | 'invalid-cid' | 'time
   return 'error';
 }
 
-/**
- * Fetch content via IPFS gateway.
- *
- * No silent CAR-to-plain fallback. The CID codec deterministically decides
- * which transport is correct:
- *   - DAG-PB (0x70): UnixFS directory or chunked file, request CAR.
- *   - RAW    (0x55): single raw block, plain HTTP GET.
- * Any other codec is a hard failure and we don't guess. Any transport
- * failure surfaces with the original cause.
- */
 async function fetchViaGateway(cidString: string, onStatus?: StatusCallback): Promise<FetchResult> {
   const stopGw = m.timer(S.CONTENT_GATEWAY);
   try {
@@ -141,7 +103,6 @@ async function fetchViaGateway(cidString: string, onStatus?: StatusCallback): Pr
   }
 }
 
-/** The gateway read itself, without metrics. */
 async function readViaGateway(cidString: string, onStatus?: StatusCallback): Promise<FetchResult> {
   const cid = CID.parse(cidString);
   const gateway = defaultGateway();
@@ -157,8 +118,7 @@ async function readViaGateway(cidString: string, onStatus?: StatusCallback): Pro
       bytes: carBuffer.length,
     });
     onStatus?.('Parsing content...');
-    // Untrusted transport: bind the CAR to the on-chain CID — its declared
-    // root must match `cid` and every block is hash-verified.
+    // Untrusted transport, so the CAR is bound to the requested CID.
     const files = await parseIpfsResponse(carBuffer, cid);
     return toFetchResult(files);
   }
@@ -172,7 +132,7 @@ async function readViaGateway(cidString: string, onStatus?: StatusCallback): Pro
       gateway: host,
       bytes: data.length,
     });
-    // Untrusted transport: the bytes must hash to the requested raw CID.
+    // Untrusted transport.
     assertBlockMatchesCid(cid, data);
     log.event(`Block ${cidString} verified`, { flow: 'content', bytes: data.length });
     return { type: 'single', content: data };
@@ -185,16 +145,7 @@ export type FetchResult = ({ type: 'single'; content: Uint8Array } | { type: 'ar
   verifiedArtifact?: string;
 };
 
-/**
- * Fetch content by CID using the specified mode.
- *
- * - `bitswapBlockSource` (preferred when set): smoldot's `bitswap_v1_get`
- *   via the protocol bridge.
- * - `useGateway: true`: HTTPS fetch from IPFS gateway.
- * - default: throws. The caller must pick one of the two paths.
- *
- * No fallback between modes. If the chosen path fails, it fails.
- */
+/** Fetch over bitswap when a block source is given, else the gateway. No fallback between the two. */
 export async function fetchArchive(
   cidString: string,
   onStatus?: StatusCallback,
@@ -233,12 +184,7 @@ export async function fetchArchive(
   }
 }
 
-/**
- * The files behind `cidString`, read over the given transport without
- * `fetchArchive`'s marks and metrics: for reads that are not a product load,
- * such as the debug panel's archive explorer. A single-file result is keyed
- * `index.html`, the name the sandbox serves it under.
- */
+/** Like `fetchArchive` but without marks and metrics, for reads that are not a product load. */
 export async function readArchiveFiles(
   cidString: string,
   transport: { blockSource: BitswapBlockSource } | { gateway: true },

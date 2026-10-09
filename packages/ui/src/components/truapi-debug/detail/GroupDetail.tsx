@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Clicking a box means "show me the whole handshake", so every member of the
-// group shows together and there are no pills.
+// Clicking a timeline box asks for the whole handshake, so every member shows together and there are no pills.
 
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';

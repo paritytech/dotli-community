@@ -2,15 +2,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host shell: the top bar (Topbar.astro) and the QR pairing modal, a
-// Solid island (@dotli/ui/islands/AuthModal) server-rendered closed and hydrated once
-// the browser is idle. Imperative code and the Playwright suites select
-// their ids and classes.
 import { AuthModal } from '@dotli/ui/islands/AuthModal';
 import Topbar from './Topbar.astro';
 ---
 
 <Topbar />
 
-{/* QR Pairing Modal */}
 <AuthModal client:idle />

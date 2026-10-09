@@ -720,6 +720,75 @@ export const types = [
         ],
     },
     {
+        id: "code-format",
+        name: "CodeFormat",
+        category: "scanner",
+        definition: 'export type CodeFormat = "Qr" | "Aztec" | "DataMatrix" | "Pdf417" | "Ean13" | "Ean8" | "UpcE" | "Code128" | "Code39" | "Code93" | "Itf" | "Codabar";',
+        description: "Code formats the host scanner reads: the set both platform decoders share.",
+        variants: [
+            {
+                name: "Qr",
+                type: '{ tag: "Qr"; value?: undefined }',
+                description: "QR code.",
+            },
+            {
+                name: "Aztec",
+                type: '{ tag: "Aztec"; value?: undefined }',
+                description: "Aztec code.",
+            },
+            {
+                name: "DataMatrix",
+                type: '{ tag: "DataMatrix"; value?: undefined }',
+                description: "Data Matrix code.",
+            },
+            {
+                name: "Pdf417",
+                type: '{ tag: "Pdf417"; value?: undefined }',
+                description: "PDF417 code.",
+            },
+            {
+                name: "Ean13",
+                type: '{ tag: "Ean13"; value?: undefined }',
+                description: "EAN-13. Hosts report a UPC-A code as EAN-13 with a leading zero, before\nmatching it against the request.",
+            },
+            {
+                name: "Ean8",
+                type: '{ tag: "Ean8"; value?: undefined }',
+                description: "EAN-8.",
+            },
+            {
+                name: "UpcE",
+                type: '{ tag: "UpcE"; value?: undefined }',
+                description: "UPC-E.",
+            },
+            {
+                name: "Code128",
+                type: '{ tag: "Code128"; value?: undefined }',
+                description: "Code 128.",
+            },
+            {
+                name: "Code39",
+                type: '{ tag: "Code39"; value?: undefined }',
+                description: "Code 39.",
+            },
+            {
+                name: "Code93",
+                type: '{ tag: "Code93"; value?: undefined }',
+                description: "Code 93.",
+            },
+            {
+                name: "Itf",
+                type: '{ tag: "Itf"; value?: undefined }',
+                description: "Interleaved 2 of 5, including ITF-14.",
+            },
+            {
+                name: "Codabar",
+                type: '{ tag: "Codabar"; value?: undefined }',
+                description: "Codabar.",
+            },
+        ],
+    },
+    {
         id: "coin-payment-cheque",
         name: "CoinPaymentCheque",
         category: "coin_payment",
@@ -1697,6 +1766,14 @@ export const types = [
         ],
     },
     {
+        id: "host-cancel-next-game-request",
+        name: "HostCancelNextGameRequest",
+        category: "game",
+        definition: "export interface HostCancelNextGameRequest {\n}",
+        description: "Request to drop this product's reminder.",
+        fields: [],
+    },
+    {
         id: "host-chat-action-subscribe-item",
         name: "HostChatActionSubscribeItem",
         category: "chat",
@@ -2458,6 +2535,44 @@ export const types = [
         ],
     },
     {
+        id: "host-expanded-card-set-face-shown-error",
+        name: "HostExpandedCardSetFaceShownError",
+        category: "expanded_card",
+        definition: 'export type HostExpandedCardSetFaceShownError =\n  | { tag: "NotPresented"; value?: undefined }\n  | { tag: "UserMoving"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Face visibility change failure.",
+        variants: [
+            {
+                name: "NotPresented",
+                type: '{ tag: "NotPresented"; value?: undefined }',
+                description: "The Widget is not shown under its card right now.",
+            },
+            {
+                name: "UserMoving",
+                type: '{ tag: "UserMoving"; value?: undefined }',
+                description: "The user is moving the face; the request had no effect.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-expanded-card-set-face-shown-request",
+        name: "HostExpandedCardSetFaceShownRequest",
+        category: "expanded_card",
+        definition: "export interface HostExpandedCardSetFaceShownRequest {\n  shown: boolean;\n}",
+        description: "Request to show or hide the face above the calling Widget.",
+        fields: [
+            {
+                name: "shown",
+                type: "boolean",
+                description: "`true` brings the face back, `false` moves it out of the way.",
+            },
+        ],
+    },
+    {
         id: "host-feature-supported-request",
         name: "HostFeatureSupportedRequest",
         category: "system",
@@ -2661,7 +2776,7 @@ export const types = [
             {
                 name: "Limit",
                 type: '{ tag: "Limit"; value?: undefined }',
-                description: "The connection cap for this execution is exhausted.",
+                description: "The execution's connection budget (including pending dials), or its\neight distinct genesis decisions, is exhausted.",
             },
             {
                 name: "Unreachable",
@@ -2680,7 +2795,7 @@ export const types = [
             {
                 name: "genesis",
                 type: "HexString",
-                description: "Genesis header hash; the host derives the ALPN from it and requires a\n`RemotePermission::JamPeers` grant for it.",
+                description: "Genesis header hash authorizing this dial. Native QUIC derives its\nALPN from the first four bytes; WebTransport negotiates HTTP/3.\nNeither transport authenticates the peer's chain membership.",
             },
             {
                 name: "ip",
@@ -4914,6 +5029,34 @@ export const types = [
         ],
     },
     {
+        id: "host-remind-next-game-error",
+        name: "HostRemindNextGameError",
+        category: "game",
+        definition: 'export type HostRemindNextGameError = "StartsInPast";',
+        description: "Why a reminder was not taken.",
+        variants: [
+            {
+                name: "StartsInPast",
+                type: '{ tag: "StartsInPast"; value?: undefined }',
+                description: "`starts_at` is not after the device's current time.",
+            },
+        ],
+    },
+    {
+        id: "host-remind-next-game-request",
+        name: "HostRemindNextGameRequest",
+        category: "game",
+        definition: "export interface HostRemindNextGameRequest {\n  startsAt: bigint;\n}",
+        description: "Request to remind the user when this product's next game starts.",
+        fields: [
+            {
+                name: "starts_at",
+                type: "bigint",
+                description: "Milliseconds since the Unix epoch, UTC, at which the game starts.",
+            },
+        ],
+    },
+    {
         id: "host-renderer-action-subscribe-item",
         name: "HostRendererActionSubscribeItem",
         category: "renderer",
@@ -5014,6 +5157,78 @@ export const types = [
                 name: "outcomes",
                 type: "Array<AllocationOutcome>",
                 description: "Per-resource allocation outcomes, in the same order as the request.",
+            },
+        ],
+    },
+    {
+        id: "host-scanner-scan-error",
+        name: "HostScannerScanError",
+        category: "scanner",
+        definition: 'export type HostScannerScanError =\n  | { tag: "CameraUnavailable"; value?: undefined }\n  | { tag: "Busy"; value?: undefined }\n  | { tag: "NotVisible"; value?: undefined }\n  | { tag: "InvalidRequest"; value: { reason: string } }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Error returned by the scanner.\n\nA host with no scanner answers `Unsupported` at the framework level rather\nthan through this enum.",
+        variants: [
+            {
+                name: "CameraUnavailable",
+                type: '{ tag: "CameraUnavailable"; value?: undefined }',
+                description: "The device has no camera, or the user refused the host application one.",
+            },
+            {
+                name: "Busy",
+                type: '{ tag: "Busy"; value?: undefined }',
+                description: "Another scan is open.",
+            },
+            {
+                name: "NotVisible",
+                type: '{ tag: "NotVisible"; value?: undefined }',
+                description: "The calling execution is not on screen, and is not a Worker handling a\ntap from the user, so no viewfinder was opened.",
+            },
+            {
+                name: "InvalidRequest",
+                type: '{ tag: "InvalidRequest"; value: { reason: string } }',
+                description: "The request breaks a limit, so no viewfinder was shown.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-scanner-scan-request",
+        name: "HostScannerScanRequest",
+        category: "scanner",
+        definition: "export interface HostScannerScanRequest {\n  formats: Array<CodeFormat>;\n  prefix?: string;\n  hint?: string;\n}",
+        description: "Request to open the host's scanner.\n\nThe host draws the viewfinder and writes its title, naming the product.\nOnly `hint` is product text, shown as one plain line under the title.",
+        fields: [
+            {
+                name: "formats",
+                type: "Array<CodeFormat>",
+                description: "Formats the product accepts. At least one.",
+            },
+            {
+                name: "prefix",
+                type: "string | undefined",
+                description: "Start the text must have, compared ignoring ASCII letter case, since QR\ncodes often carry URLs in capitals. At most 256 bytes of UTF-8.",
+            },
+            {
+                name: "hint",
+                type: "string | undefined",
+                description: "What to point the camera at, shown as the product's words. At most 80\nUnicode scalar values (`[...hint].length` in TypeScript). No control\ncharacters, line or paragraph separators, or bidirectional formatting\ncharacters.",
+            },
+        ],
+    },
+    {
+        id: "host-scanner-scan-response",
+        name: "HostScannerScanResponse",
+        category: "scanner",
+        definition: "export interface HostScannerScanResponse {\n  outcome: ScanOutcome;\n}",
+        description: "Outcome of a scan.",
+        fields: [
+            {
+                name: "outcome",
+                type: "ScanOutcome",
+                description: "How the scan ended.",
             },
         ],
     },
@@ -6567,7 +6782,7 @@ export const types = [
             {
                 name: "JamPeers",
                 type: '{ tag: "JamPeers"; value: { genesis: HexString } }',
-                description: "Read-only peer access over JAMNP-S QUIC/WebTransport to the validators\nof one JAM chain, through the `JamPeerTransport` service.\n\nThe app names the endpoints it dials; the grant covers only peers of\n`genesis`. Every byte received is untrusted, and the grant carries no\naccount, signing or submission authority.",
+                description: "Peer access over JAMNP-S QUIC/WebTransport, authorized for the full\ngenesis hash through the `JamPeerTransport` service.\n\nThe app names endpoints and pinned keys. Native QUIC negotiates the\ngenesis-derived ALPN; WebTransport negotiates HTTP/3. Neither proves\nchain membership. The guest must verify chain data itself. The grant\ncarries no host account, signing or submission authority and does not\nrestrict which framed protocol messages the guest sends.",
             },
         ],
     },
@@ -6974,6 +7189,25 @@ export const types = [
                 name: "Invalid",
                 type: '{ tag: "Invalid"; value: { error: string } }',
                 description: "The runtime could not be decoded.",
+            },
+        ],
+    },
+    {
+        id: "scan-outcome",
+        name: "ScanOutcome",
+        category: "scanner",
+        definition: 'export type ScanOutcome =\n  | { tag: "Scanned"; value: { text: string; format: CodeFormat } }\n  | { tag: "Dismissed"; value?: undefined }\n;',
+        description: "How a scan ended.\n\nA dismissal is an outcome rather than an error, because it is worth\noffering again.",
+        variants: [
+            {
+                name: "Scanned",
+                type: '{ tag: "Scanned"; value: { text: string; format: CodeFormat } }',
+                description: "The user scanned a code the request accepts.",
+            },
+            {
+                name: "Dismissed",
+                type: '{ tag: "Dismissed"; value?: undefined }',
+                description: "The user closed the viewfinder without scanning.",
             },
         ],
     },

@@ -1,33 +1,14 @@
-# ${DOMAIN} NGINX configuration — DO NOT EDIT THE INSTALLED COPY.
-#
-# Rendered per-env from nginx/nginx.conf.template by `make deploy-nginx`
-# (envsubst). Substituted tokens: ${DOMAIN}, ${WEBROOT}, ${ZONE}, ${RL},
-# ${SENTRY}, ${SENTRY_INGEST}, ${SENTRY_PROJECT}.
-# ${RL} is "" to enable rate-limiting (paseo.li / testnet.li) or "#" to
-# comment it out (all other envs). ${SENTRY} works the same for the optional
-# Sentry tunnel lines: "" when SENTRY_DSN is set (with ${SENTRY_INGEST} and
-# ${SENTRY_PROJECT} cut from the DSN), "#" when it is not - the tunnel
-# snippet is then neither included nor uploaded.
-# nginx's own $variables are left intact.
-#
-# Three-build architecture:
-#   host.${DOMAIN}    → Shared protocol host (smoldot, shared chain cache)
-#   *.${DOMAIN}       → Host build (topbar, routing shell, bridge)
-#   *.app.${DOMAIN}   → App build  (CID from subdomain, P2P fetch, render)
-#
-# SSL cert covers ${DOMAIN}, *.${DOMAIN}, *.app.${DOMAIN} (single multi-SAN
-# cert at /etc/letsencrypt/live/${DOMAIN}/). Web roots live under ${WEBROOT}/*.
+# ${DOMAIN}: DO NOT EDIT THE INSTALLED COPY. Rendered per env by `make deploy-nginx` with envsubst.
+# ${RL} and ${SENTRY} are "" to enable their lines or "#" to comment them out. ${RL} is on for the production
+# domains, ${SENTRY} when SENTRY_DSN is set.
+#   host.${DOMAIN}    protocol build
+#   *.${DOMAIN}       host build
+#   *.app.${DOMAIN}   app build
 
-# Rate-limiting zones (only enabled on the production domains).
-#
-# /assets/ has its own zone with a larger burst: one cold page load fetches
-# ~150 hashed chunks within a second or two, and the host, protocol and app
-# origins of a domain share the per-IP bucket, so the burst leaves room for a
-# hard reload or several apps opened in a row. Rejections are 429 so they read
-# as rate limiting rather than as a server fault. Each map leaves the
-# other zone's paths with an empty key, which nginx does not count, so every
-# request counts against exactly one zone. The map variables are per domain
-# because every site config shares one http block.
+# /assets/ gets its own zone with a larger burst, because a cold load fetches ~150 chunks at once and a domain's
+# three origins share the per-IP bucket. Each map gives the other zone's paths an empty key, which nginx does not
+# count. Map variables are per domain because every site shares one http block. 429 so rejections read as rate
+# limiting, not a server fault.
 ${RL}map $uri $${ZONE}_key {
 ${RL}    ~^/assets/ "";
 ${RL}    default    $binary_remote_addr;
@@ -39,19 +20,11 @@ ${RL}}
 ${RL}limit_req_zone $${ZONE}_key        zone=${ZONE}:10m        rate=15r/s;
 ${RL}limit_req_zone $${ZONE}_assets_key zone=${ZONE}_assets:10m rate=64r/s;
 
-# ────────────────────────────────────────────────────────────
-# HTTP → HTTPS redirect
-# ────────────────────────────────────────────────────────────
-
 server {
     listen 80;
     server_name ${DOMAIN} *.${DOMAIN} host.${DOMAIN} *.app.${DOMAIN};
     return 301 https://$host$request_uri;
 }
-
-# ────────────────────────────────────────────────────────────
-# Root domain: ${DOMAIN} — Landing page
-# ────────────────────────────────────────────────────────────
 
 server {
     listen 443 ssl http2;
@@ -72,6 +45,11 @@ server {
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
+    # The landing page. Every other path gets the shell, which sends a URL with no product back here.
+    location = / {
+        try_files /landing.html =404;
+    }
+
     location = /__preview {
         set $csp_ancestors "revx.dev stg.revx.dev http://localhost:*";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
@@ -84,10 +62,6 @@ server {
         try_files $uri $uri/ /index.html;
     }
 }
-
-# ────────────────────────────────────────────────────────────
-# App build: *.app.${DOMAIN} — CID content fetching & rendering
-# ────────────────────────────────────────────────────────────
 
 server {
     listen 443 ssl http2;
@@ -123,10 +97,6 @@ server {
     }
 }
 
-# ────────────────────────────────────────────────────────────
-# Shared protocol build: host.${DOMAIN} — smoldot / shared cache origin
-# ────────────────────────────────────────────────────────────
-
 server {
     listen 443 ssl http2;
     server_name host.${DOMAIN};
@@ -159,10 +129,6 @@ server {
         try_files $uri /index.html;
     }
 }
-
-# ────────────────────────────────────────────────────────────
-# Host build: *.${DOMAIN} — Shell with topbar, routing, bridge
-# ────────────────────────────────────────────────────────────
 
 server {
     listen 443 ssl http2;

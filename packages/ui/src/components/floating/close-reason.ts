@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Why an anchored surface (Popover, DropdownMenu) closed, which decides
- * whether focus goes back to its trigger. `sheet` is the sheet's own close
- * (Escape, the scrim, the head's close button, a swipe) for an opening on a
- * phone, and `released` the trigger let go while open, which hands focus
- * back itself; the others are FloatingLayer's.
+ * Why an anchored surface closed, which decides whether focus returns to its trigger.
+ * `sheet` is the phone sheet's own close. `released` means the trigger let go while open and refocuses itself.
  */
 export type CloseReason =
   'outside' | 'escape' | 'trigger' | 'blur' | 'focus-out' | 'programmatic' | 'sheet' | 'released';

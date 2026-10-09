@@ -1065,6 +1065,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                         profile: host.profile !== undefined,
                         identityBackend: host.identityBackend !== undefined,
                         coinageWallet: callbacks.nativeCoinage !== undefined,
+                        game: host.game !== undefined,
                         contacts: host.contacts !== undefined,
                     },
                     debuggerUrl: debuggerDial,
@@ -1183,6 +1184,7 @@ function buildRuntime(state) {
                                     profile: callbacks.profile !== undefined,
                                     identityBackend: callbacks.identityBackend !== undefined,
                                     coinageWallet: state.rawCallbacks.nativeCoinage !== undefined,
+                                    game: callbacks.game !== undefined,
                                 },
                             }),
                     });
@@ -1286,12 +1288,19 @@ function buildRuntime(state) {
                 granted,
             }), false);
         },
+        setSubmitPreimagesLocally(local) {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "setSubmitPreimagesLocally",
+                requestId,
+                local,
+            }), false);
+        },
         setWithheldResources(tags) {
             return sendSessionActivationRequest(state, (requestId) => ({
                 kind: "setWithheldResources",
                 requestId,
                 tags,
-            }));
+            }), false);
         },
         resetSessionState() {
             return sendSessionActivationRequest(state, (requestId) => ({

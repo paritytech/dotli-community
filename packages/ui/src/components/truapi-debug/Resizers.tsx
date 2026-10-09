@@ -1,14 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Drag handles of the TrUAPI debug panel: the edge that resizes the panel and
-// the splitter between the views and the detail pane.
-//
-// Both write inline styles on the panel element directly, as the drag moves:
-// sizes are custom properties and inline width/height the CSS grid picks up
-// without a render, and docking clears them imperatively too. A move only
-// writes: nothing on the move path reads layout, so a drag never forces a
-// synchronous reflow, and the product frame is refitted once per frame.
+// Drags write inline styles on the panel directly, without a render. Nothing on the move path reads layout,
+// so a drag never forces a synchronous reflow.
 
 import { onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -16,9 +10,9 @@ import type { DockPosition } from '@dotli/truapi-debug';
 import { startDrag } from '../drag.js';
 import s from './Resizers.module.css';
 
-/** Events list / top pane: filter chips and tabs need room. */
+/** Room for the filter chips and tabs. */
 const MIN_PRIMARY_PX = 220;
-/** Detail / bottom pane: room for the key-value list. */
+/** Room for the detail key-value list. */
 const MIN_SECONDARY_PX = 260;
 /** Matches the grid-template-{columns,rows} middle track. */
 const SPLITTER_PX = 6;
@@ -31,8 +25,7 @@ export function ResizeHandle(props: {
   panel: () => HTMLElement | undefined;
   collapsed: boolean;
   dock: DockPosition;
-  /** The panel's new size in px along the drag (height when docked at the
-   *  bottom, width when docked right). At most once per animation frame. */
+  /** Size along the drag axis, at most once per frame. */
   onResize: (px: number) => void;
 }): JSX.Element {
   const panelEl = untrack(() => props.panel);
@@ -62,7 +55,6 @@ export function ResizeHandle(props: {
       clamped = Math.max(MIN_BOTTOM_HEIGHT_PX, Math.min(newHeight, window.innerHeight * MAX_VIEWPORT_SHARE));
       panel.style.height = `${String(clamped)}px`;
     }
-    // The size is already known: hand it over rather than read it back.
     resized = clamped;
     frame ??= requestAnimationFrame(() => {
       frame = null;
@@ -93,16 +85,10 @@ export function ResizeHandle(props: {
   );
 }
 
-/**
- * Drag-to-resize divider between the views pane (list / timeline) and the
- * event-detail pane. The primary pane's size lives in a CSS custom property
- * on the panel element. Clamped to keep either side from collapsing so far
- * that its controls become unusable. Double-click restores the default.
- */
+/** Divider between the views and the detail pane. Double-click restores the default. */
 export function BodySplitter(props: {
   panel: () => HTMLElement | undefined;
   stacked: boolean;
-  /** A view that takes the whole width has no detail pane to resize. */
   hidden: boolean;
 }): JSX.Element {
   const panelEl = untrack(() => props.panel);
@@ -112,9 +98,7 @@ export function BodySplitter(props: {
     stopDrag?.();
   });
 
-  /** `body` is the body's box, measured once when the drag starts: it does
-   *  not change size while the splitter moves, and measuring on every move
-   *  would read layout right after the previous move's write. */
+  /** `body` is measured once at drag start, since measuring per move would read layout after a write. */
   const move = (e: PointerEvent, body: DOMRect): void => {
     const panel = panelEl();
     if (panel === undefined) {

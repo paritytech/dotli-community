@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Prod no-op shim for `@dotli/metrics/sentry`, aliased in
-// `apps/*/vite.config.ts`. Types still come from `sentry.ts` at
-// typecheck time. Aliases only apply at bundle time.
+// No-op twin of `sentry.ts`, swapped in by `stripAnalytics`. Typecheck only ever sees the real module.
 
 export type SentrySource = 'host' | 'protocol' | 'worker' | 'sandbox';
 
@@ -27,7 +25,6 @@ export function isSmoldotEvent(_event: unknown): boolean {
   return false;
 }
 
-/** Nothing to exclude when there are no Sentry integrations to begin with. */
 export function excludeBrowserApiErrorsIntegration<T extends { name: string }>(integrations: T[]): T[] {
   return integrations;
 }

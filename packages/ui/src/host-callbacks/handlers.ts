@@ -1,12 +1,6 @@
-// Composes the typed host callback surface consumed by
-// `createWasmRawCallbacks`. Each callback lives in its own file so the
-// dotli-specific UI and storage behavior stays outside the Rust core.
-//
-// Scoping:
-// - `label` identifies the dApp, used in topbar notifications, permission
-//   storage keys, and sign modal titles.
-// - product storage keys are opaque; Rust core owns product namespacing.
-//
+// Each callback lives in its own file so dotli's UI and storage behaviour stays outside the Rust core.
+// Product storage keys are opaque because the core owns product namespacing.
+
 import { localizeTimestamps, type ContactsPlatform, type RequiredHostCallbacks } from '@parity/truapi-host';
 import { createNavigateTo } from './OpenUrl.js';
 import { createNotificationAdapters } from './PushNotification.js';
@@ -43,8 +37,8 @@ export interface CreateHostCallbacksOptions {
   custodyLease?: string;
   /** Avatar layer of the product frame this connection serves, if any. */
   contactAvatars?: ContactAvatarOverlay;
-  /** Retires Profile presentations and loads with the native connection. */
-  profileSignal?: AbortSignal;
+  /** Retires Profile presentations with the connection or its current session. */
+  profileSignal?: AbortSignal | (() => AbortSignal);
   contacts?: Required<ContactsPlatform>;
   contactsDirectory?: NativeChatContactsDirectory;
 }

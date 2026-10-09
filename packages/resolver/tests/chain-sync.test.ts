@@ -30,8 +30,7 @@ let attachChainSync: typeof ChainSyncModule.attachChainSync;
 beforeEach(async () => {
   vi.clearAllMocks();
   metrics.enabled = true;
-  // The event history and the opt-in sets are module state, so each test
-  // needs its own copy of the module.
+  // History and opt-ins are module state, so each test loads its own copy.
   vi.resetModules();
   const mod = await import('../src/chain-sync.js');
   onChainSync = mod.onChainSync;
@@ -42,11 +41,8 @@ beforeEach(async () => {
 type Lifecycle = ChainLifecycle;
 
 /**
- * One chain connection, standing in for truapi-provider's.
- *
- * `push` plays a lifecycle snapshot through the watch, `deliver` plays a raw
- * response through the tap the way `./provider` does, and returns whether the
- * tap claimed it. Anything it does not claim would have reached polkadot-api.
+ * Stands in for a truapi-provider connection. `deliver` plays a response through the tap as `./provider`
+ * does, and whatever the tap does not claim would have reached polkadot-api.
  */
 interface Pipe {
   tap: ChainSyncTap;
@@ -123,12 +119,7 @@ function requirePipe(chain: 'relay' | 'asset-hub'): Pipe {
   return pipe;
 }
 
-/**
- * One lifecycle snapshot.
- *
- * The watch reports the whole chain state every time, so a test describes
- * where the chain now stands rather than which milestone fired.
- */
+/** The whole chain state, as the watch reports it every time. */
 function state(phase: Lifecycle['phase'], peers: number, health: Lifecycle['health'] = { kind: 'ok' }): Lifecycle {
   return { phase, peers, health };
 }

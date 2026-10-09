@@ -1,6 +1,9 @@
+// @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { NativeChatContactsSnapshot, PlacedAvatar, ProductContext } from '@parity/truapi-host';
-import { fromHex } from '@dotli/shared';
+import { fromHex, toHex } from '@dotli/shared';
+import { hashToCid } from '@dotli/content';
+import { blake2b } from '@noble/hashes/blake2.js';
 import { createContactAvatars, createProfilePlatform } from '../src/host-callbacks/Profile.js';
 import { NativeChatContactsDirectory } from '../src/host-callbacks/Contacts.js';
 import {
@@ -332,6 +335,39 @@ describe('profile drawer', () => {
       name: 'AbortError',
     });
     expect(drawer()).toBeNull();
+  });
+
+  it('cancels the old session load but can present again on the same connection', async () => {
+    // Use a distinct valid blob: preceding presentations can warm the real preimage cache.
+    const { aesKey, iv } = parseSeityBlobReference(VECTOR.reference);
+    iv.fill(0xbb);
+    const key = await crypto.subtle.importKey('raw', aesKey, 'AES-GCM', false, ['encrypt']);
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, fromHex(VECTOR.plaintext) as Uint8Array<ArrayBuffer>),
+    );
+    const reference = `${hashToCid(toHex(blake2b(ciphertext, { dkLen: 32 }))).toString()}#${toHex(aesKey).slice(2)}${toHex(iv).slice(2)}`;
+    const pending = Promise.withResolvers<Uint8Array>();
+    mocks.bitswapGet.mockReturnValue(pending.promise);
+    let controller = new AbortController();
+    const platform = createProfilePlatform(null, () => controller.signal);
+    await platform.presentProfile(product, { reference });
+    await vi.waitFor(
+      () => {
+        expect(mocks.bitswapGet).toHaveBeenCalled();
+      },
+      { timeout: 2_000 },
+    );
+
+    controller.abort();
+    controller = new AbortController();
+    expect(drawer()).toBeNull();
+    pending.resolve(ciphertext);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(drawer()).toBeNull();
+
+    await platform.presentContactProfile(product, { peerIdentity: contactIdentity, username: 'new-session.paseo' });
+    expect(drawer()?.textContent).toContain('new-session.paseo');
+    expect(drawer()?.querySelector('img')).toBeNull();
   });
 });
 

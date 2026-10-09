@@ -41,8 +41,7 @@ const meta = {
       fallbackResult: 'dismissed',
     }),
   },
-  // The dialog reads its entry once, as the outlet re-creates it per entry,
-  // so it gets a plain copy of the args store's, read outside tracking.
+  // The dialog reads its entry once, as the outlet re-creates it per entry, so it gets an untracked copy.
   render: args => {
     const entry = untrack(() => snapshot(args.entry));
     return <PromptDialog entry={entry} />;

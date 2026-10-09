@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Archive view */
-
 .archive {
   display: grid;
   grid-template-columns: minmax(160px, 30%) 1fr;

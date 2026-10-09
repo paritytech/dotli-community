@@ -1,14 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host page's island failures (mount/islands.ts): an island that fails to
-// load or hydrate keeps its build-time markup, and what it would have done is
-// stood in for.
+// An island that fails to load or hydrate keeps its build-time markup, and what it would have done is stood in for.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as IslandsModule from '../../src/mount/islands.js';
 import type * as LoadingModule from '../../src/state/loading.js';
-import type * as TopbarModule from '../../src/state/topbar.js';
 import type * as AppRootsModule from '../../src/mount/app-roots.js';
 import { byTestId } from '../support.js';
 
@@ -17,12 +14,10 @@ vi.mock('@dotli/metrics', async original => ({ ...(await original<Record<string,
 
 let islands: typeof IslandsModule;
 let loading: typeof LoadingModule;
-let topbar: typeof TopbarModule;
 let roots: typeof AppRootsModule;
 /** Stops the test's reportIslandErrors listening. */
 let stop: () => void;
 
-/** An island of the page, as the build rendered it. */
 function island(component: string): HTMLElement {
   const element = document.createElement('astro-island');
   element.setAttribute('component-export', component);
@@ -46,10 +41,9 @@ beforeEach(async () => {
   vi.resetModules();
   sentry.captureException.mockReset();
   document.body.innerHTML = '<div id="app"></div>';
-  [islands, loading, topbar, roots] = await Promise.all([
+  [islands, loading, roots] = await Promise.all([
     import('../../src/mount/islands.js'),
     import('../../src/state/loading.js'),
-    import('../../src/state/topbar.js'),
     import('../../src/mount/app-roots.js'),
     import('../../src/loading-controller.js'),
   ]);
@@ -91,28 +85,16 @@ describe('island failures', () => {
     expect(screen.childElementCount).toBe(0);
   });
 
-  it('As a visitor on the bare host, a landing page that never hydrated shows the reload error page', () => {
-    // Given
-    fail(island('LandingPage'));
-    expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
+  it.each(['LandingAuth', 'LandingNav', 'LandingRecents'])(
+    'As a visitor on the bare host, a landing page whose %s island never hydrated shows the reload error page',
+    component => {
+      // When
+      fail(island(component));
 
-    // When: boot says it is the landing page.
-    topbar.setLandingPage(true);
-
-    // Then
-    expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
-    expect(topbar.getTopbarState().landing).toBe(false);
-    expect(loading.getLoadingState().phase).toBe('gone');
-  });
-
-  it('As a visitor on another page, a landing page that never hydrated changes nothing', () => {
-    // When
-    fail(island('LandingPage'));
-
-    // Then
-    expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
-    expect(loading.getLoadingState().phase).toBe('active');
-  });
+      // Then
+      expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
+    },
+  );
 
   it('As the shell, an island that failed before the host listened is reported and stood in for, and later ones as they happen', () => {
     // Given: the host page's inline script (pages/index.astro) kept a failure

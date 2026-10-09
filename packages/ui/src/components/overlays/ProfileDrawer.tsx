@@ -37,8 +37,10 @@ export function ProfileDrawer(props: {
   let objectUrl: string | undefined;
   let closeButton: HTMLButtonElement | undefined;
   let disposed = false;
+  let moodTimer: number | undefined;
   onCleanup(() => {
     disposed = true;
+    clearTimeout(moodTimer);
     if (objectUrl !== undefined) {
       URL.revokeObjectURL(objectUrl);
     }
@@ -47,6 +49,23 @@ export function ProfileDrawer(props: {
   const fail = (message: string): void => {
     setFailed(true);
     setStatus(message);
+  };
+  const expireMood = (current: Mood): void => {
+    const remaining = (current.setAt + current.ttlSecs) * 1000 - Date.now();
+    if (remaining > 0) {
+      // Long-lived/future-dated moods must not overflow setTimeout's signed bound.
+      moodTimer = window.setTimeout(
+        () => {
+          expireMood(current);
+        },
+        Math.min(remaining, 2_147_483_647),
+      );
+      return;
+    }
+    setMood(undefined);
+    if (photo() === null && !failed()) {
+      setStatus(emptyMessage);
+    }
   };
   // A root is created per presentation; start its loader after mount and
   // retain that presentation's signal through every asynchronous continuation.
@@ -78,6 +97,9 @@ export function ProfileDrawer(props: {
         const activeMood = nextMood !== undefined && moodIsCurrent(nextMood) ? nextMood : undefined;
         setMood(activeMood);
         setStatus('');
+        if (activeMood !== undefined) {
+          expireMood(activeMood);
+        }
         if (avatar === null) {
           if (activeMood === undefined) {
             setStatus(emptyMessage);

@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Sandbox-side bitswap bridge: postMessages the host parent which proxies
-// the request to the protocol iframe's smoldot.
+// Asks the host parent, which proxies each block request to the protocol iframe's smoldot.
 
 import { log } from '@dotli/shared';
 
@@ -33,21 +32,14 @@ function ensureListener(): void {
     return;
   }
   listenerInstalled = true;
-  // The host keeps fetching for us after this frame is gone, and a fetch that
-  // found no providers now retries for tens of seconds rather than failing at
-  // about a second. Nothing tells the host the frame went, so say so.
+  // Nothing else tells the host this frame went, and a fetch with no providers retries for tens of seconds.
   window.addEventListener('pagehide', (event: PageTransitionEvent) => {
-    // `persisted` means the frame is going into the back/forward cache and can
-    // come back through `pageshow`. Cancelling then would strand the restored
-    // frame: the host would have aborted, and the restored page would still be
-    // awaiting a fetch it can no longer be answered about.
+    // A frame entering the back/forward cache can come back, still awaiting fetches the host would have aborted.
     if (event.persisted || pending.size === 0) {
       return;
     }
     window.parent.postMessage({ type: 'dotli:bitswap-abort', ids: [...pending.keys()] }, '*');
-    // Reject rather than clear. Dropping the resolvers turns a cancellation
-    // into a promise that can never settle, because the reply listener
-    // early-returns on an id it no longer knows.
+    // Reject rather than clear, or the promises never settle: the reply listener ignores unknown ids.
     for (const [, entry] of pending) {
       entry.reject(new Error('bitswap-relay: aborted, the sandbox frame was torn down'));
     }
@@ -71,12 +63,7 @@ function ensureListener(): void {
   });
 }
 
-/**
- * The host's failure, rebuilt with its class name and code.
- *
- * Every rebuilt error has this function's stack, so the name is what keeps a
- * timeout, a missing block and a dead connection apart in Sentry.
- */
+/** Keeps the host error's name and code, since every rebuilt error shares this stack and Sentry splits them by name. */
 function hostError(reply: BitswapResultMessage): Error {
   const err = new Error(reply.error ?? 'bitswap-relay: malformed result envelope');
   if (typeof reply.errorName === 'string' && reply.errorName !== '') {

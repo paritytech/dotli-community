@@ -1,41 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Outstanding TrUAPI calls.
-//
-// A request the host has not answered yet is the one thing the list cannot
-// show on its own: the `+Xs` latency beside a row is measured against the
-// first event of its group, so it only appears once the reply lands. Until
-// then a call that hung for thirty seconds reads exactly like one answered in
-// a millisecond.
-//
-// Scoped to TrUAPI deliberately. These are the calls the host has been asked
-// to answer, so answering them means signing, reading chain state, or relaying
-// a transaction, which is where the host actually stalls. Host lifecycle
-// events are short-lived and already grouped in the timeline.
+// A row's latency appears only once its reply lands, so without this a hung call looks like a fast one.
+// Scoped to TrUAPI because answering those calls is where the host actually stalls.
 
 import { firstNewIndex, type StoredEvent, type StoredTruapiEvent } from './event-store.js';
 
-/** Requests outstanding for longer than this are called out rather than just
- *  counted, so a hung call is findable without reading every row. */
+/** Past this a call is called out rather than just counted. */
 export const SLOW_AFTER_MS = 3000;
 
-/**
- * Group key for a call. `requestId` alone is not unique: it is minted per
- * product, so two products in the same tab can both be on `p:1`.
- */
+/** `requestId` is minted per product, so two products in one tab can share it. */
 export function callKeyOf(ev: StoredTruapiEvent): string {
   return `${ev.productId ?? 'dotli'}::${ev.requestId}`;
 }
 
-/**
- * The key a row should carry a pending badge for, or null if the row is not a
- * request.
- *
- * Paired on the `_request` / `_response` tag suffix rather than on
- * `direction`, because which direction carries the request depends on who
- * initiated the call while the suffix does not.
- */
+/** Paired on the tag suffix, not `direction`, which depends on who initiated the call. */
 export function pendingKeyOf(ev: StoredEvent): string | null {
   if (ev.kind !== 'truapi' || !ev.tag.endsWith('_request')) {
     return null;
@@ -43,39 +22,25 @@ export function pendingKeyOf(ev: StoredEvent): string | null {
   return callKeyOf(ev);
 }
 
-/**
- * Every call still waiting on a reply, kept up to date from successive
- * snapshots of one event store at a cost proportional to the events that
- * arrived or left since the last snapshot, not to the events retained.
- */
+/** Costs in proportion to the events that arrived or left since the last snapshot, not those retained. */
 export class OpenCallTracker {
   private seen: readonly StoredEvent[] = [];
-  /** Receive times of the retained non-reply events per call, oldest first. */
+  /** Oldest first. */
   private readonly requests = new Map<string, number[]>();
-  /** Retained replies per call. */
   private readonly replies = new Map<string, number>();
   private readonly openByKey = new Map<string, number>();
   private changed: ReadonlySet<string> = new Set();
 
-  /**
-   * Every call still waiting on a reply, mapped to the time its first
-   * retained non-reply event arrived. Absence from this map is what tells a
-   * row's badge to disappear.
-   */
+  /** Each call awaiting a reply, mapped to its first retained request time. Absence clears a row's badge. */
   get open(): ReadonlyMap<string, number> {
     return this.openByKey;
   }
 
-  /** Calls whose entry in `open` was added, moved or removed by the last
-   *  `update`. */
   get changedKeys(): ReadonlySet<string> {
     return this.changed;
   }
 
-  /**
-   * Catch up with `events`, a later snapshot of the same store than the last
-   * one passed. Returns whether the open calls changed.
-   */
+  /** `events` must be a later snapshot of the same store than the last one passed. */
   update(events: readonly StoredEvent[]): boolean {
     const prev = this.seen;
     this.seen = events;
@@ -142,8 +107,6 @@ export class OpenCallTracker {
   }
 }
 
-/** Elapsed label for a pending badge. Seconds once past a second, because a
- *  four-digit millisecond count is harder to read at a glance than `4.4s`. */
 export function formatPending(ms: number): string {
   if (ms < 1000) {
     return `${String(Math.round(ms))}ms`;

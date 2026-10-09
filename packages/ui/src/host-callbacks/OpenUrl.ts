@@ -1,9 +1,5 @@
-// Navigation callback. The Rust core pre-normalizes URLs, but dotli still
-// needs to classify the result so `.dot` domains land on the right host
-// subdomain and localhost products wrap into the configured host origin.
-//
-// Product targets take over the current tab as on the mobile hosts, so a
-// handoff between products reads as one experience. Websites open apart.
+// The core pre-normalizes URLs, but `.dot` names still map to a host subdomain and localhost products
+// to the host origin. Products take over the tab as on the mobile hosts, websites open apart.
 
 import type { Navigation } from '@parity/truapi-host';
 import { isLocalhost, BASE_DOMAIN, getActiveTldSuffix } from '@dotli/config';

@@ -1,41 +1,33 @@
-# Force a valid UTF-8 locale on the remote. macOS Terminal exports
-# LC_CTYPE=UTF-8 (not a recognized locale on Linux) and SSH forwards it via
-# the default SendEnv LC_*; setting LC_ALL here overrides it everywhere.
+# macOS Terminal exports LC_CTYPE=UTF-8, which Linux does not recognize, and SSH forwards it to the remote.
 export LC_ALL := C.UTF-8
 
-# Deploy SSH targets are not committed. Set them in a gitignored deploy.env
-# (copy deploy.env.example) or pass REMOTE=user@host on the command line. CI
-# deploys read DEPLOY_HOST and DEPLOY_USER secrets via the ci-deploy target and
-# do not use these.
+# Deploy targets are not committed. Copy deploy.env.example or pass REMOTE=user@host. CI uses ci-deploy instead.
 -include deploy.env
 
 REMOTE_PRD ?=
 REMOTE_STG ?=
 
-# env tag → site filename in /etc/nginx/sites-available/
+# Site filename in /etc/nginx/sites-available/
 SITE_polkadot      := dot.li
 SITE_paseo         := paseo.li
 SITE_dev-paseo     := paseoli.dev
 SITE_fyi-paseo     := paseo.fyi
 SITE_dev-test      := testnet.li
 
-# env tag → remote (only polkadot is prod; the rest share the staging box)
+# Only polkadot is prod. The rest share the staging box.
 REMOTE_FOR_polkadot      := $(REMOTE_PRD)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
 REMOTE_FOR_fyi-paseo     := $(REMOTE_STG)
 REMOTE_FOR_dev-test      := $(REMOTE_STG)
 
-# env tag → web root on the remote (rendered into the `root` directive)
 DEPLOY_PATH_polkadot      := /var/www/dotli
 DEPLOY_PATH_paseo         := /var/www/paseoli
 DEPLOY_PATH_dev-paseo     := /var/www/paseolidev
 DEPLOY_PATH_fyi-paseo     := /var/www/paseofyi
 DEPLOY_PATH_dev-test      := /var/www/testnetli
 
-# One cert per env covering <base>, *.<base>, and *.app.<base>. The cert
-# lands at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths
-# rendered into every server block. host.<base> is covered by *.<base>.
+# One cert per env at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths. *.<base> covers host.<base>.
 CERT_DOMAINS_polkadot     := dot.li *.dot.li *.app.dot.li
 CERT_DOMAINS_paseo        := paseo.li *.paseo.li *.app.paseo.li
 CERT_DOMAINS_dev-paseo    := paseoli.dev *.paseoli.dev *.app.paseoli.dev
@@ -44,32 +36,22 @@ CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
 
 VALID_ENVS := polkadot paseo dev-paseo fyi-paseo dev-test
 
-# Production domains (env tags) that get nginx rate-limiting in the rendered
-# config; every other env renders with rate-limiting commented out.
 RATE_LIMITED_ENVS := paseo dev-test
 
-# Optional Sentry tunnel (nginx/snippets/dotli-sentry-tunnel.conf): the
-# ingest host and project id are cut from SENTRY_DSN, which has the shape
-# https://<key>@<ingest-host>/<project-id>. Set SENTRY_DSN in deploy.env or
-# the environment (same value as VITE_SENTRY_DSN in CI).
+# Cut from SENTRY_DSN, shaped https://<key>@<ingest-host>/<project-id>.
 SENTRY_DSN ?=
 _sentry_hostpath := $(lastword $(subst @, ,$(SENTRY_DSN)))
 SENTRY_INGEST    := $(firstword $(subst /, ,$(_sentry_hostpath)))
 SENTRY_PROJECT   := $(lastword  $(subst /, ,$(_sentry_hostpath)))
 
-# Default env when none is passed on the command line.
 ENV ?= paseo
 
-# When this repo is checked out as truapi/hosts/dotli, local make builds should
-# consume the checked-out TrUAPI packages instead of the temporary npm aliases.
+# Checked out as truapi/hosts/dotli, local builds use the checked-out TrUAPI packages.
 TRUAPI_REPO ?= $(abspath ../..)
 TRUAPI_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi/package.json
 TRUAPI_HOST_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi-host/package.json
 
-# Packages required on a fresh Ubuntu 22.04+ box. The brotli module is split
-# across two packages on noble (filter + static) and both ship a drop-in in
-# /etc/nginx/modules-enabled/ so they auto-load. curl and ca-certificates
-# back certbot's API calls.
+# The brotli module is split across two packages on noble, both auto-loaded. curl and ca-certificates back certbot.
 APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
 .PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy ci-deploy-nginx deploy-nginx render-nginx _require-env _require-env-name
@@ -84,18 +66,9 @@ link-truapi-local:
 		echo "No local TrUAPI checkout found at $(TRUAPI_REPO); using package manager dependencies."; \
 	fi
 
-# ====================================================================
-# Fresh-server provisioning. Idempotent; safe to re-run.
-#
-#   make provision ENV=<env> \
-#                  ADMIN_EMAIL=<email> \
-#                  CLOUDFLARE_API_TOKEN=<token> \
-#                  [REMOTE=ubuntu@1.2.3.4]
-#
-# REMOTE defaults to the per-env mapping above; override when bringing up
-# a brand-new box. ADMIN_EMAIL is the Let's Encrypt contact; the Cloudflare
-# token needs DNS edit permission on the zone being certified.
-# ====================================================================
+# Idempotent fresh-server provisioning:
+#   make provision ENV=<env> ADMIN_EMAIL=<email> CLOUDFLARE_API_TOKEN=<token> [REMOTE=ubuntu@1.2.3.4]
+# The Cloudflare token needs DNS edit permission on the zone.
 provision: provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy deploy-nginx
 	@echo
 	@echo "Provisioning complete for ENV=$(ENV)."
@@ -107,21 +80,18 @@ provision-prereqs: _require-env
 		sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $(APT_PACKAGES); \
 		sudo rm -f /etc/nginx/sites-enabled/default'
 
-# OpenSSH allow runs first so we never lock ourselves out before enabling ufw.
+# OpenSSH first, so enabling ufw never locks us out.
 provision-firewall: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	ssh $(REMOTE_TARGET) 'sudo ufw allow OpenSSH && sudo ufw allow "Nginx Full" && sudo ufw --force enable'
 
-# Token is piped over SSH (never written locally); shows up only inside the
-# remote `tee` invocation, which lasts a few ms.
+# The token is piped over SSH and never written locally.
 provision-cloudflare-creds: _require-env
 	@test -n "$(CLOUDFLARE_API_TOKEN)" || (echo "CLOUDFLARE_API_TOKEN not set"; exit 1)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	@printf 'dns_cloudflare_api_token = %s\n' '$(CLOUDFLARE_API_TOKEN)' | ssh $(REMOTE_TARGET) 'sudo install -d -m 0700 /etc/letsencrypt && sudo tee /etc/letsencrypt/cloudflare.ini > /dev/null && sudo chmod 600 /etc/letsencrypt/cloudflare.ini && sudo chown root:root /etc/letsencrypt/cloudflare.ini'
 
-# --keep-until-expiring + --expand makes this safe to re-run; only re-issues
-# if the cert is about to expire or the SAN list changed. --cert-name pins
-# the live/<name>/ directory so it matches the nginx ssl_certificate paths.
+# --keep-until-expiring and --expand make re-runs safe. --cert-name pins live/<name>/ to the ssl_certificate paths.
 provision-cert: _require-env
 	@test -n "$(ADMIN_EMAIL)" || (echo "ADMIN_EMAIL not set"; exit 1)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
@@ -132,11 +102,7 @@ provision-renewal: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	ssh $(REMOTE_TARGET) 'sudo systemctl enable --now certbot.timer'
 
-# ====================================================================
-# Local-build deploy. The turbo build runs on this machine.
-# then only the resulting dist directories
-# are rsynced into the nginx-served paths on the remote.
-# ====================================================================
+# Builds locally, then rsyncs only the dist directories.
 deploy: _require-env build
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval REMOTE_PATH   := $(DEPLOY_PATH_$(ENV)))
@@ -153,8 +119,7 @@ RECEIVING_CSP_FILE ?=
 RECEIVING_PUSH_ORIGIN ?=
 RECEIVING_PROXY_PORT ?=
 _nginx_snippet_paths = sed 's|/etc/nginx/snippets/|$(NGINX_SNIPPETS_DIR)/|g'
-# A literal "#" goes through _hash: make >= 4.3 keeps the backslash of a "\#"
-# written inside a function call, rendering "\#" into the nginx config.
+# A literal "#" goes through _hash because make >= 4.3 keeps the backslash of a "\#" inside a function call.
 _hash := \#
 _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 	ZONE='rl_$(subst .,_,$(SITE_$(ENV)))' \
@@ -163,12 +128,11 @@ _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 	SENTRY_INGEST='$(SENTRY_INGEST)' SENTRY_PROJECT='$(SENTRY_PROJECT)' \
 	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < nginx/nginx.conf.template | $(_nginx_snippet_paths)
 
-# Warn (to stderr — render-nginx pipes stdout) instead of failing: envs
-# without Sentry are legitimate, but a silently dead tunnel is not.
+# Warns on stderr, since render-nginx pipes stdout. Envs without Sentry are legitimate, a silently dead tunnel is not.
 _sentry_warn = @test -n "$(SENTRY_DSN)" || \
 	echo "WARNING: SENTRY_DSN not set — rendering with the Sentry tunnel (/t) disabled." >&2
 
-# Preview the rendered nginx config for ENV on stdout (no remote changes).
+# Prints the rendered nginx config for ENV, with no remote changes.
 render-nginx: _require-env-name
 	@command -v envsubst >/dev/null || { echo "render-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
 	$(_sentry_warn)
@@ -214,7 +178,6 @@ rsync -avz --delete --filter='P /assets/' apps/sandbox/dist/  $(1):$(2)/app/
 rsync -avz --delete --filter='P /assets/' apps/protocol/dist/ $(1):$(2)/protocol/
 endef
 
-# CI deploy: reads DEPLOY_USER/DEPLOY_HOST/DEPLOY_PATH from env
 ci-deploy:
 	@test -n "$(DEPLOY_USER)" || (echo "ci-deploy: DEPLOY_USER not set"; exit 1)
 	@test -n "$(DEPLOY_HOST)" || (echo "ci-deploy: DEPLOY_HOST not set"; exit 1)
@@ -232,11 +195,10 @@ ci-deploy-nginx:
 	@test "$(DEPLOY_PATH)" = "$(DEPLOY_PATH_$(ENV))" || (echo "ci-deploy-nginx: DEPLOY_PATH must be $(DEPLOY_PATH_$(ENV)) for ENV=$(ENV)"; exit 1)
 	$(MAKE) deploy-nginx ENV="$(ENV)" REMOTE="$(DEPLOY_USER)@$(DEPLOY_HOST)" NGINX_SNIPPETS_DIR="/etc/nginx/snippets/$(SITE_$(ENV))"
 
-# Validates ENV is a known tag. No remote required, so render-nginx can use it.
+# No remote required, so render-nginx can use it.
 _require-env-name:
 	@test -n "$(ENV)" || (echo "ENV not set. Use ENV=<$(subst $() ,|,$(VALID_ENVS))>"; exit 1)
 	@test -n "$(DEPLOY_PATH_$(ENV))" || (echo "Unknown ENV: $(ENV). Valid: $(VALID_ENVS)"; exit 1)
 
-# Adds the remote-target requirement for targets that touch a box.
 _require-env: _require-env-name
 	@test -n "$(or $(REMOTE),$(REMOTE_FOR_$(ENV)))" || (echo "No deploy target for ENV=$(ENV). Set REMOTE_PRD/REMOTE_STG in deploy.env (copy deploy.env.example) or pass REMOTE=user@host."; exit 1)

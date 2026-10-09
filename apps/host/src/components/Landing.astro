@@ -1,0 +1,30 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Static but for its three controls, which are islands. The logo renders here with no directive, so it ships no code.
+import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
+import { LandingAuth } from '@dotli/ui/islands/LandingAuth';
+import { LandingNav } from '@dotli/ui/islands/LandingNav';
+import { LandingRecents } from '@dotli/ui/islands/LandingRecents';
+import s from './Landing.module.css';
+---
+
+<div class={s['landing']} data-testid="landing">
+  <div class={s['corner']} id="landing-auth">
+    <LandingAuth client:load />
+  </div>
+  <div class={s['center']}>
+    <div class={s['content']}>
+      <LogoSymbol height={54} />
+      {/* Sized and spaced as the guide's vertical lockup. */}
+      <h1 class={s['title']}>
+        <LogoWordmark height={25} testId="landing-wordmark" />
+        <span class={s['beta']}>β</span>
+      </h1>
+      <p class={s['subtitle']}>The decentralized web, in your browser.</p>
+      <LandingNav client:load />
+      <LandingRecents client:load />
+    </div>
+  </div>
+</div>

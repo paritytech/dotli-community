@@ -1,22 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Two-way sync between the URL and host shell settings.
-//
-// Each `*.dot.li` is its own browser origin with its own localStorage, so
-// a fresh subdomain otherwise resets every settings axis. URL params let
-// a shared link seed those settings.
-//
-// Resolution order per axis is URL, then localStorage, then default. After
-// resolution the host writes the chosen values back to both localStorage
-// and the URL (default-valued axes are stripped), so a clean
-// `acme.dot.li` URL always means "every axis at default" and a recipient
-// of a shared link sees the sender's exact configuration.
-//
-// Param names and default values are intentionally inlined here rather
-// than imported from `mode.ts`, `network.ts`, or `host-sandbox-contract.ts`.
-// They are part of the public URL contract surface and changing them
-// belongs in this file too.
+// Each subdomain is its own origin with its own localStorage, so URL params let a shared link carry settings.
+// Default-valued axes are stripped, so a clean URL means every axis at default.
+// Param names and defaults are inlined because they are the public URL contract.
 
 import { defaultNetwork, isValidNetwork, type Network } from './network.js';
 import { defaultBackend, isSharedWorkerAvailable, type Backend, type CacheSettings } from './mode.js';
@@ -52,7 +39,6 @@ export interface ParsedUrlSettings {
   skipWorkerCache: boolean | null;
 }
 
-/** Effective settings used as the input for URL canonicalisation. */
 export interface EffectiveSettings {
   network: Network;
   chainBackend: Backend;
@@ -66,7 +52,6 @@ function parseBoolean(raw: string | null): boolean | null {
   return raw === '1';
 }
 
-/** Extract per-axis settings values from a URLSearchParams. */
 export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSettings {
   const rawNetwork = search.get(URL_PARAM_NAMES.network);
   const rawBackend = search.get(URL_PARAM_NAMES.chainBackend);

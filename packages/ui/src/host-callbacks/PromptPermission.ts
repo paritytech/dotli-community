@@ -1,16 +1,8 @@
-// Core-owned prompts return a decision; Rust commits it against the permission
-// revision captured before prompting. Writing the grant here would invalidate
-// that compare-exchange and turn an approval into Permission denied.
-//
-// "Always allow" and "Deny" are durable. Generic permission grants appear in
-// the topbar permissions menu; JAM peer decisions are keyed by product and
-// genesis in the core. Submit and notification one-time grants are consumed
-// by the next operation. A JAM peer one-time grant authorizes the running
-// peer session. Iframe `allow`-gated permissions offer no one-time grant:
-// granting reloads the product into a new execution.
-// Auto-grants answer `AllowOnce` so the core records nothing the user never
-// saw. Each instance serves one product, so the product the core passes is
-// already known as `label`.
+// Core-owned prompts return a decision; Rust commits it against the captured permission revision.
+// Writing a grant here would invalidate that compare-exchange and reject the approval.
+// The core keeps "Allow once" for the current execution, so it is offered only where the core is the
+// gate. A grant gated by the iframe `allow` attribute reloads the product into a new execution, which
+// would drop it. Auto-grants answer `AllowOnce` so the core records nothing the user never saw.
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions } from '@parity/truapi-host';
@@ -29,10 +21,8 @@ import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js
 import { ERRORS } from '../errors.js';
 import { recordPermissionChange } from '../state/permissions.js';
 
-// Remote tags that don't reach a host enforcement point: WebRtc is gated
-// by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
-// reliably intercepted from inside the sandbox. Auto-grant either.
-// `JamPeers` carries its genesis and has its own prompt.
+// WebRtc is gated by the iframe `allow` attribute and `Remote` (HTTP/WS) cannot be intercepted
+// reliably from the sandbox, so both are auto-granted. JamPeers has its own genesis-scoped prompt.
 function gatedRemotePermissionName(
   tag: Exclude<RemotePermission['tag'], 'JamPeers'>,
 ): EnforceablePermissionName | null {
@@ -53,8 +43,7 @@ export function createPromptPermission(
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
-    // OpenUrl has no host-side enforcement point; auto-grant rather than show
-    // a modal whose deny button cannot block the underlying browser API.
+    // OpenUrl has no host-side enforcement point, so a deny button could not block it.
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
@@ -136,9 +125,7 @@ async function decidePromptPermissionWhenActive(
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === 'granted') {
-    // The status also reflects a pending one-time grant, so answering
-    // AllowAlways here would quietly make it permanent. AllowOnce leaves a
-    // saved grant untouched.
+    // The status also reflects a pending one-time grant, which AllowAlways would quietly make permanent.
     return 'AllowOnce';
   }
   if (status === 'denied') {
@@ -154,7 +141,6 @@ async function decidePromptPermissionWhenActive(
     });
     return 'Deny';
   }
-  // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
@@ -178,10 +164,8 @@ async function decidePromptPermissionWhenActive(
     throwIfAborted(signal);
   }
   if (gatedByIframe) {
-    // Device permissions are also gated by the iframe `allow` attribute,
-    // which is fixed at iframe load time. Reload so the next attempt sees
-    // the updated attribute. Defer to the next tick so the prompt response
-    // can flush before the iframe is disposed.
+    // The iframe `allow` attribute is fixed at load, so reload, a tick later so the prompt response
+    // flushes before the iframe is disposed.
     setTimeout(() => {
       if (signal.aborted) {
         return;
@@ -189,8 +173,7 @@ async function decidePromptPermissionWhenActive(
       recordPermissionChange({ kind: 'device', label, permission: name });
     }, 0);
   } else {
-    // No browser-level gate, so the grant takes effect as is. The event keeps
-    // the permissions button in sync.
+    // Keeps the permissions button in sync.
     recordPermissionChange({ kind: 'grant', label, permission: name });
   }
   return decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';

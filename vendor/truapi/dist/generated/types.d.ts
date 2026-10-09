@@ -288,6 +288,9 @@ export declare const ChatRoomParticipation: S.Codec<ChatRoomParticipation>;
 /** Whether the room was newly created or already existed. */
 export type ChatRoomRegistrationStatus = "New" | "Exists";
 export declare const ChatRoomRegistrationStatus: S.Codec<ChatRoomRegistrationStatus>;
+/** Code formats the host scanner reads: the set both platform decoders share. */
+export type CodeFormat = "Qr" | "Aztec" | "DataMatrix" | "Pdf417" | "Ean13" | "Ean8" | "UpcE" | "Code128" | "Code39" | "Code93" | "Itf" | "Codabar";
+export declare const CodeFormat: S.Codec<CodeFormat>;
 /** Standardized encrypted Coinage secret transmission payload. */
 export interface CoinPaymentCheque {
     /** Receivable public key protecting the cheque contents. */
@@ -704,6 +707,30 @@ export type VersionedHostAccountSignVrfResponse =
     value: VrfSignature;
 };
 export declare const VersionedHostAccountSignVrfResponse: S.Codec<VersionedHostAccountSignVrfResponse>;
+/** Versioned envelope for [`HostCancelNextGameError`]. */
+export type VersionedHostCancelNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostCancelNextGameError: S.Codec<VersionedHostCancelNextGameError>;
+/** Versioned envelope for [`HostCancelNextGameRequest`]. */
+export type VersionedHostCancelNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostCancelNextGameRequest;
+};
+export declare const VersionedHostCancelNextGameRequest: S.Codec<VersionedHostCancelNextGameRequest>;
+/** Versioned envelope for [`HostCancelNextGameResponse`]. */
+export type VersionedHostCancelNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostCancelNextGameResponse: S.Codec<VersionedHostCancelNextGameResponse>;
 /** Versioned envelope for [`HostChatActionSubscribeError`]. */
 export type VersionedHostChatActionSubscribeError = 
 /** Version 1 payload. */
@@ -1208,6 +1235,30 @@ export type VersionedHostDevicePermissionResponse =
     value: HostDevicePermissionResponse;
 };
 export declare const VersionedHostDevicePermissionResponse: S.Codec<VersionedHostDevicePermissionResponse>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownError`]. */
+export type VersionedHostExpandedCardSetFaceShownError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownError;
+};
+export declare const VersionedHostExpandedCardSetFaceShownError: S.Codec<VersionedHostExpandedCardSetFaceShownError>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownRequest`]. */
+export type VersionedHostExpandedCardSetFaceShownRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownRequest;
+};
+export declare const VersionedHostExpandedCardSetFaceShownRequest: S.Codec<VersionedHostExpandedCardSetFaceShownRequest>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownResponse`]. */
+export type VersionedHostExpandedCardSetFaceShownResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostExpandedCardSetFaceShownResponse: S.Codec<VersionedHostExpandedCardSetFaceShownResponse>;
 /** Versioned envelope for [`HostFeatureSupportedError`]. */
 export type VersionedHostFeatureSupportedError = 
 /** Version 1 payload. */
@@ -2575,6 +2626,30 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export declare const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [`HostRemindNextGameError`]. */
+export type VersionedHostRemindNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameError;
+};
+export declare const VersionedHostRemindNextGameError: S.Codec<VersionedHostRemindNextGameError>;
+/** Versioned envelope for [`HostRemindNextGameRequest`]. */
+export type VersionedHostRemindNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameRequest;
+};
+export declare const VersionedHostRemindNextGameRequest: S.Codec<VersionedHostRemindNextGameRequest>;
+/** Versioned envelope for [`HostRemindNextGameResponse`]. */
+export type VersionedHostRemindNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostRemindNextGameResponse: S.Codec<VersionedHostRemindNextGameResponse>;
 /** Versioned envelope for [`HostRendererActionSubscribeError`]. */
 export type VersionedHostRendererActionSubscribeError = 
 /** Version 1 payload. */
@@ -2647,6 +2722,30 @@ export type VersionedHostRequestResourceAllocationResponse =
     value: HostRequestResourceAllocationResponse;
 };
 export declare const VersionedHostRequestResourceAllocationResponse: S.Codec<VersionedHostRequestResourceAllocationResponse>;
+/** Versioned envelope for [`HostScannerScanError`]. */
+export type VersionedHostScannerScanError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanError;
+};
+export declare const VersionedHostScannerScanError: S.Codec<VersionedHostScannerScanError>;
+/** Versioned envelope for [`HostScannerScanRequest`]. */
+export type VersionedHostScannerScanRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanRequest;
+};
+export declare const VersionedHostScannerScanRequest: S.Codec<VersionedHostScannerScanRequest>;
+/** Versioned envelope for [`HostScannerScanResponse`]. */
+export type VersionedHostScannerScanResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanResponse;
+};
+export declare const VersionedHostScannerScanResponse: S.Codec<VersionedHostScannerScanResponse>;
 /**
  * Full Substrate extrinsic signing payload with all fields needed for signature
  * generation.
@@ -3758,12 +3857,14 @@ export type RemotePermission =
     value?: undefined;
 }
 /**
- * Read-only peer access over JAMNP-S QUIC/WebTransport to the validators
- * of one JAM chain, through the `JamPeerTransport` service.
+ * Peer access over JAMNP-S QUIC/WebTransport, authorized for the full
+ * genesis hash through the `JamPeerTransport` service.
  *
- * The app names the endpoints it dials; the grant covers only peers of
- * `genesis`. Every byte received is untrusted, and the grant carries no
- * account, signing or submission authority.
+ * The app names endpoints and pinned keys. Native QUIC negotiates the
+ * genesis-derived ALPN; WebTransport negotiates HTTP/3. Neither proves
+ * chain membership. The guest must verify chain data itself. The grant
+ * carries no host account, signing or submission authority and does not
+ * restrict which framed protocol messages the guest sends.
  */
  | {
     tag: "JamPeers";
@@ -4144,6 +4245,27 @@ export type RuntimeType =
     };
 };
 export declare const RuntimeType: S.Codec<RuntimeType>;
+/**
+ * How a scan ended.
+ *
+ * A dismissal is an outcome rather than an error, because it is worth
+ * offering again.
+ */
+export type ScanOutcome = 
+/** The user scanned a code the request accepts. */
+{
+    tag: "Scanned";
+    value: {
+        text: string;
+        format: CodeFormat;
+    };
+}
+/** The user closed the viewfinder without scanning. */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+};
+export declare const ScanOutcome: S.Codec<ScanOutcome>;
 /** Outline of a background or border. */
 export type Shape = 
 /** Rounded corners with the given radius. */
@@ -4610,6 +4732,10 @@ export interface HostAccountSignVrfRequest {
     items: Array<VrfTranscriptItem>;
 }
 export declare const HostAccountSignVrfRequest: S.Codec<HostAccountSignVrfRequest>;
+/** Request to drop this product's reminder. */
+export interface HostCancelNextGameRequest {
+}
+export declare const HostCancelNextGameRequest: S.Codec<HostCancelNextGameRequest>;
 /** A chat action received from the host. */
 export interface HostChatActionSubscribeItem {
     /** Room where the action occurred. */
@@ -5040,6 +5166,32 @@ export interface HostDevicePermissionResponse {
     granted: boolean;
 }
 export declare const HostDevicePermissionResponse: S.Codec<HostDevicePermissionResponse>;
+/** Face visibility change failure. */
+export type HostExpandedCardSetFaceShownError = 
+/** The Widget is not shown under its card right now. */
+{
+    tag: "NotPresented";
+    value?: undefined;
+}
+/** The user is moving the face; the request had no effect. */
+ | {
+    tag: "UserMoving";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostExpandedCardSetFaceShownError: S.Codec<HostExpandedCardSetFaceShownError>;
+/** Request to show or hide the face above the calling Widget. */
+export interface HostExpandedCardSetFaceShownRequest {
+    /** `true` brings the face back, `false` moves it out of the way. */
+    shown: boolean;
+}
+export declare const HostExpandedCardSetFaceShownRequest: S.Codec<HostExpandedCardSetFaceShownRequest>;
 /** Request to query whether a feature is supported by the host. */
 export type HostFeatureSupportedRequest = 
 /** Ask whether the host can interact with the chain identified by genesis hash. */
@@ -5138,8 +5290,9 @@ export declare const HostJamPeerTransportDialError: S.Codec<HostJamPeerTransport
 /** Dial one JAM peer over JAMNP-S (QUIC) or WebTransport. */
 export interface HostJamPeerTransportDialRequest {
     /**
-     * Genesis header hash; the host derives the ALPN from it and requires a
-     * `RemotePermission::JamPeers` grant for it.
+     * Genesis header hash authorizing this dial. Native QUIC derives its
+     * ALPN from the first four bytes; WebTransport negotiates HTTP/3.
+     * Neither transport authenticates the peer's chain membership.
      */
     genesis: HexString;
     /** Peer IP address, IPv6 or v4-mapped IPv6. */
@@ -5871,6 +6024,15 @@ export interface HostPushNotificationResponse {
     id: number;
 }
 export declare const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse>;
+/** Why a reminder was not taken. */
+export type HostRemindNextGameError = "StartsInPast";
+export declare const HostRemindNextGameError: S.Codec<HostRemindNextGameError>;
+/** Request to remind the user when this product's next game starts. */
+export interface HostRemindNextGameRequest {
+    /** Milliseconds since the Unix epoch, UTC, at which the game starts. */
+    startsAt: bigint;
+}
+export declare const HostRemindNextGameRequest: S.Codec<HostRemindNextGameRequest>;
 /** An action triggered inside a product-rendered body. */
 export interface HostRendererActionSubscribeItem {
     /** Where the body lives. */
@@ -5916,6 +6078,75 @@ export interface HostRequestResourceAllocationResponse {
     outcomes: Array<AllocationOutcome>;
 }
 export declare const HostRequestResourceAllocationResponse: S.Codec<HostRequestResourceAllocationResponse>;
+/**
+ * Error returned by the scanner.
+ *
+ * A host with no scanner answers `Unsupported` at the framework level rather
+ * than through this enum.
+ */
+export type HostScannerScanError = 
+/** The device has no camera, or the user refused the host application one. */
+{
+    tag: "CameraUnavailable";
+    value?: undefined;
+}
+/** Another scan is open. */
+ | {
+    tag: "Busy";
+    value?: undefined;
+}
+/**
+ * The calling execution is not on screen, and is not a Worker handling a
+ * tap from the user, so no viewfinder was opened.
+ */
+ | {
+    tag: "NotVisible";
+    value?: undefined;
+}
+/** The request breaks a limit, so no viewfinder was shown. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostScannerScanError: S.Codec<HostScannerScanError>;
+/**
+ * Request to open the host's scanner.
+ *
+ * The host draws the viewfinder and writes its title, naming the product.
+ * Only `hint` is product text, shown as one plain line under the title.
+ */
+export interface HostScannerScanRequest {
+    /** Formats the product accepts. At least one. */
+    formats: Array<CodeFormat>;
+    /**
+     * Start the text must have, compared ignoring ASCII letter case, since QR
+     * codes often carry URLs in capitals. At most 256 bytes of UTF-8.
+     */
+    prefix?: string;
+    /**
+     * What to point the camera at, shown as the product's words. At most 80
+     * Unicode scalar values (`[...hint].length` in TypeScript). No control
+     * characters, line or paragraph separators, or bidirectional formatting
+     * characters.
+     */
+    hint?: string;
+}
+export declare const HostScannerScanRequest: S.Codec<HostScannerScanRequest>;
+/** Outcome of a scan. */
+export interface HostScannerScanResponse {
+    /** How the scan ended. */
+    outcome: ScanOutcome;
+}
+export declare const HostScannerScanResponse: S.Codec<HostScannerScanResponse>;
 /** Signing operation error. */
 export type HostSignPayloadError = 
 /** Payload could not be deserialized. */

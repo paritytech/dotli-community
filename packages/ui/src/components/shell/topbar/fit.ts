@@ -4,24 +4,16 @@
 /** The priority of an item that never collapses (the account button). */
 export const PINNED = Number.POSITIVE_INFINITY;
 
-/**
- * How early each topbar item moves into the More menu when the bar runs out
- * of room: the lowest goes first.
- */
+/** How early each item moves into More when the bar runs out of room, the lowest first. */
 export const TOPBAR_PRIORITY = {
   settings: 1,
-  theme: 2,
-  permissions: 3,
-  chat: 4,
-  network: 5,
+  permissions: 2,
+  chat: 3,
+  network: 4,
   auth: PINNED,
 } as const;
 
-/**
- * The nearest ancestor of `el` that lays out a box. An island hydrates inside
- * an `<astro-island>` drawn with `display: contents`, which has no size of its
- * own, so the pill row is the first ancestor past it.
- */
+/** The nearest ancestor that lays out a box, past the `display: contents` `<astro-island>` an island hydrates in. */
 export function layoutParent(el: Element): HTMLElement | null {
   let parent = el.parentElement;
   while (parent !== null && getComputedStyle(parent).display === 'contents') {
@@ -31,18 +23,14 @@ export function layoutParent(el: Element): HTMLElement | null {
 }
 
 export interface FitItem {
-  /** The item's own width, in pixels. */
   width: number;
   /** See TOPBAR_PRIORITY. */
   priority: number;
 }
 
 /**
- * Which of `items` (the visible ones, in bar order) collapse into the More
- * menu so that the rest, with `gap` between neighbours and the More button
- * (`moreWidth`) once anything collapsed, fit in `available`. Items collapse
- * by ascending priority, the earlier of two equal ones first, until the rest
- * fit or only pinned items are left. Returns one flag per item.
+ * Which visible `items`, in bar order, collapse into More so the rest fit in `available`, More included once
+ * anything collapsed. The lowest priority goes first, the earlier of equals first.
  */
 export function fitActions(items: readonly FitItem[], available: number, gap: number, moreWidth: number): boolean[] {
   const collapsed = items.map(() => false);

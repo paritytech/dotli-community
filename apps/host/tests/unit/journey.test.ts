@@ -6,7 +6,6 @@ import { markContinuation } from '@dotli/shared';
 
 import { beginAttempt, endJourney } from '../../src/journey.js';
 
-/** Make the page look like it was reached by `type`. */
 function navigatedBy(type: NavigationTimingType): void {
   vi.spyOn(performance, 'getEntriesByType').mockReturnValue([{ type } as PerformanceNavigationTiming]);
 }

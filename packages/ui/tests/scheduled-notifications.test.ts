@@ -54,8 +54,7 @@ async function ticks(n: number): Promise<void> {
   }
 }
 
-// The runtime keeps module state (initialized once per page), so each test
-// loads a fresh copy.
+// The runtime keeps module state, so each test loads a fresh copy.
 async function start(): Promise<void> {
   vi.resetModules();
   const { initScheduledNotifications } = await import('../src/scheduled-notifications.js');
@@ -70,7 +69,7 @@ describe('scheduled notifications poller', () => {
     storage.removeStale.mockResolvedValue(0);
     storage.removeById.mockResolvedValue(true);
     storage.listAll.mockResolvedValue([{ ...due, scheduledAt: Date.now() + 3_600_000 }]);
-    // happy-dom has `navigator.locks` but leaves it null; a lone tab always gets the lock.
+    // happy-dom has `navigator.locks` but leaves it null. A lone tab always gets the lock.
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
       value: { request: (_name: string, _opts: unknown, run: (lock: object) => unknown) => run({}) },

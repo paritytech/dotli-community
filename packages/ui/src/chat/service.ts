@@ -1,14 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Product chat domain: room/message persistence, the live product
-// connection registry, and the window events the chat panel renders from.
-//
-// Product chat is a local conversation between the user and the loaded
-// product. The product drives its side over TrUAPI (`chat.create_room`,
-// `chat.post_message`); the user's replies go back to the product through
-// the core's `chat.action_subscribe` stream via `publishChatAction` on the
-// worker host runtime. Nothing leaves the device.
+// Product chat is a local conversation with the loaded product, and nothing leaves the device. User
+// replies and custom-message taps go back through the worker host runtime's action streams.
 
 import type {
   ChatMessageContent,
@@ -37,11 +31,10 @@ import { recordBotsChanged, recordMessage, recordRoomsChanged } from '../state/c
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
 
-/** Window event: a product's room list changed. Detail: `{ productId }`. */
+/** Detail: `{ productId }`. */
 export const CHAT_ROOMS_CHANGED_EVENT = 'dotli:chat-rooms-changed';
-/** Window event: a product's bot registry changed. Detail: `{ productId }`. */
+/** Detail: `{ productId }`. */
 export const CHAT_BOTS_CHANGED_EVENT = 'dotli:chat-bots-changed';
-/** Window event: a message was appended. Detail: `{ productId, roomId, author }`. */
 export const CHAT_MESSAGE_EVENT = 'dotli:chat-message';
 
 export interface ChatMessageEventDetail {
@@ -60,11 +53,7 @@ export interface ChatConnection {
 
 const connections = new Map<string, ChatConnection>();
 
-/**
- * Register the publish handle for a product's live Chat connection.
- * Returns the matching unregister; a stale unregister (after a newer
- * registration for the same product) is a no-op.
- */
+/** A stale unregister, after a newer registration for the same product, is a no-op. */
 export function registerChatConnection(productId: string, connection: ChatConnection): () => void {
   connections.set(productId, connection);
   return () => {
@@ -74,8 +63,7 @@ export function registerChatConnection(productId: string, connection: ChatConnec
   };
 }
 
-/** Product-initiated room creation. A repeat for an existing (productId,
- *  roomId) refreshes the room's name and icon, so always notify. */
+/** A repeat for an existing room refreshes its name and icon, so it always notifies. */
 export async function productCreateRoom(
   productId: string,
   room: { roomId: string; name: string; icon: string },
@@ -85,7 +73,6 @@ export async function productCreateRoom(
   return status;
 }
 
-/** Product-authored message. Returns the assigned message id. */
 export async function productPostMessage(
   productId: string,
   roomId: string,
@@ -109,12 +96,8 @@ export async function productPostMessage(
 }
 
 /**
- * User-authored text message from the chat panel. Requires a live Chat
- * connection up front, so a message that provably cannot reach the product
- * is never stored looking sent. After that it persists locally, then
- * publishes a `MessagePosted` action into the product's
- * `chat.action_subscribe` stream; a late publish failure (denied, worker
- * gone mid-call) surfaces to the caller without losing the stored message.
+ * Requires a live connection up front, so a message that cannot reach the product is never stored
+ * looking sent. A later publish failure surfaces without losing the stored message.
  */
 export async function userPostMessage(productId: string, roomId: string, text: string): Promise<void> {
   const connection = connections.get(productId);
@@ -267,10 +250,8 @@ export function createRendererImageLoader(archiveCid?: string): ChatConnection['
 }
 
 /**
- * Ask the live product to draw one stored custom message, streaming
- * replacement trees into `sink` until the returned disposer is called.
- * Without a live connection the sink fails immediately; the stored message
- * stays and the next render attempt can succeed.
+ * Streams replacement trees into `sink` until disposed. Without a live connection the sink fails at
+ * once, and the stored message stays for a later render.
  */
 export function render(productId: string, request: ProductRendererRenderRequest, sink: RenderSink): () => void {
   const connection = connections.get(productId);
@@ -281,11 +262,7 @@ export function render(productId: string, request: ProductRendererRenderRequest,
   return connection.render(request, sink);
 }
 
-/**
- * Register a product bot identity. Host-owned and persisted with the rooms
- * it belongs to, so a re-registration after reload resolves to `Exists` and
- * refreshes the stored name and icon.
- */
+/** Persisted with its rooms, so a re-registration after reload resolves to `Exists` and refreshes name and icon. */
 export async function registerBot(
   productId: string,
   bot: { botId: string; name: string; icon: string },
@@ -295,22 +272,22 @@ export async function registerBot(
   return status;
 }
 
-/** Registered bots of one product, registration order. */
+/** In registration order. */
 export function chatBots(productId: string): Promise<ChatBotRecord[]> {
   return listBots(productId);
 }
 
-/** Latest message timestamp per room, for contact-list ordering. */
+/** For contact-list ordering. */
 export function chatLatestMessageTimes(productId: string): Promise<Map<string, number>> {
   return latestMessageTimestamps(productId);
 }
 
-/** Rooms of one product, creation order. */
+/** In creation order. */
 export function chatRooms(productId: string): Promise<ChatRoomRecord[]> {
   return listRooms(productId);
 }
 
-/** Messages of one room, insertion order. */
+/** In insertion order. */
 export function chatMessages(productId: string, roomId: string): Promise<ChatMessageRecord[]> {
   return listMessages(productId, roomId);
 }

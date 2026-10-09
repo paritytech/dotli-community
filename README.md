@@ -36,7 +36,8 @@ When visiting the root (`paseo.li`), a landing page is shown with:
 - **Recently visited** apps shown as pill-shaped shortcuts (persisted in localStorage)
 - A **login** button in the top-right corner
 
-The topbar is hidden on the landing page and only appears when viewing an app.
+It is its own page (`landing.html`), with no topbar and no service worker. The topbar and the offline shell belong to
+the app pages (`index.html`) on each app's subdomain.
 
 ## Architecture
 
@@ -113,8 +114,8 @@ through a Service Worker that acts as a virtual file system.
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
-Both resolution backends retry a stopped chain generation once at the resolver boundary, using a fresh client and the
-remaining original sync budget. A second stop is returned to the caller; protocol callers do not add another retry.
+Both resolution backends retry stopped chain generations at the resolver boundary, up to four attempts with the
+remaining original sync budget. Protocol callers do not add another retry.
 
 The browser regression injects a stop into a real RPC storage read; replacing the whole resolver would bypass this
 recovery boundary.
@@ -132,7 +133,8 @@ The native connection stays open across a halt: queued requests receive terminal
 same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
 retires its URL generation under a shared-origin Web Lock before the iframe reports fatal. Tabs in the same storage
 partition share the replacement generation; late callbacks cannot retire it. Recovery does not require closing other
-tabs.
+tabs. The debug test wallet is an exception when its protocol iframe is removed: that iframe owns its exclusive signing
+lock, so the wallet core must stop before removal and acquire a new lock before retrying.
 
 ## How multi-file SPAs work
 
@@ -256,10 +258,11 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the `0.3.2-rc.7` release candidate, including exact binary32 add/multiply intrinsics and direct
-translated float continuation, while retaining the heap-backed fiber-stack fix, resize-safe offscreen resources,
-runtime-registered streamed file input, private caches, and gas-sliced translated updates. The TrUAPI host SDK remains
-separately pinned; these runtime changes do not replace its Chat, profile, transport, or Media APIs. Synchronization
+The current pin is the GitHub-only `0.3.2-rc.9` release candidate. It combines bounded WebGPU recovery, replacement-device
+resize limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and forward dispatch.
+Exact binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe offscreen resources,
+streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays separately pinned;
+these runtime changes do not replace its Chat, profile, transport or Media APIs. Synchronization
 verifies the package's complete checksum inventory, including its session API and type declarations, but serves only the
 host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt`
 alongside those artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
@@ -342,6 +345,12 @@ After a committed permission change, the bridge matches the canonical product id
 Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps the
 requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
 
+A fresh product-document handshake retires the previous native execution before attaching its replacement. Pending
+permission prompts and execution-local grants cannot cross that boundary; repeated readiness messages with the same
+connection identifier remain idempotent. Connection creation is single-flight, and a superseded result is closed rather
+than attached to a newer document. The host keeps its wallet lease while replacing the product execution, so this does
+not sign the user out or discard lasting grants.
+
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
@@ -422,17 +431,37 @@ The project uses npm workspaces and [Turborepo](https://turbo.build).
 nvm use                  # or any Node 26 install
 npm install -g npm@latest
 npm install
-npm run preview          # Build + serve both apps on localhost:5173
+export VITE_NETWORKS=paseo-next-v2,previewnet
+npm run dev              # Dev servers with hot reload on localhost:4321
+npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
 ```
 
-This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the unified host-rust-core
-runtime. `vendor/truapi-host.lock.json` records the source revisions, archive hashes, `dist/generated/client.js` digest,
-and signing-host WASM digest. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
-dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
+`npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
+protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
+such as the shell's offline service worker.
+
+This branch vendors the integrated TrUAPI 0.24.0 SDK from source
+`e48777643c52278769a6bac724c7f6577cb87197`, recorded in `vendor/truapi-host.lock.json`.
+The browser wallet uses the production `--web-only --signing-host` build, without `test-host`. Its archive inventory
+comes from `npm pack`, with stale compiled files lacking a matching upstream TypeScript source and non-web Wasm
+removed in a temporary staging directory before packing. The recorded archive hashes precede the local
+`@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound notification activation
+are preserved above the generic browser runtime and wallet layer. This integration combines Profile disclosure,
+contacts and presentation fences with the separate JamPeerTransport layer and background receiving.
+Replacing a product document retires its execution, receiving registration, avatars and labels immediately;
+the new execution receives fresh capability callbacks.
+Locale timestamp batches use the SDK's browser `Intl` implementation.
+Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery
+opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame.
+Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
 ```
+
+The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either
+page loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity
+before binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
 
 When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
 
@@ -459,7 +488,8 @@ real halt-error definitions without loading the browser transport implementation
 
 Local development uses wildcard subdomains:
 
-- `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
+- `host-playground.localhost:4321` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
+  via the host
 
 ### Product locale and local time
 
@@ -469,7 +499,7 @@ that zone's historical offset and daylight-saving rules; its canonical Gregorian
 display language. Products should use that date for day grouping rather than slicing a UTC timestamp.
 
 The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
-bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
+bundle, and production browser WASM digest. Each browser stack layer vendors its matching native feature layer.
 
 ### Running the functional browser suite locally
 
@@ -580,12 +610,11 @@ echo "Signing-host source: https://github.com/paritytech/host-rust-core/commit/$
 "$SIGNING_HOST_BIN" --version
 ```
 
-To qualify this branch's vendored SDKs, build dotli without linking a different SDK checkout, then run the host
-workspace suite with explicit CLI and product paths:
+Set `SIGNING_HOST_BIN` to the source-matched binary. Build dotli without linking a different SDK checkout, then run
+the host workspace suite with the product paths:
 
 ```bash
 VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
-SIGNING_HOST_BIN=/path/to/pinned-host-rust-core/target/debug/truapi-host \
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
 SIGNING_HOST_NETWORK=paseo-next-v2 \
@@ -609,13 +638,11 @@ E2E_CHAIN_BACKEND=smoldot-shared-worker npm run --workspace apps/host test:e2e:l
 `apps/host`. Without it the suite looks up `truapi-host` on `PATH`; ensure that binary was built from the same lock
 revision and disable self-updates with `TRUAPI_HOST_NO_UPDATE=1`. Rebuild when the lock revision changes, including when
 switching between generic and Chat branches. Set `SIGNING_HOST_NETWORK` when testing against a non-default network. The
-CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. The adapter uses canonical `--session`
-selection with a unique bare username stem saved in `.dotli-e2e-session` under that state directory. Set
-`SIGNING_HOST_SESSION` to choose a stem or an existing exact numbered username. A new stem must contain at least six
-lowercase ASCII letters (digits and separators do not count). Repeated pairing attempts and runs reuse the same base
-path and session, including unfinished setup. The first run provisions an account and can take a few minutes. With
-`HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI diagnostics redact pairing deeplinks, the configured
-mnemonic, and labeled recovery phrases; never attach the CLI's private account/session files to reports.
+CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a
+fresh lowercase username base: an unsuccessful attempt may already have claimed its name. Account provisioning and
+ring inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI
+diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach the CLI's
+private account/session files to reports.
 
 Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
 process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
@@ -625,6 +652,9 @@ process that auto-signs for the rest of the run, and runs the same host-product 
 The deployment smoke suites load published products through the deployed host, not the localhost fixture. The TrUAPI
 suite exercises 19 wallet-free capabilities without pairing a signer or writing to the chain; it does not replace paired
 E2E.
+
+The deployment workflow runs both suites against each deployed environment: `paseoli.dev` for `main`, the selected
+development environment for a deployment-labelled PR, and both `paseo.li` and `testnet.li` for a published release.
 
 The PolkaVM playground smoke passively verifies a canonical handshake request and its correlated `Result::Ok` reply, not
 merely increasing request/response counters. Input waits for a rendered frame and host loader dismissal, then uses an
@@ -642,8 +672,9 @@ scenarios exercise a fresh visit without opting in. On production `dot.li`, the 
 default applies only when no valid preference has been saved.
 
 The `echat` smoke stays signed out: it cancels the initial sign-in request, uses the guest's Retry button to open a
-fresh host prompt, cancels again, and checks redraw and resize. An idle, demand-driven UI need not publish continuous
-update telemetry. The game scenarios retain their continuous rendering, audio, and input checks.
+fresh host prompt, cancels again, and checks redraw and resize. Each cancellation checks for a redraw relative to the
+pre-click frame count: a demand-driven UI may finish that redraw before its host response is observed and need not
+publish another frame while idle. The game scenarios retain their continuous rendering, audio, and input checks.
 
 ```bash
 cd apps/host
@@ -697,7 +728,9 @@ select Wallet. Status changes do not change this button; verification, pending c
 Wallet tab. Wallet shares the pane's existing bottom/right docking and resizing controls. Right docking reserves page
 width for both the landing page and product content. There is no separate wallet window or docking preference. Normal
 login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does
-**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved.
+**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved. In a debug
+build, unavailable wallet storage does not block Mobile startup when no wallet is configured. A configured wallet's
+restoration failure or a wallet conflict is still surfaced; it never silently switches the signing identity.
 
 Start with **Use test wallet** and accept the warning to create or reuse a browser-local test identity. Username
 controls appear only after activation completes. A newly created or imported wallet looks up its Lite username on chain
@@ -808,6 +841,10 @@ moves the wallet, so two tabs cannot bounce it between them. If the tab that has
 **Test wallet is open in another tab**; close the other tab and reload. Ownership requires the browser's Web Locks API;
 there is no unlocked fallback. A handover acknowledges release only after the previous owner's signing workers,
 including workers still booting, have stopped. An unresponsive owner is never forcibly bypassed after a timeout.
+Protocol-frame reset and page hiding (including entry into the back/forward cache) also retire signing workers before
+their frame-owned lock is released. Returning to that page requires fresh wallet verification and a new ownership lease.
+After a handover, only the banner's user-initiated reload can reacquire ownership; background identity requests are
+rejected.
 
 Safari keeps each app's storage separate, so there every app has its own test wallet and the one-tab rule only covers
 tabs of the same app. Importing the same recovery phrase into two apps runs two copies of one wallet with nothing
@@ -832,8 +869,10 @@ wallet custody and wallet/network namespaces. A network without a configured reg
 
 Profiles and contact-avatar layers are Solid host surfaces attached to the product's connection to the shared page core.
 Closing or retiring the connection aborts pending loads, removes its drawer and avatars, and releases decrypted image
-URLs. Profile content is self-described; verified Chat attribution confirms who shared a reference, not who an image
-depicts.
+URLs. Sign-out, account replacement and paired-session storage changes also retire that session's profile UI without
+preventing a later session from presenting on the same connection. Mood rings disappear when their lifetime expires,
+including in an already-open drawer. Profile content is self-described; verified Chat attribution confirms who shared a
+reference, not who an image depicts.
 
 Opening a contact without a received, live profile reference still opens the host drawer. It shows the host-verified
 contact name and **No information shared with you yet**, without an error style or an indefinite spinner. It does not

@@ -3,10 +3,7 @@
 
 import type { EnforceablePermissionName } from './permissions.js';
 
-/**
- * Each permission's board icon as one 24 px path, drawn by the permissions
- * menu's rows and, through iconMarkup, by its request prompt.
- */
+/** Each permission's icon as one 24 px path. */
 export const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, string>> = {
   Notifications: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9m4.3 13a1.94 1.94 0 0 0 3.4 0',
   Camera:

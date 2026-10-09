@@ -21,7 +21,7 @@ import s from './SingleDetail.module.css';
 
 interface SingleDetailProps {
   event: StoredEvent;
-  /** The event's group, the event included. */
+  /** Includes the event itself. */
   group: StoredEvent[];
   first: StoredEvent | undefined;
   onSelectPair: (seq: EventSeq) => void;

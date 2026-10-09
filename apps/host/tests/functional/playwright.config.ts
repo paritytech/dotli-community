@@ -4,8 +4,8 @@
 import { defineConfig } from '@playwright/test';
 import { baseConfig, previewServer } from '../playwright.base.config.js';
 
-// Published-product tests share remote RPC and gateway services. Keep one
-// worker by default; opt into parallel runs with FUNCTIONAL_WORKERS.
+// One by default: every cold load downloads a ~14 MB CAR from an uncached gateway, so parallel workers only
+// contend for it. Raise once paritytech/devops#5734 is fixed.
 const WORKERS = Number(process.env['FUNCTIONAL_WORKERS'] ?? '1');
 
 export default defineConfig({
@@ -19,11 +19,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   outputDir: './test-results',
-  // Each worker gets its own preview server (`PORT` in ../env.ts picks it by
-  // TEST_PARALLEL_INDEX). The server holds process-wide state that tests must
-  // not share: `network-transport.spec.ts` counts `smoldot.active` points out
-  // of its metrics buffer, where nothing identifies the test that produced a
-  // point, and every test wipes and reseeds its mode-sync store.
+  // One preview server per worker: its metrics buffer and mode-sync store are process-wide, and tests must not
+  // share them.
   workers: WORKERS,
   fullyParallel: true,
   webServer: Array.from({ length: WORKERS }, (_, i) => {

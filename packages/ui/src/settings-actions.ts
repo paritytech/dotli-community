@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the settings popover (components/shell/SettingsPopover.tsx) does
-// besides rendering: persist the chosen settings and reload, wipe this
-// origin's state, and gather the diagnostics it shows and shares. Solid-free
-// and eager: the host's boot calls wipeOriginState when a URL changes the
-// settings, before any island has loaded.
+// Settings persistence, origin wipes and diagnostics. Solid-free and eager because the host's boot
+// calls wipeOriginState when a URL changes the settings, before any island has loaded.
 
 import { formatAppVersion, getActiveAppManifest, getActiveRootManifest, log, markContinuation } from '@dotli/shared';
 import { isRemoteChainSupported } from '@dotli/protocol';
@@ -34,12 +31,7 @@ import { THEME_KEY } from './theme-controller.js';
 import { flushSharedModeWrites } from './shared-mode.js';
 import { revokeReceivingOnLogout } from './receiving.js';
 
-/**
- * Draft of everything the popover can change. Controls mutate this. Nothing
- * touches localStorage or reloads the page until the user clicks Save &
- * Apply. Closing the popover throws the draft away. The next open re-reads
- * persisted state from scratch, so partial changes never leak.
- */
+/** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */
 export interface ModeDraft {
   chain: Backend;
   network: Network;
@@ -48,24 +40,8 @@ export interface ModeDraft {
 }
 
 /**
- * Apply the pending draft, then reload. Cache deletion is scoped to what
- * actually changed:
- *
- *   - Backend or network changes delete nothing. The cached CID, archive,
- *     and worker state stay warm.
- *   - Turning a cache toggle off clears that cache's origin:
- *       dotNS clears the host-origin CID store here, directly.
- *       Archive clears the host-origin block store here, directly.
- *       Worker needs no signal. The persisted `skipWorkerCache` flag
- *              makes the protocol iframe purge on its next boot.
- *
- * `forceFullWipe` (the "Clear all caches" button) bypasses the diff and
- * wipes every origin via the original full-reset pipeline: wipe host state,
- * re-apply settings, and flag the protocol and sandbox iframes to purge
- * themselves regardless of their persisted prefs.
- *
- * Order matters: persist settings first (so the reload boots with them),
- * run the host-origin deletes, mark cross-origin one-shot signals, reload.
+ * Deletes only caches the user just turned off. The persisted `skipWorkerCache` flag makes the protocol
+ * iframe purge itself on its next boot. Settings persist before the deletes so the reload boots with them.
  */
 export async function applyAndReset(
   draft: ModeDraft,
@@ -85,17 +61,15 @@ export async function applyAndReset(
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
       setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
-      // Force every origin to purge regardless of persisted prefs.
+      // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         sessionStorage.setItem('dotli:pending-reset:protocol', '1');
         sessionStorage.setItem('dotli:pending-reset:sandbox', '1');
         // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); cross-origin purges are best-effort, reload below is unconditional.
       } catch {
-        /* sessionStorage unavailable: cross-origin purges skipped */
+        // Cross-origin purges skipped.
       }
     } else {
-      // No origin wipe. Persist the new choices, then delete only the caches
-      // the user just turned off (skip flag flipped from false to true).
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
@@ -112,9 +86,7 @@ export async function applyAndReset(
       }
     }
 
-    // Mirror the new settings to the URL so the reload below boots with
-    // the same effective state the user just picked. Defaults drop off
-    // so a clean dot.li URL keeps meaning "every axis at default".
+    // The URL carries the settings too, so the reload boots with them. Defaults drop off.
     const search = new URLSearchParams(window.location.search);
     if (
       writeSettingsToSearch(
@@ -137,22 +109,10 @@ export async function applyAndReset(
   }
 }
 
-/**
- * Keys that describe the browser rather than the state a reset clears.
- *
- * The theme is what the visitor chose to look at, not state they asked the
- * reset to clear. Losing it turns a settings reset into a visible change
- * nobody requested.
- */
+/** Survive a reset, since losing the theme would be a visible change nobody requested. */
 export const PRESERVED_KEYS: readonly string[] = [THEME_KEY];
 
-/**
- * Wipe this origin's IDB, CacheStorage, SW registrations, localStorage,
- * sessionStorage. Best-effort: Firefox and Safari pre-17 lack
- * `indexedDB.databases()`. Everything in `PRESERVED_KEYS` survives. Callers
- * still re-write settings they want to change, since those are new values
- * rather than preserved ones.
- */
+/** Best-effort, since Firefox and older Safari lack `indexedDB.databases()`. */
 export async function wipeOriginState(): Promise<void> {
   await revokeReceivingOnLogout();
   await Promise.allSettled([deleteAllIndexedDBs(), deleteAllCacheStorage()]);
@@ -161,7 +121,7 @@ export async function wipeOriginState(): Promise<void> {
     sessionStorage.clear();
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage unavailable (Safari private mode). Full reset is best-effort; anything we can't clear just means a partial baseline.
   } catch {
-    /* sessionStorage unavailable */
+    // sessionStorage unavailable.
   }
   try {
     const preserved = PRESERVED_KEYS.map(key => [key, localStorage.getItem(key)] as const);
@@ -173,7 +133,7 @@ export async function wipeOriginState(): Promise<void> {
     }
     // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable. Full reset is best-effort.
   } catch {
-    /* localStorage unavailable */
+    // localStorage unavailable.
   }
 }
 
@@ -194,7 +154,7 @@ async function deleteAllIndexedDBs(): Promise<void> {
               return;
             }
             const req = indexedDB.deleteDatabase(db.name);
-            // Cap each delete at 3s in case Chromium never fires success/error/blocked.
+            // Chromium may never fire success, error or blocked.
             const timer = setTimeout(resolve, 3000);
             const settle = (): void => {
               clearTimeout(timer);
@@ -206,8 +166,6 @@ async function deleteAllIndexedDBs(): Promise<void> {
           }),
       ),
     );
-    // Best-effort: any surviving IDB just means a partial baseline. Next boot
-    // will still see the new mode settings.
   } catch (err) {
     log.warn('[dot.li settings] IndexedDB wipe failed:', err);
   }
@@ -220,7 +178,6 @@ async function deleteAllCacheStorage(): Promise<void> {
     }
     const keys = await caches.keys();
     await Promise.all(keys.map(k => caches.delete(k)));
-    // Best-effort: partial CacheStorage survival is acceptable.
   } catch (err) {
     log.warn('[dot.li settings] CacheStorage wipe failed:', err);
   }
@@ -233,16 +190,12 @@ async function unregisterAllServiceWorkers(): Promise<void> {
     }
     const regs = await navigator.serviceWorker.getRegistrations();
     await Promise.all(regs.map(r => r.unregister()));
-    // Best-effort: a surviving registration is replaced on next install.
   } catch (err) {
     log.warn('[dot.li settings] service worker unregister failed:', err);
   }
 }
 
-// Baked at build time by `apps/host/vite.config.ts` (`define.*`). The
-// topbar only ever renders in the host shell so these will always be
-// present in practice. `undefined` fallbacks are defensive for tests and
-// for any future caller that imports this module from a different bundle.
+// Defined by `apps/host/vite.config.ts`, so undefined in tests and other bundles.
 declare const __DOTLI_VERSION__: string | undefined;
 declare const __LIGHT_CLIENT_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSION__: string | undefined;
@@ -253,25 +206,12 @@ export function isTruapiDebugEnabled(): boolean {
   try {
     return sessionStorage.getItem('dotli:truapi-debug') === '1';
   } catch {
-    // sessionStorage may be unavailable in exotic environments (Safari
-    // private mode). Default to "not in debug mode".
+    // sessionStorage unavailable, as in Safari private mode.
     return false;
   }
 }
 
-/** Flatten the diagnostics tree into a plain-text block that reads cleanly
- *  both inside a GitHub issue code block and in a Slack message.
- *
- *  Structure (one blank line between sections):
- *    1. Base rows (Site, Build, Chain[, Worker|RPC Node], Content, Browser)
- *    2. Cache: every toggle as on/off. Sourced from persisted settings
- *              so the snapshot matches what's actually live right now.
- *    3. Permissions: per-product, omitted on landing where we don't have
- *                    a scoped label to query.
- *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi,
- *                 with the block heights queried at share time. They are
- *                 not rendered in this popover any more, they live in the
- *                 network panel where they can be read live. */
+/** Plain text that reads cleanly in a GitHub issue code block and in a Slack message. */
 export async function formatDiagnosticsReport(
   base: [label: string, value: string][],
   smoldot: SmoldotInfo,
@@ -283,7 +223,6 @@ export async function formatDiagnosticsReport(
     lines.push(`${k}: ${v}`);
   }
 
-  // Cache
   const cache = getCacheSettings();
   lines.push(
     '',
@@ -293,7 +232,6 @@ export async function formatDiagnosticsReport(
     `  Worker cache: ${cache.skipWorkerCache ? 'off' : 'on'}`,
   );
 
-  // Permissions, only when we know which product label to scope against.
   const product = getProductState();
   if (product.status === 'loaded') {
     const productLabel = product.label;
@@ -308,8 +246,7 @@ export async function formatDiagnosticsReport(
     }
   }
 
-  // Packages, one flat list. smoldot leads because it's the heaviest
-  // dependency and the one most issues are ultimately about.
+  // smoldot leads because most issues are ultimately about it.
   lines.push('', 'Packages:', `  smoldot: ${smoldot.version}`);
   for (const p of polkadotApi) {
     lines.push(`  ${p.name}: ${p.version}`);
@@ -320,37 +257,26 @@ export async function formatDiagnosticsReport(
   return lines.join('\n');
 }
 
+/** The release the build descends from. */
+export function dotliVersion(): string {
+  return typeof __DOTLI_VERSION__ === 'string' ? __DOTLI_VERSION__ : '0.0.0';
+}
+
 export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
-  const version = typeof __DOTLI_VERSION__ === 'string' ? __DOTLI_VERSION__ : '0.0.0';
   const sha = import.meta.env.VITE_COMMIT_SHA ?? 'dev';
 
   const backend = getBackend();
   const network = getNetwork();
 
   const rows: [string, string][] = [
-    // `location.host` includes the port when non-default. Useful on
-    // localhost (`hackme3.localhost:5173`), transparent on production
-    // (`hackme3.dot.li`).
     ['Site', window.location.host],
-    ['Build', `${version} (${shortSha(sha)})`],
+    ['Build', `${dotliVersion()} (${shortSha(sha)})`],
     ['Network', NETWORK_NAME_TO_SERVICES_CONFIG[network].label],
     ['Transport', backendLabel(backend)],
   ];
 
-  // Sub-row attached to the Transport row:
-  //   - smoldot-shared-worker: "Worker" label and build SHA. The SharedWorker
-  //     is a cached script. If it's running an older bundle than the current
-  //     page, this SHA diverges from Build, which is the tell-tale for a stale
-  //     worker. (Today the Worker ships embedded in the same bundle, so
-  //     the two match. The row still lets us spot a divergence in the
-  //     field.)
-  //   - smoldot-direct: no sub-row. smoldot is torn down every page load.
-  //   - rpc-gateway: both WSS endpoints (Relay and Asset Hub). The curated
-  //     lists are candidate endpoints. polkadot-api's ws-provider rotates
-  //     on failure, so the Diagnostics component later replaces the Asset Hub
-  //     entry with the one the provider is actually connected to. Relay
-  //     isn't dialed at all in rpc mode today (dotNS is Asset Hub only),
-  //     so it just shows the first candidate for reference.
+  // A Worker SHA that diverges from Build is the tell-tale of a stale cached SharedWorker. RPC rows show
+  // the first candidate, which the Diagnostics component replaces with the endpoint actually connected.
   if (backend === 'smoldot-shared-worker') {
     if (typeof SharedWorker === 'undefined') {
       rows.push(['Worker', 'unavailable']);
@@ -364,7 +290,6 @@ export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
     rows.push(['Bulletin Node', cfg.bulletin.rpcs[0] ?? 'n/a']);
   }
 
-  // Product manifest snapshot.
   const root = getActiveRootManifest();
   if (root !== null) {
     rows.push(['Manifest', `v${String(root.schemaVersion)}`]);
@@ -382,7 +307,6 @@ export function backendLabel(b: Backend): string {
   return BACKEND_LABELS[b];
 }
 
-/** Gather the smoldot readouts a diagnostic report quotes. */
 export async function collectSmoldotInfo(): Promise<SmoldotInfo> {
   const info: SmoldotInfo = {
     version: buildLightClientVersionLabel(),
@@ -406,31 +330,18 @@ export async function collectSmoldotInfo(): Promise<SmoldotInfo> {
 }
 
 export interface SmoldotInfo {
-  /** Human-facing version label, e.g. "3.0.0 (c33c647)". */
   version: string;
-  /** Mutable block readouts for the share report. */
   blocks: { relay: string; assetHub: string; people: string };
 }
 
-// The light client is smoldot compiled into truapi-provider's wasm, so the
-// provider version is what identifies the build. There is no separate smoldot
-// version to report.
+// smoldot is compiled into truapi-provider's wasm, so the provider version identifies the build.
 export function buildLightClientVersionLabel(): string {
   return typeof __LIGHT_CLIENT_VERSION__ === 'string' ? __LIGHT_CLIENT_VERSION__ : 'unknown';
 }
 
 /**
- * Query the finalized block number for a given chain over a lease on the host
- * pool, the connection the products use. Works across all chain backends:
- *   - smoldot-shared-worker / smoldot-direct: the protocol frame's light client
- *   - rpc: the host page's socket to the curated WSS endpoint
- *
- * Returns `null` if the chain isn't supported by the active backend (e.g.
- * asking for relay in rpc mode, which only supports Asset Hub) or if the
- * query doesn't resolve within the timeout. The pool comes with the bridge
- * chunk and `polkadot-api` with its own, both loaded here: this module is on
- * the eager path, and opening the popover stays cheap when the user doesn't
- * care about blocks.
+ * Null when the active backend does not support the chain or the query times out. The bridge and
+ * `polkadot-api` chunks load here because this module is on the eager path.
  */
 export async function queryFinalizedBlock(genesisHash: string): Promise<number | null> {
   try {
@@ -474,13 +385,7 @@ export function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
-/**
- * Turn a long `navigator.userAgent` string into something compact like
- * "Chrome 147 (macOS)". Heuristic, not a replacement for a real UA parser.
- * Good enough for a debug row that the user can still click-to-copy the
- * full value (the row shows the short version but the UA is stable enough
- * that engineers can recognize the brand without the full payload).
- */
+/** A heuristic like "Chrome 147 (macOS)", not a real UA parser. */
 export function summarizeUserAgent(ua: string): string {
   let browser = 'Unknown';
   const chromeVersion = /(Chrome|CriOS)\/(\d+)/.exec(ua)?.[2];
@@ -513,18 +418,12 @@ export function summarizeUserAgent(ua: string): string {
   return `${browser} (${os})`;
 }
 
-/** A package name and version, as the build-time globals list them. */
 export interface PackageVersion {
   name: string;
   version: string;
 }
 
-/**
- * The package versions the diagnostics list, from the build-time globals.
- * The unscoped `polkadot-api` package lives in the same visual section as
- * `@polkadot-api/*`. Same ecosystem, same release cadence, users expect to
- * see it with its siblings rather than at the top of the popover.
- */
+/** The unscoped `polkadot-api` package is listed with its `@polkadot-api/*` siblings. */
 export function packageVersions(): {
   polkadotApi: PackageVersion[];
   parityTruapi: PackageVersion[];

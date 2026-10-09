@@ -1,20 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The dialogs waiting to be shown, as plain data. The overlays root renders
-// the first entry; everything that decides how a dialog settles (buttons,
-// dismissal, abort, fallback) lives here, outside Solid.
+// The overlays root renders the first entry. Everything that decides how a dialog settles lives
+// here, outside Solid.
 
 import { blockingModalAbortError } from '../blocking-modal-queue.js';
 import { createSyncStore, type ReadableStore } from './create-store.js';
 
 /**
- * What an answer means, which decides how it is drawn. `danger` rejects the
- * request (Deny, Cancel on a signing prompt) and is drawn destructive.
- * `cancel` backs out of a prompt that is not a request to reject (Cancel on
- * the preimage and password prompts) and is drawn plain. `secondary` is the
- * lesser approval ("Always allow" beside "Allow once"). `primary` is the main
- * approval: Enter submits it, and a password must be typed before it.
+ * `danger` rejects the request and is drawn destructive. `cancel` backs out of a prompt that is not a
+ * request to reject. `secondary` is the lesser approval. `primary` is the main one, which Enter submits.
  */
 export type ModalButtonVariant = 'cancel' | 'danger' | 'secondary' | 'primary';
 
@@ -45,7 +40,7 @@ export interface ModalPasswordInput {
 
 export interface ModalView<R extends string> {
   title: string;
-  /** SVG markup, rendered in the dialog's icon tile. */
+  /** SVG markup. */
   icon?: string;
   fields: ModalField[];
   notice?: string;
@@ -65,7 +60,6 @@ export interface ModalView<R extends string> {
 
 export interface ModalOutcome<R extends string> {
   result: R;
-  /** The password input's value, for views with an input. */
   value?: string;
   /** Confirmed checkbox choices; absent on dismissal and fallback. */
   selected?: R[];
@@ -99,10 +93,7 @@ function take(id: number): Pending | undefined {
   return entry;
 }
 
-/**
- * Queue a dialog. Resolves with the chosen result once a button, a dismissal
- * or the fallback decides it; rejects with an AbortError when `signal` fires.
- */
+/** Rejects with an AbortError when `signal` fires. */
 export function openModal<R extends string>(view: ModalView<R>, signal?: AbortSignal): Promise<ModalOutcome<R>> {
   if (signal?.aborted === true) {
     return Promise.reject(blockingModalAbortError(signal.reason));
@@ -135,7 +126,6 @@ export function settleModal(id: number, result: string, value?: string, selected
   });
 }
 
-/** Settle every open dialog with its fallback result. */
 export function failAllModals(): void {
   for (const id of [...pending.keys()]) {
     const entry = take(id);
@@ -143,7 +133,6 @@ export function failAllModals(): void {
   }
 }
 
-/** Forget every dialog without settling it. Tests only. */
 export function resetModalsForTests(): void {
   for (const entry of pending.values()) {
     entry.detach();

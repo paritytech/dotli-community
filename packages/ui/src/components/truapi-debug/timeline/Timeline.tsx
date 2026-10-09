@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Lanes are keyed by lane key, and rails, ticks and boxes by their seq. So as
-// events stream in, a redraw moves, resizes and recolours the nodes already
-// there: the box under the cursor stays the same node, its hover and tooltip
-// stay up, and a click that started on it still lands on it.
+// Everything is keyed, so under streaming the hovered box stays the same node and a click on it still lands.
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -28,8 +25,7 @@ export function Timeline(props: {
 }
 
 function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelect: TimelineSelect }): JSX.Element {
-  // The key of the box that holds the selected seq. Each box compares its own
-  // key with it, so a new selection reruns one scan, not one per box.
+  // One scan per selection change, rather than one per box.
   const selectedKey = createMemo((): EventSeq | null => {
     const seq = props.selectedSeq;
     return seq === null ? null : (props.lane.boxes.find(b => b.memberSeqs.includes(seq))?.key ?? null);

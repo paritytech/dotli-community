@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SharedModule from '@dotli/shared';
 
 interface NotificationAction {
   label: string;
@@ -37,10 +38,10 @@ vi.mock('@dotli/ui', () => ({
 }));
 
 vi.mock('@dotli/metrics', () => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
-vi.mock('@dotli/shared', () => ({ markContinuation: vi.fn() }));
-// pwa.ts answers the sandbox contract-version probe from @dotli/config, whose
-// module body reads `self.location.hostname`; the stubbed location has none.
-vi.mock('@dotli/config', () => ({ SANDBOX_SCHEMA_VERSION: 1 }));
+vi.mock('@dotli/shared', async importOriginal => ({
+  ...(await importOriginal<typeof SharedModule>()),
+  markContinuation: vi.fn(),
+}));
 
 function emit(type: string, event?: { wasWaitingBeforeRegister?: boolean }): void {
   for (const listener of workbox.listeners.get(type) ?? []) {
@@ -48,7 +49,7 @@ function emit(type: string, event?: { wasWaitingBeforeRegister?: boolean }): voi
   }
 }
 
-/** The service worker registration as the page sees it when Reload is pressed. */
+/** The registration's waiting worker at the moment Reload is pressed. */
 let waiting: object | null = null;
 const reload = vi.fn();
 
@@ -61,19 +62,23 @@ beforeEach(async () => {
   vi.stubGlobal('navigator', {
     serviceWorker: { addEventListener: vi.fn(), getRegistration: () => Promise.resolve({ waiting }) },
   });
-  vi.stubGlobal('location', { reload });
+  vi.stubGlobal('location', { reload, hostname: 'browse.localhost' });
+  vi.stubEnv('PROD', true);
   await import('../../src/pwa.js');
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 async function pressReload(): Promise<void> {
   emit('waiting', {});
   const action = notifications.actions.at(-1);
-  expect(action?.label).toBe('Reload');
-  action?.onClick();
+  if (action === undefined) {
+    throw new Error('The update notification did not expose an action.');
+  }
+  action.onClick();
   await vi.waitFor(() => {
     expect(reload.mock.calls.length + workbox.messageSkipWaiting.mock.calls.length).toBeGreaterThan(0);
   });
@@ -131,5 +136,33 @@ describe('an update that was already waiting when the page loaded', () => {
 
     // Then
     expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
+describe('where the shell registers no service worker', () => {
+  it('As a dotli developer, the dev server gets no worker that could serve stale modules', async () => {
+    // Given
+    vi.resetModules();
+    workbox.listeners.clear();
+    vi.stubEnv('PROD', false);
+
+    // When
+    await import('../../src/pwa.js');
+
+    // Then
+    expect(workbox.listeners.size).toBe(0);
+  });
+
+  it('As a visitor of the bare host, its root stays the landing page because no worker answers it', async () => {
+    // Given: the shell on the bare host, as /__preview serves it
+    vi.resetModules();
+    workbox.listeners.clear();
+    vi.stubGlobal('location', { reload, hostname: 'localhost' });
+
+    // When
+    await import('../../src/pwa.js');
+
+    // Then
+    expect(workbox.listeners.size).toBe(0);
   });
 });

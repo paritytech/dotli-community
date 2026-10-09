@@ -224,10 +224,7 @@ describe('chain-sync envelope validation works', () => {
     };
   }
 
-  // This is the drift guard. The resolver owns the vocabulary, and the
-  // validator keeps its own runtime copy so smoldot stays out of every
-  // bundle that talks to the protocol. When the two fell out of step, three
-  // kinds were dropped in silence and the loading screen simply went quiet.
+  // Drift guard: the validator keeps its own copy of the resolver's vocabulary, and a gap drops kinds silently.
   it('As a user, every sync milestone the resolver can emit reaches the shell', () => {
     // Given / When / Then
     for (const chain of ENVELOPE_CHAIN_KEYS) {

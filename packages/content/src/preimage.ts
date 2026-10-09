@@ -13,9 +13,6 @@ import { create } from 'multiformats/hashes/digest';
 const BLAKE2B_256_MULTIHASH_CODE = 0xb220;
 const RAW_CID_CODEC = 0x55;
 
-/**
- * Convert a 0x-prefixed Blake2b-256 hash hex to a CID v1 (raw codec, 0xb220 multihash).
- */
 export function hashToCid(hashHex: string): CID {
   const digest = create(BLAKE2B_256_MULTIHASH_CODE, fromHex(hashHex));
   return CID.createV1(RAW_CID_CODEC, digest);

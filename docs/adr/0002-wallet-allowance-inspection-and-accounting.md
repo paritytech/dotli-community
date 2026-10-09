@@ -264,6 +264,11 @@ updates on the original subscription. An inclusion update is held until smoldot
 itself returns the block header, because the core verifies the outcome from
 light-client state at that block. The trusted node can observe or censor the
 transaction but cannot forge it. Every use logs a `TEMPORARY` warning.
+The header check has a 30-second deadline, including an unanswered header RPC.
+If the light client cannot confirm the block within that time, the watch ends
+as `dropped`; an unverified inclusion or finalization is never relayed.
+Unwatching or disconnecting cancels header polling and queued trusted updates.
+Terminal updates retire the trusted connection and its retained watch state.
 
 Remove the module and its `Chain.ts` wiring once the reproduction in this section
 passes on the smoldot version dot.li ships.

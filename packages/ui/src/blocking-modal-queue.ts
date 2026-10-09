@@ -113,9 +113,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
       return;
     }
     const resultPromise = Promise.resolve(result);
-    // Observe the task before checking whether it disposed its own scope.
-    // Otherwise an asynchronously rejecting result would be abandoned when
-    // the queue finishes the entry with AbortError below.
+    // Observe the task before the disposed check, or a later rejection would go unhandled.
     void resultPromise.then(
       value => {
         this.finish(entry, { ok: true, value });

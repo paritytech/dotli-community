@@ -33,19 +33,12 @@ describe('shared auth storage helpers', () => {
   });
 
   it("accepts only the current shell's SITE_ID", () => {
-    // In the vitest happy-dom environment, `self.location.hostname` is
-    // "localhost", so `SITE_ID` is "local.li". The allowlist is runtime-
-    // driven, not a hard-coded list. This guarantees a host running on
-    // `host.paseoli.dev` would accept `"paseoli.dev"` and reject `"dot.li"`,
-    // and vice versa.
+    // happy-dom's hostname is localhost, so `SITE_ID` is "local.li".
     expect(SITE_ID).toBe('local.li');
     expect(isSharedAuthSiteId(SITE_ID)).toBe(true);
   });
 
   it('rejects siteIds belonging to unrelated root domains', () => {
-    // A hard-coded allowlist would treat these as `true`. They must all be
-    // `false` because cross-root-domain session sharing is explicitly
-    // disallowed across dot.li, paseo.li, and paseoli.dev.
     expect(isSharedAuthSiteId('dot.li')).toBe(false);
     expect(isSharedAuthSiteId('paseo.li')).toBe(false);
     expect(isSharedAuthSiteId('paseoli.dev')).toBe(false);

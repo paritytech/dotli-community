@@ -1,23 +1,9 @@
-// dot.li — TrUAPI chain callback
+// Without this callback truapi-server would run its own bundled smoldot beside the protocol frame's,
+// ignoring the backend the user selected.
 //
-// Routes product chain RPC traffic through whichever backend the user
-// has selected in the host shell ("Light Client", served by the protocol
-// frame, or "RPC Node" via curated WSS endpoints).
-//
-// Without this callback, truapi-server would fall back to its own
-// bundled smoldot — which would ignore the toggle and run another light
-// client alongside the protocol frame's. On the light client backends the
-// host pool reaches each chain over one remote connection to the protocol
-// frame, so products share the chains the frame's light client already
-// syncs. The host page runs no light client of its own.
-//
-// Every core connection is a lease on the host page's chain pool: one
-// connection per chain, shared through the broker, which keeps each core
-// connection's ids apart. Over RPC the socket replays its subscriptions when
-// it reconnects. When a transport dies for good, its connections still
-// deliver what was queued (including `dropped` for transaction watches), and
-// stay open: the installed truapi-host ignores a stream's end. The next
-// request takes a new lease, which rebuilds the chain, through a backoff.
+// Every core connection leases the host chain pool. When a transport dies for good, its connections
+// still deliver what was queued and stay open, since truapi-host ignores a stream's end. The next
+// request takes a new lease, which rebuilds the chain through a backoff.
 
 import { bytesToHex } from '@parity/truapi/scale';
 import type { JsonRpcConnection, JsonRpcRequest, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
@@ -51,18 +37,13 @@ const trustedSubmitPool = createChainPool({
   createTransport: createCoreRpcChainProvider,
   destroyDelay: 0,
 });
+import { recordBestBlock, recordChainActivity } from '../network-monitor.js';
 
-/**
- * The host page's chain pool. A chain's transport follows the backend when
- * its entry is built: the host page's own WebSocket in `rpc-gateway`, a
- * remote connection to the protocol frame otherwise. Every backend switch
- * reloads the page, so an entry never outlives its backend.
- */
+/** Every backend switch reloads the page, so a pool entry never outlives its backend. */
 export function createHostChainPool(destroyDelay?: number): ChainPool {
   return createChainPool({
-    // Unset, the pool's default: an idle chain is closed after a minute on
-    // every backend. A socket is cheap to reopen, and a remote connection is:
-    // the frame keeps the light client's chain.
+    // Unset, an idle chain closes after the pool's default minute. Reopening is cheap on every
+    // backend, since the frame keeps the light client's chain.
     ...(destroyDelay === undefined ? {} : { destroyDelay }),
     createTransport: (genesisHash, hooks) => {
       if (getBackend() === 'rpc-gateway') {
@@ -77,28 +58,23 @@ export function createHostChainPool(destroyDelay?: number): ChainPool {
 }
 
 const hostChainPool = createHostChainPool();
+// The network panel never leases a chain, so it never opens or keeps one. It follows only those someone holds.
+hostChainPool.watch({ onActivity: recordChainActivity, onBestBlock: recordBestBlock });
 
-/**
- * A new lease on the host pool's Asset Hub connection, shaped for papi's
- * `createClient`. Disconnecting it releases the lease. The rpc-gateway name
- * resolver reads through this instead of dialing its own socket.
- */
+/** The rpc-gateway name resolver reads through this lease instead of dialing its own socket. */
 export function hostAssetHubProvider(): JsonRpcProvider {
   return requireBrokerLocalProvider(hostChainPool, getActiveServicesConfig().assethub.genesis, 'Asset Hub');
 }
 
 /**
- * A papi provider for a host-page chain user (the block bars, the settings
- * probe), or `null` when the active backend cannot serve the chain. Each of
- * its connections is a lease on the host pool, so these users share the
- * products' connection to each chain. A halt reaches them with its reason: a
- * dead protocol frame as `'frame'`, anything else as `'chain'`.
+ * Host-page chain users share the products' connection to each chain. A halt reaches them as
+ * `'frame'` for a dead protocol frame, `'chain'` otherwise.
  */
 export function hostChainProvider(genesisHash: string, pool: ChainPool = hostChainPool): RemoteChainProvider | null {
   if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
-  const lease = pool.getLocalProvider(genesisHash);
+  const lease = pool.getLocalProvider(genesisHash, 'host');
   if (lease === null) {
     return null;
   }
@@ -122,27 +98,15 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
 }
 
 /**
- * When a product may boot a protocol frame after one died, shared by every
- * core connection. It first opens 1 s after a frame halt. A lease while a
- * frame is up or booting boots nothing, so it does not ask the gate.
- *
- * A frame that reports ready ends the wait but keeps the delay: in
- * smoldot-direct a new frame reports ready before its light client has
- * connected a chain, and may answer for a while before it fails, so neither
- * proves it works. Only uptime does (see `createRedialGate`).
+ * A ready frame ends the wait but keeps the delay, because in smoldot-direct a new frame reports
+ * ready before its light client connects a chain, and only uptime proves it works.
  */
 const frameGate = createRedialGate(1_000);
 onProtocolReady(() => {
   frameGate.open();
 });
 
-/**
- * When a product may rebuild a chain after it halted, one gate per chain,
- * shared by every core connection on it: a chain that halts each time it is
- * rebuilt would otherwise be re-added and re-synced on each re-follow. The
- * first rebuild after a halt goes at once. A lease while another connection
- * has rebuilt the chain rebuilds nothing, so it does not ask the gate.
- */
+/** A chain that halts each time it is rebuilt would otherwise be re-synced on each re-follow. */
 const chainGates = new Map<string, RedialGate>();
 
 function chainGate(genesisHash: string): RedialGate {
@@ -155,12 +119,9 @@ function chainGate(genesisHash: string): RedialGate {
   return gate;
 }
 
-/**
- * A core connection over leases on the host pool: one at once, and another on
- * the first send after a halt.
- */
+/** Takes one lease at once and another on the first send after a halt. */
 function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConnection {
-  const first = pool.getLocalProvider(genesisHash);
+  const first = pool.getLocalProvider(genesisHash, 'truapi-core');
   if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
@@ -168,8 +129,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
   let wake: (() => void) | null = null;
   let closed = false;
   let lease: JsonRpcConnection | null = null;
-  // Why the last lease halted, until a new one is taken: the next one waits
-  // for that reason's gate.
+  // Why the last lease halted, so the next one waits for that reason's gate.
   let haltedBy: RemoteChainHalt | null = null;
 
   const deliver = (message: unknown): void => {
@@ -180,15 +140,11 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     wake?.();
     wake = null;
   };
-  // A halt drops the lease, and the stream stays open: truapi-host 0.23.0
-  // ignores its end and keeps sending on this connection. The broker has
-  // answered the requests in flight and stopped the follows, so the next send
-  // takes a new lease, which rebuilds the chain: it waits for the chain's gate
-  // after `'chain'`, and for the frame gate after `'frame'`, where that lease
-  // boots a frame.
+  // A halt drops the lease but the stream stays open, since truapi-host ignores its end and keeps
+  // sending. The next send takes a new lease, behind the chain gate or the frame gate.
   const open = (provider: LeaseProvider): void => {
-    // Per lease, so a halt heard while `provider` is still running, or a late
-    // one from a replaced lease, never touches another lease.
+    // Per lease, so a halt heard while `provider` still runs, or a late one from a replaced lease,
+    // never touches another lease.
     const slot = { connection: null as JsonRpcConnection | null, halted: false };
     const connection = provider(deliver, error => {
       slot.halted = true;
@@ -200,7 +156,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     });
     if (!slot.halted) {
       slot.connection = lease = connection;
-      // Only a lease taken clears it: a failed one keeps the gate.
+      // A failed lease keeps the gate.
       haltedBy = null;
     }
   };
@@ -214,7 +170,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
       return null;
     }
     try {
-      const provider = pool.getLocalProvider(genesisHash);
+      const provider = pool.getLocalProvider(genesisHash, 'truapi-core');
       if (provider === null) {
         log.warn(`[dot.li truapi-chain] no chain transport for ${genesisHash} after a halt`);
         return null;
@@ -287,9 +243,8 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
 export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvider['connect'] {
   return genesisHashBytes => {
     const genesisHash = bytesToHex(genesisHashBytes);
-    // This callback is shared by product-forwarded calls and core-owned
-    // Bulletin operations. `featureSupported` is the dApp advertisement; this
-    // seam cannot enforce that advertised subset.
+    // Core-owned Bulletin operations also come through here, so this cannot enforce the subset
+    // `featureSupported` advertises.
     const [isSupported, backend] =
       getBackend() === 'rpc-gateway' ? [isCoreRpcChainSupported, 'RPC'] : [isRemoteChainConnectable, 'smoldot'];
     if (!isSupported(genesisHash)) {

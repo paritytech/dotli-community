@@ -10,10 +10,6 @@ afterEach(() => {
   cleanup();
 });
 
-/**
- * Render a Solid view into `options.container`, or a fresh one when none is
- * given. Cleaned up after each test.
- */
 export function renderComponent(
   view: () => JSX.Element,
   options: { container?: HTMLElement } = {},
@@ -21,10 +17,7 @@ export function renderComponent(
   return render(view, options);
 }
 
-/**
- * Apply batched Solid updates, then let queued microtasks run. Solid 2 batches
- * writes, so assertions after an event or a store write come after this.
- */
+/** Solid 2 batches writes, so assertions after an event or a store write come after this. */
 export async function settle(): Promise<void> {
   flush();
   await Promise.resolve();
@@ -32,10 +25,7 @@ export async function settle(): Promise<void> {
 
 export { resetAllStoresForTests as resetStores } from '../../src/state/create-store.js';
 
-/**
- * A mouse press on `el`: pointerdown, which is what a floating layer reads a
- * press outside from (components/floating/FloatingLayer.tsx), then the click.
- */
+/** Pointerdown first, as a floating layer reads a press outside from it. */
 export function pointerPress(el: Element): void {
   el.dispatchEvent(
     new PointerEvent('pointerdown', {
@@ -47,10 +37,7 @@ export function pointerPress(el: Element): void {
   mouseClick(el);
 }
 
-/**
- * A mouse press on `el`, which cannot take focus: as in a browser, the
- * press's mousedown drops focus to the body before the click.
- */
+/** A press on an element that cannot take focus, which drops focus to the body before the click. */
 export function pointerPressUnfocusable(el: Element): void {
   el.dispatchEvent(
     new PointerEvent('pointerdown', {
@@ -63,10 +50,7 @@ export function pointerPressUnfocusable(el: Element): void {
   mouseClick(el);
 }
 
-/**
- * The click of a mouse or a tap, which (unlike a key's, or `.click()`'s)
- * has a `detail` of at least 1.
- */
+/** A mouse or tap click, which unlike a key's or `.click()`'s has a `detail` of at least 1. */
 export function mouseClick(el: Element): MouseEvent {
   const click = new MouseEvent('click', {
     bubbles: true,
@@ -78,11 +62,7 @@ export function mouseClick(el: Element): MouseEvent {
   return click;
 }
 
-/**
- * Tab from the focused element to `next`, the element after it in the page's
- * Tab order: the keydown, then, unless a handler prevented it, the focus move
- * the browser would make (happy-dom makes none). Returns the keydown.
- */
+/** Tabs to `next`, moving focus as a browser would unless a handler prevented it, since happy-dom moves none. */
 export function tabTo(next: HTMLElement): KeyboardEvent {
   const event = new KeyboardEvent('keydown', {
     key: 'Tab',
@@ -96,10 +76,6 @@ export function tabTo(next: HTMLElement): KeyboardEvent {
   return event;
 }
 
-/**
- * The content root of popover `#id`: the layer itself on a wide screen, the
- * `data-sheet` wrapper inside a bottom sheet.
- */
 export function popoverBody(id: string): HTMLElement | null {
   const root = document.getElementById(id);
   if (root === null) {
@@ -108,10 +84,7 @@ export function popoverBody(id: string): HTMLElement | null {
   return root.querySelector<HTMLElement>('[data-sheet]') ?? root;
 }
 
-/**
- * The body of popover `#id` once its lazy content has loaded. Await Vite's
- * import barrier before polling the DOM; module compilation is not a UI timeout.
- */
+/** Waits for the popover's lazy content chunk, a dynamic import that resolves over several microtasks. */
 export async function waitForContent(id: string): Promise<HTMLElement> {
   flush();
   await vi.dynamicImportSettled();
