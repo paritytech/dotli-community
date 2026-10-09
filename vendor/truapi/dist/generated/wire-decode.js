@@ -230,6 +230,14 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostPushNotificationCancelRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload),
     },
+    [W.NOTIFICATIONS_ACTIVATION_EVENTS.trait * 256 + W.NOTIFICATIONS_ACTIVATION_EVENTS.method]: {
+        0: (payload) => T.VersionedNotificationActivationEventsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedNotificationActivationEventsResponse, S.CallError(T.VersionedNotificationActivationEventsError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION.trait * 256 + W.NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION.method]: {
+        0: (payload) => T.VersionedNotificationActivationAcknowledgeRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedNotificationActivationAcknowledgeResponse, S.CallError(T.VersionedNotificationActivationAcknowledgeError)).dec(payload),
+    },
     [W.PAYMENT_BALANCE_SUBSCRIBE.trait * 256 + W.PAYMENT_BALANCE_SUBSCRIBE.method]: {
         0: (payload) => T.VersionedHostPaymentBalanceSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostPaymentBalanceSubscribeItem.dec(payload),
@@ -342,6 +350,10 @@ export const WIRE_DECODE_TABLE = {
         2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostLocaleSubscribeError)).dec(payload),
         3: () => undefined,
     },
+    [W.LOCALE_LOCALIZE_TIMESTAMPS.trait * 256 + W.LOCALE_LOCALIZE_TIMESTAMPS.method]: {
+        0: (payload) => T.VersionedHostLocaleLocalizeTimestampsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostLocaleLocalizeTimestampsResponse, S.CallError(T.VersionedHostLocaleLocalizeTimestampsError)).dec(payload),
+    },
     [W.RENDERER_RENDER.trait * 256 + W.RENDERER_RENDER.method]: {
         0: (payload) => T.VersionedProductRendererRenderRequest.dec(payload),
         1: (payload) => T.VersionedProductRendererRenderItem.dec(payload),
@@ -375,5 +387,21 @@ export const WIRE_DECODE_TABLE = {
     [W.CONTACTS_PICK.trait * 256 + W.CONTACTS_PICK.method]: {
         0: (payload) => T.VersionedHostContactsPickRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostContactsPickResponse, S.CallError(T.VersionedHostContactsPickError)).dec(payload),
+    },
+    [W.GAME_REMIND_NEXT_GAME.trait * 256 + W.GAME_REMIND_NEXT_GAME.method]: {
+        0: (payload) => T.VersionedHostRemindNextGameRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostRemindNextGameResponse, S.CallError(T.VersionedHostRemindNextGameError)).dec(payload),
+    },
+    [W.GAME_CANCEL_NEXT_GAME.trait * 256 + W.GAME_CANCEL_NEXT_GAME.method]: {
+        0: (payload) => T.VersionedHostCancelNextGameRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostCancelNextGameResponse, S.CallError(T.VersionedHostCancelNextGameError)).dec(payload),
+    },
+    [W.EXPANDED_CARD_SET_FACE_SHOWN.trait * 256 + W.EXPANDED_CARD_SET_FACE_SHOWN.method]: {
+        0: (payload) => T.VersionedHostExpandedCardSetFaceShownRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostExpandedCardSetFaceShownResponse, S.CallError(T.VersionedHostExpandedCardSetFaceShownError)).dec(payload),
+    },
+    [W.SCANNER_SCAN.trait * 256 + W.SCANNER_SCAN.method]: {
+        0: (payload) => T.VersionedHostScannerScanRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostScannerScanResponse, S.CallError(T.VersionedHostScannerScanError)).dec(payload),
     },
 };

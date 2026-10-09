@@ -16,9 +16,14 @@ export const CALLBACK_NAMES = [
     "clearCoreStorage",
     "featureSupported",
     "supportedChains",
+    "scheduleGameReminder",
+    "cancelGameReminder",
+    "localizeTimestamps",
     "navigateTo",
     "pushNotification",
     "cancelNotification",
+    "activationEvents",
+    "acknowledgeActivation",
     "devicePermissionStatus",
     "devicePermission",
     "remotePermission",
@@ -47,9 +52,12 @@ function rawCallbacks(bridge) {
         clearCoreStorage: (key) => bridge.callbackRequest("clearCoreStorage", [key]),
         featureSupported: (request) => bridge.callbackRequest("featureSupported", [request]),
         supportedChains: () => bridge.callbackRequest("supportedChains", []),
+        localizeTimestamps: (request) => bridge.callbackRequest("localizeTimestamps", [request]),
         navigateTo: (url) => bridge.callbackRequest("navigateTo", [url]),
         pushNotification: (notification) => bridge.callbackRequest("pushNotification", [notification]),
         cancelNotification: (id) => bridge.callbackRequest("cancelNotification", [id]),
+        activationEvents: () => bridge.callbackRequest("activationEvents", []),
+        acknowledgeActivation: (request) => bridge.callbackRequest("acknowledgeActivation", [request]),
         devicePermission: (product, request) => bridge.callbackRequest("devicePermission", [product, request]),
         remotePermission: (product, request) => bridge.callbackRequest("remotePermission", [product, request]),
         beginOperation: (product, label) => bridge.callbackRequest("beginOperation", [product, label]),
@@ -83,6 +91,12 @@ function contactsRawCallbacks(bridge) {
         pickContact: (product) => bridge.callbackRequest("pickContact", [product]),
     };
 }
+function gameRawCallbacks(bridge) {
+    return {
+        scheduleGameReminder: (product, startsAt) => bridge.callbackRequest("scheduleGameReminder", [product, startsAt]),
+        cancelGameReminder: (product) => bridge.callbackRequest("cancelGameReminder", [product]),
+    };
+}
 function permissionStatusRawCallbacks(bridge) {
     return {
         devicePermissionStatus: (request) => bridge.callbackRequest("devicePermissionStatus", [request]),
@@ -104,6 +118,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, chatRawCallbacks(bridge));
     if (capabilities.contacts)
         Object.assign(callbacks, contactsRawCallbacks(bridge));
+    if (capabilities.game)
+        Object.assign(callbacks, gameRawCallbacks(bridge));
     if (capabilities.permissionStatus)
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)

@@ -268,6 +268,9 @@ export declare const ChatRoomParticipation: S.Codec<ChatRoomParticipation>;
 /** Whether the room was newly created or already existed. */
 export type ChatRoomRegistrationStatus = "New" | "Exists";
 export declare const ChatRoomRegistrationStatus: S.Codec<ChatRoomRegistrationStatus>;
+/** Code formats the host scanner reads: the set both platform decoders share. */
+export type CodeFormat = "Qr" | "Aztec" | "DataMatrix" | "Pdf417" | "Ean13" | "Ean8" | "UpcE" | "Code128" | "Code39" | "Code93" | "Itf" | "Codabar";
+export declare const CodeFormat: S.Codec<CodeFormat>;
 /** Standardized encrypted Coinage secret transmission payload. */
 export interface CoinPaymentCheque {
     /** Receivable public key protecting the cheque contents. */
@@ -652,6 +655,30 @@ export type VersionedHostAccountSignVrfResponse =
     value: VrfSignature;
 };
 export declare const VersionedHostAccountSignVrfResponse: S.Codec<VersionedHostAccountSignVrfResponse>;
+/** Versioned envelope for [`HostCancelNextGameError`]. */
+export type VersionedHostCancelNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostCancelNextGameError: S.Codec<VersionedHostCancelNextGameError>;
+/** Versioned envelope for [`HostCancelNextGameRequest`]. */
+export type VersionedHostCancelNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostCancelNextGameRequest;
+};
+export declare const VersionedHostCancelNextGameRequest: S.Codec<VersionedHostCancelNextGameRequest>;
+/** Versioned envelope for [`HostCancelNextGameResponse`]. */
+export type VersionedHostCancelNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostCancelNextGameResponse: S.Codec<VersionedHostCancelNextGameResponse>;
 /** Versioned envelope for [`HostChatActionSubscribeError`]. */
 export type VersionedHostChatActionSubscribeError = 
 /** Version 1 payload. */
@@ -1108,6 +1135,30 @@ export type VersionedHostDevicePermissionResponse =
     value: HostDevicePermissionResponse;
 };
 export declare const VersionedHostDevicePermissionResponse: S.Codec<VersionedHostDevicePermissionResponse>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownError`]. */
+export type VersionedHostExpandedCardSetFaceShownError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownError;
+};
+export declare const VersionedHostExpandedCardSetFaceShownError: S.Codec<VersionedHostExpandedCardSetFaceShownError>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownRequest`]. */
+export type VersionedHostExpandedCardSetFaceShownRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownRequest;
+};
+export declare const VersionedHostExpandedCardSetFaceShownRequest: S.Codec<VersionedHostExpandedCardSetFaceShownRequest>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownResponse`]. */
+export type VersionedHostExpandedCardSetFaceShownResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostExpandedCardSetFaceShownResponse: S.Codec<VersionedHostExpandedCardSetFaceShownResponse>;
 /** Versioned envelope for [`HostFeatureSupportedError`]. */
 export type VersionedHostFeatureSupportedError = 
 /** Version 1 payload. */
@@ -1372,27 +1423,63 @@ export type VersionedHostLocalStorageWriteResponse =
     value?: undefined;
 };
 export declare const VersionedHostLocalStorageWriteResponse: S.Codec<VersionedHostLocalStorageWriteResponse>;
-/** Versioned envelope for [`HostLocaleSubscribeError`]. */
-export type VersionedHostLocaleSubscribeError = 
+/** Versioned envelope for [`HostLocaleLocalizeTimestampsError`]. */
+export type VersionedHostLocaleLocalizeTimestampsError = 
 /** Version 1 payload. */
 {
     tag: "V1";
     value: GenericError;
 };
-export declare const VersionedHostLocaleSubscribeError: S.Codec<VersionedHostLocaleSubscribeError>;
-/** Versioned envelope for [`HostLocaleSubscribeItem`]. */
-export type VersionedHostLocaleSubscribeItem = 
+export declare const VersionedHostLocaleLocalizeTimestampsError: S.Codec<VersionedHostLocaleLocalizeTimestampsError>;
+/** Versioned envelope for [`HostLocaleLocalizeTimestampsRequest`]. */
+export type VersionedHostLocaleLocalizeTimestampsRequest = 
 /** Version 1 payload. */
 {
     tag: "V1";
+    value: HostLocaleLocalizeTimestampsRequest;
+};
+export declare const VersionedHostLocaleLocalizeTimestampsRequest: S.Codec<VersionedHostLocaleLocalizeTimestampsRequest>;
+/** Versioned envelope for [`HostLocaleLocalizeTimestampsResponse`]. */
+export type VersionedHostLocaleLocalizeTimestampsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostLocaleLocalizeTimestampsResponse;
+};
+export declare const VersionedHostLocaleLocalizeTimestampsResponse: S.Codec<VersionedHostLocaleLocalizeTimestampsResponse>;
+/** One timestamp's calendar identity and presentation in the requested context. */
+export interface HostLocaleLocalizedTimestamp {
+    /** Gregorian YYYY-MM-DD local date, independent of display language/calendar. */
+    localDate: string;
+    /** Localized short time, including the host language's hour-cycle convention. */
+    time: string;
+    /** Localized date label. */
+    date: string;
+    /** Localized date and time with a time-zone indication for detail views. */
+    dateTime: string;
+}
+export declare const HostLocaleLocalizedTimestamp: S.Codec<HostLocaleLocalizedTimestamp>;
+/** Versioned envelope for [`HostLocaleSubscribeError`]. */
+export type VersionedHostLocaleSubscribeError = 
+/** Version 2 payload. */
+{
+    tag: "V2";
+    value: GenericError;
+};
+export declare const VersionedHostLocaleSubscribeError: S.Codec<VersionedHostLocaleSubscribeError>;
+/** Versioned envelope for [`HostLocaleSubscribeItem`]. */
+export type VersionedHostLocaleSubscribeItem = 
+/** Version 2 payload. */
+{
+    tag: "V2";
     value: HostLocaleSubscribeItem;
 };
 export declare const VersionedHostLocaleSubscribeItem: S.Codec<VersionedHostLocaleSubscribeItem>;
 /** Versioned envelope for [`HostLocaleSubscribeRequest`]. */
 export type VersionedHostLocaleSubscribeRequest = 
-/** Version 1 (no payload). */
+/** Version 2 (no payload). */
 {
-    tag: "V1";
+    tag: "V2";
     value?: undefined;
 };
 export declare const VersionedHostLocaleSubscribeRequest: S.Codec<VersionedHostLocaleSubscribeRequest>;
@@ -1615,6 +1702,30 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export declare const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [`HostRemindNextGameError`]. */
+export type VersionedHostRemindNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameError;
+};
+export declare const VersionedHostRemindNextGameError: S.Codec<VersionedHostRemindNextGameError>;
+/** Versioned envelope for [`HostRemindNextGameRequest`]. */
+export type VersionedHostRemindNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameRequest;
+};
+export declare const VersionedHostRemindNextGameRequest: S.Codec<VersionedHostRemindNextGameRequest>;
+/** Versioned envelope for [`HostRemindNextGameResponse`]. */
+export type VersionedHostRemindNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostRemindNextGameResponse: S.Codec<VersionedHostRemindNextGameResponse>;
 /** Versioned envelope for [`HostRendererActionSubscribeError`]. */
 export type VersionedHostRendererActionSubscribeError = 
 /** Version 1 payload. */
@@ -1687,6 +1798,30 @@ export type VersionedHostRequestResourceAllocationResponse =
     value: HostRequestResourceAllocationResponse;
 };
 export declare const VersionedHostRequestResourceAllocationResponse: S.Codec<VersionedHostRequestResourceAllocationResponse>;
+/** Versioned envelope for [`HostScannerScanError`]. */
+export type VersionedHostScannerScanError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanError;
+};
+export declare const VersionedHostScannerScanError: S.Codec<VersionedHostScannerScanError>;
+/** Versioned envelope for [`HostScannerScanRequest`]. */
+export type VersionedHostScannerScanRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanRequest;
+};
+export declare const VersionedHostScannerScanRequest: S.Codec<VersionedHostScannerScanRequest>;
+/** Versioned envelope for [`HostScannerScanResponse`]. */
+export type VersionedHostScannerScanResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanResponse;
+};
+export declare const VersionedHostScannerScanResponse: S.Codec<VersionedHostScannerScanResponse>;
 /**
  * Full Substrate extrinsic signing payload with all fields needed for signature
  * generation.
@@ -2036,6 +2171,76 @@ export type Modifier =
     value: BlendingMode;
 };
 export declare const Modifier: S.Codec<Modifier>;
+/**
+ * A host-admitted notification activation for the authenticated product,
+ * account and environment bound to this runtime.
+ */
+export interface NotificationActivation {
+    /** Host-assigned sequence, unique within the bound activation queue. */
+    sequence: bigint;
+    /** Identifier of the activated notification. */
+    notificationId: number;
+    /** Validated product-relative route beginning with exactly one slash. */
+    route: string;
+}
+export declare const NotificationActivation: S.Codec<NotificationActivation>;
+/** Versioned envelope for [`NotificationActivationAcknowledgeError`]. */
+export type VersionedNotificationActivationAcknowledgeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedNotificationActivationAcknowledgeError: S.Codec<VersionedNotificationActivationAcknowledgeError>;
+/** Versioned envelope for [`NotificationActivationAcknowledgeRequest`]. */
+export type VersionedNotificationActivationAcknowledgeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NotificationActivationAcknowledgeRequest;
+};
+export declare const VersionedNotificationActivationAcknowledgeRequest: S.Codec<VersionedNotificationActivationAcknowledgeRequest>;
+/** Versioned envelope for [`NotificationActivationAcknowledgeResponse`]. */
+export type VersionedNotificationActivationAcknowledgeResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedNotificationActivationAcknowledgeResponse: S.Codec<VersionedNotificationActivationAcknowledgeResponse>;
+/** Versioned envelope for [`NotificationActivationEventsError`]. */
+export type VersionedNotificationActivationEventsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedNotificationActivationEventsError: S.Codec<VersionedNotificationActivationEventsError>;
+/** Versioned envelope for [`NotificationActivationEventsRequest`]. */
+export type VersionedNotificationActivationEventsRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedNotificationActivationEventsRequest: S.Codec<VersionedNotificationActivationEventsRequest>;
+/** Versioned envelope for [`NotificationActivationEventsResponse`]. */
+export type VersionedNotificationActivationEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NotificationActivations;
+};
+export declare const VersionedNotificationActivationEventsResponse: S.Codec<VersionedNotificationActivationEventsResponse>;
+/**
+ * Pending activations, retained until individually acknowledged. Hosts return
+ * at most 32 events in sequence order, without consuming them on retrieval.
+ */
+export interface NotificationActivations {
+    /** Pending events in ascending sequence order. */
+    events: Array<NotificationActivation>;
+}
+export declare const NotificationActivations: S.Codec<NotificationActivations>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -2980,6 +3185,27 @@ export type RuntimeType =
     };
 };
 export declare const RuntimeType: S.Codec<RuntimeType>;
+/**
+ * How a scan ended.
+ *
+ * A dismissal is an outcome rather than an error, because it is worth
+ * offering again.
+ */
+export type ScanOutcome = 
+/** The user scanned a code the request accepts. */
+{
+    tag: "Scanned";
+    value: {
+        text: string;
+        format: CodeFormat;
+    };
+}
+/** The user closed the viewfinder without scanning. */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+};
+export declare const ScanOutcome: S.Codec<ScanOutcome>;
 /** Outline of a background or border. */
 export type Shape = 
 /** Rounded corners with the given radius. */
@@ -3430,6 +3656,10 @@ export interface HostAccountSignVrfRequest {
     items: Array<VrfTranscriptItem>;
 }
 export declare const HostAccountSignVrfRequest: S.Codec<HostAccountSignVrfRequest>;
+/** Request to drop this product's reminder. */
+export interface HostCancelNextGameRequest {
+}
+export declare const HostCancelNextGameRequest: S.Codec<HostCancelNextGameRequest>;
 /** A chat action received from the host. */
 export interface HostChatActionSubscribeItem {
     /** Room where the action occurred. */
@@ -3786,6 +4016,32 @@ export interface HostDevicePermissionResponse {
     granted: boolean;
 }
 export declare const HostDevicePermissionResponse: S.Codec<HostDevicePermissionResponse>;
+/** Face visibility change failure. */
+export type HostExpandedCardSetFaceShownError = 
+/** The Widget is not shown under its card right now. */
+{
+    tag: "NotPresented";
+    value?: undefined;
+}
+/** The user is moving the face; the request had no effect. */
+ | {
+    tag: "UserMoving";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostExpandedCardSetFaceShownError: S.Codec<HostExpandedCardSetFaceShownError>;
+/** Request to show or hide the face above the calling Widget. */
+export interface HostExpandedCardSetFaceShownRequest {
+    /** `true` brings the face back, `false` moves it out of the way. */
+    shown: boolean;
+}
+export declare const HostExpandedCardSetFaceShownRequest: S.Codec<HostExpandedCardSetFaceShownRequest>;
 /** Request to query whether a feature is supported by the host. */
 export type HostFeatureSupportedRequest = 
 /** Ask whether the host can interact with the chain identified by genesis hash. */
@@ -3923,14 +4179,14 @@ export interface HostLocalStorageWriteRequest {
 }
 export declare const HostLocalStorageWriteRequest: S.Codec<HostLocalStorageWriteRequest>;
 /** Locale the host currently presents its interface in, pushed to subscribers. */
-export interface HostLocaleSubscribeItem {
+export interface V01HostLocaleSubscribeItem {
     /**
      * BCP 47 language tag, such as `en`, `pt-BR` or `zh-Hans`. The set is
      * open: a product that does not ship the tag chooses its own fallback.
      */
     languageTag: string;
 }
-export declare const HostLocaleSubscribeItem: S.Codec<HostLocaleSubscribeItem>;
+export declare const V01HostLocaleSubscribeItem: S.Codec<V01HostLocaleSubscribeItem>;
 /** Error from [`crate::api::System::navigate_to`]. */
 export type HostNavigateToError = 
 /**
@@ -4217,6 +4473,15 @@ export interface HostPushNotificationResponse {
     id: number;
 }
 export declare const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse>;
+/** Why a reminder was not taken. */
+export type HostRemindNextGameError = "StartsInPast";
+export declare const HostRemindNextGameError: S.Codec<HostRemindNextGameError>;
+/** Request to remind the user when this product's next game starts. */
+export interface HostRemindNextGameRequest {
+    /** Milliseconds since the Unix epoch, UTC, at which the game starts. */
+    startsAt: bigint;
+}
+export declare const HostRemindNextGameRequest: S.Codec<HostRemindNextGameRequest>;
 /** An action triggered inside a product-rendered body. */
 export interface HostRendererActionSubscribeItem {
     /** Where the body lives. */
@@ -4262,6 +4527,75 @@ export interface HostRequestResourceAllocationResponse {
     outcomes: Array<AllocationOutcome>;
 }
 export declare const HostRequestResourceAllocationResponse: S.Codec<HostRequestResourceAllocationResponse>;
+/**
+ * Error returned by the scanner.
+ *
+ * A host with no scanner answers `Unsupported` at the framework level rather
+ * than through this enum.
+ */
+export type HostScannerScanError = 
+/** The device has no camera, or the user refused the host application one. */
+{
+    tag: "CameraUnavailable";
+    value?: undefined;
+}
+/** Another scan is open. */
+ | {
+    tag: "Busy";
+    value?: undefined;
+}
+/**
+ * The calling execution is not on screen, and is not a Worker handling a
+ * tap from the user, so no viewfinder was opened.
+ */
+ | {
+    tag: "NotVisible";
+    value?: undefined;
+}
+/** The request breaks a limit, so no viewfinder was shown. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostScannerScanError: S.Codec<HostScannerScanError>;
+/**
+ * Request to open the host's scanner.
+ *
+ * The host draws the viewfinder and writes its title, naming the product.
+ * Only `hint` is product text, shown as one plain line under the title.
+ */
+export interface HostScannerScanRequest {
+    /** Formats the product accepts. At least one. */
+    formats: Array<CodeFormat>;
+    /**
+     * Start the text must have, compared ignoring ASCII letter case, since QR
+     * codes often carry URLs in capitals. At most 256 bytes of UTF-8.
+     */
+    prefix?: string;
+    /**
+     * What to point the camera at, shown as the product's words. At most 80
+     * Unicode scalar values (`[...hint].length` in TypeScript). No control
+     * characters, line or paragraph separators, or bidirectional formatting
+     * characters.
+     */
+    hint?: string;
+}
+export declare const HostScannerScanRequest: S.Codec<HostScannerScanRequest>;
+/** Outcome of a scan. */
+export interface HostScannerScanResponse {
+    /** How the scan ended. */
+    outcome: ScanOutcome;
+}
+export declare const HostScannerScanResponse: S.Codec<HostScannerScanResponse>;
 /** Signing operation error. */
 export type HostSignPayloadError = 
 /** Payload could not be deserialized. */
@@ -4360,6 +4694,12 @@ export interface HostWorkerEndOperationRequest {
     id: number;
 }
 export declare const HostWorkerEndOperationRequest: S.Codec<HostWorkerEndOperationRequest>;
+/** Acknowledge one handled activation in the runtime's bound queue. */
+export interface NotificationActivationAcknowledgeRequest {
+    /** Exact sequence to acknowledge; never a cumulative watermark. */
+    sequence: bigint;
+}
+export declare const NotificationActivationAcknowledgeRequest: S.Codec<NotificationActivationAcknowledgeRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */
@@ -4791,6 +5131,30 @@ export interface HostLocalStorageReadRequest {
     key: string;
 }
 export declare const HostLocalStorageReadRequest: S.Codec<HostLocalStorageReadRequest>;
+/** Convert UTC instants using a snapshot of the host's locale subscription. */
+export interface HostLocaleLocalizeTimestampsRequest {
+    /** At most 128 Unix millisecond instants, no later than year 9999. */
+    timestampsMs: Array<bigint>;
+    /** Language tag from the locale subscription, not a guessed language. */
+    languageTag: string;
+    /** Time zone from the locale subscription; evaluated separately at each instant. */
+    timeZone: string;
+}
+export declare const HostLocaleLocalizeTimestampsRequest: S.Codec<HostLocaleLocalizeTimestampsRequest>;
+/** Local timestamps in exactly the request's order. */
+export interface HostLocaleLocalizeTimestampsResponse {
+    /** One result per requested timestamp; partial success is not returned. */
+    timestamps: Array<HostLocaleLocalizedTimestamp>;
+}
+export declare const HostLocaleLocalizeTimestampsResponse: S.Codec<HostLocaleLocalizeTimestampsResponse>;
+/** Host language and local time zone, replaced together when either changes. */
+export interface HostLocaleSubscribeItem {
+    /** BCP 47 language tag selected by the host. */
+    languageTag: string;
+    /** IANA time zone, or absent when the host cannot supply local time. */
+    timeZone?: string;
+}
+export declare const HostLocaleSubscribeItem: S.Codec<HostLocaleSubscribeItem>;
 /** Cross-axis alignment of `Row` children. */
 export type VerticalAlignment = "Top" | "Center" | "Bottom";
 export declare const VerticalAlignment: S.Codec<VerticalAlignment>;

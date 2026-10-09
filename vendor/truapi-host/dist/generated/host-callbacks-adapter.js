@@ -4,7 +4,7 @@
 // callback surface the WASM core invokes. Codec-backed wire and
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, RemotePermissionRequest, } from "@parity/truapi";
 import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
 /** Adapt typed host callbacks into the raw SCALE callback surface the
@@ -12,6 +12,7 @@ import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
 export function createWasmRawCallbacks(callbacks) {
     const chat = callbacks.chat;
     const contacts = callbacks.contacts;
+    const game = callbacks.game;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
     return {
@@ -36,10 +37,19 @@ export function createWasmRawCallbacks(callbacks) {
         clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
         featureSupported: async (request) => HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(HostFeatureSupportedRequest.dec(request))),
         supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+        ...(game
+            ? {
+                scheduleGameReminder: async (product, startsAt) => await game.scheduleGameReminder(ProductContext.dec(product), startsAt),
+                cancelGameReminder: async (product) => await game.cancelGameReminder(ProductContext.dec(product)),
+            }
+            : {}),
         subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(HostLocaleSubscribeItem.enc(item)), sendError),
+        localizeTimestamps: async (request) => HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(HostLocaleLocalizeTimestampsRequest.dec(request))),
         navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
         pushNotification: async (notification) => HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(HostPushNotificationRequest.dec(notification))),
         cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
+        activationEvents: async () => NotificationActivations.enc(await callbacks.notifications.activationEvents()),
+        acknowledgeActivation: async (request) => await callbacks.notifications.acknowledgeActivation(NotificationActivationAcknowledgeRequest.dec(request)),
         ...(permissionStatus
             ? {
                 devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(HostDevicePermissionRequest.dec(request))),

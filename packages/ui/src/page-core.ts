@@ -160,11 +160,6 @@ async function ensureWalletOwner(): Promise<void> {
   if (!ownerRevocationBound) {
     ownerRevocationBound = true;
     subscribeWalletOwnerRevoked(retireWalletOwner);
-    // The child frame releases its lock on pagehide, including BFCache entry.
-    // A restored page must acquire a new lease rather than reuse its old signer.
-    window.addEventListener('pagehide', () => {
-      retireWalletOwner();
-    });
   }
   if (walletOwnerLease === undefined) {
     const pending = requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {

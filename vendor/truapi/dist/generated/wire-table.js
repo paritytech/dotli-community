@@ -264,6 +264,16 @@ export const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION = {
     method: 1,
     kind: "request",
 };
+export const NOTIFICATIONS_ACTIVATION_EVENTS = {
+    trait: 8,
+    method: 8,
+    kind: "request",
+};
+export const NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION = {
+    trait: 8,
+    method: 9,
+    kind: "request",
+};
 export const PAYMENT_BALANCE_SUBSCRIBE = {
     trait: 9,
     method: 0,
@@ -389,6 +399,11 @@ export const LOCALE_SUBSCRIBE = {
     method: 0,
     kind: "subscription",
 };
+export const LOCALE_LOCALIZE_TIMESTAMPS = {
+    trait: 16,
+    method: 1,
+    kind: "request",
+};
 export const RENDERER_RENDER = {
     trait: 17,
     method: 0,
@@ -421,6 +436,26 @@ export const WORKER_END_OPERATION = {
 };
 export const CONTACTS_PICK = {
     trait: 20,
+    method: 0,
+    kind: "request",
+};
+export const GAME_REMIND_NEXT_GAME = {
+    trait: 21,
+    method: 0,
+    kind: "request",
+};
+export const GAME_CANCEL_NEXT_GAME = {
+    trait: 21,
+    method: 1,
+    kind: "request",
+};
+export const EXPANDED_CARD_SET_FACE_SHOWN = {
+    trait: 23,
+    method: 0,
+    kind: "request",
+};
+export const SCANNER_SCAN = {
+    trait: 25,
     method: 0,
     kind: "request",
 };

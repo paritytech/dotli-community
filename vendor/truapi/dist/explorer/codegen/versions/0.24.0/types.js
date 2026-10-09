@@ -2306,44 +2306,6 @@ export const types = [
         ],
     },
     {
-        id: "host-expanded-card-set-face-shown-error",
-        name: "HostExpandedCardSetFaceShownError",
-        category: "expanded_card",
-        definition: 'export type HostExpandedCardSetFaceShownError =\n  | { tag: "NotPresented"; value?: undefined }\n  | { tag: "UserMoving"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
-        description: "Face visibility change failure.",
-        variants: [
-            {
-                name: "NotPresented",
-                type: '{ tag: "NotPresented"; value?: undefined }',
-                description: "The Widget is not shown under its card right now.",
-            },
-            {
-                name: "UserMoving",
-                type: '{ tag: "UserMoving"; value?: undefined }',
-                description: "The user is moving the face; the request had no effect.",
-            },
-            {
-                name: "Unknown",
-                type: '{ tag: "Unknown"; value: { reason: string } }',
-                description: "Catch-all.",
-            },
-        ],
-    },
-    {
-        id: "host-expanded-card-set-face-shown-request",
-        name: "HostExpandedCardSetFaceShownRequest",
-        category: "expanded_card",
-        definition: "export interface HostExpandedCardSetFaceShownRequest {\n  shown: boolean;\n}",
-        description: "Request to show or hide the face above the calling Widget.",
-        fields: [
-            {
-                name: "shown",
-                type: "boolean",
-                description: "`true` brings the face back, `false` moves it out of the way.",
-            },
-        ],
-    },
-    {
         id: "host-feature-supported-request",
         name: "HostFeatureSupportedRequest",
         category: "system",
@@ -2618,88 +2580,16 @@ export const types = [
         ],
     },
     {
-        id: "host-locale-localize-timestamps-request",
-        name: "HostLocaleLocalizeTimestampsRequest",
-        category: "locale",
-        definition: "export interface HostLocaleLocalizeTimestampsRequest {\n  timestampsMs: Array<bigint>;\n  languageTag: string;\n  timeZone: string;\n}",
-        description: "Convert UTC instants using a snapshot of the host's locale subscription.",
-        fields: [
-            {
-                name: "timestamps_ms",
-                type: "Array<bigint>",
-                description: "At most 128 Unix millisecond instants, no later than year 9999.",
-            },
-            {
-                name: "language_tag",
-                type: "string",
-                description: "Language tag from the locale subscription, not a guessed language.",
-            },
-            {
-                name: "time_zone",
-                type: "string",
-                description: "Time zone from the locale subscription; evaluated separately at each instant.",
-            },
-        ],
-    },
-    {
-        id: "host-locale-localize-timestamps-response",
-        name: "HostLocaleLocalizeTimestampsResponse",
-        category: "locale",
-        definition: "export interface HostLocaleLocalizeTimestampsResponse {\n  timestamps: Array<HostLocaleLocalizedTimestamp>;\n}",
-        description: "Local timestamps in exactly the request's order.",
-        fields: [
-            {
-                name: "timestamps",
-                type: "Array<HostLocaleLocalizedTimestamp>",
-                description: "One result per requested timestamp; partial success is not returned.",
-            },
-        ],
-    },
-    {
-        id: "host-locale-localized-timestamp",
-        name: "HostLocaleLocalizedTimestamp",
-        category: "locale",
-        definition: "export interface HostLocaleLocalizedTimestamp {\n  localDate: string;\n  time: string;\n  date: string;\n  dateTime: string;\n}",
-        description: "One timestamp's calendar identity and presentation in the requested context.",
-        fields: [
-            {
-                name: "local_date",
-                type: "string",
-                description: "Gregorian YYYY-MM-DD local date, independent of display language/calendar.",
-            },
-            {
-                name: "time",
-                type: "string",
-                description: "Localized short time, including the host language's hour-cycle convention.",
-            },
-            {
-                name: "date",
-                type: "string",
-                description: "Localized date label.",
-            },
-            {
-                name: "date_time",
-                type: "string",
-                description: "Localized date and time with a time-zone indication for detail views.",
-            },
-        ],
-    },
-    {
         id: "host-locale-subscribe-item",
         name: "HostLocaleSubscribeItem",
         category: "locale",
-        definition: "export interface HostLocaleSubscribeItem {\n  languageTag: string;\n  timeZone?: string;\n}",
-        description: "Host language and local time zone, replaced together when either changes.",
+        definition: "export interface HostLocaleSubscribeItem {\n  languageTag: string;\n}",
+        description: "Locale the host currently presents its interface in, pushed to subscribers.",
         fields: [
             {
                 name: "language_tag",
                 type: "string",
-                description: "BCP 47 language tag selected by the host.",
-            },
-            {
-                name: "time_zone",
-                type: "string | undefined",
-                description: "IANA time zone, or absent when the host cannot supply local time.",
+                description: "BCP 47 language tag, such as `en`, `pt-BR` or `zh-Hans`. The set is\nopen: a product that does not ship the tag chooses its own fallback.",
             },
         ],
     },
@@ -3795,58 +3685,6 @@ export const types = [
                 name: "BlendingMode",
                 type: '{ tag: "BlendingMode"; value: BlendingMode }',
                 description: "Compositing mode against what is behind the node.",
-            },
-        ],
-    },
-    {
-        id: "notification-activation",
-        name: "NotificationActivation",
-        category: "notifications",
-        definition: "export interface NotificationActivation {\n  sequence: bigint;\n  notificationId: number;\n  route: string;\n}",
-        description: "A host-admitted notification activation for the authenticated product,\naccount and environment bound to this runtime.",
-        fields: [
-            {
-                name: "sequence",
-                type: "bigint",
-                description: "Host-assigned sequence, unique within the bound activation queue.",
-            },
-            {
-                name: "notification_id",
-                type: "number",
-                description: "Identifier of the activated notification.",
-            },
-            {
-                name: "route",
-                type: "string",
-                description: "Validated product-relative route beginning with exactly one slash.",
-            },
-        ],
-    },
-    {
-        id: "notification-activation-acknowledge-request",
-        name: "NotificationActivationAcknowledgeRequest",
-        category: "notifications",
-        definition: "export interface NotificationActivationAcknowledgeRequest {\n  sequence: bigint;\n}",
-        description: "Acknowledge one handled activation in the runtime's bound queue.",
-        fields: [
-            {
-                name: "sequence",
-                type: "bigint",
-                description: "Exact sequence to acknowledge; never a cumulative watermark.",
-            },
-        ],
-    },
-    {
-        id: "notification-activations",
-        name: "NotificationActivations",
-        category: "notifications",
-        definition: "export interface NotificationActivations {\n  events: Array<NotificationActivation>;\n}",
-        description: "Pending activations, retained until individually acknowledged. Hosts return\nat most 32 events in sequence order, without consuming them on retrieval.",
-        fields: [
-            {
-                name: "events",
-                type: "Array<NotificationActivation>",
-                description: "Pending events in ascending sequence order.",
             },
         ],
     },
@@ -5462,20 +5300,6 @@ export const types = [
                 name: "key",
                 type: "string",
                 description: "Storage key to read.",
-            },
-        ],
-    },
-    {
-        id: "v-01-host-locale-subscribe-item",
-        name: "V01HostLocaleSubscribeItem",
-        category: "locale",
-        definition: "export interface V01HostLocaleSubscribeItem {\n  languageTag: string;\n}",
-        description: "Locale the host currently presents its interface in, pushed to subscribers.",
-        fields: [
-            {
-                name: "language_tag",
-                type: "string",
-                description: "BCP 47 language tag, such as `en`, `pt-BR` or `zh-Hans`. The set is\nopen: a product that does not ship the tag chooses its own fallback.",
             },
         ],
     },

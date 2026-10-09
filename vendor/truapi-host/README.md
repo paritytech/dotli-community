@@ -32,6 +32,14 @@ the selected variant. `ProductRuntimeConfig` configures the pairing host and req
 constructor's configuration requires `runtimeConfig.networkSuffix` in addition: the bare TLD (`dot`, `paseo`, or
 `testnet`) matching the People chain and the wallet's onboarding configuration.
 
+`locale.subscribe` V2 reports the host's BCP 47 language tag and optional actual time-zone identifier.
+Implement `locale.localizeTimestamps` with the exported `localizeTimestamps` helper to format batches of up
+to 128 Unix-millisecond instants using JavaScript `Intl` and historical daylight-saving rules. Each result
+contains a Gregorian `YYYY-MM-DD` grouping key and localized time, date and detailed date/time strings.
+Invalid zones and out-of-range instants reject rather than substituting UTC. Publish a new locale
+subscription value when the host language or zone changes. A missing time zone means local conversion
+is unavailable; it is not UTC. The headless CLI deliberately has no local-time formatting engine.
+
 `runtime.createProvider(product, callbacks?)` optionally binds platform callbacks to one product execution while
 retaining the same shared native host. Omit the second argument to use the host's default callbacks. Pass a complete
 `WebWorkerHostCallbacks` bundle (not a partial override) when each iframe or worker connection owns its own consent UI.
@@ -172,6 +180,7 @@ const callbacks: HostCallbacks = {
   chat, // optional: leave it out and chat products get `Unsupported`
   permissionStatus, // optional: reports live OS permission state
   pocket, // optional: serves the host's Pocket card collection
+  game, // optional: holds the host's game reminders
   contacts, // optional: leave it out and contacts calls get `Unsupported`
 };
 ```
@@ -184,8 +193,20 @@ reading as usable. Omit it and a stored grant answers on its own.
 replacement, and `removePocketCard` takes one out. The host owns the collection: removing an absent card succeeds, and a
 card the host pins is refused with `Privileged`.
 
-Under `createWebWorkerPairingHostRuntime` the presence of each optional group is reported to the worker in its `init`
-message, so the core sees the same capability set on both sides of the boundary.
+`game` holds the host's game reminder. `scheduleGameReminder` replaces the
+product's held reminder, and `cancelGameReminder` drops it. The core asks for
+no per-product consent, so the host asks the platform for what the reminder
+needs, and a rejected schedule reaches the product as a host failure. A host
+keeps one reminder per product. The core serves
+`game` to the game product, `dim2`, alone. The mock test host
+(`@parity/truapi-host/testing`) accepts every reminder and cancel without
+holding them once it runs as that product; its default `mock.dot` gets
+`Unsupported`, so a suite that exercises `game` passes
+`productId: "dim2.dot"`.
+
+Under `createWebWorkerPairingHostRuntime` the presence of each optional group is
+reported to the worker in its `init` message, so the core sees the same
+capability set on both sides of the boundary.
 
 ### Product-rendered bodies
 

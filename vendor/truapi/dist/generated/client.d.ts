@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "ea1a1441ff0219b1";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "2d84a4c2f5f09522";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -194,6 +194,39 @@ export declare class EntropyClient {
     /** Derive deterministic entropy. */
     derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
 }
+/**
+ * The card a Widget is shown under.
+ *
+ * Only a Widget execution may call it.
+ */
+export declare class ExpandedCardClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Show or hide the face above the calling Widget.
+     *
+     * Succeeds when the face is already in that state. Fails with
+     * `NotPresented` when the Widget is not shown under its card.
+     */
+    setFaceShown(request: T.HostExpandedCardSetFaceShownRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostExpandedCardSetFaceShownError>>;
+}
+/** Reminders for a product's next game. */
+export declare class GameClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Remind the user when this product's next game starts.
+     *
+     * Replaces the reminder this product already holds. Served only to the
+     * game product: any other product, or a host that cannot hold reminders,
+     * gets `Unsupported`. A `startsAt` that is not in the future fails with
+     * `StartsInPast`, and a reminder the host cannot hold fails as a host
+     * failure carrying its reason.
+     */
+    remindNextGame(request: T.HostRemindNextGameRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostRemindNextGameError>>;
+    /** Drop the reminder. Safe to call whether one is held or not. */
+    cancelNextGame(request: T.HostCancelNextGameRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostCancelNextGameError>>;
+}
 /** Local key/value storage scoped to the calling product. */
 export declare class LocalStorageClient {
     #private;
@@ -221,6 +254,8 @@ export declare class LocaleClient {
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
     subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
+    /** Localize a bounded batch of UTC instants in a host locale snapshot. */
+    localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {
@@ -247,6 +282,18 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+    /**
+     * Retrieve up to 32 pending activations for this runtime's authenticated
+     * product, account and environment. Retrieval does not consume events,
+     * prompt for permissions or enroll a background receiver.
+     */
+    activationEvents(options?: CallOptions): ResultAsync<T.NotificationActivations, S.CallErrorValue<T.VersionedNotificationActivationEventsError>>;
+    /**
+     * Acknowledge exactly one activation after the product router handles it.
+     * Unknown or already acknowledged sequences are idempotent, and can never
+     * remove an activation from another product, account or environment.
+     */
+    acknowledgeActivation(request: T.NotificationActivationAcknowledgeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedNotificationActivationAcknowledgeError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {
@@ -333,6 +380,27 @@ export declare class ResourceAllocationClient {
     constructor(transport: TrUApiTransport);
     /** Request the host to pre-allocate one or more resources. */
     request(request: T.HostRequestResourceAllocationRequest, options?: CallOptions): ResultAsync<T.HostRequestResourceAllocationResponse, S.CallErrorValue<T.VersionedHostRequestResourceAllocationError>>;
+}
+/**
+ * QR codes and barcodes scanned through the host's own viewfinder.
+ *
+ * The product receives the one code the user scanned, never camera frames,
+ * so there is no permission to request: pointing the host's viewfinder at a
+ * code is the consent. The host does not act on what it scanned, so a link
+ * comes back as text. A product that needs the camera for anything else keeps
+ * using `getUserMedia` under the `Camera` permission.
+ */
+export declare class ScannerClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Ask the host to let the user scan one code.
+     *
+     * The host ignores codes outside `formats` or without `prefix` and keeps
+     * the viewfinder open. A host with no scanner answers `Unsupported`, and
+     * cancelling the call closes the viewfinder.
+     */
+    scan(request: T.HostScannerScanRequest, options?: CallOptions): ResultAsync<T.HostScannerScanResponse, S.CallErrorValue<T.VersionedHostScannerScanError>>;
 }
 /** Signing operations. */
 export declare class SigningClient {
@@ -508,6 +576,8 @@ export interface TrUApiClient {
     readonly coinPayment: CoinPaymentClient;
     readonly contacts: ContactsClient;
     readonly entropy: EntropyClient;
+    readonly expandedCard: ExpandedCardClient;
+    readonly game: GameClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
     readonly notifications: NotificationsClient;
@@ -517,6 +587,7 @@ export interface TrUApiClient {
     readonly preimage: PreimageClient;
     readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;
+    readonly scanner: ScannerClient;
     readonly signing: SigningClient;
     readonly statementStore: StatementStoreClient;
     readonly system: SystemClient;

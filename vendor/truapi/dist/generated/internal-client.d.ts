@@ -7,7 +7,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "ea1a1441ff0219b1";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "2d84a4c2f5f09522";
 /** Permission request methods. */
 declare class PermissionsClient {
     #private;

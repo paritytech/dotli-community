@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "ea1a1441ff0219b1";
+export const TRUAPI_WIRE_SCHEMA_HASH = "2d84a4c2f5f09522";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -717,6 +717,73 @@ export class EntropyClient {
         });
     }
 }
+/**
+ * The card a Widget is shown under.
+ *
+ * Only a Widget execution may call it.
+ */
+export class ExpandedCardClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Show or hide the face above the calling Widget.
+     *
+     * Succeeds when the face is already in that state. Fails with
+     * `NotPresented` when the Widget is not shown under its card.
+     */
+    setFaceShown(request, options) {
+        return this.#transport.request({
+            ids: W.EXPANDED_CARD_SET_FACE_SHOWN,
+            payload: T.VersionedHostExpandedCardSetFaceShownRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostExpandedCardSetFaceShownResponse, S.CallError(T.VersionedHostExpandedCardSetFaceShownError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/** Reminders for a product's next game. */
+export class GameClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Remind the user when this product's next game starts.
+     *
+     * Replaces the reminder this product already holds. Served only to the
+     * game product: any other product, or a host that cannot hold reminders,
+     * gets `Unsupported`. A `startsAt` that is not in the future fails with
+     * `StartsInPast`, and a reminder the host cannot hold fails as a host
+     * failure carrying its reason.
+     */
+    remindNextGame(request, options) {
+        return this.#transport.request({
+            ids: W.GAME_REMIND_NEXT_GAME,
+            payload: T.VersionedHostRemindNextGameRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostRemindNextGameResponse, S.CallError(T.VersionedHostRemindNextGameError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Drop the reminder. Safe to call whether one is held or not. */
+    cancelNextGame(request, options) {
+        return this.#transport.request({
+            ids: W.GAME_CANCEL_NEXT_GAME,
+            payload: T.VersionedHostCancelNextGameRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCancelNextGameResponse, S.CallError(T.VersionedHostCancelNextGameError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
 /** Local key/value storage scoped to the calling product. */
 export class LocalStorageClient {
     #transport;
@@ -787,9 +854,21 @@ export class LocaleClient {
         return createObservable({
             transport: this.#transport,
             ids: W.LOCALE_SUBSCRIBE,
-            payload: T.VersionedHostLocaleSubscribeRequest.enc({ tag: "V1", value: undefined }),
+            payload: T.VersionedHostLocaleSubscribeRequest.enc({ tag: "V2", value: undefined }),
             decodeItem: (payload) => T.VersionedHostLocaleSubscribeItem.dec(payload).value,
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostLocaleSubscribeError)),
+        });
+    }
+    /** Localize a bounded batch of UTC instants in a host locale snapshot. */
+    localizeTimestamps(request, options) {
+        return this.#transport.request({
+            ids: W.LOCALE_LOCALIZE_TIMESTAMPS,
+            payload: T.VersionedHostLocaleLocalizeTimestampsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostLocaleLocalizeTimestampsResponse, S.CallError(T.VersionedHostLocaleLocalizeTimestampsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -836,6 +915,38 @@ export class NotificationsClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Retrieve up to 32 pending activations for this runtime's authenticated
+     * product, account and environment. Retrieval does not consume events,
+     * prompt for permissions or enroll a background receiver.
+     */
+    activationEvents(options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_ACTIVATION_EVENTS,
+            payload: T.VersionedNotificationActivationEventsRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedNotificationActivationEventsResponse, S.CallError(T.VersionedNotificationActivationEventsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Acknowledge exactly one activation after the product router handles it.
+     * Unknown or already acknowledged sequences are idempotent, and can never
+     * remove an activation from another product, account or environment.
+     */
+    acknowledgeActivation(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION,
+            payload: T.VersionedNotificationActivationAcknowledgeRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedNotificationActivationAcknowledgeResponse, S.CallError(T.VersionedNotificationActivationAcknowledgeError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1047,6 +1158,39 @@ export class ResourceAllocationClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostRequestResourceAllocationResponse, S.CallError(T.VersionedHostRequestResourceAllocationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/**
+ * QR codes and barcodes scanned through the host's own viewfinder.
+ *
+ * The product receives the one code the user scanned, never camera frames,
+ * so there is no permission to request: pointing the host's viewfinder at a
+ * code is the consent. The host does not act on what it scanned, so a link
+ * comes back as text. A product that needs the camera for anything else keeps
+ * using `getUserMedia` under the `Camera` permission.
+ */
+export class ScannerClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Ask the host to let the user scan one code.
+     *
+     * The host ignores codes outside `formats` or without `prefix` and keeps
+     * the viewfinder open. A host with no scanner answers `Unsupported`, and
+     * cancelling the call closes the viewfinder.
+     */
+    scan(request, options) {
+        return this.#transport.request({
+            ids: W.SCANNER_SCAN,
+            payload: T.VersionedHostScannerScanRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostScannerScanResponse, S.CallError(T.VersionedHostScannerScanError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1433,6 +1577,8 @@ export function createClient(transport) {
         coinPayment: new CoinPaymentClient(transport),
         contacts: new ContactsClient(transport),
         entropy: new EntropyClient(transport),
+        expandedCard: new ExpandedCardClient(transport),
+        game: new GameClient(transport),
         localStorage: new LocalStorageClient(transport),
         locale: new LocaleClient(transport),
         notifications: new NotificationsClient(transport),
@@ -1442,6 +1588,7 @@ export function createClient(transport) {
         preimage: new PreimageClient(transport),
         renderer: new RendererClient(transport),
         resourceAllocation: new ResourceAllocationClient(transport),
+        scanner: new ScannerClient(transport),
         signing: new SigningClient(transport),
         statementStore: new StatementStoreClient(transport),
         system: new SystemClient(transport),
