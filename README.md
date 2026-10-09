@@ -371,9 +371,9 @@ Bulletin network: at most 256 KiB per upload and four automatic attempts per rol
 budgets still require per-upload review. **Ask per upload** and **Revoke automatic uploads** stop automatic approval
 without preventing individually reviewed uploads; granting again does not reset the rolling budget. Changing this
 consent does not replace the product iframe. Resetting permissions retains the account selected when the reset began,
-rather than applying a delayed result to a newly selected account.
-The Preimage Factory and Submit E2E cases approve each upload with **Allow once**; the ordinary signing/permission
-approval alone is insufficient. These cases do not opt the test account into bounded automatic uploads.
+rather than applying a delayed result to a newly selected account. The Preimage Factory and Submit E2E cases approve
+each upload with **Allow once**; the ordinary signing/permission approval alone is insufficient. These cases do not opt
+the test account into bounded automatic uploads.
 
 A fresh product-document handshake retires the previous native execution before attaching its replacement. Pending
 permission prompts and execution-local grants cannot cross that boundary; repeated readiness messages with the same
@@ -395,11 +395,14 @@ The matching foreground product polls `notifications.activationEvents()` and rec
 consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
 product, account, network or artifact cannot read or acknowledge the retained activation.
 
+Notification authority follows live native auth transitions, not the UI-state cache or shared-session storage hints. An
+unchanged stored-session reload emits no new auth transition and leaves ordinary notifications usable. A native account
+change, disconnection or explicit logout invalidates the previous scope.
+
 Scheduled presentation can continue after the product frame closes: the durable host-issued binding is checked against
 the current page core's live account and network, and any conflicting mounted artifact suppresses delivery. A click
 while the product is unmounted remains pending until the matching verified product is opened; the host does not execute
-the destination to reopen it. Account authority is cleared on logout, core retirement or product-core replacement, not
-on a storage reload hint: the core may reconcile the same session without emitting another auth transition.
+the destination to reopen it. Account authority is cleared on logout, core retirement or product-core replacement.
 
 Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
 URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
@@ -554,19 +557,18 @@ source. `vendor/truapi-host.lock.json` records the source revision and archive h
 `0ee3ba3d776f2049aa9e8f92f9e710c8940beadfbf5fcc8ae92412a715a7a182`; production web signing WASM SHA-256 is
 `dde26843c573560952ce345d9d80772e66e12cbacd4edae3ff3ba333d9330c26`. The browser bundle enables `wasm-signing-host`,
 without `test-host`, and excludes testing/non-web WASM and precompressed WASM sidecars. The archive hashes precede the
-local `@parity/truapi=file:../truapi` dependency override. Existing native qualification recorded 1,776 Rust, 403 Android
-and 376 host-JavaScript tests; these counts do not claim browser qualification of this integration.
-Chat authority, custody and account-bound notification activation remain above the generic browser runtime and wallet
-layer. This integration combines Profile disclosure, contacts and presentation fences with the separate JamPeerTransport
-layer, background receiving and Media.
-Replacing a product document retires its execution, receiving registration, avatars, labels and Media capture immediately;
-the new execution receives fresh capability callbacks and a new protected Media adapter bound to its own lifetime.
-Locale timestamp batches use the SDK's browser `Intl` implementation.
-Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery
-opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame.
-Allowance inspection batches historical ring membership reads while preserving finalized snapshots, complete ring
-validation and identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a
-matching local truapi checkout instead, run:
+local `@parity/truapi=file:../truapi` dependency override. Existing native qualification recorded 1,776 Rust, 403
+Android and 376 host-JavaScript tests; these counts do not claim browser qualification of this integration. Chat
+authority, custody and account-bound notification activation remain above the generic browser runtime and wallet layer.
+This integration combines Profile disclosure, contacts and presentation fences with the separate JamPeerTransport layer,
+background receiving and Media. Replacing a product document retires its execution, receiving registration, avatars,
+labels and Media capture immediately; the new execution receives fresh capability callbacks and a new protected Media
+adapter bound to its own lifetime. Locale timestamp batches use the SDK's browser `Intl` implementation. Explicit
+protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery opens fresh
+connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame. Allowance
+inspection batches historical ring membership reads while preserving finalized snapshots, complete ring validation and
+identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local
+truapi checkout instead, run:
 
 ```bash
 npm run link:truapi

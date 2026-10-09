@@ -319,29 +319,43 @@ describe('bridge render lifecycle', () => {
     spy.mockRestore();
   });
 
-  it('keeps notifications live across a session-store rewrite until the core changes auth state', async () => {
-    // This suite reloads the real page-lifetime bridge modules for each case.
-    const { renderAppSubdomain } = await import('../src/bridge.js');
-    const render = renderAppSubdomain('verified-cid', 'myapp');
-    await waitForProviderRequests(1);
-    const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
-    const connected = {
-      tag: 'Connected' as const,
-      value: { publicKey: `0x${'11'.repeat(32)}` as const, identityAccountId: `0x${'22'.repeat(32)}` as const },
-    };
-    callbacks.auth.authStateChanged(connected);
-    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
-    await render;
-    const pushed = await callbacks.notifications.pushNotification({ text: 'Before refresh' });
-    expect(pushed.id).toBeTypeOf('number');
-    window.dispatchEvent(new Event('dotli:truapi-session-store-changed'));
-    const refreshed = await callbacks.notifications.pushNotification({ text: 'After refresh' });
-    expect(refreshed.id).not.toBe(pushed.id);
-    callbacks.auth.authStateChanged({ tag: 'Disconnected' });
-    await expect(callbacks.notifications.pushNotification({ text: 'After disconnect' })).rejects.toThrow(
-      'authenticated account',
-    );
-  }, 10_000);
+  it.each(['account change', 'disconnect', 'logout'] as const)(
+    'preserves unchanged session notification authority until %s',
+    async transition => {
+      const { renderAppSubdomain } = await import('../src/bridge.js');
+      const { notificationContext, notificationContextIsCurrent } = await import('../src/notification-activation.js');
+      const { findNotification } = await import('@dotli/storage/notification-activations');
+      const render = renderAppSubdomain('verified-cid', 'myapp');
+      await waitForProviderRequests(1);
+      const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+      callbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+      });
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+      await render;
+      const originalScope = notificationContext('myapp').scope;
+      window.dispatchEvent(new Event('dotli:truapi-session-store-changed'));
+      const refreshed = await callbacks.notifications.pushNotification({ text: 'After unchanged refresh' });
+      expect((await findNotification('myapp', refreshed.id))?.scope).toEqual(originalScope);
+
+      if (transition === 'account change') {
+        callbacks.auth.authStateChanged({
+          tag: 'Connected',
+          value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'33'.repeat(32)}` },
+        });
+      } else if (transition === 'disconnect') {
+        callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+      } else {
+        window.dispatchEvent(new Event('dotli:logged-out'));
+      }
+      expect(notificationContextIsCurrent(originalScope)).toBe(false);
+      await expect(callbacks.notifications.pushNotification({ text: 'After auth invalidation' })).rejects.toThrow(
+        'authenticated account',
+      );
+    },
+    10_000,
+  );
 
   it('allows ordinary notifications for Connected sessions without an optional identity account', async () => {
     const { renderAppSubdomain } = await import('../src/bridge.js');

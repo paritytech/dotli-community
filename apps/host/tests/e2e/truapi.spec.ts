@@ -10,6 +10,7 @@ import { runWebSignedTest, type HostDialogDecision } from './helpers/signing.js'
 // Core permission decisions and signing/resource reviews have separate authority.
 const lastingPermission: HostDialogDecision = { title: 'Permission Request', button: 'Always allow' };
 const resourceAllocation: HostDialogDecision = { title: 'Resource Allocation', button: 'Allow' };
+const productAccount: HostDialogDecision = { title: 'Product Account', button: 'Allow' };
 const preimageDecisions: readonly HostDialogDecision[] = [
   lastingPermission,
   resourceAllocation,
@@ -22,12 +23,16 @@ test.describe('dot.li > host-playground.dot', () => {
   });
 
   test.describe('Accounts', () => {
-    test('Get Product Account', async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, 'accounts-provider-product');
+    test('Get Product Account', async ({ pairedPage, productFrame }) => {
+      expect(await runWebSignedTest(pairedPage, productFrame, 'accounts-provider-product', [productAccount])).toBe(
+        'success',
+      );
     });
 
-    test('Product Signer', async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, 'accounts-provider-product-signer');
+    test('Product Signer', async ({ pairedPage, productFrame }) => {
+      expect(
+        await runWebSignedTest(pairedPage, productFrame, 'accounts-provider-product-signer', [productAccount]),
+      ).toBe('success');
     });
 
     test('Account Connection Status', async ({ productFrame }) => {
@@ -408,6 +413,12 @@ test.describe('dot.li > host-playground.dot', () => {
 
       // Then
       expect(status).toBe('success');
+
+      // A same-session storage hint produces no new native AuthState transition.
+      await pairedPage.evaluate(() => {
+        window.dispatchEvent(new Event('dotli:truapi-session-store-changed'));
+      });
+      await runTestExpectSuccess(productFrame, 'push-notification');
     });
   });
 
