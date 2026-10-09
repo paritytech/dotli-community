@@ -164,7 +164,10 @@ transport is execution-local in the sandbox. Before dialing a network, it reques
 product's authenticated port to the shared page core. The host's Solid permission dialog shows the full genesis hash and
 offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions are scoped to
 product and genesis, while a one-time grant lasts only for that execution. This grants no account, signing, storage, or
-arbitrary web access. Peer access permits sending and receiving messages; it is not a read-only network permission.
+arbitrary web access. Peer access permits sending and receiving messages; it is not a read-only network permission. JAM
+permission callbacks return the decision without an administrative permission write, leaving the canonical Rust core to
+persist it against the pending product/genesis request. Administrative settings changes remain a separate operation that
+deliberately invalidates stale consent.
 
 The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
 the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
@@ -470,8 +473,16 @@ UI test fixtures await `overlaysReady()` before interacting with lazy permission
 controlled clock so module loading and machine load do not consume the permission window. Retention behavior uses a
 small explicit capacity; large timeline workloads have separate work-bound tests.
 
+Permission callbacks return `AllowOnce`, `AllowAlways`, or `Deny`; the core records that answer against the active
+prompt. They must not call the administrative permission setter: settings writes deliberately retire pending consent, so
+doing both would invalidate the user's own answer. E2E tests select a specific review title and decision only during the
+operation under test, with no worker-wide auto-approval. Lasting remote and notification grants remain explicit
+`Always allow` interactions; preimage upload review is separate from the remote permission and resource-allocation
+review.
+
 Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
-ready before boot finishes rewriting the URL.
+ready before boot finishes rewriting the URL. Backend, cache flags and URL are read as one snapshot; the assertion waits
+through an intentional settings reload within the existing ten-second deadline.
 
 Bitswap unit fixtures load a fresh module before installing each case's provider, relay, or fake clock. Relay
 installation is synchronous, so a timed-out import cannot install a listener after teardown. Protocol fixtures use the
