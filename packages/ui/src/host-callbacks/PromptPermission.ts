@@ -9,7 +9,6 @@ import {
   getPermissionStatus,
   isDevicePermission,
   isEnforceableDevicePermission,
-  setPermissionStatus,
   type EnforceablePermissionName,
 } from '../permissions.js';
 import { showPermissionRequestModal } from '../permission-modal.js';
@@ -109,14 +108,10 @@ async function decidePromptPermissionWhenActive(
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
+  // The core commits the returned decision against the prompt's original authority.
+  // An administrative settings write here would invalidate that very prompt.
   if (decision === 'denied') {
-    await setPermissionStatus(label, name, 'denied');
-    throwIfAborted(signal);
     return 'Deny';
-  }
-  if (decision === 'granted') {
-    await setPermissionStatus(label, name, 'granted');
-    throwIfAborted(signal);
   }
   if (gatedByIframe) {
     // The iframe `allow` attribute is fixed at load, so reload, a tick later so the prompt response
