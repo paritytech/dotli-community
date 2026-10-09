@@ -62,6 +62,7 @@ import {
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
+  isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
   isProtocolEnvelope,
@@ -75,6 +76,7 @@ import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
 import { errorResponse } from './error-response.js';
+import { handleLocalWalletRequest } from './local-wallet-handler.js';
 
 initSentry('protocol');
 installGlobalErrorHandlers('protocol');
@@ -199,7 +201,7 @@ function bindSharedAuthBroadcastRelay(): void {
   });
 }
 
-type SharedStore = 'auth' | 'mode';
+type SharedStore = 'auth' | 'mode' | 'wallet';
 type SharedRejectReason = 'origin' | 'validation';
 
 function countSharedReject(store: SharedStore, reason: SharedRejectReason): void {
@@ -498,7 +500,11 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     if (!isProtocolEnvelope(data) || data.kind !== 'request') {
       return;
     }
-    if (isSharedAuthRequestMethod(data.method) || isSharedModeRequestMethod(data.method)) {
+    if (
+      isSharedAuthRequestMethod(data.method) ||
+      isSharedModeRequestMethod(data.method) ||
+      isSharedWalletRequestMethod(data.method)
+    ) {
       return;
     }
     if (!isAllowedOrigin(event.origin)) {
@@ -693,7 +699,11 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
     if (!isProtocolEnvelope(data) || data.kind !== 'request') {
       return;
     }
-    if (isSharedAuthRequestMethod(data.method) || isSharedModeRequestMethod(data.method)) {
+    if (
+      isSharedAuthRequestMethod(data.method) ||
+      isSharedModeRequestMethod(data.method) ||
+      isSharedWalletRequestMethod(data.method)
+    ) {
       return;
     }
     if (!isAllowedOrigin(event.origin)) {
@@ -818,6 +828,36 @@ function bindSharedModeListener(): void {
   });
 }
 
+function bindLocalWalletListener(): void {
+  window.addEventListener('message', (event: MessageEvent) => {
+    const data: unknown = event.data;
+    if (!isProtocolEnvelope(data) || data.kind !== 'request' || !isSharedWalletRequestMethod(data.method)) {
+      return;
+    }
+    if (!isAllowedOrigin(event.origin)) {
+      log.warn(`[dot.li protocol] Rejected local wallet request from disallowed origin: ${event.origin}`);
+      countSharedReject('wallet', 'origin');
+      return;
+    }
+    handleLocalWalletRequest(data, event.origin).then(
+      result => {
+        postToSource(event.source, event.origin, {
+          namespace: 'dotli:protocol',
+          kind: 'response',
+          id: data.id,
+          ok: true,
+          result,
+        });
+      },
+      (error: unknown) => {
+        // The host rebuilds this failure from the response and reports it.
+        log.warn(`[dot.li protocol] ${data.method} failed`, error);
+        postToSource(event.source, event.origin, errorResponse(data.id, error));
+      },
+    );
+  });
+}
+
 function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback): void {
   if (!isSharedAuthRequestMethod(request.method)) {
     throw new Error(`Not a shared auth request: ${request.method as string}`);
@@ -880,6 +920,7 @@ function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: strin
 bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();
+bindLocalWalletListener();
 
 void init().catch((err: unknown) => {
   log.error('[dot.li protocol] Init failed:', err);

@@ -16,7 +16,7 @@
     "build:prod": "astro check && astro build && node ../../scripts/compress-dist.ts",
     "dev": "astro dev",
     "test": "vitest run",
-    "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts tests/functional/host-settings.spec.ts",
+    "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts tests/functional/host-settings.spec.ts tests/functional/local-wallet.spec.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
     "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} SIGNING_HOST_NETWORK=${SIGNING_HOST_NETWORK:-paseo-next-v2} playwright test --config=tests/e2e/playwright.config.ts",
     "test:perf": "PERF_RUNS=10 PERF_DOMAIN_A=browse PERF_DOMAIN_B=host-playground playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",

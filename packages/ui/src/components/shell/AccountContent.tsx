@@ -4,11 +4,14 @@
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { requestTruapiDisconnect } from '../../auth-controller.js';
+import { walletModeStore } from '../../state/wallet-mode.js';
 import { Button } from '../primitives/Button.js';
+import { Chip } from '../primitives/Chip.js';
 import { Surface } from '../primitives/Surface.js';
 import { Callout, InfoIcon } from '../primitives/Well.js';
 import { sessionDisplayName, sessionInitials, sessionUsername, useAccount, UserIcon } from './account.js';
 import { usePopover } from '../floating/Popover.js';
+import { useStore } from '../use-store.js';
 import s from './AccountContent.module.css';
 
 function LogOutIcon(): JSX.Element {
@@ -34,6 +37,8 @@ function LogOutIcon(): JSX.Element {
 export function AccountContent(): JSX.Element {
   const popover = usePopover();
   const account = useAccount();
+  const walletMode = useStore(walletModeStore);
+  const local = (): boolean => walletMode().mode === 'local';
   const id = (name: string): string => `${popover.id}-${name}`;
   const username = (): string | undefined => {
     const session = account.session();
@@ -48,7 +53,9 @@ export function AccountContent(): JSX.Element {
     return session === undefined ? undefined : sessionInitials(session);
   };
   const name = (): string =>
-    account.session() === undefined ? '' : (displayName() ?? 'Connected with Polkadot Mobile');
+    account.session() === undefined
+      ? ''
+      : (displayName() ?? (local() ? 'Connected' : 'Connected with Polkadot Mobile'));
   const onDisconnect = (): void => {
     popover.close();
     requestTruapiDisconnect();
@@ -70,6 +77,12 @@ export function AccountContent(): JSX.Element {
           >
             {name()}
           </div>
+          {/* The keys live in this browser, not in Polkadot App. */}
+          <Show when={local()}>
+            <Chip tone="warn" class={s['local']} testId="account-local">
+              Local account
+            </Chip>
+          </Show>
         </div>
       </div>
       {/* A bare address with no explanation reads as a rendering bug. */}

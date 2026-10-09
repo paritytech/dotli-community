@@ -94,6 +94,13 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
 vi.mock('../../metrics/src/sentry.js', () => sentry);
+vi.mock('../src/wallet-boot.js', () => ({
+  readWalletBoot: () => Promise.resolve(null),
+  reportLocalWalletFailure: vi.fn(),
+}));
+
+const walletSwitch = vi.hoisted(() => ({ switchToPolkadotApp: vi.fn(() => Promise.resolve()) }));
+vi.mock('../src/wallet-switch.js', () => walletSwitch);
 
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
@@ -597,6 +604,23 @@ describe('bridge render lifecycle', () => {
       expect(mocks.coreRuntimes[0]?.dispose).toHaveBeenCalledTimes(1);
     });
   }, 10_000);
+
+  it('As a local wallet user, I log out by leaving local mode instead of disconnecting a session', async () => {
+    // Given
+    await import('../src/bridge.js');
+    const { setWalletModeState } = await import('../src/state/wallet-mode.js');
+    setWalletModeState({ mode: 'local', failure: null });
+
+    // When
+    window.dispatchEvent(new Event('dotli:truapi-disconnect-request'));
+
+    // Then
+    await vi.waitFor(() => {
+      expect(walletSwitch.switchToPolkadotApp).toHaveBeenCalledTimes(1);
+    });
+    // No core was booted to disconnect a session.
+    expect(mocks.coreRuntimes).toHaveLength(0);
+  });
 });
 
 describe('bridge app roots', () => {

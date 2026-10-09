@@ -173,8 +173,12 @@ function selectedRows(): HTMLElement[] {
   return rows().filter(r => r.getAttribute('data-selection') === 'selected');
 }
 
-function tab(view: 'list' | 'timeline' | 'resolution' | 'archive' | 'diagnostics'): HTMLElement {
-  return q(`[data-testid="td-tab"][data-view="${view}"]`);
+function section(name: 'truapi' | 'resolution' | 'archive' | 'diagnostics' | 'wallet'): HTMLElement {
+  return q(`[data-testid="td-section"][data-value="${name}"]`);
+}
+
+function tab(view: 'list' | 'timeline'): HTMLElement {
+  return q(`[data-testid="td-tab"][data-value="${view}"]`);
 }
 
 function resolutionFact(name: string): string {
@@ -258,7 +262,9 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(root.hasAttribute('data-collapsed')).toBe(false);
     expect(root.getAttribute('data-dock')).toBe('bottom');
     expect(root.querySelector('[data-testid="td-resize-handle"]')).not.toBeNull();
-    expect(q('[data-testid="td-header"] [data-testid="td-title"]').textContent).toBe('TrUAPI Debug');
+    const sections = [...root.querySelectorAll<HTMLElement>('[data-testid="td-header"] [data-testid="td-section"]')];
+    expect(sections.map(t => t.textContent)).toEqual(['TrUAPI', 'Resolution', 'Archive', 'Diagnostics', 'Wallet']);
+    expect(sections.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false']);
     expect(counts()).toBe('0 events');
     expect(q('[data-testid="td-pause"]').textContent).toBe('Pause');
     expect(q('[data-testid="td-clear"]').textContent).toBe('Clear');
@@ -273,13 +279,14 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('[data-testid="td-dock"]').querySelector('svg')).not.toBeNull();
     expect(q('[data-testid="td-collapse"]').textContent).toBe('▼');
     expect(q('[data-testid="td-collapse"]').title).toBe('Collapse');
-    expect(q('[data-testid="td-close"]').textContent).toBe('×');
+    expect(q('[data-testid="td-close"]').getAttribute('aria-label')).toBe('Hide');
+    expect(q('[data-testid="td-close"]').querySelector('svg')).not.toBeNull();
     expect(q('[data-testid="td-close"]').title).toBe('Hide (Ctrl+Shift+D)');
 
     const kinds = [
       ...root.querySelectorAll<HTMLInputElement>('[data-testid="td-filters"] input[data-testid="td-kind"]'),
     ];
-    expect(kinds.map(k => [k.dataset['kind'], k.checked])).toEqual([
+    expect(kinds.map(k => [k.dataset['value'], k.checked])).toEqual([
       ['truapi', true],
       ['system', true],
     ]);
@@ -293,8 +300,8 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(byTestId('td-exclude-input', panel(), HTMLInputElement).placeholder).toBe('hide by method…');
 
     const tabs = [...root.querySelectorAll<HTMLElement>('[data-testid="td-tabs"] [data-testid="td-tab"]')];
-    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive', 'Diagnostics']);
-    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false']);
+    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline']);
+    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false']);
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
     expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
       'No events match the current filter.',
@@ -303,6 +310,7 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
     expect(q('[data-testid="td-diagnostics"]').hidden).toBe(true);
+    expect(q('[data-testid="td-wallet"]').hidden).toBe(true);
     expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
     expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
       'Select an event on the left to inspect its payload.',
@@ -333,8 +341,8 @@ describe('truapi debug panel: mount and dispose', () => {
     // Then
     expect(panel().hasAttribute('data-collapsed')).toBe(true);
     expect(q('[data-testid="td-collapse"]').textContent).toBe('▲');
-    expect(q('[data-testid="td-resize-handle"]').hasAttribute('data-collapsed')).toBe(true);
-    expect(q('[data-testid="td-filters"]').hasAttribute('data-collapsed')).toBe(true);
+    expect(q('[data-testid="td-resize-handle"]').hasAttribute('data-disabled')).toBe(true);
+    expect(q('[data-testid="td-filters"]').hidden).toBe(true);
   });
 
   it('As a dotli developer, dispose removes the panel and stops every timer and subscription', () => {
@@ -522,7 +530,7 @@ describe('truapi debug panel: header actions', () => {
       source: 'smoldot',
     });
     click(q('[data-testid="td-pause"]'));
-    click(tab('resolution'));
+    click(section('resolution'));
     frame();
 
     // Then
@@ -532,7 +540,7 @@ describe('truapi debug panel: header actions', () => {
     expect(panel().querySelector('[data-testid="td-res-summary"]')).toBeNull();
   });
 
-  it('As a dotli developer, Clear empties the list, the counts, the selection and the Resolution view', () => {
+  it('As a dotli developer, Clear on the TrUAPI tab empties the list, the counts and the selection, and keeps the Resolution view', () => {
     // Given
     mount({ capacity: 2 });
     seedMixedTraffic();
@@ -552,8 +560,49 @@ describe('truapi debug panel: header actions', () => {
     expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
       'Select an event on the left to inspect its payload.',
     );
-    click(tab('resolution'));
+    click(section('resolution'));
+    expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-summary"]')).not.toBeNull();
+  });
+
+  it('As a dotli developer, Clear on the Resolution tab empties the Resolution view and keeps the events', () => {
+    // Given
+    mount();
+    seedMixedTraffic();
+    click(section('resolution'));
+    expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-summary"]')).not.toBeNull();
+
+    // When
+    click(q('[data-testid="td-clear"]'));
+
+    // Then
     expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-empty"]')).not.toBeNull();
+    expect(counts()).toBe('3 events');
+  });
+
+  it('As a dotli developer, the event controls show only on the TrUAPI tab, and Clear also on Resolution', () => {
+    // Given
+    mount();
+    const shown = (): string[] =>
+      ['td-counts', 'td-pause', 'td-clear', 'td-export', 'td-copy'].filter(
+        id => !q(`[data-testid="${id}"]`).hasAttribute('hidden'),
+      );
+    expect(shown()).toEqual(['td-counts', 'td-pause', 'td-clear', 'td-export', 'td-copy']);
+
+    // When
+    click(section('resolution'));
+
+    // Then
+    expect(shown()).toEqual(['td-clear']);
+    expect(q('[data-testid="td-filters"]').hidden).toBe(true);
+    expect(q('[data-testid="td-view-bar"]').hidden).toBe(true);
+
+    // When
+    click(section('wallet'));
+
+    // Then
+    expect(shown()).toEqual([]);
+    expect(q('[data-testid="td-wallet"]').hidden).toBe(false);
+    expect(q('[data-testid="td-detail"]').hidden).toBe(true);
   });
 
   it('As a dotli developer, Export downloads the filtered events as JSON', async () => {
@@ -609,7 +658,7 @@ describe('truapi debug panel: header actions', () => {
     // Given
     mount();
     seedMixedTraffic();
-    toggle(query(panel(), '[data-testid="td-kind"][data-kind="system"]', HTMLInputElement));
+    toggle(query(panel(), '[data-testid="td-kind"][data-value="system"]', HTMLInputElement));
     const writeText = vi.fn((_text: string) => Promise.resolve());
     stubClipboard(writeText);
     const copy = byTestId('td-copy', panel(), HTMLButtonElement);
@@ -728,8 +777,8 @@ describe('truapi debug panel: filters', () => {
     // Given
     mount();
     seedFilterTraffic();
-    const truapiBox = query(panel(), '[data-testid="td-kind"][data-kind="truapi"]', HTMLInputElement);
-    const systemBox = query(panel(), '[data-testid="td-kind"][data-kind="system"]', HTMLInputElement);
+    const truapiBox = query(panel(), '[data-testid="td-kind"][data-value="truapi"]', HTMLInputElement);
+    const systemBox = query(panel(), '[data-testid="td-kind"][data-value="system"]', HTMLInputElement);
 
     // When
     toggle(truapiBox);
@@ -761,25 +810,25 @@ describe('truapi debug panel: filters', () => {
     seedFilterTraffic();
 
     // When
-    click(q('[data-testid="td-dir"][data-dir="outgoing"]'));
+    click(q('[data-testid="td-dir"][data-value="outgoing"]'));
 
     // Then
     expect(rowTags()).toEqual(['alpha_request', 'gamma_request', 'boot.started']);
-    expect(q('[data-testid="td-dir"][data-dir="outgoing"]').hasAttribute('data-active')).toBe(true);
-    expect(q('[data-testid="td-dir"][data-dir="both"]').hasAttribute('data-active')).toBe(false);
+    expect(q('[data-testid="td-dir"][data-value="outgoing"]').hasAttribute('data-active')).toBe(true);
+    expect(q('[data-testid="td-dir"][data-value="both"]').hasAttribute('data-active')).toBe(false);
 
     // When
-    click(q('[data-testid="td-dir"][data-dir="incoming"]'));
+    click(q('[data-testid="td-dir"][data-value="incoming"]'));
 
     // Then
     expect(rowTags()).toEqual(['alpha_response', 'beta_request', 'boot.started']);
 
     // When
-    click(q('[data-testid="td-dir"][data-dir="both"]'));
+    click(q('[data-testid="td-dir"][data-value="both"]'));
 
     // Then
     expect(rows()).toHaveLength(5);
-    expect(q('[data-testid="td-dir"][data-dir="both"]').hasAttribute('data-active')).toBe(true);
+    expect(q('[data-testid="td-dir"][data-value="both"]').hasAttribute('data-active')).toBe(true);
   });
 
   it('As a dotli developer, a product chip appears per product id and filters TrUAPI rows to it', () => {
@@ -1103,25 +1152,61 @@ describe('truapi debug panel: views', () => {
     expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-segment"]')).toHaveLength(2);
 
     // When
-    click(tab('resolution'));
+    click(section('resolution'));
 
     // Then
-    expect(tab('resolution').getAttribute('aria-selected')).toBe('true');
+    expect(section('resolution').getAttribute('aria-selected')).toBe('true');
     expect(q('[data-testid="td-timeline"]').hidden).toBe(true);
     expect(q('[data-testid="td-res"]').hidden).toBe(false);
-    expect(panel().getAttribute('data-view')).toBe('resolution');
+    expect(panel().getAttribute('data-section')).toBe('resolution');
     expect(q('[data-testid="td-body-splitter"]').hidden).toBe(true);
     expect(q('[data-testid="td-detail"]').hidden).toBe(true);
+
+    // When
+    click(section('truapi'));
+
+    // Then
+    expect(q('[data-testid="td-list"]').hidden).toBe(true);
+    expect(q('[data-testid="td-timeline"]').hidden).toBe(false);
+    expect(q('[data-testid="td-res"]').hidden).toBe(true);
+    expect(panel().getAttribute('data-view')).toBe('timeline');
 
     // When
     click(tab('list'));
 
     // Then
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
-    expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-detail"]').hidden).toBe(false);
     expect(panel().getAttribute('data-view')).toBe('list');
     expect(rows()).toHaveLength(3);
+  });
+
+  it('As a dotli developer, the tab I pick is the one the panel opens on next time', () => {
+    // Given
+    const dispose = mount();
+    click(section('diagnostics'));
+
+    // When
+    dispose();
+    mount();
+
+    // Then
+    expect(localStorage.getItem('truapi-debug:section')).toBe('diagnostics');
+    expect(section('diagnostics').getAttribute('aria-selected')).toBe('true');
+    expect(panel().getAttribute('data-section')).toBe('diagnostics');
+    expect(q('[data-testid="td-diagnostics"]').hidden).toBe(false);
+  });
+
+  it('As a dotli developer with an unknown tab stored, the panel opens on the TrUAPI tab', () => {
+    // Given
+    localStorage.setItem('truapi-debug:section', 'gone');
+
+    // When
+    mount();
+
+    // Then
+    expect(section('truapi').getAttribute('aria-selected')).toBe('true');
+    expect(q('[data-testid="td-list"]').hidden).toBe(false);
   });
 
   it('As a dotli developer, the Archive tab takes the whole width and, with no product, says so', () => {
@@ -1129,17 +1214,17 @@ describe('truapi debug panel: views', () => {
     mount();
 
     // When
-    click(tab('archive'));
+    click(section('archive'));
 
     // Then
-    expect(tab('archive').getAttribute('aria-selected')).toBe('true');
+    expect(section('archive').getAttribute('aria-selected')).toBe('true');
     expect(q('[data-testid="td-list"]').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(false);
-    expect(panel().getAttribute('data-view')).toBe('archive');
+    expect(panel().getAttribute('data-section')).toBe('archive');
     expect(q('[data-testid="td-archive"]').textContent).toContain('No product loaded');
 
     // When
-    click(tab('list'));
+    click(section('truapi'));
 
     // Then
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
@@ -1152,18 +1237,18 @@ describe('truapi debug panel: views', () => {
     expect(panel().querySelector('[data-testid="td-diagnostics-rows"]')).toBeNull();
 
     // When
-    click(tab('diagnostics'));
+    click(section('diagnostics'));
 
     // Then
-    expect(tab('diagnostics').getAttribute('aria-selected')).toBe('true');
-    expect(panel().getAttribute('data-view')).toBe('diagnostics');
+    expect(section('diagnostics').getAttribute('aria-selected')).toBe('true');
+    expect(panel().getAttribute('data-section')).toBe('diagnostics');
     expect(q('[data-testid="td-list"]').hidden).toBe(true);
     expect(q('[data-testid="td-detail"]').hidden).toBe(true);
     expect(q('[data-testid="td-diagnostics"]').hidden).toBe(false);
     expect(q('[data-testid="td-diagnostics-rows"]').textContent).toContain(`Site${window.location.host}`);
 
     // When
-    click(tab('list'));
+    click(section('truapi'));
 
     // Then
     expect(q('[data-testid="td-diagnostics"]').hidden).toBe(true);
@@ -1312,7 +1397,7 @@ describe('truapi debug panel: views', () => {
   it('As a dotli developer, the Resolution view redraws an in-flight load on its tick, but not while collapsed', () => {
     // Given
     mount();
-    click(tab('resolution'));
+    click(section('resolution'));
     expect(q('[data-testid="td-res"] [data-testid="td-res-empty"]')).not.toBeNull();
 
     // When
@@ -1346,7 +1431,7 @@ describe('truapi debug panel: views', () => {
   it('As a dotli developer, the Resolution chart shows each phase, the open block and the chains that never started', () => {
     // Given
     mount();
-    click(tab('resolution'));
+    click(section('resolution'));
 
     // When the relay connects, then syncs, and the load fails
     system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
@@ -1381,7 +1466,7 @@ describe('truapi debug panel: views', () => {
   it('As a dotli developer, a Resolution redraw keeps the nodes it draws, and a finished load is not touched at all', () => {
     // Given an in-flight load: a closed block and an open one
     mount();
-    click(tab('resolution'));
+    click(section('resolution'));
     system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
     system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'connecting' });
     vi.advanceTimersByTime(300);
@@ -1430,10 +1515,9 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Then
     expect(panel().getAttribute('data-dock')).toBe('right');
     expect(panel().getAttribute('data-layout')).toBe('stacked');
-    for (const part of ['td-resize-handle', 'td-header', 'td-filters']) {
-      expect(q(`[data-testid="${part}"]`).getAttribute('data-dock')).toBe('right');
-    }
-    expect(q('[data-testid="td-body-splitter"]').getAttribute('data-layout')).toBe('stacked');
+    expect(q('[data-testid="td-header"]').getAttribute('data-dock')).toBe('right');
+    expect(q('[data-testid="td-resize-handle"]').getAttribute('data-orientation')).toBe('vertical');
+    expect(q('[data-testid="td-body-splitter"]').getAttribute('data-orientation')).toBe('horizontal');
     expect(dock.title).toBe('Dock to bottom');
     expect(dock.getAttribute('aria-label')).toBe('Dock to bottom');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
@@ -1446,6 +1530,8 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     expect(panel().getAttribute('data-dock')).toBe('bottom');
     expect(panel().hasAttribute('data-layout')).toBe(false);
     expect(q('[data-testid="td-header"]').getAttribute('data-dock')).toBe('bottom');
+    expect(q('[data-testid="td-resize-handle"]').getAttribute('data-orientation')).toBe('horizontal');
+    expect(q('[data-testid="td-body-splitter"]').getAttribute('data-orientation')).toBe('vertical');
     expect(dock.title).toBe('Dock to right');
     expect(dock.getAttribute('aria-label')).toBe('Dock to right');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('bottom');
@@ -1944,6 +2030,7 @@ describe('truapi debug panel: capacity', () => {
     expect(counts()).toBe('5 events (+3 dropped)');
   });
 
+  // Drawing the full default capacity in jsdom takes 4 to 7 seconds on a CI runner.
   it('As a dotli developer, past the default 2000 events the oldest are pruned from the list', () => {
     // Given
     mount();
@@ -1960,7 +2047,7 @@ describe('truapi debug panel: capacity', () => {
     expect(tags[0]).toBe('ev3_x');
     expect(tags[1999]).toBe('ev2002_x');
     expect(counts()).toBe('2000 events (+3 dropped)');
-  });
+  }, 20_000);
 });
 
 describe('truapi debug panel: streaming load', () => {

@@ -11,6 +11,7 @@ import {
   VersionedRemoteChainHeadHeaderRequest,
   VersionedRemoteChainHeadHeaderResponse,
   VersionedRemoteChainHeadUnpinError,
+  VersionedHostSignRawRequest,
   VersionedRemoteChainHeadUnpinResponse,
 } from '@parity/truapi';
 import { CallError, Result } from '@parity/truapi/scale';
@@ -19,7 +20,9 @@ import {
   CHAIN_FOLLOW_HEAD_SUBSCRIBE,
   CHAIN_GET_HEAD_HEADER,
   CHAIN_UNPIN_HEAD,
+  ENTROPY_DERIVE,
   LOCAL_STORAGE_READ,
+  SIGNING_SIGN_RAW,
   SYSTEM_HANDSHAKE,
 } from '@parity/truapi/wire-table';
 import { describeWireFrame, wireFrameId, wireFrameKey, __testing } from '../src/debug-wire-describe.js';
@@ -230,6 +233,80 @@ describe('describeWireFrame', () => {
       wireId: wireFrameKey(interruptFrame),
       bytes: interruptBytes,
     });
+  });
+
+  const signRaw = {
+    tag: 'V1',
+    value: {
+      account: { dotNsIdentifier: 'myapp.dot', derivationIndex: { tag: 'Index', value: 0 } },
+      payload: { tag: 'Payload', value: { payload: 'hello' } },
+    },
+  };
+
+  it('As a local wallet user, I see the signing requests my wallet received, decoded', () => {
+    // Given
+    const bytes = payloadBytes(VersionedHostSignRawRequest, signRaw);
+
+    // When
+    const described = describeWireFrame(wireFrameId(SIGNING_SIGN_RAW, MESSAGE_TYPE_REQUEST), bytes, {
+      decodeWalletFrames: true,
+    });
+
+    // Then
+    expect(described.tag).toBe('signing_sign_raw_request');
+    expect(described.value).toEqual(signRaw);
+  });
+
+  it('As a Polkadot App user, I keep signing requests redacted', () => {
+    // Given
+    const bytes = payloadBytes(VersionedHostSignRawRequest, signRaw);
+
+    // When
+    const described = describeWireFrame(wireFrameId(SIGNING_SIGN_RAW, MESSAGE_TYPE_REQUEST), bytes);
+
+    // Then
+    expect(described.value).toEqual({ redacted: true, byteLength: bytes.length });
+  });
+
+  it('As a local wallet user, I still never see entropy frames', () => {
+    // Given
+    const bytes = new Uint8Array(40);
+
+    // When
+    const described = describeWireFrame(wireFrameId(ENTROPY_DERIVE, MESSAGE_TYPE_RESPONSE), bytes, {
+      decodeWalletFrames: true,
+    });
+
+    // Then
+    expect(described.value).toEqual({ redacted: true, byteLength: 40 });
+  });
+
+  it('As a local wallet user, I get a malformed signing frame redacted rather than garbage', () => {
+    // Given
+    const bytes = new Uint8Array([0xff, 0xff, 0xff]);
+
+    // When
+    const described = describeWireFrame(wireFrameId(SIGNING_SIGN_RAW, MESSAGE_TYPE_REQUEST), bytes, {
+      decodeWalletFrames: true,
+    });
+
+    // Then
+    expect(described.value).toEqual({ redacted: true, byteLength: 3 });
+  });
+
+  it('As a dotli integrator, I find a codec for every wallet frame the tap decodes', () => {
+    // Given
+    const { WALLET_LINKAGE, resolveCodec } = __testing;
+
+    // When
+    const missing = WALLET_LINKAGE.flatMap(({ stem }) =>
+      ['Request', 'Response', 'Error']
+        .map(leg => `VersionedHost${stem}${leg}`)
+        .filter(name => resolveCodec(name) === undefined),
+    );
+
+    // Then
+    expect(missing).toEqual([]);
   });
 });
 

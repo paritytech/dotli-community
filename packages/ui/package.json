@@ -53,6 +53,7 @@
     "@parity/truapi": "0.24.0",
     "@parity/truapi-host": "0.24.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
+    "@polkadot-labs/hdkd-helpers": "^0.0.34",
     "@scure/base": "^2.4.0",
     "@solidjs/web": "2.0.0-rc.13",
     "neverthrow": "^8.2.0",

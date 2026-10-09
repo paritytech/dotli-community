@@ -4,8 +4,8 @@
 import type { JSX } from '@solidjs/web';
 import s from './Chip.module.css';
 
-/** `default` a quiet fill, `ok` a green tint, `mono` a code value (network, host). */
-export type ChipTone = 'default' | 'ok' | 'mono';
+/** `default` a quiet fill, `ok` a green tint, `warn` an amber tint, `mono` a code value (network, host). */
+export type ChipTone = 'default' | 'ok' | 'warn' | 'mono';
 
 export function Chip(props: {
   tone?: ChipTone;

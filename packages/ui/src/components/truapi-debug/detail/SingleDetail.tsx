@@ -15,9 +15,11 @@ import {
   type StoredTruapiEvent,
 } from '@dotli/truapi-debug';
 import { Explanation } from './Explanation.js';
-import { Field, Fields, IdValue } from './Fields.js';
-import { ChainFields, ChainSummary, Payload, SectionTitle, Summary } from './Sections.js';
-import s from './SingleDetail.module.css';
+import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
+import { IdValue } from '../shared/IdBadge.js';
+import { LinkButton } from '../shared/LinkButton.js';
+import { SectionTitle } from '../shared/SectionTitle.js';
+import { ChainFields, ChainSummary, Payload, Summary } from './Sections.js';
 
 interface SingleDetailProps {
   event: StoredEvent;
@@ -37,16 +39,16 @@ function TruapiDetail(props: SingleDetailProps & { event: StoredTruapiEvent }): 
   const chain = chainDetail(ev.tag, ev.payload);
   return (
     <>
-      <Fields testId="td-detail-head">
-        <Field name="time">{formatTime(ev.receivedAt)}</Field>
-        <Field name="direction">{ev.direction}</Field>
-        <Field name="product">{ev.productId ?? '(no id)'}</Field>
-        <Field name="tag">{ev.tag}</Field>
-        <Field name="requestId">
+      <KeyValueList testId="td-detail-head">
+        <KeyValue name="time">{formatTime(ev.receivedAt)}</KeyValue>
+        <KeyValue name="direction">{ev.direction}</KeyValue>
+        <KeyValue name="product">{ev.productId ?? '(no id)'}</KeyValue>
+        <KeyValue name="tag">{ev.tag}</KeyValue>
+        <KeyValue name="requestId">
           <IdValue id={ev.requestId} />
-        </Field>
+        </KeyValue>
         <GroupField {...props} />
-      </Fields>
+      </KeyValueList>
       <ChainSummary chain={chain} />
       <ChainFields chain={chain} />
       <Payload payload={ev.payload} />
@@ -58,16 +60,16 @@ function SystemDetail(props: SingleDetailProps & { event: StoredSystemEvent }): 
   const ev = untrack(() => props.event);
   return (
     <>
-      <Fields testId="td-detail-head">
-        <Field name="time">{formatTime(ev.receivedAt)}</Field>
-        <Field name="source">{ev.source}</Field>
-        <Field name="layer">{ev.layer}</Field>
-        <Field name="event">{ev.event}</Field>
-        <Field name="flowId">
+      <KeyValueList testId="td-detail-head">
+        <KeyValue name="time">{formatTime(ev.receivedAt)}</KeyValue>
+        <KeyValue name="source">{ev.source}</KeyValue>
+        <KeyValue name="layer">{ev.layer}</KeyValue>
+        <KeyValue name="event">{ev.event}</KeyValue>
+        <KeyValue name="flowId">
           <IdValue id={ev.flowId} />
-        </Field>
+        </KeyValue>
         <GroupField {...props} />
-      </Fields>
+      </KeyValueList>
       <SectionTitle>Summary</SectionTitle>
       <Summary text={summariseSystemEvent(ev)} />
       <Explanation event={ev} />
@@ -85,7 +87,7 @@ function GroupField(props: SingleDetailProps): JSX.Element {
     ),
   );
   return (
-    <Field name="group">
+    <KeyValue name="group">
       {eventCountLabel(props.group.length)}
       <Show when={pills.length > 0}>
         {' — '}
@@ -93,21 +95,20 @@ function GroupField(props: SingleDetailProps): JSX.Element {
           {(pill, i) => (
             <>
               {i() > 0 ? ' · ' : ''}
-              <span
-                class={s['pair']}
-                data-testid="td-detail-pair"
-                data-seq={String(pill.seq)}
+              <LinkButton
+                testId="td-detail-pair"
+                value={String(pill.seq)}
                 title={pill.title}
                 onClick={() => {
                   props.onSelectPair(pill.seq);
                 }}
               >
                 {pill.label}
-              </span>
+              </LinkButton>
             </>
           )}
         </For>
       </Show>
-    </Field>
+    </KeyValue>
   );
 }

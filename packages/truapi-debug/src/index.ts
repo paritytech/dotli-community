@@ -14,6 +14,7 @@ export {
   type InlineSegment,
 } from './detail-format.js';
 export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
+export { readStoredSection, writeStoredSection, type PanelSection } from './section-storage.js';
 export {
   emitDotliDebugEvent,
   hasDotliDebugListeners,

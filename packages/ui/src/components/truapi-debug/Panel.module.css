@@ -81,6 +81,12 @@
   /* An `auto` column would grow to the header's min-content and widen the panel past the viewport. */
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 5px 32px auto 1fr;
+  /* Named, so a hidden filter row leaves the body in its own row. */
+  grid-template-areas:
+    'handle'
+    'header'
+    'filters'
+    'body';
   height: 360px;
   max-height: 80dvh;
   box-shadow: 0 -4px 12px var(--td-shadow);
@@ -102,7 +108,8 @@
   border-top: none;
   border-left: 1px solid var(--td-line);
   grid-template-columns: 5px minmax(0, 1fr);
-  grid-template-rows: 32px auto 1fr;
+  /* The header takes two lines here, its controls above the tabs. */
+  grid-template-rows: auto auto 1fr;
   grid-template-areas:
     'handle header'
     'handle filters'
@@ -111,8 +118,8 @@
 }
 .panel[data-dock='right'][data-collapsed] {
   bottom: auto;
-  height: 32px;
-  grid-template-rows: 32px 0 0;
+  height: auto;
+  grid-template-rows: auto 0 0;
 }
 
 .body {
@@ -120,8 +127,6 @@
   grid-template-columns: var(--td-left-width, 33%) 6px 1fr;
   overflow: hidden;
   min-height: 0;
-}
-.panel[data-dock='right'] .body {
   grid-area: body;
 }
 .panel[data-layout='stacked'] .body {
@@ -131,10 +136,15 @@
 .panel[data-collapsed] .body {
   display: none;
 }
-/* Views with nothing to select for the detail pane take the whole width. */
-.panel[data-view='resolution'] .body,
-.panel[data-view='archive'] .body,
-.panel[data-view='diagnostics'] .body {
+/* Tabs other than TrUAPI have nothing to select for the detail pane, so they take the whole body. */
+.panel[data-section='resolution'] .body,
+.panel[data-section='archive'] .body,
+.panel[data-section='diagnostics'] .body,
+.panel[data-section='wallet'] .body,
+.panel[data-section='resolution'] .views,
+.panel[data-section='archive'] .views,
+.panel[data-section='diagnostics'] .views,
+.panel[data-section='wallet'] .views {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }

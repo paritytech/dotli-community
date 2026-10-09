@@ -6,6 +6,7 @@
 import { mergeConfig } from 'vite';
 import type { StorybookConfig } from 'storybook-solidjs-vite';
 import { cssModules } from '@config/vite/css-modules';
+import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 
 const config: StorybookConfig = {
   framework: 'storybook-solidjs-vite',
@@ -16,6 +17,9 @@ const config: StorybookConfig = {
   viteFinal: config =>
     mergeConfig(config, {
       css: { modules: cssModules() },
+      // The local wallet's signing worker imports a marked runtime id only this plugin resolves, as in the host.
+      plugins: [truapiSigningWorker()],
+      worker: { plugins: () => [truapiSigningWorker()] },
       define: {
         // getEnabledNetworks() requires VITE_NETWORKS, as in vitest.config.ts.
         'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',

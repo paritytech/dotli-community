@@ -19,6 +19,7 @@ import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { spaFallback } from '@config/vite/spa-fallback';
+import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
@@ -283,7 +284,15 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
         // Loaded only on demand. Precaching would make every installed shell download them after each release. The
         // worker lives on product hosts only, which never show the landing page.
-        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm', 'landing.html'],
+        // The local wallet's signing worker, its wasm and its core module load only in local mode.
+        globIgnores: [
+          '**/truapi_provider_bg*.wasm',
+          '**/truapi_verifiable_bg*.wasm',
+          'landing.html',
+          '**/truapi_signing_bg*.wasm',
+          '**/signing-worker*.js',
+          '**/local-wallet-core*.js',
+        ],
         cleanupOutdatedCaches: true,
         // Prompted updates need the waiting SW to sit idle until the user opts in.
         skipWaiting: false,
@@ -309,9 +318,10 @@ export default defineConfig({
       // After previewCoepHeaders, which needs the `/__preview` path this rewrites to `/`.
       spaFallback({ landing: '/landing' }),
       sentry(),
+      truapiSigningWorker(),
     ],
     worker: {
-      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
+      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true'), truapiSigningWorker()],
       rolldownOptions: rolldownOptions(),
     },
     define: {

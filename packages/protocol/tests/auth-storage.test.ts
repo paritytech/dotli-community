@@ -8,6 +8,7 @@ import {
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
+  isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   SHARED_CORE_SESSION_KEY,
 } from '../src/auth-storage.js';
@@ -66,5 +67,18 @@ describe('shared auth storage helpers', () => {
     expect(isSharedAuthRequestMethod('authStorageWrite')).toBe(true);
     expect(isSharedAuthRequestMethod('authStorageClear')).toBe(true);
     expect(isSharedAuthRequestMethod('warmup')).toBe(false);
+  });
+
+  it('As the protocol frame, I route only the four local wallet methods to the wallet handler', () => {
+    // Given
+    const wallet = ['localWalletRead', 'localWalletSave', 'localWalletIdentity', 'localWalletForget'] as const;
+
+    // When
+    const routed = wallet.map(method => isSharedWalletRequestMethod(method));
+
+    // Then
+    expect(routed).toEqual([true, true, true, true]);
+    expect(isSharedWalletRequestMethod('authStorageRead')).toBe(false);
+    expect(isSharedWalletRequestMethod('resolveDotName')).toBe(false);
   });
 });

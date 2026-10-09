@@ -12,6 +12,7 @@ import {
 
 import { log } from '@dotli/shared';
 import { getAuthState } from '../state/auth.js';
+import { readWalletBoot, type LocalWalletBoot } from '../wallet-boot.js';
 import { dispatchAuthState } from './AuthState.js';
 
 const LOCAL_CHANGE_EVENT = 'dotli:truapi-session-store-changed';
@@ -99,13 +100,30 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
   }
 }
 
+/** Before the first network read the record has no identity, so the badge shows signed in without a name. */
+function localSessionUiState(wallet: LocalWalletBoot): TruapiSessionUiState {
+  const identity = wallet.identity;
+  if (identity === null) {
+    return { connected: true };
+  }
+  return {
+    connected: true,
+    identityAccountId: identity.identityAccountId,
+    ...(identity.liteUsername !== null
+      ? { liteUsername: identity.liteUsername, primaryUsername: identity.liteUsername }
+      : {}),
+  };
+}
+
 /**
- * At boot, so a reload shows the logged-in badge before any core instance runs. Ends `Restoring` with what was saved,
- * unless the core has already said where the session stands, which is newer. A store that cannot be read counts as
- * no session.
+ * At boot, so a reload shows the logged-in badge before any core instance runs. Ends `Restoring` with the local
+ * wallet when there is one, else with what was saved, unless the core has already said where the session stands,
+ * which is newer. A store that cannot be read counts as no session.
  */
 export function emitPersistedSessionUiState(): void {
   void (async () => {
+    // Both go to the protocol frame, so the badge waits on whichever is slower, not on both in turn.
+    const localWallet = readWalletBoot();
     let raw: string | null;
     try {
       raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
@@ -113,23 +131,42 @@ export function emitPersistedSessionUiState(): void {
       log.warn('[dot.li] shared auth session read failed:', err);
       raw = null;
     }
-    const session = raw === null || raw === '' ? null : ((await readUiStateCache()) ?? { connected: true });
+    const wallet = await localWallet;
+    const session =
+      wallet !== null
+        ? localSessionUiState(wallet)
+        : raw === null || raw === ''
+          ? null
+          : ((await readUiStateCache()) ?? { connected: true });
     if (getAuthState().tag === 'Restoring') {
       dispatchAuthState(session === null ? { tag: 'Disconnected' } : { tag: 'Connected', session });
     }
   })();
 }
 
-export function createSessionStoreAdapters(): CoreStorage {
+export interface SessionStoreOptions {
+  /**
+   * A local wallet core holds its session in memory, so its `AuthSession` slot is a no-op. The paired session stays
+   * as it was for the switch back.
+   */
+  local?: boolean | undefined;
+}
+
+export function createSessionStoreAdapters(options: SessionStoreOptions = {}): CoreStorage {
+  const skips = (key: CoreStorageKey): boolean => options.local === true && key.tag === 'AuthSession';
   return {
     async readCoreStorage(key) {
-      return readCoreStorageValue(key);
+      return skips(key) ? undefined : readCoreStorageValue(key);
     },
     async writeCoreStorage(key, value) {
-      await writeCoreStorageValue(key, value);
+      if (!skips(key)) {
+        await writeCoreStorageValue(key, value);
+      }
     },
     async clearCoreStorage(key) {
-      await clearCoreStorageValue(key);
+      if (!skips(key)) {
+        await clearCoreStorageValue(key);
+      }
     },
   };
 }

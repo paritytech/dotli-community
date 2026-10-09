@@ -1,6 +1,7 @@
 import type { AuthPresenter, AuthState, LoginFailureKind } from '@parity/truapi-host';
 import { toSessionUiState, writeUiStateCache, type TruapiSessionUiState } from './SessionStore.js';
 import { setAuthState } from '../state/auth.js';
+import { getWalletMode } from '../state/wallet-mode.js';
 
 /**
  * The core's `AuthState` with byte fields converted for rendering, plus the pairing context the modal needs.
@@ -50,12 +51,17 @@ export function createAuthStateChanged(
       }
       case 'Connected': {
         const session = toSessionUiState(state.value);
-        void writeUiStateCache(session);
+        // The cache belongs to the paired session, which a local session must not overwrite.
+        if (getWalletMode() !== 'local') {
+          void writeUiStateCache(session);
+        }
         dispatchAuthState({ tag: 'Connected', session });
         break;
       }
       case 'Disconnected': {
-        void writeUiStateCache({ connected: false });
+        if (getWalletMode() !== 'local') {
+          void writeUiStateCache({ connected: false });
+        }
         dispatchAuthState({ tag: 'Disconnected' });
         break;
       }

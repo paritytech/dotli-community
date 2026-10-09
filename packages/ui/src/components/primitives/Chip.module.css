@@ -21,6 +21,10 @@
   background: color-mix(in srgb, var(--chrome-ok) var(--chrome-tint), transparent);
   color: var(--chrome-ok-text);
 }
+.chip[data-tone='warn'] {
+  background: color-mix(in srgb, var(--chrome-warn) var(--chrome-tint), transparent);
+  color: var(--chrome-warn-text);
+}
 .chip[data-tone='mono'] {
   min-width: 0;
   overflow: hidden;

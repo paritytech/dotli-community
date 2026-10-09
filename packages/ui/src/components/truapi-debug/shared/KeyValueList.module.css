@@ -1,0 +1,42 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 16px;
+  margin: 0 0 12px;
+  padding: 0;
+  border-top: 1px solid var(--td-line);
+  font-size: 11px;
+}
+/* Rows share the list's columns, so labels take the longest one's width. */
+.row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--td-line);
+}
+.row:hover {
+  background: var(--td-bg-raised);
+}
+.name {
+  color: var(--td-fg-dim);
+  overflow-wrap: anywhere;
+}
+.value {
+  min-width: 0;
+  margin: 0;
+  color: var(--td-fg);
+  overflow-wrap: anywhere;
+}
+
+.heading {
+  margin: 0 0 6px;
+  color: var(--td-fg-dim);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

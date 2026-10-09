@@ -311,7 +311,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
     // Given
     mount();
     fillWithPendingRequests();
-    click(q('[data-testid="td-tab"][data-view="resolution"]'));
+    click(q('[data-testid="td-section"][data-value="resolution"]'));
     // Just past a resolution tick, so the next ten frames stay clear of one.
     vi.advanceTimersByTime(500 - (Date.now() % 500) + 1);
     resetCalls();
@@ -328,7 +328,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
     expect(q('[data-testid="td-counts"]').textContent).toBe('2000 events (+10 dropped)');
 
     // When
-    click(q('[data-testid="td-tab"][data-view="list"]'));
+    click(q('[data-testid="td-section"][data-value="truapi"]'));
 
     // Then the badges catch up once
     expect(byTestId('td-pending', nth(rows(), 1999)).textContent).toMatch(/^⟳ \d+ms pending$/);
@@ -338,7 +338,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
   it('As a dotli developer, the Resolution view still redraws when a system event lands', () => {
     // Given
     mount();
-    click(q('[data-testid="td-tab"][data-view="resolution"]'));
+    click(q('[data-testid="td-section"][data-value="resolution"]'));
     vi.advanceTimersByTime(500 - (Date.now() % 500) + 1);
     resetCalls();
 
@@ -357,7 +357,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
     mount();
     fillWithAnsweredPairs(500);
     type(byTestId('td-exclude-input', panel(), HTMLInputElement), 'noise');
-    click(q('[data-testid="td-tab"][data-view="timeline"]'));
+    click(q('[data-testid="td-tab"][data-value="timeline"]'));
     resetCalls();
 
     // When
@@ -622,7 +622,7 @@ describe('truapi debug panel work: pointer moves', () => {
     vi.advanceTimersByTime(50);
     truapi('host_sign_response', 'r1', 'incoming');
     frame();
-    click(q('[data-testid="td-tab"][data-view="timeline"]'));
+    click(q('[data-testid="td-tab"][data-value="timeline"]'));
     const box = query(
       panel(),
       '[data-testid="td-timeline"] [data-testid="td-tl-segment"][data-tooltip]',

@@ -8,9 +8,12 @@ import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { log } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { loadLocalWalletCore } from './lazy.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
+import { getWalletMode } from './state/wallet-mode.js';
+import { readWalletBoot } from './wallet-boot.js';
 
 export interface PageProduct {
   label: string;
@@ -102,6 +105,10 @@ export async function acquireCore(): Promise<CoreLease> {
 }
 
 export function cancelPairing(): void {
+  // A signing runtime has no pairing to cancel.
+  if (getWalletMode() === 'local') {
+    return;
+  }
   for (const core of cores) {
     core.runtime.then(
       runtime => {
@@ -122,33 +129,47 @@ function createCore(product: PageProduct): Core {
   const blockingModalScope = modalCoordinator.createScope();
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let unsubscribeStore: (() => void) | null = null;
-  const runtime = Promise.all([import('@parity/truapi-host/web'), import('@parity/truapi-host/worker-runtime?worker')])
-    .then(([{ createWebWorkerPairingHostRuntime }, { default: HostWorker }]) =>
-      createWebWorkerPairingHostRuntime(
-        new HostWorker(),
-        createHostCallbacks({
-          label: product.label,
-          pairingLabel: product.pairing?.label,
-          pairingDotSuffix: product.pairing?.dotSuffix,
-          pairingHostGlobal: product.pairing?.hostGlobal,
-          blockingModalScope,
-        }),
-        { hostConfig },
-      ),
-    )
-    .then(booted => {
-      log.event('wallet core booted', { flow: 'wallet' });
-      // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
-      unsubscribeStore = onStoredSessionChanged(() => {
-        booted.notifySessionStoreChanged();
-      });
-      queueMicrotask(() => {
-        if (cores.has(core)) {
-          booted.notifySessionStoreChanged();
-        }
-      });
-      return booted;
+  const callbacksFor = (local: boolean): ReturnType<typeof createHostCallbacks> =>
+    createHostCallbacks({
+      label: product.label,
+      pairingLabel: product.pairing?.label,
+      pairingDotSuffix: product.pairing?.dotSuffix,
+      pairingHostGlobal: product.pairing?.hostGlobal,
+      blockingModalScope,
+      local,
     });
+  // The wallet read, the host chunk and the worker wrapper load in parallel, so a Polkadot App boot waits on
+  // whichever is slower. The wrapper fetches its worker script only when constructed, so local mode pays nothing.
+  const runtime = Promise.all([
+    readWalletBoot(),
+    import('@parity/truapi-host/web'),
+    import('@parity/truapi-host/worker-runtime?worker'),
+  ]).then(async ([wallet, { createWebWorkerPairingHostRuntime }, { default: HostWorker }]) => {
+    if (wallet !== null) {
+      const { bootLocalWalletCore } = await loadLocalWalletCore();
+      const booted = await bootLocalWalletCore(
+        createWebWorkerPairingHostRuntime,
+        callbacksFor(true),
+        hostConfig,
+        wallet,
+        () => cores.has(core),
+      );
+      log.event('wallet core booted', { flow: 'wallet', local: true });
+      return booted;
+    }
+    const booted = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacksFor(false), { hostConfig });
+    log.event('wallet core booted', { flow: 'wallet' });
+    // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
+    unsubscribeStore = onStoredSessionChanged(() => {
+      booted.notifySessionStoreChanged();
+    });
+    queueMicrotask(() => {
+      if (cores.has(core)) {
+        booted.notifySessionStoreChanged();
+      }
+    });
+    return booted;
+  });
   const core: Core = {
     product,
     runtime,

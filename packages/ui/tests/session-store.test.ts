@@ -2,16 +2,10 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
 import { SITE_ID } from '@dotli/config';
-import {
-  createSessionStoreAdapters,
-  emitPersistedSessionUiState,
-  onStoredSessionChanged,
-} from '../src/host-callbacks/SessionStore.js';
-import { createAuthStateChanged } from '../src/host-callbacks/AuthState.js';
-import { getAuthState } from '../src/state/auth.js';
-import { resetAllStoresForTests } from '../src/state/create-store.js';
 import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import { must } from './support.js';
+
+const localWallet = vi.hoisted((): { result: unknown } => ({ result: { status: 'none' } }));
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -19,6 +13,7 @@ const sharedAuth = vi.hoisted(() => ({
 }));
 
 vi.mock('../../protocol/src/client.js', () => ({
+  readSharedLocalWallet: () => Promise.resolve(localWallet.result),
   readSharedAuthStorage: (siteId: string, key: string) =>
     Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
   writeSharedAuthStorage: (siteId: string, key: string, value: string) => {
@@ -66,8 +61,48 @@ const CONNECTED_DETAIL = {
   primaryUsername: 'pgherveou.04',
 };
 
+// `readWalletBoot` caches its read per module instance, so each test loads a fresh set that tests and code share.
+async function loadModules() {
+  const [sessionStore, authState, auth, createStore, walletMode] = await Promise.all([
+    import('../src/host-callbacks/SessionStore.js'),
+    import('../src/host-callbacks/AuthState.js'),
+    import('../src/state/auth.js'),
+    import('../src/state/create-store.js'),
+    import('../src/state/wallet-mode.js'),
+  ]);
+  return {
+    createSessionStoreAdapters: sessionStore.createSessionStoreAdapters,
+    emitPersistedSessionUiState: sessionStore.emitPersistedSessionUiState,
+    onStoredSessionChanged: sessionStore.onStoredSessionChanged,
+    createAuthStateChanged: authState.createAuthStateChanged,
+    getAuthState: auth.getAuthState,
+    resetAllStoresForTests: createStore.resetAllStoresForTests,
+    setWalletModeState: walletMode.setWalletModeState,
+  };
+}
+
+type Modules = Awaited<ReturnType<typeof loadModules>>;
+let createSessionStoreAdapters: Modules['createSessionStoreAdapters'];
+let emitPersistedSessionUiState: Modules['emitPersistedSessionUiState'];
+let onStoredSessionChanged: Modules['onStoredSessionChanged'];
+let createAuthStateChanged: Modules['createAuthStateChanged'];
+let getAuthState: Modules['getAuthState'];
+let resetAllStoresForTests: Modules['resetAllStoresForTests'];
+let setWalletModeState: Modules['setWalletModeState'];
+
 describe('session-store host callbacks', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    ({
+      createSessionStoreAdapters,
+      emitPersistedSessionUiState,
+      onStoredSessionChanged,
+      createAuthStateChanged,
+      getAuthState,
+      resetAllStoresForTests,
+      setWalletModeState,
+    } = await loadModules());
+    localWallet.result = { status: 'none' };
     localStorage.clear();
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
@@ -564,8 +599,9 @@ describe('session-store host callbacks', () => {
     // Nothing persisted: signed out, even with a stale cache entry.
     sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     emitPersistedSessionUiState();
-    await flushMicrotasks();
-    expect(events).toEqual([{ tag: 'Disconnected' }]);
+    await vi.waitFor(() => {
+      expect(events).toEqual([{ tag: 'Disconnected' }]);
+    });
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
     // When: a login persists the session, then a reload reads it back.
@@ -579,10 +615,11 @@ describe('session-store host callbacks', () => {
     events.length = 0;
 
     emitPersistedSessionUiState();
-    await flushMicrotasks();
 
     // Then
-    expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
+    await vi.waitFor(() => {
+      expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
+    });
   });
 
   it('As a visitor without a saved session, boot ends the unknown state as signed out', async () => {
@@ -631,10 +668,11 @@ describe('session-store host callbacks', () => {
     // When
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     emitPersistedSessionUiState();
-    await flushMicrotasks();
 
     // Then
-    expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
+    await vi.waitFor(() => {
+      expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
+    });
   });
 
   it('As a dotli integrator, the host degrades to a bare connected state when the cached UI state is malformed', async () => {
@@ -650,11 +688,12 @@ describe('session-store host callbacks', () => {
 
     // When
     emitPersistedSessionUiState();
-    await flushMicrotasks();
 
     // Then: the malformed cache is discarded instead of being laundered into
     // a typed session state with non-string fields.
-    expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
+    await vi.waitFor(() => {
+      expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
+    });
   });
 
   it('As a dotli integrator, the host notifies local and matching storage changes', async () => {
@@ -687,5 +726,94 @@ describe('session-store host callbacks', () => {
 
     // Then
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('As a local wallet user, I see my cached account at page load without a core', async () => {
+    // Given
+    localWallet.result = {
+      status: 'ok',
+      entropy: new Uint8Array(16),
+      identity: { identityAccountId: `0x${'11'.repeat(32)}`, liteUsername: 'alice.42' },
+    };
+
+    // When
+    emitPersistedSessionUiState();
+
+    // Then
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({
+        tag: 'Connected',
+        session: {
+          connected: true,
+          identityAccountId: `0x${'11'.repeat(32)}`,
+          liteUsername: 'alice.42',
+          primaryUsername: 'alice.42',
+        },
+      });
+    });
+  });
+
+  it('As a local wallet user before the first network read, I am shown signed in without a name', async () => {
+    // Given
+    localWallet.result = { status: 'ok', entropy: new Uint8Array(16), identity: null };
+
+    // When
+    emitPersistedSessionUiState();
+
+    // Then
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'Connected', session: { connected: true } });
+    });
+  });
+
+  it('As a local wallet user, my session never overwrites the paired session cache', async () => {
+    // Given
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    setWalletModeState({ mode: 'local', failure: null });
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
+
+    // When
+    authStateChanged({ tag: 'Connected', value: connectedSessionUiInfo() });
+    authStateChanged({ tag: 'Disconnected' });
+    await flushMicrotasks();
+
+    // Then
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBe(JSON.stringify(CONNECTED_DETAIL));
+  });
+
+  it('As a local wallet user, my core never reads, writes or clears the paired session', async () => {
+    // Given
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const storage = createSessionStoreAdapters({ local: true });
+
+    // When
+    const read = await storage.readCoreStorage(AUTH_SESSION_KEY);
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9, 9]));
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
+
+    // Then
+    expect(read).toBeUndefined();
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe('0x010203');
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBe(JSON.stringify(CONNECTED_DETAIL));
+  });
+
+  it('As a Polkadot App user back from a local wallet, my core reads, writes and clears the paired session', async () => {
+    // Given
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const storage = createSessionStoreAdapters();
+
+    // When
+    const read = await storage.readCoreStorage(AUTH_SESSION_KEY);
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9, 9]));
+    const written = sharedAuth.storage.get(STORAGE_KEY);
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
+
+    // Then
+    expect(Array.from(read ?? [])).toEqual([1, 2, 3]);
+    expect(written).toBe('0x0909');
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBeUndefined();
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 });

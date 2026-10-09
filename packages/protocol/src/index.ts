@@ -9,8 +9,10 @@ export {
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
+  isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
+  type SharedWalletRequestMethod,
 } from './auth-storage.js';
 export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
 export {
@@ -30,6 +32,10 @@ export {
 export {
   clearSharedAuthStorage,
   clearSharedModeStorage,
+  forgetSharedLocalWallet,
+  readSharedLocalWallet,
+  saveSharedLocalWallet,
+  updateSharedLocalWalletIdentity,
   createRemoteChainProvider,
   ensureProtocolFrame,
   getProtocolOrigin,
@@ -59,6 +65,8 @@ export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 export {
   getRequestSyncTimeoutMs,
   isProtocolEnvelope,
+  type LocalWalletIdentity,
+  type LocalWalletReadResult,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,

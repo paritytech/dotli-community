@@ -5,6 +5,18 @@ import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
 // Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from '@dotli/config';
 
+/** Wire shape of the local wallet's cached identity. */
+export interface LocalWalletIdentity {
+  identityAccountId: string;
+  liteUsername: string | null;
+}
+
+/** `unreadable` means the frame found a record it could not decrypt, and has already deleted it. */
+export type LocalWalletReadResult =
+  | { status: 'none' }
+  | { status: 'unreadable' }
+  | { status: 'ok'; entropy: Uint8Array; identity: LocalWalletIdentity | null };
+
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
@@ -20,6 +32,10 @@ export interface ProtocolRequestMap {
   modeStorageRead: { siteId: string; key: string };
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };
+  localWalletRead: { siteId: string };
+  localWalletSave: { siteId: string; entropy: Uint8Array };
+  localWalletIdentity: { siteId: string; identity: LocalWalletIdentity };
+  localWalletForget: { siteId: string };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };

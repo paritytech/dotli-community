@@ -18,6 +18,7 @@ dynamically imported, so users who never see the panel pay zero download cost.
 - [Views](#views)
   - [List view](#list-view)
   - [Timeline view](#timeline-view)
+- [Other tabs](#other-tabs)
 - [Filters](#filters)
 - [Detail pane](#detail-pane)
 - [Design concepts](#design-concepts)
@@ -35,9 +36,16 @@ dynamically imported, so users who never see the panel pay zero download cost.
 ## What you see
 
 A resizable, dockable panel at the bottom of the viewport. It mounts visible whenever debug mode is on; the panel's `×`
-button exits debug mode entirely (see [Enabling and disabling](#enabling-and-disabling)). The left pane is your choice
-of **List** or **Timeline**; the right pane is the detail inspector for the selected event. A draggable splitter between
-them lets you rebalance the panes.
+button exits debug mode entirely (see [Enabling and disabling](#enabling-and-disabling)). The header holds the top-level
+tabs: **TrUAPI**, **Resolution**, **Archive**, **Diagnostics** and **Wallet**. The panel reopens on the tab you last
+picked, kept in `localStorage` like the dock side.
+
+The TrUAPI tab shows the captured events. Its filters sit under the header, the left pane is your choice of **List** or
+**Timeline**, and the right pane is the detail inspector for the selected event. A draggable splitter between them lets
+you rebalance the panes. The event count, Pause, Export and Copy show only on this tab.
+
+The other tabs are not about TrUAPI events, so they take the whole panel body, with no filters or detail pane. See
+[Other tabs](#other-tabs).
 
 Hover any element in the Timeline for a zero-delay tooltip with the decoded method + summary. Click any row or box to
 pin it in the detail pane.
@@ -95,7 +103,9 @@ wire discriminant against `@parity/truapi/wire-table`:
   role (e.g. `system_handshake_request`). These aren't payload-decoded. The detail pane shows the raw SCALE bytes as
   `{ wireId, bytes }`.
 - `signing_*` / `session_*` / `entropy_*` / `local_storage_*` — redacted regardless of decode registration. The detail
-  pane shows `{ redacted: true, byteLength }` only. Decoded contents, and even the raw bytes, never leave the tap.
+  pane shows `{ redacted: true, byteLength }` only. In local wallet mode the `signing_*` family and
+  `resource_allocation_request_*` are decoded instead, since the panel stands in for the phone's request screen.
+  `session_*`, `entropy_*` and `local_storage_*` stay redacted.
 - `wire_<id>` — fallback for discriminants absent from the wire table, with raw bytes.
 
 Adding payload decode for a new family is one linkage row in `debug-wire-describe.ts`, nothing else in the panel
@@ -115,8 +125,8 @@ Dotli-internal host-side orchestration, captured by `onDotliDebugEvent` from `@d
 
 ## Views
 
-Both views operate on the same filtered slice of the event store. Clicking an event in one view pins the same event in
-the detail pane regardless of which view is active.
+The TrUAPI tab's List and Timeline views both operate on the same filtered slice of the event store. Clicking an event
+in one view pins the same event in the detail pane regardless of which view is active.
 
 ### List view
 
@@ -143,6 +153,28 @@ Each swimlane has its own horizontal scroll, so a chain with many concurrent ope
 the whole view. Vertical scroll is shared across all swimlanes, so events at the same Y in different swimlanes occurred
 at the same moment.
 
+## Other tabs
+
+### Resolution
+
+How the page load went: each resolution phase, the open block and the chains that never started.
+
+### Archive
+
+The files of the loaded product.
+
+### Diagnostics
+
+The site, backend and package versions, for a bug report.
+
+### Wallet
+
+Switches every app on the domain between Polkadot App and a local wallet. In Polkadot App mode it takes the recovery
+phrase from Polkadot App. "Use locally" saves its entropy, encrypted, in the protocol frame on `host.<domain>` and
+reloads, and each app's core then boots as a signing host on it. In local mode it shows the identity account and
+username, and "Replace" takes another phrase in its place, and "Forget" forgets the wallet and reloads in Polkadot App
+mode. Logging out from the topbar in local mode does the same.
+
 ## Filters
 
 The filter bar at the top of the panel applies to both views:
@@ -157,7 +189,8 @@ The filter bar at the top of the panel applies to both views:
 Pause / Clear buttons are in the panel header:
 
 - **Pause** — stops ingesting new events. Already-stored events stay visible; resume to start ingesting again.
-- **Clear** — drops the ring buffer. The selected-event detail resets to "(select an event to inspect)".
+- **Clear** — drops the ring buffer. The selected-event detail resets to "(select an event to inspect)". On the
+  Resolution tab, Clear drops the recorded page load instead.
 
 ## Detail pane
 

@@ -9,7 +9,7 @@ const meta = {
   parameters: { chrome: true },
   component: Chip,
   args: { children: 'Paseo' },
-  argTypes: { tone: { control: 'inline-radio', options: ['default', 'ok', 'mono'] } },
+  argTypes: { tone: { control: 'inline-radio', options: ['default', 'ok', 'warn', 'mono'] } },
 } satisfies Meta<typeof Chip>;
 
 export default meta;
@@ -17,4 +17,5 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 export const Ok: Story = { args: { tone: 'ok', children: 'Verified' } };
+export const Warn: Story = { args: { tone: 'warn', children: 'Local account' } };
 export const Mono: Story = { args: { tone: 'mono', children: '0x1a2b…9f' } };

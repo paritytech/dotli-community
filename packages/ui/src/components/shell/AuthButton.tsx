@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { startLogin } from '../../auth-controller.js';
 import { getAuthState } from '../../state/auth.js';
 import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
+import { walletModeStore } from '../../state/wallet-mode.js';
 import { Popover } from '../floating/Popover.js';
 import { Button } from '../primitives/Button.js';
 import { useStore } from '../use-store.js';
@@ -30,19 +31,23 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = useAccount();
   const authModal = useStore(authModalStore);
+  const walletMode = useStore(walletModeStore);
   const opensPopover = account.connected;
+  // The keys live in this browser, not in Polkadot App.
+  const local = (): boolean => account.loggedIn() && walletMode().mode === 'local';
+  const accountLabel = (): string => (local() ? 'Local account' : 'Account');
   const shownName = (): string | undefined => {
     const session = props.showName === true && account.loggedIn() ? account.session() : undefined;
     return session === undefined ? undefined : sessionDisplayName(session);
   };
   const label = (): string =>
-    account.restoring() ? 'Checking sign-in' : account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile';
+    account.restoring() ? 'Checking sign-in' : account.loggedIn() ? accountLabel() : 'Sign in with Polkadot Mobile';
   // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
     const session = account.loggedIn() ? account.session() : undefined;
     const initials = session === undefined ? undefined : sessionInitials(session);
     const visible = [initials, shownName()].filter(part => part !== undefined).join(' ');
-    return visible === '' ? label() : `${visible}, account`;
+    return visible === '' ? label() : `${visible}, ${accountLabel().toLowerCase()}`;
   };
   onSettled(() => {
     const el = untrack(button);
@@ -98,6 +103,7 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
                   class={s['avatar']}
                   data-testid="user-badge"
                   data-anon={sessionInitials(session()) === undefined ? '' : undefined}
+                  data-wallet={local() ? 'local' : undefined}
                 >
                   <Show when={sessionInitials(session())} fallback={<UserIcon />}>
                     {initials => <>{initials()}</>}
