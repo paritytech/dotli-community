@@ -368,6 +368,7 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case 'ProfileDisclosure':
       case 'ProfileReferencesReceived':
       case 'ProfilePersonalReferencesReceived':
+      case 'NotificationReceiving':
         return encoded;
       case 'AuthSession':
       case 'PairingDeviceIdentity':
@@ -494,7 +495,10 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
     case 'AuthSession':
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
-    // Peers address this device by the public counterpart, so the slot must not move with the session.
+    case 'NotificationReceiving':
+      return `${CORE_LOCAL_STORAGE_PREFIX}notification-receiving`;
+    // Peers address this device by the public counterpart, so the slot name
+    // must not move with the session.
     case 'DeviceEncryptionKey':
       return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
     // Keyed by session too, since pairing again re-asks the Account Holder.
@@ -528,6 +532,7 @@ function storesSecretMaterial(key: CoreStorageKey): boolean {
     key.tag === 'AutoSigningKey' ||
     key.tag === 'AutoSigningKeys' ||
     key.tag === 'DeviceEncryptionKey' ||
+    key.tag === 'NotificationReceiving' ||
     // Bearer capabilities: whoever reads one can open the profile it names.
     key.tag === 'ProfileDisclosure' ||
     key.tag === 'ProfileReferencesReceived' ||

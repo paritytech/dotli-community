@@ -46,6 +46,7 @@ function fixture(): {
   document.body.append(surface);
   const menu = installPolkaVmMenu(surface, canvas, [], {
     hasFileInput: false,
+    grants: () => [],
     pause: vi.fn(),
     retry: vi.fn(),
     launcher: vi.fn(),

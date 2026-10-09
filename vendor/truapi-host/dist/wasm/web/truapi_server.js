@@ -3,6 +3,232 @@ import { alias, member, prove, read, sign, start } from './snippets/truapi-0e1e1
 
 
 /**
+ * Standalone receiver with one durable writer and no wallet or product execution.
+ * The host must serialize ownership across service-worker replacement and bind
+ * command product IDs to trusted execution sessions, never message-body claims.
+ */
+export class WasmNotificationReceiver {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WasmNotificationReceiverFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_wasmnotificationreceiver_free(ptr, 0);
+    }
+    /**
+     * Execute actions 2..7 under the immutable authority captured by the trusted
+     * execution channel. Authority is SCALE ReceivingAuthority, never page input.
+     * Request has no version tag; response is SCALE
+     * `Result<latest response, HostNotificationReceivingError>`. Action 3 requires
+     * the forwarding runtime's ordinary Notifications permission authorization.
+     * @param {Uint8Array} authority
+     * @param {number} action
+     * @param {Uint8Array} payload
+     * @returns {Promise<Uint8Array>}
+     */
+    commandForExecution(authority, action, payload) {
+        const ptr0 = passArray8ToWasm0(authority, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_commandForExecution(this.__wbg_ptr, ptr0, len0, action, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Construct from raw receiverAuthority/receiverConsent/receiverChanged,
+     * readReceivingState and writeReceivingState callbacks. Persistence callbacks
+     * are required; absent authority advertises unsupported, never enrollment.
+     * @param {any} callbacks
+     */
+    constructor(callbacks) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmnotificationreceiver_new(retptr, addHeapObject(callbacks));
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            this.__wbg_ptr = r0;
+            WasmNotificationReceiverFinalization.register(this, this.__wbg_ptr, this);
+            return this;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Queue durable activation only after the matching product is ready.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingActivate(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingActivate(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Clear a reservation only after explicit display failure, not an unknown outcome.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<void>}
+     */
+    receivingCancelDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingCancelDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Confirm actual visible display, not ingestion or transport acknowledgement.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<void>}
+     */
+    receivingConfirmDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingConfirmDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Authenticate observed source metadata and carrier; returns SCALE `Vec<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} watch_id
+     * @param {string} actual_genesis
+     * @param {string} actual_channel
+     * @param {string[]} actual_topics
+     * @param {Uint8Array} frame
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingIngest(product_id, revision, watch_id, actual_genesis, actual_channel, actual_topics, frame) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(watch_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(actual_genesis, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(actual_channel, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArrayJsValueToWasm0(actual_topics, wasm.__wbindgen_export);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passArray8ToWasm0(frame, wasm.__wbindgen_export);
+        const len5 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingIngest(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
+        return takeObject(ret);
+    }
+    /**
+     * Authenticate a SCALE statement including source metadata; returns SCALE `Vec<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} watch_id
+     * @param {string} actual_genesis
+     * @param {Uint8Array} statement
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingIngestStatement(product_id, revision, watch_id, actual_genesis, statement) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(watch_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(actual_genesis, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray8ToWasm0(statement, wasm.__wbindgen_export);
+        const len3 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingIngestStatement(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1, ptr2, len2, ptr3, len3);
+        return takeObject(ret);
+    }
+    /**
+     * Queue synchronization after the host durably changes the selected transport.
+     * @param {string} product_id
+     * @returns {Promise<void>}
+     */
+    receivingMarkTransportChanged(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingMarkTransportChanged(this.__wbg_ptr, ptr0, len0);
+        return takeObject(ret);
+    }
+    /**
+     * All local registrations, including synchronized ones, as SCALE Vec.
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingPending() {
+        const ret = wasm.wasmnotificationreceiver_receivingPending(this.__wbg_ptr);
+        return takeObject(ret);
+    }
+    /**
+     * Revalidate and reserve display after foreground grace; returns SCALE `Option<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingPrepareDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingPrepareDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Revoke locally before logout or destructive identity erasure.
+     * @param {string} product_id
+     * @returns {Promise<void>}
+     */
+    receivingRevoke(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingRevoke(this.__wbg_ptr, ptr0, len0);
+        return takeObject(ret);
+    }
+    /**
+     * Acknowledge only the revision actually synchronized by transport.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @returns {Promise<boolean>}
+     */
+    receivingSynchronized(product_id, revision) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingSynchronized(this.__wbg_ptr, ptr0, len0, revision);
+        return takeObject(ret);
+    }
+    /**
+     * Read-only click validation before loading the verified product; sequence is zero.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingValidateActivation(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmnotificationreceiver_receivingValidateActivation(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+}
+if (Symbol.dispose) WasmNotificationReceiver.prototype[Symbol.dispose] = WasmNotificationReceiver.prototype.free;
+
+/**
  * JS-callable handle to a long-lived pairing-host runtime shared by product
  * cores.
  */
@@ -215,6 +441,171 @@ export class WasmPairingHostRuntime {
         const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.wasmpairinghostruntime_productSubtreePublicKey(this.__wbg_ptr, ptr0, len0, isLikeNone(timeout_ms) ? Number.MAX_SAFE_INTEGER : (timeout_ms) >>> 0);
+        return takeObject(ret);
+    }
+    /**
+     * Resolve a click under current authority; returns SCALE `Option<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingActivate(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingActivate(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Clear a reservation only after explicit platform display failure.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<void>}
+     */
+    receivingCancelDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingCancelDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Confirm actual platform display, not ingestion or transport acknowledgement.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<void>}
+     */
+    receivingConfirmDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingConfirmDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Verify source chain/channel/topics and all candidates; returns SCALE `Vec<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} watch_id
+     * @param {string} actual_genesis
+     * @param {string} actual_channel
+     * @param {string[]} actual_topics
+     * @param {Uint8Array} frame
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingIngest(product_id, revision, watch_id, actual_genesis, actual_channel, actual_topics, frame) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(watch_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(actual_genesis, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(actual_channel, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArrayJsValueToWasm0(actual_topics, wasm.__wbindgen_export);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passArray8ToWasm0(frame, wasm.__wbindgen_export);
+        const len5 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingIngest(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
+        return takeObject(ret);
+    }
+    /**
+     * Authenticate a raw SCALE statement; returns SCALE `Vec<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} watch_id
+     * @param {string} actual_genesis
+     * @param {Uint8Array} statement
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingIngestStatement(product_id, revision, watch_id, actual_genesis, statement) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(watch_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(actual_genesis, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray8ToWasm0(statement, wasm.__wbindgen_export);
+        const len3 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingIngestStatement(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1, ptr2, len2, ptr3, len3);
+        return takeObject(ret);
+    }
+    /**
+     * Queue synchronization after durable provider-token rotation.
+     * @param {string} product_id
+     * @returns {Promise<void>}
+     */
+    receivingMarkTransportChanged(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingMarkTransportChanged(this.__wbg_ptr, ptr0, len0);
+        return takeObject(ret);
+    }
+    /**
+     * All durable registrations as SCALE `Vec<ReceivingRegistration>`.
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingPending() {
+        const ret = wasm.wasmpairinghostruntime_receivingPending(this.__wbg_ptr);
+        return takeObject(ret);
+    }
+    /**
+     * Reserve display after grace and revalidation; returns SCALE `Option<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingPrepareDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingPrepareDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Revoke locally without waiting for remote transport.
+     * @param {string} product_id
+     * @returns {Promise<void>}
+     */
+    receivingRevoke(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingRevoke(this.__wbg_ptr, ptr0, len0);
+        return takeObject(ret);
+    }
+    /**
+     * Acknowledge the exact durable local revision synchronized by transport.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @returns {Promise<boolean>}
+     */
+    receivingSynchronized(product_id, revision) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingSynchronized(this.__wbg_ptr, ptr0, len0, revision);
+        return takeObject(ret);
+    }
+    /**
+     * Validate a click without enqueueing activation; returns SCALE `Option<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingValidateActivation(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmpairinghostruntime_receivingValidateActivation(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
         return takeObject(ret);
     }
     /**
@@ -778,6 +1169,171 @@ export class WasmSigningHostRuntime {
         return takeObject(ret);
     }
     /**
+     * Resolve a click under current authority; returns SCALE `Option<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingActivate(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingActivate(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Clear a reservation only after explicit platform display failure.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<void>}
+     */
+    receivingCancelDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingCancelDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Confirm actual platform display, not ingestion or transport acknowledgement.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<void>}
+     */
+    receivingConfirmDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingConfirmDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Verify source chain/channel/topics and all candidates; returns SCALE `Vec<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} watch_id
+     * @param {string} actual_genesis
+     * @param {string} actual_channel
+     * @param {string[]} actual_topics
+     * @param {Uint8Array} frame
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingIngest(product_id, revision, watch_id, actual_genesis, actual_channel, actual_topics, frame) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(watch_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(actual_genesis, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(actual_channel, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArrayJsValueToWasm0(actual_topics, wasm.__wbindgen_export);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passArray8ToWasm0(frame, wasm.__wbindgen_export);
+        const len5 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingIngest(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
+        return takeObject(ret);
+    }
+    /**
+     * Authenticate a raw SCALE statement; returns SCALE `Vec<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} watch_id
+     * @param {string} actual_genesis
+     * @param {Uint8Array} statement
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingIngestStatement(product_id, revision, watch_id, actual_genesis, statement) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(watch_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(actual_genesis, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray8ToWasm0(statement, wasm.__wbindgen_export);
+        const len3 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingIngestStatement(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1, ptr2, len2, ptr3, len3);
+        return takeObject(ret);
+    }
+    /**
+     * Queue synchronization after durable provider-token rotation.
+     * @param {string} product_id
+     * @returns {Promise<void>}
+     */
+    receivingMarkTransportChanged(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingMarkTransportChanged(this.__wbg_ptr, ptr0, len0);
+        return takeObject(ret);
+    }
+    /**
+     * All durable registrations as SCALE `Vec<ReceivingRegistration>`.
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingPending() {
+        const ret = wasm.wasmsigninghostruntime_receivingPending(this.__wbg_ptr);
+        return takeObject(ret);
+    }
+    /**
+     * Reserve display after grace and revalidation; returns SCALE `Option<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingPrepareDisplay(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingPrepareDisplay(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
+     * Revoke locally without waiting for remote transport.
+     * @param {string} product_id
+     * @returns {Promise<void>}
+     */
+    receivingRevoke(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingRevoke(this.__wbg_ptr, ptr0, len0);
+        return takeObject(ret);
+    }
+    /**
+     * Acknowledge the exact durable local revision synchronized by transport.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @returns {Promise<boolean>}
+     */
+    receivingSynchronized(product_id, revision) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingSynchronized(this.__wbg_ptr, ptr0, len0, revision);
+        return takeObject(ret);
+    }
+    /**
+     * Validate a click without enqueueing activation; returns SCALE `Option<ReceivingEvent>`.
+     * @param {string} product_id
+     * @param {bigint} revision
+     * @param {string} event_id
+     * @returns {Promise<Uint8Array>}
+     */
+    receivingValidateActivation(product_id, revision, event_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(event_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsigninghostruntime_receivingValidateActivation(this.__wbg_ptr, ptr0, len0, revision, ptr1, len1);
+        return takeObject(ret);
+    }
+    /**
      * Install freshly verified dotNS metadata only for the captured local activation.
      * @param {string} activation_id
      * @returns {Promise<any>}
@@ -1203,6 +1759,10 @@ function __wbg_get_imports() {
             const ret = new Array();
             return addHeapObject(ret);
         },
+        __wbg_new_b667d279fd5aa943: function(arg0, arg1) {
+            const ret = new Error(getStringFromWasm0(arg0, arg1));
+            return addHeapObject(ret);
+        },
         __wbg_new_da52cf8fe3429cb2: function() {
             const ret = new Object();
             return addHeapObject(ret);
@@ -1218,7 +1778,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return __wasm_bindgen_func_elem_10109(a, state0.b, arg0, arg1);
+                        return __wasm_bindgen_func_elem_10742(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -1355,51 +1915,56 @@ function __wbg_get_imports() {
             console.warn(getObject(arg0));
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 101, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4689);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 105, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4835);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 381, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10051);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 385, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10685);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 169, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_9932);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 101, ret: Externref, inner_ret: Some(Externref) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4830);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000004: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 97, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4682);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 103, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4832);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000005: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 99, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4686);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 175, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10566);
             return addHeapObject(ret);
         },
-        __wbindgen_cast_0000000000000006: function(arg0) {
+        __wbindgen_cast_0000000000000006: function(arg0, arg1) {
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 99, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4826);
+            return addHeapObject(ret);
+        },
+        __wbindgen_cast_0000000000000007: function(arg0) {
             // Cast intrinsic for `F64 -> Externref`.
             const ret = arg0;
             return addHeapObject(ret);
         },
-        __wbindgen_cast_0000000000000007: function(arg0, arg1) {
+        __wbindgen_cast_0000000000000008: function(arg0, arg1) {
             // Cast intrinsic for `Ref(Slice(U8)) -> NamedExternref("Uint8Array")`.
             const ret = getArrayU8FromWasm0(arg0, arg1);
             return addHeapObject(ret);
         },
-        __wbindgen_cast_0000000000000008: function(arg0, arg1) {
+        __wbindgen_cast_0000000000000009: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return addHeapObject(ret);
         },
-        __wbindgen_cast_0000000000000009: function(arg0) {
+        __wbindgen_cast_000000000000000a: function(arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return addHeapObject(ret);
         },
-        __wbindgen_cast_000000000000000a: function(arg0, arg1) {
+        __wbindgen_cast_000000000000000b: function(arg0, arg1) {
             var v0 = getArrayU8FromWasm0(arg0, arg1).slice();
             wasm.__wbindgen_export4(arg0, arg1 * 1, 1);
             // Cast intrinsic for `Vector(U8) -> Externref`.
@@ -1420,22 +1985,27 @@ function __wbg_get_imports() {
     };
 }
 
-function __wasm_bindgen_func_elem_9932(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_9932(arg0, arg1);
+function __wasm_bindgen_func_elem_4832(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_4832(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4686(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_4686(arg0, arg1);
+function __wasm_bindgen_func_elem_10566(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_10566(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4689(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_4689(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_4830(arg0, arg1) {
+    const ret = wasm.__wasm_bindgen_func_elem_4830(arg0, arg1);
+    return takeObject(ret);
 }
 
-function __wasm_bindgen_func_elem_4682(arg0, arg1) {
+function __wasm_bindgen_func_elem_4835(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_4835(arg0, arg1, addHeapObject(arg2));
+}
+
+function __wasm_bindgen_func_elem_4826(arg0, arg1) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_4682(retptr, arg0, arg1);
+        wasm.__wasm_bindgen_func_elem_4826(retptr, arg0, arg1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1446,10 +2016,10 @@ function __wasm_bindgen_func_elem_4682(arg0, arg1) {
     }
 }
 
-function __wasm_bindgen_func_elem_10051(arg0, arg1, arg2) {
+function __wasm_bindgen_func_elem_10685(arg0, arg1, arg2) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_10051(retptr, arg0, arg1, addHeapObject(arg2));
+        wasm.__wasm_bindgen_func_elem_10685(retptr, arg0, arg1, addHeapObject(arg2));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1460,10 +2030,13 @@ function __wasm_bindgen_func_elem_10051(arg0, arg1, arg2) {
     }
 }
 
-function __wasm_bindgen_func_elem_10109(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_10109(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_10742(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_10742(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
+const WasmNotificationReceiverFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmnotificationreceiver_free(ptr, 1));
 const WasmPairingHostRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmpairinghostruntime_free(ptr, 1));

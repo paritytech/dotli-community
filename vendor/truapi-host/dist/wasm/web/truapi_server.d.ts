@@ -2,6 +2,74 @@
 /* eslint-disable */
 
 /**
+ * Standalone receiver with one durable writer and no wallet or product execution.
+ * The host must serialize ownership across service-worker replacement and bind
+ * command product IDs to trusted execution sessions, never message-body claims.
+ */
+export class WasmNotificationReceiver {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Execute actions 2..7 under the immutable authority captured by the trusted
+     * execution channel. Authority is SCALE ReceivingAuthority, never page input.
+     * Request has no version tag; response is SCALE
+     * `Result<latest response, HostNotificationReceivingError>`. Action 3 requires
+     * the forwarding runtime's ordinary Notifications permission authorization.
+     */
+    commandForExecution(authority: Uint8Array, action: number, payload: Uint8Array): Promise<Uint8Array>;
+    /**
+     * Construct from raw receiverAuthority/receiverConsent/receiverChanged,
+     * readReceivingState and writeReceivingState callbacks. Persistence callbacks
+     * are required; absent authority advertises unsupported, never enrollment.
+     */
+    constructor(callbacks: any);
+    /**
+     * Queue durable activation only after the matching product is ready.
+     */
+    receivingActivate(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+    /**
+     * Clear a reservation only after explicit display failure, not an unknown outcome.
+     */
+    receivingCancelDisplay(product_id: string, revision: bigint, event_id: string): Promise<void>;
+    /**
+     * Confirm actual visible display, not ingestion or transport acknowledgement.
+     */
+    receivingConfirmDisplay(product_id: string, revision: bigint, event_id: string): Promise<void>;
+    /**
+     * Authenticate observed source metadata and carrier; returns SCALE `Vec<ReceivingEvent>`.
+     */
+    receivingIngest(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, actual_channel: string, actual_topics: string[], frame: Uint8Array): Promise<Uint8Array>;
+    /**
+     * Authenticate a SCALE statement including source metadata; returns SCALE `Vec<ReceivingEvent>`.
+     */
+    receivingIngestStatement(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, statement: Uint8Array): Promise<Uint8Array>;
+    /**
+     * Queue synchronization after the host durably changes the selected transport.
+     */
+    receivingMarkTransportChanged(product_id: string): Promise<void>;
+    /**
+     * All local registrations, including synchronized ones, as SCALE Vec.
+     */
+    receivingPending(): Promise<Uint8Array>;
+    /**
+     * Revalidate and reserve display after foreground grace; returns SCALE `Option<ReceivingEvent>`.
+     */
+    receivingPrepareDisplay(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+    /**
+     * Revoke locally before logout or destructive identity erasure.
+     */
+    receivingRevoke(product_id: string): Promise<void>;
+    /**
+     * Acknowledge only the revision actually synchronized by transport.
+     */
+    receivingSynchronized(product_id: string, revision: bigint): Promise<boolean>;
+    /**
+     * Read-only click validation before loading the verified product; sequence is zero.
+     */
+    receivingValidateActivation(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+}
+
+/**
  * JS-callable handle to a long-lived pairing-host runtime shared by product
  * cores.
  */
@@ -89,6 +157,50 @@ export class WasmPairingHostRuntime {
      * exceeding it rejects. `undefined` when no session is active.
      */
     productSubtreePublicKey(product_id: string, timeout_ms?: number | null): Promise<Uint8Array | undefined>;
+    /**
+     * Resolve a click under current authority; returns SCALE `Option<ReceivingEvent>`.
+     */
+    receivingActivate(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+    /**
+     * Clear a reservation only after explicit platform display failure.
+     */
+    receivingCancelDisplay(product_id: string, revision: bigint, event_id: string): Promise<void>;
+    /**
+     * Confirm actual platform display, not ingestion or transport acknowledgement.
+     */
+    receivingConfirmDisplay(product_id: string, revision: bigint, event_id: string): Promise<void>;
+    /**
+     * Verify source chain/channel/topics and all candidates; returns SCALE `Vec<ReceivingEvent>`.
+     */
+    receivingIngest(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, actual_channel: string, actual_topics: string[], frame: Uint8Array): Promise<Uint8Array>;
+    /**
+     * Authenticate a raw SCALE statement; returns SCALE `Vec<ReceivingEvent>`.
+     */
+    receivingIngestStatement(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, statement: Uint8Array): Promise<Uint8Array>;
+    /**
+     * Queue synchronization after durable provider-token rotation.
+     */
+    receivingMarkTransportChanged(product_id: string): Promise<void>;
+    /**
+     * All durable registrations as SCALE `Vec<ReceivingRegistration>`.
+     */
+    receivingPending(): Promise<Uint8Array>;
+    /**
+     * Reserve display after grace and revalidation; returns SCALE `Option<ReceivingEvent>`.
+     */
+    receivingPrepareDisplay(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+    /**
+     * Revoke locally without waiting for remote transport.
+     */
+    receivingRevoke(product_id: string): Promise<void>;
+    /**
+     * Acknowledge the exact durable local revision synchronized by transport.
+     */
+    receivingSynchronized(product_id: string, revision: bigint): Promise<boolean>;
+    /**
+     * Validate a click without enqueueing activation; returns SCALE `Option<ReceivingEvent>`.
+     */
+    receivingValidateActivation(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
     /**
      * Release one reference. The last one reports `"Stop"`, after which the
      * host may stop the worker; releasing with none held is a no-op.
@@ -289,6 +401,50 @@ export class WasmSigningHostRuntime {
      */
     productSubtreePublicKey(product_id: string, timeout_ms?: number | null): Promise<Uint8Array | undefined>;
     /**
+     * Resolve a click under current authority; returns SCALE `Option<ReceivingEvent>`.
+     */
+    receivingActivate(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+    /**
+     * Clear a reservation only after explicit platform display failure.
+     */
+    receivingCancelDisplay(product_id: string, revision: bigint, event_id: string): Promise<void>;
+    /**
+     * Confirm actual platform display, not ingestion or transport acknowledgement.
+     */
+    receivingConfirmDisplay(product_id: string, revision: bigint, event_id: string): Promise<void>;
+    /**
+     * Verify source chain/channel/topics and all candidates; returns SCALE `Vec<ReceivingEvent>`.
+     */
+    receivingIngest(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, actual_channel: string, actual_topics: string[], frame: Uint8Array): Promise<Uint8Array>;
+    /**
+     * Authenticate a raw SCALE statement; returns SCALE `Vec<ReceivingEvent>`.
+     */
+    receivingIngestStatement(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, statement: Uint8Array): Promise<Uint8Array>;
+    /**
+     * Queue synchronization after durable provider-token rotation.
+     */
+    receivingMarkTransportChanged(product_id: string): Promise<void>;
+    /**
+     * All durable registrations as SCALE `Vec<ReceivingRegistration>`.
+     */
+    receivingPending(): Promise<Uint8Array>;
+    /**
+     * Reserve display after grace and revalidation; returns SCALE `Option<ReceivingEvent>`.
+     */
+    receivingPrepareDisplay(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+    /**
+     * Revoke locally without waiting for remote transport.
+     */
+    receivingRevoke(product_id: string): Promise<void>;
+    /**
+     * Acknowledge the exact durable local revision synchronized by transport.
+     */
+    receivingSynchronized(product_id: string, revision: bigint): Promise<boolean>;
+    /**
+     * Validate a click without enqueueing activation; returns SCALE `Option<ReceivingEvent>`.
+     */
+    receivingValidateActivation(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
+    /**
      * Install freshly verified dotNS metadata only for the captured local activation.
      */
     refreshLocalIdentity(activation_id: string): Promise<any>;
@@ -373,6 +529,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_wasmnotificationreceiver_free: (a: number, b: number) => void;
     readonly __wbg_wasmpairinghostruntime_free: (a: number, b: number) => void;
     readonly __wbg_wasmproductruntime_free: (a: number, b: number) => void;
     readonly __wbg_wasmrenderersubscription_free: (a: number, b: number) => void;
@@ -383,6 +540,19 @@ export interface InitOutput {
     readonly hasTrustedRemotePermissions: (a: number, b: number) => number;
     readonly productAccountAddress: (a: number, b: number, c: number) => void;
     readonly setLogLevel: (a: number, b: number) => void;
+    readonly wasmnotificationreceiver_commandForExecution: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly wasmnotificationreceiver_new: (a: number, b: number) => void;
+    readonly wasmnotificationreceiver_receivingActivate: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmnotificationreceiver_receivingCancelDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmnotificationreceiver_receivingConfirmDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmnotificationreceiver_receivingIngest: (a: number, b: number, c: number, d: bigint, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => number;
+    readonly wasmnotificationreceiver_receivingIngestStatement: (a: number, b: number, c: number, d: bigint, e: number, f: number, g: number, h: number, i: number, j: number) => number;
+    readonly wasmnotificationreceiver_receivingMarkTransportChanged: (a: number, b: number, c: number) => number;
+    readonly wasmnotificationreceiver_receivingPending: (a: number) => number;
+    readonly wasmnotificationreceiver_receivingPrepareDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmnotificationreceiver_receivingRevoke: (a: number, b: number, c: number) => number;
+    readonly wasmnotificationreceiver_receivingSynchronized: (a: number, b: number, c: number, d: bigint) => number;
+    readonly wasmnotificationreceiver_receivingValidateActivation: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
     readonly wasmpairinghostruntime_acquireWorker: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_activateExternalSession: (a: number, b: number, c: number) => number;
     readonly wasmpairinghostruntime_activateStoredSession: (a: number) => number;
@@ -399,6 +569,17 @@ export interface InitOutput {
     readonly wasmpairinghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
     readonly wasmpairinghostruntime_productRuntime: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmpairinghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmpairinghostruntime_receivingActivate: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmpairinghostruntime_receivingCancelDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmpairinghostruntime_receivingConfirmDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmpairinghostruntime_receivingIngest: (a: number, b: number, c: number, d: bigint, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => number;
+    readonly wasmpairinghostruntime_receivingIngestStatement: (a: number, b: number, c: number, d: bigint, e: number, f: number, g: number, h: number, i: number, j: number) => number;
+    readonly wasmpairinghostruntime_receivingMarkTransportChanged: (a: number, b: number, c: number) => number;
+    readonly wasmpairinghostruntime_receivingPending: (a: number) => number;
+    readonly wasmpairinghostruntime_receivingPrepareDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmpairinghostruntime_receivingRevoke: (a: number, b: number, c: number) => number;
+    readonly wasmpairinghostruntime_receivingSynchronized: (a: number, b: number, c: number, d: bigint) => number;
+    readonly wasmpairinghostruntime_receivingValidateActivation: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
     readonly wasmpairinghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_resetSessionState: (a: number) => number;
     readonly wasmpairinghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
@@ -432,17 +613,29 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
     readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmsigninghostruntime_receivingActivate: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmsigninghostruntime_receivingCancelDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmsigninghostruntime_receivingConfirmDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmsigninghostruntime_receivingIngest: (a: number, b: number, c: number, d: bigint, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => number;
+    readonly wasmsigninghostruntime_receivingIngestStatement: (a: number, b: number, c: number, d: bigint, e: number, f: number, g: number, h: number, i: number, j: number) => number;
+    readonly wasmsigninghostruntime_receivingMarkTransportChanged: (a: number, b: number, c: number) => number;
+    readonly wasmsigninghostruntime_receivingPending: (a: number) => number;
+    readonly wasmsigninghostruntime_receivingPrepareDisplay: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmsigninghostruntime_receivingRevoke: (a: number, b: number, c: number) => number;
+    readonly wasmsigninghostruntime_receivingSynchronized: (a: number, b: number, c: number, d: bigint) => number;
+    readonly wasmsigninghostruntime_receivingValidateActivation: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
     readonly wasmsigninghostruntime_refreshLocalIdentity: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_10051: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_10109: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4689: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4682: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_9932: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4686: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10685: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10742: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4835: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4826: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4830: (a: number, b: number) => number;
+    readonly __wasm_bindgen_func_elem_4832: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10566: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

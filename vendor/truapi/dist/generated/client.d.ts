@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "064ab9d59b73f723";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "ec0d28820f74178d";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -235,6 +235,41 @@ export declare class EntropyClient {
     derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
 }
 /**
+ * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
+ *
+ * The host owns TLS, certificate verification and length framing; the guest
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: `dial` requires
+ * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
+ * its `genesis`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted `dial` opened. A grant is
+ * separate from account, signing and storage authority.
+ */
+export declare class JamPeerTransportClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Dial one peer. Native QUIC builds the ALPN from `genesis` and requires
+     * the peer certificate to carry `ed25519`. WebTransport negotiates
+     * HTTP/3 and pins the certificate derived from `p256`. These checks
+     * authenticate the caller-supplied peer identity, not chain membership.
+     */
+    dial(request: T.HostJamPeerTransportDialRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportDialResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportDialError>>;
+    /** Open a bidirectional stream on a connection and send its kind byte. */
+    open(request: T.HostJamPeerTransportOpenRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportOpenResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportOpenError>>;
+    /** Queue one message; the host prepends the `u32` little-endian length. */
+    send(request: T.HostJamPeerTransportSendRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportSendError>>;
+    /** Poll one complete message without blocking; the host strips the length. */
+    recv(request: T.HostJamPeerTransportRecvRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportRecvResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportRecvError>>;
+    /** Abort a stream in both directions. */
+    reset(request: T.HostJamPeerTransportResetRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportResetError>>;
+    /** Close a connection and every stream on it. */
+    close(request: T.HostJamPeerTransportCloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportCloseError>>;
+    /** Drain connection, stream-finish and inbound-stream events. */
+    events(options?: CallOptions): ResultAsync<T.HostJamPeerTransportEventsResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportEventsError>>;
+}
+/**
  * The card a Widget is shown under.
  *
  * Only a Widget execution may call it.
@@ -297,7 +332,7 @@ export declare class LocaleClient {
     /** Localize a bounded batch of UTC instants in a host locale snapshot. */
     localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
 }
-/** Notification methods for locally-rendered push notifications. */
+/** Local notification scheduling and consent-scoped background receiving. */
 export declare class NotificationsClient {
     #private;
     constructor(transport: TrUApiTransport);
@@ -322,6 +357,21 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+    /** Inspect current host support, consent and durable registration state. */
+    receiverStatus(options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Atomically replace watches under explicit receiving consent. */
+    replaceReceiver(request: T.HostNotificationReplaceReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Disable locally and queue transport revocation without waiting for it. */
+    disableReceiver(request: T.HostNotificationDisableReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /**
+     * Record foreground handling, reading or actual OS display, and return the
+     * confirmed/pending display outcome. A reservation is not proof of display.
+     */
+    recordReceipt(request: T.HostNotificationRecordReceiptRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiptResult, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Poll bounded durable delivery and activation events. */
+    receiverEvents(request: T.HostNotificationReceiverEventsRequest, options?: CallOptions): ResultAsync<Array<T.ReceivingEvent>, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Acknowledge an event after application handling. */
+    acknowledgeReceiverEvent(request: T.HostNotificationAcknowledgeReceiverEventRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
     /**
      * Retrieve up to 32 pending activations for this runtime's authenticated
      * product, account and environment. Retrieval does not consume events,
@@ -696,6 +746,7 @@ export interface TrUApiClient {
     readonly coinPayment: CoinPaymentClient;
     readonly contacts: ContactsClient;
     readonly entropy: EntropyClient;
+    readonly jamPeerTransport: JamPeerTransportClient;
     readonly expandedCard: ExpandedCardClient;
     readonly game: GameClient;
     readonly localStorage: LocalStorageClient;

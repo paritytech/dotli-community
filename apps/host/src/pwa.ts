@@ -98,6 +98,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator && parseDotLabel() !== 
       if (!registration) {
         return undefined;
       }
+      // The UI also looks up the registration if its listener mounts later.
+      // Keep the registration host-owned: it is never sent into a product.
+      window.dispatchEvent(new CustomEvent('dotli:receiving-registration', { detail: registration }));
       setInterval(() => {
         if (navigator.onLine) {
           checkForUpdate(registration);

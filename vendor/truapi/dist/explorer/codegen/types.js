@@ -2729,6 +2729,329 @@ export const types = [
         ],
     },
     {
+        id: "host-jam-peer-transport-close-error",
+        name: "HostJamPeerTransportCloseError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportCloseError = "Closed";',
+        description: "Failure to close a connection.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The connection is unknown or already closed.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-close-request",
+        name: "HostJamPeerTransportCloseRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportCloseRequest {\n  conn: number;\n}",
+        description: "Close a connection and every stream on it.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Connection to close.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-dial-error",
+        name: "HostJamPeerTransportDialError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportDialError = "NotGranted" | "Refused" | "Limit" | "Unreachable";',
+        description: "Failure to dial a JAM peer.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "The product holds no `RemotePermission::JamPeers` grant for the\nrequested genesis, or this host offers no peer transport.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "The peer refused the connection or presented a certificate that does\nnot match the requested identity.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The execution's connection budget (including pending dials), or its\neight distinct genesis decisions, is exhausted.",
+            },
+            {
+                name: "Unreachable",
+                type: '{ tag: "Unreachable"; value?: undefined }',
+                description: "The endpoint could not be reached.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-dial-request",
+        name: "HostJamPeerTransportDialRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportDialRequest {\n  genesis: HexString;\n  ip: HexString;\n  port: number;\n  ed25519: HexString;\n  p256?: HexString;\n}",
+        description: "Dial one JAM peer over JAMNP-S (QUIC) or WebTransport.",
+        fields: [
+            {
+                name: "genesis",
+                type: "HexString",
+                description: "Genesis header hash authorizing this dial. Native QUIC derives its\nALPN from the first four bytes; WebTransport negotiates HTTP/3.\nNeither transport authenticates the peer's chain membership.",
+            },
+            {
+                name: "ip",
+                type: "HexString",
+                description: "Peer IP address, IPv6 or v4-mapped IPv6.",
+            },
+            {
+                name: "port",
+                type: "number",
+                description: "Peer UDP port.",
+            },
+            {
+                name: "ed25519",
+                type: "HexString",
+                description: "Ed25519 key the peer's TLS certificate must carry.",
+            },
+            {
+                name: "p256",
+                type: "HexString | undefined",
+                description: "Compressed P-256 peer key for WebTransport certificate hashes.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-dial-response",
+        name: "HostJamPeerTransportDialResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportDialResponse {\n  conn: number;\n}",
+        description: "An open connection handle.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Execution-local connection id.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-events-error",
+        name: "HostJamPeerTransportEventsError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportEventsError = "NotGranted";',
+        description: "Failure to drain events.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution has no peer-transport grant.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-events-response",
+        name: "HostJamPeerTransportEventsResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportEventsResponse {\n  events: Array<JamPeerTransportEvent>;\n}",
+        description: "Events in arrival order.",
+        fields: [
+            {
+                name: "events",
+                type: "Array<JamPeerTransportEvent>",
+                description: "Pending events; empty when nothing happened.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-open-error",
+        name: "HostJamPeerTransportOpenError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportOpenError = "NotGranted" | "Closed" | "Limit";',
+        description: "Failure to open a stream.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution has no peer-transport grant.",
+            },
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The connection is closed or unknown.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The stream cap for this connection is exhausted.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-open-request",
+        name: "HostJamPeerTransportOpenRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportOpenRequest {\n  conn: number;\n  kind: number;\n}",
+        description: "Open a bidirectional stream and send its kind byte.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Connection returned by `dial`.",
+            },
+            {
+                name: "kind",
+                type: "number",
+                description: "JAMNP-S stream kind (UP 0, CE 128, ...).",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-open-response",
+        name: "HostJamPeerTransportOpenResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportOpenResponse {\n  stream: number;\n}",
+        description: "An open stream handle.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Execution-local stream id.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-error",
+        name: "HostJamPeerTransportRecvError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportRecvError = "Closed";',
+        description: "Failure to receive from a stream.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already fully consumed.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-request",
+        name: "HostJamPeerTransportRecvRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvRequest {\n  stream: number;\n  max: number;\n}",
+        description: "Poll one complete framed message without blocking.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream to read from.",
+            },
+            {
+                name: "max",
+                type: "number",
+                description: "Largest message the caller accepts.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-response",
+        name: "HostJamPeerTransportRecvResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvResponse {\n  message?: HexString;\n  fin: boolean;\n  reset: boolean;\n}",
+        description: "One unframed message, or none available yet.",
+        fields: [
+            {
+                name: "message",
+                type: "HexString | undefined",
+                description: "Complete message bytes without length prefix, or `None` when nothing\nhas arrived yet.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "The peer finished its send side; no further messages will arrive.",
+            },
+            {
+                name: "reset",
+                type: "boolean",
+                description: "The peer reset the stream; buffered data may be incomplete.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-reset-error",
+        name: "HostJamPeerTransportResetError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportResetError = "Closed";',
+        description: "Failure to reset a stream.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already closed.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-reset-request",
+        name: "HostJamPeerTransportResetRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportResetRequest {\n  stream: number;\n}",
+        description: "Abort both directions of a stream.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream to reset.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-send-error",
+        name: "HostJamPeerTransportSendError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportSendError = "Closed" | "TooLarge" | "Limit";',
+        description: "Failure to send a message.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is closed, finished or unknown.",
+            },
+            {
+                name: "TooLarge",
+                type: '{ tag: "TooLarge"; value?: undefined }',
+                description: "The message exceeds the host's message limit.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The per-connection buffer is full.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-send-request",
+        name: "HostJamPeerTransportSendRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportSendRequest {\n  stream: number;\n  message: HexString;\n  fin: boolean;\n}",
+        description: "Send one framed message; the host adds the `u32` little-endian length.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream returned by `open` or reported by an `Accepted` event.",
+            },
+            {
+                name: "message",
+                type: "HexString",
+                description: "Message bytes without length prefix.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "Finish the send side after this message.",
+            },
+        ],
+    },
+    {
         id: "host-local-storage-change-item",
         name: "HostLocalStorageChangeItem",
         category: "local_storage",
@@ -3644,6 +3967,198 @@ export const types = [
                 name: "url",
                 type: "string",
                 description: "URL to open.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-acknowledge-receiver-event-request",
+        name: "HostNotificationAcknowledgeReceiverEventRequest",
+        category: "notifications",
+        definition: "export interface HostNotificationAcknowledgeReceiverEventRequest {\n  sequence: bigint;\n}",
+        description: "Acknowledge a durable event after application handling.",
+        fields: [
+            {
+                name: "sequence",
+                type: "bigint",
+                description: "Durable event sequence.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-disable-receiver-request",
+        name: "HostNotificationDisableReceiverRequest",
+        category: "notifications",
+        definition: "export interface HostNotificationDisableReceiverRequest {\n  expectedRevision: bigint;\n}",
+        description: "Disable locally without awaiting transport revocation.",
+        fields: [
+            {
+                name: "expected_revision",
+                type: "bigint",
+                description: "Revision observed by the caller.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-receipt-result",
+        name: "HostNotificationReceiptResult",
+        category: "notifications",
+        definition: "export interface HostNotificationReceiptResult {\n  displayed: boolean;\n  displayPending: boolean;\n}",
+        description: "Actual display outcome after recording a receipt, distinct from enrollment ACKs.",
+        fields: [
+            {
+                name: "displayed",
+                type: "boolean",
+                description: "An OS display was positively confirmed by the host or product.",
+            },
+            {
+                name: "display_pending",
+                type: "boolean",
+                description: "A display is reserved but unconfirmed; do not start a competing fallback.\nExplicit failure cancels the reservation; unknown outcomes remain pending until expiry.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-receiver-events-request",
+        name: "HostNotificationReceiverEventsRequest",
+        category: "notifications",
+        definition: "export interface HostNotificationReceiverEventsRequest {\n  afterSequence: bigint;\n}",
+        description: "Poll durable events without creating a UI-lifetime subscription.",
+        fields: [
+            {
+                name: "after_sequence",
+                type: "bigint",
+                description: "Return only events after this sequence.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-receiver-status",
+        name: "HostNotificationReceiverStatus",
+        category: "notifications",
+        definition: "export interface HostNotificationReceiverStatus {\n  supported: boolean;\n  osPermission: boolean;\n  consent: boolean;\n  enabled: boolean;\n  revision: bigint;\n  syncPending: boolean;\n  transportReady: boolean;\n}",
+        description: "Receiving support, consent and durable synchronization state.",
+        fields: [
+            {
+                name: "supported",
+                type: "boolean",
+                description: "Whether this host supplies trusted receiving authority.",
+            },
+            {
+                name: "os_permission",
+                type: "boolean",
+                description: "Current OS permission for visible notifications.",
+            },
+            {
+                name: "consent",
+                type: "boolean",
+                description: "Whether current authority and watches have receiving consent.",
+            },
+            {
+                name: "enabled",
+                type: "boolean",
+                description: "Whether receiving is locally enabled.",
+            },
+            {
+                name: "revision",
+                type: "bigint",
+                description: "Compare-and-swap token for the durable registration.",
+            },
+            {
+                name: "sync_pending",
+                type: "boolean",
+                description: "Whether the transport still needs to synchronize this revision.",
+            },
+            {
+                name: "transport_ready",
+                type: "boolean",
+                description: "Whether the selected platform transport is ready.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-receiving-error",
+        name: "HostNotificationReceivingError",
+        category: "notifications",
+        definition: 'export type HostNotificationReceivingError =\n  | { tag: "Unsupported"; value?: undefined }\n  | { tag: "PermissionDenied"; value?: undefined }\n  | { tag: "InvalidRequest"; value: { reason: string } }\n  | { tag: "Conflict"; value?: undefined }\n  | { tag: "Capacity"; value?: undefined }\n  | { tag: "Storage"; value: { reason: string } }\n;',
+        description: "Receiving policy, persistence or support failure.",
+        variants: [
+            {
+                name: "Unsupported",
+                type: '{ tag: "Unsupported"; value?: undefined }',
+                description: "This host has no receiving adapter.",
+            },
+            {
+                name: "PermissionDenied",
+                type: '{ tag: "PermissionDenied"; value?: undefined }',
+                description: "Notification permission or scoped receiving consent was denied.",
+            },
+            {
+                name: "InvalidRequest",
+                type: '{ tag: "InvalidRequest"; value: { reason: string } }',
+                description: "The request violates the receiving schema or authenticated policy.",
+            },
+            {
+                name: "Conflict",
+                type: '{ tag: "Conflict"; value?: undefined }',
+                description: "The registration revision or trusted authority changed.",
+            },
+            {
+                name: "Capacity",
+                type: '{ tag: "Capacity"; value?: undefined }',
+                description: "The bounded receiving store or watch budget is full.",
+            },
+            {
+                name: "Storage",
+                type: '{ tag: "Storage"; value: { reason: string } }',
+                description: "Durable persistence failed.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-record-receipt-request",
+        name: "HostNotificationRecordReceiptRequest",
+        category: "notifications",
+        definition: "export interface HostNotificationRecordReceiptRequest {\n  revision: bigint;\n  watchId: string;\n  eventId: string;\n  kind: ReceivingReceiptKind;\n}",
+        description: "Record confirmed foreground handling or reading.",
+        fields: [
+            {
+                name: "revision",
+                type: "bigint",
+                description: "Revision that accepted the event.",
+            },
+            {
+                name: "watch_id",
+                type: "string",
+                description: "Product-local watch identifier.",
+            },
+            {
+                name: "event_id",
+                type: "string",
+                description: "Authenticated event identifier.",
+            },
+            {
+                name: "kind",
+                type: "ReceivingReceiptKind",
+                description: "Confirmed handling kind.",
+            },
+        ],
+    },
+    {
+        id: "host-notification-replace-receiver-request",
+        name: "HostNotificationReplaceReceiverRequest",
+        category: "notifications",
+        definition: "export interface HostNotificationReplaceReceiverRequest {\n  expectedRevision: bigint;\n  watches: Array<ReceivingWatch>;\n}",
+        description: "Atomically replace the current authority's complete watch set.",
+        fields: [
+            {
+                name: "expected_revision",
+                type: "bigint",
+                description: "Revision observed by the caller.",
+            },
+            {
+                name: "watches",
+                type: "Array<ReceivingWatch>",
+                description: "Complete replacement, at most 256 watches and 10,000 senders total.\nEach watch permits at most 1,000 senders.",
             },
         ],
     },
@@ -5078,6 +5593,30 @@ export const types = [
         ],
     },
     {
+        id: "jam-peer-transport-event",
+        name: "JamPeerTransportEvent",
+        category: "jam_peer_transport",
+        definition: 'export type JamPeerTransportEvent =\n  | { tag: "ConnClosed"; value: { conn: number } }\n  | { tag: "StreamFin"; value: { stream: number } }\n  | { tag: "Accepted"; value: { conn: number; stream: number; kind: number } }\n;',
+        description: "Asynchronous transport notification.",
+        variants: [
+            {
+                name: "ConnClosed",
+                type: '{ tag: "ConnClosed"; value: { conn: number } }',
+                description: "The connection was closed by the peer or the host.",
+            },
+            {
+                name: "StreamFin",
+                type: '{ tag: "StreamFin"; value: { stream: number } }',
+                description: "The peer finished its send side of a stream.",
+            },
+            {
+                name: "Accepted",
+                type: '{ tag: "Accepted"; value: { conn: number; stream: number; kind: number } }',
+                description: "The peer opened a stream to us on a dialed connection.",
+            },
+        ],
+    },
+    {
         id: "legacy-account",
         name: "LegacyAccount",
         category: "account",
@@ -5520,6 +6059,142 @@ export const types = [
                 name: "Payload",
                 type: '{ tag: "Payload"; value: { payload: string } }',
                 description: "String message to sign.",
+            },
+        ],
+    },
+    {
+        id: "receiving-event",
+        name: "ReceivingEvent",
+        category: "notifications",
+        definition: "export interface ReceivingEvent {\n  sequence: bigint;\n  revision: bigint;\n  watchId: string;\n  eventId: string;\n  kind: ReceivingEventKind;\n  route: string;\n  expiresAt: bigint;\n}",
+        description: "A bounded durable event containing opaque identifiers, never plaintext.",
+        fields: [
+            {
+                name: "sequence",
+                type: "bigint",
+                description: "Durable sequence used for polling and acknowledgement.",
+            },
+            {
+                name: "revision",
+                type: "bigint",
+                description: "Registration revision that accepted the event.",
+            },
+            {
+                name: "watch_id",
+                type: "string",
+                description: "Product-local watch identifier.",
+            },
+            {
+                name: "event_id",
+                type: "string",
+                description: "Authenticated event identifier.",
+            },
+            {
+                name: "kind",
+                type: "ReceivingEventKind",
+                description: "Delivery or user activation.",
+            },
+            {
+                name: "route",
+                type: "string",
+                description: "Locally enrolled product-relative route.",
+            },
+            {
+                name: "expires_at",
+                type: "bigint",
+                description: "Expiration in Unix milliseconds.",
+            },
+        ],
+    },
+    {
+        id: "receiving-event-kind",
+        name: "ReceivingEventKind",
+        category: "notifications",
+        definition: 'export type ReceivingEventKind = "Delivery" | "Activation";',
+        description: "Why an authenticated receiving event was queued.",
+        variants: [
+            {
+                name: "Delivery",
+                type: '{ tag: "Delivery"; value?: undefined }',
+                description: "An authenticated event arrived without focusing the product.",
+            },
+            {
+                name: "Activation",
+                type: '{ tag: "Activation"; value?: undefined }',
+                description: "The user activated a locally accepted notification.",
+            },
+        ],
+    },
+    {
+        id: "receiving-receipt-kind",
+        name: "ReceivingReceiptKind",
+        category: "notifications",
+        definition: 'export type ReceivingReceiptKind = "Foreground" | "Read" | "Displayed";',
+        description: "Confirmed application handling, independent of transport acknowledgement.",
+        variants: [
+            {
+                name: "Foreground",
+                type: '{ tag: "Foreground"; value?: undefined }',
+                description: "The application handled the event in the foreground; not proof of OS display.",
+            },
+            {
+                name: "Read",
+                type: '{ tag: "Read"; value?: undefined }',
+                description: "The user read the event.",
+            },
+            {
+                name: "Displayed",
+                type: '{ tag: "Displayed"; value?: undefined }',
+                description: "The product's OS notification API successfully displayed the event.",
+            },
+        ],
+    },
+    {
+        id: "receiving-watch",
+        name: "ReceivingWatch",
+        category: "notifications",
+        definition: "export interface ReceivingWatch {\n  id: string;\n  genesis: string;\n  channel: string;\n  topics: Array<string>;\n  senders: Array<string>;\n  expiresAt: bigint;\n  mutedUntil: bigint;\n  route: string;\n}",
+        description: "An authenticated source filter enrolled under host-owned receiving consent.",
+        fields: [
+            {
+                name: "id",
+                type: "string",
+                description: "Product-local opaque watch identifier.",
+            },
+            {
+                name: "genesis",
+                type: "string",
+                description: "Canonical lowercase 32-byte chain genesis hash.",
+            },
+            {
+                name: "channel",
+                type: "string",
+                description: "Exact source channel, encoded as a canonical lowercase 32-byte hash.",
+            },
+            {
+                name: "topics",
+                type: "Array<string>",
+                description: "One to four selected topics; every topic must occur in the signed header.",
+            },
+            {
+                name: "senders",
+                type: "Array<string>",
+                description: "Approved Ed25519 public keys in canonical lowercase hex.",
+            },
+            {
+                name: "expires_at",
+                type: "bigint",
+                description: "Expiration in Unix milliseconds, bounded to a JavaScript safe integer.",
+            },
+            {
+                name: "muted_until",
+                type: "bigint",
+                description: "Unix milliseconds before which delivery is muted; `u64::MAX` means forever.",
+            },
+            {
+                name: "route",
+                type: "string",
+                description: "Product-relative activation route, retained locally and never relayed.",
             },
         ],
     },
@@ -6076,8 +6751,8 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n;',
-        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, and `StatementSubmit` are also triggered\nimplicitly by the corresponding business calls when not yet granted.",
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n;',
+        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also\ntriggered implicitly by the corresponding business calls when not yet\ngranted (`JamPeerTransport::dial` for `JamPeers`).",
         variants: [
             {
                 name: "Remote",
@@ -6103,6 +6778,11 @@ export const types = [
                 name: "StatementSubmit",
                 type: '{ tag: "StatementSubmit"; value?: undefined }',
                 description: "Submitting statements on behalf of the user via `remote_statement_store_submit`.",
+            },
+            {
+                name: "JamPeers",
+                type: '{ tag: "JamPeers"; value: { genesis: HexString } }',
+                description: "Peer access over JAMNP-S QUIC/WebTransport, authorized for the full\ngenesis hash through the `JamPeerTransport` service.\n\nThe app names endpoints and pinned keys. Native QUIC negotiates the\ngenesis-derived ALPN; WebTransport negotiates HTTP/3. Neither proves\nchain membership. The guest must verify chain data itself. The grant\ncarries no host account, signing or submission authority and does not\nrestrict which framed protocol messages the guest sends.",
             },
         ],
     },

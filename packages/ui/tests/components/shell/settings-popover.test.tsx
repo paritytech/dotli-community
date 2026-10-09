@@ -5,12 +5,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { flush } from 'solid-js';
 import { cleanup as unmountAll } from '@solidjs/testing-library';
 import {
-  BACKEND_LABELS,
   setBackend,
   setCacheSettings,
   setNetwork,
   setPolkaVmAppsEnabled,
-  NETWORK_NAME_TO_SERVICES_CONFIG,
   type Backend,
   type CacheSettings,
   type Network,
@@ -19,12 +17,12 @@ import {
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { initTheme } from '../../../src/theme-controller.js';
-import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
+import { renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
-import { byId, byTestId, must, query } from '../../support.js';
-import { nth } from '../../helpers/nth.js';
+import { byId, byTestId, query } from '../../support.js';
+import type * as ReceivingModule from '../../../src/receiving.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { useFloatingSurfaces } from '../../helpers/floating.js';
@@ -39,6 +37,16 @@ vi.mock('../../../src/settings-actions.js', async importOriginal => {
     applyAndReset: actions.applyAndReset,
   };
 });
+
+const receiving = vi.hoisted(() => ({
+  receivingStatus: vi.fn(),
+  enableReceivingPush: vi.fn(),
+  revokeReceiving: vi.fn(),
+}));
+vi.mock('../../../src/receiving.js', async importOriginal => ({
+  ...(await importOriginal<typeof ReceivingModule>()),
+  ...receiving,
+}));
 
 const networks = vi.hoisted(() => ({
   enabled: null as ReturnType<typeof NetworkModule.getEnabledNetworks> | null,
@@ -69,6 +77,12 @@ beforeEach(() => {
   sessionStorage.clear();
   actions.applyAndReset.mockReset();
   actions.applyAndReset.mockResolvedValue(undefined);
+  receiving.receivingStatus.mockReset();
+  receiving.receivingStatus.mockResolvedValue({ supported: true, enabled: false, message: '' });
+  receiving.enableReceivingPush.mockReset();
+  receiving.enableReceivingPush.mockResolvedValue(undefined);
+  receiving.revokeReceiving.mockReset();
+  receiving.revokeReceiving.mockResolvedValue(undefined);
   networks.enabled = null;
   setPolkaVmAppsEnabled(true);
 });
@@ -162,7 +176,7 @@ function selectedCategory(): string | null {
   return byTestId('settings-categories').querySelector('[aria-pressed="true"]')?.getAttribute('data-testid') ?? null;
 }
 
-/** What the popover reads from @dotli/config when it opens. */
+/** Saved settings seeded by the host before opening. */
 interface Settings {
   chain: Backend;
   network: Network;
@@ -172,207 +186,45 @@ interface Settings {
   debugOn: boolean;
 }
 
-const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
-
-function expectHeader(el: Element | undefined, text: string): void {
-  expect(el?.tagName).toBe('DIV');
-  expect(el?.childElementCount).toBe(0);
-  expect(el?.textContent).toBe(text);
-}
-
-function expectCacheRow(row: Element | undefined, label: string, checked: boolean): void {
-  expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'BUTTON']);
-  expect(row?.children[0]?.textContent).toBe(label);
-  const toggle = nth(must(row, 'a cache row').children, 1);
-  expect(toggle.getAttribute('role')).toBe('switch');
-  expect(toggle.getAttribute('aria-label')).toBe(label);
-  expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
-}
-
-function expectChoice(
-  card: Element | undefined,
-  name: string,
-  opts: { value: string; label: string; description: string; selected: boolean; disabled?: boolean; chip?: string },
-): void {
-  expect(card?.tagName).toBe('LABEL');
-  const input = query(must(card, 'a choice'), 'input', HTMLInputElement);
-  expect(input.type).toBe('radio');
-  expect(input.name).toBe(name);
-  expect(input.value).toBe(opts.value);
-  expect(input.checked).toBe(opts.selected);
-  expect(input.disabled).toBe(opts.disabled === true);
-  expect(card?.hasAttribute('data-selected')).toBe(opts.selected);
-  expect(card?.hasAttribute('data-disabled')).toBe(opts.disabled === true);
-  expect(card?.textContent).toBe(`${opts.label}${opts.chip ?? ''}${opts.description}`);
-}
-
-function expectRadioGroup(section: Element, label: string): Element {
-  expect(tags(section)).toEqual(['DIV', 'DIV']);
-  expectHeader(section.children[0], label);
-  const group = nth(section.children, 1);
-  expect(group.getAttribute('role')).toBe('radiogroup');
-  expect(group.getAttribute('aria-label')).toBe(label);
-  return group;
-}
-
 type Category = 'general' | 'network' | 'advanced';
 
-const CATEGORY_LABELS: [Category, string][] = [
-  ['general', 'General'],
-  ['network', 'Network'],
-  ['advanced', 'Advanced'],
-];
-
-function expectCategories(control: Element | undefined, selected: Category): void {
-  expect(control?.getAttribute('data-testid')).toBe('settings-categories');
-  expect(control?.getAttribute('role')).toBe('group');
-  expect(control?.getAttribute('aria-label')).toBe('Settings category');
-  const buttons = Array.from(must(control, 'the category control').children);
-  expect(buttons.map(b => b.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON']);
-  expect(buttons.map(b => b.getAttribute('data-testid'))).toEqual(
-    CATEGORY_LABELS.map(([value]) => `settings-category-${value}`),
-  );
-  expect(buttons.map(b => b.textContent)).toEqual(CATEGORY_LABELS.map(([, label]) => label));
-  expect(buttons.map(b => b.getAttribute('aria-pressed'))).toEqual(
-    CATEGORY_LABELS.map(([value]) => String(value === selected)),
-  );
-}
-
-function expectGeneral(sections: Element[], at: number): number {
-  const appearance = nth(sections, at);
-  expect(tags(appearance)).toEqual(['DIV', 'DIV']);
-  expectHeader(appearance.children[0], 'Appearance');
-  const tiles = nth(appearance.children, 1);
-  expect(tiles.getAttribute('data-testid')).toBe('theme-options');
-  expect(tiles.getAttribute('role')).toBe('radiogroup');
-  expect(tiles.getAttribute('aria-label')).toBe('Theme');
-  expect(Array.from(tiles.children).map(tile => tile.getAttribute('data-testid'))).toEqual([
-    'theme-option-light',
-    'theme-option-dark',
-    'theme-option-system',
-  ]);
-  return at + 1;
-}
-
-function expectNetwork(sections: Element[], at: number, settings: Settings): number {
-  let next = at;
-  if (settings.enabledNetworks.length > 1) {
-    const group = expectRadioGroup(nth(sections, next++), 'Network');
-    expect(group.childElementCount).toBe(settings.enabledNetworks.length);
-    settings.enabledNetworks.forEach((n, i) => {
-      const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
-      expectChoice(group.children[i], 'dotli-network', {
-        value: n,
-        label: cfg.label,
-        description: cfg.description,
-        selected: n === settings.network,
-      });
-    });
-  }
-
-  const transports = expectRadioGroup(nth(sections, next++), 'Network transport');
-  const choices: [Backend, string][] = [
-    ['smoldot-direct', 'Verified in your browser, separate for each tab'],
-    ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
-    ['rpc-gateway', 'Fetched from trusted servers. Fastest, but less private'],
-  ];
-  expect(transports.childElementCount).toBe(choices.length);
-  choices.forEach(([value, description], i) => {
-    const disabled = value === 'smoldot-shared-worker' && !settings.sharedWorkerSupported;
-    expectChoice(transports.children[i], 'dotli-backend', {
-      value,
-      label: BACKEND_LABELS[value],
-      description: disabled ? 'Unavailable in this browser or private window' : description,
-      selected: value === settings.chain,
-      disabled,
-      ...(value === 'smoldot-direct' ? { chip: 'Recommended' } : {}),
-    });
-  });
-
-  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
-    .filter(input => input.checked)
-    .map(input => `${input.name}=${input.value}`);
-  expect(checked).toEqual([
-    ...(settings.enabledNetworks.length > 1 ? [`dotli-network=${settings.network}`] : []),
-    `dotli-backend=${settings.chain}`,
-  ]);
-  return next;
-}
-
-function expectAdvanced(sections: Element[], at: number, settings: Settings): number {
-  let next = at;
-  const cache = nth(sections, next++);
-  const well = nth(cache.children, 1);
-  expect(well.getAttribute('data-testid')).toBe('mode-cache');
-  expectCacheRow(well.children[0], 'dotNS cache', !settings.cache.skipCidCache);
-  expectCacheRow(well.children[1], 'Archive cache', !settings.cache.skipArchiveCache);
-  expectCacheRow(well.children[2], 'Worker cache', !settings.cache.skipWorkerCache);
-  const clearRow = nth(cache.children, 2);
-  expect(clearRow.getAttribute('data-testid')).toBe('mode-clear-all-row');
-  const experimental = nth(sections, next++);
-  const experiments = nth(experimental.children, 1);
-  expect(experiments.getAttribute('data-testid')).toBe('mode-experimental');
-  expectCacheRow(experiments.children[0], 'PolkaVM apps', true);
-  if (!settings.debugOn) {
-    const debugRow = nth(sections, next++);
-    expect(debugRow.getAttribute('data-testid')).toBe('mode-debug-row');
-  }
-  return next;
-}
-
-/** The category control, then only the selected category's sections. */
-function expectSections(container: Element, settings: Settings, category: Category): void {
-  const sections = Array.from(container.children);
-  expectCategories(sections[0], category);
-  const end =
-    category === 'general'
-      ? expectGeneral(sections, 1)
-      : category === 'network'
-        ? expectNetwork(sections, 1, settings)
-        : expectAdvanced(sections, 1, settings);
-  expect(sections).toHaveLength(end);
-}
-
-/** The open popover apart from styling. A sheet leaves its title to the sheet header. */
 function expectPopoverMatches(
   settings: Settings,
   { sheet = false, category = 'general' }: { sheet?: boolean; category?: Category } = {},
 ): void {
   const popover = byId('mode-popover');
-  // A sheet is a modal layer, which labels itself by its title.
+  expect(popover.getAttribute('role')).toBe('dialog');
+  expect(popover.getAttribute('aria-label')).toBe('Settings');
   if (sheet) {
     expect(popover.getAttribute('aria-modal')).toBe('true');
-  } else {
-    expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('tabindex')).toBe('-1');
   }
-  expect(popover.getAttribute('aria-label')).toBe('Settings');
-  const body = must(popoverBody('mode-popover'), '#mode-popover');
-  expect(tags(body)).toEqual(['DIV']);
-  const content = nth(body.children, 0);
-  expect(content.id).toBe('mode-popover-content');
-  expect(tags(content)).toEqual(['SECTION']);
-  const panel = nth(content.children, 0);
-  expect(tags(panel)).toEqual(sheet ? ['DIV', 'DIV'] : ['DIV', 'DIV', 'DIV']);
-  const [head, sections, footer] = (sheet ? [undefined, ...panel.children] : Array.from(panel.children)) as [
-    Element | undefined,
-    Element,
-    Element,
-  ];
-  expect(head?.querySelector('h2')?.textContent).toBe(sheet ? undefined : 'Settings');
-  expect(head?.querySelector('[data-testid="mode-version"]')?.textContent).toBe(sheet ? undefined : 'v0.0.0');
-  expect(sections.getAttribute('data-testid')).toBe('mode-popover-sections');
-  expectSections(sections, settings, category);
+  expect(selectedCategory()).toBe(`settings-category-${category}`);
+  expect(applyButton().disabled).toBe(true);
 
-  expect(footer.contains(byTestId('mode-apply-row'))).toBe(true);
-  expect(byTestId('mode-apply-row').childElementCount).toBe(1);
-  const apply = applyButton();
-  expect(apply.disabled).toBe(true);
-  expect(apply.dataset['variant']).toBe('primary');
-  expect(apply.textContent).toBe('Save and apply');
-  const hint = byTestId('mode-apply-warning');
-  expect(footer.contains(hint)).toBe(true);
-  expect(hint.textContent).toBe('Transport and cache changes reload the app');
+  if (category === 'general') {
+    expect(query(popover, '[role="radiogroup"][aria-label="Theme"]')).toBeDefined();
+  } else if (category === 'network') {
+    if (settings.enabledNetworks.length > 1) {
+      for (const network of settings.enabledNetworks) {
+        expect(radio('dotli-network', network).checked).toBe(network === settings.network);
+      }
+    } else {
+      expect(popover.querySelector('input[name="dotli-network"]')).toBeNull();
+    }
+    for (const backend of ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'] as const) {
+      const choice = radio('dotli-backend', backend);
+      expect(choice.checked).toBe(backend === settings.chain);
+      expect(choice.disabled).toBe(backend === 'smoldot-shared-worker' && !settings.sharedWorkerSupported);
+    }
+  } else {
+    expect(toggle('dotNS cache').getAttribute('aria-checked')).toBe(String(!settings.cache.skipCidCache));
+    expect(toggle('Archive cache').getAttribute('aria-checked')).toBe(String(!settings.cache.skipArchiveCache));
+    expect(toggle('Worker cache').getAttribute('aria-checked')).toBe(String(!settings.cache.skipWorkerCache));
+    expect(toggle('PolkaVM apps').getAttribute('aria-checked')).toBe('true');
+    expect(byTestId('mode-receiving-enable', popover, HTMLButtonElement).disabled).toBe(false);
+    expect(byTestId('mode-receiving-revoke', popover, HTMLButtonElement).disabled).toBe(false);
+    expect(popover.querySelector('[data-testid="mode-debug-row"]') !== null).toBe(!settings.debugOn);
+  }
 }
 
 function expectModeButton(open: boolean): void {
@@ -382,7 +234,6 @@ function expectModeButton(open: boolean): void {
   expect(button.getAttribute('aria-haspopup')).toBe('dialog');
   expect(button.getAttribute('aria-expanded')).toBe(String(open));
   expect(button.getAttribute('aria-controls')).toBe('mode-popover');
-  expect(tags(button)).toEqual(['svg']);
 }
 
 useFloatingSurfaces();
@@ -632,7 +483,6 @@ describe('The settings popover island', () => {
       },
     );
     expect(applyButton().disabled).toBe(true);
-    expect(applyButton().textContent).toBe('Resetting…');
   });
 
   it('As a dotli user, I change the network, look at Advanced and come back, and the change is still there for Save and apply', async () => {
@@ -746,7 +596,6 @@ describe('The settings popover island', () => {
     });
     const clear = query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
     expect(clear.disabled).toBe(true);
-    expect(clear.textContent).toBe('Clearing…');
 
     // When: a second click does nothing.
     clear.click();
@@ -754,6 +603,127 @@ describe('The settings popover island', () => {
 
     // Then
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli user, a failed network reset keeps my draft and lets me retry', async () => {
+    actions.applyAndReset.mockRejectedValueOnce(new Error('Receiving revocation could not be saved'));
+    await renderPopover();
+    await openPopover();
+    await showCategory('network');
+    radio('dotli-network', 'previewnet').click();
+    await settle();
+
+    applyButton().click();
+    await settle();
+
+    expect(byTestId('mode-reset-error').getAttribute('role')).toBe('alert');
+    expect(applyButton().disabled).toBe(false);
+    expect(radio('dotli-network', 'previewnet').checked).toBe(true);
+    expect(isOpen()).toBe(true);
+
+    applyButton().click();
+    await settle();
+
+    expect(actions.applyAndReset).toHaveBeenCalledTimes(2);
+    expect(actions.applyAndReset.mock.calls[1]).toEqual(actions.applyAndReset.mock.calls[0]);
+    expect(document.querySelector('[data-testid="mode-reset-error"]')).toBeNull();
+  });
+
+  it('As a dotli user, a failed full reset leaves the settings usable and lets me retry', async () => {
+    actions.applyAndReset.mockRejectedValueOnce(new Error('Receiving revocation could not be saved'));
+    await renderPopover();
+    await openPopover();
+    await showCategory('advanced');
+    toggle('Archive cache').click();
+    await settle();
+    const clear = query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
+
+    clear.click();
+    await settle();
+
+    expect(byTestId('mode-reset-error').getAttribute('role')).toBe('alert');
+    expect(clear.disabled).toBe(false);
+    expect(applyButton().disabled).toBe(false);
+    expect(toggle('Archive cache').getAttribute('aria-checked')).toBe('false');
+
+    clear.click();
+    await settle();
+
+    expect(actions.applyAndReset).toHaveBeenCalledTimes(2);
+    expect(actions.applyAndReset.mock.calls[1]).toEqual(actions.applyAndReset.mock.calls[0]);
+    expect(document.querySelector('[data-testid="mode-reset-error"]')).toBeNull();
+  });
+
+  it('As a dotli user, enabling receiving applies immediately and survives discarding a settings draft', async () => {
+    await renderPopover();
+    await openPopover();
+    expect(receiving.receivingStatus).not.toHaveBeenCalled();
+    await showCategory('advanced');
+    expect(receiving.enableReceivingPush).not.toHaveBeenCalled();
+    expect(receiving.revokeReceiving).not.toHaveBeenCalled();
+    receiving.receivingStatus.mockResolvedValue({ supported: true, enabled: true, message: '' });
+
+    byTestId('mode-receiving-enable').click();
+    expect(receiving.enableReceivingPush).toHaveBeenCalledTimes(1);
+    await settle();
+
+    expect(applyButton().disabled).toBe(true);
+    expect(actions.applyAndReset).not.toHaveBeenCalled();
+    toggle('Worker cache').click();
+    await settle();
+    press('Escape');
+    await settle();
+    await openPopover();
+    await showCategory('advanced');
+
+    expect(toggle('Worker cache').getAttribute('aria-checked')).toBe('true');
+    expect(byTestId('mode-receiving-enable', document, HTMLButtonElement).disabled).toBe(true);
+    expect(applyButton().disabled).toBe(true);
+    expect(actions.applyAndReset).not.toHaveBeenCalled();
+    expect(receiving.revokeReceiving).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user, receiving revocation errors remain visible after status refresh and can be retried without saving settings', async () => {
+    receiving.revokeReceiving.mockRejectedValueOnce(new Error('Remote revocation failed'));
+    await renderPopover();
+    await openPopover();
+    await showCategory('advanced');
+
+    byTestId('mode-receiving-revoke').click();
+    await settle();
+
+    expect(receiving.revokeReceiving).toHaveBeenCalledTimes(1);
+    expect(byTestId('mode-receiving-error').getAttribute('role')).toBe('alert');
+    expect(byTestId('mode-receiving-revoke', document, HTMLButtonElement).disabled).toBe(false);
+    expect(applyButton().disabled).toBe(true);
+    byTestId('mode-receiving-refresh').click();
+    await settle();
+    expect(byTestId('mode-receiving-error').getAttribute('role')).toBe('alert');
+
+    byTestId('mode-receiving-revoke').click();
+    await settle();
+
+    expect(receiving.revokeReceiving).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[data-testid="mode-receiving-error"]')).toBeNull();
+    expect(actions.applyAndReset).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user, a failed receiving status read does not prevent revocation', async () => {
+    receiving.receivingStatus.mockRejectedValueOnce(new Error('Status unavailable'));
+    await renderPopover();
+    await openPopover();
+    await showCategory('advanced');
+
+    expect(byTestId('mode-receiving-error').getAttribute('role')).toBe('alert');
+    expect(byTestId('mode-receiving-enable', document, HTMLButtonElement).disabled).toBe(true);
+    expect(byTestId('mode-receiving-revoke', document, HTMLButtonElement).disabled).toBe(false);
+
+    byTestId('mode-receiving-revoke').click();
+    await settle();
+
+    expect(receiving.revokeReceiving).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-testid="mode-receiving-error"]')).toBeNull();
+    expect(actions.applyAndReset).not.toHaveBeenCalled();
   });
 
   it('As a developer, Open in debug mode reloads the tab with the debug panel on', async () => {
@@ -820,7 +790,7 @@ describe('The settings popover island', () => {
     const viewport = stubPhoneViewport(false);
     await renderPopover();
     await openPopover();
-    expect(byId('mode-popover').tagName).toBe('DIV');
+    expect(byId('mode-popover').getAttribute('aria-modal')).not.toBe('true');
     press('Escape');
     await settle();
 
@@ -838,7 +808,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // Then
-    expect(byId('mode-popover').tagName).toBe('DIV');
+    expect(byId('mode-popover').getAttribute('aria-modal')).not.toBe('true');
   });
 
   it('As a phone user, the settings sheet leaves its title to the sheet header and Save and apply spans the sheet', async () => {

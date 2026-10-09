@@ -33,6 +33,15 @@
   flex: 1 0 100%;
   margin-left: 0;
 }
+/* A failed reset or apply, under the footer's action. */
+.error {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--chrome-err-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-body);
+}
 
 @media (max-width: 560px) {
   .sections {

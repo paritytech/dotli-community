@@ -1963,6 +1963,174 @@ export type VersionedHostInfoResponse =
     value: HostInfo;
 };
 export const VersionedHostInfoResponse: Codec<VersionedHostInfoResponse>;
+/** Versioned envelope for [\`HostJamPeerTransportCloseError\`]. */
+export type VersionedHostJamPeerTransportCloseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportCloseError;
+};
+export const VersionedHostJamPeerTransportCloseError: Codec<VersionedHostJamPeerTransportCloseError>;
+/** Versioned envelope for [\`HostJamPeerTransportCloseRequest\`]. */
+export type VersionedHostJamPeerTransportCloseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportCloseRequest;
+};
+export const VersionedHostJamPeerTransportCloseRequest: Codec<VersionedHostJamPeerTransportCloseRequest>;
+/** Versioned envelope for [\`HostJamPeerTransportCloseResponse\`]. */
+export type VersionedHostJamPeerTransportCloseResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostJamPeerTransportCloseResponse: Codec<VersionedHostJamPeerTransportCloseResponse>;
+/** Versioned envelope for [\`HostJamPeerTransportDialError\`]. */
+export type VersionedHostJamPeerTransportDialError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportDialError;
+};
+export const VersionedHostJamPeerTransportDialError: Codec<VersionedHostJamPeerTransportDialError>;
+/** Versioned envelope for [\`HostJamPeerTransportDialRequest\`]. */
+export type VersionedHostJamPeerTransportDialRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportDialRequest;
+};
+export const VersionedHostJamPeerTransportDialRequest: Codec<VersionedHostJamPeerTransportDialRequest>;
+/** Versioned envelope for [\`HostJamPeerTransportDialResponse\`]. */
+export type VersionedHostJamPeerTransportDialResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportDialResponse;
+};
+export const VersionedHostJamPeerTransportDialResponse: Codec<VersionedHostJamPeerTransportDialResponse>;
+/** Versioned envelope for [\`HostJamPeerTransportEventsError\`]. */
+export type VersionedHostJamPeerTransportEventsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportEventsError;
+};
+export const VersionedHostJamPeerTransportEventsError: Codec<VersionedHostJamPeerTransportEventsError>;
+/** Versioned envelope for [\`HostJamPeerTransportEventsRequest\`]. */
+export type VersionedHostJamPeerTransportEventsRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostJamPeerTransportEventsRequest: Codec<VersionedHostJamPeerTransportEventsRequest>;
+/** Versioned envelope for [\`HostJamPeerTransportEventsResponse\`]. */
+export type VersionedHostJamPeerTransportEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportEventsResponse;
+};
+export const VersionedHostJamPeerTransportEventsResponse: Codec<VersionedHostJamPeerTransportEventsResponse>;
+/** Versioned envelope for [\`HostJamPeerTransportOpenError\`]. */
+export type VersionedHostJamPeerTransportOpenError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportOpenError;
+};
+export const VersionedHostJamPeerTransportOpenError: Codec<VersionedHostJamPeerTransportOpenError>;
+/** Versioned envelope for [\`HostJamPeerTransportOpenRequest\`]. */
+export type VersionedHostJamPeerTransportOpenRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportOpenRequest;
+};
+export const VersionedHostJamPeerTransportOpenRequest: Codec<VersionedHostJamPeerTransportOpenRequest>;
+/** Versioned envelope for [\`HostJamPeerTransportOpenResponse\`]. */
+export type VersionedHostJamPeerTransportOpenResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportOpenResponse;
+};
+export const VersionedHostJamPeerTransportOpenResponse: Codec<VersionedHostJamPeerTransportOpenResponse>;
+/** Versioned envelope for [\`HostJamPeerTransportRecvError\`]. */
+export type VersionedHostJamPeerTransportRecvError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvError;
+};
+export const VersionedHostJamPeerTransportRecvError: Codec<VersionedHostJamPeerTransportRecvError>;
+/** Versioned envelope for [\`HostJamPeerTransportRecvRequest\`]. */
+export type VersionedHostJamPeerTransportRecvRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvRequest;
+};
+export const VersionedHostJamPeerTransportRecvRequest: Codec<VersionedHostJamPeerTransportRecvRequest>;
+/** Versioned envelope for [\`HostJamPeerTransportRecvResponse\`]. */
+export type VersionedHostJamPeerTransportRecvResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvResponse;
+};
+export const VersionedHostJamPeerTransportRecvResponse: Codec<VersionedHostJamPeerTransportRecvResponse>;
+/** Versioned envelope for [\`HostJamPeerTransportResetError\`]. */
+export type VersionedHostJamPeerTransportResetError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportResetError;
+};
+export const VersionedHostJamPeerTransportResetError: Codec<VersionedHostJamPeerTransportResetError>;
+/** Versioned envelope for [\`HostJamPeerTransportResetRequest\`]. */
+export type VersionedHostJamPeerTransportResetRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportResetRequest;
+};
+export const VersionedHostJamPeerTransportResetRequest: Codec<VersionedHostJamPeerTransportResetRequest>;
+/** Versioned envelope for [\`HostJamPeerTransportResetResponse\`]. */
+export type VersionedHostJamPeerTransportResetResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostJamPeerTransportResetResponse: Codec<VersionedHostJamPeerTransportResetResponse>;
+/** Versioned envelope for [\`HostJamPeerTransportSendError\`]. */
+export type VersionedHostJamPeerTransportSendError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportSendError;
+};
+export const VersionedHostJamPeerTransportSendError: Codec<VersionedHostJamPeerTransportSendError>;
+/** Versioned envelope for [\`HostJamPeerTransportSendRequest\`]. */
+export type VersionedHostJamPeerTransportSendRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportSendRequest;
+};
+export const VersionedHostJamPeerTransportSendRequest: Codec<VersionedHostJamPeerTransportSendRequest>;
+/** Versioned envelope for [\`HostJamPeerTransportSendResponse\`]. */
+export type VersionedHostJamPeerTransportSendResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostJamPeerTransportSendResponse: Codec<VersionedHostJamPeerTransportSendResponse>;
 /** Versioned envelope for [\`HostLocalStorageChangeItem\`]. */
 export type VersionedHostLocalStorageChangeItem = 
 /** Version 1 payload. */
@@ -2474,6 +2642,139 @@ export type VersionedHostNavigateToResponse =
     value?: undefined;
 };
 export const VersionedHostNavigateToResponse: Codec<VersionedHostNavigateToResponse>;
+/** Versioned envelope for [\`HostNotificationAcknowledgeReceiverEventRequest\`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationAcknowledgeReceiverEventRequest;
+};
+export const VersionedHostNotificationAcknowledgeReceiverEventRequest: Codec<VersionedHostNotificationAcknowledgeReceiverEventRequest>;
+/** Versioned envelope for [\`HostNotificationAcknowledgeReceiverEventResponse\`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostNotificationAcknowledgeReceiverEventResponse: Codec<VersionedHostNotificationAcknowledgeReceiverEventResponse>;
+/** Versioned envelope for [\`HostNotificationDisableReceiverRequest\`]. */
+export type VersionedHostNotificationDisableReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationDisableReceiverRequest;
+};
+export const VersionedHostNotificationDisableReceiverRequest: Codec<VersionedHostNotificationDisableReceiverRequest>;
+/** Versioned envelope for [\`HostNotificationDisableReceiverResponse\`]. */
+export type VersionedHostNotificationDisableReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export const VersionedHostNotificationDisableReceiverResponse: Codec<VersionedHostNotificationDisableReceiverResponse>;
+/** Actual display outcome after recording a receipt, distinct from enrollment ACKs. */
+export interface HostNotificationReceiptResult {
+    /** An OS display was positively confirmed by the host or product. */
+    displayed: boolean;
+    /**
+     * A display is reserved but unconfirmed; do not start a competing fallback.
+     * Explicit failure cancels the reservation; unknown outcomes remain pending until expiry.
+     */
+    displayPending: boolean;
+}
+export const HostNotificationReceiptResult: Codec<HostNotificationReceiptResult>;
+/** Versioned envelope for [\`HostNotificationReceiverEventsRequest\`]. */
+export type VersionedHostNotificationReceiverEventsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverEventsRequest;
+};
+export const VersionedHostNotificationReceiverEventsRequest: Codec<VersionedHostNotificationReceiverEventsRequest>;
+/** Versioned envelope for [\`HostNotificationReceiverEventsResponse\`]. */
+export type VersionedHostNotificationReceiverEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: Array<ReceivingEvent>;
+};
+export const VersionedHostNotificationReceiverEventsResponse: Codec<VersionedHostNotificationReceiverEventsResponse>;
+/** Receiving support, consent and durable synchronization state. */
+export interface HostNotificationReceiverStatus {
+    /** Whether this host supplies trusted receiving authority. */
+    supported: boolean;
+    /** Current OS permission for visible notifications. */
+    osPermission: boolean;
+    /** Whether current authority and watches have receiving consent. */
+    consent: boolean;
+    /** Whether receiving is locally enabled. */
+    enabled: boolean;
+    /** Compare-and-swap token for the durable registration. */
+    revision: bigint;
+    /** Whether the transport still needs to synchronize this revision. */
+    syncPending: boolean;
+    /** Whether the selected platform transport is ready. */
+    transportReady: boolean;
+}
+export const HostNotificationReceiverStatus: Codec<HostNotificationReceiverStatus>;
+/** Versioned envelope for [\`HostNotificationReceiverStatusRequest\`]. */
+export type VersionedHostNotificationReceiverStatusRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostNotificationReceiverStatusRequest: Codec<VersionedHostNotificationReceiverStatusRequest>;
+/** Versioned envelope for [\`HostNotificationReceiverStatusResponse\`]. */
+export type VersionedHostNotificationReceiverStatusResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export const VersionedHostNotificationReceiverStatusResponse: Codec<VersionedHostNotificationReceiverStatusResponse>;
+/** Versioned envelope for [\`HostNotificationReceivingError\`]. */
+export type VersionedHostNotificationReceivingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceivingError;
+};
+export const VersionedHostNotificationReceivingError: Codec<VersionedHostNotificationReceivingError>;
+/** Versioned envelope for [\`HostNotificationRecordReceiptRequest\`]. */
+export type VersionedHostNotificationRecordReceiptRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationRecordReceiptRequest;
+};
+export const VersionedHostNotificationRecordReceiptRequest: Codec<VersionedHostNotificationRecordReceiptRequest>;
+/** Versioned envelope for [\`HostNotificationRecordReceiptResponse\`]. */
+export type VersionedHostNotificationRecordReceiptResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiptResult;
+};
+export const VersionedHostNotificationRecordReceiptResponse: Codec<VersionedHostNotificationRecordReceiptResponse>;
+/** Versioned envelope for [\`HostNotificationReplaceReceiverRequest\`]. */
+export type VersionedHostNotificationReplaceReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReplaceReceiverRequest;
+};
+export const VersionedHostNotificationReplaceReceiverRequest: Codec<VersionedHostNotificationReplaceReceiverRequest>;
+/** Versioned envelope for [\`HostNotificationReplaceReceiverResponse\`]. */
+export type VersionedHostNotificationReplaceReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export const VersionedHostNotificationReplaceReceiverResponse: Codec<VersionedHostNotificationReplaceReceiverResponse>;
 /** Versioned envelope for [\`HostPaymentBalanceSubscribeError\`]. */
 export type VersionedHostPaymentBalanceSubscribeError = 
 /** Version 1 payload. */
@@ -3231,6 +3532,32 @@ export type ImageSource =
     value: string;
 };
 export const ImageSource: Codec<ImageSource>;
+/** Asynchronous transport notification. */
+export type JamPeerTransportEvent = 
+/** The connection was closed by the peer or the host. */
+{
+    tag: "ConnClosed";
+    value: {
+        conn: number;
+    };
+}
+/** The peer finished its send side of a stream. */
+ | {
+    tag: "StreamFin";
+    value: {
+        stream: number;
+    };
+}
+/** The peer opened a stream to us on a dialed connection. */
+ | {
+    tag: "Accepted";
+    value: {
+        conn: number;
+        stream: number;
+        kind: number;
+    };
+};
+export const JamPeerTransportEvent: Codec<JamPeerTransportEvent>;
 /**
  * A user-imported (legacy) account: public key plus an optional user-chosen
  * display name.
@@ -3627,6 +3954,50 @@ export type RawPayload =
     };
 };
 export const RawPayload: Codec<RawPayload>;
+/** A bounded durable event containing opaque identifiers, never plaintext. */
+export interface ReceivingEvent {
+    /** Durable sequence used for polling and acknowledgement. */
+    sequence: bigint;
+    /** Registration revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Delivery or user activation. */
+    kind: ReceivingEventKind;
+    /** Locally enrolled product-relative route. */
+    route: string;
+    /** Expiration in Unix milliseconds. */
+    expiresAt: bigint;
+}
+export const ReceivingEvent: Codec<ReceivingEvent>;
+/** Why an authenticated receiving event was queued. */
+export type ReceivingEventKind = "Delivery" | "Activation";
+export const ReceivingEventKind: Codec<ReceivingEventKind>;
+/** Confirmed application handling, independent of transport acknowledgement. */
+export type ReceivingReceiptKind = "Foreground" | "Read" | "Displayed";
+export const ReceivingReceiptKind: Codec<ReceivingReceiptKind>;
+/** An authenticated source filter enrolled under host-owned receiving consent. */
+export interface ReceivingWatch {
+    /** Product-local opaque watch identifier. */
+    id: string;
+    /** Canonical lowercase 32-byte chain genesis hash. */
+    genesis: string;
+    /** Exact source channel, encoded as a canonical lowercase 32-byte hash. */
+    channel: string;
+    /** One to four selected topics; every topic must occur in the signed header. */
+    topics: Array<string>;
+    /** Approved Ed25519 public keys in canonical lowercase hex. */
+    senders: Array<string>;
+    /** Expiration in Unix milliseconds, bounded to a JavaScript safe integer. */
+    expiresAt: bigint;
+    /** Unix milliseconds before which delivery is muted; \`u64::MAX\` means forever. */
+    mutedUntil: bigint;
+    /** Product-relative activation route, retained locally and never relayed. */
+    route: string;
+}
+export const ReceivingWatch: Codec<ReceivingWatch>;
 /** A registered ring-VRF key entry. */
 export interface RegisteredRingVrfKey {
     /** Stable public name of the key. */
@@ -3976,8 +4347,9 @@ export const VersionedRemoteChainTransactionStopResponse: Codec<VersionedRemoteC
 /**
  * One remote-operation permission requested by the product (RFC 0002).
  *
- * \`ChainSubmit\`, \`PreimageSubmit\`, and \`StatementSubmit\` are also triggered
- * implicitly by the corresponding business calls when not yet granted.
+ * \`ChainSubmit\`, \`PreimageSubmit\`, \`StatementSubmit\` and \`JamPeers\` are also
+ * triggered implicitly by the corresponding business calls when not yet
+ * granted (\`JamPeerTransport::dial\` for \`JamPeers\`).
  */
 export type RemotePermission = 
 /**
@@ -4019,6 +4391,22 @@ export type RemotePermission =
  | {
     tag: "StatementSubmit";
     value?: undefined;
+}
+/**
+ * Peer access over JAMNP-S QUIC/WebTransport, authorized for the full
+ * genesis hash through the \`JamPeerTransport\` service.
+ *
+ * The app names endpoints and pinned keys. Native QUIC negotiates the
+ * genesis-derived ALPN; WebTransport negotiates HTTP/3. Neither proves
+ * chain membership. The guest must verify chain data itself. The grant
+ * carries no host account, signing or submission authority and does not
+ * restrict which framed protocol messages the guest sends.
+ */
+ | {
+    tag: "JamPeers";
+    value: {
+        genesis: HexString;
+    };
 };
 export const RemotePermission: Codec<RemotePermission>;
 /** Versioned envelope for [\`RemotePermissionError\`]. */
@@ -5423,6 +5811,114 @@ export interface HostHandshakeRequest {
     codecVersion: number;
 }
 export const HostHandshakeRequest: Codec<HostHandshakeRequest>;
+/** Failure to close a connection. */
+export type HostJamPeerTransportCloseError = "Closed";
+export const HostJamPeerTransportCloseError: Codec<HostJamPeerTransportCloseError>;
+/** Close a connection and every stream on it. */
+export interface HostJamPeerTransportCloseRequest {
+    /** Connection to close. */
+    conn: number;
+}
+export const HostJamPeerTransportCloseRequest: Codec<HostJamPeerTransportCloseRequest>;
+/** Failure to dial a JAM peer. */
+export type HostJamPeerTransportDialError = "NotGranted" | "Refused" | "Limit" | "Unreachable";
+export const HostJamPeerTransportDialError: Codec<HostJamPeerTransportDialError>;
+/** Dial one JAM peer over JAMNP-S (QUIC) or WebTransport. */
+export interface HostJamPeerTransportDialRequest {
+    /**
+     * Genesis header hash authorizing this dial. Native QUIC derives its
+     * ALPN from the first four bytes; WebTransport negotiates HTTP/3.
+     * Neither transport authenticates the peer's chain membership.
+     */
+    genesis: HexString;
+    /** Peer IP address, IPv6 or v4-mapped IPv6. */
+    ip: HexString;
+    /** Peer UDP port. */
+    port: number;
+    /** Ed25519 key the peer's TLS certificate must carry. */
+    ed25519: HexString;
+    /** Compressed P-256 peer key for WebTransport certificate hashes. */
+    p256?: HexString;
+}
+export const HostJamPeerTransportDialRequest: Codec<HostJamPeerTransportDialRequest>;
+/** An open connection handle. */
+export interface HostJamPeerTransportDialResponse {
+    /** Execution-local connection id. */
+    conn: number;
+}
+export const HostJamPeerTransportDialResponse: Codec<HostJamPeerTransportDialResponse>;
+/** Failure to drain events. */
+export type HostJamPeerTransportEventsError = "NotGranted";
+export const HostJamPeerTransportEventsError: Codec<HostJamPeerTransportEventsError>;
+/** Events in arrival order. */
+export interface HostJamPeerTransportEventsResponse {
+    /** Pending events; empty when nothing happened. */
+    events: Array<JamPeerTransportEvent>;
+}
+export const HostJamPeerTransportEventsResponse: Codec<HostJamPeerTransportEventsResponse>;
+/** Failure to open a stream. */
+export type HostJamPeerTransportOpenError = "NotGranted" | "Closed" | "Limit";
+export const HostJamPeerTransportOpenError: Codec<HostJamPeerTransportOpenError>;
+/** Open a bidirectional stream and send its kind byte. */
+export interface HostJamPeerTransportOpenRequest {
+    /** Connection returned by \`dial\`. */
+    conn: number;
+    /** JAMNP-S stream kind (UP 0, CE 128, ...). */
+    kind: number;
+}
+export const HostJamPeerTransportOpenRequest: Codec<HostJamPeerTransportOpenRequest>;
+/** An open stream handle. */
+export interface HostJamPeerTransportOpenResponse {
+    /** Execution-local stream id. */
+    stream: number;
+}
+export const HostJamPeerTransportOpenResponse: Codec<HostJamPeerTransportOpenResponse>;
+/** Failure to receive from a stream. */
+export type HostJamPeerTransportRecvError = "Closed";
+export const HostJamPeerTransportRecvError: Codec<HostJamPeerTransportRecvError>;
+/** Poll one complete framed message without blocking. */
+export interface HostJamPeerTransportRecvRequest {
+    /** Stream to read from. */
+    stream: number;
+    /** Largest message the caller accepts. */
+    max: number;
+}
+export const HostJamPeerTransportRecvRequest: Codec<HostJamPeerTransportRecvRequest>;
+/** One unframed message, or none available yet. */
+export interface HostJamPeerTransportRecvResponse {
+    /**
+     * Complete message bytes without length prefix, or \`None\` when nothing
+     * has arrived yet.
+     */
+    message?: HexString;
+    /** The peer finished its send side; no further messages will arrive. */
+    fin: boolean;
+    /** The peer reset the stream; buffered data may be incomplete. */
+    reset: boolean;
+}
+export const HostJamPeerTransportRecvResponse: Codec<HostJamPeerTransportRecvResponse>;
+/** Failure to reset a stream. */
+export type HostJamPeerTransportResetError = "Closed";
+export const HostJamPeerTransportResetError: Codec<HostJamPeerTransportResetError>;
+/** Abort both directions of a stream. */
+export interface HostJamPeerTransportResetRequest {
+    /** Stream to reset. */
+    stream: number;
+}
+export const HostJamPeerTransportResetRequest: Codec<HostJamPeerTransportResetRequest>;
+/** Failure to send a message. */
+export type HostJamPeerTransportSendError = "Closed" | "TooLarge" | "Limit";
+export const HostJamPeerTransportSendError: Codec<HostJamPeerTransportSendError>;
+/** Send one framed message; the host adds the \`u32\` little-endian length. */
+export interface HostJamPeerTransportSendRequest {
+    /** Stream returned by \`open\` or reported by an \`Accepted\` event. */
+    stream: number;
+    /** Message bytes without length prefix. */
+    message: HexString;
+    /** Finish the send side after this message. */
+    fin: boolean;
+}
+export const HostJamPeerTransportSendRequest: Codec<HostJamPeerTransportSendRequest>;
 /** A change to a subscribed storage key, pushed to the subscriber. */
 export interface HostLocalStorageChangeItem {
     /** Value after the change. \`Some\` on write, \`None\` after clear. */
@@ -5510,6 +6006,84 @@ export interface HostNavigateToRequest {
     url: string;
 }
 export const HostNavigateToRequest: Codec<HostNavigateToRequest>;
+/** Acknowledge a durable event after application handling. */
+export interface HostNotificationAcknowledgeReceiverEventRequest {
+    /** Durable event sequence. */
+    sequence: bigint;
+}
+export const HostNotificationAcknowledgeReceiverEventRequest: Codec<HostNotificationAcknowledgeReceiverEventRequest>;
+/** Disable locally without awaiting transport revocation. */
+export interface HostNotificationDisableReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+}
+export const HostNotificationDisableReceiverRequest: Codec<HostNotificationDisableReceiverRequest>;
+/** Poll durable events without creating a UI-lifetime subscription. */
+export interface HostNotificationReceiverEventsRequest {
+    /** Return only events after this sequence. */
+    afterSequence: bigint;
+}
+export const HostNotificationReceiverEventsRequest: Codec<HostNotificationReceiverEventsRequest>;
+/** Receiving policy, persistence or support failure. */
+export type HostNotificationReceivingError = 
+/** This host has no receiving adapter. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** Notification permission or scoped receiving consent was denied. */
+ | {
+    tag: "PermissionDenied";
+    value?: undefined;
+}
+/** The request violates the receiving schema or authenticated policy. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** The registration revision or trusted authority changed. */
+ | {
+    tag: "Conflict";
+    value?: undefined;
+}
+/** The bounded receiving store or watch budget is full. */
+ | {
+    tag: "Capacity";
+    value?: undefined;
+}
+/** Durable persistence failed. */
+ | {
+    tag: "Storage";
+    value: {
+        reason: string;
+    };
+};
+export const HostNotificationReceivingError: Codec<HostNotificationReceivingError>;
+/** Record confirmed foreground handling or reading. */
+export interface HostNotificationRecordReceiptRequest {
+    /** Revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Confirmed handling kind. */
+    kind: ReceivingReceiptKind;
+}
+export const HostNotificationRecordReceiptRequest: Codec<HostNotificationRecordReceiptRequest>;
+/** Atomically replace the current authority's complete watch set. */
+export interface HostNotificationReplaceReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+    /**
+     * Complete replacement, at most 256 watches and 10,000 senders total.
+     * Each watch permits at most 1,000 senders.
+     */
+    watches: Array<ReceivingWatch>;
+}
+export const HostNotificationReplaceReceiverRequest: Codec<HostNotificationReplaceReceiverRequest>;
 /**
  * Error from [\`crate::api::Payment::balance_subscribe\`].
  *
@@ -7165,6 +7739,27 @@ export import HostInfo = T.HostInfo;
 export import VersionedHostInfoError = T.VersionedHostInfoError;
 export import VersionedHostInfoRequest = T.VersionedHostInfoRequest;
 export import VersionedHostInfoResponse = T.VersionedHostInfoResponse;
+export import VersionedHostJamPeerTransportCloseError = T.VersionedHostJamPeerTransportCloseError;
+export import VersionedHostJamPeerTransportCloseRequest = T.VersionedHostJamPeerTransportCloseRequest;
+export import VersionedHostJamPeerTransportCloseResponse = T.VersionedHostJamPeerTransportCloseResponse;
+export import VersionedHostJamPeerTransportDialError = T.VersionedHostJamPeerTransportDialError;
+export import VersionedHostJamPeerTransportDialRequest = T.VersionedHostJamPeerTransportDialRequest;
+export import VersionedHostJamPeerTransportDialResponse = T.VersionedHostJamPeerTransportDialResponse;
+export import VersionedHostJamPeerTransportEventsError = T.VersionedHostJamPeerTransportEventsError;
+export import VersionedHostJamPeerTransportEventsRequest = T.VersionedHostJamPeerTransportEventsRequest;
+export import VersionedHostJamPeerTransportEventsResponse = T.VersionedHostJamPeerTransportEventsResponse;
+export import VersionedHostJamPeerTransportOpenError = T.VersionedHostJamPeerTransportOpenError;
+export import VersionedHostJamPeerTransportOpenRequest = T.VersionedHostJamPeerTransportOpenRequest;
+export import VersionedHostJamPeerTransportOpenResponse = T.VersionedHostJamPeerTransportOpenResponse;
+export import VersionedHostJamPeerTransportRecvError = T.VersionedHostJamPeerTransportRecvError;
+export import VersionedHostJamPeerTransportRecvRequest = T.VersionedHostJamPeerTransportRecvRequest;
+export import VersionedHostJamPeerTransportRecvResponse = T.VersionedHostJamPeerTransportRecvResponse;
+export import VersionedHostJamPeerTransportResetError = T.VersionedHostJamPeerTransportResetError;
+export import VersionedHostJamPeerTransportResetRequest = T.VersionedHostJamPeerTransportResetRequest;
+export import VersionedHostJamPeerTransportResetResponse = T.VersionedHostJamPeerTransportResetResponse;
+export import VersionedHostJamPeerTransportSendError = T.VersionedHostJamPeerTransportSendError;
+export import VersionedHostJamPeerTransportSendRequest = T.VersionedHostJamPeerTransportSendRequest;
+export import VersionedHostJamPeerTransportSendResponse = T.VersionedHostJamPeerTransportSendResponse;
 export import VersionedHostLocalStorageChangeItem = T.VersionedHostLocalStorageChangeItem;
 export import VersionedHostLocalStorageClearError = T.VersionedHostLocalStorageClearError;
 export import VersionedHostLocalStorageClearRequest = T.VersionedHostLocalStorageClearRequest;
@@ -7210,6 +7805,21 @@ export import HostNativeChatStatePage = T.HostNativeChatStatePage;
 export import VersionedHostNavigateToError = T.VersionedHostNavigateToError;
 export import VersionedHostNavigateToRequest = T.VersionedHostNavigateToRequest;
 export import VersionedHostNavigateToResponse = T.VersionedHostNavigateToResponse;
+export import VersionedHostNotificationAcknowledgeReceiverEventRequest = T.VersionedHostNotificationAcknowledgeReceiverEventRequest;
+export import VersionedHostNotificationAcknowledgeReceiverEventResponse = T.VersionedHostNotificationAcknowledgeReceiverEventResponse;
+export import VersionedHostNotificationDisableReceiverRequest = T.VersionedHostNotificationDisableReceiverRequest;
+export import VersionedHostNotificationDisableReceiverResponse = T.VersionedHostNotificationDisableReceiverResponse;
+export import HostNotificationReceiptResult = T.HostNotificationReceiptResult;
+export import VersionedHostNotificationReceiverEventsRequest = T.VersionedHostNotificationReceiverEventsRequest;
+export import VersionedHostNotificationReceiverEventsResponse = T.VersionedHostNotificationReceiverEventsResponse;
+export import HostNotificationReceiverStatus = T.HostNotificationReceiverStatus;
+export import VersionedHostNotificationReceiverStatusRequest = T.VersionedHostNotificationReceiverStatusRequest;
+export import VersionedHostNotificationReceiverStatusResponse = T.VersionedHostNotificationReceiverStatusResponse;
+export import VersionedHostNotificationReceivingError = T.VersionedHostNotificationReceivingError;
+export import VersionedHostNotificationRecordReceiptRequest = T.VersionedHostNotificationRecordReceiptRequest;
+export import VersionedHostNotificationRecordReceiptResponse = T.VersionedHostNotificationRecordReceiptResponse;
+export import VersionedHostNotificationReplaceReceiverRequest = T.VersionedHostNotificationReplaceReceiverRequest;
+export import VersionedHostNotificationReplaceReceiverResponse = T.VersionedHostNotificationReplaceReceiverResponse;
 export import VersionedHostPaymentBalanceSubscribeError = T.VersionedHostPaymentBalanceSubscribeError;
 export import VersionedHostPaymentBalanceSubscribeItem = T.VersionedHostPaymentBalanceSubscribeItem;
 export import VersionedHostPaymentBalanceSubscribeRequest = T.VersionedHostPaymentBalanceSubscribeRequest;
@@ -7300,6 +7910,7 @@ export import HostWorkerOperationError = T.HostWorkerOperationError;
 export import ImageFit = T.ImageFit;
 export import ImageProps = T.ImageProps;
 export import ImageSource = T.ImageSource;
+export import JamPeerTransportEvent = T.JamPeerTransportEvent;
 export import LegacyAccount = T.LegacyAccount;
 export import LegacyAccountTxPayload = T.LegacyAccountTxPayload;
 export import Modifier = T.Modifier;
@@ -7326,6 +7937,10 @@ export import VersionedProductRendererRenderRequest = T.VersionedProductRenderer
 export import ProfileAudience = T.ProfileAudience;
 export import ProfileContact = T.ProfileContact;
 export import RawPayload = T.RawPayload;
+export import ReceivingEvent = T.ReceivingEvent;
+export import ReceivingEventKind = T.ReceivingEventKind;
+export import ReceivingReceiptKind = T.ReceivingReceiptKind;
+export import ReceivingWatch = T.ReceivingWatch;
 export import RegisteredRingVrfKey = T.RegisteredRingVrfKey;
 export import VersionedRemoteChainHeadBodyError = T.VersionedRemoteChainHeadBodyError;
 export import VersionedRemoteChainHeadBodyRequest = T.VersionedRemoteChainHeadBodyRequest;
@@ -7487,6 +8102,23 @@ export import HostGetUserIdError = T.HostGetUserIdError;
 export import HostGetUserIdResponse = T.HostGetUserIdResponse;
 export import HostHandshakeError = T.HostHandshakeError;
 export import HostHandshakeRequest = T.HostHandshakeRequest;
+export import HostJamPeerTransportCloseError = T.HostJamPeerTransportCloseError;
+export import HostJamPeerTransportCloseRequest = T.HostJamPeerTransportCloseRequest;
+export import HostJamPeerTransportDialError = T.HostJamPeerTransportDialError;
+export import HostJamPeerTransportDialRequest = T.HostJamPeerTransportDialRequest;
+export import HostJamPeerTransportDialResponse = T.HostJamPeerTransportDialResponse;
+export import HostJamPeerTransportEventsError = T.HostJamPeerTransportEventsError;
+export import HostJamPeerTransportEventsResponse = T.HostJamPeerTransportEventsResponse;
+export import HostJamPeerTransportOpenError = T.HostJamPeerTransportOpenError;
+export import HostJamPeerTransportOpenRequest = T.HostJamPeerTransportOpenRequest;
+export import HostJamPeerTransportOpenResponse = T.HostJamPeerTransportOpenResponse;
+export import HostJamPeerTransportRecvError = T.HostJamPeerTransportRecvError;
+export import HostJamPeerTransportRecvRequest = T.HostJamPeerTransportRecvRequest;
+export import HostJamPeerTransportRecvResponse = T.HostJamPeerTransportRecvResponse;
+export import HostJamPeerTransportResetError = T.HostJamPeerTransportResetError;
+export import HostJamPeerTransportResetRequest = T.HostJamPeerTransportResetRequest;
+export import HostJamPeerTransportSendError = T.HostJamPeerTransportSendError;
+export import HostJamPeerTransportSendRequest = T.HostJamPeerTransportSendRequest;
 export import HostLocalStorageChangeItem = T.HostLocalStorageChangeItem;
 export import HostLocalStorageClearRequest = T.HostLocalStorageClearRequest;
 export import V01HostLocalStorageReadError = T.V01HostLocalStorageReadError;
@@ -7497,6 +8129,12 @@ export import HostLocalStorageWriteRequest = T.HostLocalStorageWriteRequest;
 export import V01HostLocaleSubscribeItem = T.V01HostLocaleSubscribeItem;
 export import HostNavigateToError = T.HostNavigateToError;
 export import HostNavigateToRequest = T.HostNavigateToRequest;
+export import HostNotificationAcknowledgeReceiverEventRequest = T.HostNotificationAcknowledgeReceiverEventRequest;
+export import HostNotificationDisableReceiverRequest = T.HostNotificationDisableReceiverRequest;
+export import HostNotificationReceiverEventsRequest = T.HostNotificationReceiverEventsRequest;
+export import HostNotificationReceivingError = T.HostNotificationReceivingError;
+export import HostNotificationRecordReceiptRequest = T.HostNotificationRecordReceiptRequest;
+export import HostNotificationReplaceReceiverRequest = T.HostNotificationReplaceReceiverRequest;
 export import HostPaymentBalanceSubscribeError = T.HostPaymentBalanceSubscribeError;
 export import HostPaymentBalanceSubscribeItem = T.HostPaymentBalanceSubscribeItem;
 export import HostPaymentBalanceSubscribeRequest = T.HostPaymentBalanceSubscribeRequest;
@@ -8056,7 +8694,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "064ab9d59b73f723";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "ec0d28820f74178d";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -8283,6 +8921,41 @@ export declare class EntropyClient {
     derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
 }
 /**
+ * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
+ *
+ * The host owns TLS, certificate verification and length framing; the guest
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: \`dial\` requires
+ * [\`RemotePermission::JamPeers\`](crate::v01::RemotePermission::JamPeers) for
+ * its \`genesis\`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted \`dial\` opened. A grant is
+ * separate from account, signing and storage authority.
+ */
+export declare class JamPeerTransportClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Dial one peer. Native QUIC builds the ALPN from \`genesis\` and requires
+     * the peer certificate to carry \`ed25519\`. WebTransport negotiates
+     * HTTP/3 and pins the certificate derived from \`p256\`. These checks
+     * authenticate the caller-supplied peer identity, not chain membership.
+     */
+    dial(request: T.HostJamPeerTransportDialRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportDialResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportDialError>>;
+    /** Open a bidirectional stream on a connection and send its kind byte. */
+    open(request: T.HostJamPeerTransportOpenRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportOpenResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportOpenError>>;
+    /** Queue one message; the host prepends the \`u32\` little-endian length. */
+    send(request: T.HostJamPeerTransportSendRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportSendError>>;
+    /** Poll one complete message without blocking; the host strips the length. */
+    recv(request: T.HostJamPeerTransportRecvRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportRecvResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportRecvError>>;
+    /** Abort a stream in both directions. */
+    reset(request: T.HostJamPeerTransportResetRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportResetError>>;
+    /** Close a connection and every stream on it. */
+    close(request: T.HostJamPeerTransportCloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportCloseError>>;
+    /** Drain connection, stream-finish and inbound-stream events. */
+    events(options?: CallOptions): ResultAsync<T.HostJamPeerTransportEventsResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportEventsError>>;
+}
+/**
  * The card a Widget is shown under.
  *
  * Only a Widget execution may call it.
@@ -8345,7 +9018,7 @@ export declare class LocaleClient {
     /** Localize a bounded batch of UTC instants in a host locale snapshot. */
     localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
 }
-/** Notification methods for locally-rendered push notifications. */
+/** Local notification scheduling and consent-scoped background receiving. */
 export declare class NotificationsClient {
     #private;
     constructor(transport: TrUApiTransport);
@@ -8370,6 +9043,21 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+    /** Inspect current host support, consent and durable registration state. */
+    receiverStatus(options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Atomically replace watches under explicit receiving consent. */
+    replaceReceiver(request: T.HostNotificationReplaceReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Disable locally and queue transport revocation without waiting for it. */
+    disableReceiver(request: T.HostNotificationDisableReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /**
+     * Record foreground handling, reading or actual OS display, and return the
+     * confirmed/pending display outcome. A reservation is not proof of display.
+     */
+    recordReceipt(request: T.HostNotificationRecordReceiptRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiptResult, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Poll bounded durable delivery and activation events. */
+    receiverEvents(request: T.HostNotificationReceiverEventsRequest, options?: CallOptions): ResultAsync<Array<T.ReceivingEvent>, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Acknowledge an event after application handling. */
+    acknowledgeReceiverEvent(request: T.HostNotificationAcknowledgeReceiverEventRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
     /**
      * Retrieve up to 32 pending activations for this runtime's authenticated
      * product, account and environment. Retrieval does not consume events,
@@ -8744,6 +9432,7 @@ export interface TrUApiClient {
     readonly coinPayment: CoinPaymentClient;
     readonly contacts: ContactsClient;
     readonly entropy: EntropyClient;
+    readonly jamPeerTransport: JamPeerTransportClient;
     readonly expandedCard: ExpandedCardClient;
     readonly game: GameClient;
     readonly localStorage: LocalStorageClient;

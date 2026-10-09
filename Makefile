@@ -114,6 +114,10 @@ deploy: _require-env build
 # RATE_LIMITED_ENVS and "#" (commented out) for everything else.
 # CI isolates snippets by site; manual deployments retain the shared directory.
 NGINX_SNIPPETS_DIR ?= /etc/nginx/snippets
+# Optional receiving policy and same-origin relay. Credentials stay in the relay.
+RECEIVING_CSP_FILE ?=
+RECEIVING_PUSH_ORIGIN ?=
+RECEIVING_PROXY_PORT ?=
 _nginx_snippet_paths = sed 's|/etc/nginx/snippets/|$(NGINX_SNIPPETS_DIR)/|g'
 # A literal "#" goes through _hash because make >= 4.3 keeps the backslash of a "\#" inside a function call.
 _hash := \#
@@ -148,6 +152,22 @@ deploy-nginx: _require-env
 		if [ -z "$(SENTRY_DSN)" ] && [ "$${snippet##*/}" = dotli-sentry-tunnel.conf ]; then continue; fi; \
 		$(_nginx_snippet_paths) "$$snippet" > "$$stage/snippets/$${snippet##*/}"; \
 	done; \
+	if [ -n "$(RECEIVING_CSP_FILE)" ]; then \
+		test -s "$(RECEIVING_CSP_FILE)" || { echo "Receiving CSP must come from the matching host build"; exit 1; }; \
+		cp "$(RECEIVING_CSP_FILE)" "$$stage/snippets/dotli-receiving-csp.conf"; \
+	fi; \
+	if [ -n "$(RECEIVING_PROXY_PORT)" ]; then \
+		test -n "$(RECEIVING_CSP_FILE)" || { echo "Receiving proxy requires its matching worker CSP"; exit 1; }; \
+		port='$(RECEIVING_PROXY_PORT)'; \
+		case "$$port" in *[!0-9]*) echo "Receiving proxy port must be numeric"; exit 1 ;; esac; \
+		test "$$port" -ge 1 && test "$$port" -le 65535 || { echo "Invalid receiving proxy port"; exit 1; }; \
+		origin='$(RECEIVING_PUSH_ORIGIN)'; \
+		case "$$origin" in https://*.$(SITE)) ;; *) echo "Receiving origin must be a product host of $(SITE)"; exit 1 ;; esac; \
+		host=$${origin#https://}; \
+		case "$$host" in *[!a-z0-9.-]*) echo "Invalid receiving product hostname"; exit 1 ;; esac; \
+		RECEIVING_HOST="$$host" RECEIVING_PORT="$$port" envsubst '$$RECEIVING_HOST $$RECEIVING_PORT' \
+			< nginx/receiving-proxy.conf.template > "$$stage/snippets/dotli-receiving-proxy.conf"; \
+	fi; \
 	rsync -avz --delete "$$stage/snippets/" $(REMOTE_TARGET):/tmp/$(SITE)-nginx-snippets/; \
 	scp "$$stage/$(SITE).nginx" $(REMOTE_TARGET):/tmp/$(SITE).nginx
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 $(NGINX_SNIPPETS_DIR) && sudo rsync -av /tmp/$(SITE)-nginx-snippets/ $(NGINX_SNIPPETS_DIR)/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'

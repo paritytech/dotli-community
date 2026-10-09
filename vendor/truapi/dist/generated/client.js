@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "064ab9d59b73f723";
+export const TRUAPI_WIRE_SCHEMA_HASH = "ec0d28820f74178d";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -788,6 +788,113 @@ export class EntropyClient {
     }
 }
 /**
+ * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
+ *
+ * The host owns TLS, certificate verification and length framing; the guest
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: `dial` requires
+ * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
+ * its `genesis`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted `dial` opened. A grant is
+ * separate from account, signing and storage authority.
+ */
+export class JamPeerTransportClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Dial one peer. Native QUIC builds the ALPN from `genesis` and requires
+     * the peer certificate to carry `ed25519`. WebTransport negotiates
+     * HTTP/3 and pins the certificate derived from `p256`. These checks
+     * authenticate the caller-supplied peer identity, not chain membership.
+     */
+    dial(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_DIAL,
+            payload: T.VersionedHostJamPeerTransportDialRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportDialResponse, S.CallError(T.VersionedHostJamPeerTransportDialError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Open a bidirectional stream on a connection and send its kind byte. */
+    open(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_OPEN,
+            payload: T.VersionedHostJamPeerTransportOpenRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportOpenResponse, S.CallError(T.VersionedHostJamPeerTransportOpenError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Queue one message; the host prepends the `u32` little-endian length. */
+    send(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_SEND,
+            payload: T.VersionedHostJamPeerTransportSendRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportSendResponse, S.CallError(T.VersionedHostJamPeerTransportSendError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Poll one complete message without blocking; the host strips the length. */
+    recv(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_RECV,
+            payload: T.VersionedHostJamPeerTransportRecvRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportRecvResponse, S.CallError(T.VersionedHostJamPeerTransportRecvError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Abort a stream in both directions. */
+    reset(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_RESET,
+            payload: T.VersionedHostJamPeerTransportResetRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportResetResponse, S.CallError(T.VersionedHostJamPeerTransportResetError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Close a connection and every stream on it. */
+    close(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_CLOSE,
+            payload: T.VersionedHostJamPeerTransportCloseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportCloseResponse, S.CallError(T.VersionedHostJamPeerTransportCloseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Drain connection, stream-finish and inbound-stream events. */
+    events(options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_EVENTS,
+            payload: T.VersionedHostJamPeerTransportEventsRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/**
  * The card a Widget is shown under.
  *
  * Only a Widget execution may call it.
@@ -942,7 +1049,7 @@ export class LocaleClient {
         });
     }
 }
-/** Notification methods for locally-rendered push notifications. */
+/** Local notification scheduling and consent-scoped background receiving. */
 export class NotificationsClient {
     #transport;
     constructor(transport) {
@@ -985,6 +1092,81 @@ export class NotificationsClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Inspect current host support, consent and durable registration state. */
+    receiverStatus(options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_RECEIVER_STATUS,
+            payload: T.VersionedHostNotificationReceiverStatusRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationReceiverStatusResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Atomically replace watches under explicit receiving consent. */
+    replaceReceiver(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_REPLACE_RECEIVER,
+            payload: T.VersionedHostNotificationReplaceReceiverRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationReplaceReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Disable locally and queue transport revocation without waiting for it. */
+    disableReceiver(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_DISABLE_RECEIVER,
+            payload: T.VersionedHostNotificationDisableReceiverRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationDisableReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Record foreground handling, reading or actual OS display, and return the
+     * confirmed/pending display outcome. A reservation is not proof of display.
+     */
+    recordReceipt(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_RECORD_RECEIPT,
+            payload: T.VersionedHostNotificationRecordReceiptRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationRecordReceiptResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Poll bounded durable delivery and activation events. */
+    receiverEvents(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_RECEIVER_EVENTS,
+            payload: T.VersionedHostNotificationReceiverEventsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationReceiverEventsResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Acknowledge an event after application handling. */
+    acknowledgeReceiverEvent(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT,
+            payload: T.VersionedHostNotificationAcknowledgeReceiverEventRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationAcknowledgeReceiverEventResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1799,6 +1981,7 @@ export function createClient(transport) {
         coinPayment: new CoinPaymentClient(transport),
         contacts: new ContactsClient(transport),
         entropy: new EntropyClient(transport),
+        jamPeerTransport: new JamPeerTransportClient(transport),
         expandedCard: new ExpandedCardClient(transport),
         game: new GameClient(transport),
         localStorage: new LocalStorageClient(transport),

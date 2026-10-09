@@ -376,35 +376,20 @@ describe('isEnforceableDevicePermission', () => {
 });
 
 describe('device permission prompts', () => {
-  async function grantAndCountReloads(permission: 'Camera' | 'Notifications'): Promise<number> {
-    let reloads = 0;
-    const onReload = (): void => {
-      reloads += 1;
-    };
-    window.addEventListener('dotli:device-permission-changed', onReload);
-
-    const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
-    await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
-    await expect(response).resolves.toEqual('AllowAlways');
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    window.removeEventListener('dotli:device-permission-changed', onReload);
-    document.body.replaceChildren();
-    return reloads;
-  }
-
   it('As a product, an auto-granted OpenUrl is answered once without a prompt', async () => {
     await expect(createPromptPermission('myapp').devicePermission(PRODUCT, 'OpenUrl')).resolves.toBe('AllowOnce');
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
-  it('As a product, my iframe stays alive when notifications are granted', async () => {
-    expect(await grantAndCountReloads('Notifications')).toBe(0);
-  });
-
-  it('As a product, my iframe reloads when a grant changes its allow attribute', async () => {
-    expect(await grantAndCountReloads('Camera')).toBe(1);
-  });
+  it.each(['Camera', 'Notifications'] as const)(
+    'keeps the core authorization snapshot unchanged while approving %s',
+    async permission => {
+      const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
+      await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
+      await expect(response).resolves.toBe('AllowAlways');
+      expect(await getPermissionStatus('myapp', permission)).toBe('ask');
+    },
+  );
 });
 
 describe('getGrantedDevicePermissions', () => {
@@ -535,6 +520,42 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
+  });
+
+  it('As a dotli user, I am asked which JAM network an app may reach', async () => {
+    const genesis = `0x3539${'ab'.repeat(30)}` as const;
+    for (const [button, decision] of [
+      ['Always allow', 'AllowAlways'],
+      ['Allow once', 'AllowOnce'],
+      ['Deny', 'Deny'],
+    ] as const) {
+      // Given
+      const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
+        permission: { tag: 'JamPeers', value: { genesis } },
+      });
+      await vi.waitFor(() => {
+        expect(promptButtonTexts()).toContain(button);
+      });
+      const genesisField = [...document.querySelectorAll<HTMLElement>('[data-testid="signing-field"]')].find(
+        field => field.querySelector('[data-testid="signing-field-value"]')?.textContent === genesis,
+      );
+      expect(genesisField?.hasAttribute('data-mono')).toBe(true);
+      expect(document.querySelector('[data-testid="permission-modal-notice"]')).toBeNull();
+      // When
+      await clickPromptButton(button);
+
+      // Then
+      await expect(response).resolves.toBe(decision);
+      expect(myappWrites).toBe(0);
+    }
+    const dismissed = createPromptPermission('myapp').remotePermission(PRODUCT, {
+      permission: { tag: 'JamPeers', value: { genesis } },
+    });
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
+    });
+    byTestId('signing-modal-backdrop').click();
+    await expect(dismissed).rejects.toThrow('User dismissed permission dialog');
   });
 
   it('As a dotli user, always allowing transactions returns the durable decision to the core', async () => {

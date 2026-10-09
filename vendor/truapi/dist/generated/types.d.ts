@@ -1427,6 +1427,174 @@ export type VersionedHostInfoResponse =
     value: HostInfo;
 };
 export declare const VersionedHostInfoResponse: S.Codec<VersionedHostInfoResponse>;
+/** Versioned envelope for [`HostJamPeerTransportCloseError`]. */
+export type VersionedHostJamPeerTransportCloseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportCloseError;
+};
+export declare const VersionedHostJamPeerTransportCloseError: S.Codec<VersionedHostJamPeerTransportCloseError>;
+/** Versioned envelope for [`HostJamPeerTransportCloseRequest`]. */
+export type VersionedHostJamPeerTransportCloseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportCloseRequest;
+};
+export declare const VersionedHostJamPeerTransportCloseRequest: S.Codec<VersionedHostJamPeerTransportCloseRequest>;
+/** Versioned envelope for [`HostJamPeerTransportCloseResponse`]. */
+export type VersionedHostJamPeerTransportCloseResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostJamPeerTransportCloseResponse: S.Codec<VersionedHostJamPeerTransportCloseResponse>;
+/** Versioned envelope for [`HostJamPeerTransportDialError`]. */
+export type VersionedHostJamPeerTransportDialError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportDialError;
+};
+export declare const VersionedHostJamPeerTransportDialError: S.Codec<VersionedHostJamPeerTransportDialError>;
+/** Versioned envelope for [`HostJamPeerTransportDialRequest`]. */
+export type VersionedHostJamPeerTransportDialRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportDialRequest;
+};
+export declare const VersionedHostJamPeerTransportDialRequest: S.Codec<VersionedHostJamPeerTransportDialRequest>;
+/** Versioned envelope for [`HostJamPeerTransportDialResponse`]. */
+export type VersionedHostJamPeerTransportDialResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportDialResponse;
+};
+export declare const VersionedHostJamPeerTransportDialResponse: S.Codec<VersionedHostJamPeerTransportDialResponse>;
+/** Versioned envelope for [`HostJamPeerTransportEventsError`]. */
+export type VersionedHostJamPeerTransportEventsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportEventsError;
+};
+export declare const VersionedHostJamPeerTransportEventsError: S.Codec<VersionedHostJamPeerTransportEventsError>;
+/** Versioned envelope for [`HostJamPeerTransportEventsRequest`]. */
+export type VersionedHostJamPeerTransportEventsRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostJamPeerTransportEventsRequest: S.Codec<VersionedHostJamPeerTransportEventsRequest>;
+/** Versioned envelope for [`HostJamPeerTransportEventsResponse`]. */
+export type VersionedHostJamPeerTransportEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportEventsResponse;
+};
+export declare const VersionedHostJamPeerTransportEventsResponse: S.Codec<VersionedHostJamPeerTransportEventsResponse>;
+/** Versioned envelope for [`HostJamPeerTransportOpenError`]. */
+export type VersionedHostJamPeerTransportOpenError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportOpenError;
+};
+export declare const VersionedHostJamPeerTransportOpenError: S.Codec<VersionedHostJamPeerTransportOpenError>;
+/** Versioned envelope for [`HostJamPeerTransportOpenRequest`]. */
+export type VersionedHostJamPeerTransportOpenRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportOpenRequest;
+};
+export declare const VersionedHostJamPeerTransportOpenRequest: S.Codec<VersionedHostJamPeerTransportOpenRequest>;
+/** Versioned envelope for [`HostJamPeerTransportOpenResponse`]. */
+export type VersionedHostJamPeerTransportOpenResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportOpenResponse;
+};
+export declare const VersionedHostJamPeerTransportOpenResponse: S.Codec<VersionedHostJamPeerTransportOpenResponse>;
+/** Versioned envelope for [`HostJamPeerTransportRecvError`]. */
+export type VersionedHostJamPeerTransportRecvError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvError;
+};
+export declare const VersionedHostJamPeerTransportRecvError: S.Codec<VersionedHostJamPeerTransportRecvError>;
+/** Versioned envelope for [`HostJamPeerTransportRecvRequest`]. */
+export type VersionedHostJamPeerTransportRecvRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvRequest;
+};
+export declare const VersionedHostJamPeerTransportRecvRequest: S.Codec<VersionedHostJamPeerTransportRecvRequest>;
+/** Versioned envelope for [`HostJamPeerTransportRecvResponse`]. */
+export type VersionedHostJamPeerTransportRecvResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvResponse;
+};
+export declare const VersionedHostJamPeerTransportRecvResponse: S.Codec<VersionedHostJamPeerTransportRecvResponse>;
+/** Versioned envelope for [`HostJamPeerTransportResetError`]. */
+export type VersionedHostJamPeerTransportResetError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportResetError;
+};
+export declare const VersionedHostJamPeerTransportResetError: S.Codec<VersionedHostJamPeerTransportResetError>;
+/** Versioned envelope for [`HostJamPeerTransportResetRequest`]. */
+export type VersionedHostJamPeerTransportResetRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportResetRequest;
+};
+export declare const VersionedHostJamPeerTransportResetRequest: S.Codec<VersionedHostJamPeerTransportResetRequest>;
+/** Versioned envelope for [`HostJamPeerTransportResetResponse`]. */
+export type VersionedHostJamPeerTransportResetResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostJamPeerTransportResetResponse: S.Codec<VersionedHostJamPeerTransportResetResponse>;
+/** Versioned envelope for [`HostJamPeerTransportSendError`]. */
+export type VersionedHostJamPeerTransportSendError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportSendError;
+};
+export declare const VersionedHostJamPeerTransportSendError: S.Codec<VersionedHostJamPeerTransportSendError>;
+/** Versioned envelope for [`HostJamPeerTransportSendRequest`]. */
+export type VersionedHostJamPeerTransportSendRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportSendRequest;
+};
+export declare const VersionedHostJamPeerTransportSendRequest: S.Codec<VersionedHostJamPeerTransportSendRequest>;
+/** Versioned envelope for [`HostJamPeerTransportSendResponse`]. */
+export type VersionedHostJamPeerTransportSendResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostJamPeerTransportSendResponse: S.Codec<VersionedHostJamPeerTransportSendResponse>;
 /** Versioned envelope for [`HostLocalStorageChangeItem`]. */
 export type VersionedHostLocalStorageChangeItem = 
 /** Version 1 payload. */
@@ -1938,6 +2106,139 @@ export type VersionedHostNavigateToResponse =
     value?: undefined;
 };
 export declare const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToResponse>;
+/** Versioned envelope for [`HostNotificationAcknowledgeReceiverEventRequest`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationAcknowledgeReceiverEventRequest;
+};
+export declare const VersionedHostNotificationAcknowledgeReceiverEventRequest: S.Codec<VersionedHostNotificationAcknowledgeReceiverEventRequest>;
+/** Versioned envelope for [`HostNotificationAcknowledgeReceiverEventResponse`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostNotificationAcknowledgeReceiverEventResponse: S.Codec<VersionedHostNotificationAcknowledgeReceiverEventResponse>;
+/** Versioned envelope for [`HostNotificationDisableReceiverRequest`]. */
+export type VersionedHostNotificationDisableReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationDisableReceiverRequest;
+};
+export declare const VersionedHostNotificationDisableReceiverRequest: S.Codec<VersionedHostNotificationDisableReceiverRequest>;
+/** Versioned envelope for [`HostNotificationDisableReceiverResponse`]. */
+export type VersionedHostNotificationDisableReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export declare const VersionedHostNotificationDisableReceiverResponse: S.Codec<VersionedHostNotificationDisableReceiverResponse>;
+/** Actual display outcome after recording a receipt, distinct from enrollment ACKs. */
+export interface HostNotificationReceiptResult {
+    /** An OS display was positively confirmed by the host or product. */
+    displayed: boolean;
+    /**
+     * A display is reserved but unconfirmed; do not start a competing fallback.
+     * Explicit failure cancels the reservation; unknown outcomes remain pending until expiry.
+     */
+    displayPending: boolean;
+}
+export declare const HostNotificationReceiptResult: S.Codec<HostNotificationReceiptResult>;
+/** Versioned envelope for [`HostNotificationReceiverEventsRequest`]. */
+export type VersionedHostNotificationReceiverEventsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverEventsRequest;
+};
+export declare const VersionedHostNotificationReceiverEventsRequest: S.Codec<VersionedHostNotificationReceiverEventsRequest>;
+/** Versioned envelope for [`HostNotificationReceiverEventsResponse`]. */
+export type VersionedHostNotificationReceiverEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: Array<ReceivingEvent>;
+};
+export declare const VersionedHostNotificationReceiverEventsResponse: S.Codec<VersionedHostNotificationReceiverEventsResponse>;
+/** Receiving support, consent and durable synchronization state. */
+export interface HostNotificationReceiverStatus {
+    /** Whether this host supplies trusted receiving authority. */
+    supported: boolean;
+    /** Current OS permission for visible notifications. */
+    osPermission: boolean;
+    /** Whether current authority and watches have receiving consent. */
+    consent: boolean;
+    /** Whether receiving is locally enabled. */
+    enabled: boolean;
+    /** Compare-and-swap token for the durable registration. */
+    revision: bigint;
+    /** Whether the transport still needs to synchronize this revision. */
+    syncPending: boolean;
+    /** Whether the selected platform transport is ready. */
+    transportReady: boolean;
+}
+export declare const HostNotificationReceiverStatus: S.Codec<HostNotificationReceiverStatus>;
+/** Versioned envelope for [`HostNotificationReceiverStatusRequest`]. */
+export type VersionedHostNotificationReceiverStatusRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostNotificationReceiverStatusRequest: S.Codec<VersionedHostNotificationReceiverStatusRequest>;
+/** Versioned envelope for [`HostNotificationReceiverStatusResponse`]. */
+export type VersionedHostNotificationReceiverStatusResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export declare const VersionedHostNotificationReceiverStatusResponse: S.Codec<VersionedHostNotificationReceiverStatusResponse>;
+/** Versioned envelope for [`HostNotificationReceivingError`]. */
+export type VersionedHostNotificationReceivingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceivingError;
+};
+export declare const VersionedHostNotificationReceivingError: S.Codec<VersionedHostNotificationReceivingError>;
+/** Versioned envelope for [`HostNotificationRecordReceiptRequest`]. */
+export type VersionedHostNotificationRecordReceiptRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationRecordReceiptRequest;
+};
+export declare const VersionedHostNotificationRecordReceiptRequest: S.Codec<VersionedHostNotificationRecordReceiptRequest>;
+/** Versioned envelope for [`HostNotificationRecordReceiptResponse`]. */
+export type VersionedHostNotificationRecordReceiptResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiptResult;
+};
+export declare const VersionedHostNotificationRecordReceiptResponse: S.Codec<VersionedHostNotificationRecordReceiptResponse>;
+/** Versioned envelope for [`HostNotificationReplaceReceiverRequest`]. */
+export type VersionedHostNotificationReplaceReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReplaceReceiverRequest;
+};
+export declare const VersionedHostNotificationReplaceReceiverRequest: S.Codec<VersionedHostNotificationReplaceReceiverRequest>;
+/** Versioned envelope for [`HostNotificationReplaceReceiverResponse`]. */
+export type VersionedHostNotificationReplaceReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export declare const VersionedHostNotificationReplaceReceiverResponse: S.Codec<VersionedHostNotificationReplaceReceiverResponse>;
 /** Versioned envelope for [`HostPaymentBalanceSubscribeError`]. */
 export type VersionedHostPaymentBalanceSubscribeError = 
 /** Version 1 payload. */
@@ -2695,6 +2996,32 @@ export type ImageSource =
     value: string;
 };
 export declare const ImageSource: S.Codec<ImageSource>;
+/** Asynchronous transport notification. */
+export type JamPeerTransportEvent = 
+/** The connection was closed by the peer or the host. */
+{
+    tag: "ConnClosed";
+    value: {
+        conn: number;
+    };
+}
+/** The peer finished its send side of a stream. */
+ | {
+    tag: "StreamFin";
+    value: {
+        stream: number;
+    };
+}
+/** The peer opened a stream to us on a dialed connection. */
+ | {
+    tag: "Accepted";
+    value: {
+        conn: number;
+        stream: number;
+        kind: number;
+    };
+};
+export declare const JamPeerTransportEvent: S.Codec<JamPeerTransportEvent>;
 /**
  * A user-imported (legacy) account: public key plus an optional user-chosen
  * display name.
@@ -3091,6 +3418,50 @@ export type RawPayload =
     };
 };
 export declare const RawPayload: S.Codec<RawPayload>;
+/** A bounded durable event containing opaque identifiers, never plaintext. */
+export interface ReceivingEvent {
+    /** Durable sequence used for polling and acknowledgement. */
+    sequence: bigint;
+    /** Registration revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Delivery or user activation. */
+    kind: ReceivingEventKind;
+    /** Locally enrolled product-relative route. */
+    route: string;
+    /** Expiration in Unix milliseconds. */
+    expiresAt: bigint;
+}
+export declare const ReceivingEvent: S.Codec<ReceivingEvent>;
+/** Why an authenticated receiving event was queued. */
+export type ReceivingEventKind = "Delivery" | "Activation";
+export declare const ReceivingEventKind: S.Codec<ReceivingEventKind>;
+/** Confirmed application handling, independent of transport acknowledgement. */
+export type ReceivingReceiptKind = "Foreground" | "Read" | "Displayed";
+export declare const ReceivingReceiptKind: S.Codec<ReceivingReceiptKind>;
+/** An authenticated source filter enrolled under host-owned receiving consent. */
+export interface ReceivingWatch {
+    /** Product-local opaque watch identifier. */
+    id: string;
+    /** Canonical lowercase 32-byte chain genesis hash. */
+    genesis: string;
+    /** Exact source channel, encoded as a canonical lowercase 32-byte hash. */
+    channel: string;
+    /** One to four selected topics; every topic must occur in the signed header. */
+    topics: Array<string>;
+    /** Approved Ed25519 public keys in canonical lowercase hex. */
+    senders: Array<string>;
+    /** Expiration in Unix milliseconds, bounded to a JavaScript safe integer. */
+    expiresAt: bigint;
+    /** Unix milliseconds before which delivery is muted; `u64::MAX` means forever. */
+    mutedUntil: bigint;
+    /** Product-relative activation route, retained locally and never relayed. */
+    route: string;
+}
+export declare const ReceivingWatch: S.Codec<ReceivingWatch>;
 /** A registered ring-VRF key entry. */
 export interface RegisteredRingVrfKey {
     /** Stable public name of the key. */
@@ -3440,8 +3811,9 @@ export declare const VersionedRemoteChainTransactionStopResponse: S.Codec<Versio
 /**
  * One remote-operation permission requested by the product (RFC 0002).
  *
- * `ChainSubmit`, `PreimageSubmit`, and `StatementSubmit` are also triggered
- * implicitly by the corresponding business calls when not yet granted.
+ * `ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also
+ * triggered implicitly by the corresponding business calls when not yet
+ * granted (`JamPeerTransport::dial` for `JamPeers`).
  */
 export type RemotePermission = 
 /**
@@ -3483,6 +3855,22 @@ export type RemotePermission =
  | {
     tag: "StatementSubmit";
     value?: undefined;
+}
+/**
+ * Peer access over JAMNP-S QUIC/WebTransport, authorized for the full
+ * genesis hash through the `JamPeerTransport` service.
+ *
+ * The app names endpoints and pinned keys. Native QUIC negotiates the
+ * genesis-derived ALPN; WebTransport negotiates HTTP/3. Neither proves
+ * chain membership. The guest must verify chain data itself. The grant
+ * carries no host account, signing or submission authority and does not
+ * restrict which framed protocol messages the guest sends.
+ */
+ | {
+    tag: "JamPeers";
+    value: {
+        genesis: HexString;
+    };
 };
 export declare const RemotePermission: S.Codec<RemotePermission>;
 /** Versioned envelope for [`RemotePermissionError`]. */
@@ -4887,6 +5275,114 @@ export interface HostHandshakeRequest {
     codecVersion: number;
 }
 export declare const HostHandshakeRequest: S.Codec<HostHandshakeRequest>;
+/** Failure to close a connection. */
+export type HostJamPeerTransportCloseError = "Closed";
+export declare const HostJamPeerTransportCloseError: S.Codec<HostJamPeerTransportCloseError>;
+/** Close a connection and every stream on it. */
+export interface HostJamPeerTransportCloseRequest {
+    /** Connection to close. */
+    conn: number;
+}
+export declare const HostJamPeerTransportCloseRequest: S.Codec<HostJamPeerTransportCloseRequest>;
+/** Failure to dial a JAM peer. */
+export type HostJamPeerTransportDialError = "NotGranted" | "Refused" | "Limit" | "Unreachable";
+export declare const HostJamPeerTransportDialError: S.Codec<HostJamPeerTransportDialError>;
+/** Dial one JAM peer over JAMNP-S (QUIC) or WebTransport. */
+export interface HostJamPeerTransportDialRequest {
+    /**
+     * Genesis header hash authorizing this dial. Native QUIC derives its
+     * ALPN from the first four bytes; WebTransport negotiates HTTP/3.
+     * Neither transport authenticates the peer's chain membership.
+     */
+    genesis: HexString;
+    /** Peer IP address, IPv6 or v4-mapped IPv6. */
+    ip: HexString;
+    /** Peer UDP port. */
+    port: number;
+    /** Ed25519 key the peer's TLS certificate must carry. */
+    ed25519: HexString;
+    /** Compressed P-256 peer key for WebTransport certificate hashes. */
+    p256?: HexString;
+}
+export declare const HostJamPeerTransportDialRequest: S.Codec<HostJamPeerTransportDialRequest>;
+/** An open connection handle. */
+export interface HostJamPeerTransportDialResponse {
+    /** Execution-local connection id. */
+    conn: number;
+}
+export declare const HostJamPeerTransportDialResponse: S.Codec<HostJamPeerTransportDialResponse>;
+/** Failure to drain events. */
+export type HostJamPeerTransportEventsError = "NotGranted";
+export declare const HostJamPeerTransportEventsError: S.Codec<HostJamPeerTransportEventsError>;
+/** Events in arrival order. */
+export interface HostJamPeerTransportEventsResponse {
+    /** Pending events; empty when nothing happened. */
+    events: Array<JamPeerTransportEvent>;
+}
+export declare const HostJamPeerTransportEventsResponse: S.Codec<HostJamPeerTransportEventsResponse>;
+/** Failure to open a stream. */
+export type HostJamPeerTransportOpenError = "NotGranted" | "Closed" | "Limit";
+export declare const HostJamPeerTransportOpenError: S.Codec<HostJamPeerTransportOpenError>;
+/** Open a bidirectional stream and send its kind byte. */
+export interface HostJamPeerTransportOpenRequest {
+    /** Connection returned by `dial`. */
+    conn: number;
+    /** JAMNP-S stream kind (UP 0, CE 128, ...). */
+    kind: number;
+}
+export declare const HostJamPeerTransportOpenRequest: S.Codec<HostJamPeerTransportOpenRequest>;
+/** An open stream handle. */
+export interface HostJamPeerTransportOpenResponse {
+    /** Execution-local stream id. */
+    stream: number;
+}
+export declare const HostJamPeerTransportOpenResponse: S.Codec<HostJamPeerTransportOpenResponse>;
+/** Failure to receive from a stream. */
+export type HostJamPeerTransportRecvError = "Closed";
+export declare const HostJamPeerTransportRecvError: S.Codec<HostJamPeerTransportRecvError>;
+/** Poll one complete framed message without blocking. */
+export interface HostJamPeerTransportRecvRequest {
+    /** Stream to read from. */
+    stream: number;
+    /** Largest message the caller accepts. */
+    max: number;
+}
+export declare const HostJamPeerTransportRecvRequest: S.Codec<HostJamPeerTransportRecvRequest>;
+/** One unframed message, or none available yet. */
+export interface HostJamPeerTransportRecvResponse {
+    /**
+     * Complete message bytes without length prefix, or `None` when nothing
+     * has arrived yet.
+     */
+    message?: HexString;
+    /** The peer finished its send side; no further messages will arrive. */
+    fin: boolean;
+    /** The peer reset the stream; buffered data may be incomplete. */
+    reset: boolean;
+}
+export declare const HostJamPeerTransportRecvResponse: S.Codec<HostJamPeerTransportRecvResponse>;
+/** Failure to reset a stream. */
+export type HostJamPeerTransportResetError = "Closed";
+export declare const HostJamPeerTransportResetError: S.Codec<HostJamPeerTransportResetError>;
+/** Abort both directions of a stream. */
+export interface HostJamPeerTransportResetRequest {
+    /** Stream to reset. */
+    stream: number;
+}
+export declare const HostJamPeerTransportResetRequest: S.Codec<HostJamPeerTransportResetRequest>;
+/** Failure to send a message. */
+export type HostJamPeerTransportSendError = "Closed" | "TooLarge" | "Limit";
+export declare const HostJamPeerTransportSendError: S.Codec<HostJamPeerTransportSendError>;
+/** Send one framed message; the host adds the `u32` little-endian length. */
+export interface HostJamPeerTransportSendRequest {
+    /** Stream returned by `open` or reported by an `Accepted` event. */
+    stream: number;
+    /** Message bytes without length prefix. */
+    message: HexString;
+    /** Finish the send side after this message. */
+    fin: boolean;
+}
+export declare const HostJamPeerTransportSendRequest: S.Codec<HostJamPeerTransportSendRequest>;
 /** A change to a subscribed storage key, pushed to the subscriber. */
 export interface HostLocalStorageChangeItem {
     /** Value after the change. `Some` on write, `None` after clear. */
@@ -4974,6 +5470,84 @@ export interface HostNavigateToRequest {
     url: string;
 }
 export declare const HostNavigateToRequest: S.Codec<HostNavigateToRequest>;
+/** Acknowledge a durable event after application handling. */
+export interface HostNotificationAcknowledgeReceiverEventRequest {
+    /** Durable event sequence. */
+    sequence: bigint;
+}
+export declare const HostNotificationAcknowledgeReceiverEventRequest: S.Codec<HostNotificationAcknowledgeReceiverEventRequest>;
+/** Disable locally without awaiting transport revocation. */
+export interface HostNotificationDisableReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+}
+export declare const HostNotificationDisableReceiverRequest: S.Codec<HostNotificationDisableReceiverRequest>;
+/** Poll durable events without creating a UI-lifetime subscription. */
+export interface HostNotificationReceiverEventsRequest {
+    /** Return only events after this sequence. */
+    afterSequence: bigint;
+}
+export declare const HostNotificationReceiverEventsRequest: S.Codec<HostNotificationReceiverEventsRequest>;
+/** Receiving policy, persistence or support failure. */
+export type HostNotificationReceivingError = 
+/** This host has no receiving adapter. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** Notification permission or scoped receiving consent was denied. */
+ | {
+    tag: "PermissionDenied";
+    value?: undefined;
+}
+/** The request violates the receiving schema or authenticated policy. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** The registration revision or trusted authority changed. */
+ | {
+    tag: "Conflict";
+    value?: undefined;
+}
+/** The bounded receiving store or watch budget is full. */
+ | {
+    tag: "Capacity";
+    value?: undefined;
+}
+/** Durable persistence failed. */
+ | {
+    tag: "Storage";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostNotificationReceivingError: S.Codec<HostNotificationReceivingError>;
+/** Record confirmed foreground handling or reading. */
+export interface HostNotificationRecordReceiptRequest {
+    /** Revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Confirmed handling kind. */
+    kind: ReceivingReceiptKind;
+}
+export declare const HostNotificationRecordReceiptRequest: S.Codec<HostNotificationRecordReceiptRequest>;
+/** Atomically replace the current authority's complete watch set. */
+export interface HostNotificationReplaceReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+    /**
+     * Complete replacement, at most 256 watches and 10,000 senders total.
+     * Each watch permits at most 1,000 senders.
+     */
+    watches: Array<ReceivingWatch>;
+}
+export declare const HostNotificationReplaceReceiverRequest: S.Codec<HostNotificationReplaceReceiverRequest>;
 /**
  * Error from [`crate::api::Payment::balance_subscribe`].
  *

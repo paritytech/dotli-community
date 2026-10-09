@@ -22,6 +22,7 @@ import { SANDBOX_SCHEMA_VERSION } from '../../packages/config/src/host-sandbox-v
 import { spaFallback } from '@config/vite/spa-fallback';
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
+import { receivingWorker } from './receiving-build.ts';
 import { notificationWorker } from './notification-build.js';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
@@ -291,6 +292,8 @@ export default defineConfig({
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     hostUpdateWorker(),
+    // Emits the classic receiver and matching WASM before Workbox precaching.
+    receivingWorker(),
     // Build the classic notification handler before Workbox imports it.
     notificationWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
@@ -331,10 +334,11 @@ export default defineConfig({
           '**/truapi_provider_bg*.wasm',
           '**/truapi_verifiable_bg*.wasm',
           '**/host-update-*.js',
+          '**/host-receiving.js',
           '**/host-notifications.js',
           'landing.html',
         ],
-        importScripts: [HOST_UPDATE_SCRIPT, 'host-notifications.js'],
+        importScripts: [HOST_UPDATE_SCRIPT, 'host-receiving.js', 'host-notifications.js'],
         cleanupOutdatedCaches: true,
         // The upgrade worker overrides these only for outdated shells;
         // matching-contract sessions still opt into an ordinary update.

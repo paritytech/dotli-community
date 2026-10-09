@@ -130,6 +130,9 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_METRICS: ${{ secrets.VITE_METRICS }}
           VITE_NETWORKS: ${{ vars.NETWORKS }}
+          VITE_RECEIVING_RELAY_URL: ${{ vars.RECEIVING_RELAY_URL }}
+          VITE_RECEIVING_PUSH_ORIGIN: ${{ vars.RECEIVING_PUSH_ORIGIN }}
+          VITE_RECEIVING_VAPID_PUBLIC_KEY: ${{ vars.RECEIVING_VAPID_PUBLIC_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
@@ -159,6 +162,9 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          RECEIVING_CSP_FILE: ${{ vars.RECEIVING_RELAY_URL != '' && 'apps/host/dist/host-receiving-csp.conf' || '' }}
+          RECEIVING_PUSH_ORIGIN: ${{ vars.RECEIVING_PUSH_ORIGIN }}
+          RECEIVING_PROXY_PORT: ${{ vars.RECEIVING_PROXY_PORT }}
 
       - name: Deploy
         run: make ci-deploy

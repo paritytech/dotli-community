@@ -90,12 +90,16 @@ import { showNotification } from './notification.js';
 import { registerProductNotificationTarget } from './notification-activation.js';
 import { ERRORS } from './errors.js';
 import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
+import { jamPeerTransportUnavailableMessage } from './jam-peer-browser-support.js';
 import { mountViolationPanel } from './components/sandbox-checker/mount.js';
 import { CameraInputCancelledError, CameraInputPermissionError, scanCameraUr } from './mediated-input-camera.js';
 import { MediatedInputHost, validatedMediatedInputRequest } from './mediated-input-host.js';
 import { decidePromptPermission } from './host-callbacks/PromptPermission.js';
 import { createSubmitRateLimiter } from './host-callbacks/rate-limit.js';
 import { installPolkaVmViewInsetsRelay } from './polkavm-view-insets.js';
+import { revokeReceivingOnLogout, setReceivingActivation, receivingAccount } from './receiving.js';
+import type { ReceivingExecution } from './receiving-execution.js';
+import type { ReceivingAuthority } from '@parity/truapi-host/browser-receiving';
 
 const noop = (): void => undefined;
 
@@ -105,7 +109,10 @@ interface ActiveHost {
   core: CoreProviderBase;
   wallet: LiveLocalWallet | undefined;
   generation: number;
+  productId: string;
   iframe: HTMLIFrameElement;
+  receiving: ReceivingExecution;
+  refreshPermissionPolicy: () => Promise<void>;
   dispose: () => void;
 }
 
@@ -636,6 +643,7 @@ export const experimentalWalletControls = {
     if (!DEBUG) {
       return Promise.reject(new Error('Experimental wallets require a debug build'));
     }
+    await revokeReceivingOnLogout();
     if (isExperimentalWalletActive()) {
       disposePageCores();
     }
@@ -662,6 +670,7 @@ export const experimentalWalletControls = {
     if (!DEBUG) {
       throw new Error('Experimental wallets require a debug build');
     }
+    await revokeReceivingOnLogout();
     if (isExperimentalWalletActive()) {
       disposePageCores();
     }
@@ -706,6 +715,103 @@ window.addEventListener('dotli:device-permission-changed', () => {
   if (product !== null) {
     rerenderProduct(product);
   }
+});
+
+window.addEventListener('dotli:permission-changed', event => {
+  const detail = (event as CustomEvent<{ productId?: string; label?: string }>).detail;
+  if (
+    currentProduct === null ||
+    currentHost === null ||
+    (detail.productId !== currentHost.productId && detail.label !== currentProduct.label)
+  ) {
+    return;
+  }
+  void currentHost.refreshPermissionPolicy().catch((error: unknown) => {
+    log.warn('[dot.li] Permission policy refresh failed:', error);
+  });
+});
+
+window.addEventListener('dotli:receiving-account-changed', () => {
+  currentHost?.receiving.close();
+  if (currentHost && currentProduct) {
+    rerenderProduct(currentProduct);
+  }
+});
+
+window.addEventListener('dotli:receiving-error', event => {
+  showNotification({
+    label: 'Background receiving',
+    text: String((event as CustomEvent<unknown>).detail),
+    browserNotification: false,
+  });
+});
+
+window.addEventListener('dotli:receiving-ready', event => {
+  const { authority, archiveCid } = (event as CustomEvent<{ authority: ReceivingAuthority; archiveCid: string }>)
+    .detail;
+  if (
+    currentHost?.receiving.matches(authority) !== true ||
+    currentProduct?.mode !== 'subdomain' ||
+    currentProduct.cid !== archiveCid
+  ) {
+    return;
+  }
+  try {
+    localStorage.setItem(
+      `dotli:receiving-target:${authority.productId}:${authority.artifact}`,
+      JSON.stringify(currentProduct),
+    );
+  } catch (error) {
+    // Existing executions can still activate; unavailable persistence cannot
+    // authorize opening an unverified replacement.
+    log.warn('[dot.li] Background receiving click target could not be persisted:', error);
+  }
+});
+
+setReceivingActivation(async authority => {
+  if (authority.account !== receivingAccount()) {
+    return false;
+  }
+  if (currentHost?.receiving.matches(authority) !== true) {
+    try {
+      const raw = localStorage.getItem(`dotli:receiving-target:${authority.productId}:${authority.artifact}`);
+      if (raw !== null) {
+        const target: unknown = JSON.parse(raw);
+        if (
+          typeof target === 'object' &&
+          target !== null &&
+          'mode' in target &&
+          target.mode === 'subdomain' &&
+          'label' in target &&
+          typeof target.label === 'string' &&
+          labelToProductId(target.label) === authority.productId &&
+          'cid' in target &&
+          typeof target.cid === 'string' &&
+          'executableManifest' in target &&
+          (target.executableManifest === null || typeof target.executableManifest === 'string') &&
+          (currentProduct?.mode !== 'subdomain' || currentProduct.cid !== target.cid)
+        ) {
+          // Re-open only the host's retained verified launch descriptor. The
+          // notification route is opaque data, not a navigation target.
+          await renderAppSubdomain(target.cid, target.label, target.executableManifest);
+        }
+      }
+    } catch {
+      return false;
+    }
+  }
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline && authority.account === receivingAccount()) {
+    if (currentHost?.receiving.matches(authority) === true) {
+      window.focus();
+      currentHost.iframe.focus();
+      // The worker queues the canonical Activation event only after this
+      // verified readiness acknowledgement. Never navigate the event route.
+      return true;
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 100));
+  }
+  return false;
 });
 
 let motionRelayCleanup: (() => void) | null = null;
@@ -851,6 +957,7 @@ window.addEventListener('message', (event: MessageEvent) => {
   if (
     type !== 'dotli:sandbox-recover' &&
     type !== 'dotli:host-update-required' &&
+    type !== 'dotli:jam-peer-transport-unavailable' &&
     type !== 'dotli:polkavm-motion-request' &&
     type !== 'dotli:polkavm-mediated-input-request' &&
     type !== 'dotli:polkavm-mediated-input-cancel'
@@ -866,6 +973,17 @@ window.addEventListener('message', (event: MessageEvent) => {
     source === undefined ||
     event.source !== source
   ) {
+    return;
+  }
+  if (type === 'dotli:jam-peer-transport-unavailable') {
+    if (typeof Reflect.get(globalThis, 'WebTransport') !== 'function') {
+      showNotification({
+        label: 'Live JAM unavailable',
+        text: jamPeerTransportUnavailableMessage(navigator.userAgent),
+        dismissMs: 0,
+        browserNotification: false,
+      });
+    }
     return;
   }
   if (type === 'dotli:polkavm-motion-request') {
@@ -1177,6 +1295,16 @@ async function topbarLogin(reason: string | undefined): Promise<void> {
 }
 
 async function disconnectSession(): Promise<void> {
+  try {
+    await revokeReceivingOnLogout();
+  } catch (error) {
+    showNotification({
+      label: 'Background receiving',
+      text: `Disconnect stopped: local receiving revocation failed. ${String(error)}`,
+      browserNotification: false,
+    });
+    return;
+  }
   let lease;
   try {
     lease = await acquireCore();
@@ -1478,6 +1606,7 @@ async function createHost(args: {
   /** How the product's avatar surface maps onto the frame. */
   avatarSurface?: AvatarSurfaceFit;
 }): Promise<ActiveHost> {
+  const hostGeneration = renderGeneration;
   const lease = await acquireCore();
   const contactAvatars = createContactAvatars();
   const contactLabels = createContactLabelOverlay();
@@ -1487,7 +1616,12 @@ async function createHost(args: {
     // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
     chatCapable = await chatCapabilityFor(args.label);
     log.event('chat capability resolved', { flow: 'chat', capable: chatCapable });
-    connection = await lease.connect(chatCapable ? 'Worker' : 'App', { contactAvatars, contactLabels });
+    connection = await lease.connect(chatCapable ? 'Worker' : 'App', {
+      contactAvatars,
+      contactLabels,
+      archiveCid: args.archiveCid,
+      isCurrentExecution: () => hostGeneration === renderGeneration,
+    });
     log.event('product connected to wallet core', { flow: 'wallet', kind: chatCapable ? 'Worker' : 'App' });
   } catch (error) {
     contactAvatars.dispose();
@@ -1536,6 +1670,7 @@ async function createHost(args: {
       unsubscribeProductPortUse = null;
     });
     disposePipe = pipeProviders(provider, coreProvider, pipeArgs);
+    connection.receiving.ready();
   };
   const retireExecution = (): void => {
     const previous = coreProvider;
@@ -1554,7 +1689,13 @@ async function createHost(args: {
     connecting = true;
     const generation = executionGeneration;
     void lease
-      .connect(chatCapable ? 'Worker' : 'App', { contactAvatars, contactLabels })
+      .connect(chatCapable ? 'Worker' : 'App', {
+        contactAvatars,
+        contactLabels,
+        archiveCid: args.archiveCid,
+        isCurrentExecution: () =>
+          !disposed && hostGeneration === renderGeneration && generation === executionGeneration,
+      })
       .then(next => {
         if (disposed || generation !== executionGeneration) {
           next.close();
@@ -1601,7 +1742,8 @@ async function createHost(args: {
       });
   };
   const connectProductPort = (port: MessagePort): void => {
-    if (disposed) {
+    if (disposed || hostGeneration !== renderGeneration) {
+      connection.receiving.close();
       port.close();
       return;
     }
@@ -1640,9 +1782,9 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const allow = [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join(
-      '; ',
-    );
+    const readAllow = async (): Promise<string> =>
+      [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    const allow = await readAllow();
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -1721,8 +1863,25 @@ async function createHost(args: {
       get wallet() {
         return connection.wallet;
       },
-      generation: renderGeneration,
+      generation: hostGeneration,
+      productId: connection.productId,
+      get receiving() {
+        return connection.receiving;
+      },
       iframe: host.iframe,
+      async refreshPermissionPolicy() {
+        const nextAllow = await readAllow();
+        // Only committed policy changes can replace the current execution.
+        // A notification grant or another identical policy keeps it alive.
+        if (
+          hostGeneration === renderGeneration &&
+          currentHost?.iframe === host.iframe &&
+          currentProduct !== null &&
+          nextAllow !== host.iframe.allow
+        ) {
+          rerenderProduct(currentProduct);
+        }
+      },
       dispose() {
         mediatedInputHost.stop();
         disposeViewInsets?.();
@@ -1766,6 +1925,7 @@ export async function renderIframe(
   options: { productId?: string | undefined } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
+  currentHost?.receiving.close();
   const renderFlowId = newFlowId('render');
   const bridgeFlowId = newFlowId('bridge');
   const productId = options.productId ?? label;
@@ -1902,6 +2062,7 @@ export async function renderAppSubdomain(
   executableManifest: string | null = null,
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
+  currentHost?.receiving.close();
   const renderFlowId = newFlowId('render');
   const bridgeFlowId = newFlowId('bridge');
   const stopSetup = m.timer(S.BRIDGE_SETUP);
@@ -1973,6 +2134,7 @@ export async function renderAppSubdomain(
     payload: { label, url, mode: 'subdomain' },
   });
   const host = await createHost({
+    // The CID comes from host resolution, never product postMessage data.
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
     sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',

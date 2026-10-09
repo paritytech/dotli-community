@@ -1,5 +1,5 @@
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
+import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, ReceivingWatch, RemotePermissionRequest, RingLocation } from "@parity/truapi";
 import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
@@ -328,6 +328,14 @@ export type CoreStorageKey =
         rootPublicKey: Uint8Array;
         genesisHash: Uint8Array;
     };
+}
+/**
+ * Versioned bounded receiving ledger, shared across product executions.
+ * Host product/account deletion must invoke ReceivingService::revoke first.
+ */
+ | {
+    tag: "NotificationReceiving";
+    value?: undefined;
 };
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -1130,6 +1138,70 @@ export interface ProfileDisclosureReview {
     productId: string;
 }
 /**
+ * Trusted host receiving scope, derived from verified artifact and account state.
+ * It must remain available after the product execution closes.
+ */
+export interface ReceivingAuthority {
+    /**
+     * Verified product identifier.
+     */
+    productId: string;
+    /**
+     * Opaque stable account identity, encoded as 32-byte lowercase hex.
+     */
+    account: string;
+    /**
+     * Host-selected network environment.
+     */
+    environment: string;
+    /**
+     * Verified artifact digest, encoded as 32-byte lowercase hex.
+     */
+    artifact: string;
+    /**
+     * Host-selected receiving chain genesis, encoded as 32-byte lowercase hex.
+     */
+    genesis: string;
+    /**
+     * Host logout, account and artifact fence.
+     */
+    generation: bigint;
+    /**
+     * Current OS notification permission.
+     */
+    osPermission: boolean;
+    /**
+     * Whether the explicitly selected transport is ready.
+     */
+    transportReady: boolean;
+}
+/**
+ * Host-only durable registration awaiting transport synchronization.
+ * Routes and authority identifiers stay local, not in provider payloads.
+ */
+export interface ReceivingRegistration {
+    /**
+     * Trusted scope under which consent was recorded.
+     */
+    authority: ReceivingAuthority;
+    /**
+     * Durable local revision, distinct from provider token revisions.
+     */
+    revision: bigint;
+    /**
+     * Whether this revision enrolls watches or revokes them.
+     */
+    enabled: boolean;
+    /**
+     * Locally approved source filters and activation routes.
+     */
+    watches: Array<ReceivingWatch>;
+    /**
+     * Whether this revision still needs synchronization.
+     */
+    syncPending: boolean;
+}
+/**
  * Review shown before allocating resources for a product. Names the
  * beneficiary product so the user knows which product receives the
  * (signing-capable) allowance key they are approving.
@@ -1613,6 +1685,16 @@ export declare const ProductSubtreeReview: S.Codec<ProductSubtreeReview>;
  * The prompt names the product, never the contacts or the reference.
  */
 export declare const ProfileDisclosureReview: S.Codec<ProfileDisclosureReview>;
+/**
+ * Trusted host receiving scope, derived from verified artifact and account state.
+ * It must remain available after the product execution closes.
+ */
+export declare const ReceivingAuthority: S.Codec<ReceivingAuthority>;
+/**
+ * Host-only durable registration awaiting transport synchronization.
+ * Routes and authority identifiers stay local, not in provider payloads.
+ */
+export declare const ReceivingRegistration: S.Codec<ReceivingRegistration>;
 /**
  * Review shown before allocating resources for a product. Names the
  * beneficiary product so the user knows which product receives the
@@ -2102,6 +2184,31 @@ export interface Notifications {
      * unknown id still returns `success`.
      */
     cancelNotification?(id: number): Promise<void>;
+    /**
+     * Resolve trusted authority without prompting or consulting transport.
+     * The resident platform returns current host scope, even with product UI closed.
+     * A product execution's platform returns the immutable scope captured when
+     * that verified execution opened, never a replacement artifact/account's scope.
+     * Returning ``undefined`` explicitly advertises unsupported receiving.
+     */
+    receiverAuthority?(productId: string): Promise<ReceivingAuthority | undefined>;
+    /**
+     * Request distinct consent for this authority and full watch scope.
+     */
+    receiverConsent?(authority: ReceivingAuthority, watches: Array<ReceivingWatch>): Promise<boolean>;
+    /**
+     * Wake the host's asynchronous synchronization loop, never await network I/O.
+     */
+    receiverChanged?(): Promise<void>;
+    /**
+     * Forward receiving actions to the single host-owned receiver, if external.
+     * The host must bind `product_id` to the trusted execution, not page input.
+     * Payloads are latest SCALE requests for actions 2..7; the response encodes
+     * `Result<latest response, HostNotificationReceivingError>` without a version tag.
+     * ``undefined`` selects this runtime's resident engine. An unavailable external
+     * owner must return an error, never ``undefined``, to avoid a second persistent writer.
+     */
+    receiverCommand?(productId: string, action: number, payload: Uint8Array): Promise<Uint8Array | undefined>;
     /**
      * Return at most 32 pending activations, ordered by sequence, without
      * consuming them. The embedding host binds this platform to the verified

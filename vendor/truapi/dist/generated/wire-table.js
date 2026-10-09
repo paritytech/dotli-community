@@ -269,6 +269,36 @@ export const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION = {
     method: 1,
     kind: "request",
 };
+export const NOTIFICATIONS_RECEIVER_STATUS = {
+    trait: 8,
+    method: 2,
+    kind: "request",
+};
+export const NOTIFICATIONS_REPLACE_RECEIVER = {
+    trait: 8,
+    method: 3,
+    kind: "request",
+};
+export const NOTIFICATIONS_DISABLE_RECEIVER = {
+    trait: 8,
+    method: 4,
+    kind: "request",
+};
+export const NOTIFICATIONS_RECORD_RECEIPT = {
+    trait: 8,
+    method: 5,
+    kind: "request",
+};
+export const NOTIFICATIONS_RECEIVER_EVENTS = {
+    trait: 8,
+    method: 6,
+    kind: "request",
+};
+export const NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT = {
+    trait: 8,
+    method: 7,
+    kind: "request",
+};
 export const NOTIFICATIONS_ACTIVATION_EVENTS = {
     trait: 8,
     method: 8,
@@ -506,6 +536,41 @@ export const PROFILE_OWN_STATUS = {
 };
 export const PROFILE_PRESENT_OWN = {
     trait: 69,
+    method: 6,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_DIAL = {
+    trait: 111,
+    method: 0,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_OPEN = {
+    trait: 111,
+    method: 1,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_SEND = {
+    trait: 111,
+    method: 2,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_RECV = {
+    trait: 111,
+    method: 3,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_RESET = {
+    trait: 111,
+    method: 4,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_CLOSE = {
+    trait: 111,
+    method: 5,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_EVENTS = {
+    trait: 111,
     method: 6,
     kind: "request",
 };

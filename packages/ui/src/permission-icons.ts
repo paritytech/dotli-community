@@ -25,7 +25,15 @@ export const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, string
   StatementSubmit: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5zM14 2v6h6m-4 5H8m8 4H8',
 };
 
-/** Unsized markup, since the modal's IconTile sizes it. */
+/**
+ * JAM peer access (`RemotePermission::JamPeers`) as one 24 px path. It is
+ * scoped to a genesis rather than an enforceable permission, so it sits
+ * beside the board's icons instead of in them.
+ */
+export const JAM_PEERS_ICON =
+  'M15 5a3 3 0 1 0 6 0 3 3 0 1 0-6 0M3 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0m12 7a3 3 0 1 0 6 0 3 3 0 1 0-6 0M8.59 13.51l6.83 3.98m-.01-10.98-6.82 3.98';
+
+/** A board icon's path as markup for a modal's IconTile, which sizes it. */
 export function iconMarkup(path: string): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
 }

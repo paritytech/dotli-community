@@ -234,6 +234,30 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostPushNotificationCancelRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload),
     },
+    [W.NOTIFICATIONS_RECEIVER_STATUS.trait * 256 + W.NOTIFICATIONS_RECEIVER_STATUS.method]: {
+        0: (payload) => T.VersionedHostNotificationReceiverStatusRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationReceiverStatusResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_REPLACE_RECEIVER.trait * 256 + W.NOTIFICATIONS_REPLACE_RECEIVER.method]: {
+        0: (payload) => T.VersionedHostNotificationReplaceReceiverRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationReplaceReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_DISABLE_RECEIVER.trait * 256 + W.NOTIFICATIONS_DISABLE_RECEIVER.method]: {
+        0: (payload) => T.VersionedHostNotificationDisableReceiverRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationDisableReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_RECORD_RECEIPT.trait * 256 + W.NOTIFICATIONS_RECORD_RECEIPT.method]: {
+        0: (payload) => T.VersionedHostNotificationRecordReceiptRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationRecordReceiptResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_RECEIVER_EVENTS.trait * 256 + W.NOTIFICATIONS_RECEIVER_EVENTS.method]: {
+        0: (payload) => T.VersionedHostNotificationReceiverEventsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationReceiverEventsResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT.trait * 256 + W.NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT.method]: {
+        0: (payload) => T.VersionedHostNotificationAcknowledgeReceiverEventRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationAcknowledgeReceiverEventResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
     [W.NOTIFICATIONS_ACTIVATION_EVENTS.trait * 256 + W.NOTIFICATIONS_ACTIVATION_EVENTS.method]: {
         0: (payload) => T.VersionedNotificationActivationEventsRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedNotificationActivationEventsResponse, S.CallError(T.VersionedNotificationActivationEventsError)).dec(payload),
@@ -443,5 +467,33 @@ export const WIRE_DECODE_TABLE = {
     [W.PROFILE_PRESENT_OWN.trait * 256 + W.PROFILE_PRESENT_OWN.method]: {
         0: (payload) => T.VersionedHostProfilePresentOwnRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostProfilePresentOwnResponse, S.CallError(T.VersionedHostProfilePresentOwnError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_DIAL.trait * 256 + W.JAM_PEER_TRANSPORT_DIAL.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportDialRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportDialResponse, S.CallError(T.VersionedHostJamPeerTransportDialError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_OPEN.trait * 256 + W.JAM_PEER_TRANSPORT_OPEN.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportOpenRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportOpenResponse, S.CallError(T.VersionedHostJamPeerTransportOpenError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_SEND.trait * 256 + W.JAM_PEER_TRANSPORT_SEND.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportSendRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportSendResponse, S.CallError(T.VersionedHostJamPeerTransportSendError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_RECV.trait * 256 + W.JAM_PEER_TRANSPORT_RECV.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportRecvRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportRecvResponse, S.CallError(T.VersionedHostJamPeerTransportRecvError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_RESET.trait * 256 + W.JAM_PEER_TRANSPORT_RESET.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportResetRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportResetResponse, S.CallError(T.VersionedHostJamPeerTransportResetError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_CLOSE.trait * 256 + W.JAM_PEER_TRANSPORT_CLOSE.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportCloseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportCloseResponse, S.CallError(T.VersionedHostJamPeerTransportCloseError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_EVENTS.trait * 256 + W.JAM_PEER_TRANSPORT_EVENTS.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportEventsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload),
     },
 };

@@ -1,10 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { withActiveTld } from '@dotli/config';
 import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
-import { iconMarkup, PERMISSION_ICONS } from '../../permission-icons.js';
+import { iconMarkup, JAM_PEERS_ICON, PERMISSION_ICONS } from '../../permission-icons.js';
+import { jamPeersPermissionText } from '../../permission-modal.js';
 import type { ModalEntry, ModalView } from '../../state/modals.js';
 import { PromptDialog } from './PromptDialog.js';
 
@@ -50,6 +52,37 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const PermissionRequest: Story = {};
+
+// What showJamPeersPermissionModal asks before an app dials a JAM network.
+const JAM_GENESIS = '0x10c123f05a3e9b715a3e9b715a3e9b715a3e9b715a3e9b715a3e9b715a3e9b71';
+
+export const JamPeersPermission: Story = {
+  args: {
+    entry: entry({
+      icon: iconMarkup(JAM_PEERS_ICON),
+      title: 'Permission Request',
+      fields: [
+        { label: 'Application', value: withActiveTld('jam') },
+        { label: 'Permission', value: jamPeersPermissionText('jam', JAM_GENESIS) },
+        { label: 'JAM network genesis', value: JAM_GENESIS, mono: true },
+      ],
+      buttons: [
+        { label: 'Deny', variant: 'danger', result: 'denied' },
+        { label: 'Always allow', variant: 'secondary', result: 'granted' },
+        { label: 'Allow once', variant: 'primary', result: 'granted-once' },
+      ],
+      dismissOnBackdrop: true,
+      dismissResult: 'dismissed',
+      fallbackResult: 'dismissed',
+    }),
+  },
+};
+
+export const JamPeersPermissionPhone: Story = {
+  ...JamPeersPermission,
+  tags: ['!autodocs'],
+  globals: { viewport: { value: 'phone', isRotated: false } },
+};
 
 export const PasswordPrompt: Story = {
   args: {
