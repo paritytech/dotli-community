@@ -343,7 +343,9 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
       direction,
       productId,
       requestId: decoded.value.requestId,
-      payload: describeWireFrame(decoded.value.payload, decoded.value.payload.value),
+      payload: describeWireFrame(decoded.value.payload, decoded.value.payload.value, {
+        decodeWalletFrames: getWalletMode() === 'local',
+      }),
     });
     // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
   } catch {

@@ -155,6 +155,36 @@ function buildChainEntries(): Map<number, ChainEntry> {
   return entries;
 }
 
+/** The requests a local signing host serves itself, which a paired phone would otherwise show the user. */
+const WALLET_LINKAGE: readonly ChainLinkage[] = [
+  { wireTableKey: 'SIGNING_SIGN_PAYLOAD', stem: 'SignPayload' },
+  { wireTableKey: 'SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT', stem: 'SignPayloadWithLegacyAccount' },
+  { wireTableKey: 'SIGNING_SIGN_RAW', stem: 'SignRaw' },
+  { wireTableKey: 'SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT', stem: 'SignRawWithLegacyAccount' },
+  { wireTableKey: 'SIGNING_CREATE_TRANSACTION', stem: 'CreateTransaction' },
+  { wireTableKey: 'SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT', stem: 'CreateTransactionWithLegacyAccount' },
+  { wireTableKey: 'RESOURCE_ALLOCATION_REQUEST', stem: 'RequestResourceAllocation' },
+];
+
+function buildWalletCodecs(): Map<number, WireCodec> {
+  const codecs = new Map<number, WireCodec>();
+  for (const { wireTableKey, stem } of WALLET_LINKAGE) {
+    const ids = WIRE_TABLE[wireTableKey] as unknown as MethodIds;
+    const request = resolveCodec(`VersionedHost${stem}Request`);
+    const ok = resolveCodec(`VersionedHost${stem}Response`);
+    const err = resolveCodec(`VersionedHost${stem}Error`);
+    if (request !== undefined) {
+      codecs.set(wireFrameKey(wireFrameId(ids, MESSAGE_TYPE_REQUEST)), request);
+    }
+    if (ok !== undefined && err !== undefined) {
+      codecs.set(wireFrameKey(wireFrameId(ids, MESSAGE_TYPE_RESPONSE)), responseCodec(ok, err));
+    }
+  }
+  return codecs;
+}
+
+let walletCodecs: Map<number, WireCodec> | null = null;
+
 // These families leave the tap as byte length only. Matching is by name, so a discriminant newer than
 // the host's wire table falls back to raw bytes, an accepted skew.
 const REDACTED_PREFIXES = ['signing', 'session', 'entropy', 'local_storage'];
@@ -185,7 +215,16 @@ function buildGenericNames(): Map<number, GenericEntry> {
 let chainEntries: Map<number, ChainEntry> | null = null;
 let genericNames: Map<number, GenericEntry> | null = null;
 
-export function describeWireFrame(frame: WireFrameId, bytes: Uint8Array): { tag: string; value: unknown } {
+export interface DescribeOptions {
+  /** Local mode only, where the panel stands in for the phone's request screen. */
+  decodeWalletFrames?: boolean;
+}
+
+export function describeWireFrame(
+  frame: WireFrameId,
+  bytes: Uint8Array,
+  options: DescribeOptions = {},
+): { tag: string; value: unknown } {
   chainEntries ??= buildChainEntries();
   genericNames ??= buildGenericNames();
 
@@ -208,6 +247,18 @@ export function describeWireFrame(frame: WireFrameId, bytes: Uint8Array): { tag:
     const tag = `wire_${String(frame.traitId)}_${String(frame.methodId)}_${String(frame.messageType)}`;
     return { tag, value: { wireId, bytes } };
   }
+  if (options.decodeWalletFrames === true) {
+    walletCodecs ??= buildWalletCodecs();
+    const codec = walletCodecs.get(wireId);
+    if (codec !== undefined) {
+      try {
+        return { tag: generic.name, value: codec.dec(bytes) };
+        // eslint-disable-next-line no-restricted-syntax -- a malformed frame falls through to the usual redaction.
+      } catch {
+        // Falls through to the redaction below rather than showing garbage.
+      }
+    }
+  }
   if (generic.redacted) {
     return {
       tag: generic.name,
@@ -220,6 +271,7 @@ export function describeWireFrame(frame: WireFrameId, bytes: Uint8Array): { tag:
 // For the drift-guard test.
 export const __testing = {
   CHAIN_LINKAGE,
+  WALLET_LINKAGE,
   snakeCase,
   resolveCodec,
   buildChainEntries,
