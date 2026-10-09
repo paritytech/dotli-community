@@ -1,8 +1,4 @@
-# gitleaks configuration for dot.li
-#
-# Extends the built-in gitleaks ruleset and narrows the known false
-# positives so an enforced scan stays signal-rich. See the Secret Scan
-# workflow in .github/workflows/secret-scan.yml.
+# The default ruleset, minus known false positives.
 
 title = "dot.li gitleaks config"
 
@@ -47,4 +43,16 @@ paths = [
 regexTarget = "secret"
 regexes = [
   '''^0x(?:1234567890abcdef){4}$''',
+]
+
+[[allowlists]]
+description = "The Cloudflare TURN response test fixture uses this synthetic descending-hex credential, not a deployed secret. Match only the exact fixture value and path, including historical revisions."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^scripts/mint-media-turn\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^e9f8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8$''',
 ]

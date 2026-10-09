@@ -1,27 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Backend selection and cache settings.
-//
-//   smoldot-direct: smoldot runs in the protocol iframe. Chain access
-//                   uses smoldot, content fetch uses smoldot's
-//                   `bitswap_v1_get` against the Bulletin Chain.
-//   smoldot-shared-worker: same as above but smoldot lives in a SharedWorker,
-//                   so multiple tabs share one light client.
-//   rpc-gateway: chain access via WSS JSON-RPC to a trusted node, content
-//                fetch via HTTPS IPFS gateway. No smoldot.
+// smoldot-direct runs smoldot in the protocol iframe, smoldot-shared-worker in a SharedWorker that tabs share.
+// rpc-gateway uses a trusted JSON-RPC node and an IPFS gateway, with no smoldot.
 
 import type { SiteId } from './config.js';
 
 export type Backend = 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
 
-/**
- * What the Settings panel calls each backend.
- *
- * Lives with the type rather than in the topbar because error copy has to send
- * the visitor to one of these by name. Two copies of these strings drift, and a
- * tip naming a control that does not exist is worse than no tip.
- */
+/** Settings panel labels. Here rather than in the topbar because error copy names these controls, and copies drift. */
 export const BACKEND_LABELS: Record<Backend, string> = {
   'smoldot-direct': 'Light client per tab',
   'smoldot-shared-worker': 'Light client shared',
@@ -29,16 +16,11 @@ export const BACKEND_LABELS: Record<Backend, string> = {
 };
 
 export interface CacheSettings {
-  /** When true, skip CID cache reads. Always resolve from chain/RPC. */
+  /** Skip CID cache reads and always resolve from the network. */
   skipCidCache: boolean;
-  /** When true, the host block cache is neither read nor written. Always fetch content. */
+  /** Neither read nor write the host block cache. */
   skipArchiveCache: boolean;
-  /**
-   * When true, the protocol iframe purges its persistent worker caches
-   * (IndexedDB) before smoldot/broker init, so every cold start boots
-   * from scratch. Trades cold-start time for a deterministic baseline,
-   * useful for debugging "is the cache hiding the issue?" scenarios.
-   */
+  /** Purge the protocol iframe's IndexedDB caches before init, so every cold start boots from scratch. */
   skipWorkerCache: boolean;
 }
 
@@ -50,9 +32,7 @@ export function isSharedWorkerAvailable(): boolean {
   return typeof SharedWorker !== 'undefined';
 }
 
-// Pre-collapse keys. `rpc` chain backend maps to `rpc-gateway`. Legacy
-// `dotli:mode` and `dotli:content-backend` carried the content axis that
-// no longer exists. Read once, migrate, delete.
+// Read once, migrated and deleted.
 const LEGACY_MODE_KEY = 'dotli:mode';
 const LEGACY_CONTENT_BACKEND_KEY = 'dotli:content-backend';
 
@@ -62,12 +42,7 @@ const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
   'rpc-gateway',
 ]);
 
-/**
- * Synchronous storage adapter for mode preferences. Readers across the
- * codebase (sandbox URL builder, diagnostics, etc.) are not async-
- * friendly, so any cross-origin store must hydrate an in-memory cache
- * during boot and serve sync reads from there.
- */
+/** Sync because readers are not async-friendly. A cross-origin store must hydrate a memory cache at boot. */
 export interface ModeStorage {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
@@ -102,24 +77,14 @@ export const localStorageAdapter: ModeStorage = {
 
 let storage: ModeStorage = localStorageAdapter;
 
-/**
- * Replace the storage backend used by every accessor below. Call once
- * during host shell boot, before any reader runs. Swapping at runtime is
- * allowed but stale values already returned to callers are NOT
- * invalidated. Readers see the new adapter only on their next call.
- */
+/** Call once at host boot, before any reader. A later swap does not invalidate values already returned. */
 export function configureModeStorage(adapter: ModeStorage): void {
   storage = adapter;
 }
 
 /**
- * Run the one-shot legacy-key migration against a given `ModeStorage`,
- * writing the migrated backend back to `target[BACKEND_KEY]` so a
- * subsequent reader picks it up at the canonical key. The shared-mode
- * bootstrap calls this against per-origin `localStorage` *before* swapping
- * the adapter, so legacy `dotli:mode` / `dotli:content-backend` values
- * survive the swap to the cache-only adapter (which only sees the two
- * SHARED_KEYS).
+ * Migrates legacy keys into `BACKEND_KEY` on `target`. The shared-mode bootstrap runs it on per-origin localStorage
+ * before swapping to the cache-only adapter, which cannot see legacy keys.
  */
 export function migrateLegacyOn(target: ModeStorage): Backend | null {
   const migrated = readAndClearLegacy(target);
@@ -159,13 +124,7 @@ export function defaultBackend(): Backend {
   return 'smoldot-direct';
 }
 
-/**
- * Map any legacy stored value to a canonical `Backend`, clearing the
- * legacy keys on success. Pre-collapse `dotli:mode` and
- * `dotli:content-backend` carried the content axis that no longer
- * exists. A stored `chain-backend = "rpc"` becomes `"rpc-gateway"`. The
- * caller decides whether to write the result back at `BACKEND_KEY`.
- */
+/** Clears the legacy keys on success. The caller decides whether to write the result back. */
 function readAndClearLegacy(target: ModeStorage): Backend | null {
   const chain = target.getItem(BACKEND_KEY);
   const content = target.getItem(LEGACY_CONTENT_BACKEND_KEY);
@@ -187,36 +146,18 @@ function readAndClearLegacy(target: ModeStorage): Backend | null {
   return chosen;
 }
 
-/**
- * Canonical trust-posture helper for user-facing shields and indicators.
- *
- * A session is "verified" iff the backend uses smoldot end-to-end. The
- * `rpc-gateway` backend delegates both chain access and content fetch to
- * trusted operators, so it's "trusted" rather than "verified".
- */
+/** Verified means smoldot end to end. rpc-gateway trusts operators for chain access and content. */
 export function isVerifiedSession(chainBackend: Backend): boolean {
   return chainBackend !== 'rpc-gateway';
 }
 
-// Fresh-install default. Persisted preferences override these.
 const DEFAULT_CACHE: CacheSettings = {
   skipCidCache: false,
   skipArchiveCache: false,
   skipWorkerCache: false,
 };
 
-/**
- * Get the effective cache settings.
- *
- * Cache preferences are the user's to choose regardless of backend.
- * (Earlier versions coupled gateway mode to "no cache", which meant the
- * user couldn't say "I want gateway *and* keep the CID cache". Cache
- * flags are now honored as-set.)
- *
- * When a stored preference omits a field (older build wrote a partial
- * object), the missing field falls back to `DEFAULT_CACHE` so the new
- * all-off default applies instead of the structural zero-value `false`.
- */
+/** A field missing from an older build's stored object falls back to `DEFAULT_CACHE`. */
 export function getCacheSettings(): CacheSettings {
   const stored = storage.getItem(CACHE_KEY);
   if (stored !== null) {

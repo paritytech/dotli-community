@@ -33,7 +33,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** The permission a request asks about. */
 function nameOf(request: PermissionAuthorizationRequest): string {
   switch (request.tag) {
     case 'Device':
@@ -49,12 +48,11 @@ function nameOf(request: PermissionAuthorizationRequest): string {
 }
 
 interface Provider {
-  /** The stored statuses, by permission name ("NotDetermined" when absent). */
+  /** By permission name. A missing one is "NotDetermined". */
   stored: Map<string, PermissionAuthorizationStatus>;
   set: ReturnType<typeof vi.fn>;
 }
 
-/** A provider for `label` keeping statuses in memory, as the Rust core does. */
 function provide(label = LABEL, initial: Record<string, PermissionAuthorizationStatus> = {}): Provider {
   const stored = new Map(Object.entries(initial));
   const set = vi.fn((request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus) => {
@@ -120,7 +118,6 @@ function isOpen(): boolean {
   return byId('permissions-popover').hasAttribute('data-open');
 }
 
-/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('permissions-button').click();
   await settleAll();
@@ -144,7 +141,6 @@ const GROUPS: readonly { label: string; names: readonly string[] }[] = [
   },
 ];
 
-/** The row of permission `name`. */
 function row(name: string): HTMLElement {
   return must(
     byId(`permissions-popover-name-${name}`).closest<HTMLElement>('[data-testid="permissions-popover-row"]'),
@@ -152,12 +148,10 @@ function row(name: string): HTMLElement {
   );
 }
 
-/** The segment that sets permission `name` to `status`. */
 function segment(name: string, status: PermissionStatus): HTMLButtonElement {
   return byTestId(`permissions-popover-segment-${status}`, row(name), HTMLButtonElement);
 }
 
-/** The status whose segment is pressed in the row of permission `name`. */
 function statusOf(name: string): PermissionStatus | undefined {
   return STATUSES.find(status => segment(name, status).getAttribute('aria-pressed') === 'true');
 }
@@ -167,7 +161,6 @@ type PermissionsList =
   | { kind: 'hint'; text: string }
   | {
       kind: 'rows';
-      /** The app's host, on the head's chip. */
       host: string;
       /** Per permission name. A missing one is "ask". */
       statuses: Partial<Record<string, PermissionStatus>>;
@@ -175,7 +168,6 @@ type PermissionsList =
 
 const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
 
-/** One permission row: icon, name, and the Ask, Allow and Deny segments with the current one pressed. */
 function expectRow(el: Element, perm: (typeof ALL_PERMISSIONS)[number], status: PermissionStatus): void {
   expect(query(el, `#permissions-popover-name-${perm.name}`).textContent).toBe(perm.label);
   expect(el.querySelector('svg[aria-hidden="true"] path')).not.toBeNull();
@@ -192,10 +184,7 @@ function expectRow(el: Element, perm: (typeof ALL_PERMISSIONS)[number], status: 
   );
 }
 
-/**
- * The popover: the shared Popover's surface, holding its head and list while
- * open, and nothing while closed.
- */
+/** The popover holds its head and list while open, and nothing while closed. */
 function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
   // In the page from its first opening (or idle preload).
   if (!opts.open && document.getElementById('permissions-popover') === null) {
@@ -243,10 +232,7 @@ function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
   }
 }
 
-/**
- * The button: its label, its icon and the ARIA of a popover trigger. Whether
- * it has its grants badge (`data-badge`) is left to the grants tests.
- */
+/** The button apart from styling. Its grants badge is left to the grants tests. */
 function expectPermissionsButton(open: boolean): void {
   const button = byId('permissions-button');
   expect(button.getAttribute('title')).toBe('Permissions');

@@ -11,10 +11,7 @@ import { useFloatingSurfaces } from '../../helpers/floating.js';
 
 type Held = 'a' | 'b' | undefined;
 
-/**
- * Two buttons, and a popover whose trigger is the one `held` names, if any.
- * Returns the setter that hands the popover another.
- */
+/** Buttons A and B, and a popover triggered by whichever one `held` names. */
 function renderHarness(initial: Held, onOpenChange: (open: boolean) => void = () => undefined): (held: Held) => void {
   const [held, setHeld] = createSignal<Held>(initial);
   renderComponent(() => {
@@ -45,7 +42,6 @@ function renderHarness(initial: Held, onOpenChange: (open: boolean) => void = ()
   };
 }
 
-/** What the popover wrote on `el` as its trigger. */
 function triggerAttributes(el: HTMLElement): Record<string, string | null> {
   return {
     popovertarget: el.getAttribute('popovertarget'),

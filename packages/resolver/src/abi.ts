@@ -1,28 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// ABI helpers and Solidity storage key computation
-//
-// Provides ENS-style namehash and storage slot key computation for
-// reading Solidity contract storage directly via ReviveApi.get_storage.
+// Solidity storage slot math, for reading contract storage directly instead of calling the contract.
 
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { bytesToHex, concatBytes, hexToBytes as nobleHexToBytes } from '@noble/hashes/utils.js';
 import { decode as decodeContentHash, getCodec } from '@ensdomains/content-hash';
 
-/** Convert bytes to 0x-prefixed hex string. */
 export function toHex(bytes: Uint8Array): `0x${string}` {
   return `0x${bytesToHex(bytes)}`;
 }
 
-/** Convert 0x-prefixed hex string to bytes. */
 function hexToBytes(hex: `0x${string}`): Uint8Array {
   return nobleHexToBytes(hex.slice(2));
 }
 
-/** Compute the ENS-style namehash of a dotted name. */
+/** ENS-style namehash. */
 export function namehash(name: string): `0x${string}` {
-  let node = new Uint8Array(32); // 0x00...00
+  let node = new Uint8Array(32);
   if (name === '') {
     return toHex(node);
   }
@@ -37,21 +32,7 @@ export function namehash(name: string): `0x${string}` {
   return toHex(node);
 }
 
-// Solidity storage key computation.
-//
-// For a mapping(bytes32 => T) at storage slot N, the value
-// for key K is stored at: keccak256(K ++ uint256(N))
-//
-// For bytes type (dynamic): if length <= 31, data is inline at
-// the computed slot. If > 31, data starts at keccak256(slot).
-
-/**
- * Compute the storage slot for a Solidity mapping entry.
- *
- * For `mapping(bytes32 => T)` at slot N, the value is at:
- *   keccak256(abi.encode(key, slot_number))
- *   = keccak256(key[32 bytes] ++ slot[32 bytes])
- */
+/** For `mapping(bytes32 => T)` at slot N, key K lives at `keccak256(K ++ uint256(N))`. */
 export function computeMappingSlot(key: `0x${string}`, slotNumber: number): `0x${string}` {
   const slotBytes = new Uint8Array(32);
   let n = slotNumber;
@@ -63,27 +44,12 @@ export function computeMappingSlot(key: `0x${string}`, slotNumber: number): `0x$
   return toHex(new Uint8Array(keccak_256(concatBytes(hexToBytes(key), slotBytes))));
 }
 
-/**
- * Compute the data slot for long Solidity `bytes` storage.
- *
- * When bytes.length > 31, data starts at keccak256(baseSlot)
- * and spans consecutive slots.
- */
+/** `bytes` longer than 31 start at `keccak256(baseSlot)` and span consecutive slots. */
 export function computeBytesDataSlot(baseSlot: `0x${string}`): `0x${string}` {
   return toHex(new Uint8Array(keccak_256(hexToBytes(baseSlot))));
 }
 
-/**
- * Compute the storage slot for a nested mapping with a string inner key.
- *
- * Used for `mapping(bytes32 outerKey => mapping(string innerKey => T))` at
- * outer slot N. The inner mapping lives at `keccak256(outerKey ++ N)`, both
- * padded to 32 bytes. The value sits at `keccak256(utf8(innerKey) ++ midSlot)`.
- *
- * Solidity hashes string keys as raw UTF-8 bytes with no length prefix and
- * no padding, which is why this helper exists alongside `computeMappingSlot`
- * (which expects a fixed-width key).
- */
+/** For `mapping(bytes32 => mapping(string => T))`. Solidity hashes a string key as raw UTF-8, unpadded. */
 export function computeNestedStringMappingSlot(
   outerKey: `0x${string}`,
   innerKey: string,
@@ -94,11 +60,7 @@ export function computeNestedStringMappingSlot(
   return toHex(new Uint8Array(keccak_256(concatBytes(innerBytes, hexToBytes(midSlot)))));
 }
 
-/**
- * Add an offset to a storage slot key (for multi-slot values).
- *
- * Treats the 32-byte slot as a big-endian uint256 and adds the offset.
- */
+/** Adds to the slot as a big-endian uint256. */
 export function addToSlot(slot: `0x${string}`, offset: number): `0x${string}` {
   if (offset === 0) {
     return slot;
@@ -117,9 +79,6 @@ export function addToSlot(slot: `0x${string}`, offset: number): `0x${string}` {
   return toHex(bytes);
 }
 
-/**
- * Decode a 32-byte big-endian storage word as a bigint.
- */
 export function wordToBigInt(data: Uint8Array): bigint {
   let value = 0n;
   for (const byte of data) {
@@ -128,24 +87,14 @@ export function wordToBigInt(data: Uint8Array): bigint {
   return value;
 }
 
-/**
- * Extract an EVM address from a 32-byte storage word.
- * Address is right-aligned (last 20 bytes).
- */
+/** The address is right-aligned in the word. */
 export function extractAddress(data: Uint8Array): string {
   return `0x${bytesToHex(data.slice(12))}`;
 }
 
 /**
- * Read a Solidity `bytes` value from raw storage slot data.
- *
- * Short bytes (<= 31): data is inline, lowest byte = length * 2.
- * Long bytes (> 31): lowest bit is 1, full word = length * 2 + 1,
- * actual data at keccak256(baseSlot) spanning consecutive slots.
- *
- * Returns { inline: true, data } for short bytes,
- * or { inline: false, length, dataSlot } for long bytes
- * (caller must read the data slots).
+ * Short `bytes` sit inline with `length * 2` in the lowest byte. Long ones store `length * 2 + 1` and
+ * leave the caller to read the data slots.
  */
 export function decodeBytesSlot(
   slotData: Uint8Array,
@@ -160,7 +109,6 @@ export function decodeBytesSlot(
     throw new Error(`Storage slot data must be 32 bytes, got ${String(slotData.length)}`);
   }
   if ((lowestByte & 1) === 0) {
-    // Short bytes: inline storage
     const length = lowestByte / 2;
     if (length === 0) {
       return null;
@@ -168,7 +116,6 @@ export function decodeBytesSlot(
     return { inline: true, data: slotData.slice(0, length) };
   }
 
-  // Long bytes: length = (word - 1) / 2
   const word = wordToBigInt(slotData);
   const length = Number((word - 1n) / 2n);
   if (length === 0) {
@@ -182,17 +129,7 @@ export function decodeBytesSlot(
   };
 }
 
-/**
- * Discriminated result so callers can distinguish:
- *   - `empty`              : slot was unset (the name has no contenthash)
- *   - `unsupported-codec`  : record exists but isn't an IPFS contenthash
- *   - `decode-error`       : record exists but fails to decode (malformed)
- *   - `ok`                 : valid IPFS CID
- *
- * Returning `string | null` would collapse all four into "not found",
- * hiding real network decode failures behind the same UI message as
- * "no record set".
- */
+/** Discriminated, so a malformed record is not reported as an unset one. */
 export type ContenthashResult =
   | { kind: 'ok'; cid: string }
   | { kind: 'empty' }

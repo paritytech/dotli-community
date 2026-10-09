@@ -1,5 +1,3 @@
-# GitHub Actions labeler configuration for dotli monorepo
-# https://github.com/actions/labeler
 github-actions:
   - changed-files:
       - any-glob-to-any-file: '.github/**'

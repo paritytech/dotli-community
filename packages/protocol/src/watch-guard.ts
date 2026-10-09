@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A reconnect cannot safely replay an acknowledged transaction submission.
-// End modern and legacy watches when their transport disconnects; pending
-// submissions remain with the provider proxy until answered.
+// Ends modern and legacy transaction watches a transport loses on disconnect. polkadot-api's proxy forgets an
+// answered submit, so a reconnect silently drops the watch and the replay must not resubmit. Each such
+// watch gets a terminal `dropped` event instead. Unanswered submits are left to the proxy's resend.
+
 import type { JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ConnectionStatus } from '@dotli/resolver';
 
@@ -24,6 +25,7 @@ const LEGACY_TERMINAL_EVENTS: Record<string, true> = {
 
 export interface WatchGuard {
   provider: JsonRpcProvider;
+  /** `disconnected` ends every tracked watch. */
   onStatus: (status: ConnectionStatus) => void;
 }
 

@@ -5,16 +5,11 @@ import { Match, Switch } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './SectionLabel.module.css';
 
-/**
- * A section's caps label, over the cards, wells or rows it heads. `as` picks
- * the element: a plain div by default, a heading where the label names a
- * group (`id` is what that group's aria-labelledby points at).
- */
+/** A section's caps label, a heading where it names a group whose aria-labelledby points at `id`. */
 export function SectionLabel(props: {
   text: string;
   id?: string | undefined;
   as?: 'div' | 'h2' | 'h3' | undefined;
-  /** A class of the consumer's own, for its padding in a list or its colours on the page. */
   class?: string | undefined;
   testId?: string | undefined;
 }): JSX.Element {
@@ -40,15 +35,11 @@ export function SectionLabel(props: {
   );
 }
 
-/**
- * The mockup's .stack: a section's label over its wells, rows or choices, in
- * a column 6 px apart (8 on phones).
- */
+/** A section's label over its wells, rows or choices. */
 export function Stack(props: {
   role?: 'group' | 'radiogroup' | undefined;
   'aria-label'?: string | undefined;
   'aria-labelledby'?: string | undefined;
-  /** A class of the consumer's own, for its inset or spacing. */
   class?: string | undefined;
   testId?: string | undefined;
   children: JSX.Element;

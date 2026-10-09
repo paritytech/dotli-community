@@ -16,12 +16,8 @@ const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox12
 const decodeVecU8 = Hex().dec;
 
 /**
- * `operationInaccessible` is the node saying it cannot serve a read right now.
- * A light client says it just after syncing, before any peer has answered for
- * the proof. papi's observable client retries it every 750 ms; the
- * raw client these reads go through does not. The window bounds it so a read
- * no peer ever serves still fails, instead of polling the long-lived shared
- * follow after its caller has given up.
+ * A light client answers `operationInaccessible` just after syncing, before any peer served the proof.
+ * The raw client does not retry it as papi's observable client does. The window lets a read no peer serves fail.
  */
 const INACCESSIBLE_RETRY_DELAY_MS = 750;
 const INACCESSIBLE_RETRY_WINDOW_MS = 30_000;
@@ -40,7 +36,7 @@ async function withInaccessibleRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** A dead API generation; the existing resolver owner must redial. */
+/** A dead follow generation; callers must redial rather than treating this as an unset slot. */
 export class ApiStoppedError extends Error {
   constructor(cause?: unknown) {
     super('chainHead follow stopped', { cause });

@@ -1,0 +1,103 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Only here: on a product page the host's color scheme would change how the browser paints the
+   product frame's backdrop. */
+:global(:root:has(body[data-landing])) {
+  color-scheme: dark;
+}
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  margin: 0;
+  padding: calc(32px + var(--safe-top)) calc(32px + var(--safe-right)) calc(32px + var(--safe-bottom))
+    calc(32px + var(--safe-left));
+  background: var(--bg-page);
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+}
+
+/* The landing page has no topbar, so these buttons sit under the status bar in an installed PWA. */
+.corner {
+  position: absolute;
+  top: calc(16px + var(--safe-top));
+  right: calc(16px + var(--safe-right));
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.center {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 440px;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+/* Holds only the wordmark and its tag, so no line box adds space under it. */
+.title {
+  position: relative;
+  display: flex;
+  margin: var(--sp-5) 0 0;
+  padding: 0;
+}
+
+/* The topbar's Beta tag at the wordmark's scale. Out of the flow, so the wordmark stays centered. */
+.beta {
+  position: absolute;
+  top: calc(-1 * var(--sp-1));
+  left: calc(100% + var(--sp-2));
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--fill-strong);
+  color: var(--text-secondary);
+  font: var(--fw-semibold) var(--fs-label) / 1 var(--font-sans);
+  letter-spacing: var(--ls-caps);
+}
+
+.subtitle {
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  font-size: var(--fs-title-lg);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 560px) {
+  .landing {
+    padding-right: calc(16px + var(--safe-right));
+    padding-left: calc(16px + var(--safe-left));
+  }
+}
+
+/* No bar here, so menus from the corner's buttons anchor to the corner instead. */
+:global(:root:has(body[data-landing])) {
+  --topbar-bottom: calc(16px + var(--h-bar-control) + var(--safe-top));
+  --topbar-inline-end: calc(16px + var(--safe-right));
+}

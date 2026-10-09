@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel drag handles */
-
 .handle {
   cursor: ns-resize;
   background: transparent;
@@ -35,8 +33,7 @@
   border-color: var(--td-accent);
 }
 .splitter::after {
-  /* Wider invisible hit area so the cursor grabs reliably even when
-     the visible line is narrow. */
+  /* A wider hit area than the visible line. */
   content: '';
   position: absolute;
   inset: 0 -4px;

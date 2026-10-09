@@ -16,14 +16,10 @@ export class ProtocolInitFailedError extends Error {
 }
 
 /**
- * A protocol request that failed on the other side of the iframe boundary, or
- * never came back.
+ * A protocol request that failed across the iframe boundary, or never came back.
  *
- * The sender's error crosses postMessage as text, so this is a new object
- * thrown at the one line that receives every response, and its own stack says
- * nothing. `method` and `remoteStack` carry what that line cannot know: which
- * request failed and where the sender threw. `captureException` reports them
- * as the `protocol_method` tag and the `remote_stack` extra.
+ * The sender's error crosses postMessage as text, so this object's own stack says nothing.
+ * `method` and `remoteStack` carry which request failed and where the sender threw.
  */
 export class ProtocolRequestError extends Error {
   readonly method: string;
@@ -38,27 +34,17 @@ export class ProtocolRequestError extends Error {
 }
 
 /**
- * Messages for the frame lifecycle failures callers surface to the user.
+ * Frame lifecycle failures callers surface to the user.
  *
- * Plain strings rather than `Error` subclasses: `describeError` in the host
- * matches on message text, and giving these their own `name` would silently
- * regroup them in Sentry. The two classes above predate this and keep their
- * names.
+ * Plain strings, not `Error` subclasses, because the host's `describeError` matches on message
+ * text and a new `name` would regroup them in Sentry.
  */
 export const PROTOCOL_ERRORS = {
   /** The iframe vanished between the readiness await and the post. */
   FRAME_UNAVAILABLE: 'Shared protocol iframe is unavailable',
-  /** The iframe loaded but never sent its ready signal. */
   FRAME_READY_TIMEOUT: 'Shared protocol iframe timed out (no ready signal)',
-  /** The `load` event of the host iframe never fired. */
   HOST_FRAME_LOAD_TIMEOUT: 'Shared host iframe timed out while loading',
-  /** The host iframe fired `error` instead of `load`. */
   HOST_FRAME_LOAD_FAILED: 'Shared host iframe failed to load',
-  /**
-   * Frame state was reset while callers were still waiting on readiness.
-   *
-   * The fallback rejection when the reset carries no reason of its own, so
-   * waiters fail at once rather than hanging until their own timeout.
-   */
+  /** Fallback rejection when a reset carries no reason, so readiness waiters fail at once instead of timing out. */
   FRAME_RESET: 'Protocol frame state reset before ready signal',
 } as const;

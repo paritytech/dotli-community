@@ -11,10 +11,7 @@ import type { Placement } from './FloatingLayer.js';
 import type { PopoverState } from './Popover.js';
 import s from './Popover.module.css';
 
-/**
- * Popover's lazy chunk: the content in its boundaries, a spinner while it
- * loads and Broken when it fails, with focus moving in as it renders.
- */
+/** Popover's lazy chunk. */
 export function PopoverSurface(props: {
   state: PopoverState;
   class?: string | undefined;
@@ -56,16 +53,12 @@ export function PopoverSurface(props: {
   );
 }
 
-/** The first control Tab reaches in `root`, links skipped, as focusInto picks. */
+/** Skips links, matching what focusInto picks. */
 function firstControl(root: HTMLElement): HTMLElement | undefined {
   return focusables(root).find(el => !(el instanceof HTMLAnchorElement));
 }
 
-/**
- * The popover opened before its content was in, so the surface itself took
- * focus (the anchored layer, or the sheet holding `root`): once the content
- * renders, focus moves into it.
- */
+/** A popover that opened before its content loaded focused the surface itself, so focus moves in once it renders. */
 function FocusWhenLoaded(props: { root: () => HTMLElement | null | undefined }): JSX.Element {
   onSettled(() => {
     const root = props.root();

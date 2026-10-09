@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* It sits outside `#app`, so whatever replaces `#app`'s content never takes it
-   along. The column is centred a little above the middle, where the error
+/* Outside `#app`, so whatever replaces `#app`'s content never takes it along. Centred where the error
    pages put theirs, so a failed load swaps one for the other in place. */
 .screen {
   position: absolute;
@@ -45,7 +44,7 @@
   top: 0;
 }
 
-/* loading-controller.ts dismisses the screen. */
+/* Set by loading-controller.ts. */
 .screen[data-dismissing] {
   opacity: 0;
   pointer-events: none;
@@ -68,12 +67,8 @@
   transform-origin: 128px 128px;
 }
 
-/* The petals light up in turn, one 1.4 s cycle for all six: each jumps to
-   full opacity and scale 1 on its turn, then eases down to its 0.15 floor
-   (scale 0.932) over the next 24.5% of the cycle, along
-   (1 - 2.5 * elapsed)², which this cubic-bezier reproduces exactly.
-   Negative delays put each petal at its place in the cycle from the start:
-   petal i peaks i/6 of a turn after petal 0. Still under reduced motion. */
+/* The cubic-bezier reproduces the (1 - 2.5 * elapsed)^2 fade exactly. Negative delays put each petal
+   at its place in the cycle from the start. Still under reduced motion. */
 @media (prefers-reduced-motion: no-preference) {
   .petal {
     animation: petal-pulse 1.4s linear infinite;
@@ -141,8 +136,7 @@
 .line {
   box-sizing: border-box;
   width: 100%;
-  /* Two lines reserved, so the bar below does not shift as an explanation
-     wraps or empties. */
+  /* Two lines reserved, so the bar below does not shift as an explanation wraps or empties. */
   min-height: 3em;
   margin: var(--sp-2) 0 0;
   padding: 0;
@@ -152,8 +146,7 @@
   color: var(--text-secondary);
 }
 
-/* Off-screen but still announced. `display: none` and `visibility: hidden`
-   would take it out of the accessibility tree too. */
+/* `display: none` and `visibility: hidden` would take it out of the accessibility tree too. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -201,9 +194,7 @@
   transition: width 0.4s ease-out;
 }
 
-/* Continuous sheen sweeping the filled portion. The simulated crawl can sit
-   near a band's top during a long sync with no real progress to report. The
-   sheen keeps visible motion so the bar never reads as frozen. */
+/* The crawl can sit near a band's top during a long sync, so the sheen keeps the bar from reading as frozen. */
 @media (prefers-reduced-motion: no-preference) {
   .fill::after {
     content: '';
@@ -235,11 +226,8 @@
   color: var(--text-secondary);
 }
 
-/* Shown only while a chain has stopped making progress, so it must read as
-   information rather than failure. Always laid out and shown by visibility,
-   with two lines of text reserved: the column is centred, so a notice that
-   took up room as it appeared would shift the logo, lines and bar above it,
-   which is exactly when the screen must look calm. */
+/* Always laid out, with two lines reserved, and shown by visibility: the column is centred, so a notice
+   that took up room as it appeared would shift everything above it. */
 .warning {
   display: flex;
   gap: var(--sp-2);

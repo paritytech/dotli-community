@@ -16,9 +16,8 @@ import type * as ToastCardModule from '../../../src/components/overlays/ToastCar
 import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
-/** Reads of each card's layout props (`depth`, `hidden`), across all cards. */
+/** Reads of `depth` and `hidden`, across all cards. */
 const cardLayoutReads = vi.hoisted(() => ({ count: 0 }));
-/** The last `expanded` and `single` values any card read from the stack. */
 const cardStackProps = vi.hoisted(() => ({
   expanded: undefined as boolean | undefined,
   single: undefined as boolean | undefined,

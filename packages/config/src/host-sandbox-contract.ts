@@ -34,16 +34,11 @@
 // don't feed malformed params to fresh sandbox deploys.
 
 import { NetworkName, isValidNetwork, type Network } from './network.js';
+import { SANDBOX_SCHEMA_VERSION } from './host-sandbox-version.js';
 
-export const SANDBOX_SCHEMA_VERSION = 5;
-
-// Cheap CID charset gate (base32 cidv1 / base58btc cidv0 are alphanumeric).
-// The sandbox does the authoritative CID.parse, then hash-verifies fetched
-// content against this CID: every block on the gateway path, and the root
-// block (on top of smoldot's own per-block check) on the bitswap path.
+// A cheap charset gate. The sandbox parses the CID and hash-verifies fetched content against it.
 const CID_PATTERN = /^[a-zA-Z0-9]+$/;
 
-/** Known chain backends. The only values the sandbox accepts. */
 const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set(['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway']);
 
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
@@ -51,9 +46,7 @@ const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
 /**
- * Single source of truth for the host-to-sandbox URL contract param names.
- * Imported by the host writer (`bridge.ts`), the validator below, and the
- * post-validation strip in the sandbox so the wire format never drifts.
+ * Shared by the host writer, this validator and the sandbox's post-validation strip, so the wire format never drifts.
  */
 export const SANDBOX_CONTRACT_PARAMS = {
   cid: 'cid',
@@ -73,11 +66,7 @@ export interface SandboxParams {
   polkaVmEnabled: boolean;
   fullReset: boolean;
   executableManifest: string | null;
-  /**
-   * Correlation id for this page load, absent on a host build that predates
-   * it. Telemetry only: it is deliberately not required and not version
-   * gated, because no sandbox should ever fail to boot over a trace id.
-   */
+  /** Telemetry only, so never required: no sandbox should fail to boot over a trace id. */
   resolutionId: string | null;
 }
 
@@ -91,18 +80,9 @@ export type SandboxParamsResult =
     };
 
 /**
- * Validate a sandbox URL against the host-to-sandbox contract.
- *
- * Returns a discriminated result. The caller is expected to render the
- * failure reason in the UI and stop. Never substitute defaults silently.
- *
- * `recoverable: true` marks failures where a required param is absent
- * entirely. The sandbox strips contract params from its URL after a
- * successful boot, so an absent param is the signature of a reload of an
- * already-booted sandbox window, and the host can recover by re-rendering
- * the iframe with a fresh contract URL. A param that is present but
- * invalid means the host build itself is broken. Re-rendering would
- * produce the same bad value, so those stay fatal.
+ * Validates a sandbox URL against the host-to-sandbox contract. The caller shows the reason and stops.
+ * `recoverable` marks an absent required param: the sandbox strips its params after boot, so this is a reload the host
+ * fixes by re-rendering the iframe. A present but invalid param means a broken host build, so it stays fatal.
  */
 export function validateSandboxParams(search: URLSearchParams): SandboxParamsResult {
   // A contract carrying a CID is an active host launch and must identify its
@@ -120,9 +100,6 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
     };
   }
 
-  // The CID used to live in the origin (`<cid>.app.<root>`). With the dotns
-  // origin it must arrive as a param so the sandbox knows which content to
-  // fetch and verify. Missing or malformed is a hard error, never a default.
   const cid = search.get(SANDBOX_CONTRACT_PARAMS.cid);
   if (cid === null || cid === '') {
     return {
@@ -203,9 +180,7 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
   }
 
   const resolutionIdRaw = search.get(SANDBOX_CONTRACT_PARAMS.resolutionId);
-  // Bounded and charset-gated rather than validated as a uuid: the host may
-  // fall back to a non-uuid id, and an odd value here must degrade to
-  // "untagged", never to a rejected boot.
+  // Not a uuid check, because the host may fall back to a non-uuid id. An odd value degrades to untagged.
   const resolutionId =
     resolutionIdRaw !== null &&
     resolutionIdRaw.length > 0 &&

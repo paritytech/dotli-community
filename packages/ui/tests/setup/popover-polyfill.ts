@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// happy-dom 20 has no popover API. Enough of it for the content tests:
-// open state, and the two events FloatingLayer listens to. Light dismiss and
-// the top layer are a real browser's, tested in the stories lane.
+// happy-dom has no popover API. This covers open state and the two events FloatingLayer listens to. Light dismiss
+// and the top layer are tested in the stories lane.
 
 function dispatchToggle(el: HTMLElement, type: 'beforetoggle' | 'toggle', open: boolean): void {
   const ev = new Event(type);

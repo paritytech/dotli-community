@@ -18,15 +18,13 @@ import {
 } from '@dotli/protocol';
 
 import { log } from '@dotli/shared';
+import { getAuthState } from '../state/auth.js';
 import { dispatchAuthState } from './AuthState.js';
 
 const LOCAL_CHANGE_EVENT = 'dotli:truapi-session-store-changed';
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
-// JSON cache of the last connected UI state the core reported via
-// `authStateChanged`. Lives in shared auth storage next to the opaque
-// root-domain session blob so boot-time rehydration never has to decode the
-// blob itself.
+// Beside the opaque session blob, so boot rehydration never has to decode the blob.
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 export const LOCAL_WALLET_ENABLED_KEY = 'dotli:local-wallet-enabled';
 const EXPERIMENTAL_CORE_STORAGE_PREFIX = 'dotli:experimental-core:';
@@ -237,10 +235,7 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
 }
 
-/** Validate a parsed UI-state cache blob field by field. The cache is
- * host-written same-origin data, but it can be stale from a different code
- * version or partially corrupted, so a malformed blob degrades to null
- * (bare connected state) rather than being cast into the typed shape. */
+/** The cache can be stale from another code version or corrupt, so a malformed blob degrades to null. */
 function parseUiStateCache(parsed: unknown): TruapiSessionUiState | null {
   if (typeof parsed !== 'object' || parsed === null) {
     return null;
@@ -302,13 +297,8 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
   }
 }
 
-/**
- * Re-emit cached UI state for the persisted same-origin Mobile session, if any.
- * Used at boot so a reload shows the Mobile badge before any core
- * instance runs. Only emits when a persisted session blob actually exists;
- * without a cached state it degrades to a bare `connected: true`.
- */
-export async function emitPersistedSessionUiState(): Promise<void> {
+/** Restore session mode without making an unused debug wallet a Mobile dependency. */
+export async function initializeSessionMode(): Promise<void> {
   try {
     await initializeLocalWalletState();
   } catch (error) {
@@ -328,26 +318,28 @@ export async function emitPersistedSessionUiState(): Promise<void> {
       throw error;
     }
   }
-  // Only the persistent signing owner can publish experimental identity.
-  // Disk metadata and secret availability are not native session proof.
+}
+
+/**
+ * At boot, ends `Restoring` from saved Mobile state unless a live core has already reported newer auth.
+ * Wallet disk metadata is never proof of a native session.
+ */
+export async function emitPersistedSessionUiState(): Promise<void> {
+  await initializeSessionMode();
   if (isExperimentalWalletActive()) {
     return;
   }
-
-  let hasCoreSession: boolean;
+  let raw: string | null;
   try {
-    const raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    hasCoreSession = raw !== null && raw !== '';
-  } catch {
-    return;
+    raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+  } catch (err) {
+    log.warn('[dot.li] shared auth session read failed:', err);
+    raw = null;
   }
-  if (!hasCoreSession) {
-    return;
+  const session = raw === null || raw === '' ? null : ((await readUiStateCache()) ?? { connected: true });
+  if (getAuthState().tag === 'Restoring') {
+    dispatchAuthState(session === null ? { tag: 'Disconnected' } : { tag: 'Connected', session });
   }
-  dispatchAuthState({
-    tag: 'Connected',
-    session: (await readUiStateCache()) ?? { connected: true },
-  });
 }
 
 export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
@@ -487,12 +479,10 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
     case 'AutoSigningKey':
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(encodeCoreStorageKey(key))}`;
-    // Wallet-bound capabilities for the active pairing: one slot, unlike the
-    // legacy per-product `AutoSigningKey` above.
+    // One slot for the active pairing, unlike the per-product `AutoSigningKey`.
     case 'AutoSigningKeys':
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
-    // Keyed by root public key so several rings can coexist. The snapshot is
-    // public, so it is not treated as secret material below.
+    // Keyed by root public key so several rings coexist. The snapshot is public, so not secret material.
     case 'RingVrfRegistry':
       return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     case 'StatementRenewalTargets':
@@ -501,21 +491,16 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
     case 'AuthSession':
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
-    // Peers address this device by the public counterpart, so the slot name
-    // must not move with the session.
+    // Peers address this device by the public counterpart, so the slot must not move with the session.
     case 'DeviceEncryptionKey':
       return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
-    // Keyed by session and product together: pairing again re-asks the
-    // Account Holder, so one session's answer must not be read back for
-    // another.
+    // Keyed by session too, since pairing again re-asks the Account Holder.
     case 'ProductSubtree':
       return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${hexNoPrefix(encodeCoreStorageKey(key))}`;
-    // The ledger bounds replays for one wallet and peer pair, so the whole
-    // triple has to discriminate the slot.
+    // The ledger bounds replays for one wallet and peer pair, so the whole triple keys the slot.
     case 'SsoResponderRequestLedger':
       return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${hexNoPrefix(encodeCoreStorageKey(key))}`;
-    // Public manifest JSON cached per product, so one product's revoked
-    // grant expires without touching the others.
+    // Per product, so one product's revoked grant expires without touching the others.
     case 'ProductManifest':
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
     case 'MainPurseCoinage':
@@ -554,9 +539,7 @@ async function decodeCoreStorageValue(key: CoreStorageKey, raw: string): Promise
     return decodeStoredBytes(raw, `core storage ${key.tag}`);
   }
   if (!raw.startsWith(ENCRYPTED_VALUE_PREFIX)) {
-    // Slots written before at-rest encryption shipped hold the plain key
-    // bytes. Re-persist encrypted so the plaintext copy doesn't outlive
-    // this read.
+    // Slots from before at-rest encryption hold plain bytes, so re-persist them encrypted.
     const bytes = decodeStoredBytes(raw, `core storage ${key.tag}`);
     if (bytes === undefined) {
       return undefined;
@@ -578,24 +561,18 @@ async function decodeCoreStorageValue(key: CoreStorageKey, raw: string): Promise
       ),
     );
   } catch (err) {
-    // The slot was written under a key we no longer hold (IndexedDB
-    // cleared while localStorage survived, or a session-ephemeral fallback
-    // key) or the bytes are corrupt. Drop it: returning the raw bytes
-    // would hand ciphertext to the core as key material.
+    // Written under a key we no longer hold, or corrupt. Returning the raw bytes would hand
+    // ciphertext to the core as key material.
     log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
     localStorage.removeItem(coreLocalStorageKey(key));
     return undefined;
   }
 }
 
-// Marks a slot as holding the encrypted format. Legacy plaintext slots are
-// bare hex, so the prefix cleanly separates "must decrypt" from "migrate":
-// a decrypt failure never falls back to treating ciphertext as plaintext.
+// Legacy plaintext slots are bare hex, so a decrypt failure never falls back to treating ciphertext as plaintext.
 const ENCRYPTED_VALUE_PREFIX = 'enc1:';
 
-// Standard AES-GCM nonce length. A fresh random nonce is drawn per write and
-// stored as the ciphertext prefix: GCM security collapses if a (key, nonce)
-// pair is ever reused.
+// A fresh nonce per write, since GCM security collapses if a key and nonce pair is ever reused.
 const CORE_SECRET_NONCE_LENGTH = 12;
 
 const KEY_DB_NAME = 'dotli-core';
@@ -980,12 +957,8 @@ function clearExperimentalCoreStorage(): void {
 let coreSecretKeyPromise: Promise<CryptoKey> | undefined;
 
 /**
- * The at-rest key for core signing-secret slots: a random per-install AES key
- * generated non-extractable and persisted in IndexedDB, so the key material
- * itself can never be read out of the browser's crypto implementation — a
- * key derived from bundle data would be computable by anyone. If IndexedDB
- * is unavailable the key degrades to session-ephemeral: values written then
- * fail to decrypt after a reload and are dropped like any corrupt slot.
+ * A random non-extractable key in IndexedDB, since one derived from bundle data would be computable
+ * by anyone. Without IndexedDB it is session-ephemeral, and its values are dropped after a reload.
  */
 function coreSecretStorageKey(): Promise<CryptoKey> {
   coreSecretKeyPromise ??= loadOrCreateCoreSecretKey().catch((err: unknown) => {
@@ -1011,8 +984,7 @@ async function loadOrCreateCoreSecretKey(): Promise<CryptoKey> {
       await idbAddKey(db, key);
       return key;
     } catch (err) {
-      // add() rejects when the slot is already taken: another tab won the
-      // race, so adopt its key instead of splitting the install across two.
+      // add() rejects when another tab won the race, so adopt its key rather than split the install.
       const winner = await idbGetKey(db);
       if (winner !== undefined) {
         return winner;
@@ -1062,9 +1034,8 @@ function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
     tx.onerror = () => {
       reject(tx.error ?? new Error('indexedDB add failed'));
     };
-    // A commit-time abort (e.g. QuotaExceededError) fires only `abort`;
-    // without this the promise never settles and, being memoized, would
-    // hang every allowance read/write for the session.
+    // A commit-time abort such as QuotaExceededError fires only `abort`, and the memoized promise
+    // would otherwise hang every read and write for the session.
     tx.onabort = () => {
       reject(tx.error ?? new Error('indexedDB add aborted'));
     };
@@ -1082,8 +1053,7 @@ function idbGetString(db: IDBDatabase, key: string): Promise<string | undefined>
   return promise;
 }
 
-/** `instanceof CryptoKey` is unreliable across realms (and the global is
- * missing under happy-dom), so validate the stored record structurally. */
+/** `instanceof CryptoKey` is unreliable across realms and the global is missing under happy-dom. */
 function isCryptoKey(value: unknown): value is CryptoKey {
   return typeof value === 'object' && value !== null && (value as CryptoKey).type === 'secret';
 }

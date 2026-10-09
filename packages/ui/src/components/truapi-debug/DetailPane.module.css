@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel detail pane. It carries `hidden` while a
-   full-width view (Resolution, Archive) shows. */
+/* Carries `hidden` while a full-width view shows, so it sets no display of its own. */
 
 .detail {
   overflow-y: auto;

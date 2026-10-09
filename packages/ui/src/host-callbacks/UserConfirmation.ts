@@ -34,15 +34,14 @@ import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } fro
 import { presentModal } from '../overlays/load.js';
 import type { ModalButton, ModalField } from '../state/modals.js';
 
-// The board's pen, the chain-submit permission's, for every prompt that asks
-// for a signature. Markup, as the modal view is plain data.
+// Markup, as the modal view is plain data.
 const PEN_ICON = iconMarkup(PERMISSION_ICONS.ChainSubmit);
 
 interface ConfirmationCopy {
   title: string;
   action: string;
   cancelAction?: string;
-  /** SVG markup for the head's tile. */
+  /** SVG markup. */
   icon?: string;
 }
 
@@ -50,13 +49,9 @@ type ConfirmationField = ModalField;
 
 type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismissed';
 
-/** Reviews rendered by the generic confirmation modal; PreimageSubmit gets its own. */
+/** PreimageSubmit gets its own modal. */
 type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' }>;
 
-/**
- * With `allowOnce`, "Allow once" is offered and highlighted, and the lasting
- * grant is labelled "Always allow".
- */
 async function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
@@ -157,13 +152,7 @@ function formatProductAccount(account: ProductAccountId): string {
   return `${account.dotNsIdentifier} / ${formatDerivationIndex(account.derivationIndex)}`;
 }
 
-/**
- * Name the calling product when it signs with another product's account.
- *
- * A manifest `context` grant lets one product sign with an account derived for
- * another. The core always asks the user about such a request, and the prompt
- * has to say who is asking, not only whose account it is.
- */
+/** A manifest `context` grant lets one product sign with another's account, so the prompt must say who asks. */
 function withCallingProduct(
   fields: ConfirmationField[],
   callingProductId: string | undefined,
@@ -496,8 +485,7 @@ export function createUserConfirmationAdapters(
           ? handlePreimageSubmitReview(review.value, signal)
           : (await handleConfirmationReview(label, review, signal, false)) === 'accepted',
       ),
-    // Identity disclosure and account access: the core stores AllowAlways and
-    // Deny, and honours AllowOnce for this request only.
+    // The core stores AllowAlways and Deny, and honours AllowOnce for this request only.
     confirmPermission: review =>
       modalScope.enqueue(async signal =>
         review.tag === 'PreimageSubmit'

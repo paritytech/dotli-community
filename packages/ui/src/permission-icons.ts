@@ -3,10 +3,7 @@
 
 import type { EnforceablePermissionName } from './permissions.js';
 
-/**
- * Each permission's board icon as one 24 px path, drawn by the permissions
- * menu's rows and, through iconMarkup, by its request prompt.
- */
+/** Each permission's icon as one 24 px path. */
 export const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, string>> = {
   Notifications: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9m4.3 13a1.94 1.94 0 0 0 3.4 0',
   Camera:
@@ -26,7 +23,7 @@ export const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, string
   StatementSubmit: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5zM14 2v6h6m-4 5H8m8 4H8',
 };
 
-/** A board icon's path as markup for a modal's IconTile, which sizes it. */
+/** Unsized markup, since the modal's IconTile sizes it. */
 export function iconMarkup(path: string): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
 }

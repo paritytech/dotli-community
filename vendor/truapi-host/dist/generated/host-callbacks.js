@@ -49,6 +49,10 @@ export const CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.S
  */
 export const DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
 /**
+ * What the host did with a request to show or hide the expanded card face.
+ */
+export const ExpandedCardFaceOutcome = S.lazy(() => S.Status("Applied", "NotPresented", "UserMoving", "Unsupported"));
+/**
  * One chain a host serves: a protocol chain role mapped to the concrete
  * chain of the host's configured environment.
  */

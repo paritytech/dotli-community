@@ -1,14 +1,7 @@
 name: Release artifacts
 
-# Attaches a runnable bundle to the GitHub release and pushes the container image
-# to GHCR, so any released version can be pulled and run locally.
-#
-# Both artifacts are configured the same way at run time, via $DOTLI_NETWORK —
-# see scripts/tarball-readme.md and docs/docker.md.
-#
-# `workflow_dispatch` exists because a tag-triggered run cannot backfill a release
-# that was published before this workflow existed. Pass an existing tag to attach
-# artifacts to it.
+# Attaches a runnable tarball to the release and pushes the image to GHCR. `workflow_dispatch` backfills an existing
+# tag.
 
 on:
   release:
@@ -29,9 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Every built-in network is compiled in; the runtime config's `enabled` list
-  # narrows the selector per run. Deliberately not parameterised — one artifact
-  # has to serve every environment.
+  # Every network is compiled in and the runtime `enabled` list narrows them, so one artifact serves every environment.
   VITE_NETWORKS: paseo-next-v2,previewnet
   IMAGE: ghcr.io/${{ github.repository }}
 
@@ -76,13 +67,8 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
-      # build:prod, not build: `compress-dist.ts` only runs there, and without it
-      # the .br/.gz siblings the server negotiates do not exist.
-      #
-      # VITE_RUNTIME_NETWORK_CONFIG is what makes $DOTLI_NETWORK take effect. With
-      # it unset the config script is not injected, and the server would serve a
-      # config the app silently ignores — the worst failure this artifact could
-      # ship, since everything looks fine while pointing at the public chain.
+      # build:prod, because only it writes the .br/.gz siblings the server negotiates. Without
+      # VITE_RUNTIME_NETWORK_CONFIG the app silently ignores $DOTLI_NETWORK and points at the public chain.
       - name: Build
         env:
           VITE_RUNTIME_NETWORK_CONFIG: 'true'
@@ -161,11 +147,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Native runners per architecture. Building arm64 under QEMU on an x86
-          # runner works but takes longer than the whole rest of the release,
-          # because npm ci and three vite builds are all emulated. If the
-          # arm runner label is unavailable, drop this leg and add
-          # `--platform linux/amd64,linux/arm64` with QEMU to the amd64 one.
+          # Native runners, because arm64 under QEMU takes longer than the rest of the release. Without the arm label,
+          # drop this leg and build both platforms on amd64 with QEMU.
           - arch: amd64
             runner: ubuntu-latest
           - arch: arm64
@@ -182,9 +165,7 @@ jobs:
           GHCR_USER: ${{ github.actor }}
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-      # Per-arch tags rather than digests: the two legs write distinct names so
-      # they cannot race, and the manifest job assembles them without having to
-      # pass digests between jobs.
+      # Per-arch tags rather than digests, so the legs cannot race and no digests pass between jobs.
       - name: Build and push
         env:
           VERSION: ${{ needs.resolve.outputs.version }}

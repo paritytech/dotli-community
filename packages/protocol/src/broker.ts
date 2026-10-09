@@ -9,13 +9,7 @@ import type {
 import { log, serializeError } from '@dotli/shared';
 import { chainHaltedError } from './chain-halted.js';
 
-/**
- * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.
- *
- * The postMessage relay ships `message` as a string, while the upstream
- * `JsonRpcConnection.send` takes `JsonRpcRequest` objects. The local string
- * variant keeps `connectRemote`'s signature matched to the wire.
- */
+/** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
 export interface StringJsonRpcConnection {
   send: (message: string) => void;
   disconnect: () => void;
@@ -90,14 +84,8 @@ const SNAPSHOT_HOLDER = 'snapshot';
 
 type WireMode = 'string' | 'object';
 
-// Wire mode is fixed at broker construction time. Auto-detecting from
-// message shape lets a malformed first payload silently flip the broker
-// into the wrong encoding for every subsequent message, so a single
-// corrupted request could desync every downstream session. The default is
-// "string" because every first-party consumer in this repo emits a JSON
-// string (sm-provider `sendJsonRpc`). A future consumer needing the object
-// wire should get a constructor flag rather than sniffing, keeping the
-// "no silent fallbacks" contract.
+// Fixed per session, never sniffed from message shape, so one malformed payload cannot flip the
+// encoding of every later message. "string" because first-party consumers send JSON strings.
 const DEFAULT_WIRE_MODE: WireMode = 'string';
 
 interface Session {
@@ -105,13 +93,11 @@ interface Session {
   onMessage: (message: unknown) => void;
   ownedTokens: Set<string>;
   connected: boolean;
-  /** Fixed at session creation, never inferred from message shape later. */
   wireMode: WireMode;
   /** Told once when the chain's transport halts for good. */
   onHalt: ((error?: unknown) => void) | null;
 }
 
-/** Internal session handle returned by `ChainBroker.connect()`. */
 interface BrokerConnection {
   send: (message: unknown) => void;
   disconnect: () => void;
@@ -157,13 +143,7 @@ function isSubscriptionMessage(value: unknown): value is SubscriptionMessage {
   );
 }
 
-/**
- * Parse an inbound message into a JS object without guessing wire mode.
- * The sender must match the broker's configured wire mode. Message shape
- * never flips the whole broker's encoding. Strings are parsed for the
- * object wire too, since some substrate clients serialize payloads
- * inconsistently, but the result is always returned as an object.
- */
+/** Parses strings on the object wire too, since some substrate clients serialize inconsistently. */
 function parseInbound(message: unknown): unknown {
   if (typeof message === 'string') {
     return JSON.parse(message);
@@ -171,12 +151,11 @@ function parseInbound(message: unknown): unknown {
   return message;
 }
 
-/** Encode a JS object into the given wire format. */
 function encode(value: unknown, mode: WireMode): unknown {
   return mode === 'string' ? JSON.stringify(value) : value;
 }
 
-/** `chainHead_v1_unpin` takes its hash arg as a string or an array; normalize to an array. */
+/** `chainHead_v1_unpin` takes its hash arg as a string or an array. */
 function normalizeUnpinHashes(param: unknown): string[] {
   if (typeof param === 'string') {
     return [param];
@@ -203,37 +182,32 @@ export interface ChainBrokerManager {
     connectionId: string,
     onMessage: (message: string) => void,
   ): StringJsonRpcConnection | null;
-  getLocalProvider(genesisHash: string): JsonRpcProvider | null;
+  /** `holder` names the lease in debug logs. */
+  getLocalProvider(genesisHash: string, holder?: string): JsonRpcProvider | null;
   disconnectAll(): void;
 }
 
-// Broker-backed object-wire provider for a chain, or throw. Object-wire (the
-// default) matches the polkadot-api getSmProvider boundary the resolver
-// expects. Used to route the resolver's Asset Hub reads through the broker's
-// shared follow in both the direct and SharedWorker protocol entry points.
+// Routes the resolver's Asset Hub reads through the broker's shared follow. The object wire matches
+// the getSmProvider boundary the resolver expects.
 export function requireBrokerLocalProvider(
   manager: ChainBrokerManager,
   genesisHash: string,
   label: string,
 ): JsonRpcProvider {
-  const provider = manager.getLocalProvider(genesisHash);
+  const provider = manager.getLocalProvider(genesisHash, 'resolver');
   if (provider === null) {
     throw new Error(`No broker provider available for ${label}`);
   }
   return provider;
 }
 
-// Per-message chain traffic tracing: debug level, so it only prints with
-// VITE_APP_DEBUG and stays out of the console otherwise.
+// Debug level, so per-message traffic prints only with VITE_APP_DEBUG.
 const BROKER_TAG = '[dot.li broker]';
 function brokerLog(...args: unknown[]): void {
   log.debug(BROKER_TAG, ...args);
 }
-// Protocol anomalies (malformed, unmatched or dropped messages): warn, so
-// they reach the Sentry breadcrumb sink in every build. Each one is per
-// message, and a chain that goes wrong repeats it on every message, which
-// would leave room for nothing else in the trail. So each kind logs its first
-// few in full, then only a running count at each power of ten.
+// Anomalies warn so they reach Sentry breadcrumbs in every build. A broken chain repeats one on every
+// message and would flood the trail, so each kind logs its first few, then a count at each power of ten.
 const WARN_IN_FULL = 3;
 const warnCounts = new Map<string, number>();
 
@@ -271,7 +245,6 @@ export class ChainBroker {
     this.onEmpty = onEmpty;
   }
 
-  /** Send a JSON-RPC object to a session in its configured wire format. */
   private sendToSession(session: Session, obj: unknown): void {
     session.onMessage(encode(obj, session.wireMode));
   }
@@ -453,10 +426,6 @@ export class ChainBroker {
       return;
     }
 
-    // Parse the inbound payload against the broker's configured wire
-    // mode. Do NOT mutate `session.wireMode` based on the message shape.
-    // That would let a malformed first payload permanently flip the
-    // encoding for every subsequent message on the session.
     let parsed: unknown;
     try {
       parsed = parseInbound(message);
@@ -595,7 +564,7 @@ export class ChainBroker {
     const token = typeof params[0] === 'string' ? params[0] : null;
     const followToken = token !== null ? this.localFollowTokens.get(token) : undefined;
 
-    // Non-follow tokens: fall back to the unchanged passthrough.
+    // Not this session's follow token, so it passes through unchanged.
     if (!followToken || token === null || followToken.sessionId !== session.id) {
       this.routeGenericRequest(session, request);
       return;
@@ -617,7 +586,6 @@ export class ChainBroker {
     }
   }
 
-  /** Record that `localToken` holds a pin on `hash` for this shared follow. */
   private registerPin(sharedFollow: SharedFollow, localToken: string, hash: string): void {
     let holders = sharedFollow.pins.get(hash);
     if (!holders) {
@@ -646,10 +614,7 @@ export class ChainBroker {
     }
   }
 
-  /**
-   * Drop `localToken`'s hold on the given hashes (or all of them when null) and
-   * return the hashes no session holds anymore — the ones to unpin upstream.
-   */
+  /** Drops `localToken`'s hold on `hashes` (all when null) and returns those no session holds anymore. */
   private releasePins(sharedFollow: SharedFollow, localToken: string, hashes: string[] | null): string[] {
     const orphaned: string[] = [];
     const entries = hashes ?? [...sharedFollow.pins.keys()];
@@ -723,16 +688,12 @@ export class ChainBroker {
   }
 
   private handleUpstreamMessage(message: unknown): void {
-    // `parseInbound` tolerates both objects (the provider's wire) and
-    // strings (some test harnesses feed serialized JSON).
+    // Strings too, since some test harnesses feed serialized JSON.
     let parsed: unknown;
     try {
       parsed = parseInbound(message);
     } catch (err: unknown) {
-      // An unparseable upstream message must NOT vanish silently. That
-      // would leave any pending request waiting for a reply that never
-      // arrives. Best-effort recover the JSON-RPC `id` from the raw text
-      // so we can reject the matching pending request.
+      // Recover the id from the raw text so its pending request is rejected instead of waiting forever.
       const reason = err instanceof Error ? err.message : String(err);
       const size = typeof message === 'string' ? message.length : JSON.stringify(message).length;
       brokerWarn('upstream_unparseable', `← upstream: unparseable message of ${String(size)} chars (${reason})`);
@@ -765,7 +726,6 @@ export class ChainBroker {
       return;
     }
 
-    // Log raw upstream subscription events with block hashes for debugging
     if (isSubscriptionMessage(parsed)) {
       const result = parsed.params?.result;
       if (isJsonRpcObject(result)) {
@@ -825,7 +785,6 @@ export class ChainBroker {
       return;
     }
 
-    // Log response details, truncating large results.
     const hasError = 'error' in response;
     const resultPreview = hasError
       ? `error=${JSON.stringify(response.error)}`
@@ -915,24 +874,27 @@ export class ChainBroker {
         this.stopSharedFollow(sharedFollow, upstreamToken, message);
         return;
       }
-      // Capture recipients and register EVERY hold before any synchronous
-      // consumer can unpin while another consumer has yet to receive the event.
-      const recipients = [...sharedFollow.localTokens].flatMap(localToken => {
-        const local = this.localFollowTokens.get(localToken);
-        const session = local ? this.sessions.get(local.sessionId) : undefined;
-        if (session?.connected !== true) {
-          return [];
+      // Register every recipient's holds before cache maintenance or synchronous
+      // delivery can release blocks still needed by another session.
+      const recipients: { session: Session; localToken: string }[] = [];
+      for (const localToken of sharedFollow.localTokens) {
+        const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
+        if (session?.connected === true) {
+          this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
+          recipients.push({ session, localToken });
         }
-        this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
-        return [{ localToken, session }];
-      });
+      }
       this.cacheSharedFollowEvent(sharedFollow, eventResult);
-      for (const { localToken, session } of recipients) {
-        const eventType = isJsonRpcObject(eventResult)
-          ? typeof eventResult['event'] === 'string'
-            ? eventResult['event']
-            : 'unknown'
-          : '?';
+      const eventType = isJsonRpcObject(eventResult)
+        ? typeof eventResult['event'] === 'string'
+          ? eventResult['event']
+          : 'unknown'
+        : '?';
+      for (const { session, localToken } of recipients) {
+        // An earlier delivery can end this follow or session.
+        if (!session.connected || !sharedFollow.localTokens.has(localToken)) {
+          continue;
+        }
         brokerLog(`← subscription [${session.id}] event=${eventType} method=${String(message.method)}`);
         this.sendToSession(session, {
           ...message,
@@ -1026,8 +988,7 @@ export class ChainBroker {
     if (events.length < MAX_EARLY_SUBSCRIPTION_EVENTS_PER_TOKEN) {
       events.push(message);
     } else {
-      // Memory bound, not correctness: events for a token that never maps
-      // to a local subscription would otherwise grow without limit.
+      // Bounds memory for a token that never maps to a local subscription.
       brokerWarn('early_event_cap', `early-subscription event cap hit; dropping event for token: ${upstreamToken}`);
     }
   }
@@ -1222,10 +1183,8 @@ export class ChainBroker {
   }
 
   /**
-   * A `stop` ends the shared follow upstream. It is dropped, and its sessions'
-   * tokens released, before any session hears the `stop`. papi re-follows from
-   * inside that delivery, and bound to the dead follow it would be replayed the
-   * stopped snapshot and stopped again, without end.
+   * Drops the follow and releases its tokens before any session hears the `stop`. papi re-follows
+   * inside that delivery, and bound to the dead follow it would be stopped again without end.
    */
   private stopSharedFollow(sharedFollow: SharedFollow, upstreamToken: string, message: SubscriptionMessage): void {
     brokerLog(
@@ -1236,8 +1195,7 @@ export class ChainBroker {
     const recipients: { session: Session; localToken: string }[] = [];
     for (const localToken of sharedFollow.localTokens) {
       const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
-      // With the shared follow gone, this releases only the session's side:
-      // nothing goes upstream for a follow the node already ended.
+      // The shared follow is gone, so nothing goes upstream for a follow the node already ended.
       this.releaseLocalFollowToken(localToken);
       if (session?.connected === true) {
         recipients.push({ session, localToken });
@@ -1279,8 +1237,7 @@ export class ChainBroker {
 
     const followStaysAlive = sharedFollow.localTokens.size > 0 || sharedFollow.requestInFlight;
 
-    // Drop this token's pins. If the follow stays alive, unpin orphaned blocks
-    // upstream; if it's the last token, the unfollow below releases them all.
+    // A live follow unpins orphaned blocks upstream. For the last token the unfollow below releases them all.
     const orphaned = this.releasePins(sharedFollow, localToken, null);
     if (followStaysAlive) {
       if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {

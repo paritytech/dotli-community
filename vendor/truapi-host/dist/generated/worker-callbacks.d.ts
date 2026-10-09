@@ -1,7 +1,7 @@
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
 import type { GenericError } from "@parity/truapi";
 import type { ChainConnect, HopConnect } from "../runtime.js";
-export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "nativeCoinage", "contacts", "pickContact", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "featureSupported", "supportedChains", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "activationEvents", "acknowledgeActivation", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "confirmPermission", "confirmUserAction"];
+export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "nativeCoinage", "contacts", "pickContact", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "featureSupported", "supportedChains", "scheduleGameReminder", "cancelGameReminder", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "activationEvents", "acknowledgeActivation", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "confirmPermission", "confirmUserAction"];
 export type CallbackName = typeof CALLBACK_NAMES[number];
 export declare const SUBSCRIPTION_NAMES: readonly ["subscribeChatRooms", "subscribeLocale", "subscribePocketCards", "lookupPreimage", "subscribeStorage", "subscribeTheme"];
 export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];
@@ -23,6 +23,8 @@ export interface OptionalCapabilities {
     coinageWallet?: boolean;
     /** Whether the host serves this capability. */
     contacts?: boolean;
+    /** Whether the host serves this capability. */
+    game?: boolean;
     /** Whether the host serves this capability. */
     identityBackend?: boolean;
     /** Whether the host serves this capability. */

@@ -1,13 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Regression test for the early-buffer replay timing: the panel subscribes
-// to the dotli debug bus before it mounts, so events buffered while nothing
-// was listening (boot-phase traffic) land in the store before the panel
-// takes its initial snapshot. They must be visible in the very first paint,
-// with no animation frame advanced — advancing a frame would also let the
-// panel's own `store.subscribe` commit path paper over a wrong subscribe
-// order.
+// The panel subscribes to the bus before it mounts, so buffered boot events must show in the first paint
+// with no frame advanced. A frame would let the panel's own commit path hide a wrong subscribe order.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPanel, type PanelModule } from './panel-entry.js';

@@ -30,14 +30,7 @@ function LogOutIcon(): JSX.Element {
   );
 }
 
-/**
- * The account popover's body (AuthButton), its own chunk: the avatar, the
- * username (or the shortened account, with a hint that the account has no
- * username on this network) and Log out, which asks the Rust core to
- * disconnect. For the debug-only experimental test wallet it says so, points
- * at the debug panel's Wallet tab and disconnects the test wallet. Its ids follow the popover's (`#user-popover-username`, or the
- * landing page's `#landing-user-popover-username`).
- */
+/** The account popover's body, its own chunk. */
 export function AccountContent(): JSX.Element {
   const popover = usePopover();
   const account = useAccount();
@@ -61,7 +54,7 @@ export function AccountContent(): JSX.Element {
     requestTruapiDisconnect();
   };
   return (
-    <Surface width="sm" testId="account-content">
+    <Surface width="sm" class={s['panel']} testId="account-content">
       <div class={s['identity']}>
         <span class={s['avatar']} aria-hidden="true">
           <Show when={initials()} fallback={<UserIcon />}>
