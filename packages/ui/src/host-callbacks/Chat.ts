@@ -40,6 +40,11 @@ export function createChatPlatform(): Required<ChatPlatform> {
       return { messageId };
     },
 
+    // dotli does not show a room footer yet, so the room keeps its text input. The call succeeds, as in the CLI host.
+    setChatRoomFooter() {
+      return Promise.resolve();
+    },
+
     subscribeChatRooms(product) {
       const snapshot = async (): Promise<HostChatListSubscribeItem> => ({
         rooms: (await chatRooms(product.productId)).map(room => ({

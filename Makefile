@@ -12,6 +12,7 @@ SITE_polkadot      := dot.li
 SITE_paseo         := paseo.li
 SITE_dev-paseo     := paseoli.dev
 SITE_fyi-paseo     := paseo.fyi
+SITE_page-paseo    := paseo.page
 SITE_dev-test      := testnet.li
 
 # Only polkadot is prod. The rest share the staging box.
@@ -19,12 +20,14 @@ REMOTE_FOR_polkadot      := $(REMOTE_PRD)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
 REMOTE_FOR_fyi-paseo     := $(REMOTE_STG)
+REMOTE_FOR_page-paseo    := $(REMOTE_STG)
 REMOTE_FOR_dev-test      := $(REMOTE_STG)
 
 DEPLOY_PATH_polkadot      := /var/www/dotli
 DEPLOY_PATH_paseo         := /var/www/paseoli
 DEPLOY_PATH_dev-paseo     := /var/www/paseolidev
 DEPLOY_PATH_fyi-paseo     := /var/www/paseofyi
+DEPLOY_PATH_page-paseo    := /var/www/paseopage
 DEPLOY_PATH_dev-test      := /var/www/testnetli
 
 # One cert per env at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths. *.<base> covers host.<base>.
@@ -32,9 +35,10 @@ CERT_DOMAINS_polkadot     := dot.li *.dot.li *.app.dot.li
 CERT_DOMAINS_paseo        := paseo.li *.paseo.li *.app.paseo.li
 CERT_DOMAINS_dev-paseo    := paseoli.dev *.paseoli.dev *.app.paseoli.dev
 CERT_DOMAINS_fyi-paseo  := paseo.fyi *.paseo.fyi *.app.paseo.fyi
+CERT_DOMAINS_page-paseo := paseo.page *.paseo.page *.app.paseo.page
 CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
 
-VALID_ENVS := polkadot paseo dev-paseo fyi-paseo dev-test
+VALID_ENVS := polkadot paseo dev-paseo fyi-paseo page-paseo dev-test
 
 RATE_LIMITED_ENVS := paseo dev-test
 
@@ -46,13 +50,20 @@ SENTRY_PROJECT   := $(lastword  $(subst /, ,$(_sentry_hostpath)))
 
 ENV ?= paseo
 
+# One file per env. A box can also renew certs for other Cloudflare accounts, so a shared file would overwrite their token.
+CLOUDFLARE_CREDENTIALS := /etc/letsencrypt/cloudflare-$(SITE_$(ENV)).ini
+
 # Checked out as truapi/hosts/dotli, local builds use the checked-out TrUAPI packages.
 TRUAPI_REPO ?= $(abspath ../..)
 TRUAPI_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi/package.json
 TRUAPI_HOST_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi-host/package.json
 
-# The brotli module is split across two packages on noble, both auto-loaded. curl and ca-certificates back certbot.
-APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
+# curl and ca-certificates back certbot.
+APT_PACKAGES := nginx certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
+
+# The brotli module is split across two packages on noble, both auto-loaded. They load only into the Ubuntu nginx, so a
+# box with the nginx.org build skips them and serves gzip alone.
+BROTLI_PACKAGES := libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static
 
 .PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
@@ -78,6 +89,11 @@ provision-prereqs: _require-env
 	ssh $(REMOTE_TARGET) 'set -euo pipefail; \
 		sudo DEBIAN_FRONTEND=noninteractive apt-get update -y; \
 		sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $(APT_PACKAGES); \
+		if apt-get install -s $(BROTLI_PACKAGES) > /dev/null 2>&1; then \
+			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $(BROTLI_PACKAGES); \
+		else \
+			echo "The installed nginx cannot load the Ubuntu brotli modules. Skipping them." >&2; \
+		fi; \
 		sudo rm -f /etc/nginx/sites-enabled/default'
 
 # OpenSSH first, so enabling ufw never locks us out.
@@ -89,14 +105,15 @@ provision-firewall: _require-env
 provision-cloudflare-creds: _require-env
 	@test -n "$(CLOUDFLARE_API_TOKEN)" || (echo "CLOUDFLARE_API_TOKEN not set"; exit 1)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
-	@printf 'dns_cloudflare_api_token = %s\n' '$(CLOUDFLARE_API_TOKEN)' | ssh $(REMOTE_TARGET) 'sudo install -d -m 0700 /etc/letsencrypt && sudo tee /etc/letsencrypt/cloudflare.ini > /dev/null && sudo chmod 600 /etc/letsencrypt/cloudflare.ini && sudo chown root:root /etc/letsencrypt/cloudflare.ini'
+	@printf 'dns_cloudflare_api_token = %s\n' '$(CLOUDFLARE_API_TOKEN)' | ssh $(REMOTE_TARGET) 'sudo install -d -m 0700 /etc/letsencrypt && sudo tee $(CLOUDFLARE_CREDENTIALS) > /dev/null && sudo chmod 600 $(CLOUDFLARE_CREDENTIALS) && sudo chown root:root $(CLOUDFLARE_CREDENTIALS)'
 
 # --keep-until-expiring and --expand make re-runs safe. --cert-name pins live/<name>/ to the ssl_certificate paths.
+# certbot records the credentials path in the renewal config, so renewals also use the env's own token.
 provision-cert: _require-env
 	@test -n "$(ADMIN_EMAIL)" || (echo "ADMIN_EMAIL not set"; exit 1)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval CERT_FLAGS := $(foreach d,$(CERT_DOMAINS_$(ENV)), -d '$(d)'))
-	ssh $(REMOTE_TARGET) "sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini --dns-cloudflare-propagation-seconds 30 --non-interactive --agree-tos -m '$(ADMIN_EMAIL)' --keep-until-expiring --expand --cert-name $(SITE_$(ENV)) $(CERT_FLAGS)"
+	ssh $(REMOTE_TARGET) "sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials $(CLOUDFLARE_CREDENTIALS) --dns-cloudflare-propagation-seconds 30 --non-interactive --agree-tos -m '$(ADMIN_EMAIL)' --keep-until-expiring --expand --cert-name $(SITE_$(ENV)) $(CERT_FLAGS)"
 
 provision-renewal: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
@@ -128,6 +145,8 @@ render-nginx: _require-env-name
 	$(_sentry_warn)
 	@$(_nginx_render)
 
+# Without the brotli module, brotli_static stops nginx from loading the config. Such a box gets a gzip-only
+# dotli-precompressed.conf, as in the Docker image.
 deploy-nginx: _require-env
 	@command -v envsubst >/dev/null || { echo "deploy-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
 	$(_sentry_warn)
@@ -136,7 +155,7 @@ deploy-nginx: _require-env
 	$(_nginx_render) > /tmp/$(SITE).nginx
 	rsync -avz --delete $(if $(SENTRY_DSN),,--exclude=dotli-sentry-tunnel.conf --delete-excluded) nginx/snippets/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
 	scp /tmp/$(SITE).nginx $(REMOTE_TARGET):/tmp/$(SITE).nginx
-	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
+	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && { ls /etc/nginx/modules-enabled/*brotli-static* > /dev/null 2>&1 || printf "gzip_static on;\n" | sudo tee /etc/nginx/snippets/dotli-precompressed.conf > /dev/null; } && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
 define _rsync_dist
 rsync -avz --delete --filter='P /assets/' apps/host/dist/     $(1):$(2)/host/

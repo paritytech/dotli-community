@@ -192,10 +192,18 @@ export function setCacheSettings(settings: CacheSettings): void {
   storage.setItem(CACHE_KEY, JSON.stringify(settings));
 }
 
-const DEFAULT_CACHE_NODES: CacheNodeSettings = { enabled: false, providersUrl: '', payerSeed: '' };
+/**
+ * Off, unless the build names a provider set in `VITE_CACHE_PROVIDERS_URL`. A demo deployment does that, so its users
+ * read through its cache nodes without a visit to the settings. A stored setting always wins.
+ */
+function defaultCacheNodes(): CacheNodeSettings {
+  const providersUrl = import.meta.env.VITE_CACHE_PROVIDERS_URL ?? '';
+  return { enabled: providersUrl !== '', providersUrl, payerSeed: '' };
+}
 
-/** A field missing or of the wrong type falls back to `DEFAULT_CACHE_NODES`. */
+/** A field missing or of the wrong type falls back to the default. */
 export function getCacheNodeSettings(): CacheNodeSettings {
+  const DEFAULT_CACHE_NODES = defaultCacheNodes();
   const stored = storage.getItem(CACHE_NODES_KEY);
   if (stored !== null) {
     try {

@@ -169,6 +169,8 @@ Empty means the public test payer `dotli`.
   or one cache node. `packages/ui/src/host-callbacks/PreimageRead.ts` serves it. It needs the `@parity/truapi-host` of
   host-rust-core `lc/cache-prototype` (`npm run link:truapi`).
 - **Locally.** `scripts/demo-local.sh` in the cache repository runs three cache nodes for `http://localhost:5173`.
+- **A demo deployment.** A build with `VITE_CACHE_PROVIDERS_URL=<provider set URL>` turns the setting on with that
+  provider set for every user who has not changed it. paseo.page uses it.
 
 ### Product chat
 

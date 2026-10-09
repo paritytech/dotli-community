@@ -33,7 +33,7 @@ certificates.
 
 | Variable               | Required | Notes                                                                                                                                                                                               |
 | ---------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENV`                  | no       | One of `paseo`, `dev-paseo`, `fyi-paseo` (`paseo.fyi`), `dev-test` (`testnet.li`). Defaults to `paseo`.                                                                                             |
+| `ENV`                  | no       | One of `paseo`, `dev-paseo`, `fyi-paseo` (`paseo.fyi`), `page-paseo` (`paseo.page`), `dev-test` (`testnet.li`). Defaults to `paseo`.                                                                |
 | `ADMIN_EMAIL`          | yes      | Let's Encrypt contact email.                                                                                                                                                                        |
 | `CLOUDFLARE_API_TOKEN` | yes      | Cloudflare token with DNS edit on the zone.                                                                                                                                                         |
 | `REMOTE`               | no       | `user@host` override. When unset, the target resolves from `REMOTE_PRD` / `REMOTE_STG` (see [Configure deploy targets](#configure-deploy-targets)). Pass this to deploy a box not covered by those. |
@@ -55,12 +55,13 @@ deploys do not use these: the GitHub Actions path reads `DEPLOY_HOST` / `DEPLOY_
 
 `Makefile:81` chains these targets in order:
 
-1. `provision-prereqs` — apt-installs nginx (with brotli modules), certbot, the Cloudflare DNS plugin, rsync, ufw, curl;
-   removes the default nginx site.
+1. `provision-prereqs` — apt-installs nginx, certbot, the Cloudflare DNS plugin, rsync, ufw, curl, and the brotli
+   modules when the installed nginx can load them; removes the default nginx site. A box with nginx from nginx.org skips
+   brotli and serves gzip alone.
 2. `provision-firewall` — allows `OpenSSH` and `Nginx Full`, then enables `ufw`. SSH is whitelisted before enable so you
    don't lock yourself out.
-3. `provision-cloudflare-creds` — writes `/etc/letsencrypt/cloudflare.ini` (`0600`, `root:root`) from the token you pass
-   in.
+3. `provision-cloudflare-creds` — writes `/etc/letsencrypt/cloudflare-<base>.ini` (`0600`, `root:root`) from the token
+   you pass in. Each env gets its own file, so tokens for other Cloudflare accounts on the same box stay untouched.
 4. `provision-cert` — issues a Let's Encrypt cert via DNS-01 covering the apex, `*.<base>`, and `*.app.<base>`.
    `--keep-until-expiring --expand` makes re-runs cheap.
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
