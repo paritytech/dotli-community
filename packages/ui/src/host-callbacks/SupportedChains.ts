@@ -1,14 +1,5 @@
-// TrUAPI supported-chains callback.
-//
-// Maps the protocol's closed chain-role enum onto the active environment's
-// config slots. The core answers `chain.getChainInfo` from this one set,
-// resolving a requested identifier and mapping a miss to `NotSupported`.
-//
-// The set is filtered through the same per-backend predicate as
-// `featureSupported`, so the two advertisements can never disagree. In
-// RPC-gateway mode Bulletin is intentionally absent because its content is
-// served via IPFS gateways. The core-owned Bulletin connection seam in
-// `Chain.ts` is not a product-facing advertisement.
+// Filtered through the same predicate as `featureSupported`, so the two never disagree. In
+// RPC-gateway mode Bulletin is absent on purpose because IPFS gateways serve its content.
 
 import type { Features } from '@parity/truapi-host';
 import type { ChainIdentifier } from '@parity/truapi';

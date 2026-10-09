@@ -46,7 +46,6 @@ vi.mock('../../resolver/src/rpc-chain.js', () => ({
   isCoreRpcChainSupported: mocks.isCoreRpcChainSupported,
 }));
 
-/** A transport factory that records each transport it builds. */
 function recordingTransport(
   _genesisHash: string,
   hooks: ChainTransportHooks,
@@ -83,8 +82,7 @@ describe('createChainConnect', () => {
   let log: typeof SharedModule.log;
 
   beforeEach(async () => {
-    // Chain.ts keeps its gates at module level: a fresh module has them as a
-    // fresh page does.
+    // Chain.ts keeps its gates at module level, so a fresh module gives each test a fresh page's gates.
     vi.resetModules();
     ({ createChainConnect, createHostChainPool, hostAssetHubProvider } =
       await import('../src/host-callbacks/Chain.js'));

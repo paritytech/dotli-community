@@ -7,21 +7,6 @@ import { isDevicePermission, type EnforceablePermissionName } from './permission
 import { presentModal } from './overlays/load.js';
 import type { ModalButton } from './state/modals.js';
 
-// dot.li Permission request modal
-//
-// Shows a confirmation dialog when a product requests a permission the
-// host can actually gate: the Permissions-Policy-backed device
-// variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
-// Biometrics, Notifications), identity disclosure,
-// and the internal submitted gates (ChainSubmit, PreimageSubmit,
-// StatementSubmit). `OpenUrl` is auto-granted at the container level and never
-// reaches this modal.
-// Returns an explicit decision so callers can distinguish "Deny" from
-// dismissing the dialog without storing a denial. With `allowOnce`, the prompt
-// also offers a one-time grant and highlights it over "Always allow".
-//
-// Rendered by the overlays root (components/entities/PromptDialog.tsx).
-
 export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
   Notifications: 'Show in-app and system notifications',
   Camera: 'Access your camera for photo and video capture',
@@ -32,21 +17,18 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   Clipboard: 'Read text and data from your clipboard',
   Biometrics: 'Authenticate with a platform passkey or biometric prompt',
   IdentityDisclosure: 'Share your primary DotNS identity with this app',
-  ChainSubmit: 'Sign and submit on-chain transactions on your behalf',
-  PreimageSubmit: 'Store preimage data on-chain via the Bulletin network',
+  ChainSubmit: 'Sign and submit network transactions on your behalf',
+  PreimageSubmit: 'Store preimage data on the Bulletin network',
   StatementSubmit: 'Submit signed statements to the statement store',
 };
 
+/** `dismissed` stays apart from `denied` so a dismissal stores no denial. */
 export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
 export interface PermissionRequestModalOptions {
-  /** Offer "Allow once" alongside "Always allow" and "Deny". */
   allowOnce?: boolean;
 }
 
-/**
- * Show a permission request modal.
- */
 export async function showPermissionRequestModal(
   label: string,
   permission: EnforceablePermissionName,

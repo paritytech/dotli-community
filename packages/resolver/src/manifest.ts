@@ -1,17 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Product manifest reader.
-//
-// Reads text records off `DOTNS_CONTENT_RESOLVER`. The root manifest sits
-// at `<id>.<tld>` under the `manifest` key. Each executable manifest sits at
-// `<kind>.<id>.<tld>` under the `executable` key. The JSON is parsed and
-// validated against `./manifest-types.ts`. These calls are read-only and
-// never signed or written.
-//
-// The entry points take an `Api` rather than reaching for the
-// resolver's cached client, so both the smoldot and gateway paths can
-// share the same code.
+// Takes an `Api` rather than the resolver's cached client, so the smoldot and gateway paths share it.
 
 import { log } from '@dotli/shared';
 import { m, spans as S } from '@dotli/metrics';
@@ -32,15 +22,7 @@ import {
 export const ROOT_MANIFEST_KEY = 'manifest';
 export const EXECUTABLE_MANIFEST_KEY = 'executable';
 
-/**
-
- * Read the root manifest at `<label>.<tld>` text-record key `"manifest"`.
- *
- * Returns `{ kind: "unsupported" }` when the active network's content
- * resolver has no `TEXT_RECORDS` slot configured. The caller treats this
- * as "manifest layer not available on this network" rather than as a
- * missing record, so the loading flow falls back to the legacy contenthash.
- */
+/** `unsupported` when the network has no text records, so loading falls back to the contenthash alone. */
 export async function readRootManifest(
   api: Api,
   dotns: DotnsContracts,
@@ -61,11 +43,6 @@ export async function readRootManifest(
   );
 }
 
-/**
- * Read the executable manifest at `<kind>.<label>.<tld>` text-record key
- * `"executable"`. Each executable lives on its own well-known subname; see
- * `toExecutableManifestResult` for how the record is judged.
- */
 export async function readExecutableManifest(
   api: Api,
   dotns: DotnsContracts,
@@ -115,8 +92,7 @@ async function readManifestText<T>(
     kind: metricKind,
     outcome: result.kind,
   });
-  // The record text is published by the name's owner and can be large, so the
-  // trail carries its size and verdict rather than the text itself.
+  // The owner controls the text and it can be large, so only its size goes in the trail.
   log.event('Manifest read', {
     flow: 'resolve',
     kind: metricKind,

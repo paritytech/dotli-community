@@ -4,7 +4,6 @@
 import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 
-/** A counter: a click on its button adds one. */
 export function Counter(props: { start: number; children?: JSX.Element }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- the start value seeds the count once.
   const [count, setCount] = createSignal(props.start);
@@ -23,7 +22,6 @@ export function Counter(props: { start: number; children?: JSX.Element }): JSX.E
   );
 }
 
-/** Renders its `text` prop. */
 export function Label(props: { text: string }): JSX.Element {
   return <span class="label">{props.text}</span>;
 }

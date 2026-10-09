@@ -26,25 +26,18 @@ const POLKADOT_MOBILE_DOWNLOAD_URL = 'https://docs.polkadot.com/apps/';
 
 const SCAN_HINT = 'Scan with Polkadot Mobile to connect';
 
-/**
- * The drawn code's side in CSS px, its 2-module quiet zone included: the QR
- * box's `--qr-size` (AuthModal.module.css), which also reserves the tile's
- * height before the code is drawn. The stylesheet owns it, so the code
- * follows the layout's breakpoint.
- */
+/** The drawn code's side, quiet zone included. The stylesheet owns it, so the code follows the layout's breakpoint. */
 function qrSize(box: HTMLElement): number {
   return Number.parseInt(getComputedStyle(box).getPropertyValue('--qr-size'), 10);
 }
 
 type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
 
-/** A drawn QR code, for the payload it encodes. */
 interface DrawnQr {
   payload: string;
   canvas: HTMLCanvasElement;
 }
 
-/** The Polkadot mark, in the current colour. */
 function PolkadotMark(): JSX.Element {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -58,7 +51,7 @@ function PolkadotMark(): JSX.Element {
   );
 }
 
-/** The badge over the code's centre: decorative, the code is drawn to survive it. */
+/** Decorative: the code's error correction survives it. */
 function QrBadge(): JSX.Element {
   return (
     <span class={s['badge']} aria-hidden="true">
@@ -69,10 +62,7 @@ function QrBadge(): JSX.Element {
   );
 }
 
-/**
- * The drawn code on its white tile, then the waiting line. On a phone the
- * tile is a link to the deeplink, so tapping the code pairs too.
- */
+/** On a phone the tile links to the deeplink, so tapping the code pairs too. */
 function QrCode(props: { qr: DrawnQr; link: boolean }): JSX.Element {
   return (
     <>
@@ -141,50 +131,22 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 }
 
 /**
- * The sign-in surface (`#auth-modal-backdrop`), a shell island (see
- * src/islands/), rendered with the host page, closed, and hydrated. It renders
- * authModalStore, which auth-controller.ts writes from boot onwards, so a
- * login that started before the island hydrated shows once it has.
+ * The sign-in modal island. It renders authModalStore, which auth-controller.ts writes from boot, so a login
+ * started before hydration shows once hydrated.
  *
- * It is a Modal (components/floating): the glass card drops from the pill's
- * right edge like the topbar's popovers, over a light scrim, and while the
- * viewport is a phone's it is a bottom sheet over the dark scrim, led by the
- * sheets' head: the grabber, "Sign in" and a close button, and a swipe down
- * on it closes, as Cancel does. The landing page
- * has no pill, so there it takes the popovers' fallback place in the top
- * right corner. The body follows the store's view: a spinner, the pairing
- * QR code on its tile with the Polkadot badge, login progress, or an error
- * with the friendly copy and, when it can help, Retry. The QR is drawn on a canvas by the lazily imported `qrcode`,
- * and a drawing that finishes after the view moved on (a newer code,
- * progress, a close) is dropped. On a phone the deeplink button leads and
- * the QR sits behind "Show QR instead", and the "get the app" link shows
- * until pairing is past the QR.
- *
- * While open it is a native modal dialog, driven by the store's `open`: it
- * focuses its first button (links skipped) or else the card, keeps Tab inside,
- * stops the page scrolling, and gives the focus back to the auth button. Escape, Cancel and a press on
- * the scrim close it, which cancels the login. It is itself a blocking modal (the controller opens it only once it
- * holds the blocking-modal lease), so it never closes on one coming up.
- *
- * Opening it reveals the topbar (revealTopbar) and the auto-hide holds the
- * pill while it is open. A sign-in queued behind another blocking prompt
- * reveals nothing until its lease opens it: the capsule's action dot says it
- * is waiting.
+ * Closing cancels the login. The controller opens it only once it holds the blocking-modal lease, so it never
+ * closes for another blocking modal, and a sign-in queued behind one reveals nothing until then.
  */
 export function AuthModal(): JSX.Element {
-  let frame: HTMLDialogElement | undefined;
+  let frame: HTMLDivElement | undefined;
   let qrBox: HTMLDivElement | undefined;
   const state = useStore(authModalStore);
-  // A phone's layout once hydrated: the build-time render, which has no
-  // device, is the desktop one.
+  // The build-time render has no device, so it takes the desktop layout.
   const mobile = createMemo(isMobileDevice, { ssrSource: 'client', loadingValue: false });
 
-  // The effects below compute from memos, not from `state()`: Solid 2 runs an
-  // effect's function every time its compute re-runs, so a compute over the
-  // whole store would re-run them on any write (a new reason, say), and the
-  // memos only notify when their own value changes.
+  // Effects compute from memos, not `state()`: Solid 2 runs an effect's function every time its compute
+  // re-runs, and the memos notify only when their own value changes.
   const open = createMemo(() => state().open);
-  /** The view on show: none while closed, as the topbar emptied it. */
   const view = createMemo<AuthModalView | null>(
     () => {
       const current = state();
@@ -198,8 +160,7 @@ export function AuthModal(): JSX.Element {
     return v?.kind === 'pairing' ? v.payload : null;
   });
 
-  // The phone's "Show QR instead": the QR's hint replaces the deeplink's
-  // until the next presentation. Login progress keeps whichever is up.
+  // The phone's "Show QR instead" holds until the next presentation. Login progress keeps whichever is up.
   const [qrShown, setQrShown] = createSignal(false);
   createEffect(view, v => {
     if (v?.kind !== 'authenticating') {
@@ -207,8 +168,7 @@ export function AuthModal(): JSX.Element {
     }
   });
 
-  // Last payload wins: each code starts a drawing whose result is dropped
-  // once the payload is no longer on show.
+  // Last payload wins: a drawing is dropped once its payload is no longer on show.
   const [drawn, setDrawn] = createSignal<DrawnQr | null>(null);
   createEffect(pairingPayload, payload => {
     const box = qrBox;
@@ -242,8 +202,7 @@ export function AuthModal(): JSX.Element {
         });
     };
     draw();
-    // A window crossing the phone width (a phone turned, a desktop narrowed)
-    // moves `--qr-size` to the other layout's: redraw to fill the new tile.
+    // Crossing the phone width moves `--qr-size` to the other layout's, so redraw.
     const unwatch = watchPhoneViewport(draw);
     return () => {
       current = false;
@@ -255,9 +214,8 @@ export function AuthModal(): JSX.Element {
     return d !== null && d.payload === pairingPayload() ? d : undefined;
   };
 
-  // The surface hangs from the pill, and a product can ask for sign-in while
-  // the bar is folded into the capsule, so opening brings the pill back. The
-  // registration keeps the auto-hide holding the pill while it is open.
+  // The surface hangs from the pill, and a product can ask for sign-in while the bar is folded into the
+  // capsule, so opening brings the pill back and the registration holds it.
   onCleanup(registerTopbarSurface({ element: () => frame, open }));
   createEffect(open, isOpen => {
     if (isOpen) {
@@ -270,8 +228,7 @@ export function AuthModal(): JSX.Element {
       ? // Mobile leads with the deeplink button.
         'Sign in with the Polkadot app on this device'
       : SCAN_HINT;
-  // Desktop users scan with a phone that already has the app, so the install
-  // link only helps on the phone itself, and not once pairing is past the QR.
+  // Desktop users scan with a phone that already has the app, so the install link only helps on a phone.
   const getAppHidden = (): boolean => {
     const kind = state().view.kind;
     return !mobile() || kind === 'authenticating' || kind === 'error';
@@ -282,25 +239,20 @@ export function AuthModal(): JSX.Element {
   };
 
   const retry = (): void => {
-    // The retry replaces the error view, Retry included: focus the card
-    // first, so focus stays in it rather than dropping to the body (Radix's
-    // FocusScope refocuses its container when the focused node goes).
+    // The retry replaces the focused Retry, so focus the card first or focus drops to the body.
     card()?.focus();
     retryLogin();
   };
 
   const showQr = (): void => {
-    // "Show QR instead" goes as the QR comes in: focus the card first, as
-    // Retry does, so focus stays in it rather than dropping to the body.
+    // "Show QR instead" goes as the QR comes in, so focus the card first, as Retry does.
     card()?.focus();
     setQrShown(true);
   };
 
-  // The card, or the sheet's surface on a phone: where focus goes when the
-  // control that held it is replaced.
   const card = (): HTMLElement | null => frame?.querySelector<HTMLElement>('[data-modal-surface]') ?? null;
 
-  // As a Radix Dialog's first control, links skipped; the card when none.
+  // Links skipped, as in a Radix Dialog.
   const firstButton = (): HTMLElement | undefined =>
     frame?.querySelector<HTMLElement>('button:not([disabled])') ?? undefined;
 
@@ -326,7 +278,7 @@ export function AuthModal(): JSX.Element {
       }}
     >
       <div class={s['content']}>
-        <Surface>
+        <Surface class={s['panel']}>
           <div class={s['head']}>
             <h2 class={s['title']} id="auth-modal-title">
               <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
@@ -397,10 +349,8 @@ export function AuthModal(): JSX.Element {
 }
 
 /**
- * A phone has no second device to scan with, so the deeplink button leads
- * and the QR is opt-in behind "Show QR instead", for pairing from another
- * device. Once shown, the QR goes on top and the deeplink below it, demoted
- * to a link.
+ * A phone has no second device to scan with, so the deeplink leads.
+ * The QR is opt-in, for pairing another device.
  */
 function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): JSX.Element {
   return (

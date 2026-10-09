@@ -15,13 +15,10 @@ import { socialMetaTags } from '@config/vite/social-meta';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
-// vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
-// NodeNext sees the module object. At runtime the default export is the plugin.
+// Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
 
-// Mirror the host's behavior: fall back to git HEAD when CI didn't inject
-// `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
-// dev builds too.
+// Falls back to git HEAD, as the host does, so the SW's baked version is a real commit in local builds too.
 if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
   try {
     process.env['VITE_COMMIT_SHA'] = execSync('git rev-parse HEAD', {
@@ -36,18 +33,13 @@ if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
   }
 }
 
-// Before Vite reads the environment, so the SDK reports the release the
-// sourcemaps are uploaded under.
+// Before Vite reads the environment, so the SDK reports the release the sourcemaps are uploaded under.
 provideSentryRelease(import.meta.dirname);
 
 const OUT_DIR = 'dist';
 const APP_URL = process.env['VITE_APP_URL'] ?? '';
 
-/**
- * Sentry sourcemap upload, skipped when metrics are off (runtime SDK is aliased to a
- * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
- * (preserves source maps for debugging).
- */
+/** Skipped when metrics are off, since the SDK is a no-op, and locally, which keeps source maps for debugging. */
 function sentry(): PluginOption {
   if (process.env['VITE_METRICS'] !== 'true') {
     return false;
@@ -65,29 +57,17 @@ function sentry(): PluginOption {
   });
 }
 
-/**
- * Build the Service Worker as a self-contained ES module bundle.
- */
 function buildServiceWorker(): Plugin {
   return {
     name: 'build-service-worker',
     apply: 'build',
     async closeBundle() {
-      // Stamp the SW bundle with the commit SHA (falls back to a dev marker).
-      // The page checks this at runtime to detect a stale SW and force an
-      // update (see `apps/sandbox/src/main.ts` registerAppServiceWorker).
-      // Using `define` guarantees the SHA is inlined as a literal, so the SW
-      // bytes actually change between releases (otherwise the browser might
-      // skip updating a byte-identical script).
-      const swVersion = process.env['VITE_COMMIT_SHA'] ?? 'dev';
       // eslint-disable-next-line no-console -- build progress for the terminal.
-      console.log(`\nBuilding Service Worker (app-sw) @ ${swVersion}...`);
+      console.log(`\nBuilding Service Worker (app-sw) @ ${process.env['VITE_COMMIT_SHA'] ?? 'dev'}...`);
+      // Takes VITE_COMMIT_SHA from the process environment, as the page does.
       await viteBuild({
         configFile: false,
         plugins: [wasm()],
-        define: {
-          __SW_VERSION__: JSON.stringify(swVersion),
-        },
         build: {
           ...appBuildOptions({ codeSplitting: false }),
           emptyOutDir: false,
@@ -107,11 +87,7 @@ function buildServiceWorker(): Plugin {
   };
 }
 
-/**
- * Vite plugin that injects <link rel="modulepreload"> for critical chunks
- * (fetch/P2P and render) so the browser starts downloading them during
- * HTML parse instead of waiting for the entry module to import() them.
- */
+/** The fetch and render chunks start downloading during HTML parse, not when the entry imports them. */
 function preloadCriticalAssets(): Plugin {
   let resolvedBase = '/';
   return {
@@ -185,9 +161,16 @@ export default defineConfig({
     sourcemap: 'hidden',
   },
   server: {
+    // Must match DEV_SANDBOX_PORT in @dotli/config.
+    port: 4322,
+    strictPort: true,
     headers: {
       'Service-Worker-Allowed': '/',
       'Access-Control-Allow-Origin': '*',
+      // As nginx sends, so a product breaks under dev exactly as it would deployed.
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      'Cross-Origin-Opener-Policy': 'same-origin',
     },
   },
 });

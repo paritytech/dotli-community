@@ -238,10 +238,6 @@ describe('isDotDomain', () => {
   });
 });
 
-// Paseo registers names under `.paseo`, previewnet under `.testnet`. The
-// parser must follow the active network, otherwise a Paseo deployment silently
-// treats every product URL as a regular website, and a name resolves against
-// the wrong namehash.
 describe('dotNS TLD per network', () => {
   afterEach(() => {
     setNetworkOverride(NetworkName.PASEO);

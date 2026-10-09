@@ -6,12 +6,15 @@
   "type": "module",
   "sideEffects": [
     "./src/boot.ts",
+    "./src/landing.ts",
     "./src/main.ts",
-    "./src/pwa.ts"
+    "./src/pwa.ts",
+    "./src/startup.ts"
   ],
   "scripts": {
     "build": "astro build",
     "build:prod": "astro check && astro build && node ../../scripts/compress-dist.ts",
+    "dev": "astro dev",
     "test": "vitest run",
     "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts tests/functional/host-settings.spec.ts tests/functional/polkavm.spec.ts tests/functional/chinpokomon.spec.ts tests/functional/pwa-update.spec.ts tests/functional/host-upgrade.spec.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",

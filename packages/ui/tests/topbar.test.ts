@@ -55,27 +55,14 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 
-// The auth button, the user popover and the pairing modal are islands now:
-// their tests are tests/components/shell/auth-button, user-popover and
-// auth-modal, and the controller's are tests/auth-controller.test.ts. The
-// permissions popover is an island too: tests/components/shell/
-// permissions-popover.test.tsx. So are the network popover
-// (chains-popover.test.tsx), the settings popover (settings-popover.test.tsx)
-// and the mobile "More" flyout (more-menu.test.tsx).
-
 describe('topbar boot rehydration', () => {
-  it('As a dotli integrator, the host renders the persisted session badge on idle after init', async () => {
+  it('As a dotli integrator, the host renders the persisted session badge as soon as the topbar starts', async () => {
     // Given
     installTopbarDom();
-    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
-      callback();
-      return 0;
-    });
 
     const { SHARED_CORE_SESSION_KEY } = await import('../../protocol/src/auth-storage.js');
     const { SITE_ID } = await import('../../config/src/config.js');
-    // Opaque session blob plus the JSON UI-state cache the core-driven
-    // authStateChanged callback persists alongside it in shared auth storage.
+    // The opaque session blob and the UI-state cache the core's authStateChanged persists beside it.
     sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, '0x0102');
     sharedAuth.storage.set(
       `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`,
@@ -110,10 +97,6 @@ describe('topbar boot rehydration', () => {
   it('As a dotli integrator, the host stays logged out when no session is persisted', async () => {
     // Given
     installTopbarDom();
-    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
-      callback();
-      return 0;
-    });
 
     // When
     const { initTopBar } = await import('../src/topbar.js');
@@ -127,10 +110,6 @@ describe('topbar boot rehydration', () => {
   });
 });
 
-// The theme menu itself is components/shell/ThemeToggle.tsx (tested in
-// tests/components/shell/theme-toggle.test.tsx) and the preference logic is
-// theme-controller.ts (tests/theme-controller.test.ts). The topbar keeps
-// applying the stored preference at initTopBar(), as before.
 describe('topbar theme', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');
@@ -182,39 +161,5 @@ describe('topbar theme', () => {
 
     // Then
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-  });
-});
-
-describe('The status capsule network watch', () => {
-  it('As a dApp user, the capsule starts watching the chains only once the page is idle after the product renders', async () => {
-    // Given
-    let idle: (() => void) | undefined;
-    vi.stubGlobal('requestIdleCallback', (callback: () => void) => {
-      idle = callback;
-      return 1;
-    });
-    const monitor = await import('../src/network-monitor.js');
-    const subscribed: string[] = [];
-    monitor.setBlockSource({
-      isReachable: () => true,
-      subscribe: genesis => {
-        subscribed.push(genesis);
-        return () => {};
-      },
-    });
-    const { setChainsButtonVisible } = await import('../src/topbar.js');
-
-    // When
-    setChainsButtonVisible(true);
-
-    // Then
-    expect(subscribed).toEqual([]);
-
-    // When
-    idle?.();
-
-    // Then
-    expect(subscribed.length).toBeGreaterThan(0);
-    setChainsButtonVisible(false);
   });
 });

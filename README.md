@@ -36,7 +36,8 @@ When visiting the root (`paseo.li`), a landing page is shown with:
 - **Recently visited** apps shown as pill-shaped shortcuts (persisted in localStorage)
 - A **login** button in the top-right corner
 
-The topbar is hidden on the landing page and only appears when viewing an app.
+It is its own page (`landing.html`), with no topbar and no service worker. The topbar and the offline shell belong to
+the app pages (`index.html`) on each app's subdomain.
 
 ## Architecture
 
@@ -132,7 +133,8 @@ The native connection stays open across a halt: queued requests receive terminal
 same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
 retires its URL generation under a shared-origin Web Lock before the iframe reports fatal. Tabs in the same storage
 partition share the replacement generation; late callbacks cannot retire it. Recovery does not require closing other
-tabs.
+tabs. The debug test wallet is an exception when its protocol iframe is removed: that iframe owns its exclusive signing
+lock, so the wallet core must stop before removal and acquire a new lock before retrying.
 
 ## How multi-file SPAs work
 
@@ -391,17 +393,27 @@ The project uses npm workspaces and [Turborepo](https://turbo.build).
 nvm use                  # or any Node 26 install
 npm install -g npm@latest
 npm install
-npm run preview          # Build + serve both apps on localhost:5173
+export VITE_NETWORKS=paseo-next-v2,previewnet
+npm run dev              # Dev servers with hot reload on localhost:4321
+npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
 ```
 
-This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the unified host-rust-core
-runtime. `vendor/truapi-host.lock.json` records the source revisions, archive hashes, `dist/generated/client.js` digest,
-and signing-host WASM digest. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
-dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
+`npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
+protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
+such as the shell's offline service worker.
+
+This branch vendors the generic TrUAPI wallet SDK from the source recorded in `vendor/truapi-host.lock.json`.
+The browser wallet uses the `wasm-signing-host` web build, without `test-host`; the published pairing-only SDK
+does not provide its native identity and allowance APIs. Install the tree in `package-lock.json` with `npm ci`.
+To iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
 ```
+
+The static Astro landing page and product shell share startup and wallet handover handling. Debug opt-in on either
+page loads the panel lazily; test-wallet controls remain debug-build-only. Product startup selects its page identity
+before binding bridge listeners, so wallet resumption cannot create a temporary landing-page signing core.
 
 When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
 
@@ -428,7 +440,8 @@ real halt-error definitions without loading the browser transport implementation
 
 Local development uses wildcard subdomains:
 
-- `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
+- `host-playground.localhost:4321` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
+  via the host
 
 ### Product locale and local time
 
@@ -549,12 +562,11 @@ echo "Signing-host source: https://github.com/paritytech/host-rust-core/commit/$
 "$SIGNING_HOST_BIN" --version
 ```
 
-To qualify this branch's vendored SDKs, build dotli without linking a different SDK checkout, then run the host
-workspace suite with explicit CLI and product paths:
+Set `SIGNING_HOST_BIN` to the source-matched binary. Build dotli without linking a different SDK checkout, then run
+the host workspace suite with the product paths:
 
 ```bash
 VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
-SIGNING_HOST_BIN=/path/to/pinned-host-rust-core/target/debug/truapi-host \
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
 SIGNING_HOST_NETWORK=paseo-next-v2 \
@@ -578,13 +590,11 @@ E2E_CHAIN_BACKEND=smoldot-shared-worker npm run --workspace apps/host test:e2e:l
 `apps/host`. Without it the suite looks up `truapi-host` on `PATH`; ensure that binary was built from the same lock
 revision and disable self-updates with `TRUAPI_HOST_NO_UPDATE=1`. Rebuild when the lock revision changes, including when
 switching between generic and Chat branches. Set `SIGNING_HOST_NETWORK` when testing against a non-default network. The
-CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. The adapter uses canonical `--session`
-selection with a unique bare username stem saved in `.dotli-e2e-session` under that state directory. Set
-`SIGNING_HOST_SESSION` to choose a stem or an existing exact numbered username. A new stem must contain at least six
-lowercase ASCII letters (digits and separators do not count). Repeated pairing attempts and runs reuse the same base
-path and session, including unfinished setup. The first run provisions an account and can take a few minutes. With
-`HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI diagnostics redact pairing deeplinks, the configured
-mnemonic, and labeled recovery phrases; never attach the CLI's private account/session files to reports.
+CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. Each pairing attempt uses `--session` with a
+fresh lowercase username base: an unsuccessful attempt may already have claimed its name. Account provisioning and
+ring inclusion can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI
+diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach the CLI's
+private account/session files to reports.
 
 Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
 process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
@@ -665,7 +675,9 @@ select Wallet. Status changes do not change this button; verification, pending c
 Wallet tab. Wallet shares the pane's existing bottom/right docking and resizing controls. Right docking reserves page
 width for both the landing page and product content. There is no separate wallet window or docking preference. Normal
 login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does
-**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved.
+**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved. In a debug
+build, unavailable wallet storage does not block Mobile startup when no wallet is configured. A configured wallet's
+restoration failure or a wallet conflict is still surfaced; it never silently switches the signing identity.
 
 Start with **Use test wallet** and accept the warning to create or reuse a browser-local test identity. Username
 controls appear only after activation completes. A newly created or imported wallet looks up its Lite username on chain
@@ -747,6 +759,10 @@ moves the wallet, so two tabs cannot bounce it between them. If the tab that has
 **Test wallet is open in another tab**; close the other tab and reload. Ownership requires the browser's Web Locks API;
 there is no unlocked fallback. A handover acknowledges release only after the previous owner's signing workers,
 including workers still booting, have stopped. An unresponsive owner is never forcibly bypassed after a timeout.
+Protocol-frame reset and page hiding (including entry into the back/forward cache) also retire signing workers before
+their frame-owned lock is released. Returning to that page requires fresh wallet verification and a new ownership lease.
+After a handover, only the banner's user-initiated reload can reacquire ownership; background identity requests are
+rejected.
 
 Safari keeps each app's storage separate, so there every app has its own test wallet and the one-tab rule only covers
 tabs of the same app. Importing the same recovery phrase into two apps runs two copies of one wallet with nothing

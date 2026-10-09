@@ -1,6 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+// Tags and decodes wire frames for the debug panel. Chain frames keep the `remote_chain_*` tag names
+// because the panel's swimlane and annotation logic keys on them.
+
 import * as WIRE_TABLE from '@parity/truapi/wire-table';
 import { WIRE_DECODE_TABLE } from '@parity/truapi/wire-decode';
 import {

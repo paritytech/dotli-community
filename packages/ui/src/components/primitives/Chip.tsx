@@ -11,10 +11,20 @@ export function Chip(props: {
   tone?: ChipTone;
   class?: string | undefined;
   testId?: string;
+  /** Read aloud in place of the text, for a value that needs its subject. */
+  label?: string | undefined;
+  /** Something is wrong with the value, such as a count of zero that should not be. */
+  alert?: boolean;
   children: JSX.Element;
 }): JSX.Element {
   return (
-    <span class={[s['chip'], props.class]} data-tone={props.tone ?? 'default'} data-testid={props.testId}>
+    <span
+      class={[s['chip'], props.class]}
+      data-tone={props.tone ?? 'default'}
+      data-alert={props.alert === true ? '' : undefined}
+      data-testid={props.testId}
+      aria-label={props.label}
+    >
       {props.children}
     </span>
   );

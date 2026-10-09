@@ -18,9 +18,9 @@ describe('auth store', () => {
     resetStores();
   });
 
-  it('As the topbar, the auth store starts Disconnected and logged out', () => {
+  it('As the topbar, the auth store starts Restoring, not yet signed in or out, and logged out', () => {
     // Then
-    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
+    expect(getAuthState()).toEqual({ tag: 'Restoring' });
     expect(getLoggedIn()).toBe(false);
   });
 

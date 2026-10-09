@@ -5,15 +5,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { wireHoverTooltips } from '../../src/components/truapi-debug/hover-tooltip.js';
 
 const PANEL = { left: 0, top: 0, right: 1000, bottom: 600 };
-/** A prose tooltip's natural width; it wraps narrower when less room is left. */
+/** A prose tooltip's natural width. It wraps narrower when less room is left. */
 const NATURAL_WIDTH = 300;
 const LINE_HEIGHT = 20;
 const TEXT_WIDTH = 900;
 
 /**
- * happy-dom lays nothing out: the tooltip measures as an absolutely placed
- * prose box does, shrinking to the room right of its `left` and growing
- * taller as it wraps.
+ * Stands in the layout happy-dom lacks: the tooltip shrinks to the room right of its `left` and grows taller
+ * as it wraps.
  */
 function setup(): {
   root: HTMLElement;

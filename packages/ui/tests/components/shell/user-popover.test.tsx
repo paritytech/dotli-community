@@ -21,10 +21,7 @@ afterEach(() => {
 
 const PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 
-/**
- * The button and the popover, as their island, plus a button outside.
- * Returns the popover, which is in the page from its first opening.
- */
+/** The island plus a button outside. Returns a getter, as the popover is in the page only from its first opening. */
 async function renderAccount(session?: TruapiSessionUiState): Promise<() => HTMLElement> {
   renderComponent(() => (
     <div>
@@ -46,11 +43,7 @@ function isOpen(): boolean {
   return document.getElementById('user-popover')?.hasAttribute('data-open') === true;
 }
 
-/**
- * The popover: a Radix-style non-modal popover surface (role="dialog", named
- * "Account", with the tabindex that lets it take focus) whose body leads with
- * the avatar, "Welcome back" and the name, then the hint, a divider and Log out.
- */
+/** The popover apart from styling. */
 function expectMarkup(
   popover: Element,
   opts: { username: string; hint: boolean; open: boolean; initials?: string },
@@ -90,7 +83,6 @@ function expectMarkup(
   expect(disconnect.textContent).toBe('Log out');
 }
 
-/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('auth-button').click();
   await settleAll();

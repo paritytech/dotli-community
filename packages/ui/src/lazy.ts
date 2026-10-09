@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Lazy entry points of the package, re-exported from index.ts. Each module
-// is its own chunk, fetched on first call. They live apart from the barrel
-// so index.ts stays pure re-exports, which rolldown's lazy barrel
-// optimization needs to leave unused re-exports out of an importer's chunk.
+// Lazy entry points, each its own chunk. They live apart from index.ts so the barrel stays pure
+// re-exports, which rolldown's lazy barrel optimization needs to drop unused ones.
 
 import type * as BridgeNamespace from './bridge.js';
 import type * as SharedModeNamespace from './shared-mode.js';

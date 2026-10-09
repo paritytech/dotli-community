@@ -13,6 +13,7 @@
   "scripts": {
     "build": "turbo run build",
     "build:prod": "turbo run build:prod",
+    "dev": "turbo run dev",
     "preview": "turbo run build && node scripts/preview-server.ts",
     "preview:debug": "VITE_APP_DEBUG=true npm run preview",
     "serve": "node scripts/serve.ts",

@@ -22,6 +22,7 @@ import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import {
   initializeLocalWalletState,
+  initializeSessionMode,
   isExperimentalWalletActive,
   isCurrentLocalWallet,
   localWalletContext,
@@ -38,6 +39,7 @@ import { setNotificationAccount } from './notification-activation.js';
 
 export interface PageProduct {
   label: string;
+  /** Overrides the label-derived product id, for the local debug routes. */
   productId?: string | undefined;
   pairing?: { label: string; dotSuffix: boolean; hostGlobal: boolean };
 }
@@ -85,10 +87,12 @@ const LANDING_PRODUCT: PageProduct = {
 let modalCoordinator: BlockingModalCoordinator | null = null;
 let pageProduct: PageProduct = LANDING_PRODUCT;
 let current: Core | null = null;
+// Also holds cores a product change or fault replaced while they still had leases.
 const cores = new Set<Core>();
 let generation = 0;
 let walletOwnerLease: Promise<string | undefined> | undefined;
 let ownerRevocationBound = false;
+let walletHandedOver = false;
 let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
 const noop = (): void => undefined;
 
@@ -103,6 +107,7 @@ export function initPageCore(coordinator: BlockingModalCoordinator): void {
   modalCoordinator = coordinator;
 }
 
+/** Called as soon as the page knows it, so a core booted by an early login is already the product's. */
 export function setPageProduct(product: PageProduct): void {
   pageProduct = product;
   if (current !== null && !isPageProduct(current)) {
@@ -129,29 +134,61 @@ export function disposePageCores(): void {
   }
 }
 
+function retireWalletOwner(lease?: string): void {
+  if (walletOwnerLease === undefined) {
+    return;
+  }
+  walletOwnerLease = undefined;
+  disposePageCores();
+  dispatchAuthState({
+    tag: 'WalletUnavailable',
+    reason:
+      lease === undefined
+        ? 'The test wallet owner frame closed. Retry wallet verification.'
+        : 'The test wallet moved to another tab. Reload to use it here.',
+  });
+  if (lease !== undefined) {
+    walletHandedOver = true;
+    window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
+    void requestWalletOwner({ action: 'release', lease }).catch(noop);
+  }
+}
+
 async function ensureWalletOwner(): Promise<void> {
+  if (walletHandedOver) {
+    throw new Error('The test wallet moved to another tab. Reload to use it here.');
+  }
   if (!ownerRevocationBound) {
     ownerRevocationBound = true;
-    subscribeWalletOwnerRevoked(lease => {
-      walletOwnerLease = undefined;
-      disposePageCores();
-      window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
-      void requestWalletOwner({ action: 'release', lease }).catch(noop);
+    subscribeWalletOwnerRevoked(retireWalletOwner);
+    // The child frame releases its lock on pagehide, including BFCache entry.
+    // A restored page must acquire a new lease rather than reuse its old signer.
+    window.addEventListener('pagehide', () => {
+      retireWalletOwner();
     });
   }
-  walletOwnerLease ??= requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {
-    walletOwnerLease = undefined;
-    throw error;
-  });
-  if ((await walletOwnerLease) === undefined) {
+  if (walletOwnerLease === undefined) {
+    const pending = requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {
+      if (walletOwnerLease === pending) {
+        walletOwnerLease = undefined;
+      }
+      throw error;
+    });
+    walletOwnerLease = pending;
+  }
+  const pending = walletOwnerLease;
+  const lease = await pending;
+  if (walletOwnerLease !== pending) {
+    throw new Error('The test wallet lost exclusive signing ownership.');
+  }
+  if (lease === undefined) {
     walletOwnerLease = undefined;
     throw new Error('The test wallet could not acquire exclusive signing ownership.');
   }
 }
-
 export async function acquireCore(): Promise<CoreLease> {
   const requestedGeneration = generation;
-  await initializeLocalWalletState();
+  await initializeSessionMode();
   if (requestedGeneration !== generation) {
     throw new Error('Page core retired while loading wallet state');
   }
@@ -219,7 +256,6 @@ export function assertLocalWallet(wallet: LiveLocalWallet): void {
     throw new Error('The test identity changed. Reopen the Wallet tab.');
   }
 }
-
 export function cancelPairing(): void {
   for (const core of cores) {
     void core.runtime.then(runtime => {
@@ -306,8 +342,7 @@ function createCore(product: PageProduct): Core {
       assertCurrent();
       const pairing = booted;
       log.event('wallet core booted', { flow: 'wallet' });
-      // Another tab logging in or out lands in the shared session store; the
-      // core reads it again. Once now too, for a session stored before boot.
+      // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
       unsubscribeStore = onStoredSessionChanged(() => {
         // Fence both local and cross-tab changes before the worker reloads auth.
         setNotificationAccount(product.label, undefined);
@@ -533,6 +568,7 @@ async function connect(
     throw new Error('Page core closed while connecting the product');
   }
   let closing = false;
+  // A deliberate close also fires close listeners. Any other close is the core going down.
   provider.subscribeClose?.(() => {
     callbacks.dispose();
     if (!closing) {

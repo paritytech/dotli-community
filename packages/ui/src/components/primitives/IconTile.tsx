@@ -6,12 +6,8 @@ import type { JSX } from '@solidjs/web';
 import s from './IconTile.module.css';
 
 /**
- * The raised tile (40 px, 48 on phones) that leads a modal or the sign-in's
- * pending view. Decorative: the title beside it names the thing.
- *
- * `markup` takes trusted SVG markup, for icons kept as plain data outside
- * Solid (`ModalView.icon`), always app-owned SVG from the host's own modules
- * and never user input. Otherwise the tile holds its children.
+ * The decorative tile that leads a modal or the sign-in's pending view.
+ * `markup` must be app-owned SVG from the host's own modules, never user input.
  */
 export function IconTile(props: {
   markup?: string | undefined;

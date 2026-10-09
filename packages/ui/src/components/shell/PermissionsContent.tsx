@@ -28,7 +28,6 @@ import s from './PermissionsContent.module.css';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 
-/** The menu's groups, each a labelled well of rows. */
 const MENU_GROUPS: readonly { id: PermissionGroup; label: string; permissions: typeof ALL_PERMISSIONS }[] = [
   { id: 'device', label: 'Device', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'device') },
   { id: 'app', label: 'Account and chain', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'app') },
@@ -37,26 +36,16 @@ const MENU_GROUPS: readonly { id: PermissionGroup; label: string; permissions: t
 /** The last statuses read, for the product they were read for. */
 type Fetched = { label: string; statuses: PermissionStatus[] } | { label: string; failed: true };
 
-/** The loaded product's label, or null while none is loaded. */
 function currentLabel(): string | null {
   const product = productStore.get();
   return product.status === 'loaded' ? product.label : null;
 }
 
-/** The status read for `name`, Ask when the read has none. */
 function statusIn(statuses: readonly PermissionStatus[], name: EnforceablePermissionName): PermissionStatus {
   return statuses[PERMISSION_NAMES.indexOf(name)] ?? 'ask';
 }
 
-/**
- * The permissions popover's body (PermissionsPopover), its own chunk: every
- * permission of the loaded product (productStore) in a Device and an App
- * group, each with Ask, Allow and Deny segments, and Reset all to Ask,
- * through the async API in permissions.ts. It reads the statuses as it
- * mounts (the popover opening), and again on a product loading or failing
- * and on a permission change, the last read winning. In a bottom sheet the
- * sheet draws the title, so the surface leaves out its head and the host chip.
- */
+/** The permissions popover's body, its own chunk. */
 export function PermissionsContent(): JSX.Element {
   const product = useStore(productStore);
   const changes = createPermissionChanges();
@@ -68,10 +57,8 @@ export function PermissionsContent(): JSX.Element {
     return current.status === 'loaded' ? current.label : null;
   };
 
-  // The list is read when the popover opens, and on each change or failed
-  // write while open. Closing drops what was read (the content stays for the
-  // fade-out): the next open reads afresh instead of showing statuses that
-  // may have changed since.
+  // Closing drops what was read, so the next open reads afresh instead of showing statuses that may have
+  // changed since.
   const [retries, setRetries] = createSignal(0);
   createEffect(
     () => (popover.open() ? { label: label(), change: changes(), retry: retries() } : undefined),
@@ -119,8 +106,7 @@ export function PermissionsContent(): JSX.Element {
       }
       recordPermissionsChanged(label, [name]);
     })().catch(() => {
-      // Re-read the list (only while open: a closed popover reads afresh on
-      // its next open).
+      // Re-reads only while open. A closed popover reads afresh on its next open.
       setRetries(n => n + 1);
     });
   };
@@ -147,23 +133,20 @@ export function PermissionsContent(): JSX.Element {
       : undefined;
   };
 
-  /** Receives the focus handed back once a reset disables it. */
   let resetButton: HTMLButtonElement | undefined;
   const [resetting, setResetting] = createSignal(false);
 
-  /** Something to reset, and no reset running. */
   const canReset = (): boolean => !resetting() && (statuses()?.some(status => status !== 'ask') ?? false);
 
-  // One reset at a time, announced as one change, so a device permission
-  // among those reset reloads the app once. A failed write re-reads the list.
+  // One reset at a time, announced as one change, so a device permission among those reset reloads the
+  // app once.
   const resetAll = (): void => {
     const read = untrack(fetched);
     if (read === null || 'failed' in read || untrack(resetting)) {
       return;
     }
     const { label } = read;
-    // Starting a reset disables the button under a keyboard user's focus, and
-    // a browser then drops that focus to the body, closing the popover.
+    // Disabling the focused button would drop focus to the body, closing the popover.
     if (document.activeElement === resetButton) {
       document.getElementById(popover.id)?.focus();
     }
@@ -185,14 +168,13 @@ export function PermissionsContent(): JSX.Element {
       });
   };
 
-  /** The loaded product's host, for the head's chip. */
   const host = (): string | undefined => {
     const current = product();
     return current.status === 'loaded' ? current.productId : undefined;
   };
 
   return (
-    <Surface width="lg">
+    <Surface width="lg" class={s['panel']}>
       <SurfaceHead
         title="Permissions"
         testId="permissions-popover-header"

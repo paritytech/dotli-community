@@ -5,11 +5,7 @@ import { expect, type Page, type Frame, type Locator } from '@playwright/test';
 
 type PageLike = Page | Frame;
 
-/**
- * Click run-<testId>, click through dot.li's host-side dialogs, and wait for
- * the log entry to resolve. The signing-host CLI signs automatically once
- * the SignRequest hits the Statement Store.
- */
+/** The signing-host CLI signs once the SignRequest reaches the Statement Store, so only host dialogs need clicks. */
 export async function runWebSignedTest(
   hostPage: Page,
   productFrame: PageLike,
@@ -43,9 +39,7 @@ export async function runWebSignedTest(
   dialogController.abort();
   await dialogTask;
   if (result === 'error') {
-    // On failure, dump the visible buttons on the host page. Invaluable for
-    // diagnosing modal selector mismatches when the signer signs but
-    // Playwright can't find the Allow/Sign button to click.
+    // Shows a dialog selector mismatch, where the signer signed but no Allow or Sign button was found.
     const visibleButtons = await hostPage
       .locator('button:visible')
       .evaluateAll(els => els.map(e => e.textContent.trim().slice(0, 60)).filter(Boolean))
@@ -55,16 +49,7 @@ export async function runWebSignedTest(
   return result;
 }
 
-/**
- * Drive dot.li host-side dialogs through their lifecycle. Different operations
- * may show permission ("Allow") and confirmation ("Sign") dialogs in sequence.
- *
- * Strategy: poll for any of `buttonNames` to be visible. When one is, click
- * it. Keep polling until either no expected button has appeared for
- * `idleStopMs` (the flow has settled) or `timeoutMs` runs out. This handles
- * variable orderings and multiple sequential dialogs without needing the
- * caller to know the exact sequence.
- */
+/** Clicks whichever of `buttonNames` shows until none has for a while, so callers need not know the dialog order. */
 async function clickHostDialogs(
   page: Page,
   buttonNames: readonly string[],
@@ -73,14 +58,12 @@ async function clickHostDialogs(
   signal: AbortSignal,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  const idleStopMs = 5_000; // declare done if no button appears for this long
+  const idleStopMs = 5_000;
   let lastSeenAt = Date.now();
   const seen = new Set<string>();
 
   while (!signal.aborted && Date.now() < deadline) {
     if (Date.now() - lastSeenAt > idleStopMs && seen.size > 0) {
-      // We've handled at least one dialog and nothing new has shown for a
-      // while, so assume the flow has moved past the modal phase.
       return;
     }
 
@@ -96,10 +79,8 @@ async function clickHostDialogs(
         console.log(`[signed] dialog "${name}" visible — pausing ${String(preClickDelayMs)}ms before click`);
         await page.waitForTimeout(preClickDelayMs);
       }
-      // The fixture's auto-allow poller clicks lasting-grant buttons too, and
-      // can close this modal during the pause. An unbounded click would then
-      // wait for a button that never returns and never reach the next dialog
-      // (e.g. "Sign"), so bound it and let the next pass move on.
+      // The fixture's auto-allow poller can close this modal during the pause, and an unbounded click would then
+      // never reach the next dialog.
       console.log(`[signed] dialog "${name}" — clicking`);
       await btn.click({ timeout: 2_000 }).catch((e: unknown) => {
         if (!signal.aborted) {
@@ -110,8 +91,7 @@ async function clickHostDialogs(
       seen.add(name);
       lastSeenAt = Date.now();
       clickedThisPass = true;
-      // Brief pause to let the modal close before polling again, otherwise
-      // we'd see the same button still visible on the next iteration.
+      // Lets the modal close, or the next pass sees the same button.
       await page.waitForTimeout(500);
     }
 

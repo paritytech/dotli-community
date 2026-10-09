@@ -10,19 +10,11 @@ import { preloadWhenIdle } from '../idle.js';
 import { useStore } from '../use-store.js';
 import s from './ChatDock.module.css';
 
-/** The panel's contents, their own chunk. */
 const ChatPanel = lazy(() => import('./ChatPanel.js'), { export: 'ChatPanel' });
 
 /**
- * The docked product-chat panel, an island of the host page. Shrinks the
- * product frame by its width (product-frame-layout) and stretches into the
- * topbar's strip while the topbar is auto-hidden (`data-topbar-hidden`).
- * Escape inside it closes it, and the chat button takes the focus back.
- *
- * Its contents (ChatPanel) are their own chunk, preloaded when the browser
- * is idle once the chat button shows, and rendered from the first open on.
- * A chunk that fails to load, or a panel that throws while rendering, is
- * reported and the panel closes; the next open tries again.
+ * The docked product-chat panel. A chunk that fails to load or a panel that throws is reported and
+ * the panel closes, so the next open tries again.
  */
 export function ChatDock(): JSX.Element {
   let aside: HTMLElement | undefined;
@@ -31,7 +23,7 @@ export function ChatDock(): JSX.Element {
   const topbarVisible = useStore(chatPanelStore, state => state.topbarVisible);
   const buttonVisible = useStore(chatPanelStore, chatButtonVisible);
 
-  // Rendered once the panel first opens, and kept while it is closed.
+  // Keeps the panel rendered while closed once it has opened.
   const [opened, setOpened] = createSignal(false);
 
   createEffect(buttonVisible, visible => (visible ? preloadWhenIdle(ChatPanel) : undefined));
@@ -49,8 +41,7 @@ export function ChatDock(): JSX.Element {
       }
     },
   );
-  // The chat button hands the focus back unless the user moved it off the
-  // panel (see setChatPanelElement).
+  // Lets the chat button take focus back on close unless the user moved it off the panel.
   onSettled(() => (aside === undefined ? undefined : setChatPanelElement(aside)));
 
   return (
@@ -82,10 +73,7 @@ export function ChatDock(): JSX.Element {
   );
 }
 
-/**
- * The panel broke: report it and close, after it renders. The next open
- * renders the panel afresh.
- */
+/** Reports a broken panel and closes it, so the next open renders it afresh. */
 function Broken(props: { error: unknown; reset: () => void }): JSX.Element {
   const open = useStore(chatPanelStore, state => state.open);
   createEffect(

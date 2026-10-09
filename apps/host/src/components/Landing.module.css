@@ -1,9 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Native scrollbars and form controls match the dark page. Only here: on a
-   product page the host's colour scheme would change how the browser paints
-   the product frame's backdrop. */
+/* Only here: on a product page the host's color scheme would change how the browser paints the
+   product frame's backdrop. */
 :global(:root:has(body[data-landing])) {
   color-scheme: dark;
 }
@@ -22,8 +21,7 @@
   font-family: var(--font-sans);
 }
 
-/* The landing route hides the topbar, so these buttons are the ones that would
-   sit under the status bar in an installed PWA. */
+/* The landing page has no topbar, so these buttons sit under the status bar in an installed PWA. */
 .corner {
   position: absolute;
   top: calc(16px + var(--safe-top));
@@ -59,24 +57,32 @@
   text-align: center;
 }
 
-.logo {
+/* Holds only the wordmark and its tag, so no line box adds space under it. */
+.title {
+  position: relative;
   display: flex;
-  box-sizing: border-box;
-  margin: 0;
+  margin: var(--sp-5) 0 0;
   padding: 0;
 }
 
-.title {
-  margin: var(--sp-6) 0 0;
-  padding: 0;
-  font-size: var(--fs-display);
-  font-weight: 700;
-  letter-spacing: var(--ls-display);
-  line-height: var(--lh-tight);
+/* The topbar's Beta tag at the wordmark's scale. Out of the flow, so the wordmark stays centered. */
+.beta {
+  position: absolute;
+  top: calc(-1 * var(--sp-1));
+  left: calc(100% + var(--sp-2));
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--fill-strong);
+  color: var(--text-secondary);
+  font: var(--fw-semibold) var(--fs-label) / 1 var(--font-sans);
+  letter-spacing: var(--ls-caps);
 }
 
 .subtitle {
-  margin: var(--sp-2) 0 0;
+  margin: var(--sp-4) 0 0;
   padding: 0;
   font-size: var(--fs-title-lg);
   line-height: var(--lh-body);
@@ -90,9 +96,7 @@
   }
 }
 
-/* The bar is hidden on this page, so the menus that drop from the corner's
-   buttons anchor to the corner instead: the bar's gap below its buttons, right
-   edges aligned. */
+/* No bar here, so menus from the corner's buttons anchor to the corner instead. */
 :global(:root:has(body[data-landing])) {
   --topbar-bottom: calc(16px + var(--h-bar-control) + var(--safe-top));
   --topbar-inline-end: calc(16px + var(--safe-right));

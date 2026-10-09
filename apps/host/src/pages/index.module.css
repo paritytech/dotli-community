@@ -13,7 +13,3 @@
   color: var(--text);
   text-align: center;
 }
-
-:global(body[data-landing]) .app {
-  display: none;
-}

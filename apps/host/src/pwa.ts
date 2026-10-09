@@ -22,6 +22,7 @@ import { captureException, recordExpected } from '@dotli/metrics';
 import { showNotification } from '@dotli/ui';
 import { markContinuation } from '@dotli/shared';
 import { SANDBOX_SCHEMA_VERSION } from '@dotli/config';
+import { parseDotLabel } from './dot-label.js';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -34,7 +35,8 @@ function checkForUpdate(registration: ServiceWorkerRegistration): void {
   });
 }
 
-if ('serviceWorker' in navigator) {
+// Product hosts only: a worker on the bare host would replace the static landing page with the shell.
+if (import.meta.env.PROD && 'serviceWorker' in navigator && parseDotLabel() !== null) {
   const wb = new Workbox('/host-sw.js', { updateViaCache: 'none' });
   navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -64,15 +66,12 @@ if ('serviceWorker' in navigator) {
       window.location.reload();
     };
     void navigator.serviceWorker.getRegistration().then(registration => {
-      // Another tab's Reload may have applied the update already. Its
-      // activation took this page over too, so nothing waits now and no
-      // `controlling` would ever come.
+      // Another tab's Reload may have applied the update already, and then no `controlling` ever comes.
       if ((registration?.waiting ?? null) === null) {
         reload();
         return;
       }
-      // Reload once the new SW is in control to avoid serving a mix of
-      // old and new chunks during the swap.
+      // Reload once the new SW is in control, so old and new chunks never mix.
       wb.addEventListener('controlling', reload);
       wb.messageSkipWaiting();
     });

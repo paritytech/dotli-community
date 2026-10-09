@@ -1,13 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Resolution summary */
-
 .summary {
   display: grid;
   width: 100%;
-  /* Fills the panel. A minimum wide enough that thirteen cards settle into
-     about two rows on a bottom dock rather than a crushed single line. */
+  /* Wide enough that the cards settle into about two rows on a bottom dock. */
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px 14px;
   margin: 0 0 12px;

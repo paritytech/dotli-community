@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./islands/*": "./src/islands/*.ts",
+    "./brand": "./src/brand.ts",
     "./styles.css": "./src/global.css",
     "./package.json": "./package.json"
   },

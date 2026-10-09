@@ -12,8 +12,7 @@ const meta = {
   title: 'Primitives/Well',
   parameters: { chrome: true },
   component: Well,
-  // Each story renders its own content, since one node in the args would
-  // move between every well that shows it.
+  // Per story, since one node in the args would move between every well that shows it.
   args: { children: <></> },
   argTypes: { layout: { control: 'inline-radio', options: ['plain', 'list', 'controls', 'kv', 'flush'] } },
 } satisfies Meta<typeof Well>;
@@ -29,7 +28,6 @@ export const Plain: Story = {
   ),
 };
 
-// The signing prompt's review fields.
 export const List: Story = {
   args: { layout: 'list' },
   render: args => (
@@ -42,7 +40,6 @@ export const List: Story = {
 
 const onCacheChange = fn<(enabled: boolean) => void>().mockName('onCacheChange');
 
-// Settings' cache switches: rows that end in a control.
 export const Controls: Story = {
   args: { layout: 'controls' },
   render: args => (
@@ -94,9 +91,7 @@ const PACKAGES = [
   ['@polkadot-api/json-rpc-provider', '0.2.0'],
 ] as const;
 
-// Diagnostics' Packages disclosure, the one flush well: its content brings
-// its own padding, which the shell's stylesheet gives it and this story
-// inlines.
+// Flush content brings its own padding, which the shell's stylesheet gives it and this story inlines.
 export const Flush: Story = {
   args: { layout: 'flush' },
   render: args => {
