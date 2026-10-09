@@ -5,6 +5,13 @@ import type { ArchiveFiles } from '@dotli/content';
 import { captureException } from '@dotli/metrics';
 import type { PolkaVmDebugMessage, PolkaVmDebugSnapshot } from '@dotli/truapi-debug';
 import {
+  createJamPeerTransportSession,
+  JAM_PEER_TRANSPORT_MAX_FRAME_BYTES,
+  type JamPeerTransportSession,
+} from '@parity/truapi/jam-peer-transport';
+import { JAM_PEER_TRANSPORT_DIAL, SYSTEM_HANDSHAKE } from '@parity/truapi/wire-table';
+import { jamPeersGrantText, JamPeersPermissionRequester, wireFrameTraitId } from './polkavm-peer-permission.js';
+import {
   deliverFileInput,
   filePickerAccept,
   type FileInputCandidate,
@@ -29,7 +36,9 @@ const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
 const MAX_SAVE_BYTES = 1024 * 1024;
 const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
 const MAX_HOST_FRAME_BYTES = 1024 * 1024;
-const MAX_PENDING_HOST_FRAMES = 32;
+// A JamPeerTransport guest keeps several requests in flight per tick (one recv
+// per stream plus events); the byte bound below is what limits memory.
+const MAX_PENDING_HOST_FRAMES = 256;
 const MAX_PENDING_HOST_FRAME_BYTES = 4 * 1024 * 1024;
 const MAX_UI_OUTPUT_COMMANDS = 64;
 const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
@@ -909,6 +918,47 @@ const MAX_HOST_FRAME_RETRIES = 64;
 
 export interface HostFrameResponseTarget {
   postMessage(message: unknown, transfer: Transferable[]): void;
+}
+
+/**
+ * Route one guest host frame. Every frame goes to the authenticated host port
+ * except `JamPeerTransport` (trait 111) requests, which the execution-local peer
+ * session answers once the host has granted the dialed JAM network. The
+ * handshake is the one frame both must see: the peer session negotiates on a
+ * copy and its reply is dropped, so the guest only ever observes the host's
+ * answer.
+ *
+ * Returns `false` when the frame exceeds the bound for its route. Only a
+ * JamPeerTransport frame may exceed `MAX_HOST_FRAME_BYTES`, and then only up
+ * to a `send` of one maximal message.
+ */
+export function dispatchHostFrame(
+  request: Uint8Array<ArrayBuffer>,
+  hostFramePort: HostFrameResponseTarget,
+  peerSession: JamPeerTransportSession,
+  onPeerResponse: (response: Uint8Array) => void,
+  onPeerError: (error: Error) => void,
+): boolean {
+  const trait = wireFrameTraitId(request);
+  if (trait === JAM_PEER_TRANSPORT_DIAL.trait) {
+    if (request.byteLength > JAM_PEER_TRANSPORT_MAX_FRAME_BYTES) {
+      return false;
+    }
+    void peerSession.handleFrame(request).then(onPeerResponse, (error: unknown) => {
+      onPeerError(error instanceof Error ? error : new Error('JamPeerTransport frame dispatch failed'));
+    });
+    return true;
+  }
+  if (request.byteLength > MAX_HOST_FRAME_BYTES) {
+    return false;
+  }
+  if (trait === SYSTEM_HANDSHAKE.trait) {
+    // The session refuses a malformed handshake itself; the host's verdict on
+    // the same bytes is the one the guest receives.
+    void peerSession.handleFrame(request.slice()).catch(() => undefined);
+  }
+  hostFramePort.postMessage(request, [request.buffer]);
+  return true;
 }
 
 export interface HostFrameResponseQueueOptions {
@@ -2752,6 +2802,7 @@ export async function runPolkaVmApplication(
         pause: () => undefined,
         hasFileInput: false,
         hasLauncher: fileRelaunch !== undefined,
+        grants: () => [],
         error: error instanceof Error ? error.message : 'Application startup failed.',
         retry: () => {
           void launch(fileRelaunch);
@@ -2848,6 +2899,19 @@ async function startPolkaVmApplication(
     reject: rejectStarted,
   } = Promise.withResolvers<undefined>();
   const hostFramePort = await waitForTruapiPort(window, window.parent, parentOrigin);
+  // Every application may dial a JAM network, but only after the host grants
+  // `RemotePermission::JamPeers { genesis }` for this product. The request
+  // travels over the authenticated host port with the sandbox's own request
+  // id and its reply never reaches the guest. The grant is execution-local
+  // and carries no account, signing, storage or arbitrary-URL authority.
+  const jamPeersPermission = new JamPeersPermissionRequester(hostFramePort, {
+    onWebTransportUnavailable: () => {
+      window.parent.postMessage({ type: 'dotli:jam-peer-transport-unavailable' }, parentOrigin);
+    },
+  });
+  const peerSession = createJamPeerTransportSession({
+    authorize: jamPeersPermission.authorize,
+  });
   const worker = new Worker(polkaVmRuntimeAssetUrl('polkavm-worker.js'));
   const stopWorker = installWorkerShutdown(worker, message => {
     console.warn(message);
@@ -2865,6 +2929,8 @@ async function startPolkaVmApplication(
   let failRuntime: (error: Error, source?: string) => void = error => {
     status.textContent = error.message;
     rejectStarted(error);
+    jamPeersPermission.close();
+    peerSession.close();
     void stopWorker();
     closeHostFramePort();
   };
@@ -2879,6 +2945,14 @@ async function startPolkaVmApplication(
       event.data.byteLength > MAX_HOST_FRAME_BYTES
     ) {
       failHostFrame(new Error('Host returned an invalid host frame'));
+      return;
+    }
+    try {
+      if (jamPeersPermission.claim(event.data)) {
+        return;
+      }
+    } catch (error) {
+      failHostFrame(error instanceof Error ? error : new Error(String(error)));
       return;
     }
     canvas.dataset['polkavmHostFrameResponses'] = String(Number(canvas.dataset['polkavmHostFrameResponses']) + 1);
@@ -3317,6 +3391,8 @@ async function startPolkaVmApplication(
     void stopWorker();
     webGpu?.dispose();
     void audioContext?.close();
+    jamPeersPermission.close();
+    peerSession.close();
     closeHostFramePort();
     hostFrameQueue.close();
   };
@@ -3416,6 +3492,7 @@ async function startPolkaVmApplication(
     },
     hasFileInput: false,
     hasLauncher: fileRelaunch !== undefined,
+    grants: () => jamPeersGrantText(jamPeersPermission.granted()),
     retry: () => {
       resolveStarted(undefined);
       stop();
@@ -3687,13 +3764,35 @@ async function startPolkaVmApplication(
       }
       case 'host-frame-request': {
         const bytes = message['bytes'];
-        if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0 || bytes.byteLength > MAX_HOST_FRAME_BYTES) {
+        if (
+          !(bytes instanceof Uint8Array) ||
+          bytes.byteLength === 0 ||
+          bytes.byteLength > JAM_PEER_TRANSPORT_MAX_FRAME_BYTES
+        ) {
           failRuntime(new Error('PolkaVM guest emitted an invalid host frame'));
           return;
         }
         const request = ownedBytes(bytes);
         canvas.dataset['polkavmHostFrameRequests'] = String(Number(canvas.dataset['polkavmHostFrameRequests']) + 1);
-        hostFramePort.postMessage(request, [request.buffer]);
+        const routed = dispatchHostFrame(
+          request,
+          hostFramePort,
+          peerSession,
+          response => {
+            if (stopped || response.byteLength === 0) {
+              return;
+            }
+            canvas.dataset['polkavmHostFrameResponses'] = String(
+              Number(canvas.dataset['polkavmHostFrameResponses']) + 1,
+            );
+            hostFrameQueue.enqueue(response);
+          },
+          failRuntime,
+        );
+        if (!routed) {
+          failRuntime(new Error('PolkaVM guest emitted an invalid host frame'));
+          return;
+        }
         break;
       }
       case 'frame': {

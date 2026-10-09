@@ -404,4 +404,32 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostScannerScanRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostScannerScanResponse, S.CallError(T.VersionedHostScannerScanError)).dec(payload),
     },
+    [W.JAM_PEER_TRANSPORT_DIAL.trait * 256 + W.JAM_PEER_TRANSPORT_DIAL.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportDialRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportDialResponse, S.CallError(T.VersionedHostJamPeerTransportDialError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_OPEN.trait * 256 + W.JAM_PEER_TRANSPORT_OPEN.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportOpenRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportOpenResponse, S.CallError(T.VersionedHostJamPeerTransportOpenError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_SEND.trait * 256 + W.JAM_PEER_TRANSPORT_SEND.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportSendRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportSendResponse, S.CallError(T.VersionedHostJamPeerTransportSendError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_RECV.trait * 256 + W.JAM_PEER_TRANSPORT_RECV.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportRecvRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportRecvResponse, S.CallError(T.VersionedHostJamPeerTransportRecvError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_RESET.trait * 256 + W.JAM_PEER_TRANSPORT_RESET.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportResetRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportResetResponse, S.CallError(T.VersionedHostJamPeerTransportResetError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_CLOSE.trait * 256 + W.JAM_PEER_TRANSPORT_CLOSE.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportCloseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportCloseResponse, S.CallError(T.VersionedHostJamPeerTransportCloseError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_EVENTS.trait * 256 + W.JAM_PEER_TRANSPORT_EVENTS.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportEventsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload),
+    },
 };
