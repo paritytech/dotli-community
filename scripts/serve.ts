@@ -47,7 +47,7 @@ function routeFor(hostHeader: string): { dir: string; iframeable: boolean; root:
   return { dir: join(DIST, 'host'), iframeable: false, root: bare ? 'landing.html' : 'index.html' };
 }
 
-/** Split as nginx/snippets/dotli-headers-*.conf does. */
+/** Split as nginx/snippets/docker/dotli-headers-*.conf does. */
 function securityHeaders(iframeable: boolean): Record<string, string> {
   const shared = {
     'X-Content-Type-Options': 'nosniff',
