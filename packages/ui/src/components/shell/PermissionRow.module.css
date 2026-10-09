@@ -22,6 +22,58 @@
   white-space: nowrap;
 }
 
+.row,
+.described {
+  flex-wrap: wrap;
+}
+.described {
+  gap: var(--sp-2);
+  padding: var(--sp-3) 6px var(--sp-3) 0;
+}
+.described > :first-child {
+  flex-basis: 100%;
+}
+.described .name {
+  white-space: normal;
+}
+.automatic {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.automaticChoices {
+  width: 100%;
+  flex-wrap: wrap;
+  border-radius: var(--r-sm);
+}
+.automaticChoices > button {
+  flex: 1 1 100%;
+  min-width: 0;
+  min-height: 36px;
+  height: auto;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.description,
+.feedback {
+  flex-basis: 100%;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.feedback {
+  padding-bottom: var(--sp-2);
+}
+
+/* Phones: the boards' 20 px icon, 12 px from the name. */
 @media (max-width: 560px) {
   .label {
     gap: var(--sp-3);

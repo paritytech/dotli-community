@@ -20,6 +20,16 @@ export interface ProductNotificationTarget {
 
 const targets = new Map<string, ProductNotificationTarget>();
 const accounts = new Map<string, string>();
+let hostSession: { account: string; network: string } | undefined;
+
+/** Only the current page core may publish resident delivery authority. */
+export function setNotificationHostAccount(account: string | undefined): void {
+  const normalized = account?.replace(/^0x/, '').toLowerCase();
+  hostSession =
+    normalized !== undefined && /^[0-9a-f]{64}$/.test(normalized)
+      ? { account: normalized, network: getNetwork() }
+      : undefined;
+}
 
 /** Only the core's live auth callback may supply this, never the UI-state cache. */
 export function setNotificationAccount(label: string, account: string | undefined): void {
@@ -33,6 +43,7 @@ export function setNotificationAccount(label: string, account: string | undefine
 
 window.addEventListener('dotli:logged-out', () => {
   accounts.clear();
+  hostSession = undefined;
 });
 
 export function registerProductNotificationTarget(label: string, target: ProductNotificationTarget): () => void {
@@ -61,6 +72,16 @@ export function notificationContextIsCurrent(scope: NotificationScope): boolean 
   }
 }
 
+/** The durable record owns the original artifact; live auth owns presentation. */
+export function notificationDeliveryIsCurrent(scope: NotificationScope): boolean {
+  const target = targets.get(scope.product);
+  return (
+    hostSession?.account === scope.account &&
+    hostSession.network === scope.network &&
+    scope.network === getNetwork() &&
+    (target === undefined || target.artifact === scope.artifact)
+  );
+}
 /** A typed callback receives routes through polling; clicks never navigate its iframe. */
 export async function presentProductNotification(params: {
   product: string;
@@ -70,17 +91,22 @@ export async function presentProductNotification(params: {
   browserNotification?: boolean;
 }): Promise<void> {
   const record = await findNotification(params.product, params.id);
-  if (!record || record.expiresAt <= Date.now() || !notificationContextIsCurrent(record.scope)) {
+  if (!record || record.expiresAt <= Date.now() || !notificationDeliveryIsCurrent(record.scope)) {
     return;
   }
   const activate = (): void => {
-    if (!notificationContextIsCurrent(record.scope)) {
+    if (!notificationDeliveryIsCurrent(record.scope)) {
       return;
     }
     void activateNotification(record.token)
       .then(activated => {
-        if (activated && notificationContextIsCurrent(record.scope)) {
-          notificationContext(params.product).target.focus();
+        if (activated && notificationDeliveryIsCurrent(record.scope)) {
+          if (notificationContextIsCurrent(record.scope)) {
+            notificationContext(params.product).target.focus();
+          } else {
+            // Keep the route pending until its verified product is mounted.
+            window.focus();
+          }
         }
       })
       .catch((error: unknown) => {
@@ -91,12 +117,10 @@ export async function presentProductNotification(params: {
   if (params.browserNotification === false || (document.visibilityState === 'visible' && document.hasFocus())) {
     return;
   }
-  try {
-    await presentSystemNotification(record, params.label, params.text);
-  } catch (error) {
-    // OS delivery supplements the already-visible, durably actionable toast.
+  void presentSystemNotification(record, params.label, params.text).catch((error: unknown) => {
+    // OS permission/delivery supplements the toast; it must not block IDs or the scheduler.
     console.warn('[notifications] System notification unavailable; in-page notification retained', error);
-  }
+  });
 }
 
 async function presentSystemNotification(record: NotificationRecord, label: string, text: string): Promise<void> {
@@ -105,14 +129,21 @@ async function presentSystemNotification(record: NotificationRecord, label: stri
   }
   const permission =
     Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
-  if (permission !== 'granted' || !notificationContextIsCurrent(record.scope)) {
+  if (permission !== 'granted' || !notificationDeliveryIsCurrent(record.scope)) {
     return;
   }
   const registration = await navigator.serviceWorker.getRegistration('/');
   if (!registration?.active) {
     return;
   }
-  if (!notificationContextIsCurrent(record.scope)) {
+  const retained = await findNotification(record.scope.product, record.notificationId);
+  if (
+    retained?.token !== record.token ||
+    retained.activated ||
+    retained.acknowledged ||
+    retained.expiresAt <= Date.now() ||
+    !notificationDeliveryIsCurrent(record.scope)
+  ) {
     return;
   }
   await registration.showNotification(label, {

@@ -7,9 +7,10 @@ import type { PermissionDecision, Permissions } from '@parity/truapi-host';
 import type { RemotePermission } from '@parity/truapi';
 import {
   getPermissionStatus,
+  hasTrustedRemotePermissions,
   isDevicePermission,
   isEnforceableDevicePermission,
-  type EnforceablePermissionName,
+  type PromptPermissionName,
 } from '../permissions.js';
 import { showJamPeersPermissionModal, showPermissionRequestModal } from '../permission-modal.js';
 import { showNotification } from '../notification.js';
@@ -17,12 +18,12 @@ import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } fro
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
 import { ERRORS } from '../errors.js';
 import { recordPermissionChange } from '../state/permissions.js';
+import { mediaOwnsCapture } from '../media-host.js';
 
-// WebRtc is gated by the iframe `allow` attribute and `Remote` (HTTP/WS) cannot be intercepted
-// reliably from the sandbox, so both are auto-granted. JamPeers has its own genesis-scoped prompt.
-function gatedRemotePermissionName(
-  tag: Exclude<RemotePermission['tag'], 'JamPeers'>,
-): EnforceablePermissionName | null {
+// Legacy HTML products have no host interception point for independent HTTP/WS/RTC.
+// Protected Media containers separately deny all product-side raw capture.
+// `JamPeers` carries its genesis and has its own prompt.
+function gatedRemotePermissionName(tag: Exclude<RemotePermission['tag'], 'JamPeers'>): PromptPermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
     case 'PreimageSubmit':
@@ -30,6 +31,7 @@ function gatedRemotePermissionName(
       return tag;
     case 'Remote':
     case 'WebRtc':
+    case 'Calling':
       return null;
   }
 }
@@ -40,7 +42,14 @@ export function createPromptPermission(
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
-    // OpenUrl has no host-side enforcement point, so a deny button could not block it.
+    // A protected Media container never receives raw capture; the host owns it.
+    // Refuse by error, never `Deny`: the core would persist a durable device
+    // denial on the same key host Media consent reads, disabling calls.
+    if (mediaOwnsCapture(label) && (tag === 'Camera' || tag === 'Microphone')) {
+      throw new Error(ERRORS.MEDIA_RAW_CAPTURE_REFUSED);
+    }
+    // OpenUrl has no host-side enforcement point; auto-grant rather than show
+    // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
@@ -56,6 +65,10 @@ export function createPromptPermission(
           signal,
         }),
       );
+    }
+    // Calling consent is operation-scoped through the host Media backend.
+    if (permission.tag === 'Calling') {
+      return 'Deny';
     }
     const name = gatedRemotePermissionName(permission.tag);
     if (name === null) {
@@ -102,7 +115,7 @@ interface PromptOptions {
 
 export function decidePromptPermission(
   label: string,
-  name: EnforceablePermissionName,
+  name: PromptPermissionName,
   options: PromptOptions,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Promise<PermissionDecision> {
@@ -111,7 +124,7 @@ export function decidePromptPermission(
 
 async function decidePromptPermissionWhenActive(
   label: string,
-  name: EnforceablePermissionName,
+  name: PromptPermissionName,
   options: PromptOptions,
   signal: AbortSignal,
 ): Promise<PermissionDecision> {
@@ -136,6 +149,12 @@ async function decidePromptPermissionWhenActive(
     });
     return 'Deny';
   }
+  if (name === 'Notifications' && hasTrustedRemotePermissions(label)) {
+    // Skip only this app-consent sheet. Notification delivery still owns the
+    // browser/OS permission gate, and stored refusals were resolved above.
+    return 'AllowOnce';
+  }
+  // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }

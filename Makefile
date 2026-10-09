@@ -44,6 +44,19 @@ _sentry_hostpath := $(lastword $(subst @, ,$(SENTRY_DSN)))
 SENTRY_INGEST    := $(firstword $(subst /, ,$(_sentry_hostpath)))
 SENTRY_PROJECT   := $(lastword  $(subst /, ,$(_sentry_hostpath)))
 
+# Media TURN route (nginx/snippets/dotli-media-turn.conf, /__dotli-media/turn
+# on the root and shell servers). deploy-nginx reads the Cloudflare TURN key id
+# and API token from DOTLI_TURN_CLOUDFLARE_KEY_ID and
+# DOTLI_TURN_CLOUDFLARE_API_TOKEN (deploy.env or the environment; CI passes the
+# environment secrets) and pipes them over SSH into the remote's root-only
+# $(NGINX_PRIVATE_DIR)/<site>-media-turn.conf. They never reach the rendered
+# site config, /tmp, rsync, the frontend build or the make log. Unset, the file
+# is written empty and the route answers 503: host Media calls cannot connect.
+DOTLI_TURN_CLOUDFLARE_KEY_ID ?=
+DOTLI_TURN_CLOUDFLARE_API_TOKEN ?=
+NGINX_PRIVATE_DIR := /etc/nginx/dotli-private
+
+# Default env when none is passed on the command line.
 ENV ?= paseo
 
 # Checked out as truapi/hosts/dotli, local builds use the checked-out TrUAPI packages.
@@ -138,9 +151,31 @@ render-nginx: _require-env-name
 	$(_sentry_warn)
 	@$(_nginx_render)
 
+# Values go into nginx `set` strings, so only token-shaped characters pass.
+_turn_check = @set -eu; key="$${DOTLI_TURN_CLOUDFLARE_KEY_ID:-}"; token="$${DOTLI_TURN_CLOUDFLARE_API_TOKEN:-}"; \
+	if [ -z "$$key" ] && [ -z "$$token" ]; then \
+		echo "WARNING: DOTLI_TURN_CLOUDFLARE_KEY_ID/DOTLI_TURN_CLOUDFLARE_API_TOKEN not set — /__dotli-media/turn answers 503; host Media calls cannot connect." >&2; \
+	elif [ -z "$$key" ] || [ -z "$$token" ]; then \
+		echo "deploy-nginx: set both DOTLI_TURN_CLOUDFLARE_KEY_ID and DOTLI_TURN_CLOUDFLARE_API_TOKEN, or neither." >&2; exit 1; \
+	else \
+		case "$$key" in *[!A-Za-z0-9_-]*) echo "deploy-nginx: DOTLI_TURN_CLOUDFLARE_KEY_ID has unexpected characters." >&2; exit 1 ;; esac; \
+		case "$$token" in *[!A-Za-z0-9._~+/=-]*) echo "deploy-nginx: DOTLI_TURN_CLOUDFLARE_API_TOKEN has unexpected characters." >&2; exit 1 ;; esac; \
+	fi
+
+# The private include on stdout. Expanded by the recipe shell from the exported
+# environment, so neither value appears in the echoed command.
+_turn_private = { \
+	echo '\# Written by make deploy-nginx; do not edit. Secret: root-only.'; \
+	printf 'set $$media_turn_key_id "%s";\n' "$${DOTLI_TURN_CLOUDFLARE_KEY_ID:-}"; \
+	printf 'set $$media_turn_authorization "%s";\n' "$${DOTLI_TURN_CLOUDFLARE_API_TOKEN:+Bearer $$DOTLI_TURN_CLOUDFLARE_API_TOKEN}"; \
+	}
+
+deploy-nginx: export DOTLI_TURN_CLOUDFLARE_KEY_ID := $(DOTLI_TURN_CLOUDFLARE_KEY_ID)
+deploy-nginx: export DOTLI_TURN_CLOUDFLARE_API_TOKEN := $(DOTLI_TURN_CLOUDFLARE_API_TOKEN)
 deploy-nginx: _require-env
 	@command -v envsubst >/dev/null || { echo "deploy-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
 	$(_sentry_warn)
+	$(_turn_check)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval SITE := $(SITE_$(ENV)))
 	@set -eu; \
@@ -170,7 +205,7 @@ deploy-nginx: _require-env
 	fi; \
 	rsync -avz --delete "$$stage/snippets/" $(REMOTE_TARGET):/tmp/$(SITE)-nginx-snippets/; \
 	scp "$$stage/$(SITE).nginx" $(REMOTE_TARGET):/tmp/$(SITE).nginx
-	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 $(NGINX_SNIPPETS_DIR) && sudo rsync -av /tmp/$(SITE)-nginx-snippets/ $(NGINX_SNIPPETS_DIR)/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
+	$(_turn_private) | ssh $(REMOTE_TARGET) 'sudo install -d -m 0700 -o root -g root $(NGINX_PRIVATE_DIR) && sudo sh -c "umask 077 && cat > $(NGINX_PRIVATE_DIR)/$(SITE)-media-turn.conf" && sudo install -d -m 0755 $(NGINX_SNIPPETS_DIR) && sudo rsync -av /tmp/$(SITE)-nginx-snippets/ $(NGINX_SNIPPETS_DIR)/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
 define _rsync_dist
 rsync -avz --delete --filter='P /assets/' apps/host/dist/     $(1):$(2)/host/

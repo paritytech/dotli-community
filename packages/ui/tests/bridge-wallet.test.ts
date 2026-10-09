@@ -6,6 +6,7 @@ import type { DotliAuthState } from '../src/host-callbacks/AuthState.js';
 import type * as BridgeModule from '../src/bridge.js';
 import type * as ModalQueueModule from '../src/blocking-modal-queue.js';
 import { nth } from './helpers/nth.js';
+import { installWebLocks } from './helpers/web-locks.js';
 
 const wallet = vi.hoisted(() => {
   const account: `0x${string}` = `0x${'12'.repeat(32)}`;
@@ -111,7 +112,9 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
     terminate(): void {}
   },
 }));
-vi.mock('@parity/truapi-host/web', () => ({
+// vi.mock factories run before static imports, so the double loads here.
+vi.mock('@parity/truapi-host/web', async () => ({
+  createBrowserMediaBackend: (await import('./helpers/web-locks.js')).fakeBrowserMediaBackend,
   createBrowserNativeChatFilesHost: () => ({ dispose: vi.fn() }),
   createWebWorkerPairingHostRuntime: vi.fn(),
   createWebWorkerSigningHostRuntime: (_worker: unknown, callbacks: RequiredHostCallbacks) => {
@@ -270,9 +273,12 @@ vi.mock('@parity/truapi-host/web', () => ({
       },
     });
   },
-  createIframeHost: (args: { container: HTMLElement; iframeUrl: string }) => {
+  createIframeHost: (args: { container: HTMLElement; iframeUrl: string; sandbox: string }) => {
     const iframe = document.createElement('iframe');
     iframe.dataset['src'] = args.iframeUrl;
+    // As the real host: Media checks the attached frame's src and sandbox.
+    iframe.src = args.iframeUrl;
+    iframe.setAttribute('sandbox', args.sandbox);
     args.container.appendChild(iframe);
     return {
       iframe,
@@ -298,8 +304,10 @@ function boot(): typeof BridgeModule {
 }
 
 describe('host-owned experimental identity', () => {
+  let uninstallWebLocks: (() => void) | undefined;
   beforeEach(async () => {
     vi.resetModules();
+    uninstallWebLocks = installWebLocks();
     wallet.revision = 'original';
     wallet.username = undefined;
     wallet.cachedUsername = undefined;
@@ -340,6 +348,7 @@ describe('host-owned experimental identity', () => {
     // Dispose the same freshly imported page core, not a static older module.
     const { disposePageCores } = await import('../src/page-core.js');
     disposePageCores();
+    uninstallWebLocks?.();
     await vi.waitFor(() => {
       expect(owner.custody).toBeUndefined();
     });

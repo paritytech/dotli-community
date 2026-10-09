@@ -7,7 +7,7 @@ import { isLoopbackWsUrl } from "./worker-protocol.js";
 import { COINAGE_WALLET_CALLBACKS, MAX_JSON_RPC_CONNECTIONS, } from "./worker-protocol.js";
 import { TRUAPI_CODEC_VERSION } from "@parity/truapi";
 import { createWorkerRawCallbacks, } from "./generated/worker-callbacks.js";
-import { handleGetPermissionAuthorizationStatus, handleGetPermissionAuthorizationStatuses, handleSetPermissionAuthorizationStatus, } from "./worker-permission-authorization.js";
+import { handleGetPermissionAuthorizationStatus, handleGetPermissionAuthorizationStatuses, handleSetPermissionAuthorizationStatus, handleRefreshPermissionAuthorization, } from "./worker-permission-authorization.js";
 import { errorMessage } from "./error.js";
 import { resolveLocalIdentity } from "./worker-local-identity.js";
 import { validateAllowanceProductIds, validateWalletAllowanceSnapshot, } from "./wallet-allowances.js";
@@ -59,7 +59,7 @@ function callbackRequest(name, args, coreId) {
         }
     });
 }
-function startSubscription(name, payload, sendItem, sendError, coreId) {
+function startSubscription(name, args, sendItem, sendError, coreId) {
     if (connectionsDisposed) {
         sendError({ reason: "Host runtime is unavailable" });
         return () => { };
@@ -68,13 +68,14 @@ function startSubscription(name, payload, sendItem, sendError, coreId) {
     subscriptionListeners.set(subId, {
         sendItem: sendItem,
         sendError: (error) => sendError({ reason: error }),
+        privateMedia: name === "mediaBackendEvents",
     });
     try {
         postToMain({
             kind: "subscriptionStart",
             subId,
             name,
-            payload,
+            args,
             ...(coreId === undefined ? {} : { coreId }),
         });
     }
@@ -194,7 +195,7 @@ function buildRawCallbacks(capabilities, coreId) {
     return {
         ...createWorkerRawCallbacks({
             callbackRequest: (name, args) => callbackRequest(name, args, COINAGE_WALLET_CALLBACKS[name] ? undefined : coreId),
-            startSubscription: (name, payload, sendItem, sendError) => startSubscription(name, payload, sendItem, sendError, coreId),
+            startSubscription: (name, args, sendItem, sendError) => startSubscription(name, args, sendItem, sendError, coreId),
             chainConnect,
             hopConnect,
         }, capabilities),
@@ -775,7 +776,11 @@ ctx.addEventListener("message", (ev) => {
                     ? undefined
                     : buildRawCallbacks(msg.capabilities, msg.coreId));
                 cores.set(msg.coreId, core);
-                postToMain({ kind: "coreReady", coreId: msg.coreId });
+                postToMain({
+                    kind: "coreReady",
+                    coreId: msg.coreId,
+                    trustedRemotePermissions: wasm.hasTrustedRemotePermissions(msg.product.productId),
+                });
             }
             catch (err) {
                 postToMain({
@@ -930,6 +935,9 @@ ctx.addEventListener("message", (ev) => {
             break;
         case "setPermissionAuthorizationStatus":
             void handleSetPermissionAuthorizationStatus(runtime, postToMain, msg.productId, msg.requestId, msg.request, msg.status);
+            break;
+        case "refreshPermissionAuthorization":
+            void handleRefreshPermissionAuthorization(runtime, postToMain, msg.productId, msg.requestId, msg.request);
             break;
         case "callbackResponse": {
             const cb = pendingCallbacks.get(msg.requestId);

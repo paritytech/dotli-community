@@ -17,6 +17,8 @@ export type CoreCustodyOperation =
   | { action: 'read'; lease: string; key: string }
   | { action: 'clear'; lease: string; key: string }
   | { action: 'write'; lease: string; key: string; value: Uint8Array }
+  /** Atomic replace of exactly `expected` (`null` = absent); resolves whether it changed. */
+  | { action: 'compareExchange'; lease: string; key: string; expected: Uint8Array | null; replacement: Uint8Array }
   | { action: 'readSource'; lease: string; sourceId: string }
   | { action: 'releaseSource'; lease: string; sourceId: string }
   | {
@@ -68,12 +70,20 @@ export function isCoreCustodyOperation(value: unknown): value is CoreCustodyOper
   ) {
     return false;
   }
+  const maxValueBytes = 32 * 1024 * 1024;
   return (
     value.action === 'read' ||
     value.action === 'clear' ||
     (value.action === 'write' &&
       'value' in value &&
       value.value instanceof Uint8Array &&
-      value.value.byteLength <= 32 * 1024 * 1024)
+      value.value.byteLength <= maxValueBytes) ||
+    (value.action === 'compareExchange' &&
+      'expected' in value &&
+      (value.expected === null ||
+        (value.expected instanceof Uint8Array && value.expected.byteLength <= maxValueBytes)) &&
+      'replacement' in value &&
+      value.replacement instanceof Uint8Array &&
+      value.replacement.byteLength <= maxValueBytes)
   );
 }

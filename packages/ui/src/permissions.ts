@@ -10,11 +10,15 @@ import type {
   PermissionAuthorizationStatus,
   TrUApiProductProvider,
 } from '@parity/truapi-host';
+import { bytesToHex, hexToBytes } from '@parity/truapi/scale';
+import type { DotliAuthState } from './host-callbacks/AuthState.js';
+import { getAuthState } from './state/auth.js';
 
 export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
   | DevicePermissionName
+  | 'AutomaticPreimageSubmit'
   | 'ChainSubmit'
   | 'ChatAuthority'
   | 'IdentityDisclosure'
@@ -27,6 +31,7 @@ export type AutoGrantDevicePermission = 'OpenUrl';
 export type EnforceableDevicePermission = Exclude<DevicePermissionName, AutoGrantDevicePermission>;
 
 export type EnforceablePermissionName = Exclude<PermissionName, AutoGrantDevicePermission>;
+export type PromptPermissionName = Exclude<EnforceablePermissionName, 'AutomaticPreimageSubmit'>;
 
 export type PermissionStatus = 'ask' | 'granted' | 'denied';
 
@@ -63,6 +68,7 @@ export type PermissionGroup = 'device' | 'app';
 export const ALL_PERMISSIONS: readonly {
   name: EnforceablePermissionName;
   label: string;
+  description?: string;
   group: PermissionGroup;
 }[] = [
   { name: 'Notifications', label: 'Notifications', group: 'device' },
@@ -78,6 +84,13 @@ export const ALL_PERMISSIONS: readonly {
   { name: 'ProfileDisclosure', label: 'Profile disclosure', group: 'app' },
   { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
   { name: 'PreimageSubmit', label: 'Submit preimages', group: 'app' },
+  {
+    name: 'AutomaticPreimageSubmit',
+    label: 'Automatic preimage uploads',
+    group: 'app',
+    description:
+      'Separate consent for this app, the active root account and configured Bulletin network: at most 256 KiB per upload and 4 automatic uploads per rolling hour. Larger uploads or an exhausted budget always ask. Ask or Revoke stops automatic approval, not individual upload requests. Regranting does not reset the budget.',
+  },
   { name: 'StatementSubmit', label: 'Submit statements', group: 'app' },
 ];
 
@@ -88,7 +101,7 @@ export function isDevicePermission(name: string): boolean {
 
 type PermissionAuthorizationProvider = Pick<
   TrUApiProductProvider,
-  'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
+  'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus' | 'trustedRemotePermissions'
 >;
 
 const permissionProviders = new Map<string, PermissionAuthorizationProvider[]>();
@@ -119,7 +132,20 @@ function providerFor(label: string): PermissionAuthorizationProvider | null {
   return permissionProviders.get(label)?.at(-1) ?? null;
 }
 
-export function authorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
+/** The loaded Rust core classifies the authenticated product; this is not a grant. */
+export function hasTrustedRemotePermissions(label: string): boolean {
+  return providerFor(label)?.trustedRemotePermissions === true;
+}
+
+/** Only a live connected snapshot can administer account-scoped upload consent. */
+export function automaticPreimageAccount(auth: DotliAuthState): string | null {
+  return auth.tag === 'Connected' ? (auth.session.publicKey ?? null) : null;
+}
+
+export function authorizationRequest(
+  permission: PermissionName,
+  rootPublicKey: string | null = null,
+): PermissionAuthorizationRequest {
   if (permission === 'ChainSubmit' || permission === 'PreimageSubmit' || permission === 'StatementSubmit') {
     return {
       tag: 'Remote',
@@ -134,6 +160,12 @@ export function authorizationRequest(permission: PermissionName): PermissionAuth
   }
   if (permission === 'ProfileDisclosure') {
     return { tag: 'ProfileDisclosure' };
+  }
+  if (permission === 'AutomaticPreimageSubmit') {
+    if (rootPublicKey === null) {
+      throw new Error('automatic upload consent requires an active root account');
+    }
+    return { tag: 'AutomaticPreimageSubmit', value: { rootPublicKey: bytesToHex(hexToBytes(rootPublicKey)) } };
   }
   return { tag: 'Device', value: permission };
 }
@@ -168,29 +200,46 @@ export async function getPermissionStatus(label: string, permission: PermissionN
 export async function getPermissionStatuses(
   label: string,
   permissions: readonly PermissionName[],
+  rootPublicKey: string | null = automaticPreimageAccount(getAuthState()),
 ): Promise<PermissionStatus[]> {
   const provider = providerFor(label);
   if (provider === null) {
     return permissions.map(() => 'ask');
   }
-  const statuses = await provider.getPermissionAuthorizationStatuses(permissions.map(authorizationRequest));
-  return statuses.map(fromAuthorizationStatus);
+  const available = permissions.filter(name => name !== 'AutomaticPreimageSubmit' || rootPublicKey !== null);
+  const statuses = await provider.getPermissionAuthorizationStatuses(
+    available.map(name => authorizationRequest(name, rootPublicKey)),
+  );
+  let index = 0;
+  return permissions.map(name =>
+    name === 'AutomaticPreimageSubmit' && rootPublicKey === null
+      ? 'ask'
+      : fromAuthorizationStatus(statuses[index++] ?? 'NotDetermined'),
+  );
 }
 
 export async function setPermissionStatus(
   label: string,
   permission: PermissionName,
   status: PermissionStatus,
+  rootPublicKey: string | null = null,
 ): Promise<void> {
   const provider = providerFor(label);
   if (provider === null) {
     throw new Error('product connection is unavailable');
   }
-  await provider.setPermissionAuthorizationStatus(authorizationRequest(permission), toAuthorizationStatus(status));
+  await provider.setPermissionAuthorizationStatus(
+    authorizationRequest(permission, rootPublicKey),
+    toAuthorizationStatus(status),
+  );
 }
 
-export async function resetPermission(label: string, permission: PermissionName): Promise<void> {
-  await setPermissionStatus(label, permission, 'ask');
+export async function resetPermission(
+  label: string,
+  permission: PermissionName,
+  rootPublicKey: string | null = null,
+): Promise<void> {
+  await setPermissionStatus(label, permission, 'ask', rootPublicKey);
 }
 
 export interface ResetAllResult {
@@ -200,12 +249,21 @@ export interface ResetAllResult {
   failed: boolean;
 }
 
-/** Each write may fail on its own, so the caller learns which landed and can announce them as one change. */
-export async function resetAllPermissions(label: string): Promise<ResetAllResult> {
+/**
+ * Set every granted or denied permission of `label` back to ask.
+ *
+ * The writes run together and each may fail on its own, so the caller learns
+ * which ones landed and can announce them as one change. A status read that
+ * fails rejects, before anything is written.
+ */
+export async function resetAllPermissions(
+  label: string,
+  rootPublicKey: string | null = automaticPreimageAccount(getAuthState()),
+): Promise<ResetAllResult> {
   const names = ALL_PERMISSIONS.map(({ name }) => name);
-  const statuses = await getPermissionStatuses(label, names);
+  const statuses = await getPermissionStatuses(label, names, rootPublicKey);
   const decided = names.filter((_, index) => (statuses[index] ?? 'ask') !== 'ask');
-  const writes = await Promise.allSettled(decided.map(name => setPermissionStatus(label, name, 'ask')));
+  const writes = await Promise.allSettled(decided.map(name => setPermissionStatus(label, name, 'ask', rootPublicKey)));
   return {
     reset: decided.filter((_, index) => writes[index]?.status === 'fulfilled'),
     failed: writes.some(write => write.status === 'rejected'),
@@ -232,8 +290,16 @@ export async function hasAnyGrant(label: string): Promise<boolean> {
   return statuses.some(status => status === 'granted');
 }
 
-export async function buildAllowAttribute(label: string): Promise<string> {
-  const policies = ['clipboard-write'];
+/**
+ * Build the iframe `allow` attribute value from granted device permissions.
+ * Always delegates `clipboard-write` and `display-capture`; adds Permissions
+ * Policy directives for each granted device permission. The capture origin
+ * comes from the host's verified iframe target, not the product label or a
+ * product-supplied permission request. Display capture remains subject to
+ * the browser's user-initiated picker consent on every request.
+ */
+export async function buildAllowAttribute(label: string, allowedOrigin: string): Promise<string> {
+  const policies = ['clipboard-write', `display-capture ${allowedOrigin}`];
   for (const name of await getGrantedDevicePermissions(label)) {
     const directive = DEVICE_PERMISSION_POLICY[name];
     if (directive !== undefined) {

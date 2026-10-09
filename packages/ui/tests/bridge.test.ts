@@ -24,6 +24,7 @@ import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { settle as settleSolid } from './helpers/solid.js';
+import { installWebLocks } from './helpers/web-locks.js';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -56,10 +57,16 @@ type ProviderCloseListener = (error: Error) => void;
 
 // Removed after each test so an earlier test's bridge never hears a later test's events.
 let bridgeListeners: Parameters<typeof window.removeEventListener>[] = [];
+let uninstallWebLocks: (() => void) | undefined;
+
+beforeEach(() => {
+  uninstallWebLocks = installWebLocks();
+});
 
 afterEach(() => {
   resetOverlays();
   vi.unstubAllGlobals();
+  uninstallWebLocks?.();
   for (const [type, listener] of bridgeListeners) {
     window.removeEventListener(type, listener);
   }
@@ -105,11 +112,13 @@ vi.mock('@parity/truapi-host', async importOriginal => ({
   createWasmRawCallbacks: mocks.createWasmRawCallbacks,
 }));
 
-vi.mock('@parity/truapi-host/web', () => ({
+// vi.mock factories run before static imports, so the double loads here.
+vi.mock('@parity/truapi-host/web', async () => ({
   createBrowserNativeChatFilesHost: vi.fn(),
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
   createIframeHost: mocks.createIframeHost,
+  createBrowserMediaBackend: (await import('./helpers/web-locks.js')).fakeBrowserMediaBackend,
 }));
 
 vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
@@ -121,6 +130,7 @@ vi.mock('../../metrics/src/sentry.js', () => sentry);
 
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
+    count: vi.fn(),
     measure: vi.fn(),
     timer: vi.fn(() => mocks.timerStop),
   },
@@ -277,9 +287,12 @@ describe('bridge render lifecycle', () => {
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
-      (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement }) => {
+      (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement; sandbox: string }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
+        // As the real host: Media checks the attached frame's src and sandbox.
+        iframe.src = args.iframeUrl;
+        iframe.setAttribute('sandbox', args.sandbox);
         iframe.allow = args.allow;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
@@ -344,6 +357,101 @@ describe('bridge render lifecycle', () => {
     10_000,
   );
 
+  it('allows ordinary notifications for Connected sessions without an optional identity account', async () => {
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('verified-cid', 'myapp');
+    await waitForProviderRequests(1);
+    const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+    callbacks.auth.authStateChanged({ tag: 'Connected', value: { publicKey: `0x${'33'.repeat(32)}` } });
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+    const pushed = await callbacks.notifications.pushNotification({ text: 'Connected' });
+    expect(pushed.id).toBeTypeOf('number');
+    callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+    await expect(callbacks.notifications.pushNotification({ text: 'Disconnected' })).rejects.toThrow(
+      'authenticated account',
+    );
+  }, 10_000);
+
+  it.each(['same account', 'different account'] as const)(
+    'delivers unmounted product schedules only under live host authority: %s',
+    async state => {
+      const [
+        { renderAppSubdomain },
+        { initScheduledNotifications },
+        { toastsStore },
+        { listAll, removeById },
+        activation,
+      ] = await Promise.all([
+        import('../src/bridge.js'),
+        import('../src/scheduled-notifications.js'),
+        import('../src/state/toasts.js'),
+        import('@dotli/storage'),
+        import('../src/notification-activation.js'),
+      ]);
+      for (const record of await listAll()) {
+        await removeById(record.hostId);
+      }
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const first = renderAppSubdomain('first-cid', 'first');
+      await waitForProviderRequests(1);
+      const firstCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+      firstCallbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+      });
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+      await first;
+      const now = Date.now();
+      await firstCallbacks.notifications.pushNotification({
+        text: 'Unmounted reminder',
+        deeplink: '/dm/a',
+        scheduledAt: BigInt(now + 60_000),
+      });
+      const second = renderAppSubdomain('second-cid', 'second');
+      await waitForProviderRequests(2);
+      nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+      await second;
+      const secondCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 1)[1] as RequiredHostCallbacks;
+      secondCallbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: {
+          publicKey: `0x${'11'.repeat(32)}`,
+          identityAccountId: `0x${(state === 'different account' ? '44' : '22').repeat(32)}`,
+        },
+      });
+      if (state === 'different account') {
+        // A real receiving-account transition rebuilds the product frame.
+        await waitForProviderRequests(3);
+        nth(mocks.coreProviderDefers, 2).resolve(makeProvider());
+        await vi.waitFor(() => {
+          expect(activation.notificationContext('second').scope.account).toBe('44'.repeat(32));
+        });
+      }
+      await secondCallbacks.notifications.pushNotification({
+        text: 'Mounted reminder',
+        scheduledAt: BigInt(now + 60_000),
+      });
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 60_001);
+      try {
+        initScheduledNotifications({ label: 'test' });
+        await vi.waitFor(() => {
+          expect(toastsStore.get().items.map(item => item.text)).toContain('Mounted reminder');
+        });
+        expect(
+          toastsStore
+            .get()
+            .items.map(item => item.text)
+            .includes('Unmounted reminder'),
+        ).toBe(state === 'same account');
+        expect((await listAll()).some(record => record.productId === 'first')).toBe(state !== 'same account');
+      } finally {
+        window.dispatchEvent(new Event('pagehide'));
+        clock.mockRestore();
+      }
+    },
+    10_000,
+  );
   it('keeps notification grants in place and reloads only a changed committed iframe policy', async () => {
     const { renderIframe } = await import('../src/bridge.js');
     const { labelToProductId } = await import('../src/runtime-config.js');
@@ -416,15 +524,18 @@ describe('bridge render lifecycle', () => {
     });
     const { renderIframe } = await import('../src/bridge.js');
     const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
-    const { setNotificationAccount } = await import('../src/notification-activation.js');
     const { findNotification } = await import('@dotli/storage/notification-activations');
     const label = 'preview-notifications';
     window.history.replaceState(null, '', '/__preview?url=https%3A%2F%2Fpreview.example%2Fapp');
     const first = renderIframe('https://preview.example/app', label);
     await waitForProviderRequests(1);
+    const firstCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+    firstCallbacks.auth.authStateChanged({
+      tag: 'Connected',
+      value: { publicKey: `0x${'11'.repeat(32)}` },
+    });
     nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
     await first;
-    setNotificationAccount(label, '11'.repeat(32));
 
     const api = createNotificationAdapters(label);
     const pushed = await api.pushNotification({ text: 'Preview notification', deeplink: '/message/1' });
@@ -445,7 +556,6 @@ describe('bridge render lifecycle', () => {
     await waitForProviderRequests(2);
     nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
     await replacement;
-    setNotificationAccount(label, '11'.repeat(32));
     expect((await api.activationEvents()).events).toEqual([]);
     const next = await api.pushNotification({ text: 'New execution', deeplink: '/message/2' });
     const nextRecord = await findNotification(label, next.id);
@@ -485,6 +595,100 @@ describe('bridge render lifecycle', () => {
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(secondProvider.dispose).not.toHaveBeenCalled();
     expect(document.querySelector('iframe')?.dataset['src']).toBe('https://second.example/app');
+  }, 10_000);
+
+  it('keeps origin-scoped capture grants out of protected Media containers', async () => {
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('verified-cid', 'myapp');
+    await waitForProviderRequests(1);
+    const provider = makeProvider();
+    provider.getPermissionAuthorizationStatuses.mockImplementation((requests: { tag: string; value?: string }[]) =>
+      Promise.resolve(
+        requests.map(request =>
+          request.tag === 'Device' && (request.value === 'Camera' || request.value === 'Microphone')
+            ? 'Authorized'
+            : 'NotDetermined',
+        ),
+      ),
+    );
+    nth(mocks.coreProviderDefers, 0).resolve(provider);
+    await render;
+
+    const directives = nth(mocks.iframeHosts, 0).iframe.allow.split('; ');
+    for (const feature of ['camera', 'microphone', 'display-capture']) {
+      expect(directives.filter(directive => directive.split(' ', 1)[0] === feature)).toEqual([`${feature} 'none'`]);
+    }
+  });
+
+  it('As a product user, legacy media grants reload the sandbox with origin-scoped capture and revocation removes device access', async () => {
+    // Re-import after resetModules so the test exercises this render's listener state.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const { labelToProductId } = await import('../src/runtime-config.js');
+    let deviceStatus = 'NotDetermined';
+    const permissionStatuses = (requests: PermissionAuthorizationRequest[]): Promise<string[]> =>
+      Promise.resolve(
+        requests.map(request =>
+          request.tag === 'Device' && (request.value === 'Camera' || request.value === 'Microphone')
+            ? deviceStatus
+            : 'NotDetermined',
+        ),
+      );
+    const initialProvider = makeProvider();
+    initialProvider.getPermissionAuthorizationStatuses.mockImplementation(permissionStatuses);
+    const render = renderAppSubdomain('verified-cid', 'myapp', null, { legacyCapture: true });
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(initialProvider);
+    await render;
+
+    const initial = nth(mocks.iframeHosts, 0);
+    const origin = new URL(initial.iframeUrl).origin;
+    expect(initial.iframe.allow.split('; ')).toEqual([
+      'clipboard-write',
+      `display-capture ${origin}`,
+      'cross-origin-isolated',
+    ]);
+    expect(initial.allowedOrigin).toBe(origin);
+
+    deviceStatus = 'Authorized';
+    window.dispatchEvent(
+      new CustomEvent('dotli:permission-changed', {
+        detail: { productId: labelToProductId('myapp'), request: { tag: 'Device', value: 'Camera' } },
+      }),
+    );
+    await waitForProviderRequests(2);
+    expect(initial.iframe.isConnected).toBe(true);
+    const grantedProvider = makeProvider();
+    grantedProvider.getPermissionAuthorizationStatuses.mockImplementation(permissionStatuses);
+    nth(mocks.coreProviderDefers, 1).resolve(grantedProvider);
+    await vi.waitFor(() => {
+      expect(initial.dispose).toHaveBeenCalledTimes(1);
+    });
+    const granted = nth(mocks.iframeHosts, 1);
+    expect(granted.iframe.allow.split('; ')).toEqual([
+      'clipboard-write',
+      `display-capture ${origin}`,
+      'camera',
+      'microphone',
+      'cross-origin-isolated',
+    ]);
+
+    deviceStatus = 'Denied';
+    window.dispatchEvent(
+      new CustomEvent('dotli:permission-changed', {
+        detail: { productId: labelToProductId('myapp'), request: { tag: 'Device', value: 'Camera' } },
+      }),
+    );
+    await waitForProviderRequests(3);
+    const revokedProvider = makeProvider();
+    revokedProvider.getPermissionAuthorizationStatuses.mockImplementation(permissionStatuses);
+    nth(mocks.coreProviderDefers, 2).resolve(revokedProvider);
+    await vi.waitFor(() => {
+      expect(granted.dispose).toHaveBeenCalledTimes(1);
+    });
+    const revoked = nth(mocks.iframeHosts, 2);
+    expect(revoked.iframe.allow).toBe(initial.iframe.allow);
+    expect(new URL(revoked.iframeUrl).origin).toBe(origin);
+    expect(document.querySelectorAll('#app iframe')).toHaveLength(1);
   }, 10_000);
 
   it('As a dotli integrator, the host keeps the previous iframe visible while its replacement initializes', async () => {
@@ -561,10 +765,15 @@ describe('bridge render lifecycle', () => {
       nth(mocks.coreProviderDefers, index).resolve(makeProvider());
       await rendered;
       const { iframe } = nth(mocks.iframeHosts, index);
-      expect(iframe.style.position).toBe('fixed');
+      // Cross-origin products render in a protected Media compositor, which
+      // takes the frame's layout while the frame fills it.
+      const compositor = iframe.parentElement;
+      expect(compositor?.classList.contains('host-media-compositor')).toBe(true);
+      expect(compositor?.style.position).toBe('fixed');
+      expect(iframe.style.position).toBe('absolute');
 
       layout.setTopbarLayout({ offset: false });
-      expect(iframe.style.top).toBe('var(--safe-top, 0px)');
+      expect(compositor?.style.top).toBe('var(--safe-top, 0px)');
     }
   }, 10_000);
 
@@ -892,12 +1101,19 @@ describe('bridge render lifecycle', () => {
     const channel = new MessageChannel();
     let allowedOrigin = '';
     mocks.createIframeHost.mockImplementationOnce(
-      (args: { allowedOrigin: string; container: HTMLElement; onPort: (port: MessagePort) => void }) => {
+      (args: {
+        iframeUrl: string;
+        allowedOrigin: string;
+        container: HTMLElement;
+        onPort: (port: MessagePort) => void;
+      }) => {
         // The real iframe host hands its port over at once and answers the
         // first ready itself with the other end.
         allowedOrigin = args.allowedOrigin;
         args.onPort(channel.port1);
         const iframe = document.createElement('iframe');
+        // The Media compositor only adopts a frame loaded from the product's origin.
+        iframe.src = args.iframeUrl;
         args.container.appendChild(iframe);
         return {
           iframe,
@@ -965,6 +1181,9 @@ describe('bridge render lifecycle', () => {
     const runtime = nth(mocks.coreRuntimes, 0);
     const callbacks = nth(runtime.createProvider.mock.calls, 0)[1] as RequiredHostCallbacks;
     const productContext = { productId: 'document-permission.paseo', executionKind: 'App' as const };
+    const firstMedia = callbacks.media;
+    assert(firstMedia);
+    await expect(firstMedia.mediaBackendCapabilities(productContext)).resolves.toEqual({ tag: 'Unsupported' });
     const permission = callbacks.permissions.devicePermission(productContext, 'Notifications');
     const outcome = permission.catch((error: unknown) => error);
     await readyOverlays();
@@ -978,6 +1197,7 @@ describe('bridge render lifecycle', () => {
     });
     await expect(outcome).resolves.toMatchObject({ name: 'AbortError' });
     expect(runtime.dispose).not.toHaveBeenCalled();
+    expect(() => firstMedia.mediaBackendCapabilities(productContext)).toThrow('Media:RuntimeMismatch');
 
     await waitForProviderRequests(2);
     const supersededCallbacks = nth(runtime.createProvider.mock.calls, 1)[1] as RequiredHostCallbacks;
@@ -991,6 +1211,12 @@ describe('bridge render lifecycle', () => {
     ).rejects.toMatchObject({ name: 'AbortError' });
     nth(mocks.coreProviderDefers, 2).resolve(makeProvider());
     const nextCallbacks = nth(runtime.createProvider.mock.calls, 2)[1] as RequiredHostCallbacks;
+    const nextMedia = nextCallbacks.media;
+    const supersededMedia = supersededCallbacks.media;
+    assert(nextMedia);
+    assert(supersededMedia);
+    await expect(nextMedia.mediaBackendCapabilities(productContext)).resolves.toEqual({ tag: 'Unsupported' });
+    expect(() => supersededMedia.mediaBackendCapabilities(productContext)).toThrow('Media:RuntimeMismatch');
     const nextPermission = nextCallbacks.permissions.devicePermission(productContext, 'Notifications');
     await readyOverlays();
     await vi.waitFor(() => {
@@ -1477,9 +1703,12 @@ describe('bridge app roots', () => {
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
-      (args: { iframeUrl: string; allowedOrigin: string; allow?: string; container: HTMLElement }) => {
+      (args: { iframeUrl: string; allowedOrigin: string; allow?: string; container: HTMLElement; sandbox: string }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
+        // As the real host: Media checks the attached frame's src and sandbox.
+        iframe.src = args.iframeUrl;
+        iframe.setAttribute('sandbox', args.sandbox);
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -1585,7 +1814,10 @@ describe('bridge app roots', () => {
     expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(nth(disposeLoading.mock.invocationCallOrder, 0));
     const app = document.getElementById('app');
     expect(app?.children).toHaveLength(1);
-    expect(app?.firstElementChild?.tagName).toBe('IFRAME');
+    // A cross-origin product frame sits in its protected Media compositor.
+    expect(app?.firstElementChild?.classList.contains('host-media-compositor')).toBe(true);
+    expect(app?.firstElementChild?.children).toHaveLength(1);
+    expect(app?.firstElementChild?.firstElementChild?.tagName).toBe('IFRAME');
   }, 10_000);
 
   it('As a visitor on a preview or local target, the first iframe render takes the static screen down', async () => {
@@ -1617,7 +1849,8 @@ describe('bridge app roots', () => {
       return Promise.resolve(runtime);
     });
     await renderAppSubdomain('cid', 'reloaded');
-    const previousFrame = document.querySelector('#app > iframe');
+    const previousFrame = document.querySelector('#app > .host-media-compositor > iframe');
+    expect(previousFrame).not.toBeNull();
     showErrorPage({ title: 'Failed' });
 
     expect(document.querySelector('#app > [data-testid="error-page"]')).not.toBeNull();
@@ -1626,11 +1859,11 @@ describe('bridge app roots', () => {
     // not a fabricated sandbox message with the detached frame's null source.
     await renderAppSubdomain('cid', 'reloaded');
 
-    const frame = document.querySelector('#app > iframe');
+    const frame = document.querySelector('#app > .host-media-compositor > iframe');
     expect(document.querySelector('#app > [data-testid="error-page"]')).toBeNull();
     expect(frame?.isConnected).toBe(true);
     expect(frame).not.toBe(previousFrame);
-    expect(document.querySelectorAll('#app > iframe')).toHaveLength(1);
+    expect(document.querySelectorAll('#app iframe')).toHaveLength(1);
   }, 10_000);
 });
 

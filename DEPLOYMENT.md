@@ -89,6 +89,39 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
   rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag
   and `paseoli.dev` from `main`.
 
+## Media TURN credentials
+
+Host Media calls are relay-only and need TURN. NGINX serves `GET /__dotli-media/turn` on the apex and shell (`*.<site>`)
+servers only (`nginx/snippets/dotli-media-turn.conf`); the app and protocol servers answer 404. Each request mints
+12-hour Cloudflare TURN credentials: NGINX adds the API token and a fixed `{"ttl":43200}` body and posts to
+`https://rtc.live.cloudflare.com/v1/turn/keys/<key id>/credentials/generate`. The shell reuses them for two thirds of
+that lifetime. Nothing is baked into the frontend build, so credentials never go stale and no periodic redeploy is
+needed.
+
+- The route accepts same-origin browser requests only (no or matching `Origin`, `Sec-Fetch-Site` empty, `same-origin` or
+  `none`), `GET` without a query. Responses are `Cache-Control: no-store` and
+  `Cross-Origin-Resource-Policy: same-origin`. Each client IP gets 6 requests per minute (burst 10); excess gets 429.
+  Non-browser clients can still mint relay credentials; the per-IP limit bounds that.
+- `make deploy-nginx` reads `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` from `deploy.env` or
+  the environment, and the CI config rollout passes the environment secrets of the same names. It pipes them over SSH
+  into `/etc/nginx/dotli-private/<site>-media-turn.conf` (`root:root`, `0600`). The token is not in the rendered site
+  config, `/tmp`, rsync uploads, the frontend build or the make log, and the route has access and error logging off.
+- Set both secrets or neither. Unset, `deploy-nginx` warns and writes the file empty: the route answers 503 and calls
+  cannot connect. Removing the secrets and redeploying disables the route.
+- The token is the Cloudflare Realtime TURN key's API token (`Authorization: Bearer`), paired with that key's id. Rotate
+  it by updating both secrets and rerunning the config rollout.
+
+## Media advertisement lookups over trusted RPC (temporary)
+
+On the light client backends, Media sends its advertisement lookups (requests whose id starts with
+`truapi:media-advertisement-lookup:`, statement subscribe/unsubscribe only) to the People chain's trusted RPC node,
+because smoldot returns no stored statements in a subscription snapshot. No server configuration is involved: the
+browser dials the same People RPC endpoint the Trusted Providers backend uses. That operator learns which callee
+advertisement topics a caller looks up and when, and can withhold advertisements (calls then fail `NotConnected`, as
+they do on the light client today); it cannot forge an endpoint. Mention this in release notes for any deploy carrying
+it, and remove `packages/ui/src/host-callbacks/media-advertisement-lookup.ts` with its one use in `Chain.ts` once the
+light client serves stored statements. See [README.md](README.md#protected-browser-media).
+
 ## Opt-in CI identity proxy rollout
 
 CI normally uploads only the three frontend builds. To also deploy the existing NGINX template and identity proxy, set
@@ -119,14 +152,17 @@ The selected environment must already be provisioned:
   `127.0.0.53` must already be available.
 - Keep the environment's configured `SENTRY_DSN` secret: CI forwards the same value used by the frontend build when
   rendering the `/t` tunnel. An unset secret disables that tunnel; do not omit an existing DSN for config rollout.
+- Keep `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` set as environment secrets wherever calls
+  must connect: every config rollout rewrites the server's TURN include, and unset secrets disable the Media TURN route.
 - The runner needs `make`, `envsubst` (gettext-base), `ssh`, `scp`, `rsync`, `curl`, and `jq`. This path does not
   provision packages or certificates.
 
 The config-only commands used by CI are alternatives; run only the command for the approved environment:
 
 ```sh
-# Export DEPLOY_USER, DEPLOY_HOST, DEPLOY_PATH, and the configured SENTRY_DSN
-# from the approved environment; load its SSH key and known_hosts first.
+# Export DEPLOY_USER, DEPLOY_HOST, DEPLOY_PATH, the configured SENTRY_DSN and the
+# DOTLI_TURN_CLOUDFLARE_KEY_ID/DOTLI_TURN_CLOUDFLARE_API_TOKEN pair from the
+# approved environment; load its SSH key and known_hosts first.
 make ci-deploy-nginx ENV=dev-polkadot
 # Or, for an independently approved westendli.dev rollout:
 make ci-deploy-nginx ENV=dev-westend
@@ -146,29 +182,33 @@ After frontend upload, the opted-in job performs a public read-only GET to
 
 `https://<site>/__dotli-identity/paseo/attester`, matching its environment. It requires successful HTTP status and a
 JSON object containing a 32-byte hex `attester`; frontend HTML with status 200 fails. No authentication challenge,
-token, or username is created by the smoke check. Unset `DEPLOY_NGINX` to return to dist-only CI; this does not remove
-an already installed proxy.
+token, or username is created by the smoke check. When `DOTLI_TURN_CLOUDFLARE_KEY_ID` is set, the job also GETs
+`https://<site>/__dotli-media/turn` and requires a credentialed `turn:`/`turns:` relay, printing only the verdict; this
+mints one short-lived relay credential. Unset `DEPLOY_NGINX` to return to dist-only CI; this does not remove an already
+installed proxy.
 
 ## Qualify and deploy Chat on paseo.fyi
 
 Chat-specific browser integration belongs to `paritytech/dotli-community#255`, head `feat/chat-v2-host-runtime`, base
-`feat/pvm-wasm`. Keep that base and forward changes through Seity #287 into the deploy integration #291,
-`feat/jam-peer-transport-on-seity` (base `feat/chat-seity-profile`). Only #291 carries `deploy: paseo.fyi`; never put
-that label on #238, #185, #255, #287, or #290. Updating these branches does not merge their feature PRs into their
-bases.
+`feat/pvm-wasm`. Keep that base and forward changes through Seity #287 into #291, `feat/jam-peer-transport-on-seity`
+(base `feat/chat-seity-profile`). The current deployment layer is Media integration #335, `feat/media-on-jam-seity`,
+based on #291. Only #335 carries `deploy: paseo.fyi`; never put that label on its parent or feature layers. Updating
+these branches does not merge their feature PRs into their bases.
 
 Each browser layer must vendor a matching client/host package set from its corresponding native layer:
 
-| Browser layer           | Native host source                                        |
-| ----------------------- | --------------------------------------------------------- |
-| #185 PolkaVM runtime    | `host-rust-core#540`, `feat/pvm-app-runtime`              |
-| #255 Chat               | `host-rust-core#709`, `feat/chat-v2-product-authority`    |
-| #287 Seity profiles     | `host-rust-core#1001`, `feat/chat-seity-profile`          |
-| #290 JAM PeerTransport  | `host-rust-core#1010`, `feat/pvm-peer-transport`          |
-| #291 Deploy integration | `host-rust-core#1011`, `feat/jam-peer-transport-on-seity` |
+| Browser layer                     | Native host source                                        |
+| --------------------------------- | --------------------------------------------------------- |
+| #185 PolkaVM runtime              | `host-rust-core#540`, `feat/pvm-app-runtime`              |
+| #255 Chat                         | `host-rust-core#709`, `feat/chat-v2-product-authority`    |
+| Media (on #255)                   | `host-rust-core#1258`, `feat/media-sessions` (on #709)    |
+| #287 Seity profiles               | `host-rust-core#1001`, `feat/chat-seity-profile`          |
+| #290 JAM PeerTransport            | `host-rust-core#1010`, `feat/pvm-peer-transport`          |
+| #291 Peer/Seity integration       | `host-rust-core#1011`, `feat/jam-peer-transport-on-seity` |
+| #335 Media deployment integration | `host-rust-core#1217`, `feat/media-on-jam-seity`          |
 
 Keep #291 and native #1011 integration-only: merge their refreshed Seity and PeerTransport parents with `--no-ff`, then
-refresh the matching vendored packages. Never copy Chat, Seity, or PeerTransport APIs into a lower layer.
+refresh the matching vendored packages. Never copy Chat, Seity, PeerTransport, or Media APIs into a lower layer.
 
 Before publishing the Chat layer:
 
@@ -203,13 +243,13 @@ Before publishing the Chat layer:
    but are not encrypted at rest, matching the SDK source store's existing policy.
 
 After qualifying each source layer, forward both #287 and #290 into #291 and rebuild its matching native #1011 package
-set. Run the quality gate and browser qualification again on the final #291 candidate. Verify the repository, PR number,
-head, base, vendor provenance, and deployment label before publishing the approved candidate to **#291's existing head
-branch**. Its `pull_request/synchronize` event selects `paseo.fyi` from that label and deploys the PR head SHA after the
-quality gate. Confirm that no other deployment label is present before triggering a synchronization. Observe both
-published-product and TrUAPI smoke jobs, then repeat the Chat surface checks on paseo.fyi with the separately qualified,
-payment-capable `echat.paseo` product release. An older `egui-chat` build is not a substitute for the current product or
-evidence that payments work.
+set. Then integrate the refreshed parents into Media #1217/#335 and rebuild the matching package set. Run the quality
+gate and browser qualification on the final #335 candidate. Verify the repository, PR number, head, base, vendor
+provenance, and deployment label before publishing to **#335's existing head branch**. Its `pull_request/synchronize`
+event selects `paseo.fyi` from that label and deploys the PR head SHA after the quality gate. Confirm that no other
+deployment label is present before triggering a synchronization. Observe both published-product and TrUAPI smoke jobs,
+then repeat the Chat surface checks on paseo.fyi with the separately qualified, payment-capable `echat.paseo` product
+release. An older `egui-chat` build is not a substitute for the current product or evidence that payments work.
 
 Do not use `workflow_dispatch` for this operation: this workflow routes manual dispatch to **westendli.dev**, not
 paseo.fyi. Do not fall back to another environment if paseo.fyi qualification or deployment fails. The wallet's
@@ -255,8 +295,9 @@ provider credentials.
 The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must have compatible receiving-enabled
 contracts and exact recorded source provenance. Required exports are `browser-receiving-worker` and
 `WasmNotificationReceiver` from `wasm/web`. This top integration vendors both SDK archives and both WASM bundles from
-native #1011 receiving candidate `75796176b248c8e17e5996e4975d4a4ee2c642e9`, based on
-`f7ac212cf0e19d6860c4d60298d4d1cf442e1c55`. Archive and generated client/WASM checksums are recorded in
+native `feat/media-on-jam-seity` `e1808d8856dd07e4622eb3d54e2fada13a37a9c8` (local; #1217 head plus the Media
+advertisement-lookup marking), the Media layer merged into #1011 integration revision
+`e4d0a15b5b74e7636ac50f2ee1563bf734c54c81`. Archive and generated client/WASM checksums are recorded in
 `vendor/truapi-host.lock.json`; the only package override is the host SDK's local `@parity/truapi` dependency. A clean
 #185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never reuse this top integration artifact
 downward. The build bundles `host-receiving.js` as a standalone classic IIFE and copies that SDK's WASM to a

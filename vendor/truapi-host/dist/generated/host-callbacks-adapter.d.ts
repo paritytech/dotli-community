@@ -21,6 +21,8 @@ export interface RawCallbacks {
     readCoreStorage(key: Uint8Array): Promise<Uint8Array | null | undefined>;
     writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
     clearCoreStorage(key: Uint8Array): Promise<void>;
+    compareExchangeCoreStorage(key: Uint8Array, expected: Uint8Array | null | undefined, replacement: Uint8Array, notifyOnSuccess: boolean): Promise<boolean>;
+    coreStorageChanged(key: Uint8Array): void;
     featureSupported(request: Uint8Array): Promise<Uint8Array>;
     supportedChains(): Promise<Uint8Array>;
     scheduleGameReminder?(product: Uint8Array, startsAt: bigint): Promise<void>;
@@ -30,6 +32,9 @@ export interface RawCallbacks {
     identityUsernameCandidates?(username: string, peopleChainGenesisHash: Uint8Array): Promise<Uint8Array>;
     subscribeLocale(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     localizeTimestamps?(request: Uint8Array): Promise<Uint8Array>;
+    mediaBackendCapabilities?(product: Uint8Array): Promise<Uint8Array>;
+    mediaBackendEvents?(product: Uint8Array, runtimeId: bigint, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    mediaBackendCommand?(product: Uint8Array, runtimeId: bigint, command: Uint8Array): Promise<Uint8Array>;
     pickChatFiles(request: Uint8Array): Promise<Uint8Array>;
     readChatFile(sourceId: string, offset: bigint, length: number): Promise<Uint8Array>;
     releaseChatFile(sourceId: string): Promise<void>;

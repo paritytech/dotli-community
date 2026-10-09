@@ -143,6 +143,8 @@ jobs:
 
       # Only these environments can opt into config updates. Validate routing
       # before config or frontend uploads; other environments stay dist-only.
+      # The Cloudflare TURN key id and API token go only to the server's
+      # root-only Media TURN include; the frontend build never sees them.
       - name: Deploy identity proxy config
         if:
           (matrix.environment == 'dotli.dev' || matrix.environment == 'westendli.dev' || matrix.environment ==
@@ -165,6 +167,8 @@ jobs:
           RECEIVING_CSP_FILE: ${{ vars.RECEIVING_RELAY_URL != '' && 'apps/host/dist/host-receiving-csp.conf' || '' }}
           RECEIVING_PUSH_ORIGIN: ${{ vars.RECEIVING_PUSH_ORIGIN }}
           RECEIVING_PROXY_PORT: ${{ vars.RECEIVING_PROXY_PORT }}
+          DOTLI_TURN_CLOUDFLARE_KEY_ID: ${{ secrets.DOTLI_TURN_CLOUDFLARE_KEY_ID }}
+          DOTLI_TURN_CLOUDFLARE_API_TOKEN: ${{ secrets.DOTLI_TURN_CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy
         run: make ci-deploy
@@ -183,6 +187,27 @@ jobs:
             | jq -e 'type == "object" and (.attester | type == "string" and test("^0x[0-9a-fA-F]{64}$"))'
         env:
           DEPLOY_SITE: ${{ matrix.environment }}
+
+      # Mints one short-lived relay credential through the public route; only
+      # the jq verdict is printed. Skipped while the TURN secrets are unset.
+      - name: Smoke Media TURN route
+        if:
+          (matrix.environment == 'dotli.dev' || matrix.environment == 'westendli.dev' || matrix.environment ==
+          'paseo.fyi') && vars.DEPLOY_NGINX == 'true'
+        run: |
+          set -euo pipefail
+          if [ "$TURN_CONFIGURED" != true ]; then
+            echo "::warning title=No Media TURN relay::DOTLI_TURN_CLOUDFLARE_KEY_ID is not set; /__dotli-media/turn answers 503 and host Media calls cannot connect."
+            exit 0
+          fi
+          curl --fail --silent --show-error "https://${DEPLOY_SITE}/__dotli-media/turn" \
+            | jq -e '[.iceServers | if type == "array" then .[] else . end
+                      | select((.username | type == "string") and (.credential | type == "string"))
+                      | .urls | if type == "array" then .[] else . end
+                      | select(test("^turns?:"))] | length > 0' > /dev/null
+        env:
+          DEPLOY_SITE: ${{ matrix.environment }}
+          TURN_CONFIGURED: ${{ secrets.DOTLI_TURN_CLOUDFLARE_KEY_ID != '' }}
 
   product-smoke:
     name: Smoke ${{ matrix.environment }} products

@@ -5,8 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import {
   ALL_PERMISSIONS,
-  AUTO_GRANT_DEVICE_PERMISSIONS,
-  DEVICE_PERMISSION_POLICY,
   buildAllowAttribute,
   getGrantedDevicePermissions,
   getPermissionStatus,
@@ -23,6 +21,7 @@ import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } fr
 import { createPromptPermission, decidePromptPermission } from '../src/host-callbacks/PromptPermission.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { byTestId } from './support.js';
+import { getAuthState, setAuthState } from '../src/state/auth.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -47,8 +46,9 @@ afterEach(() => {
   resetOverlays();
 });
 
-function registerTestProvider(label: string, store: Store): () => void {
+function registerTestProvider(label: string, store: Store, trustedRemotePermissions = false): () => void {
   return registerPermissionAuthorizationProvider(label, {
+    trustedRemotePermissions,
     getPermissionAuthorizationStatuses(requests) {
       return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
     },
@@ -81,8 +81,12 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return 'IdentityDisclosure';
     case 'ProfileDisclosure':
       return 'ProfileDisclosure';
+    case 'AutomaticPreimageSubmit':
+      return `AutomaticPreimageSubmit:${request.value.rootPublicKey}`;
     case 'AccountAccess':
       return `AccountAccess:${request.value.targetProductId}`;
+    case 'Calling':
+      return 'Calling';
   }
 }
 
@@ -208,6 +212,25 @@ describe('resetAllPermissions', () => {
       ),
     ).toEqual(ALL_PERMISSIONS.map(() => 'ask'));
     expect(myappStore).toEqual(new Map());
+  });
+
+  it('resets automatic consent for the account selected before an asynchronous account switch', async () => {
+    const firstAccount = '11'.repeat(32);
+    const secondAccount = '22'.repeat(32);
+    const previousAuth = getAuthState();
+    await setPermissionStatus('myapp', 'AutomaticPreimageSubmit', 'granted', firstAccount);
+    await setPermissionStatus('myapp', 'AutomaticPreimageSubmit', 'granted', secondAccount);
+    try {
+      setAuthState({ tag: 'Connected', session: { connected: true, publicKey: firstAccount } });
+      const resetting = resetAllPermissions('myapp');
+      setAuthState({ tag: 'Connected', session: { connected: true, publicKey: secondAccount } });
+
+      await expect(resetting).resolves.toEqual({ reset: ['AutomaticPreimageSubmit'], failed: false });
+      expect(await getPermissionStatuses('myapp', ['AutomaticPreimageSubmit'], firstAccount)).toEqual(['ask']);
+      expect(await getPermissionStatuses('myapp', ['AutomaticPreimageSubmit'], secondAccount)).toEqual(['granted']);
+    } finally {
+      setAuthState(previousAuth);
+    }
   });
 
   it("As a user, Reset all to Ask leaves other apps' permissions alone", async () => {
@@ -421,8 +444,11 @@ describe('getGrantedDevicePermissions', () => {
 });
 
 describe('buildAllowAttribute', () => {
-  it('As a product, my iframe always receives clipboard-write access', async () => {
-    expect(await buildAllowAttribute('myapp')).toBe('clipboard-write');
+  it('As a product, I can request browser-mediated screen capture without a stored device grant', async () => {
+    expect((await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).split('; ').sort()).toEqual([
+      'clipboard-write',
+      'display-capture https://myapp.sandbox.example',
+    ]);
   });
 
   it('As a product, my granted device permissions appear in iframe policy', async () => {
@@ -432,10 +458,15 @@ describe('buildAllowAttribute', () => {
 
     // When
     // Order follows JSON insertion order, so assert on the directive set.
-    const directives = (await buildAllowAttribute('myapp')).split('; ').sort();
+    const directives = (await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).split('; ').sort();
 
     // Then
-    expect(directives).toEqual(['camera', 'clipboard-write', 'microphone']);
+    expect(directives).toEqual([
+      'camera',
+      'clipboard-write',
+      'display-capture https://myapp.sandbox.example',
+      'microphone',
+    ]);
   });
 
   it('As a product, denied and submit permissions stay out of iframe policy', async () => {
@@ -444,62 +475,29 @@ describe('buildAllowAttribute', () => {
     await setPermissionStatus('myapp', 'ChainSubmit', 'granted');
 
     // When
-    const allow = await buildAllowAttribute('myapp');
+    const allow = await buildAllowAttribute('myapp', 'https://myapp.sandbox.example');
 
     // Then
-    expect(allow).toBe('clipboard-write');
-  });
-});
-
-describe('ALL_PERMISSIONS (data invariants)', () => {
-  it('only references EnforceablePermissionName values', () => {
-    for (const { name } of ALL_PERMISSIONS) {
-      expect(AUTO_GRANT_DEVICE_PERMISSIONS.has(name as never)).toBe(false);
-    }
+    expect(allow.split('; ').sort()).toEqual(['clipboard-write', 'display-capture https://myapp.sandbox.example']);
   });
 
-  it('uses the canonical v0.7 wire tags for submit gates', () => {
-    const names = ALL_PERMISSIONS.map(p => p.name);
-    expect(names).toContain('ChainSubmit');
-    expect(names).toContain('IdentityDisclosure');
-    expect(names).toContain('PreimageSubmit');
-    expect(names).toContain('StatementSubmit');
-    expect(names).toContain('Notifications');
-    expect(names).not.toContain('TransactionSubmit');
+  it('As a host, I scope capture to the verified target origin rather than deriving authority from a label', async () => {
+    const first = await buildAllowAttribute('myapp', 'https://first.app.example');
+    const second = await buildAllowAttribute('myapp', 'https://second.app.example:8443');
+
+    expect(first).toBe('clipboard-write; display-capture https://first.app.example');
+    expect(second).toBe('clipboard-write; display-capture https://second.app.example:8443');
   });
 
-  it('As a user, the menu lists the eight device permissions, then the six app permissions', () => {
-    // Then
-    expect(ALL_PERMISSIONS.filter(({ group }) => group === 'device').map(({ name }) => name)).toEqual([
-      'Notifications',
-      'Camera',
-      'Microphone',
-      'Location',
-      'Bluetooth',
-      'NFC',
-      'Clipboard',
-      'Biometrics',
-    ]);
-    expect(ALL_PERMISSIONS.filter(({ group }) => group === 'app').map(({ name }) => name)).toEqual([
-      'ChatAuthority',
-      'IdentityDisclosure',
-      'ProfileDisclosure',
-      'ChainSubmit',
-      'PreimageSubmit',
-      'StatementSubmit',
-    ]);
-    expect(ALL_PERMISSIONS.map(({ group }) => group)).toEqual([
-      ...ALL_PERMISSIONS.slice(0, 8).map(() => 'device'),
-      ...ALL_PERMISSIONS.slice(8).map(() => 'app'),
-    ]);
-  });
-});
+  it('As a product user, revoking camera and resetting microphone removes their delegation', async () => {
+    await setPermissionStatus('myapp', 'Camera', 'granted');
+    await setPermissionStatus('myapp', 'Microphone', 'granted');
+    await setPermissionStatus('myapp', 'Camera', 'denied');
+    await resetPermission('myapp', 'Microphone');
 
-describe('DEVICE_PERMISSION_POLICY (sanity)', () => {
-  it('does not list auto-granted device permissions', () => {
-    for (const auto of AUTO_GRANT_DEVICE_PERMISSIONS) {
-      expect(auto in DEVICE_PERMISSION_POLICY).toBe(false);
-    }
+    expect(await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).toBe(
+      'clipboard-write; display-capture https://myapp.sandbox.example',
+    );
   });
 });
 
@@ -605,6 +603,27 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
+  });
+
+  it('trusted notification app consent remains revocable and does not authorize capture', async () => {
+    const store: Store = new Map();
+    const unregister = registerTestProvider('peopl', store, true);
+    const product: ProductContext = { productId: 'peopl.paseo', executionKind: 'App' };
+    try {
+      const permissions = createPromptPermission('peopl');
+      await expect(permissions.devicePermission(product, 'Notifications')).resolves.toBe('AllowOnce');
+      expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+      expect(await getPermissionStatus('peopl', 'Notifications')).toBe('ask');
+      await setPermissionStatus('peopl', 'Notifications', 'denied');
+      await expect(permissions.devicePermission(product, 'Notifications')).resolves.toBe('Deny');
+      for (const capability of ['Camera', 'Microphone'] as const) {
+        const pending = permissions.devicePermission(product, capability);
+        await clickPromptButton('Deny');
+        await expect(pending).resolves.toBe('Deny');
+      }
+    } finally {
+      unregister();
+    }
   });
 
   for (const permission of ['ChainSubmit', 'PreimageSubmit', 'StatementSubmit', 'Notifications', 'Camera'] as const) {

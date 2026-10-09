@@ -292,9 +292,9 @@ export default defineConfig({
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     hostUpdateWorker(),
-    // Emits the classic receiver and matching WASM before Workbox precaching.
+    // Emit both independent notification handlers before Workbox precaching.
     receivingWorker(),
-    // Build the classic notification handler before Workbox imports it.
+
     notificationWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are

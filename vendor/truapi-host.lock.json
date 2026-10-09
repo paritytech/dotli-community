@@ -1,26 +1,30 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "feat/jam-peer-transport-on-seity",
-  "upstreamRevision": "e48777643c52278769a6bac724c7f6577cb87197",
+  "upstreamBranch": "feat/media-on-jam-seity",
+  "upstreamRevision": "70627ffb8fb64b3de99db2e37bf514f44f629542",
+  "upstreamRevisionNote": "Client, host JavaScript and production web signing WASM were built from the recorded source revision. The browser bundle excludes testing/non-web WASM and precompressed WASM sidecars.",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
+  "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
+  "baseRevision": "a507a383405868a0b70b6dc90ca7b966b861e6f4",
+  "publication": "Production-only Media integration above #1011; SDK packages are vendored, not npm-published.",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.24.0",
-      "sourceArchiveSha256": "7e9e5473bd5a179ad46525e82f3bd44bef5631d1c630c07509692b2b89a4e5e4",
-      "clientSha256": "497055cb017e1f459e8fe71113becc1b49114f793ee8e80597ea051461b4d899"
+      "sourceArchiveSha256": "3d4473baf4f4574241e877f0cd550d8883c137e60ac17eea19add0acd46079a9",
+      "clientSha256": "0ee3ba3d776f2049aa9e8f92f9e710c8940beadfbf5fcc8ae92412a715a7a182"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.24.0",
-      "sourceArchiveSha256": "e509d4fb8e26efce4120dcb53c7fffe5c56cafeedf3869774463528d53bcfe60",
+      "sourceArchiveSha256": "cd779a74637a09bba20694f0854a04b83e7052be29be7a5b0f786382756bbe89",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "68213199e6fb0736bcb1a46234cb4a941368c665be75c25e09c60aecd2fdf57a",
+      "wasmSha256": "dde26843c573560952ce345d9d80772e66e12cbacd4edae3ff3ba333d9330c26",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "e48777643c52278769a6bac724c7f6577cb87197",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011"
+  "wasmUpstreamRevision": "70627ffb8fb64b3de99db2e37bf514f44f629542"
 }

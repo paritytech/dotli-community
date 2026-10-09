@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "ec0d28820f74178d";
+export const TRUAPI_WIRE_SCHEMA_HASH = "0209b3a4920e59a9";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -1049,6 +1049,230 @@ export class LocaleClient {
         });
     }
 }
+/**
+ * Host-owned real-time media, eligible in both foreground App and Worker runtimes.
+ *
+ * Ownership is immutable to the authenticated product/account/network authority
+ * and runtime. Calling consent is distinct from browser WebRTC permission; local
+ * microphone/camera additionally require their capture grants, and screen capture
+ * always uses the trusted picker. Revoking any calling/microphone/camera grant or
+ * losing identity ends affected sessions, including receive-only sessions. A host
+ * indicator and hangup control remain visible until termination, even without a
+ * product view. Host screen-stop ends only that track and fences old intent work.
+ *
+ * Subscribe and receive the first snapshot before mutations. Known-resource
+ * teardown, refusal, cancellation, and all-off intent remain possible after
+ * subscription loss. Passive incoming delivery does not prompt, capture, or wake
+ * a cold product. Dropping a listener never implicitly hangs up sessions.
+ *
+ * Correlated mutations reserve finite capacity before effects. Identical requests
+ * under one operation key join/replay; different requests conflict. A lost reply
+ * is recovered through get_operation, never by retrying with a fresh key or
+ * guessing from session enumeration. Host timeouts cancel pending work; a client
+ * wait timeout alone is not host cancellation. No late callback may resurrect a
+ * cancelled, superseded, or ended resource.
+ *
+ * Prototype trait 218 (Contacts owns 20 on main) and these ordinals are assigned
+ * on this implementation branch pending upstream review; they are not a claim of
+ * globally reserved or shipped support.
+ */
+export class MediaClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Discover the complete service without permission, capture, or signaling.
+     * Hosts missing any mandatory V1 facility return framework Unsupported.
+     */
+    getCapabilities(options) {
+        return this.#transport.request({
+            ids: W.MEDIA_GET_CAPABILITIES,
+            payload: T.VersionedHostMediaGetCapabilitiesRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaGetCapabilitiesResponse, S.CallError(T.VersionedHostMediaGetCapabilitiesError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Subscribe runtime-wide, including before any session exists.
+     * The initial snapshot is atomic with event publication; future sequences
+     * strictly increase. Overflow interrupts with EventOverflow rather than
+     * dropping state. Resubscribe to recover a fresh authoritative snapshot.
+     */
+    sessionSubscribe() {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.MEDIA_SESSION_SUBSCRIBE,
+            payload: T.VersionedHostMediaSessionSubscribeRequest.enc({ tag: "V1", value: undefined }),
+            decodeItem: (payload) => T.VersionedHostMediaSessionSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostMediaSessionSubscribeError)),
+        });
+    }
+    /**
+     * Create a ready session after calling and requested capture consent.
+     * No peer is connected or signaled. Local self-preview can start only after
+     * consent and stays in unreadable host composition; no view is required.
+     */
+    createSession(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_CREATE_SESSION,
+            payload: T.VersionedHostMediaCreateSessionRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaCreateSessionResponse, S.CallError(T.VersionedHostMediaCreateSessionError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Admit an invitation after peer, authority, consent, and capacity checks.
+     * Returns an inviting participant, not the remote answer. A duplicate live
+     * peer returns its participant without another capacity slot. Invitations
+     * expire in 60 seconds, then initial connection has a 30-second bound;
+     * identical retries never extend either deadline. One local plus five
+     * remote endpoints is the mandatory floor, not six remote participants.
+     */
+    addParticipant(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_ADD_PARTICIPANT,
+            payload: T.VersionedHostMediaAddParticipantRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaAddParticipantResponse, S.CallError(T.VersionedHostMediaAddParticipantError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Atomically decide an authenticated, expiring single-use incoming offer.
+     * Failed preconditions do not consume it; once acceptance/consent begins,
+     * cancellation or denial resolves it without replay. AcceptExisting must
+     * match the offer's existing session and cannot merge arbitrary calls.
+     * Refusal is cleanup and needs neither subscription nor operation quota.
+     */
+    respondIncoming(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_RESPOND_INCOMING,
+            payload: T.VersionedHostMediaRespondIncomingRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaRespondIncomingResponse, S.CallError(T.VersionedHostMediaRespondIncomingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Remove an owned endpoint without ending the other participants or session.
+     * Repeated removal of a previously owned terminal capability succeeds without
+     * new events, permission, subscription, quota, or successful network exchange.
+     */
+    removeParticipant(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_REMOVE_PARTICIPANT,
+            payload: T.VersionedHostMediaRemoveParticipantRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaRemoveParticipantResponse, S.CallError(T.VersionedHostMediaRemoveParticipantError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Replace complete capture intent, ordered at admission before async consent.
+     * New intent supersedes older uncommitted work with InvalidState; its consent,
+     * picker, and device work must stop, and late capture must be released. If the
+     * newer intent is denied, retain the last committed intent, not the superseded
+     * request. All-off intent is allowed without a listener. Picker cancellation
+     * leaves the last accepted intent unchanged; committed Off stops sending.
+     */
+    setLocalTracks(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_SET_LOCAL_TRACKS,
+            payload: T.VersionedHostMediaSetLocalTracksRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaSetLocalTracksResponse, S.CallError(T.VersionedHostMediaSetLocalTracksError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Queue one atomic complete session layout on the authorized runtime viewport.
+     * Validate every handle, rectangle, key, bound, and revision before changing
+     * anything. Identical current-revision retries succeed, conflicting reuse is
+     * InvalidSurface, and older layouts are StaleLayout. Viewport changes discard
+     * the whole stale queued set; detach clears all runtime layouts. Empty sets
+     * clear pictures. No attachment yields SurfaceUnavailable, also for workers.
+     * Host clipping may reduce but never expand the submitted visible region;
+     * pictures remain unreadable siblings below trusted UI, not product textures.
+     */
+    setSurfaces(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_SET_SURFACES,
+            payload: T.VersionedHostMediaSetSurfacesRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaSetSurfacesResponse, S.CallError(T.VersionedHostMediaSetSurfacesError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * End an owned session, linearizing before concurrent track/layout mutations.
+     * Release capture, playback, decoders, signaling, and surfaces, resolve pending
+     * offers, and emit one terminal snapshot. Repeated known teardown succeeds
+     * without permission or new quota. Tombstones last until runtime destruction;
+     * random and unowned handles both return InvalidHandle without ownership leaks.
+     */
+    endSession(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_END_SESSION,
+            payload: T.VersionedHostMediaEndSessionRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaEndSessionResponse, S.CallError(T.VersionedHostMediaEndSessionError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Recover the exact authoritative operation outcome after a lost reply.
+     * Unknown keys return InvalidOperation; discovery of another runtime's keys
+     * is never possible. Does not require an active listener or new consent.
+     */
+    getOperation(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_GET_OPERATION,
+            payload: T.VersionedHostMediaGetOperationRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaGetOperationResponse, S.CallError(T.VersionedHostMediaGetOperationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Cancel pending work authoritatively, including consent and late capture.
+     * Linearizes against commit: if commit won, return Committed without undoing
+     * or lying about it. Cancelling an unknown key reserves a Cancelled tombstone
+     * so a delayed original request cannot act; budget exhaustion precedes effects.
+     * Known cancellation needs no subscription, new quota, or permission prompt.
+     */
+    cancelOperation(request, options) {
+        return this.#transport.request({
+            ids: W.MEDIA_CANCEL_OPERATION,
+            payload: T.VersionedHostMediaCancelOperationRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostMediaCancelOperationResponse, S.CallError(T.VersionedHostMediaCancelOperationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
 /** Local notification scheduling and consent-scoped background receiving. */
 export class NotificationsClient {
     #transport;
@@ -1986,6 +2210,7 @@ export function createClient(transport) {
         game: new GameClient(transport),
         localStorage: new LocalStorageClient(transport),
         locale: new LocaleClient(transport),
+        media: new MediaClient(transport),
         notifications: new NotificationsClient(transport),
         payment: new PaymentClient(transport),
         permissions: new PermissionsClient(transport),

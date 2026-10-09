@@ -2,12 +2,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { withActiveTld } from '@dotli/config';
-import { iconMarkup, JAM_PEERS_ICON, PERMISSION_ICONS } from './permission-icons.js';
-import { isDevicePermission, type EnforceablePermissionName } from './permissions.js';
+import { CALLING_ICON, iconMarkup, JAM_PEERS_ICON, PERMISSION_ICONS } from './permission-icons.js';
+import { isDevicePermission, type PromptPermissionName } from './permissions.js';
 import { presentModal } from './overlays/load.js';
 import type { ModalButton } from './state/modals.js';
 
-export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
+// dot.li Permission request modal
+//
+// Shows a confirmation dialog when a product requests a permission the
+// host can actually gate: the Permissions-Policy-backed device
+// variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
+// Biometrics, Notifications), Chat identity authority, identity disclosure,
+// and the internal submitted gates (ChainSubmit, PreimageSubmit,
+// StatementSubmit), plus JAM peer access (`JamPeers`), which names the JAM
+// network it covers. `OpenUrl` is auto-granted at the container level and
+// never reaches this modal.
+// Returns an explicit decision so callers can distinguish "Deny" from
+// dismissing the dialog without storing a denial. With `allowOnce`, the prompt
+// also offers a one-time grant and highlights it over "Always allow".
+//
+// Rendered by the overlays root (components/entities/PromptDialog.tsx).
+
+export const PERMISSION_DESCRIPTIONS: Record<PromptPermissionName | 'Calling', string> = {
+  Calling: 'Make and receive encrypted calls for this account and network',
   Notifications: 'Show in-app and system notifications',
   Camera: 'Access your camera for photo and video capture',
   Microphone: 'Access your microphone for audio input',
@@ -24,6 +41,10 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   PreimageSubmit: 'Store preimage data on the Bulletin network',
   StatementSubmit: 'Submit signed statements to the statement store',
 };
+
+/** What a host Media consent prompt promises: the product never gets raw capture. */
+export const MEDIA_CONSENT_NOTICE =
+  'Only the trusted host handles call media. The application receives no camera, microphone, screen pixels, or raw browser capture permission.';
 
 /** The question asked before an app may exchange peer messages for one JAM network. */
 export function jamPeersPermissionText(label: string, genesis: string): string {
@@ -44,18 +65,23 @@ export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | '
 
 export interface PermissionRequestModalOptions {
   allowOnce?: boolean;
+  /**
+   * Trusted host Media consent: the exact product id and scope fields. Media
+   * consent never reloads the product or grants it raw capture.
+   */
+  media?: { productId: string; fields: readonly (readonly [string, string])[] };
 }
 
 export async function showPermissionRequestModal(
   label: string,
-  permission: EnforceablePermissionName,
+  permission: PromptPermissionName | 'Calling',
   signal?: AbortSignal,
   options: PermissionRequestModalOptions = {},
 ): Promise<PermissionPromptDecision> {
   return showPermissionPrompt(
     label,
     {
-      icon: iconMarkup(PERMISSION_ICONS[permission]),
+      icon: iconMarkup(permission === 'Calling' ? CALLING_ICON : PERMISSION_ICONS[permission]),
       description: PERMISSION_DESCRIPTIONS[permission],
       reloads: isDevicePermission(permission),
     },
@@ -90,6 +116,7 @@ async function showPermissionPrompt(
   options: PermissionRequestModalOptions,
 ): Promise<PermissionPromptDecision> {
   const allowOnce = options.allowOnce === true;
+  const media = options.media;
   const buttons: ModalButton<PermissionPromptDecision>[] = [
     { label: 'Deny', variant: 'danger', result: 'denied' },
     allowOnce
@@ -108,11 +135,16 @@ async function showPermissionPrompt(
       icon: prompt.icon,
       title: 'Permission Request',
       fields: [
-        { label: 'Application', value: withActiveTld(label) },
+        { label: 'Application', value: media?.productId ?? withActiveTld(label) },
         { label: 'Permission', value: prompt.description },
         ...(prompt.detail === undefined ? [] : [{ label: 'JAM network genesis', value: prompt.detail, mono: true }]),
+        ...(media?.fields ?? []).map(([fieldLabel, value]) => ({ label: fieldLabel, value, mono: true })),
       ],
-      ...(prompt.reloads && !allowOnce ? { notice: 'Granting this permission will reload the application.' } : {}),
+      ...(media !== undefined
+        ? { notice: MEDIA_CONSENT_NOTICE, noticeIcon: 'info' as const }
+        : prompt.reloads && !allowOnce
+          ? { notice: 'Granting this permission will reload the application.' }
+          : {}),
       buttons,
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',

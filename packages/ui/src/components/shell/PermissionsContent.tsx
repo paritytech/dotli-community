@@ -5,6 +5,7 @@ import { createEffect, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
+  automaticPreimageAccount,
   getPermissionStatuses,
   resetAllPermissions,
   resetPermission,
@@ -14,7 +15,10 @@ import {
   type PermissionStatus,
 } from '../../permissions.js';
 import { recordPermissionsChanged } from '../../state/permissions.js';
+import { callingPermissionSettings, mediaOwnsCapture, type CallingPermissionSetting } from '../../media-host.js';
 import { productStore } from '../../state/product.js';
+import { authStore, getAuthState } from '../../state/auth.js';
+import type { DotliAuthState } from '../../host-callbacks/AuthState.js';
 import { Button } from '../primitives/Button.js';
 import { Chip } from '../primitives/Chip.js';
 import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
@@ -22,6 +26,7 @@ import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitiv
 import { Callout, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
+import { MediaPermissions } from './MediaPermissions.js';
 import { PermissionRow } from './PermissionRow.js';
 import { usePopover } from '../floating/Popover.js';
 import s from './PermissionsContent.module.css';
@@ -33,8 +38,19 @@ const MENU_GROUPS: readonly { id: PermissionGroup; label: string; permissions: t
   { id: 'app', label: 'Account and chain', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'app') },
 ];
 
-/** The last statuses read, for the product they were read for. */
-type Fetched = { label: string; statuses: PermissionStatus[] } | { label: string; failed: true };
+/**
+ * The last statuses read, for the product they were read for, with the
+ * execution's host Media state: whether its container is protected and the
+ * Calling scopes its core has used.
+ */
+type Fetched = { label: string; auth: DotliAuthState } & (
+  | {
+      statuses: PermissionStatus[];
+      protectedMedia: boolean;
+      calling: CallingPermissionSetting[];
+    }
+  | { failed: true }
+);
 
 function currentLabel(): string | null {
   const product = productStore.get();
@@ -48,6 +64,7 @@ function statusIn(statuses: readonly PermissionStatus[], name: EnforceablePermis
 /** The permissions popover's body, its own chunk. */
 export function PermissionsContent(): JSX.Element {
   const product = useStore(productStore);
+  const auth = useStore(authStore);
   const changes = createPermissionChanges();
   const popover = usePopover();
   const [fetched, setFetched] = createSignal<Fetched | null>(null);
@@ -61,7 +78,7 @@ export function PermissionsContent(): JSX.Element {
   // changed since.
   const [retries, setRetries] = createSignal(0);
   createEffect(
-    () => (popover.open() ? { label: label(), change: changes(), retry: retries() } : undefined),
+    () => (popover.open() ? { label: label(), auth: auth(), change: changes(), retry: retries() } : undefined),
     key => {
       if (key === undefined) {
         setFetched(null);
@@ -74,16 +91,19 @@ export function PermissionsContent(): JSX.Element {
       }
       let live = true;
       const land = (read: Fetched): void => {
-        if (live && currentLabel() === current) {
+        if (live && currentLabel() === current && getAuthState() === key.auth) {
           setFetched(read);
         }
       };
-      getPermissionStatuses(current, PERMISSION_NAMES).then(
-        statuses => {
-          land({ label: current, statuses });
+      Promise.all([
+        getPermissionStatuses(current, PERMISSION_NAMES, automaticPreimageAccount(key.auth)),
+        callingPermissionSettings(current),
+      ]).then(
+        ([statuses, calling]) => {
+          land({ label: current, auth: key.auth, statuses, protectedMedia: mediaOwnsCapture(current), calling });
         },
         () => {
-          land({ label: current, failed: true });
+          land({ label: current, auth: key.auth, failed: true });
         },
       );
       return () => {
@@ -92,23 +112,24 @@ export function PermissionsContent(): JSX.Element {
     },
   );
 
-  const choose = (name: EnforceablePermissionName, next: PermissionStatus): void => {
+  const choose = async (name: EnforceablePermissionName, next: PermissionStatus): Promise<void> => {
     const read = untrack(fetched);
-    if (read === null) {
+    if (read === null || 'failed' in read || read.auth !== getAuthState() || read.label !== currentLabel()) {
       return;
     }
     const { label } = read;
-    void (async () => {
+    try {
       if (next === 'ask') {
-        await resetPermission(label, name);
+        await resetPermission(label, name, automaticPreimageAccount(read.auth));
       } else {
-        await setPermissionStatus(label, name, next);
+        await setPermissionStatus(label, name, next, automaticPreimageAccount(read.auth));
       }
       recordPermissionsChanged(label, [name]);
-    })().catch(() => {
-      // Re-reads only while open. A closed popover reads afresh on its next open.
+    } catch (error) {
+      // Only an open popover re-reads; the row keeps its stored status.
       setRetries(n => n + 1);
-    });
+      throw error;
+    }
   };
 
   const hint = (): string | undefined => {
@@ -120,29 +141,53 @@ export function PermissionsContent(): JSX.Element {
       return 'No app is loaded on this domain.';
     }
     const read = fetched();
-    return read !== null && read.label === current.label && 'failed' in read
+    return read !== null && read.label === current.label && read.auth === auth() && 'failed' in read
       ? 'Permissions are unavailable for this app.'
       : undefined;
   };
 
-  const statuses = (): PermissionStatus[] | undefined => {
+  const loaded = (): Extract<Fetched, { statuses: PermissionStatus[] }> | undefined => {
     const current = product();
     const read = fetched();
-    return current.status === 'loaded' && read !== null && read.label === current.label && 'statuses' in read
-      ? read.statuses
+    return current.status === 'loaded' &&
+      read !== null &&
+      read.label === current.label &&
+      read.auth === auth() &&
+      'statuses' in read
+      ? read
       : undefined;
   };
 
+  /** The loaded statuses alone, for the rows and the reset. */
+  const statuses = (): PermissionStatus[] | undefined => loaded()?.statuses;
+
+  /** Switch this execution between protected host Media and raw capture. */
+  const switchContainer = (label: string, protectedMedia: boolean): void => {
+    popover.close();
+    window.dispatchEvent(
+      new CustomEvent('dotli:capture-container-changed', {
+        detail: { label, legacyCapture: protectedMedia },
+      }),
+    );
+  };
+
+  /** Receives the focus handed back once a reset disables it. */
   let resetButton: HTMLButtonElement | undefined;
   const [resetting, setResetting] = createSignal(false);
 
   const canReset = (): boolean => !resetting() && (statuses()?.some(status => status !== 'ask') ?? false);
 
-  // One reset at a time, announced as one change, so a device permission among those reset reloads the
-  // app once.
+  // One reset at a time, announced as one change, so the committed policy
+  // reloads the app at most once. A failed write re-reads the list.
   const resetAll = (): void => {
     const read = untrack(fetched);
-    if (read === null || 'failed' in read || untrack(resetting)) {
+    if (
+      read === null ||
+      'failed' in read ||
+      read.auth !== getAuthState() ||
+      read.label !== currentLabel() ||
+      untrack(resetting)
+    ) {
       return;
     }
     const { label } = read;
@@ -151,7 +196,7 @@ export function PermissionsContent(): JSX.Element {
       document.getElementById(popover.id)?.focus();
     }
     setResetting(true);
-    void resetAllPermissions(label)
+    void resetAllPermissions(label, automaticPreimageAccount(read.auth))
       .then(
         ({ reset, failed }) => {
           recordPermissionsChanged(label, reset);
@@ -190,24 +235,39 @@ export function PermissionsContent(): JSX.Element {
       />
       <div class={s['list']} id="permissions-popover-list">
         <Show when={hint()}>{text => <Callout testId="permissions-popover-hint">{text()}</Callout>}</Show>
-        <Show when={statuses()}>
-          {list => (
-            <For each={MENU_GROUPS}>
-              {group => (
-                <Stack
-                  role="group"
-                  aria-labelledby={`permissions-popover-group-${group.id}`}
-                  testId="permissions-popover-group"
-                >
-                  <SectionLabel as="h3" text={group.label} id={`permissions-popover-group-${group.id}`} />
-                  <Well layout="controls">
-                    <For each={group.permissions}>
-                      {perm => <PermissionRow perm={perm} status={statusIn(list(), perm.name)} choose={choose} />}
-                    </For>
-                  </Well>
-                </Stack>
-              )}
-            </For>
+        <Show when={loaded()}>
+          {read => (
+            <>
+              <For each={MENU_GROUPS}>
+                {group => (
+                  <Stack
+                    role="group"
+                    aria-labelledby={`permissions-popover-group-${group.id}`}
+                    testId="permissions-popover-group"
+                  >
+                    <SectionLabel as="h3" text={group.label} id={`permissions-popover-group-${group.id}`} />
+                    <Well layout="controls">
+                      <For each={group.permissions}>
+                        {perm => (
+                          <Show
+                            when={perm.name !== 'AutomaticPreimageSubmit' || automaticPreimageAccount(auth()) !== null}
+                          >
+                            <PermissionRow perm={perm} status={statusIn(read().statuses, perm.name)} choose={choose} />
+                          </Show>
+                        )}
+                      </For>
+                    </Well>
+                  </Stack>
+                )}
+              </For>
+              <MediaPermissions
+                protectedMedia={read().protectedMedia}
+                calling={read().calling}
+                onSwitchContainer={() => {
+                  switchContainer(read().label, read().protectedMedia);
+                }}
+              />
+            </>
           )}
         </Show>
       </div>

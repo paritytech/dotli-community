@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ReceivingAuthority, ReceivingRegistration, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, CallingReview, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, MediaBackendCapabilities, MediaBackendCommand, MediaBackendEvent, MediaBackendPeerState, MediaBackendResponse, MediaConsentRequest, MediaDescription, MediaDescriptionKind, MediaIceCandidate, MediaRevocationSource, MediaRevokedPermission, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ReceivingAuthority, ReceivingRegistration, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -53,9 +53,10 @@ var init_host_callbacks = __esm({
     AccountAccessReview = S.lazy(() => S.Struct({ requestingProductId: S.str, targetProductId: S.str }));
     AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation }));
     AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
+    CallingReview = S.lazy(() => S.Struct({ productId: S.str, network: S.Bytes(32), account: S.Bytes(32) }));
     ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
     ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(import_truapi.Bytes32) }));
-    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NotificationReceiving: S._void }));
+    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NotificationReceiving: S._void, AutomaticPreimageUploads: S.Struct({ productId: S.str, rootPublicKey: import_truapi.Bytes32, genesisHash: import_truapi.Bytes32 }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi.ProductAccountTxPayload }), LegacyAccount: import_truapi.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
@@ -69,6 +70,17 @@ var init_host_callbacks = __esm({
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
     MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
+    MediaBackendCapabilities = S.lazy(() => S.Struct({ supported: S.bool, maxSessions: S.u16, maxRemoteParticipants: S.u16, maxSurfacesPerSession: S.u16 }));
+    MediaBackendCommand = S.lazy(() => S.TaggedUnion({ OpenSession: S.Struct({ sessionId: import_truapi.MediaSessionId, operationId: import_truapi.MediaOperationId, tracks: import_truapi.MediaLocalTracks }), SetTracks: S.Struct({ sessionId: import_truapi.MediaSessionId, operationId: import_truapi.MediaOperationId, intentRevision: S.u64, tracks: import_truapi.MediaLocalTracks }), CancelOperation: S.Struct({ operationId: import_truapi.MediaOperationId }), CloseSession: S.Struct({ sessionId: import_truapi.MediaSessionId }), CreatePeer: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId, offerer: S.bool }), ApplyDescription: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId, description: MediaDescription }), AddIceCandidate: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId, candidate: MediaIceCandidate }), RemovePeer: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId }), SetSurfaces: S.Struct({ sessionId: import_truapi.MediaSessionId, viewportRevision: S.u64, layoutRevision: S.u64, surfaces: S.Vector(import_truapi.MediaSurface) }), CloseRuntime: S._void, CommitOperation: S.Struct({ operationId: import_truapi.MediaOperationId }), RequestConsent: S.Struct({ operationId: import_truapi.MediaOperationId, request: MediaConsentRequest }) }));
+    MediaBackendEvent = S.lazy(() => S.TaggedUnion({ ViewportChanged: S.Struct({ viewport: S.Option(import_truapi.MediaViewport) }), LocalStateChanged: S.Struct({ sessionId: import_truapi.MediaSessionId, intentRevision: S.u64, state: import_truapi.MediaLocalState }), PeerStateChanged: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId, state: MediaBackendPeerState }), RemoteStateChanged: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId, state: import_truapi.MediaRemoteState }), Description: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId, description: MediaDescription }), IceCandidate: S.Struct({ sessionId: import_truapi.MediaSessionId, participantId: import_truapi.MediaParticipantId, candidate: MediaIceCandidate }), ScreenStopped: S.Struct({ sessionId: import_truapi.MediaSessionId }), HostEnded: S.Struct({ sessionId: import_truapi.MediaSessionId }), PermissionRevoked: S.Struct({ permission: MediaRevokedPermission, source: MediaRevocationSource }) }));
+    MediaBackendPeerState = S.lazy(() => S.Status("Connecting", "Connected", "Reconnecting", "Failed", "Closed"));
+    MediaBackendResponse = S.lazy(() => S.TaggedUnion({ Done: S._void, LocalState: S.Struct({ state: import_truapi.MediaLocalState }), Rejected: S.Struct({ failure: import_truapi.MediaOperationFailure }), Consent: S.Struct({ granted: S.bool }) }));
+    MediaConsentRequest = S.lazy(() => S.TaggedUnion({ Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }), Microphone: S._void, Camera: S._void }));
+    MediaDescription = S.lazy(() => S.Struct({ kind: MediaDescriptionKind, sdp: S.str }));
+    MediaDescriptionKind = S.lazy(() => S.Status("Offer", "Answer"));
+    MediaIceCandidate = S.lazy(() => S.Struct({ candidate: S.str, mid: S.Option(S.str), mlineIndex: S.Option(S.u16) }));
+    MediaRevocationSource = S.lazy(() => S.Status("Product", "OperatingSystem"));
+    MediaRevokedPermission = S.lazy(() => S.Status("Calling", "Microphone", "Camera"));
     NativeChatFileExportRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), metadata: import_truapi.HostNativeChatAttachmentMetadata }));
     NativeChatFilePickRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), maxFiles: S.u32 }));
     NativeChatPickedFile = S.lazy(() => S.Struct({ sourceId: S.str, metadata: import_truapi.HostNativeChatAttachmentMetadata }));
@@ -80,14 +92,14 @@ var init_host_callbacks = __esm({
     NativeCoinageResponse = S.lazy(() => S.TaggedUnion({ Denomination: S.Struct({ centsUnitRaw: S.str }), Prepared: S.Struct({ payment: import_truapi.HostNativeChatPayment, memo: S.Option(NativeCoinageMemo) }), Payments: S.Struct({ payments: S.Vector(import_truapi.HostNativeChatPayment) }), TopUp: S.Struct({ outcome: NativeCoinageTopUpOutcome }), Done: S._void, Failed: S.Struct({ reason: NativeCoinageFailure }) }));
     NativeCoinageScope = S.lazy(() => S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32) }));
     NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S._void, Partial: S.Struct({ creditedAmountRaw: S.str }), Pending: S._void, NotClaimed: S._void }));
-    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi.DerivationIndex) }), ProfileDisclosure: S._void }));
+    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi.DerivationIndex) }), ProfileDisclosure: S._void, Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }), AutomaticPreimageSubmit: S.Struct({ rootPublicKey: import_truapi.Bytes32 }) }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
     PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: import_truapi.Bytes32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect }));
     PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
-    PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
+    PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64, productId: S.str, rootPublicKey: import_truapi.Bytes32, genesisHash: import_truapi.Bytes32, automaticMaxBytes: S.u64, automaticMaxUploads: S.u32, automaticWindowSeconds: S.u32 }));
     PresentedContactProfile = S.lazy(() => S.Struct({ shared: S.Option(SharedContactProfile), peerIdentity: S.Bytes(32), username: S.Option(S.str) }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
     ProductExecutionKind = S.lazy(() => S.Status("App", "Widget", "Worker"));
@@ -102,7 +114,7 @@ var init_host_callbacks = __esm({
     SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: import_truapi.HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: import_truapi.HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
     SignVrfReview = S.lazy(() => S.Struct({ callingProductId: S.str, request: import_truapi.HostAccountSignVrfRequest }));
     StatementStoreProductSignReview = S.lazy(() => S.Struct({ callingProductId: S.Option(S.str), account: import_truapi.ProductAccountId, payload: S.Bytes() }));
-    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview, ProfileDisclosure: ProfileDisclosureReview }));
+    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview, ProfileDisclosure: ProfileDisclosureReview, Calling: CallingReview }));
   }
 });
 
@@ -160,41 +172,56 @@ function toAsyncIterator(stream) {
   }
   return asyncIterator;
 }
-function pumpIterator(iterator, onItem, label, onError, onComplete) {
+function pumpIterator(iterator, onItem, label, onError, onComplete, privateMedia = false) {
   let stopped = false;
-  void (async () => {
-    try {
-      while (!stopped) {
-        const next = await iterator.next();
-        if (stopped || next.done)
-          return;
-        onItem(next.value);
-      }
-    } catch (err2) {
-      if (!stopped) {
-        console.error(`[truapi host callbacks] ${label} failed`);
-        onError?.({ reason: errorMessage(err2) });
-      }
-    } finally {
-      if (!stopped)
-        onComplete?.();
-    }
-  })();
-  return () => {
+  const close = () => {
     if (stopped)
       return;
     stopped = true;
     try {
       void Promise.resolve(iterator.return?.()).catch(() => {
-        console.error(`[truapi host callbacks] ${label} cleanup failed`);
+        if (!privateMedia)
+          console.error(`[truapi host callbacks] ${label} cleanup failed`);
       });
     } catch {
-      console.error(`[truapi host callbacks] ${label} cleanup failed`);
+      if (!privateMedia)
+        console.error(`[truapi host callbacks] ${label} cleanup failed`);
     }
   };
+  void (async () => {
+    try {
+      while (!stopped) {
+        const next = await iterator.next();
+        if (stopped)
+          return;
+        if (next.done) {
+          if (privateMedia)
+            onError?.({ reason: "media backend failure" });
+          return;
+        }
+        onItem(next.value);
+      }
+    } catch (err2) {
+      if (stopped)
+        return;
+      if (!privateMedia)
+        console.error(`[truapi host callbacks] ${label} failed`);
+      const reason = privateMedia ? errorMessage(err2) === "media event overflow" ? "media event overflow" : "media backend failure" : errorMessage(err2);
+      onError?.({ reason });
+    } finally {
+      if (!stopped) {
+        try {
+          onComplete?.();
+        } finally {
+          close();
+        }
+      }
+    }
+  })();
+  return close;
 }
-function driveResultStream(stream, sendItem, sendError) {
-  return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError);
+function driveResultStream(stream, sendItem, sendError, privateMedia = false) {
+  return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError, void 0, privateMedia);
 }
 function chainConnectAdapter(host) {
   return async (genesisHash, onResponse, onClosed) => rpcConnectionAdapter(await host.connect((0, import_scale.hexToBytes)(genesisHash)), onResponse, onClosed);
@@ -345,6 +372,7 @@ function createWasmRawCallbacks(callbacks) {
   const contacts = contactsHostAdapter(callbacks.contacts);
   const game = callbacks.game;
   const identityBackend = callbacks.identityBackend;
+  const media = callbacks.media;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
   const profile = profileHostAdapter(callbacks.profile);
@@ -371,6 +399,8 @@ function createWasmRawCallbacks(callbacks) {
     readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
     writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
     clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
+    compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => await callbacks.coreStorage.compareExchangeCoreStorage(CoreStorageKey.dec(key), expected ?? void 0, replacement, notifyOnSuccess),
+    coreStorageChanged: async (key) => await callbacks.coreStorage.coreStorageChanged(CoreStorageKey.dec(key)),
     featureSupported: async (request) => import_truapi2.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi2.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
     ...game ? {
@@ -384,6 +414,11 @@ function createWasmRawCallbacks(callbacks) {
     } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi2.HostLocaleSubscribeItem.enc(item)), sendError),
     localizeTimestamps: async (request) => import_truapi2.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi2.HostLocaleLocalizeTimestampsRequest.dec(request))),
+    ...typeof media?.mediaBackendCapabilities === "function" && typeof media?.mediaBackendEvents === "function" && typeof media?.mediaBackendCommand === "function" ? {
+      mediaBackendCapabilities: async (product) => MediaBackendCapabilities.enc(await media.mediaBackendCapabilities(ProductContext.dec(product))),
+      mediaBackendEvents: (product, runtimeId, sendItem, sendError) => driveResultStream(media.mediaBackendEvents(ProductContext.dec(product), runtimeId), (item) => sendItem(MediaBackendEvent.enc(item)), sendError, true),
+      mediaBackendCommand: async (product, runtimeId, command) => MediaBackendResponse.enc(await media.mediaBackendCommand(ProductContext.dec(product), runtimeId, MediaBackendCommand.dec(command)))
+    } : {},
     pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
     readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
     releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),
@@ -1063,35 +1098,49 @@ function isLoopbackWsUrl(url) {
 var import_scale3 = require("@parity/truapi/scale");
 
 // dist/generated/worker-callbacks.js
-function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
+function startRawSubscription(callbacks, name, args, sendItem, sendError) {
   switch (name) {
     case "subscribeChatRooms":
-      if (!(payload instanceof Uint8Array)) {
-        console.warn(`[truapi worker] ${name} requires payload`);
+      if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
+        sendError({ reason: "invalid subscription arguments" });
         return void 0;
       }
-      return callbacks.subscribeChatRooms?.(payload, sendItem, sendError);
+      return callbacks.subscribeChatRooms?.(args[0], sendItem, sendError);
     case "subscribeLocale":
+      if (args.length !== 0) {
+        sendError({ reason: "invalid subscription arguments" });
+        return void 0;
+      }
       return callbacks.subscribeLocale(sendItem, sendError);
+    case "mediaBackendEvents":
+      if (args.length !== 2 || !(args[0] instanceof Uint8Array) || typeof args[1] !== "bigint") {
+        sendError({ reason: "invalid subscription arguments" });
+        return void 0;
+      }
+      return callbacks.mediaBackendEvents?.(args[0], args[1], sendItem, sendError);
     case "subscribePocketCards":
-      if (!(payload instanceof Uint8Array)) {
-        console.warn(`[truapi worker] ${name} requires payload`);
+      if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
+        sendError({ reason: "invalid subscription arguments" });
         return void 0;
       }
-      return callbacks.subscribePocketCards?.(payload, sendItem, sendError);
+      return callbacks.subscribePocketCards?.(args[0], sendItem, sendError);
     case "lookupPreimage":
-      if (!(payload instanceof Uint8Array)) {
-        console.warn(`[truapi worker] ${name} requires payload`);
+      if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
+        sendError({ reason: "invalid subscription arguments" });
         return void 0;
       }
-      return callbacks.lookupPreimage(payload, sendItem, sendError);
+      return callbacks.lookupPreimage(args[0], sendItem, sendError);
     case "subscribeStorage":
-      if (typeof payload !== "string") {
-        console.warn(`[truapi worker] ${name} requires payload`);
+      if (args.length !== 1 || typeof args[0] !== "string") {
+        sendError({ reason: "invalid subscription arguments" });
         return void 0;
       }
-      return callbacks.subscribeStorage(payload, sendItem, sendError);
+      return callbacks.subscribeStorage(args[0], sendItem, sendError);
     case "subscribeTheme":
+      if (args.length !== 0) {
+        sendError({ reason: "invalid subscription arguments" });
+        return void 0;
+      }
       return callbacks.subscribeTheme(sendItem, sendError);
   }
 }
@@ -2057,7 +2106,7 @@ function handleCallbackRequest(state, msg) {
         kind: "callbackResponse",
         requestId: msg.requestId,
         ok: false,
-        error: hostWalletCallback ? "Native Coinage wallet operation failed" : NATIVE_CHAT_FILE_CALLBACKS[msg.name] ? "Native Chat file operation failed" : errorMessage(err2)
+        error: hostWalletCallback ? "Native Coinage wallet operation failed" : NATIVE_CHAT_FILE_CALLBACKS[msg.name] ? "Native Chat file operation failed" : msg.name === "mediaBackendCapabilities" || msg.name === "mediaBackendCommand" ? "media backend failure" : errorMessage(err2)
       });
     } catch {
       teardown(state, new Error("Host callback transport is unavailable"), true);
@@ -2065,36 +2114,76 @@ function handleCallbackRequest(state, msg) {
   });
 }
 function handleSubscriptionStart(state, msg) {
-  const sendItem = (value) => {
-    if (state.disposed)
+  const privateMedia = msg.name === "mediaBackendEvents";
+  let closed = false;
+  let outstanding = 0;
+  let dispose;
+  const close = () => {
+    if (closed)
       return;
+    closed = true;
+    state.subscriptionDisposers.delete(msg.subId);
+    state.mediaSubscriptionAcks.delete(msg.subId);
+    if (typeof dispose === "function") {
+      try {
+        dispose();
+      } catch (error) {
+        throw privateMedia ? new Error("media backend failure") : error;
+      }
+    }
+  };
+  const sendError = (error) => {
+    if (state.disposed || closed)
+      return;
+    state.worker.postMessage({
+      kind: "subscriptionError",
+      subId: msg.subId,
+      error: privateMedia && error.reason !== "media event overflow" ? "media backend failure" : error.reason
+    });
+    if (privateMedia) {
+      try {
+        close();
+      } catch {
+      }
+    }
+  };
+  const sendItem = (value) => {
+    if (state.disposed || closed)
+      return;
+    if (privateMedia && outstanding >= 128) {
+      sendError({ reason: "media event overflow" });
+      return;
+    }
+    if (privateMedia)
+      outstanding++;
     state.worker.postMessage({
       kind: "subscriptionItem",
       subId: msg.subId,
       value
     });
   };
-  const sendError = (error) => {
-    if (state.disposed)
-      return;
-    state.worker.postMessage({
-      kind: "subscriptionError",
-      subId: msg.subId,
-      error: error.reason
+  state.subscriptionDisposers.set(msg.subId, close);
+  if (privateMedia) {
+    state.mediaSubscriptionAcks.set(msg.subId, () => {
+      if (outstanding > 0)
+        outstanding--;
     });
-  };
-  let dispose = void 0;
+  }
   try {
     const callbacks = msg.coreId === void 0 ? state.rawCallbacks : state.coreCallbacks.get(msg.coreId);
     if (!callbacks)
       throw new Error("Product callbacks are unavailable");
-    dispose = startRawSubscription(callbacks, msg.name, msg.payload, sendItem, sendError);
+    dispose = startRawSubscription(callbacks, msg.name, msg.args, sendItem, sendError);
+    if (closed && typeof dispose === "function")
+      dispose();
   } catch (err2) {
-    sendError({ reason: errorMessage(err2) });
-    return;
-  }
-  if (typeof dispose === "function") {
-    state.subscriptionDisposers.set(msg.subId, dispose);
+    sendError({
+      reason: privateMedia ? "media backend failure" : errorMessage(err2)
+    });
+    try {
+      close();
+    } catch {
+    }
   }
 }
 function handleSubscriptionStop(state, msg) {
@@ -2263,6 +2352,7 @@ function rejectPendingRuntimeRequests(state, error) {
   rejectAll(state.pendingPermissionAuthorizationStatuses, error);
   rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
   rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
+  rejectAll(state.pendingPermissionAuthorizationRefreshes, error);
   rejectAll(state.pendingSessionChatIdentityKeys, error);
   rejectAll(state.pendingDeviceStatementKeys, error);
   rejectAll(state.pendingDeviceEncryptionKeys, error);
@@ -2445,6 +2535,7 @@ function teardown(state, error, fault) {
     }
   }
   state.subscriptionDisposers.clear();
+  state.mediaSubscriptionAcks.clear();
   for (const entry of state.chainConnections.values()) {
     entry.closed = true;
     try {
@@ -2504,6 +2595,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
       disposePending: false,
       disposeGraceTimer: void 0,
       operationGraceMs: options.operationGraceMs ?? 3e4,
+      mediaSubscriptionAcks: /* @__PURE__ */ new Map(),
       chainConnections: /* @__PURE__ */ new Map(),
       chatFileExports: /* @__PURE__ */ new Set(),
       disposeNativeChatFiles: () => browserFiles?.dispose(),
@@ -2513,6 +2605,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
       pendingPermissionAuthorizationStatuses: /* @__PURE__ */ new Map(),
       pendingPermissionAuthorizationStatusBatches: /* @__PURE__ */ new Map(),
       pendingSetPermissionAuthorizationStatuses: /* @__PURE__ */ new Map(),
+      pendingPermissionAuthorizationRefreshes: /* @__PURE__ */ new Map(),
       pendingSessionChatIdentityKeys: /* @__PURE__ */ new Map(),
       pendingProductSubtreePublicKeys: /* @__PURE__ */ new Map(),
       pendingDeviceStatementKeys: /* @__PURE__ */ new Map(),
@@ -2538,7 +2631,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
         case "ready":
           break;
         case "coreReady":
-          handleCoreReady(state, msg.coreId, runtime);
+          handleCoreReady(state, msg.coreId, runtime, msg.trustedRemotePermissions);
           break;
         case "coreError":
           handleCoreError(state, msg.coreId, msg.error);
@@ -2595,6 +2688,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
           break;
         case "setPermissionAuthorizationStatusResponse":
           handleSetPermissionAuthorizationStatusResponse(state, msg);
+          break;
+        case "refreshPermissionAuthorizationResponse":
+          settlePending(state.pendingPermissionAuthorizationRefreshes, msg.requestId, msg.ok ? { ok: true, value: void 0 } : { ok: false, error: msg.error });
           break;
         case "sessionChatIdentityKeyResponse":
           handleSessionChatIdentityKeyResponse(state, msg);
@@ -2660,6 +2756,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
         case "subscriptionStop":
           handleSubscriptionStop(state, msg);
           break;
+        case "mediaSubscriptionAck":
+          state.mediaSubscriptionAcks.get(msg.subId)?.();
+          break;
         case "chainConnectStart":
         case "hopConnectStart":
           if (debugLoggingEnabled(state)) {
@@ -2721,7 +2820,8 @@ function createWebWorkerHostRuntime(worker, host, options) {
             identityBackend: host.identityBackend !== void 0,
             coinageWallet: callbacks.nativeCoinage !== void 0,
             game: host.game !== void 0,
-            contacts: host.contacts !== void 0
+            contacts: host.contacts !== void 0,
+            media: typeof host.media?.mediaBackendCapabilities === "function" && typeof host.media?.mediaBackendEvents === "function" && typeof host.media?.mediaBackendCommand === "function"
           },
           debuggerUrl: debuggerDial
         });
@@ -2757,7 +2857,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
     worker.addEventListener("message", onInitMessage);
   });
 }
-function handleCoreReady(state, coreId, runtime) {
+function handleCoreReady(state, coreId, runtime, trustedRemotePermissions) {
   const pending = state.pendingCores.get(coreId);
   if (!pending || !runtime)
     return;
@@ -2765,6 +2865,7 @@ function handleCoreReady(state, coreId, runtime) {
   const core = {
     coreId,
     productId: pending.productId,
+    trustedRemotePermissions,
     listeners: /* @__PURE__ */ new Set(),
     closeListeners: /* @__PURE__ */ new Set(),
     closedError: null,
@@ -2831,6 +2932,7 @@ function buildRuntime(state) {
                 profile: callbacks.profile !== void 0,
                 identityBackend: callbacks.identityBackend !== void 0,
                 coinageWallet: state.rawCallbacks.nativeCoinage !== void 0,
+                media: typeof callbacks.media?.mediaBackendCapabilities === "function" && typeof callbacks.media?.mediaBackendEvents === "function" && typeof callbacks.media?.mediaBackendCommand === "function",
                 game: callbacks.game !== void 0
               }
             }
@@ -2995,12 +3097,26 @@ function buildRuntime(state) {
       }));
     },
     setPermissionAuthorizationStatus(productId, request, status) {
+      if (state.disposed) {
+        return Promise.reject(state.closedError ?? new Error("runtime disposed"));
+      }
       return sendWorkerRequest(state, state.pendingSetPermissionAuthorizationStatuses, () => ++nextPermissionAuthorizationRequestId, void 0, (requestId) => ({
         kind: "setPermissionAuthorizationStatus",
         productId,
         requestId,
         request: encodePermissionAuthorizationRequest(request),
         status
+      }));
+    },
+    refreshPermissionAuthorization(productId, request) {
+      if (state.disposed) {
+        return Promise.reject(state.closedError ?? new Error("runtime disposed"));
+      }
+      return sendWorkerRequest(state, state.pendingPermissionAuthorizationRefreshes, () => ++nextPermissionAuthorizationRequestId, void 0, (requestId) => ({
+        kind: "refreshPermissionAuthorization",
+        productId,
+        requestId,
+        request: encodePermissionAuthorizationRequest(request)
       }));
     },
     setLogLevel(level) {
@@ -3091,6 +3207,7 @@ function publishAction(state, core, kind, encode) {
 }
 function buildProvider(state, core, runtime) {
   const provider = {
+    trustedRemotePermissions: core.trustedRemotePermissions,
     postMessage(bytes2) {
       if (state.disposed || core.disposed)
         return;
@@ -3165,6 +3282,12 @@ function buildProvider(state, core, runtime) {
         return Promise.reject(core.closedError ?? new Error("product connection is closed"));
       }
       return runtime.setPermissionAuthorizationStatus(core.productId, request, status);
+    },
+    refreshPermissionAuthorization(request) {
+      if (core.disposed) {
+        return Promise.reject(core.closedError ?? new Error("product connection is closed"));
+      }
+      return runtime.refreshPermissionAuthorization(core.productId, request);
     },
     setLogLevel(level) {
       if (core.disposed)
@@ -4487,6 +4610,7 @@ function createMockHost(config = {}) {
     ]
   } } = config;
   const storage = /* @__PURE__ */ new Map();
+  const coreStorageChanges = [];
   const preimages = /* @__PURE__ */ new Map();
   const navigations = [];
   const pushedNotifications = [];
@@ -4631,17 +4755,33 @@ function createMockHost(config = {}) {
       async readCoreStorage(key) {
         if (faults.storageError)
           throw new Error(faults.storageError);
-        return storage.get(coreKey(key));
+        return storage.get(coreKey(key))?.slice();
       },
       async writeCoreStorage(key, value) {
         if (faults.storageError)
           throw new Error(faults.storageError);
-        storage.set(coreKey(key), value);
+        storage.set(coreKey(key), value.slice());
       },
       async clearCoreStorage(key) {
         if (faults.storageError)
           throw new Error(faults.storageError);
         storage.delete(coreKey(key));
+      },
+      async compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess) {
+        if (faults.storageError)
+          throw new Error(faults.storageError);
+        const slot = coreKey(key);
+        const current = storage.get(slot);
+        if (current === void 0 ? expected !== void 0 : expected === void 0 || current.length !== expected.length || current.some((byte, index) => byte !== expected[index])) {
+          return false;
+        }
+        storage.set(slot, replacement.slice());
+        if (notifyOnSuccess)
+          callbacks.coreStorage.coreStorageChanged(key);
+        return true;
+      },
+      coreStorageChanged(key) {
+        coreStorageChanges.push(structuredClone(key));
       }
     },
     navigation: {
@@ -4783,7 +4923,7 @@ function createMockHost(config = {}) {
         reviews.push(review);
         if (faults.confirmationError)
           throw new Error(faults.confirmationError);
-        return decision(confirmUserActions);
+        return review.tag === "PreimageSubmit" && confirmUserActions ? "AllowOnce" : decision(confirmUserActions);
       }
     },
     theme: {
@@ -4897,6 +5037,7 @@ function createMockHost(config = {}) {
     },
     sentRpc: () => [...sentRpc],
     authStates: () => [...authStates],
+    coreStorageChanges: () => structuredClone(coreStorageChanges),
     reviews: () => [...reviews],
     confirmations: () => reviews.map((review) => review.tag),
     getSigningLog: () => reviews.flatMap((review) => {
@@ -5029,6 +5170,7 @@ function createMockHost(config = {}) {
       this.clearSentRpc();
       this.clearPreimages();
       this.clearStorage();
+      coreStorageChanges.length = 0;
       this.clearChatState();
       this.clearStatements();
       openOperations.length = 0;

@@ -46,7 +46,7 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "The Cloudflare TURN response test fixture uses this synthetic descending-hex credential, not a deployed secret. Match only the exact fixture value and path, including historical revisions."
+description = "A removed TURN minting test used this synthetic descending-hex credential as a response-shape fixture. Scope the historical exception to that exact value and path."
 condition = "AND"
 targetRules = ["generic-api-key"]
 paths = [

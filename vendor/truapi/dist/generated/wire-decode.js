@@ -496,4 +496,50 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostJamPeerTransportEventsRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload),
     },
+    [W.MEDIA_GET_CAPABILITIES.trait * 256 + W.MEDIA_GET_CAPABILITIES.method]: {
+        0: (payload) => T.VersionedHostMediaGetCapabilitiesRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaGetCapabilitiesResponse, S.CallError(T.VersionedHostMediaGetCapabilitiesError)).dec(payload),
+    },
+    [W.MEDIA_SESSION_SUBSCRIBE.trait * 256 + W.MEDIA_SESSION_SUBSCRIBE.method]: {
+        0: (payload) => T.VersionedHostMediaSessionSubscribeRequest.dec(payload),
+        1: (payload) => T.VersionedHostMediaSessionSubscribeItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostMediaSessionSubscribeError)).dec(payload),
+        3: () => undefined,
+    },
+    [W.MEDIA_CREATE_SESSION.trait * 256 + W.MEDIA_CREATE_SESSION.method]: {
+        0: (payload) => T.VersionedHostMediaCreateSessionRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaCreateSessionResponse, S.CallError(T.VersionedHostMediaCreateSessionError)).dec(payload),
+    },
+    [W.MEDIA_ADD_PARTICIPANT.trait * 256 + W.MEDIA_ADD_PARTICIPANT.method]: {
+        0: (payload) => T.VersionedHostMediaAddParticipantRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaAddParticipantResponse, S.CallError(T.VersionedHostMediaAddParticipantError)).dec(payload),
+    },
+    [W.MEDIA_RESPOND_INCOMING.trait * 256 + W.MEDIA_RESPOND_INCOMING.method]: {
+        0: (payload) => T.VersionedHostMediaRespondIncomingRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaRespondIncomingResponse, S.CallError(T.VersionedHostMediaRespondIncomingError)).dec(payload),
+    },
+    [W.MEDIA_REMOVE_PARTICIPANT.trait * 256 + W.MEDIA_REMOVE_PARTICIPANT.method]: {
+        0: (payload) => T.VersionedHostMediaRemoveParticipantRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaRemoveParticipantResponse, S.CallError(T.VersionedHostMediaRemoveParticipantError)).dec(payload),
+    },
+    [W.MEDIA_SET_LOCAL_TRACKS.trait * 256 + W.MEDIA_SET_LOCAL_TRACKS.method]: {
+        0: (payload) => T.VersionedHostMediaSetLocalTracksRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaSetLocalTracksResponse, S.CallError(T.VersionedHostMediaSetLocalTracksError)).dec(payload),
+    },
+    [W.MEDIA_SET_SURFACES.trait * 256 + W.MEDIA_SET_SURFACES.method]: {
+        0: (payload) => T.VersionedHostMediaSetSurfacesRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaSetSurfacesResponse, S.CallError(T.VersionedHostMediaSetSurfacesError)).dec(payload),
+    },
+    [W.MEDIA_END_SESSION.trait * 256 + W.MEDIA_END_SESSION.method]: {
+        0: (payload) => T.VersionedHostMediaEndSessionRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaEndSessionResponse, S.CallError(T.VersionedHostMediaEndSessionError)).dec(payload),
+    },
+    [W.MEDIA_GET_OPERATION.trait * 256 + W.MEDIA_GET_OPERATION.method]: {
+        0: (payload) => T.VersionedHostMediaGetOperationRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaGetOperationResponse, S.CallError(T.VersionedHostMediaGetOperationError)).dec(payload),
+    },
+    [W.MEDIA_CANCEL_OPERATION.trait * 256 + W.MEDIA_CANCEL_OPERATION.method]: {
+        0: (payload) => T.VersionedHostMediaCancelOperationRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaCancelOperationResponse, S.CallError(T.VersionedHostMediaCancelOperationError)).dec(payload),
+    },
 };

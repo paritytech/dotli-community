@@ -547,7 +547,7 @@ var require_index_cjs = __commonJS({
 });
 
 // dist/generated/host-callbacks.js
-var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ReceivingAuthority, ReceivingRegistration, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, CallingReview, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, MediaBackendCapabilities, MediaBackendCommand, MediaBackendEvent, MediaBackendPeerState, MediaBackendResponse, MediaConsentRequest, MediaDescription, MediaDescriptionKind, MediaIceCandidate, MediaRevocationSource, MediaRevokedPermission, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ReceivingAuthority, ReceivingRegistration, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -556,9 +556,10 @@ var init_host_callbacks = __esm({
     AccountAccessReview = S.lazy(() => S.Struct({ requestingProductId: S.str, targetProductId: S.str }));
     AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation }));
     AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
+    CallingReview = S.lazy(() => S.Struct({ productId: S.str, network: S.Bytes(32), account: S.Bytes(32) }));
     ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
     ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(import_truapi3.Bytes32) }));
-    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NotificationReceiving: S._void }));
+    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NotificationReceiving: S._void, AutomaticPreimageUploads: S.Struct({ productId: S.str, rootPublicKey: import_truapi3.Bytes32, genesisHash: import_truapi3.Bytes32 }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi3.ProductAccountTxPayload }), LegacyAccount: import_truapi3.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
@@ -572,6 +573,17 @@ var init_host_callbacks = __esm({
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
     MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
+    MediaBackendCapabilities = S.lazy(() => S.Struct({ supported: S.bool, maxSessions: S.u16, maxRemoteParticipants: S.u16, maxSurfacesPerSession: S.u16 }));
+    MediaBackendCommand = S.lazy(() => S.TaggedUnion({ OpenSession: S.Struct({ sessionId: import_truapi3.MediaSessionId, operationId: import_truapi3.MediaOperationId, tracks: import_truapi3.MediaLocalTracks }), SetTracks: S.Struct({ sessionId: import_truapi3.MediaSessionId, operationId: import_truapi3.MediaOperationId, intentRevision: S.u64, tracks: import_truapi3.MediaLocalTracks }), CancelOperation: S.Struct({ operationId: import_truapi3.MediaOperationId }), CloseSession: S.Struct({ sessionId: import_truapi3.MediaSessionId }), CreatePeer: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId, offerer: S.bool }), ApplyDescription: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId, description: MediaDescription }), AddIceCandidate: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId, candidate: MediaIceCandidate }), RemovePeer: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId }), SetSurfaces: S.Struct({ sessionId: import_truapi3.MediaSessionId, viewportRevision: S.u64, layoutRevision: S.u64, surfaces: S.Vector(import_truapi3.MediaSurface) }), CloseRuntime: S._void, CommitOperation: S.Struct({ operationId: import_truapi3.MediaOperationId }), RequestConsent: S.Struct({ operationId: import_truapi3.MediaOperationId, request: MediaConsentRequest }) }));
+    MediaBackendEvent = S.lazy(() => S.TaggedUnion({ ViewportChanged: S.Struct({ viewport: S.Option(import_truapi3.MediaViewport) }), LocalStateChanged: S.Struct({ sessionId: import_truapi3.MediaSessionId, intentRevision: S.u64, state: import_truapi3.MediaLocalState }), PeerStateChanged: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId, state: MediaBackendPeerState }), RemoteStateChanged: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId, state: import_truapi3.MediaRemoteState }), Description: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId, description: MediaDescription }), IceCandidate: S.Struct({ sessionId: import_truapi3.MediaSessionId, participantId: import_truapi3.MediaParticipantId, candidate: MediaIceCandidate }), ScreenStopped: S.Struct({ sessionId: import_truapi3.MediaSessionId }), HostEnded: S.Struct({ sessionId: import_truapi3.MediaSessionId }), PermissionRevoked: S.Struct({ permission: MediaRevokedPermission, source: MediaRevocationSource }) }));
+    MediaBackendPeerState = S.lazy(() => S.Status("Connecting", "Connected", "Reconnecting", "Failed", "Closed"));
+    MediaBackendResponse = S.lazy(() => S.TaggedUnion({ Done: S._void, LocalState: S.Struct({ state: import_truapi3.MediaLocalState }), Rejected: S.Struct({ failure: import_truapi3.MediaOperationFailure }), Consent: S.Struct({ granted: S.bool }) }));
+    MediaConsentRequest = S.lazy(() => S.TaggedUnion({ Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }), Microphone: S._void, Camera: S._void }));
+    MediaDescription = S.lazy(() => S.Struct({ kind: MediaDescriptionKind, sdp: S.str }));
+    MediaDescriptionKind = S.lazy(() => S.Status("Offer", "Answer"));
+    MediaIceCandidate = S.lazy(() => S.Struct({ candidate: S.str, mid: S.Option(S.str), mlineIndex: S.Option(S.u16) }));
+    MediaRevocationSource = S.lazy(() => S.Status("Product", "OperatingSystem"));
+    MediaRevokedPermission = S.lazy(() => S.Status("Calling", "Microphone", "Camera"));
     NativeChatFileExportRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), metadata: import_truapi3.HostNativeChatAttachmentMetadata }));
     NativeChatFilePickRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), maxFiles: S.u32 }));
     NativeChatPickedFile = S.lazy(() => S.Struct({ sourceId: S.str, metadata: import_truapi3.HostNativeChatAttachmentMetadata }));
@@ -583,14 +595,14 @@ var init_host_callbacks = __esm({
     NativeCoinageResponse = S.lazy(() => S.TaggedUnion({ Denomination: S.Struct({ centsUnitRaw: S.str }), Prepared: S.Struct({ payment: import_truapi3.HostNativeChatPayment, memo: S.Option(NativeCoinageMemo) }), Payments: S.Struct({ payments: S.Vector(import_truapi3.HostNativeChatPayment) }), TopUp: S.Struct({ outcome: NativeCoinageTopUpOutcome }), Done: S._void, Failed: S.Struct({ reason: NativeCoinageFailure }) }));
     NativeCoinageScope = S.lazy(() => S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32) }));
     NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S._void, Partial: S.Struct({ creditedAmountRaw: S.str }), Pending: S._void, NotClaimed: S._void }));
-    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi3.HostDevicePermissionRequest, Remote: import_truapi3.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi3.DerivationIndex) }), ProfileDisclosure: S._void }));
+    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi3.HostDevicePermissionRequest, Remote: import_truapi3.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi3.DerivationIndex) }), ProfileDisclosure: S._void, Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }), AutomaticPreimageSubmit: S.Struct({ rootPublicKey: import_truapi3.Bytes32 }) }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi3.AvatarRect, clip: import_truapi3.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
     PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: import_truapi3.Bytes32, rect: import_truapi3.AvatarRect, clip: import_truapi3.AvatarRect }));
     PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
-    PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
+    PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64, productId: S.str, rootPublicKey: import_truapi3.Bytes32, genesisHash: import_truapi3.Bytes32, automaticMaxBytes: S.u64, automaticMaxUploads: S.u32, automaticWindowSeconds: S.u32 }));
     PresentedContactProfile = S.lazy(() => S.Struct({ shared: S.Option(SharedContactProfile), peerIdentity: S.Bytes(32), username: S.Option(S.str) }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
     ProductExecutionKind = S.lazy(() => S.Status("App", "Widget", "Worker"));
@@ -605,7 +617,7 @@ var init_host_callbacks = __esm({
     SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: import_truapi3.HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: import_truapi3.HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
     SignVrfReview = S.lazy(() => S.Struct({ callingProductId: S.str, request: import_truapi3.HostAccountSignVrfRequest }));
     StatementStoreProductSignReview = S.lazy(() => S.Struct({ callingProductId: S.Option(S.str), account: import_truapi3.ProductAccountId, payload: S.Bytes() }));
-    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview, ProfileDisclosure: ProfileDisclosureReview }));
+    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview, ProfileDisclosure: ProfileDisclosureReview, Calling: CallingReview }));
   }
 });
 
@@ -660,41 +672,56 @@ function toAsyncIterator(stream) {
   }
   return asyncIterator;
 }
-function pumpIterator(iterator, onItem, label, onError, onComplete) {
+function pumpIterator(iterator, onItem, label, onError, onComplete, privateMedia = false) {
   let stopped = false;
-  void (async () => {
-    try {
-      while (!stopped) {
-        const next = await iterator.next();
-        if (stopped || next.done)
-          return;
-        onItem(next.value);
-      }
-    } catch (err2) {
-      if (!stopped) {
-        console.error(`[truapi host callbacks] ${label} failed`);
-        onError?.({ reason: errorMessage(err2) });
-      }
-    } finally {
-      if (!stopped)
-        onComplete?.();
-    }
-  })();
-  return () => {
+  const close = () => {
     if (stopped)
       return;
     stopped = true;
     try {
       void Promise.resolve(iterator.return?.()).catch(() => {
-        console.error(`[truapi host callbacks] ${label} cleanup failed`);
+        if (!privateMedia)
+          console.error(`[truapi host callbacks] ${label} cleanup failed`);
       });
     } catch {
-      console.error(`[truapi host callbacks] ${label} cleanup failed`);
+      if (!privateMedia)
+        console.error(`[truapi host callbacks] ${label} cleanup failed`);
     }
   };
+  void (async () => {
+    try {
+      while (!stopped) {
+        const next = await iterator.next();
+        if (stopped)
+          return;
+        if (next.done) {
+          if (privateMedia)
+            onError?.({ reason: "media backend failure" });
+          return;
+        }
+        onItem(next.value);
+      }
+    } catch (err2) {
+      if (stopped)
+        return;
+      if (!privateMedia)
+        console.error(`[truapi host callbacks] ${label} failed`);
+      const reason = privateMedia ? errorMessage(err2) === "media event overflow" ? "media event overflow" : "media backend failure" : errorMessage(err2);
+      onError?.({ reason });
+    } finally {
+      if (!stopped) {
+        try {
+          onComplete?.();
+        } finally {
+          close();
+        }
+      }
+    }
+  })();
+  return close;
 }
-function driveResultStream(stream, sendItem, sendError) {
-  return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError);
+function driveResultStream(stream, sendItem, sendError, privateMedia = false) {
+  return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError, void 0, privateMedia);
 }
 function chainConnectAdapter(host) {
   return async (genesisHash, onResponse, onClosed) => rpcConnectionAdapter(await host.connect((0, import_scale.hexToBytes)(genesisHash)), onResponse, onClosed);
@@ -845,6 +872,7 @@ function createWasmRawCallbacks(callbacks) {
   const contacts = contactsHostAdapter(callbacks.contacts);
   const game = callbacks.game;
   const identityBackend = callbacks.identityBackend;
+  const media = callbacks.media;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
   const profile = profileHostAdapter(callbacks.profile);
@@ -871,6 +899,8 @@ function createWasmRawCallbacks(callbacks) {
     readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
     writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
     clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
+    compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => await callbacks.coreStorage.compareExchangeCoreStorage(CoreStorageKey.dec(key), expected ?? void 0, replacement, notifyOnSuccess),
+    coreStorageChanged: async (key) => await callbacks.coreStorage.coreStorageChanged(CoreStorageKey.dec(key)),
     featureSupported: async (request) => import_truapi4.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi4.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
     ...game ? {
@@ -884,6 +914,11 @@ function createWasmRawCallbacks(callbacks) {
     } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi4.HostLocaleSubscribeItem.enc(item)), sendError),
     localizeTimestamps: async (request) => import_truapi4.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi4.HostLocaleLocalizeTimestampsRequest.dec(request))),
+    ...typeof media?.mediaBackendCapabilities === "function" && typeof media?.mediaBackendEvents === "function" && typeof media?.mediaBackendCommand === "function" ? {
+      mediaBackendCapabilities: async (product) => MediaBackendCapabilities.enc(await media.mediaBackendCapabilities(ProductContext.dec(product))),
+      mediaBackendEvents: (product, runtimeId, sendItem, sendError) => driveResultStream(media.mediaBackendEvents(ProductContext.dec(product), runtimeId), (item) => sendItem(MediaBackendEvent.enc(item)), sendError, true),
+      mediaBackendCommand: async (product, runtimeId, command) => MediaBackendResponse.enc(await media.mediaBackendCommand(ProductContext.dec(product), runtimeId, MediaBackendCommand.dec(command)))
+    } : {},
     pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
     readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
     releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),
@@ -2117,6 +2152,7 @@ function createMockHost(config = {}) {
     ]
   } } = config;
   const storage = /* @__PURE__ */ new Map();
+  const coreStorageChanges = [];
   const preimages = /* @__PURE__ */ new Map();
   const navigations = [];
   const pushedNotifications = [];
@@ -2261,17 +2297,33 @@ function createMockHost(config = {}) {
       async readCoreStorage(key) {
         if (faults.storageError)
           throw new Error(faults.storageError);
-        return storage.get(coreKey(key));
+        return storage.get(coreKey(key))?.slice();
       },
       async writeCoreStorage(key, value) {
         if (faults.storageError)
           throw new Error(faults.storageError);
-        storage.set(coreKey(key), value);
+        storage.set(coreKey(key), value.slice());
       },
       async clearCoreStorage(key) {
         if (faults.storageError)
           throw new Error(faults.storageError);
         storage.delete(coreKey(key));
+      },
+      async compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess) {
+        if (faults.storageError)
+          throw new Error(faults.storageError);
+        const slot = coreKey(key);
+        const current = storage.get(slot);
+        if (current === void 0 ? expected !== void 0 : expected === void 0 || current.length !== expected.length || current.some((byte, index) => byte !== expected[index])) {
+          return false;
+        }
+        storage.set(slot, replacement.slice());
+        if (notifyOnSuccess)
+          callbacks.coreStorage.coreStorageChanged(key);
+        return true;
+      },
+      coreStorageChanged(key) {
+        coreStorageChanges.push(structuredClone(key));
       }
     },
     navigation: {
@@ -2413,7 +2465,7 @@ function createMockHost(config = {}) {
         reviews.push(review);
         if (faults.confirmationError)
           throw new Error(faults.confirmationError);
-        return decision(confirmUserActions);
+        return review.tag === "PreimageSubmit" && confirmUserActions ? "AllowOnce" : decision(confirmUserActions);
       }
     },
     theme: {
@@ -2527,6 +2579,7 @@ function createMockHost(config = {}) {
     },
     sentRpc: () => [...sentRpc],
     authStates: () => [...authStates],
+    coreStorageChanges: () => structuredClone(coreStorageChanges),
     reviews: () => [...reviews],
     confirmations: () => reviews.map((review) => review.tag),
     getSigningLog: () => reviews.flatMap((review) => {
@@ -2659,6 +2712,7 @@ function createMockHost(config = {}) {
       this.clearSentRpc();
       this.clearPreimages();
       this.clearStorage();
+      coreStorageChanges.length = 0;
       this.clearChatState();
       this.clearStatements();
       openOperations.length = 0;

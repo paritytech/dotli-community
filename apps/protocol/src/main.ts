@@ -43,7 +43,7 @@ window.addEventListener('vite:preloadError', event => {
   }
 });
 
-import { log, serializeError } from '@dotli/shared';
+import { log, serializeError, fromHex, toHex } from '@dotli/shared';
 import {
   DEBUG,
   SITE_ID,
@@ -65,6 +65,7 @@ import {
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
+  SHARED_CORE_SESSION_KEY,
   isProtocolEnvelope,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
@@ -1050,6 +1051,13 @@ function bindSharedModeListener(): void {
   });
 }
 
+function withSharedAuthSlot<T>(siteId: SiteId, key: string, operation: () => T | Promise<T>): Promise<T> {
+  if (typeof navigator.locks === 'undefined') {
+    return Promise.reject(new Error('Atomic shared auth storage is unavailable'));
+  }
+  return navigator.locks.request(`dotli:core-slot:${buildSharedAuthStorageKey(siteId, key)}`, operation);
+}
+
 async function handleSharedAuthRequest(
   request: ProtocolRequestEnvelope,
   origin: string,
@@ -1088,14 +1096,16 @@ async function handleSharedAuthRequest(
         localStorage.setItem(buildSharedAuthStorageKey(siteId, key), value);
         broadcastSharedAuthChange(siteId, key, value);
       };
-      if (payload.walletRevision !== undefined) {
-        if (!DEBUG) {
-          throw new Error('Experimental wallets require a debug build');
+      await withSharedAuthSlot(siteId, key, async () => {
+        if (payload.walletRevision !== undefined) {
+          if (!DEBUG) {
+            throw new Error('Experimental wallets require a debug build');
+          }
+          await withSharedWalletRevision(payload.walletRevision, commit, request.deadlineMs);
+        } else {
+          commit();
         }
-        await withSharedWalletRevision(payload.walletRevision, commit, request.deadlineMs);
-      } else {
-        commit();
-      }
+      });
       respond({
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -1110,8 +1120,10 @@ async function handleSharedAuthRequest(
       const payload = request.payload as ProtocolRequestMap['authStorageClear'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedAuthKey(payload.key);
-      localStorage.removeItem(buildSharedAuthStorageKey(payload.siteId, payload.key));
-      broadcastSharedAuthChange(payload.siteId, payload.key, null);
+      await withSharedAuthSlot(payload.siteId, payload.key, () => {
+        localStorage.removeItem(buildSharedAuthStorageKey(payload.siteId, payload.key));
+        broadcastSharedAuthChange(payload.siteId, payload.key, null);
+      });
       respond({
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -1119,6 +1131,37 @@ async function handleSharedAuthRequest(
         ok: true,
         result: true,
       });
+      return;
+    }
+    case 'authStorageCompareExchange': {
+      const payload = request.payload as ProtocolRequestMap['authStorageCompareExchange'];
+      assertSharedAuthSiteId(payload.siteId);
+      assertSharedAuthKey(payload.key);
+      if (
+        payload.key !== SHARED_CORE_SESSION_KEY ||
+        !(payload.replacement instanceof Uint8Array) ||
+        (payload.expected !== null && !(payload.expected instanceof Uint8Array))
+      ) {
+        throw new Error('Invalid shared core storage compare-exchange');
+      }
+      const { expected, replacement } = payload;
+      const result = await withSharedAuthSlot(payload.siteId, payload.key, () => {
+        const slot = buildSharedAuthStorageKey(payload.siteId, payload.key);
+        const raw = localStorage.getItem(slot);
+        const current = raw === null ? null : fromHex(raw);
+        const matches =
+          current === null || expected === null
+            ? current === expected
+            : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+        if (!matches) {
+          return false;
+        }
+        const value = toHex(replacement);
+        localStorage.setItem(slot, value);
+        broadcastSharedAuthChange(payload.siteId, payload.key, value);
+        return true;
+      });
+      respond({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result });
       return;
     }
   }
