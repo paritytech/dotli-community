@@ -51,9 +51,9 @@
   color: var(--td-fg);
 }
 .chip[data-active] {
-  background: var(--td-selected);
-  border-color: var(--td-focus);
-  color: var(--td-fg-strong);
+  background: var(--td-accent);
+  border-color: var(--td-accent);
+  color: var(--td-fg-bright);
 }
 
 .input {
