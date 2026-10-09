@@ -404,19 +404,18 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the Chat TrUAPI 0.24.0 SDK from source
-`a0711ac26a795bea35764447f8d5bf36648f55af`, recorded in `vendor/truapi-host.lock.json`.
-The browser wallet uses the production `--web-only --signing-host` build, without `test-host`. Its archive inventory
-comes from `npm pack`, with stale compiled files lacking a matching upstream TypeScript source and non-web Wasm
-removed in a temporary staging directory before packing. The recorded archive hashes precede the local
-`@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound notification activation
-are preserved above the generic browser runtime and wallet layer; Profile and Jam remain separate feature layers.
-Locale timestamp batches use the SDK's browser `Intl` implementation.
-Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery
-opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame.
-Allowance inspection batches historical ring membership reads while preserving finalized snapshots, complete ring
-validation and identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a
-matching local truapi checkout instead, run:
+This branch vendors the Chat TrUAPI 0.24.0 SDK from source `a0711ac26a795bea35764447f8d5bf36648f55af`, recorded in
+`vendor/truapi-host.lock.json`. The browser wallet uses the production `--web-only --signing-host` build, without
+`test-host`. Its archive inventory comes from `npm pack`, with stale compiled files lacking a matching upstream
+TypeScript source and non-web Wasm removed in a temporary staging directory before packing. The recorded archive hashes
+precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
+notification activation are preserved above the generic browser runtime and wallet layer; Profile and Jam remain
+separate feature layers. Locale timestamp batches use the SDK's browser `Intl` implementation. Explicit protocol-frame
+resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery opens fresh connection IDs
+instead of sending read-only allowance queries through IDs owned by the removed frame. Allowance inspection batches
+historical ring membership reads while preserving finalized snapshots, complete ring validation and identity-activation
+fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout
+instead, run:
 
 ```bash
 npm run link:truapi

@@ -7,7 +7,6 @@ import { isDevicePermission, type EnforceablePermissionName } from './permission
 import { presentModal } from './overlays/load.js';
 import type { ModalButton } from './state/modals.js';
 
-
 export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
   Notifications: 'Show in-app and system notifications',
   Camera: 'Access your camera for photo and video capture',
