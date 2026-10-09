@@ -1,12 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   BACKEND_KEY,
+  CACHE_NODES_KEY,
   configureModeStorage,
   defaultBackend,
   getBackend,
+  getCacheNodeSettings,
   isSharedWorkerAvailable,
   type ModeStorage,
 } from '../src/mode.js';
@@ -164,5 +166,47 @@ describe('getBackend', () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe('getCacheNodeSettings', () => {
+  let storage: ReturnType<typeof makeMemoryStorage>;
+
+  beforeEach(() => {
+    storage = makeMemoryStorage();
+    configureModeStorage(storage);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    configureModeStorage({
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+  });
+
+  it('As a user of a demo deployment, I read through its cache nodes until I change the setting', () => {
+    // Given a build that names a provider set
+    vi.stubEnv('VITE_CACHE_PROVIDERS_URL', 'https://cache.example/providers');
+
+    // When the user has no setting yet, and then turns the setting off
+    const first = getCacheNodeSettings();
+    storage.setItem(CACHE_NODES_KEY, JSON.stringify({ enabled: false }));
+    const changed = getCacheNodeSettings();
+
+    // Then the build's provider set is on by default, and the stored choice wins over it
+    expect({ first, changed }).toEqual({
+      first: { enabled: true, providersUrl: 'https://cache.example/providers', payerSeed: '' },
+      changed: { enabled: false, providersUrl: 'https://cache.example/providers', payerSeed: '' },
+    });
+  });
+
+  it('As a user of a build without a provider set, cache nodes stay off', () => {
+    // Given a build without VITE_CACHE_PROVIDERS_URL
+    vi.stubEnv('VITE_CACHE_PROVIDERS_URL', '');
+
+    // When / Then
+    expect(getCacheNodeSettings()).toEqual({ enabled: false, providersUrl: '', payerSeed: '' });
   });
 });
