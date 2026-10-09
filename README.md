@@ -547,12 +547,15 @@ cartridge contents. Wallet signing and native hosts are also outside this suite.
 ### Running the host-playground E2E locally
 
 The product E2E suite loads the source checkout through dotli's localhost proxy. CI pins
-[host-playground](https://github.com/paritytech/host-playground) to `f56294cea4430163bf16ec068844b1327441073c`, installs
+[host-playground](https://github.com/paritytech/host-playground) to `f32da97c39310853f5c927f2c242a88f1f7b306c`, installs
 its frozen dependency lock, and links its TrUAPI consumers to this repository's installed `@parity/truapi` with
 `node scripts/link-truapi-local.ts --product-vendor`. This runs the existing product behavior checks against the pinned
 SDK rather than the independently deployed `host-playground.dot`. The deployed smoke suite below checks that separate
 boundary. The product still calls the real host; no SDK responses are mocked. The pinned fixture requests bare host
-patterns for `Remote` permissions; scheme-bearing URLs are intentionally rejected by the core before prompting.
+patterns for `Remote` permissions; scheme-bearing URLs are intentionally rejected by the core before prompting. The
+fixture uses its per-card finalized-write budgets for allowance allocation rather than the default read-only deadline.
+`NEXT_PUBLIC_SKIP_HOST_BRIDGE=1` disables its standalone CLI development bridge: the embedded product must exercise
+dotli's host transport.
 
 CI and local Playwright runs use Node.js 26 and npm 12.
 
