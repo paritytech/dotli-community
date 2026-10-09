@@ -202,6 +202,36 @@ describe('createRemoteChainProvider halts', () => {
     expect(openHalt).toHaveBeenCalledWith('chain');
   });
 
+  it.each(['reset', 'pagehide'])('As a wallet user, %s retires old chain IDs before a fresh lease connects', async mode => {
+    // Given
+    const onHalt = vi.fn<(reason: RemoteChainHalt) => void>();
+    const old = await connectRemote(onHalt);
+
+    // When
+    if (mode === 'pagehide') {
+      window.dispatchEvent(new Event('pagehide'));
+    } else {
+      resetProtocolFrame();
+    }
+    const fresh = await connectRemote();
+    old.connection.send({ jsonrpc: '2.0', id: 71, method: 'chain_getBlockHash', params: [] });
+    fresh.connection.send({ jsonrpc: '2.0', id: 72, method: 'chain_getBlockHash', params: [] });
+    await flush();
+
+    // Then
+    expect(onHalt).toHaveBeenCalledExactlyOnceWith('frame');
+    expect(old.received).toEqual([
+      { jsonrpc: '2.0', id: 71, error: { code: -32603, message: 'Chain connection is closed' } },
+    ]);
+    expect(fresh.connectionId).not.toBe(old.connectionId);
+    const sends = fresh.frame.posted.filter(request => request.method === 'chainSend');
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.payload).toEqual({
+      connectionId: fresh.connectionId,
+      message: JSON.stringify({ jsonrpc: '2.0', id: 72, method: 'chain_getBlockHash', params: [] }),
+    });
+  });
+
   it('As a dotli integrator, a dead protocol frame halts every open chain connection once', async () => {
     // Given
     const firstHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();

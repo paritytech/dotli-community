@@ -784,7 +784,7 @@ test('touch and wheel gestures reach the guest without scrolling the host page',
       body: Buffer.from(fixture.bytes),
     });
   });
-  await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://polkavm-fixture.localhost:5173/', { waitUntil: 'domcontentloaded' });
   await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   // Input records reach the guest through the runtime worker, so recording the

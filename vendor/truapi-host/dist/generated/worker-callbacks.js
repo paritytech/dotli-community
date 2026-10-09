@@ -16,6 +16,8 @@ export const CALLBACK_NAMES = [
     "clearCoreStorage",
     "featureSupported",
     "supportedChains",
+    "scheduleGameReminder",
+    "cancelGameReminder",
     "localizeTimestamps",
     "navigateTo",
     "pushNotification",
@@ -89,6 +91,12 @@ function contactsRawCallbacks(bridge) {
         pickContact: (product) => bridge.callbackRequest("pickContact", [product]),
     };
 }
+function gameRawCallbacks(bridge) {
+    return {
+        scheduleGameReminder: (product, startsAt) => bridge.callbackRequest("scheduleGameReminder", [product, startsAt]),
+        cancelGameReminder: (product) => bridge.callbackRequest("cancelGameReminder", [product]),
+    };
+}
 function permissionStatusRawCallbacks(bridge) {
     return {
         devicePermissionStatus: (request) => bridge.callbackRequest("devicePermissionStatus", [request]),
@@ -110,6 +118,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, chatRawCallbacks(bridge));
     if (capabilities.contacts)
         Object.assign(callbacks, contactsRawCallbacks(bridge));
+    if (capabilities.game)
+        Object.assign(callbacks, gameRawCallbacks(bridge));
     if (capabilities.permissionStatus)
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)

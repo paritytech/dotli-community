@@ -37,9 +37,6 @@ vi.mock('@dotli/ui', () => ({
   },
 }));
 
-// The probe only needs the contract version; the test location has no hostname.
-vi.mock('@dotli/config', () => ({ SANDBOX_SCHEMA_VERSION: 1 }));
-
 vi.mock('@dotli/metrics', () => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
 vi.mock('@dotli/shared', async importOriginal => ({
   ...(await importOriginal<typeof SharedModule>()),

@@ -636,6 +636,10 @@ export function createMockHost(config = {}) {
                 throw new Error("notification activation is unsupported");
             },
         },
+        game: {
+            async scheduleGameReminder() { },
+            async cancelGameReminder() { },
+        },
         permissions: {
             async devicePermission(_product, request) {
                 if (faults.permissionError)

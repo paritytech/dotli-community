@@ -505,17 +505,14 @@ describe('host-owned experimental identity', () => {
     expect(owner.requests).toEqual(requestsBeforeRetry);
   });
 
-  it.each(['frame reset', 'pagehide'] as const)('reacquires the signer after %s', async kind => {
+  it('As a wallet user, I reacquire the signer after the protocol frame retires', async () => {
     const { experimentalWalletControls: controls } = boot();
     await controls.getIdentity();
     const paused = vi.fn();
     window.addEventListener('dotli:test-wallet-owner-revoked', paused);
-    if (kind === 'frame reset') {
-      for (const listener of owner.revoked) {
-        listener(undefined);
-      }
-    } else {
-      window.dispatchEvent(new Event('pagehide'));
+    // The protocol client reports both explicit resets and pagehide through this boundary.
+    for (const listener of owner.revoked) {
+      listener(undefined);
     }
     expect(nth(wallet.sessions, 0).disposed).toBe(true);
     expect(auth.at(-1)).toMatchObject({ tag: 'WalletUnavailable' });

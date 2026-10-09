@@ -20,6 +20,8 @@ export interface RawCallbacks {
     clearCoreStorage(key: Uint8Array): Promise<void>;
     featureSupported(request: Uint8Array): Promise<Uint8Array>;
     supportedChains(): Promise<Uint8Array>;
+    scheduleGameReminder?(product: Uint8Array, startsAt: bigint): Promise<void>;
+    cancelGameReminder?(product: Uint8Array): Promise<void>;
     subscribeLocale(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     localizeTimestamps(request: Uint8Array): Promise<Uint8Array>;
     navigateTo(url: string): Promise<void>;

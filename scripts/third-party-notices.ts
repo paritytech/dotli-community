@@ -19,6 +19,8 @@ const SECTIONS = [
   'Apache-2.0',
   'Apache-2.0 OR MIT',
   'Apache-2.0 AND MIT',
+  'Unlicense OR Apache-2.0',
+  'MIT AND BSD-3-Clause',
   'ISC',
   'BSD-2-Clause',
   'BSD-3-Clause',
@@ -41,6 +43,8 @@ const ALIASES: Record<string, string> = {
   'MIT OR Apache-2.0': 'Apache-2.0 OR MIT',
   '(Apache-2.0 OR MIT)': 'Apache-2.0 OR MIT',
   'MIT AND Apache-2.0': 'Apache-2.0 AND MIT',
+  '(Unlicense OR Apache-2.0)': 'Unlicense OR Apache-2.0',
+  '(MIT AND BSD-3-Clause)': 'MIT AND BSD-3-Clause',
 };
 
 const INTRO = `# Third-Party Notices
@@ -51,8 +55,13 @@ license. Packages are grouped by SPDX license identifier and listed alphabetical
 each package are retained in its distribution under \`node_modules\`.
 
 GPL-family components (GPL-3.0 with the Classpath linking exception) are compatible with this project's AGPL-3.0
-outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0) or source-available (FSL-1.1-MIT)
-terms is used to build the application and is not redistributed as part of it.`;
+outbound license. The shipped \`@parity/polkavm-browser-runtime\` artifacts remain under MPL-2.0. Their full license,
+dependency notices, per-file hashes and source provenance are served beside the runtime. Build-time-only tooling under
+source-available FSL-1.1-MIT terms is not redistributed as part of the application.
+
+The vendored \`@parity/truapi\` and \`@parity/truapi-host\` packages are MIT-licensed. Their license texts are retained
+in \`vendor/truapi/LICENSE\` and \`vendor/truapi-host/LICENSE\`, including the production web Wasm distribution.
+Exact source revision, package versions and artifact hashes are recorded in \`vendor/truapi-host.lock.json\`.`;
 
 interface LockEntry {
   name?: string;

@@ -251,7 +251,7 @@ describe('PolkaVM visual viewport relay', () => {
   });
 
   it('publishes changed geometry and DPR, keeps the folded band stable, and tears down observers', () => {
-    const state = { ...topbarStore.get(), present: false, landing: false };
+    const state = { ...topbarStore.get(), present: false };
     vi.spyOn(topbarStore, 'get').mockReturnValue(state);
     const listeners = new Set<() => void>();
     vi.spyOn(topbarStore, 'subscribe').mockImplementation(listener => {
@@ -405,7 +405,7 @@ describe('PolkaVM visual viewport relay', () => {
       'https://product.test',
     );
     actualFrame = fullFrame;
-    state.landing = true;
+    state.present = false;
     notifyTopbar();
     flush();
     expect(postMessage).toHaveBeenCalledTimes(5);

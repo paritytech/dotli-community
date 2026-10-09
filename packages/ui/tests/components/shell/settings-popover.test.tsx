@@ -658,8 +658,8 @@ describe('The settings popover island', () => {
     // Then
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(
-      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
-      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
+      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE, polkaVmAppsEnabled: true },
+      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, polkaVmAppsEnabled: true },
     );
   });
 

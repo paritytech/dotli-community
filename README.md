@@ -114,8 +114,8 @@ through a Service Worker that acts as a virtual file system.
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
-Both resolution backends retry a stopped chain generation once at the resolver boundary, using a fresh client and the
-remaining original sync budget. A second stop is returned to the caller; protocol callers do not add another retry.
+Both resolution backends retry stopped chain generations at the resolver boundary, up to four attempts with the
+remaining original sync budget. Protocol callers do not add another retry.
 
 The browser regression injects a stop into a real RPC storage read; replacing the whole resolver would bypass this
 recovery boundary.
@@ -402,10 +402,17 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the generic TrUAPI wallet SDK from the source recorded in `vendor/truapi-host.lock.json`.
-The browser wallet uses the `wasm-signing-host` web build, without `test-host`; the published pairing-only SDK
-does not provide its native identity and allowance APIs. Install the tree in `package-lock.json` with `npm ci`.
-To iterate against a matching local truapi checkout instead, run:
+This branch vendors the generic TrUAPI 0.24.0 wallet SDK from source
+`398ee10256bc5f7188d0361eb49bc53cd89a1161`, recorded in `vendor/truapi-host.lock.json`.
+The browser wallet uses the production `--web-only --signing-host` build, without `test-host`. Its archive inventory
+comes from `npm pack`, with stale compiled files lacking a matching upstream TypeScript source and non-web Wasm
+removed in a temporary staging directory before packing. The recorded archive hashes precede the local
+`@parity/truapi=file:../truapi` dependency override. No PolkaVM browser runtime or Chat, Profile or Jam layer is included.
+Locale timestamp batches use the SDK's browser `Intl` implementation. Notifications still navigate directly on
+activation, so the new account-bound activation queue API reports unsupported rather than acknowledging lost events.
+Explicit protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery
+opens fresh connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame.
+Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi

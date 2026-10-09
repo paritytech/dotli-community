@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -57,6 +57,7 @@ var init_host_callbacks = __esm({
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi.ProductAccountTxPayload }), LegacyAccount: import_truapi.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
+    ExpandedCardFaceOutcome = S.lazy(() => S.Status("Applied", "NotPresented", "UserMoving", "Unsupported"));
     HostChainEntry = S.lazy(() => S.Struct({ identifier: import_truapi.ChainIdentifier, genesisHash: import_truapi.Bytes32 }));
     HostChainSet = S.lazy(() => S.Struct({ network: S.str, chains: S.Vector(HostChainEntry) }));
     HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi.Bytes32, handles: S.Vector(import_truapi.Bytes32) }));
@@ -181,6 +182,7 @@ __export(host_callbacks_adapter_exports, {
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
   const contacts = callbacks.contacts;
+  const game = callbacks.game;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
   return {
@@ -201,6 +203,10 @@ function createWasmRawCallbacks(callbacks) {
     clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
     featureSupported: async (request) => import_truapi2.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi2.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+    ...game ? {
+      scheduleGameReminder: async (product, startsAt) => await game.scheduleGameReminder(ProductContext.dec(product), startsAt),
+      cancelGameReminder: async (product) => await game.cancelGameReminder(ProductContext.dec(product))
+    } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi2.HostLocaleSubscribeItem.enc(item)), sendError),
     localizeTimestamps: async (request) => import_truapi2.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi2.HostLocaleLocalizeTimestampsRequest.dec(request))),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
@@ -1626,6 +1632,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             chat: host.chat !== void 0,
             permissionStatus: host.permissionStatus !== void 0,
             pocket: host.pocket !== void 0,
+            game: host.game !== void 0,
             contacts: host.contacts !== void 0
           },
           debuggerUrl: debuggerDial
@@ -1730,7 +1737,8 @@ function buildRuntime(state) {
                 chat: callbacks.chat !== void 0,
                 contacts: callbacks.contacts !== void 0,
                 permissionStatus: callbacks.permissionStatus !== void 0,
-                pocket: callbacks.pocket !== void 0
+                pocket: callbacks.pocket !== void 0,
+                game: callbacks.game !== void 0
               }
             }
           });
@@ -1828,12 +1836,19 @@ function buildRuntime(state) {
         granted
       }), false);
     },
+    setSubmitPreimagesLocally(local) {
+      return sendSessionActivationRequest(state, (requestId) => ({
+        kind: "setSubmitPreimagesLocally",
+        requestId,
+        local
+      }), false);
+    },
     setWithheldResources(tags) {
       return sendSessionActivationRequest(state, (requestId) => ({
         kind: "setWithheldResources",
         requestId,
         tags
-      }));
+      }), false);
     },
     resetSessionState() {
       return sendSessionActivationRequest(state, (requestId) => ({
@@ -3513,6 +3528,12 @@ function createMockHost(config = {}) {
       },
       async acknowledgeActivation() {
         throw new Error("notification activation is unsupported");
+      }
+    },
+    game: {
+      async scheduleGameReminder() {
+      },
+      async cancelGameReminder() {
       }
     },
     permissions: {

@@ -156,15 +156,20 @@ function resolveProtocolReady(): void {
 }
 
 /**
- * Drops the iframe and ready state so the next request boots a fresh one, for a caller that finds
- * the sub-mode wrong. In-flight requests are orphaned to their own timers, and ready waiters are
- * rejected at once. A SharedWorker keeps its sync progress, only this tab's port cycles.
+ * Drops the iframe, its chain leases and ready state so the next request boots a fresh one, for a caller that finds
+ * the sub-mode wrong. Pending requests and ready waiters fail immediately. A SharedWorker keeps its sync progress,
+ * only this tab's port cycles.
  */
 export function resetProtocolFrame(): void {
   resetProtocolFrameState();
 }
 
 function resetProtocolFrameState(reason?: Error): void {
+  const orphanedConnections = [...chainConnections];
+  chainConnections.clear();
+  const requests = [...pendingRequests.values()];
+  pendingRequests.clear();
+  const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
   if (protocolIframe !== null) {
     // The iframe holds the Web Lock. Retire the page's signer synchronously,
     // before removing its lock owner lets another tab start signing.
@@ -181,10 +186,16 @@ function resetProtocolFrameState(reason?: Error): void {
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
   if (orphaned.length > 0) {
-    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
     for (const waiter of orphaned) {
       waiter.reject(err);
     }
+  }
+  for (const pending of requests) {
+    pending.reject(err);
+  }
+  // Notify after resetting readiness so a consumer cannot re-lease the retired frame.
+  for (const [id, connection] of orphanedConnections) {
+    haltRemote(id, connection, 'frame');
   }
 }
 
@@ -204,6 +215,11 @@ function bindMessageListener(): void {
     return;
   }
   listenerBound = true;
+  // The iframe cleans up its engine on navigation, including BFCache entry.
+  // Restoring the document must reconnect, never reuse its retired chain IDs.
+  window.addEventListener('pagehide', () => {
+    resetProtocolFrameState();
+  });
 
   window.addEventListener('message', (event: MessageEvent) => {
     if (!isProtocolEnvelope(event.data)) {
@@ -280,19 +296,7 @@ function bindMessageListener(): void {
             ? new ProtocolFatalError(`${kind}: ${msg.message}`)
             : new ProtocolInitFailedError(`${kind}: ${msg.message}`);
 
-        for (const [id, pending] of pendingRequests) {
-          pendingRequests.delete(id);
-          pending.reject(err);
-        }
-
-        // The reset rejects ready waiters and clears cached promises so the next ensureProtocolFrame()
-        // can reboot. It runs before halting so a `'frame'` listener that dials again misses the dead frame.
-        const orphanedConnections = [...chainConnections];
-        chainConnections.clear();
         resetProtocolFrameState(err);
-        for (const [id, connection] of orphanedConnections) {
-          haltRemote(id, connection, 'frame');
-        }
         return;
       }
       case 'chain-message': {

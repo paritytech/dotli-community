@@ -105,7 +105,7 @@ async function serveUpgrade(initial: 'legacy' | 'current'): Promise<UpgradeFixtu
     throw new Error('Expected an ephemeral TCP listener');
   }
   return {
-    origin: `http://localhost:${String(address.port)}`,
+    origin: `http://host-upgrade.localhost:${String(address.port)}`,
     publishHtml(): void {
       currentHtml = true;
     },
@@ -215,7 +215,7 @@ test.describe('host service worker contract upgrades', () => {
     const fixture = await serveUpgrade('legacy');
     const context = await browser.newContext({ serviceWorkers: 'allow' });
     try {
-      // Real landing code, but no external chain, protocol host, or analytics
+      // Real product shell code, but no external chain, protocol host, or analytics
       // dependency. SW precache requests are served by the isolated HTTP server.
       await context.route('**/*', route => {
         return new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort();
@@ -243,7 +243,7 @@ test.describe('host service worker contract upgrades', () => {
 
       fixture.publishWorker();
       await updateWorker(page);
-      await expect(page.getByTestId('landing')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('body[data-host]')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('#legacy-host')).toHaveCount(0);
       expect(page.url()).toBe(url);
       expect(navigations).toBe(1);
@@ -282,7 +282,7 @@ test.describe('host service worker contract upgrades', () => {
       });
       await page.goto(fixture.origin);
       await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
-      await expect(page.getByTestId('landing')).toBeVisible();
+      await expect(page.locator('body[data-host]')).toBeVisible();
       expect(navigations).toBe(1); // Fresh installation must not reload the page.
       await page.reload(); // Begin the update with a controlled, current host.
       await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
@@ -306,7 +306,7 @@ test.describe('host service worker contract upgrades', () => {
 
       fixture.publishWorker();
       await updateWorker(page);
-      const reload = page.getByRole('button', { name: 'Reload', exact: true });
+      const reload = page.getByTestId('notif-cards').getByRole('button', { name: 'Reload', exact: true });
       await expect(reload).toBeVisible({ timeout: 20_000 });
       await expect
         .poll(() => page.evaluate(() => Number(document.documentElement.dataset['contractQueries'])))
@@ -324,7 +324,7 @@ test.describe('host service worker contract upgrades', () => {
       await expectUserData(page);
 
       await Promise.all([page.waitForEvent('framenavigated', frame => frame === page.mainFrame()), reload.click()]);
-      await expect(page.getByTestId('landing')).toBeVisible();
+      await expect(page.locator('body[data-host]')).toBeVisible();
       expect(navigations).toBe(beforeUpdate + 1);
       await expect
         .poll(() =>

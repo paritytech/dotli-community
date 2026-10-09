@@ -44,7 +44,6 @@ import {
   showLocalhostPill,
   showProductPill,
   recordRecentLabel,
-  showNotification,
   initScheduledNotifications,
   loadTruapiDebugMount,
   loadBridge,

@@ -439,3 +439,23 @@ export const CONTACTS_PICK = {
     method: 0,
     kind: "request",
 };
+export const GAME_REMIND_NEXT_GAME = {
+    trait: 21,
+    method: 0,
+    kind: "request",
+};
+export const GAME_CANCEL_NEXT_GAME = {
+    trait: 21,
+    method: 1,
+    kind: "request",
+};
+export const EXPANDED_CARD_SET_FACE_SHOWN = {
+    trait: 23,
+    method: 0,
+    kind: "request",
+};
+export const SCANNER_SCAN = {
+    trait: 25,
+    method: 0,
+    kind: "request",
+};
