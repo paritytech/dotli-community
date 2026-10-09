@@ -608,11 +608,7 @@ async function main(): Promise<void> {
   const productIdOverride = parseLocalProductIdOverride();
   const pageProduct =
     label !== null ? { label } : pageHost !== null ? { label: pageHost, productId: productIdOverride } : undefined;
-  const { chainBackend, cacheSettings, bridgeModule } = await startHost(
-    bootFlowId,
-    emitDotliDebugEvent,
-    pageProduct,
-  );
+  const { chainBackend, cacheSettings, bridgeModule } = await startHost(bootFlowId, emitDotliDebugEvent, pageProduct);
 
   // Wallet verification may acquire the page core as soon as the debug view
   // mounts. Its product selection must already be installed.
