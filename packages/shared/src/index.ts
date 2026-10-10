@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export {
+  createAsyncTaskPool,
+  DEFAULT_POOL,
+  type AsyncTaskParams,
+  type AsyncTaskPool,
+  type AsyncTaskPoolParams,
+} from './async-task-pool.js';
+export {
   formatAppVersion,
   getActiveAppManifest,
   getActiveRootManifest,

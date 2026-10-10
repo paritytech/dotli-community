@@ -45,6 +45,8 @@ export const PROTOCOL_ERRORS = {
   FRAME_READY_TIMEOUT: 'Shared protocol iframe timed out (no ready signal)',
   HOST_FRAME_LOAD_TIMEOUT: 'Shared host iframe timed out while loading',
   HOST_FRAME_LOAD_FAILED: 'Shared host iframe failed to load',
+  /** The document loaded but its script never bound the request listeners, so every request would hang. */
+  HOST_FRAME_NOT_LISTENING: 'Shared host iframe loaded but never started listening',
   /** Fallback rejection when a reset carries no reason, so readiness waiters fail at once instead of timing out. */
   FRAME_RESET: 'Protocol frame state reset before ready signal',
 } as const;

@@ -363,7 +363,15 @@ describe('createRemoteChainProvider halts', () => {
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     provider(() => undefined, onHalt);
     await vi.advanceTimersByTimeAsync(0);
-    document.querySelector('iframe')?.dispatchEvent(new Event('load'));
+    const iframe = document.querySelector('iframe');
+    iframe?.dispatchEvent(new Event('load'));
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { namespace: 'dotli:protocol', kind: 'listening' },
+        origin: getProtocolOrigin(),
+        source: iframe?.contentWindow ?? null,
+      }),
+    );
     await vi.advanceTimersByTimeAsync(0);
     const booting = isProtocolBooting();
 

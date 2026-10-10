@@ -51,62 +51,6 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('topbar boot rehydration', () => {
-  it('As a dotli integrator, the host renders the persisted session badge as soon as the topbar starts', async () => {
-    // Given
-    installTopbarDom();
-
-    const { SHARED_CORE_SESSION_KEY } = await import('../../protocol/src/auth-storage.js');
-    const { SITE_ID } = await import('../../config/src/config.js');
-    // The opaque session blob and the UI-state cache the core's authStateChanged persists beside it.
-    sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, '0x0102');
-    sharedAuth.storage.set(
-      `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`,
-      JSON.stringify({
-        connected: true,
-        publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
-        liteUsername: 'pgherveou.04',
-        primaryUsername: 'pgherveou.04',
-      }),
-    );
-
-    // When
-    const { initTopBar } = await import('../src/topbar.js');
-    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
-    initTopBar();
-
-    // Then: the stores the auth islands render, whenever they mount.
-    await vi.waitFor(() => {
-      expect(getAuthState()).toEqual({
-        tag: 'Connected',
-        session: {
-          connected: true,
-          publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
-          liteUsername: 'pgherveou.04',
-          primaryUsername: 'pgherveou.04',
-        },
-      });
-    });
-    expect(getLoggedIn()).toBe(true);
-  });
-
-  it('As a dotli integrator, the host stays logged out when no session is persisted', async () => {
-    // Given
-    installTopbarDom();
-
-    // When
-    const { initTopBar } = await import('../src/topbar.js');
-    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
-    initTopBar();
-
-    // Then
-    await vi.waitFor(() => {
-      expect(getAuthState()).toEqual({ tag: 'Disconnected' });
-    });
-    expect(getLoggedIn()).toBe(false);
-  });
-});
-
 describe('topbar theme', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');

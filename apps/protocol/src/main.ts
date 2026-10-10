@@ -233,9 +233,9 @@ function bindSharedAuthListener(): void {
   });
 }
 
-function signalReady(): void {
+function signalParent(kind: 'ready' | 'listening'): void {
   if (window.parent !== window) {
-    window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'ready' } as const, '*');
+    window.parent.postMessage({ namespace: 'dotli:protocol', kind } as const, '*');
   }
 }
 
@@ -344,7 +344,7 @@ async function init(): Promise<void> {
 
   if (mode === null) {
     log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
-    signalReady();
+    signalParent('ready');
     return;
   }
   const requestedNetwork = getRequestedNetwork();
@@ -523,7 +523,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     port.postMessage(msg);
   });
 
-  signalReady();
+  signalParent('ready');
 
   window.addEventListener('beforeunload', () => {
     try {
@@ -667,7 +667,7 @@ async function initDirectMode(): Promise<void> {
   });
 
   bindEngineToMessages(engine);
-  signalReady();
+  signalParent('ready');
 
   window.addEventListener('beforeunload', () => {
     engine.cleanup();
@@ -686,7 +686,7 @@ function initRpcMode(): void {
   });
 
   bindEngineToMessages(engine);
-  signalReady();
+  signalParent('ready');
 
   window.addEventListener('beforeunload', () => {
     engine.cleanup();
@@ -921,6 +921,7 @@ bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();
 bindLocalWalletListener();
+signalParent('listening');
 
 void init().catch((err: unknown) => {
   log.error('[dot.li protocol] Init failed:', err);

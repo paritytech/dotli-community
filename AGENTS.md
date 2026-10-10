@@ -22,6 +22,21 @@ trustless, small on boot and fast on repeat visits.
 - **Manifest**: the product's executable manifest (`worker.<label>.<tld>`). Declares features such as `includes.chat`.
 - **Debug panel**: the TrUAPI inspector.
 
+## Architecture
+
+- Split the system into layers. Each owns one responsibility that a reader can name from its module.
+- Keep the interface between layers small, explicit and easy to read.
+- State flows up, intent flows down. Never write another layer's state, and never use state as a command.
+- A layer recovers from its own failures without waiting to be asked, and reports its status to the layer above.
+- Make calls across layers idempotent. Repeating or overlapping a call is safe and does the work once.
+- Depend on what you import, not on global channels. Use global events only at real system boundaries.
+- Agree on the layers, their interfaces and their failure paths before writing code that crosses them.
+
+Tools:
+
+- Use `createAsyncTaskPool` from `@dotli/shared` to resolve internal races, to retry, and to run several flows at once.
+  Don't hand-roll queues, in-flight flags, retry timers or concurrency limits.
+
 ## Code style
 
 General:
@@ -67,6 +82,7 @@ Tests:
 - Select by `data-testid` or ARIA role. Never by class.
 - Never test CSS (stylesheets, computed styles, class names).
 - Wait on signals, never sleep.
+- Don't mock modules. Shape the code so tests drive it through its interface or inject what it depends on.
 
 Git:
 

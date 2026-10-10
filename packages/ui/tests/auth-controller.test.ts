@@ -124,6 +124,21 @@ describe('auth controller: login requests', () => {
     expect(getAuthModalState().reason).toBeNull();
   });
 
+  it('As a product asking for a sign-in while the saved session cannot be reached, I get no modal and no pairing', async () => {
+    // Given
+    const { getAuthModalState, getLoggedIn, setAuthState } = await load();
+    const requests = countEvents('dotli:truapi-login-request');
+    setAuthState({ tag: 'Unreachable' });
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'foo' } }));
+
+    // Then
+    expect(getAuthModalState().open).toBe(false);
+    expect(requests.count).toBe(0);
+    expect(getLoggedIn()).toBe(false);
+  });
+
   it('As the error view, retryLogin re-opens the spinner and asks the core to log in again', async () => {
     // Given
     const { getAuthModalState, retryLogin, setAuthState } = await load();

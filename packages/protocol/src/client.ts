@@ -17,7 +17,7 @@ import {
   type Backend,
 } from '@dotli/config';
 
-import { log, serializeError } from '@dotli/shared';
+import { createAsyncTaskPool, log, serializeError } from '@dotli/shared';
 import { getResolutionId, m, spans as S } from '@dotli/metrics';
 import type { LocalWalletIdentity, LocalWalletReadResult, SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
 import {
@@ -86,6 +86,13 @@ const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
 const chainDetailListeners = new Set<(event: ProtocolChainDetailEnvelope) => void>();
 let listenerBound = false;
 let protocolReady = false;
+
+/** Whether the shared store can answer. `connecting` until the first frame settles. */
+export type SharedStoreStatus = 'connecting' | 'available' | 'unavailable';
+let sharedStoreStatus: SharedStoreStatus = 'connecting';
+const sharedStoreStatusListeners = new Set<(status: SharedStoreStatus) => void>();
+// The boot in progress, which a reset cancels so its iframe never becomes the frame afterwards.
+let hostFrameBoot: AbortController | null = null;
 interface ReadyWaiter {
   resolve: () => void;
   reject: (err: Error) => void;
@@ -156,6 +163,8 @@ export function resetProtocolFrame(): void {
 }
 
 function resetProtocolFrameState(reason?: Error): void {
+  hostFrameBoot?.abort(reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET));
+  hostFrameBoot = null;
   protocolIframe?.remove();
   protocolIframe = null;
   // The rebuilt frame's byte meter restarts at zero, and the monotonic gate would drop its reports.
@@ -313,6 +322,7 @@ function bindMessageListener(): void {
         return;
       }
       case 'request':
+      case 'listening':
         return;
       case 'ready':
         resolveProtocolReady();
@@ -356,11 +366,26 @@ function createRequestId(): string {
 }
 
 const IFRAME_LOAD_TIMEOUT_MS = 30_000;
+// Module scripts run before `load`, so a frame whose listeners are not bound this long after it is not booting.
+const IFRAME_LISTEN_TIMEOUT_MS = 5_000;
 // Ready follows the SharedWorker presync, so this must exceed `TIMEOUTS.SHARED_WORKER_READY`.
 const IFRAME_READY_TIMEOUT_MS = 240_000;
-// No automatic retries. A failed load surfaces at once so the user can decide whether to retry.
+// A failed load surfaces at once, and a dead frame is rebuilt on this interval so the shared store heals unasked.
+const HOST_FRAME_REBUILD_INTERVAL_MS = 2_000;
 
-function createHostIframe(): Promise<void> {
+// Retries without end, so its one task settles only once a frame listens.
+const hostFrameHealing = createAsyncTaskPool({
+  poolSize: 1,
+  retryCount: Number.POSITIVE_INFINITY,
+  retryDelay: HOST_FRAME_REBUILD_INTERVAL_MS,
+});
+
+/**
+ * Resolves once the frame's request listeners are bound, not on `load`, which also fires when its script failed
+ * and would leave every request to its full timeout. `ready` counts too, since the frame binds before init.
+ * Aborting removes the iframe and rejects with the signal's reason.
+ */
+function createHostIframe(signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     // Not cleared on teardown, which runs inside the `fatal` arm before the host's pending rejection
     // and would strip the tags from the very failures they explain.
@@ -385,30 +410,55 @@ function createHostIframe(): Promise<void> {
     iframe.tabIndex = -1;
     iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
 
-    const timer = setTimeout(() => {
+    const fail = (reason: Error): void => {
       cleanup();
       iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
+      reject(reason);
+    };
+
+    const onAbort = (): void => {
+      fail(signal.reason instanceof Error ? signal.reason : new Error(PROTOCOL_ERRORS.FRAME_RESET));
+    };
+
+    let timer = setTimeout(() => {
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
-      cleanup();
-      protocolIframe = iframe;
-      resolve();
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING));
+      }, IFRAME_LISTEN_TIMEOUT_MS);
     };
 
     const onError = (): void => {
+      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
+    };
+
+    const onMessage = (event: MessageEvent): void => {
+      if (
+        event.source !== iframe.contentWindow ||
+        event.origin !== getProtocolOrigin() ||
+        !isProtocolEnvelope(event.data) ||
+        (event.data.kind !== 'listening' && event.data.kind !== 'ready')
+      ) {
+        return;
+      }
       cleanup();
-      iframe.remove();
-      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
+      protocolIframe = iframe;
+      resolve();
     };
 
     function cleanup(): void {
       clearTimeout(timer);
       iframe.removeEventListener('load', onLoad);
       iframe.removeEventListener('error', onError);
+      window.removeEventListener('message', onMessage);
+      signal.removeEventListener('abort', onAbort);
     }
 
+    signal.addEventListener('abort', onAbort, { once: true });
+    window.addEventListener('message', onMessage);
     iframe.addEventListener('load', onLoad, { once: true });
     iframe.addEventListener('error', onError, { once: true });
     document.body.appendChild(iframe);
@@ -426,13 +476,19 @@ async function ensureHostFrame(): Promise<void> {
     return hostFramePromise;
   }
 
+  const boot = new AbortController();
+  hostFrameBoot = boot;
   hostFramePromise = (async () => {
     try {
-      await createHostIframe();
+      await createHostIframe(boot.signal);
     } catch (error: unknown) {
+      // A reset dropped this boot on purpose and cleared the frame state itself, so it is no outage.
+      if (boot.signal.aborted) {
+        throw error;
+      }
       m.count(S.PROTOCOL_IFRAME_READY, {
         outcome: 'error',
-        phase: 'load',
+        phase: error instanceof Error && error.message === PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING ? 'listen' : 'load',
         reason: error instanceof Error ? error.name : 'unknown',
       });
       m.breadcrumb('protocol iframe load failed', {
@@ -441,11 +497,49 @@ async function ensureHostFrame(): Promise<void> {
       log.error('[dot.li protocol] Host iframe load failed:', error);
       resetProtocolFrameState();
       hostFramePromise = null;
+      const outageStarts = sharedStoreStatus !== 'unavailable';
+      setSharedStoreStatus('unavailable');
+      if (outageStarts) {
+        healHostFrame();
+      }
       throw error;
+    } finally {
+      if (hostFrameBoot === boot) {
+        hostFrameBoot = null;
+      }
     }
+    setSharedStoreStatus('available');
   })();
 
   return hostFramePromise;
+}
+
+/**
+ * Rebuilds the frame until one listens, one healer per outage. A request in between joins the same boot through
+ * `ensureHostFrame`, and each failed attempt is counted and logged there.
+ */
+function healHostFrame(): void {
+  void hostFrameHealing.call(ensureHostFrame);
+}
+
+function setSharedStoreStatus(next: SharedStoreStatus): void {
+  if (next === sharedStoreStatus) {
+    return;
+  }
+  sharedStoreStatus = next;
+  broadcast(sharedStoreStatusListeners, next, 'Shared store status');
+}
+
+export function getSharedStoreStatus(): SharedStoreStatus {
+  return sharedStoreStatus;
+}
+
+/** Called on each change only. */
+export function subscribeSharedStoreStatus(listener: (status: SharedStoreStatus) => void): () => void {
+  sharedStoreStatusListeners.add(listener);
+  return () => {
+    sharedStoreStatusListeners.delete(listener);
+  };
 }
 
 function waitForProtocolReady(): Promise<void> {

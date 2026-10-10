@@ -19,6 +19,8 @@ export interface Account {
   connected: Accessor<boolean>;
   /** True until boot has read the saved session (authStore). */
   restoring: Accessor<boolean>;
+  /** True while the saved session could not be read (authStore). */
+  unreachable: Accessor<boolean>;
 }
 
 export function useAccount(): Account {
@@ -34,6 +36,7 @@ export function useAccount(): Account {
     session: () => last() ?? (loggedIn() ? { connected: true } : undefined),
     connected,
     restoring: () => auth().tag === 'Restoring',
+    unreachable: () => auth().tag === 'Unreachable',
   };
 }
 
