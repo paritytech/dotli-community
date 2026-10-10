@@ -17,8 +17,8 @@ const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox12
 const decodeVecU8 = Hex().dec;
 
 /**
- * A light client answers `operationInaccessible` just after syncing, before any peer served the proof.
- * The raw client does not retry it as papi's observable client does. The window lets a read no peer serves fail.
+ * A peer may never serve an old block's proof even while the head advances.
+ * Retry the whole logical read at the current head, within one bounded window.
  */
 const INACCESSIBLE_RETRY_DELAY_MS = 750;
 const INACCESSIBLE_RETRY_WINDOW_MS = 30_000;
@@ -47,7 +47,7 @@ export class ApiStoppedError extends Error {
 
 export interface Api {
   whenReady(): Promise<void>;
-  /** Keeps the best block pinned until `read` settles. Multi-call reads must go through here. */
+  /** Keeps each attempt pinned; an inaccessible read restarts in full at the current best block. */
   withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T>;
   /** Resolves `null` when the account is missing or not a contract. */
   resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null>;
@@ -186,9 +186,7 @@ export function createRawApi(client: SubstrateClient): Api {
     // `AccountInfoOf` uses the Identity hasher.
     const addr = fromHex(contractAddress);
     const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, addr]);
-    const accountInfoHex = await withInaccessibleRetry(() =>
-      withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null)),
-    );
+    const accountInfoHex = await withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null));
     if (accountInfoHex === null) {
       return null;
     }
@@ -201,17 +199,19 @@ export function createRawApi(client: SubstrateClient): Api {
   }
 
   async function withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T> {
-    await ready;
-    const hash = bestHashRef;
-    if (hash === null || stopped) {
-      throw new ApiStoppedError();
-    }
-    holds.set(hash, (holds.get(hash) ?? 0) + 1);
-    try {
-      return await read(hash);
-    } finally {
-      release(hash);
-    }
+    return withInaccessibleRetry(async () => {
+      await ready;
+      const hash = bestHashRef;
+      if (hash === null || stopped) {
+        throw new ApiStoppedError();
+      }
+      holds.set(hash, (holds.get(hash) ?? 0) + 1);
+      try {
+        return await read(hash);
+      } finally {
+        release(hash);
+      }
+    });
   }
 
   async function readSlotAt(
@@ -225,9 +225,7 @@ export function createRawApi(client: SubstrateClient): Api {
       return null;
     }
     const childKey = Blake2256(fromHex(slotKey));
-    const valueHex = await withInaccessibleRetry(() =>
-      withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie))),
-    );
+    const valueHex = await withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie)));
     return valueHex === null ? null : fromHex(valueHex);
   }
 

@@ -185,6 +185,7 @@ describe('createRawApi', () => {
         .mockImplementationOnce(() => Promise.reject(new OperationInaccessibleError()))
         .mockImplementationOnce(() => Promise.resolve(CONTRACT_ACCOUNT_INFO))
         .mockImplementationOnce(() => Promise.reject(new OperationInaccessibleError()))
+        .mockImplementationOnce(() => Promise.resolve(CONTRACT_ACCOUNT_INFO))
         .mockImplementationOnce(() => Promise.resolve(`0x01${'00'.repeat(30)}02`));
 
       // When
@@ -194,7 +195,57 @@ describe('createRawApi', () => {
 
       // Then
       await settled;
-      expect(follow.storage).toHaveBeenCalledTimes(4);
+      expect(follow.storage).toHaveBeenCalledTimes(5);
+    });
+
+    it('restarts an inaccessible multi-slot read at the current head without mixing blocks or child tries', async () => {
+      const { client, follow } = fakeClient();
+      const api = createRawApi(client);
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      let oldSlots = 0;
+      let newSlots = 0;
+      follow.storage.mockImplementation((hash, _type, _key, childTrie) => {
+        if (childTrie === null) {
+          return Promise.resolve(hash === '0x0a' ? CONTRACT_ACCOUNT_INFO : '0x000402');
+        }
+        if (hash === '0x0a') {
+          oldSlots += 1;
+          if (oldSlots === 1) {
+            return Promise.resolve(`0x${'00'.repeat(31)}43`);
+          }
+          if (oldSlots === 2) {
+            return Promise.resolve(`0x${'aa'.repeat(32)}`);
+          }
+          if (oldSlots === 3) {
+            follow.emit(newBlock('0x1a', '0x0a'));
+            follow.emit({ type: 'bestBlockChanged', bestBlockHash: '0x1a' });
+            follow.emit({ type: 'finalized', finalizedBlockHashes: ['0x1a'], prunedBlockHashes: [] });
+          }
+          return Promise.reject(new OperationInaccessibleError());
+        }
+        newSlots += 1;
+        return Promise.resolve(
+          newSlots === 1 ? `0x${'00'.repeat(31)}43` : `0x${(newSlots === 2 ? 'bb' : 'cc').repeat(32)}`,
+        );
+      });
+
+      const read = readMappingBytes(api, '0x0000000000000000000000000000000000000001', `0x${'00'.repeat(32)}`, 0);
+      const settled = read.then(
+        value => ({ value, error: null }),
+        (error: unknown) => ({ value: null, error }),
+      );
+      await vi.runAllTimersAsync();
+      expect(await settled).toEqual({
+        value: new Uint8Array([...new Array<number>(32).fill(0xbb), 0xcc]),
+        error: null,
+      });
+      expect(follow.storage.mock.calls.filter(([hash]) => hash === '0x1a').map(([, , , trie]) => trie)).toEqual([
+        null,
+        '0x02',
+        '0x02',
+        '0x02',
+      ]);
+      expect(follow.unpin.mock.calls).toEqual([[['0x0a']]]);
     });
 
     it('As a dotli user on a light client that never serves a read, the read fails instead of retrying forever', async () => {
@@ -205,7 +256,7 @@ describe('createRawApi', () => {
       follow.storage.mockImplementation(() => Promise.reject(new OperationInaccessibleError()));
 
       // When
-      const read = api.resolveTrieId('0x0000000000000000000000000000000000000001', '0x0a');
+      const read = api.withBestBlock(hash => api.resolveTrieId('0x0000000000000000000000000000000000000001', hash));
       const settled = expect(read).rejects.toBeInstanceOf(OperationInaccessibleError);
       await vi.runAllTimersAsync();
 
@@ -219,7 +270,7 @@ describe('createRawApi', () => {
       const api = createRawApi(client);
       follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
       follow.storage.mockImplementation(() => Promise.reject(new OperationInaccessibleError()));
-      const read = api.resolveTrieId('0x0000000000000000000000000000000000000001', '0x0a');
+      const read = api.withBestBlock(hash => api.resolveTrieId('0x0000000000000000000000000000000000000001', hash));
       const settled = expect(read).rejects.toBeInstanceOf(ApiStoppedError);
       await vi.advanceTimersByTimeAsync(0);
 
