@@ -40,6 +40,7 @@ export {
   TOPBAR_REVEAL_SHORTCUT,
 } from './topbar-autohide.js';
 export { initTopBar } from './topbar.js';
+export { startSessionState } from './host-callbacks/SessionStore.js';
 export { SETTINGS_GLYPH } from './settings-glyph.js';
 export { RELOAD_GLYPH } from './reload-glyph.js';
 export { showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';

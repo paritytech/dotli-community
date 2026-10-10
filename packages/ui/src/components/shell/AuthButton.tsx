@@ -21,8 +21,9 @@ const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountCont
  * The auth button and the account popover, in the topbar and in the landing page's corner.
  *
  * A click toggles the popover only while `Connected`, and starts a login in any other state, a pairing
- * under way while logged in included. The trigger ARIA follows the click: the Popover writes it while
- * `Connected`, this component writes it for the auth modal otherwise.
+ * under way while logged in included. It takes no clicks while the saved session is being read or cannot be
+ * reached. The trigger ARIA follows the click: the Popover writes it while `Connected`, this component writes it
+ * for the auth modal otherwise.
  *
  * `idPrefix` keeps the landing page's ids apart from the topbar's build-time markup on the same page.
  */
@@ -40,8 +41,15 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
     const session = props.showName === true && account.loggedIn() ? account.session() : undefined;
     return session === undefined ? undefined : sessionDisplayName(session);
   };
-  const label = (): string =>
-    account.restoring() ? 'Checking sign-in' : account.loggedIn() ? accountLabel() : 'Sign in with Polkadot Mobile';
+  const label = (): string => {
+    if (account.restoring()) {
+      return 'Checking sign-in';
+    }
+    if (account.unreachable()) {
+      return 'Reconnecting to your sign-in';
+    }
+    return account.loggedIn() ? accountLabel() : 'Sign in with Polkadot Mobile';
+  };
   // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
     const session = account.loggedIn() ? account.session() : undefined;
@@ -75,7 +83,7 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
           ref={setButton}
           onClick={onClick}
           id={id('auth-button')}
-          loading={account.restoring()}
+          loading={account.restoring() || account.unreachable()}
           title={label()}
           aria-label={ariaLabel()}
           aria-haspopup={opensPopover() ? undefined : 'dialog'}

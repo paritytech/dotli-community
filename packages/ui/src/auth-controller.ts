@@ -23,9 +23,7 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
 
   window.addEventListener('dotli:request-login', (e: Event) => {
     const detail = (e as CustomEvent<{ reason?: string; label?: string }>).detail;
-    if (openAuthModal(detail.reason, detail.label)) {
-      requestTruapiLogin(detail.reason);
-    }
+    startHostLogin(detail.reason, detail.label);
   });
 
   // The store never drops a set as equal, so every step of the ordered stream reaches here.
@@ -48,6 +46,7 @@ function applyAuthState(state: DotliAuthState): void {
     case 'Restoring':
       break;
     case 'Disconnected':
+    case 'Unreachable':
       setLoggedIn(false);
       break;
     case 'Pairing':
@@ -193,8 +192,17 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
 }
 
 export function startLogin(): void {
-  if (openAuthModal()) {
-    requestTruapiLogin();
+  startHostLogin();
+}
+
+/** A pairing writes its session to the shared store, so one started while the store is down would be lost. */
+function startHostLogin(reason?: string, label?: string): void {
+  if (authStore.get().tag === 'Unreachable') {
+    log.event('sign-in refused while the saved session is unreachable', { flow: 'wallet' });
+    return;
+  }
+  if (openAuthModal(reason, label)) {
+    requestTruapiLogin(reason);
   }
 }
 export { startLogin as retryLogin };

@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
+import { SHARED_CORE_SESSION_KEY, type SharedStoreStatus } from '@dotli/protocol';
 import { SITE_ID } from '@dotli/config';
 import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import { must } from './support.js';
@@ -10,12 +10,29 @@ const localWallet = vi.hoisted((): { result: unknown } => ({ result: { status: '
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
   listeners: new Set<(change: { siteId: string; key: string; value: string | null }) => void>(),
+  readError: null as Error | null,
+  reads: [] as string[],
+  // While set, reads wait on it, so a test can hold one in flight.
+  readGate: null as Promise<void> | null,
 }));
+
+const sharedStore = vi.hoisted(
+  (): { status: SharedStoreStatus; listeners: Set<(status: SharedStoreStatus) => void> } => ({
+    status: 'connecting',
+    listeners: new Set(),
+  }),
+);
 
 vi.mock('../../protocol/src/client.js', () => ({
   readSharedLocalWallet: () => Promise.resolve(localWallet.result),
-  readSharedAuthStorage: (siteId: string, key: string) =>
-    Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
+  readSharedAuthStorage: async (siteId: string, key: string) => {
+    sharedAuth.reads.push(key);
+    await sharedAuth.readGate;
+    if (sharedAuth.readError !== null) {
+      throw sharedAuth.readError;
+    }
+    return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
+  },
   writeSharedAuthStorage: (siteId: string, key: string, value: string) => {
     sharedAuth.storage.set(`${siteId}:${key}`, value);
     return Promise.resolve();
@@ -30,11 +47,27 @@ vi.mock('../../protocol/src/client.js', () => ({
       sharedAuth.listeners.delete(listener);
     };
   },
+  getSharedStoreStatus: () => sharedStore.status,
+  subscribeSharedStoreStatus: (listener: (status: SharedStoreStatus) => void) => {
+    sharedStore.listeners.add(listener);
+    return () => {
+      sharedStore.listeners.delete(listener);
+    };
+  },
 }));
+
+/** The shared store reporting a status change, as the protocol client does. */
+function setStoreStatus(status: SharedStoreStatus): void {
+  sharedStore.status = status;
+  for (const listener of sharedStore.listeners) {
+    listener(status);
+  }
+}
 
 const STORAGE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}`;
 const UI_STATE_CACHE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`;
 const AUTH_SESSION_KEY = { tag: 'AuthSession' as const };
+const UNREACHABLE = new Error('protocol iframe never listened');
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
@@ -72,21 +105,45 @@ async function loadModules() {
   ]);
   return {
     createSessionStoreAdapters: sessionStore.createSessionStoreAdapters,
-    emitPersistedSessionUiState: sessionStore.emitPersistedSessionUiState,
+    refreshSavedSession: sessionStore.refreshSavedSession,
+    startSessionState: sessionStore.startSessionState,
     onStoredSessionChanged: sessionStore.onStoredSessionChanged,
     createAuthStateChanged: authState.createAuthStateChanged,
     getAuthState: auth.getAuthState,
+    setAuthState: auth.setAuthState,
     resetAllStoresForTests: createStore.resetAllStoresForTests,
     setWalletModeState: walletMode.setWalletModeState,
   };
 }
 
+/** A fresh session store with metrics on and a fake Sentry bound, for the tests that read what it counts. */
+async function loadWithMetrics() {
+  vi.stubEnv('VITE_METRICS', 'true');
+  vi.resetModules();
+  const [{ m }, sessionStore] = await Promise.all([
+    import('../../metrics/src/metrics.js'),
+    import('../src/host-callbacks/SessionStore.js'),
+  ]);
+  const count = vi.fn();
+  m.bind({
+    startSpan: vi.fn(),
+    startInactiveSpan: vi.fn(),
+    setMeasurement: vi.fn(),
+    metrics: { count, distribution: vi.fn(), gauge: vi.fn() },
+    setTag: vi.fn(),
+    addBreadcrumb: vi.fn(),
+  });
+  return { count, createSessionStoreAdapters: sessionStore.createSessionStoreAdapters };
+}
+
 type Modules = Awaited<ReturnType<typeof loadModules>>;
 let createSessionStoreAdapters: Modules['createSessionStoreAdapters'];
-let emitPersistedSessionUiState: Modules['emitPersistedSessionUiState'];
+let refreshSavedSession: Modules['refreshSavedSession'];
+let startSessionState: Modules['startSessionState'];
 let onStoredSessionChanged: Modules['onStoredSessionChanged'];
 let createAuthStateChanged: Modules['createAuthStateChanged'];
 let getAuthState: Modules['getAuthState'];
+let setAuthState: Modules['setAuthState'];
 let resetAllStoresForTests: Modules['resetAllStoresForTests'];
 let setWalletModeState: Modules['setWalletModeState'];
 
@@ -95,10 +152,12 @@ describe('session-store host callbacks', () => {
     vi.resetModules();
     ({
       createSessionStoreAdapters,
-      emitPersistedSessionUiState,
+      refreshSavedSession,
+      startSessionState,
       onStoredSessionChanged,
       createAuthStateChanged,
       getAuthState,
+      setAuthState,
       resetAllStoresForTests,
       setWalletModeState,
     } = await loadModules());
@@ -106,7 +165,13 @@ describe('session-store host callbacks', () => {
     localStorage.clear();
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
+    sharedAuth.readError = null;
+    sharedAuth.reads.length = 0;
+    sharedAuth.readGate = null;
+    sharedStore.status = 'connecting';
+    sharedStore.listeners.clear();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     // Each test is a fresh page, whose auth state is Restoring until the saved session is read.
     resetAllStoresForTests();
   });
@@ -484,6 +549,182 @@ describe('session-store host callbacks', () => {
     await expect(stored).resolves.toBeUndefined();
   });
 
+  it('As an operator, I see each shared session read counted as a hit or a miss', async () => {
+    // Given
+    const { count, createSessionStoreAdapters } = await loadWithMetrics();
+    const storage = createSessionStoreAdapters();
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+
+    // When
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+
+    // Then
+    expect(count.mock.calls).toEqual([
+      ['dotli.shared_session.read', 1, { attributes: { outcome: 'miss' } }],
+      ['dotli.shared_session.read', 1, { attributes: { outcome: 'hit' } }],
+    ]);
+  });
+
+  it('As an operator, I see a failed shared session read counted with its error name', async () => {
+    // Given
+    const { count, createSessionStoreAdapters } = await loadWithMetrics();
+    const storage = createSessionStoreAdapters();
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    const timeout = new Error('Protocol request "authStorageRead" timed out after 30000ms');
+    timeout.name = 'ProtocolTimeoutError';
+    sharedAuth.readError = timeout;
+
+    // When
+    const stored = await storage.readCoreStorage(AUTH_SESSION_KEY);
+
+    // Then
+    expect(stored).toBeUndefined();
+    expect(count).toHaveBeenCalledWith('dotli.shared_session.read', 1, {
+      attributes: { outcome: 'error', reason: 'ProtocolTimeoutError' },
+    });
+  });
+
+  it('As a returning user whose saved session could not be read, the disconnect that follows shows as unreachable and keeps my cached account', async () => {
+    // Given
+    const storage = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    sharedAuth.readError = UNREACHABLE;
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+
+    // When
+    authStateChanged({ tag: 'Disconnected' });
+    await flushMicrotasks();
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Unreachable' });
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBe(JSON.stringify(CONNECTED_DETAIL));
+  });
+
+  it('As a returning user whose store answers again, the next disconnect is a plain logout', async () => {
+    // Given
+    const storage = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
+    sharedAuth.readError = UNREACHABLE;
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+    sharedAuth.readError = null;
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+
+    // When
+    authStateChanged({ tag: 'Disconnected' });
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
+  });
+
+  it('As a returning user, the host reads my saved session as soon as session state starts, without waking running cores', async () => {
+    // Given
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const coreNotified = vi.fn();
+    const unsubscribe = onStoredSessionChanged(coreNotified);
+
+    // When
+    const stop = startSessionState();
+
+    // Then
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
+    });
+    expect(coreNotified).not.toHaveBeenCalled();
+    stop();
+    unsubscribe();
+  });
+
+  it('As a signed-out user whose shared store goes down, I am shown as unreachable, not signed out', async () => {
+    // Given
+    const stop = startSessionState();
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'Disconnected' });
+    });
+
+    // When
+    setStoreStatus('unavailable');
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Unreachable' });
+    stop();
+  });
+
+  it('As a signed-in user whose shared store goes down, I stay signed in', () => {
+    // Given
+    const stop = startSessionState();
+    setAuthState({ tag: 'Connected', session: CONNECTED_DETAIL });
+
+    // When
+    setStoreStatus('unavailable');
+
+    // Then
+    expect(getAuthState()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
+    stop();
+  });
+
+  it('As a returning user whose shared store comes back, my session is read again and running cores are told', async () => {
+    // Given
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    sharedAuth.readError = UNREACHABLE;
+    const stop = startSessionState();
+    setStoreStatus('unavailable');
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'Unreachable' });
+    });
+    const coreNotified = vi.fn();
+    const unsubscribe = onStoredSessionChanged(coreNotified);
+
+    // When
+    sharedAuth.readError = null;
+    setStoreStatus('available');
+
+    // Then
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
+    });
+    expect(coreNotified).toHaveBeenCalledTimes(1);
+    stop();
+    unsubscribe();
+  });
+
+  it('As a dotli integrator, a refresh asked during a read waits for it, so the later read decides', async () => {
+    // Given
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers();
+    sharedAuth.readGate = gate.promise;
+    const sessionReads = (): number => sharedAuth.reads.filter(key => key === SHARED_CORE_SESSION_KEY).length;
+    const first = refreshSavedSession();
+    await flushMicrotasks();
+
+    // When
+    sharedAuth.storage.set(STORAGE_KEY, '0x010203');
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const second = refreshSavedSession();
+    await flushMicrotasks();
+    const readsWhileHeld = sessionReads();
+    gate.resolve();
+    await Promise.all([first, second]);
+
+    // Then
+    expect(readsWhileHeld).toBe(1);
+    expect(sessionReads()).toBe(2);
+    expect(getAuthState()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
+  });
+
+  it('As a dotli integrator, starting session state twice keeps one subscription to the shared store', () => {
+    // When
+    const first = startSessionState();
+    const second = startSessionState();
+
+    // Then
+    expect(second).toBe(first);
+    expect(sharedStore.listeners.size).toBe(1);
+    first();
+  });
+
   it('As a dotli integrator, the host emits the typed session identity details from a connected auth state', () => {
     // Given
     const authStateChanged = createAuthStateChanged('Polkadot Web');
@@ -598,7 +839,7 @@ describe('session-store host callbacks', () => {
 
     // Nothing persisted: signed out, even with a stale cache entry.
     sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
-    emitPersistedSessionUiState();
+    await refreshSavedSession();
     await vi.waitFor(() => {
       expect(events).toEqual([{ tag: 'Disconnected' }]);
     });
@@ -614,7 +855,7 @@ describe('session-store host callbacks', () => {
     resetAllStoresForTests();
     events.length = 0;
 
-    emitPersistedSessionUiState();
+    await refreshSavedSession();
 
     // Then
     await vi.waitFor(() => {
@@ -624,11 +865,12 @@ describe('session-store host callbacks', () => {
 
   it('As a visitor without a saved session, boot ends the unknown state as signed out', async () => {
     // When
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await refreshSavedSession();
 
     // Then
-    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({ tag: 'Disconnected' });
+    });
   });
 
   it('As a user pairing before boot read the saved session, finding none leaves my pairing alone', async () => {
@@ -636,8 +878,7 @@ describe('session-store host callbacks', () => {
     createAuthStateChanged('myapp')({ tag: 'Pairing', value: { deeplink: 'polkadotapp://pair' } });
 
     // When
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await refreshSavedSession();
 
     // Then
     expect(getAuthState().tag).toBe('Pairing');
@@ -650,8 +891,7 @@ describe('session-store host callbacks', () => {
     createAuthStateChanged('myapp')({ tag: 'Disconnected' });
 
     // When
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await refreshSavedSession();
 
     // Then
     expect(getAuthState()).toEqual({ tag: 'Disconnected' });
@@ -667,7 +907,7 @@ describe('session-store host callbacks', () => {
 
     // When
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    emitPersistedSessionUiState();
+    await refreshSavedSession();
 
     // Then
     await vi.waitFor(() => {
@@ -687,7 +927,7 @@ describe('session-store host callbacks', () => {
     sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify({ connected: true, publicKey: 42, liteUsername: null }));
 
     // When
-    emitPersistedSessionUiState();
+    await refreshSavedSession();
 
     // Then: the malformed cache is discarded instead of being laundered into
     // a typed session state with non-string fields.
@@ -737,7 +977,7 @@ describe('session-store host callbacks', () => {
     };
 
     // When
-    emitPersistedSessionUiState();
+    await refreshSavedSession();
 
     // Then
     await vi.waitFor(() => {
@@ -758,7 +998,7 @@ describe('session-store host callbacks', () => {
     localWallet.result = { status: 'ok', entropy: new Uint8Array(16), identity: null };
 
     // When
-    emitPersistedSessionUiState();
+    await refreshSavedSession();
 
     // Then
     await vi.waitFor(() => {

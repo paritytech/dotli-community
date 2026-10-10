@@ -71,7 +71,10 @@ server {
 
     include /etc/nginx/snippets/dotli-host-version.conf;
 
+    # Revalidated, so a deploy reaches every shell at once. A cached older frame never sends `listening` and fails.
+    # `expires` rather than add_header, which would drop the server block's headers here.
     location / {
+        expires -1;
         try_files $uri /index.html;
     }
 }

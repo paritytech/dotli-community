@@ -6,7 +6,6 @@
 import { startNetworkStore } from './state/network.js';
 import { initNetworkHealth } from './state/network-health.js';
 import { initChatPanelState } from './state/chat-panel.js';
-import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
 import { setTopbarPresent } from './state/topbar.js';
@@ -19,7 +18,4 @@ export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBl
   startNetworkStore();
   initNetworkHealth();
   initChatPanelState();
-
-  // At once, not on idle: the auth button spins until this read ends, and a busy boot can starve an idle callback.
-  emitPersistedSessionUiState();
 }

@@ -5,24 +5,58 @@ import type { CoreStorage, CoreStorageKey, SessionUiInfo } from '@parity/truapi-
 import {
   SHARED_CORE_SESSION_KEY,
   clearSharedAuthStorage,
+  getSharedStoreStatus,
   readSharedAuthStorage,
   subscribeSharedAuthStorage,
+  subscribeSharedStoreStatus,
   writeSharedAuthStorage,
 } from '@dotli/protocol';
 
-import { log } from '@dotli/shared';
+import { m, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, errorName, log } from '@dotli/shared';
 import { getAuthState } from '../state/auth.js';
 import { readWalletBoot, type LocalWalletBoot } from '../wallet-boot.js';
 import { dispatchAuthState } from './AuthState.js';
 
-const LOCAL_CHANGE_EVENT = 'dotli:truapi-session-store-changed';
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
 // Beside the opaque session blob, so boot rehydration never has to decode the blob.
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 
+// Writes in this tab and the store coming back, which the shared store's subscription does not report.
+const localChangeListeners = new Set<() => void>();
+
+let lastSharedSessionReadFailed = false;
+
+/**
+ * The saved session blob, or null for none and for a read that failed. Never throws, as the core clears the stored
+ * session after a read error, which would log every subdomain out. Hits and misses are counted too, so failures read
+ * as a rate.
+ */
+async function readSharedSession(): Promise<string | null> {
+  try {
+    const raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+    const blob = raw === '' ? null : raw;
+    lastSharedSessionReadFailed = false;
+    m.count(S.SHARED_SESSION_READ, { outcome: blob === null ? 'miss' : 'hit' });
+    return blob;
+  } catch (err) {
+    lastSharedSessionReadFailed = true;
+    m.count(S.SHARED_SESSION_READ, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+    log.warn('[dot.li] shared auth session read failed:', err);
+    return null;
+  }
+}
+
+/** A failed last read means a disconnect may hide a session that is still saved. */
+export function isSharedSessionUnreachable(): boolean {
+  return lastSharedSessionReadFailed;
+}
+
 function emitLocalChange(): void {
-  window.dispatchEvent(new Event(LOCAL_CHANGE_EVENT));
+  for (const listener of localChangeListeners) {
+    listener();
+  }
 }
 
 export interface TruapiSessionUiState {
@@ -115,33 +149,84 @@ function localSessionUiState(wallet: LocalWalletBoot): TruapiSessionUiState {
   };
 }
 
+/** Not yet known or known to be unreadable, the only states a read of the saved session may end. */
+function awaitsSavedSession(): boolean {
+  const tag = getAuthState().tag;
+  return tag === 'Restoring' || tag === 'Unreachable';
+}
+
+// One read at a time, so a read that started before the store changed is never the last word.
+const savedSessionReads = createAsyncTaskPool({ poolSize: 1 });
+
 /**
- * At boot, so a reload shows the logged-in badge before any core instance runs. Ends `Restoring` with the local
- * wallet when there is one, else with what was saved, unless the core has already said where the session stands,
- * which is newer. A store that cannot be read counts as no session.
+ * Reads the saved session and ends `Restoring` or `Unreachable` with it, so a reload shows the logged-in badge before
+ * any core instance runs. Calls queue behind the read in flight, and each settles once its own read is applied.
  */
-export function emitPersistedSessionUiState(): void {
-  void (async () => {
-    // Both go to the protocol frame, so the badge waits on whichever is slower, not on both in turn.
-    const localWallet = readWalletBoot();
-    let raw: string | null;
-    try {
-      raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    } catch (err) {
-      log.warn('[dot.li] shared auth session read failed:', err);
-      raw = null;
+export function refreshSavedSession(): Promise<void> {
+  return savedSessionReads.call(applySavedSession);
+}
+
+/**
+ * Ends `Restoring` or `Unreachable` with the local wallet when there is one, else with what was saved, and leaves any
+ * other state alone, as the core has then said where the session stands.
+ */
+async function applySavedSession(): Promise<void> {
+  // Both go to the protocol frame, so the badge waits on whichever is slower, not on both in turn.
+  const localWallet = readWalletBoot();
+  const raw = await readSharedSession();
+  const wallet = await localWallet;
+  const session =
+    wallet !== null
+      ? localSessionUiState(wallet)
+      : raw === null
+        ? null
+        : ((await readUiStateCache()) ?? { connected: true });
+  if (!awaitsSavedSession()) {
+    return;
+  }
+  if (session !== null) {
+    dispatchAuthState({ tag: 'Connected', session });
+  } else {
+    dispatchAuthState({ tag: isSharedSessionUnreachable() ? 'Unreachable' : 'Disconnected' });
+  }
+}
+
+/** A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it. */
+function markUnreachable(): void {
+  const tag = getAuthState().tag;
+  if (tag === 'Restoring' || tag === 'Disconnected') {
+    dispatchAuthState({ tag: 'Unreachable' });
+  }
+}
+
+let stopSessionState: (() => void) | null = null;
+
+/**
+ * Keeps the auth state in step with the saved session: reads it now, marks it `Unreachable` while the shared store is
+ * down, and reads it again once the store is back. A second call returns the first one's stop.
+ */
+export function startSessionState(): () => void {
+  if (stopSessionState !== null) {
+    return stopSessionState;
+  }
+  let lastStatus = getSharedStoreStatus();
+  const unsubscribe = subscribeSharedStoreStatus(status => {
+    const recovered = lastStatus === 'unavailable' && status === 'available';
+    lastStatus = status;
+    if (status === 'unavailable') {
+      markUnreachable();
+    } else if (recovered) {
+      void refreshSavedSession();
+      // A core whose own read failed holds no session, so the store coming back is a change for it.
+      emitLocalChange();
     }
-    const wallet = await localWallet;
-    const session =
-      wallet !== null
-        ? localSessionUiState(wallet)
-        : raw === null || raw === ''
-          ? null
-          : ((await readUiStateCache()) ?? { connected: true });
-    if (getAuthState().tag === 'Restoring') {
-      dispatchAuthState(session === null ? { tag: 'Disconnected' } : { tag: 'Connected', session });
-    }
-  })();
+  });
+  void refreshSavedSession();
+  stopSessionState = () => {
+    unsubscribe();
+    stopSessionState = null;
+  };
+  return stopSessionState;
 }
 
 export interface SessionStoreOptions {
@@ -173,17 +258,8 @@ export function createSessionStoreAdapters(options: SessionStoreOptions = {}): C
 
 async function readCoreStorageValue(key: CoreStorageKey): Promise<Uint8Array | undefined> {
   if (key.tag === 'AuthSession') {
-    let raw: string | null;
-    try {
-      raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    } catch (err) {
-      log.warn('[dot.li] shared auth session read failed:', err);
-      return undefined;
-    }
-    if (raw === null || raw === '') {
-      return undefined;
-    }
-    return decodeStoredBytes(raw, 'shared auth session');
+    const raw = await readSharedSession();
+    return raw === null ? undefined : decodeStoredBytes(raw, 'shared auth session');
   }
   const raw = localStorage.getItem(coreLocalStorageKey(key));
   return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
@@ -420,17 +496,18 @@ function hexNoPrefix(bytes: Uint8Array): string {
 }
 
 export function onStoredSessionChanged(listener: () => void): () => void {
+  // Wrapped, so one listener subscribed twice is two subscriptions, as each unsubscribe expects.
   const onLocalChange = (): void => {
     listener();
   };
-  window.addEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
+  localChangeListeners.add(onLocalChange);
   const unsubscribeShared = subscribeSharedAuthStorage(change => {
     if (change.siteId === SITE_ID && change.key === SHARED_CORE_SESSION_KEY) {
       listener();
     }
   });
   return () => {
-    window.removeEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
+    localChangeListeners.delete(onLocalChange);
     unsubscribeShared();
   };
 }

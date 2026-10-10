@@ -113,6 +113,12 @@ export interface ProtocolReadyEnvelope {
   kind: 'ready';
 }
 
+/** The iframe's shared storage listeners are bound. Sent before init, so storage requests need not wait for `ready`. */
+export interface ProtocolListeningEnvelope {
+  namespace: 'dotli:protocol';
+  kind: 'listening';
+}
+
 /**
  * Whether a chain started from existing smoldot state, sent once per chain. "hit" is a loaded database
  * or an already synced SharedWorker chain, "unavailable" a store that could not answer. The store lives
@@ -191,6 +197,7 @@ export type ProtocolEnvelope =
   | ProtocolChainMessageEnvelope
   | ProtocolChainHaltEnvelope
   | ProtocolReadyEnvelope
+  | ProtocolListeningEnvelope
   | ProtocolSmoldotDbEnvelope
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
@@ -206,6 +213,7 @@ const VALID_KINDS = new Set([
   'chain-message',
   'chain-halt',
   'ready',
+  'listening',
   'smoldot-db',
   'fatal',
   'init-failed',

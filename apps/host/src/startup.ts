@@ -24,6 +24,7 @@ import {
   prefetchOverlays,
   showError,
   showNotification,
+  startSessionState,
   wipeOriginState,
   type BridgeModule,
 } from '@dotli/ui';
@@ -317,6 +318,9 @@ export async function startHost(
   const t0 = performance.now();
   initTopBar(blockingModalCoordinator);
   log.debug(`[dot.li perf] initTopBar() done (${dur(t0)})`);
+  // At once, not on idle: the auth button spins until the saved session is read, and a busy boot can starve an idle
+  // callback.
+  startSessionState();
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'topbar_ready',

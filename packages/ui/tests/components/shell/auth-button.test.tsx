@@ -422,4 +422,23 @@ describe('AuthButton', () => {
     expect(getAuthModalState().open).toBe(true);
     expect(getAuthModalState().productLabel).toBeNull();
   });
+
+  it('As a user whose saved sign-in cannot be reached, I see a busy reconnecting button that starts no sign-in', async () => {
+    // Given
+    const loginRequests = recordEvents('dotli:truapi-login-request');
+    const button = await renderButton();
+    setAuthState({ tag: 'Unreachable' });
+    await settleAll();
+
+    // When
+    button.click();
+    await settleAll();
+
+    // Then
+    expect(button.getAttribute('aria-label')).toBe('Reconnecting to your sign-in');
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.hasAttribute('disabled')).toBe(true);
+    expect(loginRequests.details).toEqual([]);
+    expect(getAuthModalState().open).toBe(false);
+  });
 });
