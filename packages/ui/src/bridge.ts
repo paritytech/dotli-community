@@ -40,7 +40,7 @@ import { attachProductFrame } from './product-frame-layout.js';
 import { labelToProductId } from './runtime-config.js';
 import { acquireCore, cancelPairing, initPageCore, setPageProduct, type CoreConnection } from './page-core.js';
 
-export { setPageProduct } from './page-core.js';
+export { activateLocalUsername, pageProductId, setPageProduct } from './page-core.js';
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';
