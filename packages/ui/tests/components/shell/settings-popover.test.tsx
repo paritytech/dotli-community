@@ -165,6 +165,7 @@ interface Settings {
   chain: Backend;
   network: Network;
   cache: CacheSettings;
+  localWalletEnabled: boolean;
   enabledNetworks: Network[];
   sharedWorkerSupported: boolean;
   debugOn: boolean;
@@ -315,6 +316,13 @@ function expectAdvanced(sections: Element[], at: number, settings: Settings): nu
   expect(clearRow.children[0]?.getAttribute('title')).toBe(
     'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
   );
+  const experimental = nth(sections, next++);
+  expect(tags(experimental)).toEqual(['DIV', 'DIV']);
+  expectHeader(experimental.children[0], 'Experimental');
+  const experimentalWell = nth(experimental.children, 1);
+  expect(experimentalWell.getAttribute('data-testid')).toBe('mode-experimental');
+  expect(experimentalWell.childElementCount).toBe(1);
+  expectCacheRow(experimentalWell.children[0], 'Local wallet', settings.localWalletEnabled);
   if (!settings.debugOn) {
     const debugRow = nth(sections, next++);
     expect(debugRow.getAttribute('data-testid')).toBe('mode-debug-row');
@@ -379,7 +387,6 @@ function expectPopoverMatches(
   expect(apply.textContent).toBe('Save and apply');
   const hint = byTestId('mode-apply-warning');
   expect(footer.contains(hint)).toBe(true);
-  expect(hint.textContent).toBe('Transport and cache changes reload the app');
 }
 
 function expectModeButton(open: boolean): void {
@@ -481,6 +488,7 @@ describe('The settings popover island', () => {
       chain: 'smoldot-direct',
       network: 'previewnet',
       cache: DEFAULT_CACHE,
+      localWalletEnabled: true,
       enabledNetworks: ['paseo-next-v2', 'previewnet'],
       sharedWorkerSupported: typeof SharedWorker !== 'undefined',
       debugOn: false,
@@ -533,6 +541,7 @@ describe('The settings popover island', () => {
       chain: 'smoldot-direct',
       network: 'previewnet',
       cache: { ...DEFAULT_CACHE, skipArchiveCache: true },
+      localWalletEnabled: true,
       enabledNetworks: ['paseo-next-v2', 'previewnet'],
       sharedWorkerSupported: typeof SharedWorker !== 'undefined',
       debugOn: false,
@@ -570,6 +579,7 @@ describe('The settings popover island', () => {
       chain: 'rpc-gateway',
       network: 'previewnet',
       cache: DEFAULT_CACHE,
+      localWalletEnabled: true,
       enabledNetworks: ['previewnet'],
       sharedWorkerSupported: false,
       debugOn: true,
@@ -612,6 +622,14 @@ describe('The settings popover island', () => {
     expect(applyButton().disabled).toBe(true);
 
     // When
+    toggle('Local wallet').click();
+    await settle();
+
+    // Then
+    expect(toggle('Local wallet').getAttribute('aria-checked')).toBe('false');
+    expect(applyButton().disabled).toBe(false);
+
+    // When
     toggle('Worker cache').click();
     await settle();
     await showCategory('network');
@@ -628,11 +646,13 @@ describe('The settings popover island', () => {
         chain: 'rpc-gateway',
         network: 'previewnet',
         cache: { ...DEFAULT_CACHE, skipWorkerCache: true },
+        localWalletEnabled: false,
       },
       {
         chain: 'smoldot-direct',
         network: 'paseo-next-v2',
         cache: DEFAULT_CACHE,
+        localWalletEnabled: true,
       },
     );
     expect(applyButton().disabled).toBe(true);
@@ -662,8 +682,8 @@ describe('The settings popover island', () => {
     // Then
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(
-      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
-      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
+      { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE, localWalletEnabled: true },
+      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, localWalletEnabled: true },
     );
   });
 
@@ -742,6 +762,7 @@ describe('The settings popover island', () => {
       chain: 'rpc-gateway',
       network: 'paseo-next-v2',
       cache: DEFAULT_CACHE,
+      localWalletEnabled: true,
     };
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {

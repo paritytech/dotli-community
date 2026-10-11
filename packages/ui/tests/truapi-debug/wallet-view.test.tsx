@@ -49,6 +49,45 @@ describe('WalletView', () => {
     expect(walletSwitch.switchToLocalWallet).toHaveBeenCalledWith(mnemonicToEntropy(DEV_PHRASE));
   });
 
+  it('As a new user, I back up a generated phrase before this browser saves the wallet', async () => {
+    // Given
+    renderComponent(() => <WalletView active />);
+    await settle();
+
+    // When
+    byTestId('td-wallet-create', document, HTMLButtonElement).click();
+    await settle();
+    const phrase = byTestId('td-wallet-generated-phrase').textContent;
+
+    // Then: showing the phrase does not save it.
+    expect(phrase.split(' ')).toHaveLength(24);
+    expect(walletSwitch.switchToLocalWallet).not.toHaveBeenCalled();
+
+    // When
+    byTestId('td-wallet-confirm-backup', document, HTMLButtonElement).click();
+    await settle();
+
+    // Then
+    expect(walletSwitch.switchToLocalWallet).toHaveBeenCalledWith(mnemonicToEntropy(phrase));
+  });
+
+  it('As a new user who did not save the generated phrase, I cancel without creating a wallet', async () => {
+    // Given
+    renderComponent(() => <WalletView active />);
+    await settle();
+    byTestId('td-wallet-create', document, HTMLButtonElement).click();
+    await settle();
+
+    // When
+    byTestId('td-wallet-cancel-backup', document, HTMLButtonElement).click();
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="td-wallet-generated-phrase"]')).toBeNull();
+    expect(byTestId('td-wallet-phrase', document, HTMLTextAreaElement)).not.toBeNull();
+    expect(walletSwitch.switchToLocalWallet).not.toHaveBeenCalled();
+  });
+
   it('As a Polkadot App user, I am told what a local wallet is and warned that it is not secure', async () => {
     // When
     renderComponent(() => <WalletView active />);

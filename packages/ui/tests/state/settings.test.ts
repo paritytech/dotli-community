@@ -6,10 +6,12 @@ import { getSettingsState, initSettingsStore } from '../../src/state/settings.js
 import {
   getBackend,
   getCacheSettings,
+  getLocalWalletEnabled,
   isSharedWorkerAvailable,
   isVerifiedSession,
   getEnabledNetworks,
   getNetwork,
+  SITE_ID,
 } from '@dotli/config';
 
 import { resetStores } from '../helpers/solid.js';
@@ -33,6 +35,7 @@ describe('settings store', () => {
       backend: getBackend(),
       cache: getCacheSettings(),
       network: getNetwork(),
+      localWalletEnabled: getLocalWalletEnabled(SITE_ID),
       enabledNetworks: getEnabledNetworks(),
       sharedWorkerAvailable: isSharedWorkerAvailable(),
       verified: isVerifiedSession(getBackend()),

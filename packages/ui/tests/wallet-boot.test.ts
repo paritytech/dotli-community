@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LOCAL_WALLET_KEY } from '@dotli/config';
 import type { readWalletBoot as ReadWalletBoot } from '../src/wallet-boot.js';
 import type { WalletModeState } from '../src/state/wallet-mode.js';
 
@@ -30,6 +31,7 @@ async function load(): Promise<{
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  localStorage.clear();
 });
 
 describe('readWalletBoot', () => {
@@ -57,6 +59,20 @@ describe('readWalletBoot', () => {
 
     // Then
     expect(boot).toBeNull();
+    expect(getState()).toEqual({ mode: 'app', failure: null });
+  });
+
+  it('As a user who turned off the experiment, I boot the pairing host without reading stored wallet material', async () => {
+    // Given
+    localStorage.setItem(LOCAL_WALLET_KEY, '0');
+    const { readWalletBoot, getState } = await load();
+
+    // When
+    const boot = await readWalletBoot();
+
+    // Then
+    expect(boot).toBeNull();
+    expect(protocol.readSharedLocalWallet).not.toHaveBeenCalled();
     expect(getState()).toEqual({ mode: 'app', failure: null });
   });
 

@@ -84,8 +84,10 @@ through a Service Worker that acts as a virtual file system.
 
 ### What it doesn't do
 
-- It is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is
-  delegated to the connected Polkadot App session.
+- In normal mode it is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation,
+  and signing is delegated to the connected Polkadot App session. The experimental local wallet can instead keep
+  encrypted recovery entropy in the browser; it is off by default on `dot.li` and enabled under **Settings → Advanced →
+  Experimental**.
 - It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and
   dotNS records are read directly from the contract storage.
 - It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally

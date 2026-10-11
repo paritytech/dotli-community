@@ -4,6 +4,8 @@
 // smoldot-direct runs smoldot in the protocol iframe, smoldot-shared-worker in a SharedWorker that tabs share.
 // rpc-gateway uses a trusted JSON-RPC node and an IPFS gateway, with no smoldot.
 
+import type { SiteId } from './config.js';
+
 export type Backend = 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
 
 /** Settings panel labels. Here rather than in the topbar because error copy names these controls, and copies drift. */
@@ -24,6 +26,7 @@ export interface CacheSettings {
 
 export const BACKEND_KEY = 'dotli:chain-backend';
 export const CACHE_KEY = 'dotli:cache-settings';
+export const LOCAL_WALLET_KEY = 'dotli:experimental-local-wallet';
 
 export function isSharedWorkerAvailable(): boolean {
   return typeof SharedWorker !== 'undefined';
@@ -177,4 +180,29 @@ export function getCacheSettings(): CacheSettings {
 
 export function setCacheSettings(settings: CacheSettings): void {
   storage.setItem(CACHE_KEY, JSON.stringify(settings));
+}
+
+/**
+ * Production keeps the experimental local signer opt-in. Test deployments and
+ * localhost enable it unless the user explicitly turns it off.
+ */
+export function defaultLocalWalletEnabled(siteId: SiteId): boolean {
+  return siteId !== 'dot.li';
+}
+
+/** Whether this browser may read or configure a local signing wallet. */
+export function getLocalWalletEnabled(siteId: SiteId): boolean {
+  const stored = storage.getItem(LOCAL_WALLET_KEY);
+  if (stored === '1') {
+    return true;
+  }
+  if (stored === '0') {
+    return false;
+  }
+  return defaultLocalWalletEnabled(siteId);
+}
+
+/** Persist the user's experimental local-wallet preference. */
+export function setLocalWalletEnabled(enabled: boolean): void {
+  storage.setItem(LOCAL_WALLET_KEY, enabled ? '1' : '0');
 }

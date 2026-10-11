@@ -3,7 +3,7 @@
 
 // Reads the shared local wallet once per page. Its presence is the page's wallet mode.
 
-import { SITE_ID } from '@dotli/config';
+import { getLocalWalletEnabled, SITE_ID } from '@dotli/config';
 import { readSharedLocalWallet, type LocalWalletReadResult } from '@dotli/protocol';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
@@ -28,23 +28,25 @@ export function reportLocalWalletFailure(error: unknown, reason: LocalWalletFail
 
 /** Null boots the pairing host. A failed read cannot tell the mode, so it falls back to Polkadot App. */
 export function readWalletBoot(): Promise<LocalWalletBoot | null> {
-  read ??= readSharedLocalWallet(SITE_ID).then(
-    result => {
-      if (result.status === 'ok') {
-        setWalletModeState({ mode: 'local', failure: null });
-        return result;
-      }
-      if (result.status === 'unreadable') {
-        reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
-        setWalletModeState({ mode: 'app', failure: UNREADABLE });
-      }
-      return null;
-    },
-    (error: unknown) => {
-      reportLocalWalletFailure(error, 'read');
-      setWalletModeState({ mode: 'app', failure: UNAVAILABLE });
-      return null;
-    },
-  );
+  read ??= getLocalWalletEnabled(SITE_ID)
+    ? readSharedLocalWallet(SITE_ID).then(
+        result => {
+          if (result.status === 'ok') {
+            setWalletModeState({ mode: 'local', failure: null });
+            return result;
+          }
+          if (result.status === 'unreadable') {
+            reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
+            setWalletModeState({ mode: 'app', failure: UNREADABLE });
+          }
+          return null;
+        },
+        (error: unknown) => {
+          reportLocalWalletFailure(error, 'read');
+          setWalletModeState({ mode: 'app', failure: UNAVAILABLE });
+          return null;
+        },
+      )
+    : Promise.resolve(null);
   return read;
 }

@@ -58,3 +58,32 @@ test('As a developer, I switch every app to a local wallet with my phrase and ba
     await context.close();
   }
 });
+
+test('As a developer, I create a local wallet only after confirming its recovery phrase backup', async ({
+  browser,
+}) => {
+  // Given
+  const { context, page } = await setupTest(browser, { backend: 'smoldot-shared-worker' });
+  try {
+    await page.goto(APP_URL);
+    await openWalletTab(page);
+
+    // When
+    await page.getByTestId('td-wallet-create').click();
+    const phrase = await page.getByTestId('td-wallet-generated-phrase').textContent();
+
+    // Then: revealing the phrase alone does not activate or persist the wallet.
+    expect(phrase?.split(' ')).toHaveLength(24);
+    await expect(page.getByTestId('user-badge')).toHaveCount(0);
+
+    // When
+    await Promise.all([page.waitForEvent('load'), page.getByTestId('td-wallet-confirm-backup').click()]);
+
+    // Then
+    await expect(page.getByTestId('user-badge')).toHaveAttribute('data-wallet', 'local', { timeout: TIMEOUT_MS });
+    await openWalletTab(page);
+    await expect(page.getByTestId('td-wallet-account')).toHaveText(/^0x[0-9a-f]{64}$/, { timeout: TIMEOUT_MS });
+  } finally {
+    await context.close();
+  }
+});

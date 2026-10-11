@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getActiveServicesConfig } from '@dotli/config';
+import { getActiveServicesConfig, LOCAL_WALLET_KEY } from '@dotli/config';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import type { ModeDraft } from '../src/settings-actions.js';
 
@@ -39,11 +39,13 @@ const prior: ModeDraft = {
   chain: 'smoldot-direct',
   network: 'paseo-next-v2',
   cache: CACHE_ON,
+  localWalletEnabled: true,
 };
 
 describe('applyAndReset: archive cache', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     sessionStorage.clear();
     vi.spyOn(window.location, 'reload').mockImplementation(() => {});
   });
@@ -82,6 +84,17 @@ describe('applyAndReset: archive cache', () => {
 
     // Then
     expect(mocks.clearBlockCache).not.toHaveBeenCalled();
+  });
+
+  it('As a user, turning the local-wallet experiment off persists the preference before reload', async () => {
+    // Given
+    const { applyAndReset } = await import('../src/settings-actions.js');
+
+    // When
+    await applyAndReset({ ...prior, localWalletEnabled: false }, prior);
+
+    // Then
+    expect(localStorage.getItem(LOCAL_WALLET_KEY)).toBe('0');
   });
 });
 

@@ -18,6 +18,8 @@ export interface SetupOptions {
   capacity?: number;
   /** Set when debug mode is auto-enabled in dev, so the panel does not cover content unasked. */
   startCollapsed?: boolean;
+  /** Whether the experimental local signer may read or configure wallet material. */
+  localWalletEnabled?: boolean;
   /** Without one the Archive tab reads over the IPFS gateway. */
   blockSource?: BlockSource;
 }
@@ -67,6 +69,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
         store={store}
         resolution={resolution}
         startCollapsed={options.startCollapsed ?? false}
+        localWalletEnabled={options.localWalletEnabled === true}
         loadArchive={productArchiveLoader(options.blockSource)}
       />
     ),
