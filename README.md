@@ -114,8 +114,7 @@ All chain access is read-only storage reads through the smoldot light client —
 gateway backend reads the same storage over a public RPC node instead.)
 
 The protocol client retries a resolver request once when its chainHead follow stopped, and both resolution backends
-rebuild their client after a stop rather than reading through a dead follow. The browser regression injects a stop into
-a real RPC storage read; replacing the whole resolver would bypass this recovery boundary.
+rebuild their client after a stop rather than reading through a dead follow.
 
 ## How multi-file SPAs work
 
