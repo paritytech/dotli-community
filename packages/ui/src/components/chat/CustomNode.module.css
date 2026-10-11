@@ -52,14 +52,14 @@
   padding: 0;
 }
 
-/* A decorative constant, the same in both themes. The hue turns in Effect
+/* Raw Berlin palette steps on purpose: a decorative constant, the same in both themes. The hue turns in Effect
    (CustomNode.tsx), unless the user prefers reduced motion. */
 .tint {
   position: absolute;
   inset: 0;
   pointer-events: none;
   mix-blend-mode: color;
-  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  background: linear-gradient(90deg, #fb7185, #fdba74, #6ee7b7, #78a9ff, #a78bfa, #fb7185);
 }
 
 .text {

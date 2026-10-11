@@ -111,7 +111,7 @@ function providerFor(label: string): PermissionAuthorizationProvider | null {
   return permissionProviders.get(label)?.at(-1) ?? null;
 }
 
-export function authorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
+function authorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
   if (permission === 'ChainSubmit' || permission === 'PreimageSubmit' || permission === 'StatementSubmit') {
     return {
       tag: 'Remote',
@@ -124,7 +124,7 @@ export function authorizationRequest(permission: PermissionName): PermissionAuth
   return { tag: 'Device', value: permission };
 }
 
-export function fromAuthorizationStatus(status: PermissionAuthorizationStatus): PermissionStatus {
+function fromAuthorizationStatus(status: PermissionAuthorizationStatus): PermissionStatus {
   switch (status) {
     case 'Authorized':
       return 'granted';

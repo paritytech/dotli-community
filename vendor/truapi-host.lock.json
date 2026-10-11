@@ -13,12 +13,18 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.24.0",
-      "sourceArchiveSha256": "8fd17e4fe21be9449d17f478121929935650e63f5e1c589e0cda8526fa053d66",
+      "sourceArchiveSha256": "7c102e77ea29486eab3988aaa553812dc3cb843cfb3e7ce09ea7c7dde4f5f156",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "21db88f3ef34d5e3ec354f511745bf470e8222feb65a70a9cd9e92f999281e63",
-      "wasmFeatures": [
-        "wasm-signing-host"
-      ]
+      "wasm": {
+        "web": {
+          "sha256": "4f9121edde7e8960765f32e0db5504ee8cdf1a15387006065a8dc300146bed4a",
+          "features": ["runtime"]
+        },
+        "testing": {
+          "sha256": "2bbcef79b67ffbb4e16dddeaed125c5195c72d4ee744de87e6186b0c13f6eeba",
+          "features": ["wasm-signing-host", "test-host"]
+        }
+      }
     }
   },
   "wasmUpstreamRevision": "76a637aaf00cc3235a899f0d77dccdfac6ad5472",

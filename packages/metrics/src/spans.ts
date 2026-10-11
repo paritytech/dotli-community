@@ -103,3 +103,12 @@ export const WASM_LOAD = 'wasm.load';
  * because the error envelope the listener answers with is easy to miss.
  */
 export const SHARED_STORAGE_REJECTED = 'shared_storage.rejected';
+
+/**
+ * One read of the login session shared across subdomains. Tagged `outcome` (hit, miss or error) and, on error,
+ * `reason`, because a failed read shows the login screen exactly like a missing session.
+ */
+export const SHARED_SESSION_READ = 'shared_session.read';
+
+/** Local wallet boot, activation and identity steps. Tagged `outcome` and, on failure, `reason`. */
+export const WALLET_LOCAL_ACTIVATE = 'wallet.local_activate';

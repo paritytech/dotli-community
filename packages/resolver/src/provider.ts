@@ -218,9 +218,8 @@ async function resumeFromStore(handle: ChainProviderHandle, key: string): Promis
 }
 
 /**
- * Returns `null` for a genesis the active network does not define.
+ * Resolves `null` for a genesis the active network does not define.
  * smoldot never reconnects underneath its consumers, so a failure or an unrequested stream end halts the chain.
- * Only a failure before connecting raises `onProviderFatal`; an established chain halts alone.
  */
 export function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();

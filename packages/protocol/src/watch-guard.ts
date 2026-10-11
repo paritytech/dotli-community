@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Ends modern and legacy transaction watches a transport loses on disconnect. polkadot-api's proxy forgets an
+// Ends the transaction watches a transport loses on disconnect. polkadot-api's proxy forgets an
 // answered submit, so a reconnect silently drops the watch and the replay must not resubmit. Each such
 // watch gets a terminal `dropped` event instead. Unanswered submits are left to the proxy's resend.
 
@@ -11,19 +11,10 @@ import type { ConnectionStatus } from '@dotli/resolver';
 const SUBMIT_AND_WATCH = 'transactionWatch_v1_submitAndWatch';
 const UNWATCH = 'transactionWatch_v1_unwatch';
 const WATCH_EVENT = 'transactionWatch_v1_watchEvent';
-const LEGACY_SUBMIT = 'author_submitAndWatchExtrinsic';
-const LEGACY_UNWATCH = 'author_unwatchExtrinsic';
-const LEGACY_EVENT = 'author_extrinsicUpdate';
 const TERMINAL_EVENTS = new Set(['finalized', 'error', 'invalid', 'dropped']);
-const LEGACY_TERMINAL_EVENTS: Record<string, true> = {
-  finalized: true,
-  invalid: true,
-  dropped: true,
-  usurped: true,
-  finalityTimeout: true,
-};
 
 export interface WatchGuard {
+  /** The transport, with the watches it carries tracked. */
   provider: JsonRpcProvider;
   /** `disconnected` ends every tracked watch. */
   onStatus: (status: ConnectionStatus) => void;
@@ -34,45 +25,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
-  const pending = new Map<string | number, boolean>();
-  const watches = new Map<string, boolean>();
+  // Submit request ids not answered yet, and the watches their answers named.
+  const pending = new Set<string | number>();
+  const watches = new Set<string>();
   let deliver: ((message: JsonRpcMessage) => void) | null = null;
 
   const observe = (message: JsonRpcMessage<unknown>): void => {
     if ('method' in message) {
-      if (!isRecord(message.params)) {
+      if (message.method !== WATCH_EVENT || !isRecord(message.params)) {
         return;
       }
       const subscription = message.params['subscription'];
       const result = message.params['result'];
-      if (typeof subscription !== 'string') {
-        return;
-      }
       if (
-        message.method === WATCH_EVENT &&
+        typeof subscription === 'string' &&
         isRecord(result) &&
         typeof result['event'] === 'string' &&
         TERMINAL_EVENTS.has(result['event'])
       ) {
         watches.delete(subscription);
-      } else if (message.method === LEGACY_EVENT) {
-        const kind = typeof result === 'string' ? result : isRecord(result) ? Object.keys(result)[0] : undefined;
-        if (kind !== undefined && LEGACY_TERMINAL_EVENTS[kind] === true) {
-          watches.delete(subscription);
-        }
       }
       return;
     }
-    if (message.id === null) {
+    if (message.id === null || !pending.delete(message.id)) {
       return;
     }
-    const legacy = pending.get(message.id);
-    if (legacy === undefined) {
-      return;
-    }
-    pending.delete(message.id);
     if ('result' in message && typeof message.result === 'string') {
-      watches.set(message.result, legacy);
+      watches.add(message.result);
     }
   };
 
@@ -84,13 +63,9 @@ export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
     });
     return {
       send(message) {
-        if (
-          (message.method === SUBMIT_AND_WATCH || message.method === LEGACY_SUBMIT) &&
-          message.id !== undefined &&
-          message.id !== null
-        ) {
-          pending.set(message.id, message.method === LEGACY_SUBMIT);
-        } else if (message.method === UNWATCH || message.method === LEGACY_UNWATCH) {
+        if (message.method === SUBMIT_AND_WATCH && message.id !== undefined && message.id !== null) {
+          pending.add(message.id);
+        } else if (message.method === UNWATCH) {
           const params: unknown = message.params;
           if (Array.isArray(params) && typeof params[0] === 'string') {
             watches.delete(params[0]);
@@ -116,11 +91,11 @@ export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
       }
       const ended = [...watches];
       watches.clear();
-      for (const [subscription, legacy] of ended) {
+      for (const subscription of ended) {
         target({
           jsonrpc: '2.0',
-          method: legacy ? LEGACY_EVENT : WATCH_EVENT,
-          params: { subscription, result: legacy ? 'dropped' : { event: 'dropped' } },
+          method: WATCH_EVENT,
+          params: { subscription, result: { event: 'dropped' } },
         });
       }
     },

@@ -4,66 +4,66 @@
 /* The panel's own palette, as --td-* properties read by its other modules. */
 
 .panel {
-  --td-bg: #0b0b0b;
-  --td-bg-bar: #0f0f0f;
-  --td-bg-raised: #141414;
-  --td-bg-chip: #1a1a1a;
-  --td-line: #1f1f1f;
-  --td-line-strong: #2a2a2a;
-  --td-line-hover: #3a3a3a;
+  --td-bg: #0b0c0f;
+  --td-bg-bar: #0e0f12;
+  --td-bg-raised: #131418;
+  --td-bg-chip: #1a1b20;
+  --td-line: #1d1f24;
+  --td-line-strong: #282a2f;
+  --td-line-hover: #383a40;
   --td-fg-bright: #fff;
-  --td-fg-strong: #e0e0e0;
-  --td-fg: #d4d4d4;
-  --td-fg-muted: #a3a3a3;
-  --td-fg-dim: #6b7280;
-  --td-fg-faint: #525252;
-  --td-slate: #94a3b8;
-  --td-slate-bg: #1f2937;
-  --td-slate-line: #334155;
-  --td-accent: #e6007a;
-  --td-accent-bg: #2a0f1d;
-  --td-focus: #3b82f6;
-  --td-selected: #1e3a5f;
-  --td-paired: #1a2a1a;
-  --td-danger: #dc2626;
+  --td-fg-strong: #dfe0e4;
+  --td-fg: #d3d4d9;
+  --td-fg-muted: #a0a3ab;
+  --td-fg-dim: #6f727a;
+  --td-fg-faint: #4f5259;
+  --td-slate: #96a2b8;
+  --td-slate-bg: #1e293b;
+  --td-slate-line: #344155;
+  --td-accent: #2f6fea;
+  --td-focus: #4081f6;
+  --td-selected: color-mix(in srgb, var(--td-accent) 40%, var(--td-bg));
+  --td-paired: #072b18;
+  --td-danger: #d9363e;
   --td-rid-bg: rgba(255, 255, 255, 0.04);
   --td-rid-line: rgba(255, 255, 255, 0.06);
   --td-shadow: rgba(0, 0, 0, 0.4);
-  --td-info-bg: #0d1b2a;
+  --td-info-bg: #101a2b;
   --td-info-fg: #dbeafe;
-  --td-green: #4ade80;
-  --td-amber: #fbbf24;
-  --td-purple: #c084fc;
-  --td-orange: #fb923c;
-  --td-cyan: #38bdf8;
-  --td-blue: #60a5fa;
-  --td-blue-soft: #93c5fd;
-  --td-sky: #bae6fd;
+  --td-green: #4cde7f;
+  --td-amber: #ffbb33;
+  --td-purple: #ab8ffe;
+  --td-orange: #ed9853;
+  --td-cyan: #0cc2ed;
+  --td-blue: #78a9ff;
+  --td-blue-soft: #a9c7ff;
+  --td-sky: #b7e8f9;
   --td-pink: #f9a8d4;
   --td-pink-line: #9d174d;
-  --td-system-edge: rgba(45, 212, 191, 0.3);
-  --td-teal: #2dd4bf;
-  --td-teal-soft: #5eead4;
-  --td-teal-pale: #99f6e4;
+  --td-pink-bg: #2a0f1d;
+  --td-system-edge: rgba(76, 212, 170, 0.3);
+  --td-teal: #4cd4aa;
+  --td-teal-soft: #70eac1;
+  --td-teal-pale: #a7f3d0;
   --td-teal-bg: #0b1410;
-  --td-teal-tint: rgba(45, 212, 191, 0.08);
+  --td-teal-tint: rgba(76, 212, 170, 0.08);
   /* The network panel's block-health colours, shared by the Resolution view. */
   --td-health-ok: #22c55e;
-  --td-health-warn: #eab308;
-  --td-health-bad: #f87171;
-  --td-health-idle: #8f8f8f;
+  --td-health-warn: #ebb309;
+  --td-health-bad: #ff7a7a;
+  --td-health-idle: #8c8f98;
   --td-boot-bg: #0f172a;
   --td-boot-line: #1e40af;
-  --td-resolve-bg: #0f1714;
+  --td-resolve-bg: #011b15;
   --td-resolve-line: #166534;
   --td-render-bg: #1a1306;
-  --td-render-line: #92400e;
-  --td-bridge-bg: #1a0f1a;
-  --td-bridge-line: #6b21a8;
+  --td-render-line: #914102;
+  --td-bridge-bg: #1c0e17;
+  --td-bridge-line: #5d29b2;
   --td-failover-bg: #1f1313;
   --td-failover-line: #9a3412;
   --td-chain-bg: #0b1418;
-  --td-chain-line: #075985;
+  --td-chain-line: #025d73;
 
   position: fixed;
   bottom: var(--content-bottom);
@@ -81,6 +81,12 @@
   /* An `auto` column would grow to the header's min-content and widen the panel past the viewport. */
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 5px 32px auto 1fr;
+  /* Named, so a hidden filter row leaves the body in its own row. */
+  grid-template-areas:
+    'handle'
+    'header'
+    'filters'
+    'body';
   height: 360px;
   max-height: 80dvh;
   box-shadow: 0 -4px 12px var(--td-shadow);
@@ -91,18 +97,19 @@
 }
 
 .panel[data-dock='right'] {
-  top: max(var(--safe-top, 0px), var(--debug-content-top, var(--topbar-height, 0px)));
+  top: 0;
   right: 0;
   bottom: 0;
   left: auto;
   width: 480px;
   height: auto;
   max-height: none;
-  max-width: min(80vw, max(320px, calc(100vw - 240px)));
+  max-width: 80vw;
   border-top: none;
   border-left: 1px solid var(--td-line);
   grid-template-columns: 5px minmax(0, 1fr);
-  grid-template-rows: 32px auto 1fr;
+  /* The header takes two lines here, its controls above the tabs. */
+  grid-template-rows: auto auto 1fr;
   grid-template-areas:
     'handle header'
     'handle filters'
@@ -111,8 +118,8 @@
 }
 .panel[data-dock='right'][data-collapsed] {
   bottom: auto;
-  height: 32px;
-  grid-template-rows: 32px 0 0;
+  height: auto;
+  grid-template-rows: auto 0 0;
 }
 
 .body {
@@ -120,8 +127,6 @@
   grid-template-columns: var(--td-left-width, 33%) 6px 1fr;
   overflow: hidden;
   min-height: 0;
-}
-.panel[data-dock='right'] .body {
   grid-area: body;
   min-width: 0;
 }
@@ -132,21 +137,19 @@
 .panel[data-collapsed] .body {
   display: none;
 }
-/* Views with nothing to select for the detail pane take the whole width. */
-.panel[data-view='resolution'] .body,
-.panel[data-view='archive'] .body,
-.panel[data-view='wallet'] .body,
-.panel[data-view='runtime'] .body,
-.panel[data-view='diagnostics'] .body {
+/* Tabs other than TrUAPI have nothing to select for the detail pane, so they take the whole body. */
+.panel[data-section='resolution'] .body,
+.panel[data-section='archive'] .body,
+.panel[data-section='runtime'] .body,
+.panel[data-section='diagnostics'] .body,
+.panel[data-section='wallet'] .body,
+.panel[data-section='resolution'] .views,
+.panel[data-section='archive'] .views,
+.panel[data-section='runtime'] .views,
+.panel[data-section='diagnostics'] .views,
+.panel[data-section='wallet'] .views {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
-}
-/* Wallet hides the filter bar, so its row goes to the body. */
-.panel[data-view='wallet']:not([data-collapsed]) {
-  grid-template-rows: 5px 32px 1fr;
-}
-.panel[data-dock='right'][data-view='wallet']:not([data-collapsed]) {
-  grid-template-rows: 32px 0 1fr;
 }
 
 .views {
@@ -157,8 +160,7 @@
   min-height: 0;
   border-right: 1px solid var(--td-line);
 }
-.panel[data-layout='stacked'] .views,
-.panel[data-view='runtime'] .views {
+.panel[data-layout='stacked'] .views {
   border-right: none;
 }
 
