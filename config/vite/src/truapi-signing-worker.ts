@@ -3,7 +3,8 @@
 
 // A second TrUAPI worker on the `testing` wasm bundle, the only published one with a signing host. The published
 // worker runtime imports the `web` glue by a literal path and Vite keys worker bundles by path, so the signing worker
-// has its own entry that imports a marked copy of the runtime with that one specifier rewritten.
+// has its own entry that imports a marked copy of the runtime with that one specifier rewritten. The local wallet's
+// username claim also needs the ring-VRF module the core loads beside its wasm, which the package does not export.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -11,6 +12,7 @@ import { dirname, join, posix, resolve } from 'node:path';
 import type { Plugin, Rolldown } from 'vite';
 
 export const SIGNING_WORKER_RUNTIME_ID = 'dotli:truapi-signing-worker-runtime';
+export const TRUAPI_VERIFIABLE_ID = 'dotli:truapi-verifiable';
 
 const PUBLISHED_PACKAGE = '@parity/truapi-host';
 const RUNTIME_EXPORT = './worker-runtime';
@@ -18,6 +20,7 @@ const MARK = 'truapi-signing';
 const WEB_GLUE = './wasm/web/truapi_server.js';
 const TESTING_GLUE = './wasm/testing/truapi_server.js';
 const TESTING_WASM = '/wasm/testing/truapi_server_bg.wasm';
+const VERIFIABLE_GLUE = 'dist/wasm/web/truapi_verifiable.js';
 
 /** Throws when the literal is gone, so an upstream change fails the build instead of shipping the web glue. */
 export function rewriteWasmGlue(code: string, id: string): string {
@@ -37,25 +40,40 @@ function markedFile(id: string): string | null {
   return new URLSearchParams(query).has(MARK) ? file : null;
 }
 
-/**
- * The published runtime file, found by walking up from `root`. `this.resolve` is not used because in dev it returns
- * the optimizer's pre-bundled copy, which has the web glue inlined.
- */
-export function findPublishedRuntime(root: string): string {
+/** The published package's directory and manifest, found by walking up from `root`. */
+function findPublishedPackage(root: string): { dir: string; manifest: string } {
   for (let dir = resolve(root); ; dir = dirname(dir)) {
     const manifest = join(dir, 'node_modules', PUBLISHED_PACKAGE, 'package.json');
     if (existsSync(manifest)) {
-      const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as { exports?: Record<string, { import?: string }> };
-      const entry = pkg.exports?.[RUNTIME_EXPORT]?.import;
-      if (entry === undefined) {
-        throw new Error(`${manifest} has no ${RUNTIME_EXPORT} import export`);
-      }
-      return join(dirname(manifest), entry);
+      return { dir: dirname(manifest), manifest };
     }
     if (dirname(dir) === dir) {
       throw new Error(`${PUBLISHED_PACKAGE} was not found in any node_modules above ${root}`);
     }
   }
+}
+
+/**
+ * The published runtime file. `this.resolve` is not used because in dev it returns the optimizer's pre-bundled copy,
+ * which has the web glue inlined.
+ */
+export function findPublishedRuntime(root: string): string {
+  const { dir, manifest } = findPublishedPackage(root);
+  const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as { exports?: Record<string, { import?: string }> };
+  const entry = pkg.exports?.[RUNTIME_EXPORT]?.import;
+  if (entry === undefined) {
+    throw new Error(`${manifest} has no ${RUNTIME_EXPORT} import export`);
+  }
+  return join(dir, entry);
+}
+
+/** The ring-VRF glue. It loads its wasm from beside itself, which Vite emits as an asset. */
+export function findPublishedVerifiable(root: string): string {
+  const file = join(findPublishedPackage(root).dir, VERIFIABLE_GLUE);
+  if (!existsSync(file)) {
+    throw new Error(`${PUBLISHED_PACKAGE} no longer ships ${VERIFIABLE_GLUE}, which the local wallet's claim needs`);
+  }
+  return file;
 }
 
 /**
@@ -88,6 +106,9 @@ export function truapiSigningWorker(): Plugin {
       assetsDir = config.build.assetsDir;
     },
     resolveId(source) {
+      if (source === TRUAPI_VERIFIABLE_ID) {
+        return findPublishedVerifiable(root);
+      }
       if (source !== SIGNING_WORKER_RUNTIME_ID) {
         return null;
       }

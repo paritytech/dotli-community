@@ -4,12 +4,14 @@
 import {
   getBackend,
   getCacheSettings,
+  getLocalWalletEnabled,
   isSharedWorkerAvailable,
   isVerifiedSession,
   type Backend,
   type CacheSettings,
   getEnabledNetworks,
   getNetwork,
+  SITE_ID,
   type Network,
 } from '@dotli/config';
 
@@ -19,6 +21,7 @@ export interface SettingsState {
   backend: Backend;
   cache: CacheSettings;
   network: Network;
+  localWalletEnabled: boolean;
   enabledNetworks: Network[];
   sharedWorkerAvailable: boolean;
   /** Whether the backend verifies chain data. */
@@ -37,6 +40,7 @@ function readSettings(): SettingsState {
     backend,
     cache: getCacheSettings(),
     network: getNetwork(),
+    localWalletEnabled: getLocalWalletEnabled(SITE_ID),
     enabledNetworks: getEnabledNetworks(),
     sharedWorkerAvailable: isSharedWorkerAvailable(),
     verified: isVerifiedSession(backend),

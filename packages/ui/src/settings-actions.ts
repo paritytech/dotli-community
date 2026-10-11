@@ -11,6 +11,7 @@ import {
   setCacheSettings,
   getBackend,
   setBackend,
+  setLocalWalletEnabled,
   BACKEND_LABELS,
   type Backend,
   type CacheSettings,
@@ -33,6 +34,7 @@ export interface ModeDraft {
   chain: Backend;
   network: Network;
   cache: CacheSettings;
+  localWalletEnabled: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setLocalWalletEnabled(draft.localWalletEnabled);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         sessionStorage.setItem('dotli:pending-reset:protocol', '1');
@@ -62,6 +65,7 @@ export async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setLocalWalletEnabled(draft.localWalletEnabled);
 
       const cidTurnedOff = draft.cache.skipCidCache && !prior.cache.skipCidCache;
       const archiveTurnedOff = draft.cache.skipArchiveCache && !prior.cache.skipArchiveCache;

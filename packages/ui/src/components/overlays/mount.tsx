@@ -7,9 +7,10 @@ import { ensureOverlayRoot } from '../../mount/overlay-root.js';
 import { mountRoot } from '../../mount/root.js';
 import { ModalOutlet } from './ModalOutlet.js';
 import { ToastStack } from './ToastStack.js';
+import { WalletPausedBanner } from './WalletPausedBanner.js';
 
 /**
- * Mount the toast and modal trees.
+ * Mount the toast, modal and paused-wallet trees.
  * `onBroken` runs once the root broke and was disposed, so the loader can settle queued work.
  */
 export function mountOverlays(onBroken: () => void): () => void {
@@ -19,6 +20,7 @@ export function mountOverlays(onBroken: () => void): () => void {
     () => (
       <>
         <ToastStack />
+        <WalletPausedBanner />
         <ModalOutlet />
       </>
     ),

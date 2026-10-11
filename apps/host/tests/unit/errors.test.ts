@@ -3,9 +3,9 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setBackend } from '@dotli/config';
-import { ProtocolInitFailedError } from '@dotli/protocol';
+import { LOCAL_WALLET_OWNER_BUSY_ERROR, ProtocolInitFailedError } from '@dotli/protocol';
 
-import { HOST_ERRORS } from '../../src/error-copy.js';
+import { ERROR_TITLES, HOST_ERRORS } from '../../src/error-copy.js';
 import { describeError } from '../../src/errors.js';
 import { ManifestRejectedError } from '../../src/manifest-gate.js';
 
@@ -119,5 +119,21 @@ describe('host error classification', () => {
       recovery: 'none',
     });
     expect(error.tips).toEqual(['Contacting the app maintainer.']);
+  });
+});
+
+describe('test wallet held by an unresponsive tab', () => {
+  it('is not reported as an unreachable domain with connectivity advice', () => {
+    const refused = crossedBoundary('The test wallet is in use in another tab.', LOCAL_WALLET_OWNER_BUSY_ERROR);
+
+    for (const isP2p of [true, false]) {
+      expect(describeError(refused, isP2p)).toMatchObject({
+        kind: 'wallet-in-other-tab',
+        title: ERROR_TITLES.WALLET_IN_OTHER_TAB,
+        message: HOST_ERRORS.WALLET_IN_OTHER_TAB,
+        recovery: 'reload',
+        tips: [],
+      });
+    }
   });
 });

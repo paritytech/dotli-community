@@ -25,6 +25,7 @@ const sharedStore = vi.hoisted(
 
 vi.mock('../../protocol/src/client.js', () => ({
   readSharedLocalWallet: () => Promise.resolve(localWallet.result),
+  subscribeLocalWalletChanged: () => () => undefined,
   readSharedAuthStorage: async (siteId: string, key: string) => {
     sharedAuth.reads.push(key);
     await sharedAuth.readGate;

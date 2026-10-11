@@ -6,5 +6,6 @@
     // Promise.withResolvers.
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["."]
+  // The ambient ring-VRF glue declaration lives in src, which this project reaches only through imports.
+  "include": [".", "../src/truapi-verifiable.d.ts"]
 }

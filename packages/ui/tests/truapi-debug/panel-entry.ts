@@ -4,7 +4,11 @@
 // The one place the suite gets the panel from, so a re-implementation swaps this import only.
 
 export interface PanelModule {
-  setupTruapiDebugPanel: (options?: { capacity?: number; startCollapsed?: boolean }) => () => void;
+  setupTruapiDebugPanel: (options?: {
+    capacity?: number;
+    startCollapsed?: boolean;
+    localWalletEnabled?: boolean;
+  }) => () => void;
 }
 
 export function loadPanel(): Promise<PanelModule> {

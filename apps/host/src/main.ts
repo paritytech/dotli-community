@@ -99,6 +99,7 @@ import {
   isLocalhost,
   setBackend,
   isVerifiedSession,
+  getLocalWalletEnabled,
   getCacheSettings,
   type Backend,
   getActiveTldSuffix,
@@ -590,6 +591,7 @@ async function main(): Promise<void> {
     void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
       setupTruapiDebugPanel({
         startCollapsed: !debugMode.explicit,
+        localWalletEnabled: getLocalWalletEnabled(SITE_ID),
         // As the sandbox relay serves blocks: from the block cache, else over bitswap.
         blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
       });

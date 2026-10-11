@@ -4,9 +4,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   BACKEND_KEY,
+  LOCAL_WALLET_KEY,
   configureModeStorage,
+  defaultLocalWalletEnabled,
   defaultBackend,
   getBackend,
+  getLocalWalletEnabled,
   isSharedWorkerAvailable,
   type ModeStorage,
 } from '../src/mode.js';
@@ -164,5 +167,44 @@ describe('getBackend', () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe('getLocalWalletEnabled', () => {
+  let storage: ReturnType<typeof makeMemoryStorage>;
+
+  beforeEach(() => {
+    storage = makeMemoryStorage();
+    configureModeStorage(storage);
+  });
+
+  afterEach(() => {
+    configureModeStorage({
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+  });
+
+  it('keeps the production site opt-in and enables test and local sites by default', () => {
+    expect(defaultLocalWalletEnabled('dot.li')).toBe(false);
+    expect(defaultLocalWalletEnabled('paseo.fyi')).toBe(true);
+    expect(defaultLocalWalletEnabled('paseo.li')).toBe(true);
+    expect(defaultLocalWalletEnabled('paseoli.dev')).toBe(true);
+    expect(defaultLocalWalletEnabled('local.li')).toBe(true);
+  });
+
+  it('honors an explicit browser preference on every site', () => {
+    storage.setItem(LOCAL_WALLET_KEY, '1');
+    expect(getLocalWalletEnabled('dot.li')).toBe(true);
+
+    storage.setItem(LOCAL_WALLET_KEY, '0');
+    expect(getLocalWalletEnabled('paseo.fyi')).toBe(false);
+  });
+
+  it('falls back to the site default for an unknown stored value', () => {
+    storage.setItem(LOCAL_WALLET_KEY, 'yes');
+    expect(getLocalWalletEnabled('dot.li')).toBe(false);
+    expect(getLocalWalletEnabled('paseoli.dev')).toBe(true);
   });
 });

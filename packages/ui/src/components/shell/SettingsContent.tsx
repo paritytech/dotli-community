@@ -107,10 +107,12 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
     chain: saved.backend,
     network: saved.network,
     cache: saved.cache,
+    localWalletEnabled: saved.localWalletEnabled,
   };
   const [chain, setChain] = createSignal<Backend>(persisted.chain);
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
+  const [localWalletEnabled, setLocalWalletEnabled] = createSignal(persisted.localWalletEnabled);
   const [category, setCategory] = createSignal<Category>('general');
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
@@ -120,6 +122,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
     return (
       chain() !== persisted.chain ||
       network() !== persisted.network ||
+      localWalletEnabled() !== persisted.localWalletEnabled ||
       CACHES.some(([key]) => draft[key] !== persisted.cache[key])
     );
   });
@@ -143,6 +146,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         chain: untrack(chain),
         network: untrack(network),
         cache: untrack(cache),
+        localWalletEnabled: untrack(localWalletEnabled),
       },
       persisted,
     );
@@ -259,6 +263,14 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               </Button>
             </div>
           </Stack>
+          <Stack>
+            <SectionLabel text="Experimental" />
+            <Well layout="controls" testId="mode-experimental">
+              <Row label="Local wallet">
+                <Switch label="Local wallet" checked={localWalletEnabled()} onChange={setLocalWalletEnabled} />
+              </Row>
+            </Well>
+          </Stack>
           <Show when={!isTruapiDebugEnabled()}>
             <div data-testid="mode-debug-row">
               <Button block onClick={openInDebugMode} title="Reload this tab with the debug panel and its diagnostics">
@@ -272,7 +284,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
       <SurfaceFoot
         hint={
           <Hint icon={<ReloadIcon />} testId="mode-apply-warning">
-            Transport and cache changes reload the app
+            These changes reload the app
           </Hint>
         }
       >

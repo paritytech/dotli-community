@@ -14,5 +14,8 @@ export default defineConfig({
     'import.meta.env.VITE_APP_DEBUG': '"true"',
     // getEnabledNetworks() requires VITE_NETWORKS, with no default by design.
     'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
+    // Lets tests exercise runtime overrides through globalThis.__DOTLI_NETWORK__. Without that global, every reader
+    // keeps the built-in tables.
+    'import.meta.env.VITE_RUNTIME_NETWORK_CONFIG': '"true"',
   },
 });

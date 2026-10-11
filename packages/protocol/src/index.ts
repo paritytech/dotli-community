@@ -36,6 +36,9 @@ export {
   readSharedLocalWallet,
   saveSharedLocalWallet,
   updateSharedLocalWalletIdentity,
+  requestLocalWalletOwner,
+  subscribeLocalWalletChanged,
+  subscribeLocalWalletOwnerRevoked,
   createRemoteChainProvider,
   ensureProtocolFrame,
   getProtocolOrigin,
@@ -76,3 +79,10 @@ export {
   type SmoldotDbChain,
   type SmoldotDbOutcome,
 } from './messages.js';
+export {
+  createWalletOwner,
+  isWalletOwnerOperation,
+  LOCAL_WALLET_OWNER_BUSY_ERROR,
+  type WalletOwner,
+  type WalletOwnerOperation,
+} from './wallet-owner.js';

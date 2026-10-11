@@ -8,10 +8,12 @@ import {
   isSharedAuthOriginAllowed,
   isSharedAuthSiteId,
   isSharedWalletRequestMethod,
+  isWalletOwnerOperation,
   type LocalWalletIdentity,
   type LocalWalletReadResult,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
+  type WalletOwner,
 } from '@dotli/protocol';
 import {
   forgetLocalWallet,
@@ -20,6 +22,13 @@ import {
   saveLocalWallet,
   updateLocalWalletIdentity,
 } from '@dotli/storage';
+
+/** What the frame shares across requests: the page's owner lease, and the sibling tabs to tell about changes. */
+export interface LocalWalletFrame {
+  owner(): WalletOwner;
+  /** A save or forget committed. Sibling tabs' wallet mode or entropy is now stale. */
+  changed(): void;
+}
 
 const ENTROPY_LENGTHS = new Set([16, 20, 24, 28, 32]);
 
@@ -55,7 +64,11 @@ async function read(): Promise<LocalWalletReadResult> {
   }
 }
 
-export async function handleLocalWalletRequest(request: ProtocolRequestEnvelope, origin: string): Promise<unknown> {
+export async function handleLocalWalletRequest(
+  request: ProtocolRequestEnvelope,
+  origin: string,
+  frame: LocalWalletFrame,
+): Promise<unknown> {
   if (!isSharedAuthOriginAllowed(origin)) {
     throw new Error(`Local wallet request denied from origin: ${origin}`);
   }
@@ -74,6 +87,7 @@ export async function handleLocalWalletRequest(request: ProtocolRequestEnvelope,
       const { entropy } = request.payload as ProtocolRequestMap['localWalletSave'];
       assertEntropy(entropy);
       await saveLocalWallet(entropy);
+      frame.changed();
       return true;
     }
     case 'localWalletIdentity': {
@@ -84,6 +98,14 @@ export async function handleLocalWalletRequest(request: ProtocolRequestEnvelope,
     }
     case 'localWalletForget':
       await forgetLocalWallet();
+      frame.changed();
       return true;
+    case 'localWalletOwner': {
+      const { operation } = request.payload as ProtocolRequestMap['localWalletOwner'];
+      if (!isWalletOwnerOperation(operation)) {
+        throw new Error('Invalid local wallet owner operation');
+      }
+      return frame.owner().handle(operation, request.deadlineMs);
+    }
   }
 }

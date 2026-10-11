@@ -108,6 +108,7 @@ function DockBottomIcon(): JSX.Element {
 
 export function Header(props: {
   section: PanelSection;
+  localWalletEnabled: boolean;
   onSelectSection: (section: PanelSection) => void;
   counts: string;
   paused: boolean;
@@ -196,7 +197,11 @@ export function Header(props: {
 
   return (
     <div class={s['header']} data-testid="td-header" data-dock={props.placement}>
-      <SectionTabs section={props.section} onSelect={props.onSelectSection} />
+      <SectionTabs
+        section={props.section}
+        localWalletEnabled={props.localWalletEnabled}
+        onSelect={props.onSelectSection}
+      />
       <span class={s['counts']} data-testid="td-counts" hidden={!events()}>
         {props.counts}
       </span>

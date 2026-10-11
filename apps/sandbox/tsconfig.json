@@ -1,4 +1,11 @@
 {
   "extends": ["@config/typescript/base.json", "@config/typescript/solid.json"],
-  "include": ["src", "vite.config.ts", "tests", "vitest.config.ts", "eslint.config.js"]
+  "include": [
+    "src",
+    "../../packages/ui/src/truapi-verifiable.d.ts",
+    "vite.config.ts",
+    "tests",
+    "vitest.config.ts",
+    "eslint.config.js"
+  ]
 }

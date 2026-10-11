@@ -55,6 +55,7 @@ import {
 } from '@dotli/config';
 
 import {
+  createWalletOwner,
   requireBrokerLocalProvider,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
@@ -69,6 +70,7 @@ import {
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
+  type WalletOwner,
 } from '@dotli/protocol';
 
 import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
@@ -76,7 +78,7 @@ import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
 import { errorResponse } from './error-response.js';
-import { handleLocalWalletRequest } from './local-wallet-handler.js';
+import { handleLocalWalletRequest, type LocalWalletFrame } from './local-wallet-handler.js';
 
 initSentry('protocol');
 installGlobalErrorHandlers('protocol');
@@ -828,7 +830,74 @@ function bindSharedModeListener(): void {
   });
 }
 
+// One tab of the profile signs with the local wallet. The lease lives here, on the host origin every app page shares,
+// and ends with this page.
+function createPageWalletOwner(): WalletOwner {
+  if (typeof navigator.locks === 'undefined') {
+    throw new Error('The local wallet requires secure-context Web Locks');
+  }
+  const owner = createWalletOwner({
+    locks: navigator.locks,
+    channel: new BroadcastChannel('dotli:local-wallet-owner'),
+    randomId: () => crypto.randomUUID(),
+  });
+  owner.onRevoked(lease => {
+    if (parentOrigin === null || window.parent === window) {
+      void owner.handle({ action: 'release', lease });
+      return;
+    }
+    // The page stops its signer, then releases the lease itself.
+    window.parent.postMessage(
+      { namespace: 'dotli:protocol', kind: 'local-wallet-owner-revoked', siteId: SITE_ID, lease } as const,
+      parentOrigin,
+    );
+  });
+  window.addEventListener('pagehide', () => {
+    owner.releaseAll();
+  });
+  return owner;
+}
+
+// A save or forget makes sibling tabs' wallet mode or entropy stale. BroadcastChannel skips the sender, whose page
+// reloads itself.
+function createLocalWalletFrame(): LocalWalletFrame {
+  const changes = new BroadcastChannel('dotli:local-wallet');
+  changes.addEventListener('message', (event: MessageEvent) => {
+    const data: unknown = event.data;
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('siteId' in data) ||
+      data.siteId !== SITE_ID ||
+      parentOrigin === null ||
+      window.parent === window
+    ) {
+      return;
+    }
+    window.parent.postMessage(
+      { namespace: 'dotli:protocol', kind: 'local-wallet-changed', siteId: SITE_ID } as const,
+      parentOrigin,
+    );
+  });
+  let owner: WalletOwner | undefined;
+  return {
+    owner() {
+      owner ??= createPageWalletOwner();
+      return owner;
+    },
+    changed() {
+      try {
+        changes.postMessage({ siteId: SITE_ID });
+      } catch (error: unknown) {
+        // The change itself committed and is answered, so the host never hears that other tabs missed it.
+        captureException(error, { flow: 'storage', step: 'local_wallet_broadcast' });
+      }
+    },
+  };
+}
+
 function bindLocalWalletListener(): void {
+  const frame = createLocalWalletFrame();
   window.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
     if (!isProtocolEnvelope(data) || data.kind !== 'request' || !isSharedWalletRequestMethod(data.method)) {
@@ -839,7 +908,9 @@ function bindLocalWalletListener(): void {
       countSharedReject('wallet', 'origin');
       return;
     }
-    handleLocalWalletRequest(data, event.origin).then(
+    // On every request, in case the parent navigated: revocations and changes go to it.
+    parentOrigin = event.origin;
+    handleLocalWalletRequest(data, event.origin, frame).then(
       result => {
         postToSource(event.source, event.origin, {
           namespace: 'dotli:protocol',
