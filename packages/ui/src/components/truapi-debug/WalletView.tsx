@@ -3,14 +3,16 @@
 
 // Switches every app on this domain between Polkadot App and a local wallet. Each switch reloads the page.
 
-import { createSignal, Show } from 'solid-js';
+import { createSignal, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createRecoveryPhrase, phraseToEntropy } from '../../recovery-phrase.js';
 import { authStore } from '../../state/auth.js';
 import { walletModeStore } from '../../state/wallet-mode.js';
-import { reportLocalWalletFailure } from '../../wallet-boot.js';
+import { readWalletBoot, reportLocalWalletFailure, type LocalWalletBoot } from '../../wallet-boot.js';
 import { switchToLocalWallet, switchToPolkadotApp } from '../../wallet-switch.js';
 import { useStore } from '../use-store.js';
+import { WalletUsername } from './WalletUsername.js';
+import { AllowanceSection } from './wallet/AllowanceSnapshot.js';
 import { Button } from './shared/Button.js';
 import { Callout } from './shared/Callout.js';
 import { CodeBlock } from './shared/CodeBlock.js';
@@ -183,10 +185,15 @@ function LocalWallet(): JSX.Element {
   const [replacing, setReplacing] = createSignal(false);
   const [leaving, setLeaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const [wallet, setWallet] = createSignal<LocalWalletBoot | null>(null);
   const session = (): { identityAccountId?: string; liteUsername?: string } | undefined => {
     const state = auth();
     return state.tag === 'Connected' ? state.session : undefined;
   };
+  // Read once per page and cached, so this resolves at once in local mode.
+  onSettled(() => {
+    void readWalletBoot().then(setWallet);
+  });
 
   const forget = (): void => {
     setError(null);
@@ -241,6 +248,18 @@ function LocalWallet(): JSX.Element {
             Forget
           </Button>
         </Inline>
+        <Show when={wallet()}>
+          {booted => (
+            <Show when={session()?.identityAccountId} keyed>
+              {identityAccountId => (
+                <>
+                  <WalletUsername entropy={booted().entropy} identityAccountId={identityAccountId} />
+                  <AllowanceSection wallet={booted()} identityAccountId={identityAccountId} />
+                </>
+              )}
+            </Show>
+          )}
+        </Show>
       </Stack>
     </Show>
   );
