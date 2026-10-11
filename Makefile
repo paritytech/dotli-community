@@ -148,6 +148,8 @@ deploy: _require-env build
 # RATE_LIMITED_ENVS and "#" (commented out) for everything else.
 # CI isolates snippets by site; manual deployments retain the shared directory.
 NGINX_SNIPPETS_DIR ?= /etc/nginx/snippets
+# Optional receiving manifest from the matching host build; no second relay map.
+RECEIVING_CONFIG_FILE ?=
 _nginx_snippet_paths = sed 's|/etc/nginx/snippets/|$(NGINX_SNIPPETS_DIR)/|g'
 # A literal "#" goes through _hash: make >= 4.3 keeps the backslash of a "\#"
 # written inside a function call, rendering "\#" into the nginx config.
@@ -184,6 +186,10 @@ deploy-nginx: _require-env
 		if [ -z "$(SENTRY_DSN)" ] && [ "$${snippet##*/}" = dotli-sentry-tunnel.conf ]; then continue; fi; \
 		$(_nginx_snippet_paths) "$$snippet" > "$$stage/snippets/$${snippet##*/}"; \
 	done; \
+	if [ -n "$(RECEIVING_CONFIG_FILE)" ]; then \
+		test -s "$(RECEIVING_CONFIG_FILE)" || { echo "Receiving config must come from the matching host build"; exit 1; }; \
+		node scripts/render-receiving-nginx.ts "$(RECEIVING_CONFIG_FILE)" "$(SITE)" "$$stage/snippets"; \
+	fi; \
 	rsync -avz --delete "$$stage/snippets/" $(REMOTE_TARGET):/tmp/$(SITE)-nginx-snippets/; \
 	scp "$$stage/$(SITE).nginx" $(REMOTE_TARGET):/tmp/$(SITE).nginx
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 $(NGINX_SNIPPETS_DIR) && sudo rsync -av /tmp/$(SITE)-nginx-snippets/ $(NGINX_SNIPPETS_DIR)/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'

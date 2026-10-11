@@ -90,4 +90,22 @@ describe('showNotification', () => {
     // Then
     expect(created).toEqual([{ title: 'Ping', body: 'Background' }]);
   });
+
+  it.each(['default', 'denied'] as const)(
+    'keeps background toasts in-page without requesting permission: %s',
+    async permission => {
+      const requestPermission = vi.fn(() => Promise.resolve('granted'));
+      const Notification = vi.fn();
+      Object.assign(Notification, { permission, requestPermission });
+      vi.stubGlobal('Notification', Notification);
+      setVisibility('hidden');
+      showNotification({ label: 'Product', text: 'New message' });
+      await overlaysReady();
+      expect(toastsStore.get().items.map(({ label, text }) => ({ label, text }))).toEqual([
+        { label: 'Product', text: 'New message' },
+      ]);
+      expect(requestPermission).not.toHaveBeenCalled();
+      expect(Notification).not.toHaveBeenCalled();
+    },
+  );
 });

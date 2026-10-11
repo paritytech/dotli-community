@@ -64,6 +64,7 @@ server {
     resolver 127.0.0.53 valid=300s ipv6=off;
     resolver_timeout 5s;
     include /etc/nginx/snippets/dotli-identity-proxy.conf;
+    location ^~ /__receiving { access_log off; return 404; }
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
@@ -107,6 +108,7 @@ server {
     include /etc/nginx/snippets/dotli-sw-app.conf;
 
     location ^~ /__dotli-identity { return 404; }
+    location ^~ /__receiving { access_log off; return 404; }
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
@@ -143,6 +145,7 @@ server {
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
     location ^~ /__dotli-identity { return 404; }
+    location ^~ /__receiving { access_log off; return 404; }
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
@@ -176,6 +179,7 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+    include /etc/nginx/snippets/dotli-receiving-proxy.conf;
 
     resolver 127.0.0.53 valid=300s ipv6=off;
     resolver_timeout 5s;

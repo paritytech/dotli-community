@@ -5,24 +5,25 @@
 
 import { installBrowserReceivingWorker } from '@parity/truapi-host/browser-receiving-worker';
 import init, { WasmNotificationReceiver } from '@parity/truapi-host/wasm/web';
+import { receivingConfigForOrigin, type ReceivingOriginConfig } from '@dotli/config/receiving';
 
-declare const __RECEIVING_RELAY_URL__: string;
-declare const __RECEIVING_PUSH_ORIGIN__: string;
+declare const __RECEIVING_ORIGINS__: readonly ReceivingOriginConfig[];
 declare const __RECEIVING_WASM_URL__: string;
 
 const scope = self as unknown as ServiceWorkerGlobalScope;
+const config = receivingConfigForOrigin(__RECEIVING_ORIGINS__, scope.location.origin);
 
 // No competing registration, signing host, wallet, product code, or dynamic
 // module loading. Workbox imports this classic bundle into /host-sw.js.
-if (__RECEIVING_RELAY_URL__ && __RECEIVING_PUSH_ORIGIN__) {
-  if (__RECEIVING_PUSH_ORIGIN__ !== scope.location.origin || !scope.navigator.locks) {
-    console.warn('[dot.li] Background receiving unsupported: origin mismatch or Web Locks unavailable');
+if (config) {
+  if (!('locks' in scope.navigator)) {
+    console.warn('[dot.li] Background receiving unsupported: Web Locks unavailable');
   } else {
     let initialized: Promise<void> | undefined;
     installBrowserReceivingWorker({
       scope,
-      relayUrl: __RECEIVING_RELAY_URL__,
-      pushOrigin: __RECEIVING_PUSH_ORIGIN__,
+      relayUrl: config.relayUrl,
+      pushOrigin: config.origin,
       hostEntryUrl: '/',
       notificationTitle: 'Polkadot Web',
       createReceiver: async callbacks => {
@@ -42,5 +43,5 @@ if (__RECEIVING_RELAY_URL__ && __RECEIVING_PUSH_ORIGIN__) {
     });
   }
 } else {
-  console.info('[dot.li] Background receiving unsupported: relay URL and push origin are not configured');
+  console.warn('[dot.li] Background receiving unsupported: this exact origin is not configured');
 }

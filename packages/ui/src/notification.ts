@@ -74,12 +74,6 @@ function fireBrowserNotification(text: string, deeplink: string | undefined, lab
 
   if (Notification.permission === 'granted') {
     show();
-  } else if (Notification.permission !== 'denied') {
-    void Notification.requestPermission().then(p => {
-      if (p === 'granted') {
-        show();
-      }
-    });
   }
 }
 

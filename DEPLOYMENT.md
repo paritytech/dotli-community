@@ -150,87 +150,84 @@ an already installed proxy.
 
 ## Optional browser background receiving
 
-Receiving is host-owned and opt-in. It is unsupported when both build settings
-are absent; a partial configuration fails the build. There is no default relay
-or provider credential:
+Receiving is host-owned and opt-in. `VITE_RECEIVING_ORIGINS` is one public JSON list of exact host origins. Empty
+configuration (`""` or `[]`) is unsupported everywhere. Unlisted origins never borrow another entry, and embedded
+documents cannot enroll. Invalid or incomplete entries fail the build.
 
-```dotenv
-VITE_RECEIVING_RELAY_URL=https://relay.example.org
-VITE_RECEIVING_PUSH_ORIGIN=https://host.example.org
-VITE_RECEIVING_VAPID_PUBLIC_KEY=
-```
+Each object requires `origin`, `relayUrl`, `vapidPublicKey`, and optionally `proxyPort`. URLs must use HTTPS without
+credentials, queries or fragments; `origin` must be canonical with no path or trailing slash. Supply the operator's
+public, unpadded base64url P-256 VAPID key, never a private key or provider credential. Every relay endpoint must be
+distinct and bound to exactly its configured origin and verified product. Configuration is transport availability, not
+product/account/artifact consent or OS permission.
 
-These are illustrative addresses, not deployed services. Use the approved relay
-and host origins. Set both variables for the host build (or leave both empty).
-URLs must use HTTPS without credentials, query strings, or fragments. The push
-origin must be the exact host origin, without a trailing slash, and equal the
-relay's `PUSH_ORIGIN`. The relay must allow that origin through CORS and expose
-the canonical receiving transport endpoints. Set
-`VITE_RECEIVING_VAPID_PUBLIC_KEY` to the relay operator's public base64url VAPID
-application-server key to enable user-click Web Push enrollment. When omitted,
-enrollment reports an unsupported configuration; the key is not guessed or
-fetched from an unrelated provider.
-Keep VAPID private keys and provider credentials on the relay; never put them in
-`VITE_*`, product frames, or a notification payload. Existing build/deployment
-environments do not acquire these settings automatically.
+For a same-origin relay, use exactly `origin + "/__receiving"` as `relayUrl` and a dedicated loopback `proxyPort` from 1
+to 65535. Entries cannot share a port. Omit `proxyPort` for an independently hosted HTTPS relay; its CORS policy must
+allow only its configured host origin. Do not broaden a single-product relay to wildcard origins/products or reuse
+another product's enrollment state.
 
-The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must
-come from the same receiving-enabled revision. Required exports are
-`browser-receiving-worker` and `WasmNotificationReceiver` from `wasm/web`.
-Regenerate/vendor that complete SDK before building; an older SDK is not a
-supported fallback. The build bundles `host-receiving.js` as a standalone classic
-IIFE and copies that SDK's WASM to a content-hashed, same-origin
-`assets/receiving-<sha256>.wasm`. No dynamic imports or second service-worker
-registration are used. The canonical installer owns callback SCALE adaptation.
-Workbox imports this bundle into `/host-sw.js`, retains its existing precache
-rules and prompted update behavior, and precaches the matching WASM. Deploy the
-complete host output together, not a worker or WASM file in isolation.
+GitHub deployments use the environment-scoped public `RECEIVING_ORIGINS` variable, passed to `VITE_RECEIVING_ORIGINS` at
+build time. Migrate existing single-origin deployments by preserving their exact origin, relay endpoint, public key and
+optional loopback port in one object in this list. Remove the replaced `RECEIVING_RELAY_URL`, `RECEIVING_PUSH_ORIGIN`,
+`RECEIVING_VAPID_PUBLIC_KEY`, and `RECEIVING_PROXY_PORT` variables, plus their old `VITE_*` counterparts: they are no
+longer read. Additional origins require separately provisioned, authenticated receiving-compatible relays and public
+keys; never guess a key or repurpose an existing service, database or identity.
 
-For CSP-enforcing hosting, the build also emits `host-receiving-csp.conf`, an nginx
-`add_header` directive with the exact relay origin. Include this generated file
-from the `/host-sw.js` location in the deployed host's nginx configuration (using
-that deployment's absolute host-output path), alongside its existing headers.
-It permits only same-origin scripts, WASM compilation (`'wasm-unsafe-eval'`), and
-connections to self/the configured relay. Install the matching policy whenever
-the relay changes; do not copy a policy between environments. If an existing
-page CSP is enforced by a proxy, preserve its other directives while permitting
-`worker-src 'self'` and the configured relay in `connect-src`. HTML meta policies
-do not set a service worker's CSP. Static hosting other than nginx must translate
-the generated policy into the `/host-sw.js` response header.
+The build emits `host-receiving-config.json`. With `DEPLOY_NGINX=true`, the workflow consumes that exact artifact
+through `RECEIVING_CONFIG_FILE=apps/host/dist/host-receiving-config.json`; manual `make deploy-nginx` accepts the same
+argument. There is no second deploy-time origin/port map or runtime config endpoint. The deployment renderer accepts
+only direct product subdomains of the selected site, rejecting root, `host`, `app`, nested sandbox hosts and alternate
+ports. Dist-only upload does not update nginx policy. Empty configuration removes all receiving proxy routes. No relay
+provisioning, live environment migration or deployment is performed by this source change; each requires its own
+environment approval.
 
-Receiving requires HTTPS, service workers, Push API, Notifications, IndexedDB,
-and Web Locks. A configured build still requires separate host receiving consent
-and OS notification permission. A host-origin mismatch or unavailable Web Locks
-leaves receiving unsupported without breaking Workbox shell updates. The host
-announces registration through `dotli:receiving-registration`; late-mounting UI
-looks up that same registration instead of registering another worker. Development
-servers do not install this production receiving worker: exercise receiving with
-a built host served over the approved HTTPS origin.
+The vendored `@parity/truapi-host` JS, generated bindings, and web WASM must come from the same receiving-enabled
+revision compatible with their consumers. The generic branch's SDK is not a substitute for an upper integration layer's
+wire contract: regenerate those integration artifacts from their matching native source, recording exact provenance
+rather than copying unrelated vendors. Required exports are `browser-receiving-worker` and `WasmNotificationReceiver`
+from `wasm/web`. Regenerate/vendor that complete SDK before building; an older SDK is not a supported fallback. The
+build bundles `host-receiving.js` as a standalone classic IIFE and copies that SDK's WASM to a content-hashed,
+same-origin `assets/receiving-<sha256>.wasm`. No dynamic imports or second service-worker registration are used. The
+canonical installer owns callback SCALE adaptation. Workbox imports this bundle into `/host-sw.js`, retains its existing
+precache rules and prompted update behavior, and precaches the matching WASM. Deploy the complete host output together,
+not a worker or WASM file in isolation.
 
-The shell exposes **Background receiving** in Settings. Enabling Web Push must
-come from that button's user gesture; it does not enroll products. Enrollment
-requires a separate trusted host consent prompt. Revoke all receiving disables
-the durable registrations locally before any asynchronous relay synchronization.
-Explicit disconnect, wallet erase, network replacement, and full reset use the
-same local-first fence. A full reset retains the receiver's durable revocation
-ledger so pending remote deletions are not lost; ordinary product close, page
-close, and suspension do not erase consent or enrollments.
+For CSP-enforcing hosting, the build also emits `host-receiving-csp.conf`. Exact-Host branches permit only that origin's
+relay; unlisted hosts get self-only connections. `deploy-nginx` renders the same policy and proxy routes from
+`host-receiving-config.json` into the site's snippets directory. `/host-sw.js` includes this CSP alongside its existing
+headers. The policy permits same-origin scripts, WASM compilation (`'wasm-unsafe-eval'`), and connections to self/the
+selected relay, never the union of all configured relay origins. Only exact configured Host headers reach their
+dedicated loopback relay; other hosts get 404, and receiving device paths are excluded from access logs.
 
-Only the native core's authenticated `identityAccountId` can select an account.
-The host independently runs the existing CID content verifier, off the ordinary
-startup and messaging path, before using a validated SHA-256 root multihash as
-the artifact identity. This applies equally to HTML and PolkaVM archives.
-URL/development products, unsupported CID provenance, and missing authenticated
-identity report receiving unsupported. Product frames never supply receiving
-authority. Each connection retains its initial account/artifact/environment
-snapshot and is fenced on host navigation or account replacement.
+Install the matching manifest whenever configuration changes. If a page CSP is enforced by another proxy, retain its
+other directives while permitting `worker-src 'self'` and only that host's relay in `connect-src`. HTML meta policies do
+not set a service worker's CSP. Other static hosting must translate the per-origin policy into `/host-sw.js` response
+headers without broadening it.
 
-Notification activation only focuses or opens the host-retained verified
-product descriptor in the already selected unlocked account. It never unlocks,
-switches accounts, or follows a sender route as a URL. Once that execution is
-ready, the shared worker queues the canonical notification Activation event for
-the product to consume.
+Receiving requires HTTPS, service workers, Push API, Notifications, IndexedDB, and Web Locks. A configured build still
+requires separate host receiving consent and OS notification permission. A host-origin mismatch or unavailable Web Locks
+leaves receiving unsupported without breaking Workbox shell updates. The host announces registration through
+`dotli:receiving-registration`; late-mounting UI looks up that same registration instead of registering another worker.
+Development servers do not install this production receiving worker: exercise receiving with a built host served over
+the approved HTTPS origin.
 
+The shell exposes **Background receiving** in Settings. Alert delivery, including plain and scheduled host
+notifications, never requests browser notification permission. Only the Settings Enable Web Push button's explicit user
+gesture owns the browser prompt; it does not enroll products. Without OS permission, ordinary alerts remain in-page.
+Enrollment requires a separate trusted host consent prompt. Revoke all receiving disables the durable registrations
+locally before any asynchronous relay synchronization. Explicit disconnect, wallet erase, network replacement, and full
+reset use the same local-first fence. A full reset retains the receiver's durable revocation ledger so pending remote
+deletions are not lost; ordinary product close, page close, and suspension do not erase consent or enrollments.
+
+Only the native core's authenticated `identityAccountId` can select an account. The host independently runs the existing
+CID content verifier, off the ordinary startup and messaging path, before using a validated SHA-256 root multihash as
+the artifact identity. This applies equally to HTML and PolkaVM archives. URL/development products, unsupported CID
+provenance, and missing authenticated identity report receiving unsupported. Product frames never supply receiving
+authority. Each connection retains its initial account/artifact/environment snapshot and is fenced on host navigation or
+account replacement.
+
+Notification activation only focuses or opens the host-retained verified product descriptor in the already selected
+unlocked account. It never unlocks, switches accounts, or follows a sender route as a URL. Once that execution is ready,
+the shared worker queues the canonical notification Activation event for the product to consume.
 
 ## Checking what is deployed
 

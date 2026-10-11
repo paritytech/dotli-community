@@ -242,6 +242,16 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
 
+### Background receiving
+
+Receiving is an optional host-owned transport configured by an exact-origin `VITE_RECEIVING_ORIGINS` manifest. Unlisted
+hosts and embedded documents cannot enroll or borrow another host's relay or VAPID key. Alert delivery never requests
+browser notification permission: the user explicitly enables Web Push in Settings, separately from each verified
+product/account's receiving consent. Without OS permission, ordinary alerts remain in-page toasts.
+
+See [deployment configuration](DEPLOYMENT.md#optional-browser-background-receiving) for the manifest, isolated relay
+routes, matching worker CSP and SDK prerequisites.
+
 ### Product chat
 
 Products that declare `includes.chat` in their `worker.<label>.<tld>` executable manifest get a Worker-kind TrUAPI
@@ -338,6 +348,12 @@ display language. Products should use that date for day grouping rather than sli
 
 The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
 bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
+
+The `feat/background-notification-receiving` branch is a source-only feature layer on its existing browser/PVM lineage;
+its inherited vendor is intentionally unchanged and it is not independently buildable or a deployment candidate. Qualify
+receiving after integration into #291 with native #1011, then #335 with native #1217, rebuilding each matching vendor.
+The standalone generic native SDK is not a drop-in replacement for the browser wallet/PVM SDK, and this feature does not
+pull Chat, Seity, Jam transport, or Media implementations into lower layers.
 
 ### Running the functional browser suite locally
 
