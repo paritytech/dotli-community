@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   readWalletBoot: vi.fn(),
   reportLocalWalletFailure: vi.fn(),
   refreshLiteUsername: vi.fn(),
+  acquireLocalWalletOwner: vi.fn(() => Promise.resolve()),
   createHostCallbacks: vi.fn(() => ({})),
 }));
 
@@ -34,6 +35,7 @@ vi.mock('../src/wallet-boot.js', () => ({
   reportLocalWalletFailure: mocks.reportLocalWalletFailure,
 }));
 vi.mock('../src/local-wallet-identity.js', () => ({ refreshLiteUsername: mocks.refreshLiteUsername }));
+vi.mock('../src/wallet-handover.js', () => ({ acquireLocalWalletOwner: mocks.acquireLocalWalletOwner }));
 vi.mock('../src/host-callbacks/handlers.js', () => ({ createHostCallbacks: mocks.createHostCallbacks }));
 vi.mock('../src/host-callbacks/SessionStore.js', () => ({ onStoredSessionChanged: () => () => {} }));
 vi.mock('../../metrics/src/metrics.js', () => ({ m: { count: vi.fn() }, getResolutionId: vi.fn(() => null) }));
@@ -103,6 +105,7 @@ describe('page core wallet mode', () => {
     // Then
     expect(mocks.SigningWorker).toHaveBeenCalledTimes(1);
     expect(mocks.HostWorker).not.toHaveBeenCalled();
+    expect(mocks.acquireLocalWalletOwner).toHaveBeenCalledTimes(1);
     const options = mocks.createWebWorkerPairingHostRuntime.mock.calls[0]?.[2] as {
       role?: string;
       hostConfig: { networkSuffix?: string };

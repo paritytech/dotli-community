@@ -6,7 +6,7 @@ import { LOCAL_WALLET_KEY } from '@dotli/config';
 import type { readWalletBoot as ReadWalletBoot } from '../src/wallet-boot.js';
 import type { WalletModeState } from '../src/state/wallet-mode.js';
 
-const protocol = vi.hoisted(() => ({ readSharedLocalWallet: vi.fn() }));
+const protocol = vi.hoisted(() => ({ readSharedLocalWallet: vi.fn(), subscribeLocalWalletChanged: vi.fn() }));
 vi.mock('@dotli/protocol', () => protocol);
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
@@ -47,6 +47,7 @@ describe('readWalletBoot', () => {
     // Then
     expect(boot).toEqual(wallet);
     expect(getState()).toEqual({ mode: 'local', failure: null });
+    expect(protocol.subscribeLocalWalletChanged).toHaveBeenCalledOnce();
   });
 
   it('As a Polkadot App user, I boot the pairing host', async () => {
@@ -73,6 +74,7 @@ describe('readWalletBoot', () => {
     // Then
     expect(boot).toBeNull();
     expect(protocol.readSharedLocalWallet).not.toHaveBeenCalled();
+    expect(protocol.subscribeLocalWalletChanged).not.toHaveBeenCalled();
     expect(getState()).toEqual({ mode: 'app', failure: null });
   });
 
