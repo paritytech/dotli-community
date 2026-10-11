@@ -94,7 +94,9 @@ describe('receiving enrollment authority', () => {
     const { receivingStatus, setReceivingAccount } = await import('../src/receiving.js');
     expect(await receivingStatus()).toMatchObject({ supported: true });
     setReceivingAccount(`0x${'ab'.repeat(32)}`);
-    await vi.waitFor(() => expect(receiver.setActiveAccount).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      expect(receiver.setActiveAccount).toHaveBeenCalled();
+    });
     expect(receiver.enableWebPush).not.toHaveBeenCalled();
     expect(requestPermission).not.toHaveBeenCalled();
   });
