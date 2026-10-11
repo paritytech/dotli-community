@@ -21,6 +21,7 @@ import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-r
 import { spaFallback } from '@config/vite/spa-fallback';
 import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 import { stripAnalytics } from '@dotli/metrics/vite';
+import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.js';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
@@ -225,6 +226,22 @@ function previewCoepHeaders(): Plugin {
   };
 }
 
+/** The identity backend proxy under `astro dev`, as the preview server and nginx serve it. It refuses non-shell hosts. */
+function identityProxy(): Plugin {
+  return {
+    name: 'dotli-identity-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
+          void handleNodeIdentityProxy(req, res);
+        } else {
+          next();
+        }
+      });
+    },
+  };
+}
+
 /** Skipped when metrics are off, since the SDK is a no-op, and locally, which keeps source maps for debugging. */
 function sentry(): PluginOption {
   if (process.env['VITE_METRICS'] !== 'true') {
@@ -313,6 +330,7 @@ export default defineConfig({
       wasm(),
       // Serves /dotli-network.js under `astro dev`.
       runtimeNetworkConfigScript(),
+      identityProxy(),
       buildInfo('host'),
       previewCoepHeaders(),
       // After previewCoepHeaders, which needs the `/__preview` path this rewrites to `/`.
