@@ -14,7 +14,8 @@ SITE_dev-paseo     := paseoli.dev
 SITE_fyi-paseo     := paseo.fyi
 SITE_dev-test      := testnet.li
 
-# Only polkadot is prod. The rest share the staging box.
+# Fallback targets when REMOTE is unset. Each env runs on its own server, so pass REMOTE=user@host for a non-prod
+# env whose server is not REMOTE_STG.
 REMOTE_FOR_polkadot      := $(REMOTE_PRD)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
@@ -134,7 +135,7 @@ deploy-nginx: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval SITE := $(SITE_$(ENV)))
 	$(_nginx_render) > /tmp/$(SITE).nginx
-	rsync -avz --delete $(if $(SENTRY_DSN),,--exclude=dotli-sentry-tunnel.conf --delete-excluded) nginx/snippets/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
+	rsync -avz --delete $(if $(SENTRY_DSN),,--exclude=dotli-sentry-tunnel.conf --delete-excluded) nginx/snippets/$(SITE)/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
 	scp /tmp/$(SITE).nginx $(REMOTE_TARGET):/tmp/$(SITE).nginx
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
