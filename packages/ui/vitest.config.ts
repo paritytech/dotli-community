@@ -4,10 +4,12 @@
 import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
 import { cssModules } from '@config/vite/css-modules';
+import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 
-// In test mode the Solid plugin compiles non-hydratable DOM output, which the component tests render with.
+// In test mode the Solid plugin compiles non-hydratable DOM output, which the component tests render with. The signing
+// worker plugin resolves the core's ring-VRF glue, which the local wallet's username claim imports.
 export default defineConfig({
-  plugins: [solid()],
+  plugins: [solid(), truapiSigningWorker()],
   define: {
     // getEnabledNetworks() requires VITE_NETWORKS and has no default by design.
     'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',

@@ -93,10 +93,15 @@ through a Service Worker that acts as a virtual file system.
 
 ### What it doesn't do
 
-- It is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is
-  delegated to the connected Polkadot App session.
+- In normal mode it is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation,
+  and signing is delegated to the connected Polkadot App session. The experimental local wallet can instead keep
+  encrypted recovery entropy in the browser; it is off by default on `dot.li` and enabled under **Settings → Advanced →
+  Experimental**.
 - It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and
-  dotNS records are read directly from the contract storage.
+  dotNS records are read directly from the contract storage. The one server-side piece is a same-origin proxy at
+  `/__dotli-identity/<network>`, which forwards the experimental local wallet's username check and claim to the public
+  identity service. It carries public account proofs only; the wallet's entropy never leaves the browser, and a claim
+  counts once the chain confirms it.
 - It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally
   per session.
 - It is **not** a production-hardened product. Treat it as a reference blueprint (see [Security](#security)).
@@ -942,9 +947,9 @@ docker run -p 5173:5173 -e DOTLI_NETWORK='{…}' ghcr.io/paritytech/dotli-commun
 DOTLI_NETWORK='{…}' node serve.mjs
 ```
 
-Overrides patch the tables above and reach endpoints only — `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
-contract addresses stay fixed at build time, because they are the trust root for name resolution. See
-[docs/docker.md](docs/docker.md).
+Overrides patch the tables above and reach endpoints only — `label`, `rpcs`, `ipfsGateways` and the local wallet's
+`identityBackendBaseUrl`. Genesis hashes and contract addresses stay fixed at build time, because they are the trust
+root for name resolution. See [docs/docker.md](docs/docker.md).
 
 ## Security
 

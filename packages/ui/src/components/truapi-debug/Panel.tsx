@@ -154,8 +154,10 @@ export function Panel(props: {
   resolution: ResolutionRecorder;
   startCollapsed: boolean;
   loadArchive: ArchiveLoader;
+  localWalletEnabled: boolean;
 }): JSX.Element {
   const store = untrack(() => props.store);
+  const localWalletEnabled = untrack(() => props.localWalletEnabled);
   const recorder = untrack(() => props.resolution);
 
   let panelEl: HTMLDivElement | undefined;
@@ -174,7 +176,10 @@ export function Panel(props: {
 
   const [snapshot, setSnapshot] = createSignal<Snapshot>(takeSnapshot());
   const [filters, setFilters] = createSignal<FilterState>(initialFilterState());
-  const [section, setSection] = createSignal<PanelSection>(readStoredSection());
+  const storedSection = readStoredSection();
+  const [section, setSection] = createSignal<PanelSection>(
+    storedSection === 'wallet' && !localWalletEnabled ? 'truapi' : storedSection,
+  );
   const [view, setView] = createSignal<PanelView>('list');
   const [resolutionCleared, setResolutionCleared] = createSignal(0);
   const events = (): boolean => section() === 'truapi';
@@ -379,6 +384,9 @@ export function Panel(props: {
     });
   };
   const selectSection = (next: PanelSection): void => {
+    if (next === 'wallet' && !localWalletEnabled) {
+      return;
+    }
     if (next !== section()) {
       writeStoredSection(next);
       show(() => setSection(next));
@@ -457,6 +465,7 @@ export function Panel(props: {
       <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
         section={section()}
+        localWalletEnabled={localWalletEnabled}
         onSelectSection={selectSection}
         runtime={runtimeSnapshot() !== null}
         runtimeEntry={<RuntimeBadge snapshot={runtimeSnapshot()} dock={placement()} onOpen={openRuntime} />}
@@ -554,7 +563,7 @@ export function Panel(props: {
           />
           <ArchiveView active={section() === 'archive'} load={props.loadArchive} />
           <DiagnosticsView active={section() === 'diagnostics'} />
-          <WalletView active={section() === 'wallet'} />
+          {localWalletEnabled ? <WalletView active={section() === 'wallet'} /> : null}
         </div>
         <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!events()} />
         <DetailPane

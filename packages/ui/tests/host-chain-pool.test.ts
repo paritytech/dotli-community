@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, setBackend } from '@dotli/config';
 import type * as SharedModule from '@dotli/shared';
-import type { RemoteChainHalt, RemoteChainProvider } from '@dotli/protocol';
+import type { ChainPool, RemoteChainHalt, RemoteChainProvider } from '@dotli/protocol';
 import { FakeWebSocket } from '../../resolver/tests/fake-websocket.js';
 import type * as ClientModule from '../../protocol/src/client.js';
 import type * as ChainModule from '../src/host-callbacks/Chain.js';
+import type * as WalletModeModule from '../src/state/wallet-mode.js';
 import { hexBytes, must, yielded } from './support.js';
 
 interface RemoteConnection {
@@ -70,6 +71,7 @@ const assetHub = getActiveServicesConfig().assethub.genesis;
 let createChainConnect: typeof ChainModule.createChainConnect;
 let createHostChainPool: typeof ChainModule.createHostChainPool;
 let hostChainProvider: typeof ChainModule.hostChainProvider;
+let setWalletModeState: typeof WalletModeModule.setWalletModeState;
 let log: typeof SharedModule.log;
 
 // Chain.ts keeps its gates at module level, so a fresh module gives each test a fresh page's gates.
@@ -77,6 +79,7 @@ beforeEach(async () => {
   vi.resetModules();
   mocks.readyListeners.length = 0;
   ({ createChainConnect, createHostChainPool, hostChainProvider } = await import('../src/host-callbacks/Chain.js'));
+  ({ setWalletModeState } = await import('../src/state/wallet-mode.js'));
   ({ log } = await import('@dotli/shared'));
 });
 
@@ -700,6 +703,81 @@ describe('host chain pool on a light client backend', () => {
 
     // Then
     expect(identity()).toBe('unused');
+  });
+
+  describe('when the light client drops a submitted extrinsic', () => {
+    beforeEach(() => {
+      vi.stubGlobal('WebSocket', FakeWebSocket);
+      FakeWebSocket.instances = [];
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /** Submits through a host lease and has the light client accept it, then drop it. */
+    const submitAndDrop = (pool: ChainPool): JsonRpcMessage[] => {
+      const received: JsonRpcMessage[] = [];
+      const lease = must(hostChainProvider(people, pool), 'provider')(message => received.push(message));
+      lease.send({ jsonrpc: '2.0', id: 'submit', method: 'author_submitAndWatchExtrinsic', params: ['0xabcd'] });
+      const remote = must(remotes[0], 'remote');
+      const submit = must(
+        remote.sent.find(request => request.method === 'author_submitAndWatchExtrinsic'),
+        'submit',
+      );
+      expect(submit.params).toEqual(['0xabcd']);
+      remote.emit({ jsonrpc: '2.0', id: must(submit.id, 'id'), result: 'light-sub' });
+      remote.emit({
+        jsonrpc: '2.0',
+        method: 'author_extrinsicUpdate',
+        params: { subscription: 'light-sub', result: 'dropped' },
+      });
+      return received;
+    };
+
+    it('As a dotli user in Polkadot App mode, the drop reaches the consumer and no trusted node is dialed', async () => {
+      // Given
+      const warn = vi.spyOn(log, 'warn');
+      const pool = createHostChainPool();
+
+      // When
+      const received = submitAndDrop(pool);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      // Then
+      expect(received.filter(message => 'method' in message)).toEqual([
+        expect.objectContaining({
+          method: 'author_extrinsicUpdate',
+          params: expect.objectContaining({ result: 'dropped' }) as unknown,
+        }),
+      ]);
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('TEMPORARY'));
+      expect(must(remotes[0], 'remote').sent.map(request => request.method)).toEqual([
+        'author_submitAndWatchExtrinsic',
+      ]);
+    });
+
+    it('As a dotli user in local wallet mode, the same bytes are resent through the trusted node', async () => {
+      // Given
+      setWalletModeState({ mode: 'local', failure: null });
+      const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+      const pool = createHostChainPool();
+
+      // When
+      const received = submitAndDrop(pool);
+      await vi.advanceTimersByTimeAsync(0);
+      must(FakeWebSocket.instances[0], 'socket').open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then
+      expect(received.filter(message => 'method' in message)).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('TEMPORARY'));
+      const socket = must(FakeWebSocket.instances[0], 'socket');
+      expect(socket.requests('author_submitAndWatchExtrinsic').map((request): unknown => request.params)).toEqual([
+        ['0xabcd'],
+      ]);
+    });
   });
 });
 

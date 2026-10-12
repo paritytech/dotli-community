@@ -29,11 +29,13 @@ import {
 import { setNotificationAccount, setNotificationHostAccount } from './notification-activation.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 import { getWalletMode } from './state/wallet-mode.js';
+import { walletPauseStore } from './state/wallet-pause.js';
 import { readWalletBoot } from './wallet-boot.js';
 import type { ContactAvatarOverlay } from './profile/avatar-overlay.js';
 import type { ContactLabelOverlay } from './contacts/label-overlay.js';
 import { setReceivingAccount } from './receiving.js';
 import { createReceivingExecution, type ReceivingExecution } from './receiving-execution.js';
+import { acquireLocalWalletOwner } from './wallet-handover.js';
 
 /** The product frame's host-drawn layers a connection paints Profile avatars and contact names on. */
 export interface CoreConnectionOptions {
@@ -105,6 +107,15 @@ const cores = new Set<Core>();
 
 export function initPageCore(coordinator: BlockingModalCoordinator): void {
   modalCoordinator = coordinator;
+  // A paused page must stop signing at once: its lease is released right after this runs.
+  walletPauseStore.subscribe(() => {
+    if (walletPauseStore.get().reason === null) {
+      return;
+    }
+    for (const core of [...cores]) {
+      core.dispose();
+    }
+  });
 }
 
 /** Called as soon as the page knows it, so a core booted by an early login is already the product's. */
@@ -121,6 +132,11 @@ function productIdOf(product: PageProduct): string {
 
 function isPageProduct(core: Core): boolean {
   return core.product.label === pageProduct.label && productIdOf(core.product) === productIdOf(pageProduct);
+}
+
+/** The product this page shows, null on the landing page. */
+export function pageProductId(): string | null {
+  return pageProduct === LANDING_PRODUCT ? null : productIdOf(pageProduct);
 }
 
 export async function acquireCore(): Promise<CoreLease> {
@@ -152,6 +168,14 @@ export async function acquireCore(): Promise<CoreLease> {
     connect: (executionKind, options) => connect(core, runtime, executionKind, options),
     release,
   };
+}
+
+/**
+ * Re-activates every live local core under a username People just confirmed, so products see it at once. As the boot
+ * refresh does, this drops grants the cores held only in memory.
+ */
+export async function activateLocalUsername(entropy: Uint8Array, name: string): Promise<void> {
+  await Promise.all([...cores].map(async core => (await core.runtime).activateLocalSession(entropy, name)));
 }
 
 export function cancelPairing(): void {
@@ -270,7 +294,12 @@ function createCore(product: PageProduct): Core {
     import('@parity/truapi-host/worker-runtime?worker'),
   ]).then(async ([wallet, { createWebWorkerPairingHostRuntime }, { default: HostWorker }]) => {
     if (wallet !== null) {
-      const { bootLocalWalletCore, createLocalWalletChat } = await loadLocalWalletCore();
+      // One tab signs at a time: this asks the tab that has the wallet to stop first, before this page acquires
+      // native Chat custody, so a handover pauses the other tab's Chat cores and releases its custody.
+      const [{ bootLocalWalletCore, createLocalWalletChat }] = await Promise.all([
+        loadLocalWalletCore(),
+        acquireLocalWalletOwner(),
+      ]);
       if (!cores.has(core)) {
         throw new Error('Page core retired before the local wallet booted');
       }

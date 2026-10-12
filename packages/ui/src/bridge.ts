@@ -52,7 +52,7 @@ import {
   type CoreLease,
 } from './page-core.js';
 
-export { setPageProduct } from './page-core.js';
+export { activateLocalUsername, pageProductId, setPageProduct } from './page-core.js';
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';

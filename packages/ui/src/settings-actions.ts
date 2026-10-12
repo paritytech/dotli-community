@@ -12,6 +12,7 @@ import {
   getBackend,
   setBackend,
   setPolkaVmAppsEnabled,
+  setLocalWalletEnabled,
   BACKEND_LABELS,
   type Backend,
   type CacheSettings,
@@ -37,6 +38,7 @@ export interface ModeDraft {
   network: Network;
   cache: CacheSettings;
   polkaVmAppsEnabled: boolean;
+  localWalletEnabled: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export async function applyAndReset(
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
       setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
+      setLocalWalletEnabled(draft.localWalletEnabled);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         sessionStorage.setItem('dotli:pending-reset:protocol', '1');
@@ -74,6 +77,7 @@ export async function applyAndReset(
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
       setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
+      setLocalWalletEnabled(draft.localWalletEnabled);
 
       const cidTurnedOff = draft.cache.skipCidCache && !prior.cache.skipCidCache;
       const archiveTurnedOff = draft.cache.skipArchiveCache && !prior.cache.skipArchiveCache;

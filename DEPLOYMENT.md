@@ -66,7 +66,8 @@ deploys do not use these: the GitHub Actions path reads `DEPLOY_HOST` / `DEPLOY_
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
 6. `deploy` — runs `npm run build` on your machine `dist/` outputs into the env's web root.
 7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst) and installs it plus `nginx/snippets/`
-   into `/etc/nginx/`, runs `nginx -t`, and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
+   into `/etc/nginx/`, runs `nginx -t`, and reloads nginx. Preview the result with `make render-nginx ENV=<env>`. The
+   rendered site includes the identity proxy (see [Identity proxy](#identity-proxy)).
 
 ## Run it
 
@@ -121,6 +122,62 @@ advertisement topics a caller looks up and when, and can withhold advertisements
 they do on the light client today); it cannot forge an endpoint. Mention this in release notes for any deploy carrying
 it, and remove `packages/ui/src/host-callbacks/media-advertisement-lookup.ts` with its one use in `Chain.ts` once the
 light client serves stored statements. See [README.md](README.md#protected-browser-media).
+
+## Identity proxy
+
+The experimental local wallet checks and claims Lite usernames through a same-origin proxy, `/__dotli-identity/paseo`
+and `/__dotli-identity/testnet`, which `nginx/snippets/dotli-identity-proxy.conf` forwards to `identity.dotspark.app`
+and `identity-previewnet.dotspark.app`. Only public account proofs pass through; wallet entropy never leaves the
+browser. The template includes it on the apex and product shell servers; the protocol (`host.`) and sandbox (`*.app.`)
+servers answer 404. It accepts a fixed route, method and header set, only same-origin callers, and forwards no cookies,
+redirects, CORS or caching headers. The template's resolver is systemd-resolved at `127.0.0.53`, the Ubuntu default, and
+upstream TLS is verified against the `ca-certificates` roots that `provision-prereqs` installs.
+
+### Opt-in CI rollout
+
+CI normally uploads only the three frontend builds. To also deploy the nginx template and identity proxy with the same
+revision as the frontend, set the GitHub Actions **environment variable** `DEPLOY_NGINX=true` on the `paseoli.dev` or
+`paseo.fyi` environment. Each environment opts in independently; other environments stay dist-only even if the variable
+is set there. Deployment planning and triggers are unchanged. Enable it only for reviewed deployment commits.
+
+Only these environment-to-site mappings are accepted by `ci-deploy-nginx`:
+
+| GitHub environment | Explicit Make argument | Required `DEPLOY_PATH` secret | Isolated snippet directory         |
+| ------------------ | ---------------------- | ----------------------------- | ---------------------------------- |
+| `paseoli.dev`      | `ENV=dev-paseo`        | `/var/www/paseolidev`         | `/etc/nginx/snippets/paseoli.dev/` |
+| `paseo.fyi`        | `ENV=fyi-paseo`        | `/var/www/paseofyi`           | `/etc/nginx/snippets/paseo.fyi/`   |
+
+The selected environment must already be provisioned:
+
+- `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_SSH_KEY` identify its SSH server and key. The user needs write access to
+  `/tmp` and the frontend directories, plus passwordless sudo for installing nginx files, running `nginx -t`, and
+  reloading the service.
+- `DEPLOY_PATH` must exactly match the path above. The target rejects a mismatched path, an implicit `ENV`, or any other
+  environment before uploading config, and the workflow runs it before uploading frontend files.
+- DNS and the certificate for the site, `*.<site>`, and `*.app.<site>` must already be in place, as must nginx with its
+  Brotli modules and the resolver at `127.0.0.53`.
+- Keep the environment's `SENTRY_DSN` secret: CI forwards the value the frontend build uses to render the `/t` tunnel.
+  An unset secret disables the tunnel.
+
+The config-only command CI runs, with `DEPLOY_USER`, `DEPLOY_HOST`, `DEPLOY_PATH` and `SENTRY_DSN` exported from the
+approved environment and its SSH key loaded:
+
+```sh
+make ci-deploy-nginx ENV=fyi-paseo   # or ENV=dev-paseo
+```
+
+It delegates to `deploy-nginx` with the CI SSH destination, ignoring local `REMOTE` settings, and installs the snippets
+under the site's isolated directory, rewriting both the site's and the snippets' include paths to it. Shared snippets
+and other sites' directories on the box are left alone, so each opted-in site keeps its own snapshot: later shared
+snippet fixes reach it only through this target. Plain `deploy-nginx` and the **Deploy nginx** workflow keep the shared
+`/etc/nginx/snippets/` and re-render the site to point there. nginx still validates and reloads the whole server
+configuration; if `nginx -t` fails, the installed files stay for operator repair and the running service is not
+reloaded. This is not an atomic rollback.
+
+After the frontend upload, the opted-in job sends a read-only GET to `https://<site>/__dotli-identity/paseo/attester`
+and requires a JSON object whose `attester` is a 32-byte hex string, so a frontend HTML page with status 200 fails. It
+creates no challenge, token or username. Unsetting `DEPLOY_NGINX` returns to dist-only CI; it does not remove an
+installed proxy.
 
 ## Qualify and deploy Chat on paseo.fyi
 

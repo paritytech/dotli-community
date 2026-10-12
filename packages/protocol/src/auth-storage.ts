@@ -29,13 +29,19 @@ export function isSharedModeRequestMethod(method: ProtocolRequestMethod): method
 }
 
 export type SharedWalletRequestMethod =
-  'localWalletRead' | 'localWalletSave' | 'localWalletIdentity' | 'localWalletForget' | 'coreCustody';
+  | 'localWalletRead'
+  | 'localWalletSave'
+  | 'localWalletIdentity'
+  | 'localWalletForget'
+  | 'localWalletOwner'
+  | 'coreCustody';
 
 const SHARED_WALLET_METHODS = new Set<ProtocolRequestMethod>([
   'localWalletRead',
   'localWalletSave',
   'localWalletIdentity',
   'localWalletForget',
+  'localWalletOwner',
   'coreCustody',
 ]);
 

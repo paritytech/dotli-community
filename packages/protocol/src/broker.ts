@@ -103,6 +103,8 @@ interface BrokerConnection {
 const TOKEN_METHODS = new Map<string, string>([
   ['transaction_v1_broadcast', 'transaction_v1_stop'],
   ['transactionWatch_v1_submitAndWatch', 'transactionWatch_v1_unwatch'],
+  // Legacy watch the local wallet's core still uses to register allowances.
+  ['author_submitAndWatchExtrinsic', 'author_unwatchExtrinsic'],
   ['statement_subscribeStatement', 'statement_unsubscribeStatement'],
 ]);
 const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
@@ -168,7 +170,7 @@ function cloneWithRewrittenFirstParam(request: JsonRpcRequest, rewrittenToken: s
 }
 
 function releaseResultFor(method: string): unknown {
-  return method === 'statement_unsubscribeStatement' ? true : null;
+  return method === 'statement_unsubscribeStatement' || method === 'author_unwatchExtrinsic' ? true : null;
 }
 
 export interface ChainBrokerManager {

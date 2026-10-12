@@ -21,6 +21,7 @@ import { createAsyncTaskPool, log, serializeError } from '@dotli/shared';
 import { getResolutionId, m, spans as S } from '@dotli/metrics';
 import type { CoreCustodyOperation } from './core-custody.js';
 import type { LocalWalletIdentity, LocalWalletReadResult, SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
+import type { WalletOwnerOperation } from './wallet-owner.js';
 import {
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
@@ -81,6 +82,9 @@ const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const protocolReadyListeners = new Set<() => void>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
+// Undefined when the frame holding the lease went away rather than another tab asking for it.
+const localWalletOwnerRevokedListeners = new Set<(lease: string | undefined) => void>();
+const localWalletChangedListeners = new Set<() => void>();
 const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
 let lastNetBytesTotal = 0;
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
@@ -166,6 +170,10 @@ export function resetProtocolFrame(): void {
 function resetProtocolFrameState(reason?: Error): void {
   hostFrameBoot?.abort(reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET));
   hostFrameBoot = null;
+  if (protocolIframe !== null) {
+    // The frame holds the owner lock. Stop the page's signer before removing the frame lets another tab start.
+    broadcast(localWalletOwnerRevokedListeners, undefined, 'Local wallet owner');
+  }
   protocolIframe?.remove();
   protocolIframe = null;
   // The rebuilt frame's byte meter restarts at zero, and the monotonic gate would drop its reports.
@@ -358,6 +366,14 @@ function bindMessageListener(): void {
         broadcast(sharedAuthListeners, change, 'Shared auth');
         return;
       }
+      case 'local-wallet-owner-revoked':
+        if (typeof msg.lease === 'string') {
+          broadcast(localWalletOwnerRevokedListeners, msg.lease, 'Local wallet owner');
+        }
+        return;
+      case 'local-wallet-changed':
+        broadcast(localWalletChangedListeners, undefined, 'Local wallet change');
+        return;
     }
   });
 }
@@ -850,6 +866,35 @@ export async function requestCoreCustody(
     throw new Error('Invalid private custody response');
   }
   return result;
+}
+
+/** `acquire` resolves with this page's lease once no other tab signs with the local wallet. */
+export async function requestLocalWalletOwner(
+  siteId: SiteId,
+  operation: WalletOwnerOperation,
+): Promise<string | undefined> {
+  return (await postRequest('localWalletOwner', { siteId, operation })) as string | undefined;
+}
+
+/** Another tab took the local wallet (with the lease to release), or the frame holding the lease went away. */
+export function subscribeLocalWalletOwnerRevoked(listener: (lease: string | undefined) => void): () => void {
+  bindMessageListener();
+  localWalletOwnerRevokedListeners.add(listener);
+  return () => {
+    localWalletOwnerRevokedListeners.delete(listener);
+  };
+}
+
+/** A sibling tab saved or forgot the local wallet. A tab's own changes do not arrive here. */
+export function subscribeLocalWalletChanged(listener: () => void): () => void {
+  bindMessageListener();
+  localWalletChangedListeners.add(listener);
+  void ensureHostFrame().catch((error: unknown) => {
+    log.warn('[dot.li protocol] Failed to ensure host frame for local wallet changes:', error);
+  });
+  return () => {
+    localWalletChangedListeners.delete(listener);
+  };
 }
 
 /**
