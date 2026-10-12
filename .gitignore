@@ -99,3 +99,6 @@ packages/ui/.vrt/
 
 # test:vrt screenshot attachments
 packages/ui/.vitest/
+
+# Browser test failure screenshots
+apps/protocol/.vitest/

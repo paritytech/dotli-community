@@ -1,11 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
+    // Real-browser storage tests run through vitest.browser.config.ts.
+    exclude: [...configDefaults.exclude, 'tests/browser/**'],
     environment: 'happy-dom',
     globals: false,
   },
