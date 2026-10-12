@@ -553,24 +553,18 @@ protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything t
 such as the shell's offline service worker.
 
 This branch vendors `@parity/truapi` and `@parity/truapi-host` 0.24.0 from native integration PR #1217,
-`feat/media-on-jam-seity` (#1011 plus Media and the Tommy blocker fixes from #1216), production source
-`70627ffb8fb64b3de99db2e37bf514f44f629542`. The later `81cf0ee` revision is test-only, not the production artifact
-source. `vendor/truapi-host.lock.json` records the source revision and archive hashes. The generated client SHA-256 is
-`0ee3ba3d776f2049aa9e8f92f9e710c8940beadfbf5fcc8ae92412a715a7a182`; production web signing WASM SHA-256 is
-`dde26843c573560952ce345d9d80772e66e12cbacd4edae3ff3ba333d9330c26`. The browser bundle enables `wasm-signing-host`,
-without `test-host`, and excludes testing/non-web WASM and precompressed WASM sidecars. The archive hashes precede the
-local `@parity/truapi=file:../truapi` dependency override. Existing native qualification recorded 1,776 Rust, 403
-Android and 376 host-JavaScript tests; these counts do not claim browser qualification of this integration. Chat
-authority, custody and account-bound notification activation remain above the generic browser runtime and wallet layer.
-This integration combines Profile disclosure, contacts and presentation fences with the separate JamPeerTransport layer,
+`feat/media-on-jam-seity` (#1011 plus Media and the Tommy blocker fixes from #1216), source
+`70627ffb8fb64b3de99db2e37bf514f44f629542`, built with upstream's standard steps (codegen, both package builds, then
+`build-wasm.mjs`). `vendor/truapi-host.lock.json` records the source revision, archive hashes, the generated client
+SHA-256 and both WASM hashes: `wasm/web` is the pairing-only production host (`runtime`, with background receiving and
+Media), and `wasm/testing` (`wasm-signing-host`, `test-host`) backs the local wallet's signing worker. The archive
+hashes precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
+notification activation remain above the generic PolkaVM runtime; the local wallet layer runs beside it. This
+integration combines Profile disclosure, contacts and presentation fences with the separate JamPeerTransport layer,
 background receiving and Media. Replacing a product document retires its execution, receiving registration, avatars,
 labels and Media capture immediately; the new execution receives fresh capability callbacks and a new protected Media
-adapter bound to its own lifetime. Locale timestamp batches use the SDK's browser `Intl` implementation. Explicit
-protocol-frame resets and `pagehide` retire every remote chain lease as well as the wallet signer. Recovery opens fresh
-connection IDs instead of sending read-only allowance queries through IDs owned by the removed frame. Allowance
-inspection batches historical ring membership reads while preserving finalized snapshots, complete ring validation and
-identity-activation fences. Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching local
-truapi checkout instead, run:
+adapter bound to its own lifetime. Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching
+local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
