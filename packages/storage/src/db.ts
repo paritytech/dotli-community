@@ -85,6 +85,10 @@ function openFresh(): Promise<IDBDatabase> {
         const store = db.createObjectStore('block_meta', { keyPath: 'cid' });
         store.createIndex('byLastUsed', 'lastUsed', { unique: false });
       }
+      // v6: the local wallet, one encrypted record.
+      if (!db.objectStoreNames.contains('local_wallet')) {
+        db.createObjectStore('local_wallet', { keyPath: 'id' });
+      }
     };
     req.onsuccess = () => {
       resolve(req.result);

@@ -8,14 +8,14 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import { Button } from '../primitives/Button.js';
 import { Popover } from './Popover.js';
 
+const onOpenChange = fn().mockName('onOpenChange');
+const onElse = fn().mockName('onElse');
+// The surface is portalled into the body, outside the story's canvas.
+const body = within(document.body);
+
 const Failing = lazy(() => Promise.reject(new Error('chunk')));
 
-function Harness(props: {
-  content?: 'buttons' | 'failing';
-  handOver?: boolean;
-  onOpenChange: (open: boolean) => void;
-  onElse: () => void;
-}) {
+function Harness(props: { content?: 'buttons' | 'failing'; handOver?: boolean }) {
   const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const [held, setHeld] = createSignal(true);
   const content = (): JSX.Element =>
@@ -45,7 +45,7 @@ function Harness(props: {
         testId="trigger"
         onClick={() => {
           if (!held()) {
-            props.onElse();
+            onElse();
           }
         }}
       >
@@ -55,7 +55,8 @@ function Harness(props: {
         id="story-popover"
         title="Example"
         trigger={held() ? trigger() : undefined}
-        onOpenChange={props.onOpenChange}
+        onOpenChange={onOpenChange}
+        testId="story-popover-surface"
       >
         {content()}
       </Popover>
@@ -66,13 +67,11 @@ function Harness(props: {
 const meta = {
   title: 'Floating/Popover',
   component: Harness,
-  args: { onOpenChange: fn<(open: boolean) => void>(), onElse: fn<() => void>() },
   parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
   tags: ['!autodocs'],
-  beforeEach: ({ args }) => {
-    // Each story owns its callbacks, including late lazy-load completions from a disposed story.
-    args.onOpenChange = fn<(open: boolean) => void>();
-    args.onElse = fn<() => void>();
+  beforeEach: () => {
+    onOpenChange.mockClear();
+    onElse.mockClear();
   },
 } satisfies Meta<typeof Harness>;
 
@@ -83,96 +82,83 @@ type Story = StoryObj<typeof meta>;
  * Trusted input, which the browser's invokers require. Imported lazily so Storybook loads the stories outside Vitest.
  */
 const input = async () => (await import('vitest/browser')).userEvent;
-const press = async (element: HTMLElement) => {
-  await (await input()).click(element);
+const press = async (testId: string) => {
+  await (await input()).click(body.getByTestId(testId));
 };
 
 export const Open: Story = {
-  globals: { viewport: { value: 'desktop', isRotated: false } },
-  play: async ({ args, canvas, canvasElement, step }) => {
-    // Only the surface is portalled; resolve its document for this story rather than at module import.
-    const body = within(canvasElement.ownerDocument.body);
-    await step('When I press the button', () => press(canvas.getByTestId('trigger')));
+  play: async ({ step }) => {
+    await step('When I press the button', () => press('trigger'));
     await step('Then the anchored dialog is open, focus on its first control', async () => {
-      // The first trusted click can beat the idle preload of the surface chunk.
-      const surface = await body.findByRole('dialog', { name: 'Example' });
-      await waitFor(() => expect(surface).toBeVisible());
-      await expect(canvas.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'true');
-      await waitFor(() => expect(within(surface).getByTestId('inside-a')).toHaveFocus());
-      await expect(args.onOpenChange).toHaveBeenCalledOnce();
-      await expect(args.onOpenChange).toHaveBeenCalledWith(true);
+      const surface = body.getByTestId('story-popover-surface');
+      await waitFor(() => expect(surface).toHaveAttribute('data-open'));
+      await expect(surface).toHaveAttribute('role', 'dialog');
+      await expect(surface).toHaveAccessibleName('Example');
+      await expect(body.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'true');
+      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
     });
   },
 };
 
 export const PhoneSheet: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ args, canvas, canvasElement, step }) => {
-    const body = within(canvasElement.ownerDocument.body);
-    await step('When I press the button on a phone', () => press(canvas.getByTestId('trigger')));
-    await step('Then a bottom sheet titled Example opens', async () => {
-      const sheet = await body.findByRole('dialog', { name: 'Example' });
-      await waitFor(() => expect(sheet).toBeVisible());
-      await expect(within(sheet).getByTestId('popover-sheet-close')).toBeVisible();
-      await expect(body.getAllByRole('dialog', { name: 'Example' })).toHaveLength(1);
-      await expect(canvas.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'true');
-      await waitFor(() => expect(within(sheet).getByTestId('inside-a')).toHaveFocus());
-      await expect(args.onOpenChange).toHaveBeenCalledOnce();
-      await expect(args.onOpenChange).toHaveBeenCalledWith(true);
+  play: async ({ step }) => {
+    await step('When I press the button on a phone', () => press('trigger'));
+    await step('Then a bottom sheet titled Example opens, and no anchored layer', async () => {
+      await waitFor(() => expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('Example'));
+      const sheet = document.getElementById('story-popover');
+      await expect(sheet).toHaveAttribute('data-open');
+      await expect(document.querySelectorAll(':popover-open')).toHaveLength(0);
+      await expect(onOpenChange.mock.calls).toEqual([[true]]);
+    });
+    await step('And focus is on its first control', async () => {
+      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
     });
   },
 };
 
 export const PhoneClosesReturnFocus: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ args, canvas, canvasElement, step }) => {
-    const body = within(canvasElement.ownerDocument.body);
-    const settled = async (count: number) => {
-      await waitFor(() => expect(args.onOpenChange).toHaveBeenCalledTimes(count));
-      await expect(args.onOpenChange).toHaveBeenNthCalledWith(count - 1, true);
-      await expect(args.onOpenChange).toHaveBeenNthCalledWith(count, false);
-      await waitFor(() => expect(body.queryByRole('dialog', { name: 'Example' })).not.toBeInTheDocument());
-      await waitFor(() => expect(canvas.getByTestId('trigger')).toHaveFocus());
+  play: async ({ step }) => {
+    const settled = async (calls: boolean[][]) => {
+      await waitFor(() => expect(onOpenChange.mock.calls).toEqual(calls));
+      await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(body.getByTestId('trigger')).toHaveFocus());
       // Both the sheet's restore and the popover's land on the trigger, and nothing moves it after.
-      const { promise, resolve } = Promise.withResolvers<number>();
-      requestAnimationFrame(resolve);
-      await promise;
-      await expect(canvas.getByTestId('trigger')).toHaveFocus();
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      await expect(body.getByTestId('trigger')).toHaveFocus();
     };
-    await step('Given the sheet is open', async () => {
-      await press(canvas.getByTestId('trigger'));
-      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
-    });
-    await step('When I press its close button', () => press(body.getByTestId('popover-sheet-close')));
-    await step('Then it closed once and the trigger has focus', () => settled(2));
-    await step('Given the sheet is open again', () => press(canvas.getByTestId('trigger')));
+    await step('Given the sheet is open', () => press('trigger'));
+    await step('When I press its close button', () => press('popover-sheet-close'));
+    await step('Then it closed once and the trigger has focus', () => settled([[true], [false]]));
+    await step('Given the sheet is open again', () => press('trigger'));
     await step('When I press Escape', async () => {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
       await (await input()).keyboard('{Escape}');
     });
-    await step('Then it closed once more and the trigger has focus', () => settled(4));
+    await step('Then it closed once more and the trigger has focus', () => settled([[true], [false], [true], [false]]));
   },
 };
 
 export const ReleasedTriggerOpensNothing: Story = {
   args: { handOver: true },
-  play: async ({ args, canvas, canvasElement, step }) => {
-    const body = within(canvasElement.ownerDocument.body);
-    const trigger = () => canvas.getByTestId('trigger');
+  play: async ({ step }) => {
+    const trigger = () => body.getByTestId('trigger');
     await step('Given the popover holds the button as its trigger', async () => {
-      await waitFor(() => expect(trigger()).toHaveAttribute('aria-expanded', 'false'));
+      await waitFor(() => expect(trigger()).toHaveAttribute('popovertarget', 'story-popover'));
+      await expect(trigger().style.getPropertyValue('anchor-name')).toBe('--anchor-story-popover');
     });
-    await step('When the popover lets it go', () => press(canvas.getByTestId('let-go')));
-    await step('And I press the button', () => press(trigger()));
+    await step('When the popover lets it go', () => press('let-go'));
+    await step('And I press the button', () => press('trigger'));
     await step('Then its own click ran and nothing opened', async () => {
-      await expect(args.onElse).toHaveBeenCalledOnce();
-      const { promise, resolve } = Promise.withResolvers<number>();
-      requestAnimationFrame(resolve);
-      await promise;
-      await expect(args.onOpenChange).not.toHaveBeenCalled();
-      await expect(body.queryByRole('dialog', { name: 'Example' })).not.toBeInTheDocument();
+      await expect(onElse).toHaveBeenCalledOnce();
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      await expect(onOpenChange).not.toHaveBeenCalled();
+      await expect(document.getElementById('story-popover')?.hasAttribute('data-open') ?? false).toBe(false);
     });
-    await step('And the button kept its ARIA', async () => {
+    await step('And the button lost the invoker and the anchor, and kept its ARIA', async () => {
+      await expect(trigger()).not.toHaveAttribute('popovertarget');
+      await expect(trigger().style.getPropertyValue('anchor-name')).toBe('');
       await expect(trigger()).toHaveAttribute('aria-haspopup', 'dialog');
       await expect(trigger()).toHaveAttribute('aria-controls', 'story-popover');
       await expect(trigger()).toHaveAttribute('aria-expanded', 'false');
@@ -182,22 +168,17 @@ export const ReleasedTriggerOpensNothing: Story = {
 
 export const LazyContentFails: Story = {
   args: { content: 'failing' },
-  play: async ({ args, canvas, step }) => {
-    await step('When I open the popover whose content cannot load', () => press(canvas.getByTestId('trigger')));
+  play: async ({ step }) => {
+    await step('When I open the popover whose content cannot load', () => press('trigger'));
     await step('Then it opened, and closed again', async () => {
-      await waitFor(() => expect(args.onOpenChange).toHaveBeenCalledTimes(2));
-      await expect(args.onOpenChange).toHaveBeenNthCalledWith(1, true);
-      await expect(args.onOpenChange).toHaveBeenNthCalledWith(2, false);
-      await waitFor(() => expect(canvas.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'false'));
+      await waitFor(() => expect(onOpenChange.mock.calls).toEqual([[true], [false]]));
+      await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
+      await expect(body.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'false');
     });
-    await step('When I open it again at once, while the failed content is still fading out', () =>
-      press(canvas.getByTestId('trigger')),
-    );
+    await step('When I open it again at once, while the failed content is still fading out', () => press('trigger'));
     await step('Then the content loaded afresh, failed again and closed again', async () => {
-      await waitFor(() => expect(args.onOpenChange).toHaveBeenCalledTimes(4));
-      await expect(args.onOpenChange).toHaveBeenNthCalledWith(3, true);
-      await expect(args.onOpenChange).toHaveBeenNthCalledWith(4, false);
-      await waitFor(() => expect(canvas.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'false'));
+      await waitFor(() => expect(onOpenChange.mock.calls).toEqual([[true], [false], [true], [false]]));
+      await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
     });
   },
 };

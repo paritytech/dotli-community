@@ -7,7 +7,6 @@ import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError, ProtocolR
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
   BASE_DOMAIN,
-  SITE_ID,
   DEV_PROTOCOL_PORT,
   type SiteId,
   getActiveCoreGatewaySupportedGenesisHashes,
@@ -18,9 +17,10 @@ import {
   type Backend,
 } from '@dotli/config';
 
-import { log, serializeError } from '@dotli/shared';
+import { createAsyncTaskPool, log, serializeError } from '@dotli/shared';
 import { getResolutionId, m, spans as S } from '@dotli/metrics';
-import type { SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
+import type { CoreCustodyOperation } from './core-custody.js';
+import type { LocalWalletIdentity, LocalWalletReadResult, SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
 import {
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
@@ -32,16 +32,9 @@ import {
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
 } from './messages.js';
-import { isSharedAuthRequestMethod, isSharedModeRequestMethod } from './auth-storage.js';
+import { isSharedAuthRequestMethod, isSharedModeRequestMethod, isSharedWalletRequestMethod } from './auth-storage.js';
+
 import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
-import {
-  isSharedWalletState,
-  type SharedWalletOperation,
-  type SharedWalletResult,
-  type SharedWalletState,
-} from './wallet-storage.js';
-import type { CoreCustodyOperation } from './core-custody.js';
-import type { WalletOwnerOperation } from './wallet-owner.js';
 
 interface PendingRequest {
   method: ProtocolRequestMethod;
@@ -82,22 +75,25 @@ export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => voi
 let protocolIframe: HTMLIFrameElement | null = null;
 let hostFramePromise: Promise<void> | null = null;
 let protocolReadyPromise: Promise<void> | null = null;
-let frameGeneration = 0;
-let cancelFrameLoad: ((reason: Error) => void) | null = null;
 // The last ready wait failed and no reset followed, so the frame is not on its way up.
 let protocolReadyWaitFailed = false;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const protocolReadyListeners = new Set<() => void>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
-const sharedWalletListeners = new Set<(state: SharedWalletState) => void>();
-const walletOwnerRevokedListeners = new Set<(lease: string | undefined) => void>();
 const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
 let lastNetBytesTotal = 0;
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
 const chainDetailListeners = new Set<(event: ProtocolChainDetailEnvelope) => void>();
 let listenerBound = false;
 let protocolReady = false;
+
+/** Whether the shared store can answer. `connecting` until the first frame settles. */
+export type SharedStoreStatus = 'connecting' | 'available' | 'unavailable';
+let sharedStoreStatus: SharedStoreStatus = 'connecting';
+const sharedStoreStatusListeners = new Set<(status: SharedStoreStatus) => void>();
+// The boot in progress, which a reset cancels so its iframe never becomes the frame afterwards.
+let hostFrameBoot: AbortController | null = null;
 interface ReadyWaiter {
   resolve: () => void;
   reject: (err: Error) => void;
@@ -159,28 +155,17 @@ function resolveProtocolReady(): void {
 }
 
 /**
- * Drops the iframe, its chain leases and ready state so the next request boots a fresh one, for a caller that finds
- * the sub-mode wrong. Pending requests and ready waiters fail immediately. Requests are never replayed: a wallet
- * mutation may have committed even if its response was lost. A SharedWorker keeps its sync progress; only this
- * tab's port cycles.
+ * Drops the iframe and ready state so the next request boots a fresh one, for a caller that finds
+ * the sub-mode wrong. In-flight requests are orphaned to their own timers, and ready waiters are
+ * rejected at once. A SharedWorker keeps its sync progress, only this tab's port cycles.
  */
 export function resetProtocolFrame(): void {
   resetProtocolFrameState();
 }
 
 function resetProtocolFrameState(reason?: Error): void {
-  frameGeneration++;
-  const orphanedConnections = [...chainConnections];
-  chainConnections.clear();
-  const requests = [...pendingRequests.values()];
-  pendingRequests.clear();
-  const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
-  if (protocolIframe !== null) {
-    // The iframe holds the Web Lock. Retire the page's signer synchronously,
-    // before removing its lock owner lets another tab start signing.
-    broadcast(walletOwnerRevokedListeners, undefined, 'Wallet owner');
-  }
-  cancelFrameLoad?.(err);
+  hostFrameBoot?.abort(reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET));
+  hostFrameBoot = null;
   protocolIframe?.remove();
   protocolIframe = null;
   // The rebuilt frame's byte meter restarts at zero, and the monotonic gate would drop its reports.
@@ -191,17 +176,11 @@ function resetProtocolFrameState(reason?: Error): void {
   protocolReady = false;
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
-  for (const waiter of orphaned) {
-    waiter.reject(err);
-  }
-  for (const pending of requests) {
-    pending.reject(
-      reason ?? new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', pending.method),
-    );
-  }
-  // Notify after resetting readiness so a consumer cannot re-lease the retired frame.
-  for (const [id, connection] of orphanedConnections) {
-    haltRemote(id, connection, 'frame');
+  if (orphaned.length > 0) {
+    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
+    for (const waiter of orphaned) {
+      waiter.reject(err);
+    }
   }
 }
 
@@ -221,11 +200,6 @@ function bindMessageListener(): void {
     return;
   }
   listenerBound = true;
-  // The iframe cleans up its engine on navigation, including BFCache entry.
-  // Restoring the document must reconnect, never reuse its retired chain IDs.
-  window.addEventListener('pagehide', () => {
-    resetProtocolFrameState();
-  });
 
   window.addEventListener('message', (event: MessageEvent) => {
     if (!isProtocolEnvelope(event.data)) {
@@ -237,7 +211,7 @@ function bindMessageListener(): void {
     }
 
     const frameWindow = protocolIframe?.contentWindow;
-    if (frameWindow === null || frameWindow === undefined || event.source !== frameWindow) {
+    if (frameWindow !== null && frameWindow !== undefined && event.source !== frameWindow) {
       return;
     }
 
@@ -302,7 +276,19 @@ function bindMessageListener(): void {
             ? new ProtocolFatalError(`${kind}: ${msg.message}`)
             : new ProtocolInitFailedError(`${kind}: ${msg.message}`);
 
+        for (const [id, pending] of pendingRequests) {
+          pendingRequests.delete(id);
+          pending.reject(err);
+        }
+
+        // The reset rejects ready waiters and clears cached promises so the next ensureProtocolFrame()
+        // can reboot. It runs before halting so a `'frame'` listener that dials again misses the dead frame.
+        const orphanedConnections = [...chainConnections];
+        chainConnections.clear();
         resetProtocolFrameState(err);
+        for (const [id, connection] of orphanedConnections) {
+          haltRemote(id, connection, 'frame');
+        }
         return;
       }
       case 'chain-message': {
@@ -337,6 +323,7 @@ function bindMessageListener(): void {
         return;
       }
       case 'request':
+      case 'listening':
         return;
       case 'ready':
         resolveProtocolReady();
@@ -345,28 +332,6 @@ function bindMessageListener(): void {
             listener();
           } catch (err: unknown) {
             log.error('[dot.li protocol] onProtocolReady listener threw:', err instanceof Error ? err.message : err);
-          }
-        }
-        return;
-      case 'wallet-storage-changed':
-        if (msg.siteId === SITE_ID && isSharedWalletState(msg.state)) {
-          for (const listener of sharedWalletListeners) {
-            try {
-              listener(msg.state);
-            } catch (error) {
-              log.error('[dot.li protocol] Shared wallet listener failed:', error);
-            }
-          }
-        }
-        return;
-      case 'wallet-owner-revoked':
-        if (msg.siteId === SITE_ID && typeof msg.lease === 'string') {
-          for (const listener of walletOwnerRevokedListeners) {
-            try {
-              listener(msg.lease);
-            } catch (error) {
-              log.error('[dot.li protocol] Wallet owner listener failed:', error);
-            }
           }
         }
         return;
@@ -402,11 +367,26 @@ function createRequestId(): string {
 }
 
 const IFRAME_LOAD_TIMEOUT_MS = 30_000;
+// Module scripts run before `load`, so a frame whose listeners are not bound this long after it is not booting.
+const IFRAME_LISTEN_TIMEOUT_MS = 5_000;
 // Ready follows the SharedWorker presync, so this must exceed `TIMEOUTS.SHARED_WORKER_READY`.
 const IFRAME_READY_TIMEOUT_MS = 240_000;
-// No automatic retries. A failed load surfaces at once so the user can decide whether to retry.
+// A failed load surfaces at once, and a dead frame is rebuilt on this interval so the shared store heals unasked.
+const HOST_FRAME_REBUILD_INTERVAL_MS = 2_000;
 
-function createHostIframe(): Promise<void> {
+// Retries without end, so its one task settles only once a frame listens.
+const hostFrameHealing = createAsyncTaskPool({
+  poolSize: 1,
+  retryCount: Number.POSITIVE_INFINITY,
+  retryDelay: HOST_FRAME_REBUILD_INTERVAL_MS,
+});
+
+/**
+ * Resolves once the frame's request listeners are bound, not on `load`, which also fires when its script failed
+ * and would leave every request to its full timeout. `ready` counts too, since the frame binds before init.
+ * Aborting removes the iframe and rejects with the signal's reason.
+ */
+function createHostIframe(signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     // Not cleared on teardown, which runs inside the `fatal` arm before the host's pending rejection
     // and would strip the tags from the very failures they explain.
@@ -436,30 +416,52 @@ function createHostIframe(): Promise<void> {
       iframe.remove();
       reject(reason);
     };
-    const timer = setTimeout(() => {
+
+    const onAbort = (): void => {
+      fail(signal.reason instanceof Error ? signal.reason : new Error(PROTOCOL_ERRORS.FRAME_RESET));
+    };
+
+    let timer = setTimeout(() => {
       fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
-      cleanup();
-      resolve();
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING));
+      }, IFRAME_LISTEN_TIMEOUT_MS);
     };
 
     const onError = (): void => {
       fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
     };
 
+    const onMessage = (event: MessageEvent): void => {
+      if (
+        event.source !== iframe.contentWindow ||
+        event.origin !== getProtocolOrigin() ||
+        !isProtocolEnvelope(event.data) ||
+        (event.data.kind !== 'listening' && event.data.kind !== 'ready')
+      ) {
+        return;
+      }
+      cleanup();
+      protocolIframe = iframe;
+      resolve();
+    };
+
     function cleanup(): void {
       clearTimeout(timer);
-      cancelFrameLoad = null;
       iframe.removeEventListener('load', onLoad);
       iframe.removeEventListener('error', onError);
+      window.removeEventListener('message', onMessage);
+      signal.removeEventListener('abort', onAbort);
     }
 
+    signal.addEventListener('abort', onAbort, { once: true });
+    window.addEventListener('message', onMessage);
     iframe.addEventListener('load', onLoad, { once: true });
     iframe.addEventListener('error', onError, { once: true });
-    cancelFrameLoad = fail;
-    protocolIframe = iframe;
     document.body.appendChild(iframe);
   });
 }
@@ -467,39 +469,78 @@ function createHostIframe(): Promise<void> {
 async function ensureHostFrame(): Promise<void> {
   bindMessageListener();
 
-  if (hostFramePromise) {
-    return hostFramePromise;
-  }
-
   if (protocolIframe?.contentWindow) {
     return;
   }
 
-  const generation = frameGeneration;
+  if (hostFramePromise) {
+    return hostFramePromise;
+  }
+
+  const boot = new AbortController();
+  hostFrameBoot = boot;
   hostFramePromise = (async () => {
     try {
-      await createHostIframe();
+      await createHostIframe(boot.signal);
     } catch (error: unknown) {
-      // A reset already settled this generation; its catch must not tear
-      // down a replacement frame that a caller has just started.
-      if (generation !== frameGeneration) {
+      // A reset dropped this boot on purpose and cleared the frame state itself, so it is no outage.
+      if (boot.signal.aborted) {
         throw error;
       }
       m.count(S.PROTOCOL_IFRAME_READY, {
         outcome: 'error',
-        phase: 'load',
+        phase: error instanceof Error && error.message === PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING ? 'listen' : 'load',
         reason: error instanceof Error ? error.name : 'unknown',
       });
       m.breadcrumb('protocol iframe load failed', {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Host iframe load failed:', error);
-      resetProtocolFrameState(error instanceof Error ? error : new Error(String(error)));
+      resetProtocolFrameState();
+      hostFramePromise = null;
+      const outageStarts = sharedStoreStatus !== 'unavailable';
+      setSharedStoreStatus('unavailable');
+      if (outageStarts) {
+        healHostFrame();
+      }
       throw error;
+    } finally {
+      if (hostFrameBoot === boot) {
+        hostFrameBoot = null;
+      }
     }
+    setSharedStoreStatus('available');
   })();
 
   return hostFramePromise;
+}
+
+/**
+ * Rebuilds the frame until one listens, one healer per outage. A request in between joins the same boot through
+ * `ensureHostFrame`, and each failed attempt is counted and logged there.
+ */
+function healHostFrame(): void {
+  void hostFrameHealing.call(ensureHostFrame);
+}
+
+function setSharedStoreStatus(next: SharedStoreStatus): void {
+  if (next === sharedStoreStatus) {
+    return;
+  }
+  sharedStoreStatus = next;
+  broadcast(sharedStoreStatusListeners, next, 'Shared store status');
+}
+
+export function getSharedStoreStatus(): SharedStoreStatus {
+  return sharedStoreStatus;
+}
+
+/** Called on each change only. */
+export function subscribeSharedStoreStatus(listener: (status: SharedStoreStatus) => void): () => void {
+  sharedStoreStatusListeners.add(listener);
+  return () => {
+    sharedStoreStatusListeners.delete(listener);
+  };
 }
 
 function waitForProtocolReady(): Promise<void> {
@@ -535,11 +576,7 @@ function waitForProtocolReady(): Promise<void> {
 }
 
 export async function ensureProtocolFrame(): Promise<void> {
-  const generation = frameGeneration;
   await ensureHostFrame();
-  if (generation !== frameGeneration) {
-    throw new Error(PROTOCOL_ERRORS.FRAME_RESET);
-  }
 
   if (protocolReady) {
     return;
@@ -564,10 +601,8 @@ export async function ensureProtocolFrame(): Promise<void> {
         reason: error instanceof Error ? error.message : String(error),
       });
       log.error('[dot.li protocol] Ready wait failed:', error);
-      if (generation === frameGeneration) {
-        protocolReadyPromise = null;
-        protocolReadyWaitFailed = true;
-      }
+      protocolReadyPromise = null;
+      protocolReadyWaitFailed = true;
       throw error;
     }
   })();
@@ -581,15 +616,9 @@ async function postRequest<M extends ProtocolRequestMethod>(
   onProgress?: (message: string) => void,
   needsProtocolReady = !isSharedAuthRequestMethod(method) &&
     !isSharedModeRequestMethod(method) &&
-    method !== 'walletStorage' &&
-    method !== 'coreCustody' &&
-    method !== 'walletOwner',
+    !isSharedWalletRequestMethod(method),
 ): Promise<unknown> {
-  const generation = frameGeneration;
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
-  if (generation !== frameGeneration) {
-    throw new ProtocolRequestError(PROTOCOL_ERRORS.FRAME_RESET, 'ProtocolFrameResetError', method);
-  }
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
     throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
@@ -749,76 +778,12 @@ export async function resolveRootManifestRemote(label: string): Promise<Manifest
   })) as ManifestResult<RootManifest>;
 }
 
-/** Secrets travel only over the validated protocol iframe RPC, never HTTP mode sync. */
-export async function requestSharedWallet(
-  siteId: SiteId,
-  operation: SharedWalletOperation,
-): Promise<SharedWalletResult> {
-  return (await postRequest('walletStorage', {
-    siteId,
-    operation,
-  })) as SharedWalletResult;
-}
-
-export function subscribeSharedWallet(listener: (state: SharedWalletState) => void): () => void {
-  sharedWalletListeners.add(listener);
-  return () => {
-    sharedWalletListeners.delete(listener);
-  };
-}
-
-/** Private host-shell custody channel; no product API forwards this method. */
-export async function requestCoreCustody(
-  operation: CoreCustodyOperation,
-): Promise<string | Uint8Array | Blob | undefined> {
-  const result = await postRequest('coreCustody', {
-    siteId: SITE_ID,
-    operation,
-  });
-  if (
-    result !== undefined &&
-    typeof result !== 'string' &&
-    !(result instanceof Uint8Array) &&
-    !(result instanceof Blob)
-  ) {
-    throw new Error('Invalid private custody response');
-  }
-  return result;
-}
-
-/** Make this page the one tab running the test wallet; see `wallet-owner.ts`. */
-export async function requestWalletOwner(operation: WalletOwnerOperation): Promise<string | undefined> {
-  const result = await postRequest('walletOwner', {
-    siteId: SITE_ID,
-    operation,
-  });
-  return typeof result === 'string' ? result : undefined;
-}
-
-/** Stop signing before releasing a lease, or before its owning frame is removed. */
-export function subscribeWalletOwnerRevoked(listener: (lease: string | undefined) => void): () => void {
-  walletOwnerRevokedListeners.add(listener);
-  return () => {
-    walletOwnerRevokedListeners.delete(listener);
-  };
-}
-
 export async function readSharedAuthStorage(siteId: SiteId, key: string): Promise<string | null> {
   return (await postRequest('authStorageRead', { siteId, key })) as string | null;
 }
 
-export async function writeSharedAuthStorage(
-  siteId: SiteId,
-  key: string,
-  value: string,
-  walletRevision?: string | null,
-): Promise<void> {
-  await postRequest('authStorageWrite', {
-    siteId,
-    key,
-    value,
-    ...(walletRevision === undefined ? {} : { walletRevision }),
-  });
+export async function writeSharedAuthStorage(siteId: SiteId, key: string, value: string): Promise<void> {
+  await postRequest('authStorageWrite', { siteId, key, value });
 }
 
 export async function clearSharedAuthStorage(siteId: SiteId, key: string): Promise<void> {
@@ -836,6 +801,40 @@ export async function writeSharedModeStorage(siteId: SiteId, key: string, value:
 
 export async function clearSharedModeStorage(siteId: SiteId, key: string): Promise<void> {
   await postRequest('modeStorageClear', { siteId, key });
+}
+
+/** The record lives on `host.<BASE_DOMAIN>`, so one import covers every app on the domain. */
+export async function readSharedLocalWallet(siteId: SiteId): Promise<LocalWalletReadResult> {
+  return (await postRequest('localWalletRead', { siteId })) as LocalWalletReadResult;
+}
+
+export async function saveSharedLocalWallet(siteId: SiteId, entropy: Uint8Array): Promise<void> {
+  await postRequest('localWalletSave', { siteId, entropy });
+}
+
+export async function updateSharedLocalWalletIdentity(siteId: SiteId, identity: LocalWalletIdentity): Promise<void> {
+  await postRequest('localWalletIdentity', { siteId, identity });
+}
+
+export async function forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
+  await postRequest('localWalletForget', { siteId });
+}
+
+/** Private host-shell custody channel; no product API forwards this method. */
+export async function requestCoreCustody(
+  siteId: SiteId,
+  operation: CoreCustodyOperation,
+): Promise<string | Uint8Array | Blob | undefined> {
+  const result = await postRequest('coreCustody', { siteId, operation });
+  if (
+    result !== undefined &&
+    typeof result !== 'string' &&
+    !(result instanceof Uint8Array) &&
+    !(result instanceof Blob)
+  ) {
+    throw new Error('Invalid private custody response');
+  }
+  return result;
 }
 
 /**
@@ -989,7 +988,6 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
 
   return (onMessage, onHalt): JsonRpcConnection => {
     const connectionId = createRequestId();
-    const generation = frameGeneration;
     const remote: RemoteChainConnection = {
       onMessage,
       onHalt: onHalt ?? null,
@@ -1012,9 +1010,7 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         // frame now that the connect settled, not before, or the frame would
         // keep a connection opened after its disconnect.
         if (!isOpen()) {
-          if (generation === frameGeneration) {
-            postDisconnect(connectionId);
-          }
+          postDisconnect(connectionId);
           return;
         }
         remote.connected = true;

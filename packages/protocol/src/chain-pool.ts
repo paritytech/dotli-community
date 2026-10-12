@@ -325,12 +325,8 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           return;
         }
         entry.guard.onStatus(status);
-        if (entries.get(key) === entry) {
-          setStatus(key, status);
-          if (entries.get(key) === entry) {
-            report(entry);
-          }
-        }
+        setStatus(key, status);
+        report(entry);
       },
       onHalt: error => {
         if (entry?.live === true) {
@@ -354,7 +350,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       transport,
       guard,
       // The pool removes its entries itself, in `destroy`.
-      broker: new ChainBroker(guard.provider, () => undefined, hooks.onHalt),
+      broker: new ChainBroker(guard.provider, () => undefined),
       leases: 0,
       destroyTimer: null,
       live: true,

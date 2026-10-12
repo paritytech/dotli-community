@@ -20,8 +20,8 @@ import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config'
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { SANDBOX_SCHEMA_VERSION } from '../../packages/config/src/host-sandbox-version.ts';
 import { spaFallback } from '@config/vite/spa-fallback';
+import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 import { stripAnalytics } from '@dotli/metrics/vite';
-import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
 import { receivingWorker } from './receiving-build.ts';
 import { notificationWorker } from './notification-build.js';
 
@@ -326,17 +326,20 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
-        // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
-        // ring-VRF operation first needs it. Precaching it would make every
-        // installed shell download it after each release.
+        // Loaded only on demand. Precaching would make every installed shell download them after each release. The
+        // worker lives on product hosts only, which never show the landing page.
+        // The local wallet's signing worker, its wasm and its core module load only in local mode.
         // Imported service-worker code must bypass the shell precache.
         globIgnores: [
           '**/truapi_provider_bg*.wasm',
           '**/truapi_verifiable_bg*.wasm',
+          'landing.html',
+          '**/truapi_signing_bg*.wasm',
+          '**/signing-worker*.js',
+          '**/local-wallet-core*.js',
           '**/host-update-*.js',
           '**/host-receiving.js',
           '**/host-notifications.js',
-          'landing.html',
         ],
         importScripts: [HOST_UPDATE_SCRIPT, 'host-receiving.js', 'host-notifications.js'],
         cleanupOutdatedCaches: true,
@@ -358,27 +361,6 @@ export default defineConfig({
     plugins: [
       stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
       wasm(),
-      {
-        name: 'dotli-identity-proxy',
-        configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
-              void handleNodeIdentityProxy(req, res);
-            } else {
-              next();
-            }
-          });
-        },
-        configurePreviewServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
-              void handleNodeIdentityProxy(req, res);
-            } else {
-              next();
-            }
-          });
-        },
-      },
       // Serves /dotli-network.js under `astro dev`.
       runtimeNetworkConfigScript(),
       buildInfo('host'),
@@ -386,9 +368,10 @@ export default defineConfig({
       // After previewCoepHeaders, which needs the `/__preview` path this rewrites to `/`.
       spaFallback({ landing: '/landing' }),
       sentry(),
+      truapiSigningWorker(),
     ],
     worker: {
-      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
+      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true'), truapiSigningWorker()],
       rolldownOptions: rolldownOptions(),
     },
     define: {

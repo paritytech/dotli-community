@@ -8,7 +8,6 @@ import { createEffect, createSignal, flush, For, Show, untrack } from 'solid-js'
 import type { JSX } from '@solidjs/web';
 import {
   formatLatency,
-  formatTime,
   correlationKeyOf,
   type EventSeq,
   type EventStore,
@@ -25,6 +24,14 @@ import {
 } from '@dotli/truapi-debug';
 
 import { createKeyedSignals, type KeyedSignals } from './keyed-signals.js';
+import { DirectionArrow } from './shared/DirectionArrow.js';
+import { EmptyState } from './shared/EmptyState.js';
+import { IdBadge } from './shared/IdBadge.js';
+import { itemClass, itemListClass } from './shared/ItemList.js';
+import { LayerBadge } from './shared/LayerBadge.js';
+import { Latency } from './shared/Latency.js';
+import { MethodTag } from './shared/MethodTag.js';
+import { Timestamp } from './shared/Timestamp.js';
 import s from './EventList.module.css';
 
 /** Pending badges tick on a clock, since a stalled host is exactly one that emits no events. */
@@ -152,7 +159,7 @@ export function EventList(props: {
 
   return (
     <div
-      class={s['list']}
+      class={[itemListClass, s['list']]}
       data-testid="td-list"
       hidden={!props.active}
       role="list"
@@ -199,11 +206,7 @@ export function EventList(props: {
       <For
         each={props.events}
         keyed={ev => ev.seq}
-        fallback={
-          <div class={s['empty']} data-testid="td-empty">
-            No events match the current filter.
-          </div>
-        }
+        fallback={<EmptyState testId="td-empty">No events match the current filter.</EmptyState>}
       >
         {ev => renderRow(untrack(ev), props.store, ctx)}
       </For>
@@ -228,37 +231,20 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
 
   return (
     <div
-      class={s['row']}
+      class={[itemClass, s['row']]}
       data-testid="td-row"
       data-selection={selection()}
       data-system={ev.kind === 'system' ? '' : undefined}
       data-seq={String(ev.seq)}
       role="listitem"
     >
-      <span class={s['time']} data-testid="td-time">
-        {formatTime(ev.receivedAt)}
-      </span>
+      <Timestamp at={ev.receivedAt} />
       {ev.kind === 'truapi' ? (
         <TruapiCells event={ev} latency={latency} ctx={ctx} />
       ) : (
         <SystemCells event={ev} latency={latency} />
       )}
     </div>
-  );
-}
-
-function Latency(props: { text: string | null }): JSX.Element {
-  return (
-    <Show when={props.text}>
-      {text => (
-        <>
-          {' '}
-          <span class={s['latency']} data-testid="td-latency">
-            {text()}
-          </span>
-        </>
-      )}
-    </Show>
   );
 }
 
@@ -271,15 +257,7 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
 
   return (
     <>
-      {data.direction === 'outgoing' ? (
-        <span class={s['arrowOut']} data-testid="td-arrow-out">
-          ▶
-        </span>
-      ) : (
-        <span class={s['arrowIn']} data-testid="td-arrow-in">
-          ◀
-        </span>
-      )}
+      <DirectionArrow direction={data.direction} />
       {data.productId === undefined ? (
         <span class={s['product']} data-testid="td-product" data-anon="">
           (no id)
@@ -289,18 +267,9 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
           {data.productId}
         </span>
       )}
-      <span
-        class={s['rid']}
-        data-testid="td-rid"
-        style={{ color: data.ridColor }}
-        title={`requestId: ${data.requestId}`}
-      >
-        {data.ridShort}
-      </span>
+      <IdBadge id={data.requestId} testId="td-rid" title={`requestId: ${data.requestId}`} />
       <span class={s['tagAndSummary']}>
-        <span class={s['tag']} data-testid="td-tag" data-kind={data.tagKind}>
-          {data.displayTag}
-        </span>
+        <MethodTag kind={data.tagKind}>{data.displayTag}</MethodTag>
         <Latency text={untrack(() => props.latency)} />
         <Show when={waiting() !== undefined}>
           <span
@@ -326,16 +295,10 @@ function SystemCells(props: { event: StoredSystemEvent; latency: string | null }
   const data = systemRowData(untrack(() => props.event));
   return (
     <>
-      <span class={s['layer']} data-testid="td-layer-badge" data-layer={data.layer} title={`source: ${data.source}`}>
-        {data.layer}
-      </span>
-      <span class={s['rid']} data-testid="td-rid" style={{ color: data.ridColor }} title={`flowId: ${data.flowId}`}>
-        {data.flowIdShort}
-      </span>
+      <LayerBadge layer={data.layer} title={`source: ${data.source}`} />
+      <IdBadge id={data.flowId} testId="td-rid" title={`flowId: ${data.flowId}`} />
       <span class={s['tagAndSummary']}>
-        <span class={s['tag']} data-testid="td-tag" data-kind="system">
-          {data.eventText}
-        </span>
+        <MethodTag kind="system">{data.eventText}</MethodTag>
         <Latency text={untrack(() => props.latency)} />
         <span class={s['summary']} data-testid="td-summary">
           {data.summary}
