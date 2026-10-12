@@ -182,9 +182,9 @@ provider credentials.
 
 The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must have compatible receiving-enabled
 contracts and exact recorded source provenance. Required exports are `browser-receiving-worker` and
-`WasmNotificationReceiver` from `wasm/web`. This top integration vendors both SDK archives and both WASM bundles from
-native #1011 receiving candidate `75796176b248c8e17e5996e4975d4a4ee2c642e9`, based on
-`f7ac212cf0e19d6860c4d60298d4d1cf442e1c55`. Archive and generated client/WASM checksums are recorded in
+`WasmNotificationReceiver` from `wasm/web`. This top integration vendors both SDK archives and upstream's standard
+`wasm/web` (runtime) and `wasm/testing` (local wallet signing worker) bundles from native #1011 at
+`e48777643c52278769a6bac724c7f6577cb87197`. Archive and generated client/WASM checksums are recorded in
 `vendor/truapi-host.lock.json`; the only package override is the host SDK's local `@parity/truapi` dependency. A clean
 #185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never reuse this top integration artifact
 downward. The build bundles `host-receiving.js` as a standalone classic IIFE and copies that SDK's WASM to a
