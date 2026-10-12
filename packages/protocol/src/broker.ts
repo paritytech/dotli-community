@@ -68,7 +68,7 @@ interface SharedFollow {
   finalizedBlockRuntime: unknown;
   bestBlockHash: string | null;
   /** The unfinalized blocks above the newest finalized one. */
-  blocks: Map<string, CachedBlock>;
+  blocks: Map<string, Record<string, unknown>>;
   /** Per block hash, the local follow tokens (and the snapshot) still pinning it. */
   pins: Map<string, Set<string>>;
 }
@@ -78,11 +78,6 @@ interface SharedFollow {
  * session to join would be told of a block the node already unpinned and refuses to read.
  */
 const SNAPSHOT_HOLDER = 'snapshot';
-
-interface CachedBlock {
-  result: Record<string, unknown>;
-  parentBlockHash: string | null;
-}
 
 type WireMode = 'string' | 'object';
 
@@ -227,6 +222,8 @@ export class ChainBroker {
   private upstream: JsonRpcConnection | null = null;
   private readonly sessions = new Map<string, Session>();
   private readonly pending = new Map<string, PendingRequest>();
+  /** The broker's own upstream unpins, by request id, to the upstream follow token they release under. */
+  private readonly releaseUnpins = new Map<string, string>();
   private readonly localToOwned = new Map<string, OwnedToken>();
   private readonly upstreamToOwned = new Map<string, Set<string>>();
   private readonly earlySubscriptions = new Map<string, SubscriptionMessage[]>();
@@ -421,7 +418,15 @@ export class ChainBroker {
         'request_unknown_token',
         `routeGenericRequest: unknown token for session ${session.id}, method=${method}`,
       );
-      this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+      if (request.id !== undefined) {
+        // Stopping an operation whose follow already ended has nothing left to stop.
+        this.sendToSession(
+          session,
+          method === 'chainHead_v1_stopOperation'
+            ? buildJsonRpcResult(request.id, null)
+            : buildJsonRpcError(request.id, 'Unknown subscription/token'),
+        );
+      }
       return;
     }
 
@@ -556,13 +561,40 @@ export class ChainBroker {
   }
 
   private sendUpstreamUnpin(upstreamToken: string, hashes: string[]): void {
+    const id = `broker-release:${this.requestCounter.toString(36)}`;
+    this.requestCounter += 1;
+    // Tracked apart from session requests: a halt answers sessions, never the broker itself.
+    this.releaseUnpins.set(id, upstreamToken);
     this.sendUpstream({
       jsonrpc: '2.0',
-      id: `broker-release:${this.requestCounter.toString(36)}`,
+      id,
       method: 'chainHead_v1_unpin',
       params: [upstreamToken, hashes],
     });
+  }
+
+  /**
+   * A failed release leaves blocks pinned that no session holds, so retention would grow unseen.
+   * The node may also have unpinned them, so the generation stops for every follower instead.
+   */
+  private handleReleaseUnpinResponse(response: JsonRpcResponse, upstreamToken: string): void {
+    if (!('error' in response) || !this.upstreamFollowTokens.has(upstreamToken)) {
+      return;
+    }
+    brokerWarn('release_unpin_failed', `upstream unpin failed; stopping follow ${upstreamToken.slice(0, 12)}…`);
+    // Unfollow first: a session told of the stop may close the last lease, and the upstream with it.
+    this.sendUpstream({
+      jsonrpc: '2.0',
+      id: `broker-release:${this.requestCounter.toString(36)}`,
+      method: 'chainHead_v1_unfollow',
+      params: [upstreamToken],
+    });
     this.requestCounter += 1;
+    this.handleUpstreamSubscription({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: upstreamToken, result: { event: 'stop' } },
+    });
   }
 
   private rewriteOwnedToken(session: Session, request: JsonRpcRequest): JsonRpcRequest | null {
@@ -585,6 +617,12 @@ export class ChainBroker {
         return null;
       }
       return cloneWithRewrittenFirstParam(request, sharedFollow.upstreamToken);
+    }
+
+    // A follow token this broker minted for the session but has since retired (a stop, an unfollow) must never
+    // reach the node verbatim: an operation or its cancellation can race the follow's teardown.
+    if (firstParam.startsWith('follow:') && firstParam.endsWith(`:${session.id}`)) {
+      return null;
     }
 
     const owned = this.localToOwned.get(firstParam);
@@ -672,6 +710,12 @@ export class ChainBroker {
   }
 
   private handleUpstreamResponse(response: JsonRpcResponse): void {
+    const releasedUnder = this.releaseUnpins.get(String(response.id));
+    if (releasedUnder !== undefined) {
+      this.releaseUnpins.delete(String(response.id));
+      this.handleReleaseUnpinResponse(response, releasedUnder);
+      return;
+    }
     const pending = this.pending.get(String(response.id));
     if (!pending) {
       brokerWarn('response_unknown_id', `← upstream response for unknown id=${String(response.id)}`);
@@ -959,6 +1003,7 @@ export class ChainBroker {
 
   private disconnectUpstream(): void {
     this.pending.clear();
+    this.releaseUnpins.clear();
     this.localToOwned.clear();
     this.upstreamToOwned.clear();
     this.earlySubscriptions.clear();
@@ -982,7 +1027,7 @@ export class ChainBroker {
         finalizedBlockHashes: [],
         finalizedBlockRuntime: null,
         bestBlockHash: null,
-        blocks: new Map<string, CachedBlock>(),
+        blocks: new Map<string, Record<string, unknown>>(),
         pins: new Map<string, Set<string>>(),
       };
       this.sharedFollows.set(followKey, sharedFollow);
@@ -1076,6 +1121,12 @@ export class ChainBroker {
     );
     this.upstreamFollowTokens.delete(upstreamToken);
     this.sharedFollows.delete(sharedFollow.key);
+    // A release still in flight belongs to the ended generation; its reply must not stop anything.
+    for (const [id, token] of this.releaseUnpins) {
+      if (token === upstreamToken) {
+        this.releaseUnpins.delete(id);
+      }
+    }
     const recipients: { session: Session; localToken: string }[] = [];
     for (const localToken of sharedFollow.localTokens) {
       const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
@@ -1162,10 +1213,7 @@ export class ChainBroker {
       if (blockHash === null) {
         return;
       }
-      sharedFollow.blocks.set(blockHash, {
-        result: { ...eventResult },
-        parentBlockHash: typeof eventResult['parentBlockHash'] === 'string' ? eventResult['parentBlockHash'] : null,
-      });
+      sharedFollow.blocks.set(blockHash, { ...eventResult });
       this.registerPin(sharedFollow, SNAPSHOT_HOLDER, blockHash);
       return;
     }
@@ -1185,7 +1233,7 @@ export class ChainBroker {
         return;
       }
       for (const hash of hashes) {
-        const newRuntime = sharedFollow.blocks.get(hash)?.result['newRuntime'];
+        const newRuntime = sharedFollow.blocks.get(hash)?.['newRuntime'];
         if (newRuntime !== undefined && newRuntime !== null) {
           sharedFollow.finalizedBlockRuntime = newRuntime;
         }
@@ -1225,24 +1273,9 @@ export class ChainBroker {
       });
     }
 
-    const replayBlocks: Record<string, unknown>[] = [];
-    let cursor = sharedFollow.bestBlockHash;
-    const seen = new Set<string>();
-    while (cursor !== null && !seen.has(cursor)) {
-      seen.add(cursor);
-      const cached = sharedFollow.blocks.get(cursor);
-      if (!cached) {
-        break;
-      }
-      replayBlocks.push(cached.result);
-      if (cached.parentBlockHash === null || sharedFollow.finalizedBlockHashes.includes(cached.parentBlockHash)) {
-        break;
-      }
-      cursor = cached.parentBlockHash;
-    }
-
-    replayBlocks.reverse();
-    for (const result of replayBlocks) {
+    // Insertion order is parent before child by the follow contract. Every live fork is replayed, not only best's
+    // ancestors: a later bestBlockChanged may select any of them without repeating its newBlock.
+    for (const result of sharedFollow.blocks.values()) {
       this.registerPinsFromEvent(sharedFollow, localToken, result);
       this.sendToSession(session, {
         jsonrpc: '2.0',
