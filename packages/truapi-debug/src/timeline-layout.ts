@@ -40,11 +40,11 @@ const OPERATION_TERMINAL_VARIANTS: ReadonlySet<string> = new Set([
 ]);
 
 const LIFECYCLE_COLORS: Record<string, string> = {
-  Initialized: '#3b82f6',
-  NewBlock: '#60a5fa',
-  BestBlockChanged: '#fbbf24',
-  Finalized: '#4ade80',
-  Stop: '#f87171',
+  Initialized: '#4081f6',
+  NewBlock: '#78a9ff',
+  BestBlockChanged: '#ffbb33',
+  Finalized: '#4cde7f',
+  Stop: '#ff7a7a',
 };
 
 export interface SegmentEntry {
@@ -182,7 +182,7 @@ export function partitionIntoSwimlanes(events: readonly StoredEvent[]): Swimlane
       return {
         key,
         header: 'Other',
-        color: '#94a3b8',
+        color: '#96a2b8',
         events: evts,
       };
     }
@@ -190,7 +190,7 @@ export function partitionIntoSwimlanes(events: readonly StoredEvent[]): Swimlane
       return {
         key,
         header: 'System',
-        color: '#2dd4bf',
+        color: '#4cd4aa',
         events: evts,
       };
     }
@@ -318,7 +318,7 @@ export function computeLayout(events: readonly StoredEvent[], opts: LayoutOption
             kind: 'tick',
             seq: ev.seq,
             y: (seqToY.get(ev.seq) ?? 0) + ROW_HEIGHT / 2,
-            color: LIFECYCLE_COLORS[ann.chainEventTag] ?? '#6b7280',
+            color: LIFECYCLE_COLORS[ann.chainEventTag] ?? '#6f727a',
             variant: ann.chainEventTag,
             linkedRailIdx: rail.railIdx,
           });

@@ -364,7 +364,15 @@ describe('host chain pool on a light client backend', () => {
     must(remotes[0], 'first remote').halt('frame');
     const boot = client.ensureProtocolFrame().catch(() => undefined);
     await vi.advanceTimersByTimeAsync(0);
-    document.querySelector('iframe')?.dispatchEvent(new Event('load'));
+    const iframe = document.querySelector('iframe');
+    iframe?.dispatchEvent(new Event('load'));
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { namespace: 'dotli:protocol', kind: 'listening' },
+        origin: client.getProtocolOrigin(),
+        source: iframe?.contentWindow ?? null,
+      }),
+    );
     await vi.advanceTimersByTimeAsync(0);
     ask(connection, 'truapi:1');
     expect(remotes).toHaveLength(2);

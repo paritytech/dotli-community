@@ -18,8 +18,7 @@ dynamically imported, so users who never see the panel pay zero download cost.
 - [Views](#views)
   - [List view](#list-view)
   - [Timeline view](#timeline-view)
-  - [Runtime view](#runtime-view)
-  - [Wallet view](#wallet-view)
+- [Other tabs](#other-tabs)
 - [Filters](#filters)
 - [Detail pane](#detail-pane)
 - [Design concepts](#design-concepts)
@@ -37,10 +36,17 @@ dynamically imported, so users who never see the panel pay zero download cost.
 ## What you see
 
 A resizable, dockable panel at the bottom of the viewport. It mounts visible whenever debug mode is on; the panel's `×`
-button exits debug mode entirely (see [Enabling and disabling](#enabling-and-disabling)). The **List** and **Timeline**
-tabs share a detail inspector for the selected event, with a draggable splitter between the panes. **Resolution**,
-**Runtime**, and the debug-build-only **Wallet** tab use the full pane width. For PolkaVM products, a live header badge
-and **Runtime** view show backend, startup, frame, update, translation, cache, and audio diagnostics.
+button exits debug mode entirely (see [Enabling and disabling](#enabling-and-disabling)). The header holds the top-level
+tabs: **TrUAPI**, **Resolution**, **Archive**, **Diagnostics** and **Wallet**, plus **Runtime** while a PolkaVM product
+reports diagnostics. The panel reopens on the tab you last picked, kept in `localStorage` like the dock side; Runtime is
+never restored.
+
+The TrUAPI tab shows the captured events. Its filters sit under the header, the left pane is your choice of **List** or
+**Timeline**, and the right pane is the detail inspector for the selected event. A draggable splitter between them lets
+you rebalance the panes. The event count, Pause, Export and Copy show only on this tab.
+
+The other tabs are not about TrUAPI events, so they take the whole panel body, with no filters or detail pane. See
+[Other tabs](#other-tabs).
 
 Hover any element in the Timeline for a zero-delay tooltip with the decoded method + summary. Click any row or box to
 pin it in the detail pane.
@@ -98,7 +104,9 @@ wire discriminant against `@parity/truapi/wire-table`:
   role (e.g. `system_handshake_request`). These aren't payload-decoded. The detail pane shows the raw SCALE bytes as
   `{ wireId, bytes }`.
 - `signing_*` / `session_*` / `entropy_*` / `local_storage_*` — redacted regardless of decode registration. The detail
-  pane shows `{ redacted: true, byteLength }` only. Decoded contents, and even the raw bytes, never leave the tap.
+  pane shows `{ redacted: true, byteLength }` only. In local wallet mode the `signing_*` family and
+  `resource_allocation_request_*` are decoded instead, since the panel stands in for the phone's request screen.
+  `session_*`, `entropy_*` and `local_storage_*` stay redacted.
 - `wire_<id>` — fallback for discriminants absent from the wire table, with raw bytes.
 
 Adding payload decode for a new family is one linkage row in `debug-wire-describe.ts`, nothing else in the panel
@@ -118,8 +126,9 @@ Dotli-internal host-side orchestration, captured by `onDotliDebugEvent` from `@d
 
 ## Views
 
-List and Timeline operate on the same filtered slice of the event store. Clicking an event in either view pins the same
-event in the detail pane. Runtime is a live snapshot and does not add sampled FPS values to the event ring buffer.
+The TrUAPI tab's List and Timeline views both operate on the same filtered slice of the event store. Clicking an event
+in one view pins the same event in the detail pane regardless of which view is active. Runtime is a live snapshot and
+does not add sampled FPS values to the event ring buffer.
 
 ### List view
 
@@ -146,67 +155,49 @@ Each swimlane has its own horizontal scroll, so a chain with many concurrent ope
 the whole view. Vertical scroll is shared across all swimlanes, so events at the same Y in different swimlanes occurred
 at the same moment.
 
-### Runtime view
+## Other tabs
+
+### Resolution
+
+How the page load went: each resolution phase, the open block and the chains that never started.
+
+### Archive
+
+The files of the loaded product.
+
+### Runtime
 
 PolkaVM products publish their latest runtime snapshot from the product sandbox to the authenticated host frame. The
-panel exposes the current backend (**JIT**, **Interpreter**, or **Starting**) and FPS in its header badge, with
-first-frame latency in the tooltip. Clicking the badge expands the panel and opens the Runtime view with:
+header shows the current backend (**JIT**, **Interpreter**, or **Starting**) and FPS in a badge, with first-frame
+latency in its tooltip. Clicking the badge expands the panel and opens the Runtime tab with:
 
 - startup stage and total startup / first-frame latency;
 - translation-cache result, translation time, compilation time, and translated Wasm size;
 - current FPS, presented frame count, and update count;
 - update p50, p95, and maximum latency;
-- emitted audio chunk and sample counts.
+- emitted audio chunk and sample counts;
 - compiler fallback stage and reason when compiler startup failed (not for a forced interpreter).
 
-The snapshot is replaced in place rather than appended to List or Timeline. Pausing or clearing event capture does not
-stop these live counters. Loading another product clears the current snapshot, hides Runtime, and returns to List if
-Runtime was selected. PolkaVM no longer renders a separate diagnostics overlay over product content.
+The snapshot is replaced in place rather than appended to the TrUAPI events. Pausing or clearing event capture does not
+stop these live counters. Loading another product clears the current snapshot, hides Runtime, and returns to the last
+stored tab if Runtime was selected. PolkaVM renders no separate diagnostics overlay over product content.
 
 The `@dotli/truapi-debug` barrel exports `PolkaVmDebugSnapshot`, `PolkaVmDebugMessage`, `emitPolkaVmDebugSnapshot`,
 `onPolkaVmDebugSnapshot`, and `clearPolkaVmDebugSnapshot`. Subscribers immediately receive the latest available sample;
 reset publishes `null` and clears that replay value. Disposal unsubscribes the panel without adding samples to the event
 store.
 
-### Wallet view
+### Diagnostics
 
-In builds compiled with `VITE_APP_DEBUG=true`, Wallet contains activation, username claims and refresh, current-product
-accounts and permissions, and a collapsed Recovery section. The compact header button shows a wallet icon or a known
-full/Lite username and expands the pane to select Wallet. Its label does not change for verification, pending claims, or
-failures; those details stay in the Wallet tab. The active account badge uses the same `dotli:wallet-open` event. There
-is no separate wallet overlay, activity viewer, or docking control. On touch devices, the Lite username input uses 16px
-text to avoid focus-triggered zoom without disabling pinch zoom.
+The site, backend and package versions, for a bug report.
 
-The overview keeps the current username, network, and primary actions visible. Account identifiers are under **Account
-details**; recovery and detailed custody warnings stay in **Recovery**. A short test-wallet warning remains visible.
-Claims show actual SDK stages (checking, authentication, submission, and chain confirmation) with elapsed time. Failed
-confirmation reads show an automatic retry state with expandable technical details, without resubmitting the claim. Only
-verified ownership completes a claim; backend acceptance does not.
+### Wallet
 
-Wallet identity is owned by a persistent native host session and is available before any product loads. Product
-replacement does not clear its username or cancel a pending claim. Current-product details refresh independently.
-Switching away from Wallet or collapsing the pane clears sensitive Recovery fields without cancelling username
-monitoring. Closing the debug pane exits debug mode and reloads the page, ending that page's native session.
-
-On a full page reload, previously reported identity metadata appears immediately. The Wallet tab marks it **verifying**,
-scoped to the wallet revision and network; the header button retains only the known username. Display restoration is
-separate from native authentication: cached names cannot authorize claims or product permissions. Native verification
-replaces the display, while a failed check retains last-known metadata and offers a manual verification retry.
-
-A failed native worker is retired immediately. Wallet marks its last-known identity as display-only, disables native
-username and resource operations, and does not open a Mobile pairing dialog or automatically restart the session.
-**Retry wallet verification** creates a fresh native owner. Recovery controls remain available, and healthy product
-sessions are not disposed by this failure.
-
-See [Experimental test wallet](../../README.md#experimental-test-wallet) for activation, claim confirmation, custody
-risks, and recovery behavior.
-
-The Wallet view lives in `packages/ui/src/components/truapi-debug/wallet/`: `controller.ts` holds its state and safety
-rules (scoped reads, secret clearing, listener disposal) and survives tab swaps; `WalletView.tsx` and
-`AllowanceSnapshot.tsx` draw it with co-located CSS modules, and the header entry is part of `Header.tsx`. The filter
-bar and detail pane are hidden while Wallet is selected. `@dotli/truapi-debug` stays DOM- and style-free: it exports
-only the wallet types (`ExperimentalWalletControls` and the `Inspector*` shapes) and the allocation-outcome model
-(`observedAllocations`, `isAllocationEvent`).
+Switches every app on the domain between Polkadot App and a local wallet. In Polkadot App mode it takes the recovery
+phrase from Polkadot App. "Use locally" saves its entropy, encrypted, in the protocol frame on `host.<domain>` and
+reloads, and each app's core then boots as a signing host on it. In local mode it shows the identity account and
+username, and "Replace" takes another phrase in its place, and "Forget" forgets the wallet and reloads in Polkadot App
+mode. Logging out from the topbar in local mode does the same.
 
 ## Filters
 
@@ -222,7 +213,8 @@ The filter bar at the top of the panel applies to the two event views:
 Pause / Clear buttons are in the panel header:
 
 - **Pause** — stops ingesting new events. Already-stored events stay visible; resume to start ingesting again.
-- **Clear** — drops the ring buffer. The selected-event detail resets to "(select an event to inspect)".
+- **Clear** — drops the ring buffer. The selected-event detail resets to "(select an event to inspect)". On the
+  Resolution tab, Clear drops the recorded page load instead.
 
 ## Detail pane
 

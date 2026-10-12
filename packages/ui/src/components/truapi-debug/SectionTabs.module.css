@@ -1,0 +1,13 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.sections {
+  flex: none;
+  align-self: stretch;
+}
+/* A line of their own under the controls, so the selected tab still sits on the header's bottom edge. */
+:global([data-dock='right']) .sections {
+  flex-basis: 100%;
+  order: 1;
+  height: 31px;
+}

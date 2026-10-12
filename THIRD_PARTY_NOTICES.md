@@ -16,7 +16,7 @@ retained in `vendor/truapi/LICENSE`, `vendor/truapi-host/LICENSE`, `vendor/truap
 `vendor/truapi-host/NOTICE`. Exact source revision, package versions and artifact hashes are recorded in
 `vendor/truapi-host.lock.json`.
 
-> Generated from the resolved dependency tree (933 distinct third-party packages) by `scripts/third-party-notices.ts`.
+> Generated from the resolved dependency tree (932 distinct third-party packages) by `scripts/third-party-notices.ts`.
 > Platform-specific binary packages (for example `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;
 > other platforms resolve their own equivalents under the same licenses. Regenerate after dependency changes.
 
@@ -80,21 +80,21 @@ retained in `vendor/truapi/LICENSE`, `vendor/truapi-host/LICENSE`, `vendor/truap
 @polkadot-api/ws-provider, @polkadot-labs/hdkd, @polkadot-labs/hdkd-helpers, @prettier/parse-srcset,
 @rolldown/binding-linux-x64-gnu, @rolldown/pluginutils, @rollup/plugin-babel, @rollup/plugin-node-resolve,
 @rollup/plugin-replace, @rollup/plugin-terser, @rollup/pluginutils, @rollup/rollup-linux-x64-gnu, @rx-state/core,
-@scure/base, @scure/bip39, @scure/sr25519, @sec-ant/readable-stream, @sentry/browser, @sentry/browser-utils,
-@sentry/bundler-plugins, @sentry/conventions, @sentry/core, @sentry/feedback, @sentry/replay, @sentry/replay-canvas,
-@sentry/vite-plugin, @shikijs/core, @shikijs/engine-javascript, @shikijs/engine-oniguruma, @shikijs/langs,
-@shikijs/primitive, @shikijs/themes, @shikijs/types, @shikijs/vscode-textmate, @sindresorhus/merge-streams,
-@solidjs/babel-plugin, @solidjs/compiler, @solidjs/compiler-linux-x64-gnu, @solidjs/compiler-wasm32-wasi,
-@solidjs/signals, @solidjs/testing-library, @solidjs/vite-plugin, @solidjs/web, @storybook/addon-a11y,
-@storybook/addon-docs, @storybook/addon-vitest, @storybook/builder-vite, @storybook/global, @storybook/icons,
-@storybook/react-dom-shim, @testing-library/dom, @testing-library/jest-dom, @testing-library/user-event,
-@turbo/linux-64, @tybys/wasm-util, @types/aria-query, @types/babel__core, @types/babel__generator,
-@types/babel__template, @types/babel__traverse, @types/bun, @types/chai, @types/deep-eql, @types/esrecurse,
-@types/estree, @types/estree-jsx, @types/hast, @types/json-schema, @types/mdast, @types/mdx, @types/nlcst, @types/node,
-@types/normalize-package-data, @types/qrcode, @types/react, @types/resolve, @types/trusted-types, @types/unist,
-@types/whatwg-mimetype, @types/ws, @typescript-eslint/eslint-plugin, @typescript-eslint/parser,
-@typescript-eslint/project-service, @typescript-eslint/scope-manager, @typescript-eslint/tsconfig-utils,
-@typescript-eslint/type-utils, @typescript-eslint/types, @typescript-eslint/typescript-estree, @typescript-eslint/utils,
+@scure/base, @scure/sr25519, @sec-ant/readable-stream, @sentry/browser, @sentry/browser-utils, @sentry/bundler-plugins,
+@sentry/conventions, @sentry/core, @sentry/feedback, @sentry/replay, @sentry/replay-canvas, @sentry/vite-plugin,
+@shikijs/core, @shikijs/engine-javascript, @shikijs/engine-oniguruma, @shikijs/langs, @shikijs/primitive,
+@shikijs/themes, @shikijs/types, @shikijs/vscode-textmate, @sindresorhus/merge-streams, @solidjs/babel-plugin,
+@solidjs/compiler, @solidjs/compiler-linux-x64-gnu, @solidjs/compiler-wasm32-wasi, @solidjs/signals,
+@solidjs/testing-library, @solidjs/vite-plugin, @solidjs/web, @storybook/addon-a11y, @storybook/addon-docs,
+@storybook/addon-vitest, @storybook/builder-vite, @storybook/global, @storybook/icons, @storybook/react-dom-shim,
+@testing-library/dom, @testing-library/jest-dom, @testing-library/user-event, @turbo/linux-64, @tybys/wasm-util,
+@types/aria-query, @types/babel__core, @types/babel__generator, @types/babel__template, @types/babel__traverse,
+@types/bun, @types/chai, @types/deep-eql, @types/esrecurse, @types/estree, @types/estree-jsx, @types/hast,
+@types/json-schema, @types/mdast, @types/mdx, @types/nlcst, @types/node, @types/normalize-package-data, @types/qrcode,
+@types/react, @types/resolve, @types/trusted-types, @types/unist, @types/whatwg-mimetype, @types/ws,
+@typescript-eslint/eslint-plugin, @typescript-eslint/parser, @typescript-eslint/project-service,
+@typescript-eslint/scope-manager, @typescript-eslint/tsconfig-utils, @typescript-eslint/type-utils,
+@typescript-eslint/types, @typescript-eslint/typescript-estree, @typescript-eslint/utils,
 @typescript-eslint/visitor-keys, @vitest/browser, @vitest/browser-playwright, @vitest/expect, @vitest/mocker,
 @vitest/pretty-format, @vitest/spy, @vitest/ui, @vitest/utils, @volar/kit, @volar/language-core, @volar/language-server,
 @volar/language-service, @volar/source-map, @volar/typescript, @vscode/emmet-helper, @vscode/l10n, @webcontainer/env,

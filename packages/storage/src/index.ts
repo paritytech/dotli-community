@@ -34,6 +34,15 @@ export {
   type RevalidateOutcome,
 } from './cid-cache.js';
 export {
+  forgetLocalWallet,
+  loadLocalWallet,
+  LocalWalletUnreadableError,
+  saveLocalWallet,
+  updateLocalWalletIdentity,
+  type LocalWallet,
+  type LocalWalletIdentity,
+} from './local-wallet.js';
+export {
   allocateId,
   cancel,
   listAll,

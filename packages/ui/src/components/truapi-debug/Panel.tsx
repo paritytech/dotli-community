@@ -8,9 +8,7 @@
 //   which already run inside Solid's update pass and would re-enter it.
 // - The detail pane rebuilds only on user actions (`detailRevision`), never on traffic.
 
-import { createEffect, createMemo, createSignal, flush, onCleanup, onSettled, Show, untrack } from 'solid-js';
-import { DEBUG } from '@dotli/config';
-import type { ExperimentalWalletControls } from '@dotli/truapi-debug';
+import { createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
   readStoredDock,
@@ -27,6 +25,9 @@ import {
   matches,
   type FilterState,
   panelDockInset,
+  readStoredSection,
+  writeStoredSection,
+  type PanelSection,
   clearPolkaVmDebugSnapshot,
   onPolkaVmDebugSnapshot,
   type PolkaVmDebugSnapshot,
@@ -38,17 +39,16 @@ import { getTopbarState } from '../../state/topbar.js';
 import { DiagnosticsView } from './Diagnostics.js';
 import { DetailPane } from './DetailPane.js';
 import { EventList, type Selection } from './EventList.js';
-import { Filters } from './Filters.js';
+import { EventFilters } from './EventFilters.js';
 import { Header } from './Header.js';
 import { BodySplitter, ResizeHandle } from './Resizers.js';
 import { ArchiveView } from './ArchiveView.js';
 import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
-import { Tabs, type PanelView } from './Tabs.js';
+import { ViewTabs, type PanelView } from './ViewTabs.js';
 import { TimelineView } from './TimelineView.js';
 import { RuntimeBadge, RuntimeView } from './RuntimeView.js';
-import { createWalletController } from './wallet/controller.js';
-import { WalletView } from './wallet/WalletView.js';
+import { WalletView } from './WalletView.js';
 import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
@@ -153,7 +153,6 @@ export function Panel(props: {
   /** Kept apart from the ring buffer so a busy session cannot evict the load the Resolution view draws. */
   resolution: ResolutionRecorder;
   startCollapsed: boolean;
-  wallet?: ExperimentalWalletControls | undefined;
   loadArchive: ArchiveLoader;
 }): JSX.Element {
   const store = untrack(() => props.store);
@@ -175,7 +174,11 @@ export function Panel(props: {
 
   const [snapshot, setSnapshot] = createSignal<Snapshot>(takeSnapshot());
   const [filters, setFilters] = createSignal<FilterState>(initialFilterState());
+  const [section, setSection] = createSignal<PanelSection>(readStoredSection());
   const [view, setView] = createSignal<PanelView>('list');
+  const [resolutionCleared, setResolutionCleared] = createSignal(0);
+  const events = (): boolean => section() === 'truapi';
+  const listShown = (): boolean => events() && view() === 'list';
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [collapsed, setCollapsed] = createSignal(untrack(() => props.startCollapsed));
   const [dock, setDock] = createSignal<DockPosition>(readStoredDock());
@@ -218,6 +221,7 @@ export function Panel(props: {
   // Keyed on the recorder, not the store, so TrUAPI traffic does not redraw the Resolution view.
   const resolutionVersion = createMemo(() => {
     snapshot();
+    resolutionCleared();
     return recorder.version();
   });
 
@@ -243,7 +247,7 @@ export function Panel(props: {
     const anchor = list !== undefined && !wasAtBottom ? topRow(list, prevScrollTop) : null;
     const anchorTop = anchor?.offsetTop ?? 0;
     flush(update);
-    if (list !== undefined && view() === 'list' && list.querySelector('[data-seq]') !== null) {
+    if (list !== undefined && listShown() && list.querySelector('[data-seq]') !== null) {
       if (wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       } else if (anchor?.isConnected === true) {
@@ -364,28 +368,36 @@ export function Panel(props: {
     }
   };
 
-  const splitView = (): boolean => view() === 'list' || view() === 'timeline';
-
-  const selectView = (next: PanelView): void => {
-    if (next === view()) {
-      return;
-    }
+  /** Switches what the panel shows, keeping the list pinned and the detail pane in step. */
+  const show = (update: () => void): void => {
     // Hiding the pane under the cursor may fire no boundary event, which would strand the tooltip.
     tooltipEl?.removeAttribute('data-visible');
     commit(() => {
-      setView(next);
+      update();
       refreshSnapshot();
       refreshDetail();
     });
+  };
+  const selectSection = (next: PanelSection): void => {
+    if (next !== section()) {
+      writeStoredSection(next);
+      show(() => setSection(next));
+    }
+  };
+  const selectView = (next: PanelView): void => {
+    if (next !== view()) {
+      show(() => setView(next));
+    }
   };
 
   const unsubscribeRuntime = onPolkaVmDebugSnapshot(next => {
     // Startup replay can run while this component is mounting; do not force
     // a nested flush. Solid settles live samples without touching the store.
     setRuntimeSnapshot(next);
-    if (next === null && untrack(view) === 'runtime') {
+    // The Runtime tab is never stored, so this returns to the last stored tab.
+    if (next === null && untrack(section) === 'runtime') {
       untrack(() => {
-        selectView('list');
+        selectSection(readStoredSection());
       });
     }
   });
@@ -413,12 +425,8 @@ export function Panel(props: {
     return buildExport(events, meta);
   };
 
-  // Like ResolutionView, the Wallet view's DOM is owned by this Solid root.
-  // Keep the safety-sensitive controller across tab swaps; visibility clears
-  // secrets and invalidates late reads, while disposal removes all listeners.
-  const wallet = untrack(() => (DEBUG ? props.wallet : undefined));
-  const walletController = wallet === undefined ? undefined : createWalletController(wallet, store);
-  const openView = (next: 'wallet' | 'runtime'): void => {
+  /** The runtime badge opens the Runtime tab, expanding a collapsed panel. */
+  const openRuntime = (): void => {
     if (collapsed()) {
       if (panelEl !== undefined && expandedHeight !== '') {
         panelEl.style.height = expandedHeight;
@@ -429,27 +437,9 @@ export function Panel(props: {
         refreshSnapshot();
       });
     }
-    selectView(next);
+    selectSection('runtime');
     refit();
   };
-  const openWallet = (): void => {
-    if (walletController === undefined) {
-      return;
-    }
-    openView('wallet');
-    walletController.focus();
-  };
-  createEffect(
-    () => view() === 'wallet' && !collapsed(),
-    visible => walletController?.setVisible(visible),
-  );
-  if (walletController !== undefined) {
-    window.addEventListener('dotli:wallet-open', openWallet);
-  }
-  onCleanup(() => {
-    window.removeEventListener('dotli:wallet-open', openWallet);
-    walletController?.dispose();
-  });
 
   return (
     <div
@@ -457,7 +447,8 @@ export function Panel(props: {
       class={s['panel']}
       data-dock={placement()}
       data-layout={stacked() ? 'stacked' : undefined}
-      data-view={view()}
+      data-section={section()}
+      data-view={events() ? view() : undefined}
       data-collapsed={collapsed() ? '' : undefined}
       ref={el => {
         panelEl = el;
@@ -465,24 +456,10 @@ export function Panel(props: {
     >
       <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
-        wallet={
-          walletController === undefined
-            ? undefined
-            : {
-                name: walletController.ui().entryName,
-                expanded: walletController.ui().opened,
-                onOpen: openWallet,
-              }
-        }
-        runtimeEntry={
-          <RuntimeBadge
-            snapshot={runtimeSnapshot()}
-            dock={placement()}
-            onOpen={() => {
-              openView('runtime');
-            }}
-          />
-        }
+        section={section()}
+        onSelectSection={selectSection}
+        runtime={runtimeSnapshot() !== null}
+        runtimeEntry={<RuntimeBadge snapshot={runtimeSnapshot()} dock={placement()} onOpen={openRuntime} />}
         counts={counts()}
         paused={paused()}
         collapsed={collapsed()}
@@ -495,8 +472,12 @@ export function Panel(props: {
           flush(() => setPaused(next));
         }}
         onClear={() => {
+          if (section() === 'resolution') {
+            recorder.clear();
+            flush(() => setResolutionCleared(n => n + 1));
+            return;
+          }
           store.clear();
-          recorder.clear();
           // The detail pane rebuilds only on request, so rebuild now or the old event lingers.
           flush(() => {
             setSelection(null);
@@ -532,31 +513,23 @@ export function Panel(props: {
           refit();
         }}
       />
-      <Filters
+      <EventFilters
         filters={filters()}
         products={snapshot().products}
-        placement={placement()}
-        collapsed={collapsed()}
-        hidden={view() === 'wallet'}
+        hidden={collapsed() || !events()}
         onChange={changeFilters}
       />
       <div class={s['body']} data-testid="td-body">
         <div class={s['views']} data-testid="td-views">
-          <Tabs
-            view={view()}
-            wallet={walletController !== undefined}
-            runtime={runtimeSnapshot() !== null}
-            onSelect={selectView}
-          />
-          <RuntimeView snapshot={runtimeSnapshot()} active={view() === 'runtime' && !collapsed()} />
-          <Show when={walletController}>{controller => <WalletView controller={controller()} />}</Show>
+          <ViewTabs view={view()} hidden={!events()} onSelect={selectView} />
+          <RuntimeView snapshot={runtimeSnapshot()} active={section() === 'runtime' && !collapsed()} />
           <EventList
             events={visible()}
             allEvents={snapshot().events}
             refreshedAt={snapshot().takenAt}
             store={store}
             selection={selection()}
-            active={view() === 'list'}
+            active={listShown()}
             collapsed={collapsed()}
             onSelect={select}
             listRef={el => {
@@ -564,7 +537,7 @@ export function Panel(props: {
             }}
           />
           <TimelineView
-            active={view() === 'timeline'}
+            active={events() && view() === 'timeline'}
             events={visible()}
             selectedSeq={selection()?.seq ?? null}
             tooltip={() => tooltipEl}
@@ -572,23 +545,24 @@ export function Panel(props: {
             onSelect={select}
           />
           <ResolutionView
-            active={view() === 'resolution'}
+            active={section() === 'resolution'}
             collapsed={collapsed()}
             refresh={resolutionVersion()}
             recorder={recorder}
             tooltip={() => tooltipEl}
             panel={() => panelEl}
           />
-          <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
-          <DiagnosticsView active={view() === 'diagnostics'} />
+          <ArchiveView active={section() === 'archive'} load={props.loadArchive} />
+          <DiagnosticsView active={section() === 'diagnostics'} />
+          <WalletView active={section() === 'wallet'} />
         </div>
-        <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!splitView()} />
+        <BodySplitter panel={() => panelEl} stacked={stacked()} hidden={!events()} />
         <DetailPane
           revision={detailRevision()}
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
-          hidden={!splitView()}
+          hidden={!events()}
           onSelectPair={seq => {
             select(seq);
             listEl?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });

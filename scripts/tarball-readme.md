@@ -36,9 +36,9 @@ DOTLI_NETWORK='{
 ```
 
 `enabled` limits which networks the Settings selector offers; the first is the default. Overridable fields are `label`,
-`rpcs`, `ipfsGateways` and `identityBackendBaseUrl` (root-relative proxy path or HTTPS; HTTP only on loopback) —
-`genesis` and contract addresses are fixed at build time, because they are the trust root for name resolution. A forked
-chain that preserves upstream genesis (zombie-bite and similar) needs no more than the endpoints above.
+`rpcs` and `ipfsGateways` only — `genesis` and contract addresses are fixed at build time, because they are the trust
+root for name resolution. A forked chain that preserves upstream genesis (zombie-bite and similar) needs no more than
+the endpoints above.
 
 Anything unrecognised is rejected at startup rather than ignored, so a typo fails loudly instead of silently leaving you
 on the public chain.
