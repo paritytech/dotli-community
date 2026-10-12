@@ -8,10 +8,20 @@ import type {
 } from "@dotli/truapi-debug/dotli-debug-types";
 import {
   POLKAVM_RUNTIME_SOURCE,
+  POLKAVM_WORKSPACE_AVAILABLE,
   polkaVmRuntimeAssetUrl,
 } from "./polkavm-runtime-assets";
 import { Tri2dRenderer } from "./tri2d-renderer";
 import { installPolkaVmMenu, type PolkaVmMenu } from "./polkavm-menu";
+import type {
+  WorkspaceCommit,
+  WorkspaceSnapshot,
+} from "./polkavm-workspace-store";
+import type {
+  installWorkspaceMenu,
+  WorkspaceChoice,
+} from "./polkavm-workspace-menu";
+import type { ReadableFormatter } from "./polkavm-readable";
 import {
   installPolkaVmTouchControls,
   type PolkaVmTouchControls,
@@ -121,6 +131,7 @@ interface PolkaVmDescriptor {
   requiredAssets: string[];
   fileInputHandlers: PolkaVmFileInputHandler[];
   manifestVersion: number | null;
+  workspaceEnabled: boolean;
 }
 
 interface WorkerReady {
@@ -710,6 +721,7 @@ function parseManifest(
   let manifestVersion: number | null = null;
   let webFallbackPath: string | null = null;
   let fileInputHandlers: PolkaVmFileInputHandler[] = [];
+  let workspaceEnabled = false;
   if (manifest?.$v === 2 && manifest.kind === "app") {
     // `$v: 2` versions the manifest, not the guest boundary. Every published
     // App selects PolkaVM application runtime ABI v1, the only version the
@@ -866,6 +878,19 @@ function parseManifest(
       capabilities?.fileInput,
       programPath,
     );
+    if (capabilities?.workspace !== undefined) {
+      const workspace = object(capabilities.workspace);
+      if (
+        workspace?.abiVersion !== 1 ||
+        Object.keys(workspace).some((key) => key !== "abiVersion") ||
+        capabilities.fileInput !== undefined
+      ) {
+        throw new Error(
+          "PolkaVM workspace requires ABI version 1 and cannot accompany fileInput",
+        );
+      }
+      workspaceEnabled = true;
+    }
     manifestVersion = 2;
     if (enforceExternal) {
       assertExternalManifest(bytes, externalManifest);
@@ -932,6 +957,7 @@ function parseManifest(
     requiredAssets,
     fileInputHandlers,
     manifestVersion,
+    workspaceEnabled,
   };
 }
 
@@ -2900,6 +2926,141 @@ function installInput(
   };
 }
 
+interface ActiveWorkspace {
+  snapshot: WorkspaceSnapshot;
+  installMenu: typeof installWorkspaceMenu;
+  commit: (delta: WorkspaceCommit) => Promise<void>;
+  export: () => Promise<WorkspaceSnapshot>;
+  close: () => Promise<void>;
+}
+
+async function openWorkspace(projectId?: string): Promise<ActiveWorkspace> {
+  if (!POLKAVM_WORKSPACE_AVAILABLE) {
+    throw new Error(
+      "The installed PolkaVM runtime does not support browser workspaces. Update the verified runtime distribution before opening this app.",
+    );
+  }
+  if (navigator.locks === undefined) {
+    throw new Error(
+      "This browser cannot safely lock a project. Use a browser with Web Locks support.",
+    );
+  }
+  // Standalone hosts without workspace support serve only the base runtime
+  // modules; static imports would prevent those hosts from starting.
+  const [{ WorkspaceStore }, { installWorkspaceMenu }] = await Promise.all([
+    import("./polkavm-workspace-store"),
+    import("./polkavm-workspace-menu"),
+  ]);
+  const store = await WorkspaceStore.open();
+  let releaseLock: (() => void) | undefined;
+  try {
+    // Serialize first-use creation so simultaneous launches do not create
+    // duplicate empty projects. Writer ownership is acquired separately below.
+    const selectedId =
+      projectId ??
+      (await navigator.locks.request(
+        "dotli:polkavm:workspace-startup",
+        async () =>
+          (await store.list())[0]?.id ??
+          (await store.create("Untitled", [])).project.id,
+      ));
+    const acquired = Promise.withResolvers<() => void>();
+    const released = Promise.withResolvers<void>();
+    const lockRequest = navigator.locks
+      .request(
+        `dotli:polkavm:workspace:${selectedId}`,
+        { mode: "exclusive", ifAvailable: true },
+        async (lock) => {
+          if (lock === null) {
+            throw new Error(
+              "This project is open in another tab. Close that editor or choose a different project.",
+            );
+          }
+          acquired.resolve(() => released.resolve());
+          await released.promise;
+        },
+      )
+      .catch(acquired.reject);
+    releaseLock = await acquired.promise;
+    // Selection can predate the previous writer's final commit.
+    const snapshot = await store.load(selectedId);
+    await store.markOpened(selectedId);
+    let revision = snapshot.project.revision;
+    let pending = Promise.resolve();
+    let closed = false;
+    let closing: Promise<void> | undefined;
+    return {
+      snapshot,
+      installMenu: installWorkspaceMenu,
+      commit(delta) {
+        if (closed) {
+          return Promise.reject(new Error("The workspace session is closed."));
+        }
+        const result = pending.then(async () => {
+          revision = await store.commit(snapshot.project.id, revision, delta);
+        });
+        // Preserve ordering after a failed save, but return its rejection to
+        // the guest; a failure must never be acknowledged as a successful save.
+        pending = result.catch(() => undefined);
+        return result;
+      },
+      async export() {
+        if (closed) {
+          throw new Error("The workspace session is closed.");
+        }
+        await pending;
+        return store.load(snapshot.project.id);
+      },
+      close() {
+        closed = true;
+        closing ??= pending.then(async () => {
+          releaseLock?.();
+          await lockRequest;
+          store.close();
+        });
+        return closing;
+      },
+    };
+  } catch (error) {
+    releaseLock?.();
+    store.close();
+    throw error;
+  }
+}
+
+async function selectWorkspace(
+  surface: HTMLElement,
+  choice: WorkspaceChoice,
+  parentOrigin: string | null,
+  currentId?: string,
+): Promise<ActiveWorkspace | null> {
+  // Optional workspace modules are not served by older standalone hosts.
+  const [{ WorkspaceStore }, { chooseWorkspace }] = await Promise.all([
+    import("./polkavm-workspace-store"),
+    import("./polkavm-workspace-menu"),
+  ]);
+  const store = await WorkspaceStore.open();
+  let selected: ActiveWorkspace | null = null;
+  try {
+    await chooseWorkspace(
+      surface,
+      store,
+      choice,
+      async (id) => {
+        if (id !== currentId) selected = await openWorkspace(id);
+      },
+      parentOrigin,
+    );
+    return selected;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      return null;
+    throw error;
+  } finally {
+    store.close();
+  }
+}
+
 export async function runPolkaVmApplication(
   files: ArchiveFiles,
   cid: string,
@@ -2911,7 +3072,10 @@ export async function runPolkaVmApplication(
   }
   validateFiles(files, descriptor);
   let cleanupRecovery = (): void => undefined;
-  const launch = async (nextFiles: ArchiveFiles): Promise<void> => {
+  const launch = async (
+    nextFiles: ArchiveFiles,
+    selectedWorkspace?: ActiveWorkspace,
+  ): Promise<void> => {
     cleanupRecovery();
     cleanupRecovery = () => undefined;
     const recover = (error: unknown): void => {
@@ -2931,6 +3095,45 @@ export async function runPolkaVmApplication(
           void launch(files);
         },
       });
+      if (descriptor.workspaceEnabled) {
+        const projectActions = document.createElement("div");
+        const buttons: HTMLButtonElement[] = [];
+        menu.status.after(projectActions);
+        for (const [label, choice] of [
+          ["Open another project…", "recent"],
+          ["New project…", "new"],
+        ] as const) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          buttons.push(button);
+          projectActions.append(button);
+          button.addEventListener("click", async () => {
+            for (const control of buttons) control.disabled = true;
+            menu.setBusy(true);
+            try {
+              const selected = await selectWorkspace(
+                surface,
+                choice,
+                expectedPolkaVmParentOrigin(
+                  location.hostname,
+                  location.protocol,
+                  location.port,
+                ),
+              );
+              if (selected !== null) await launch(files, selected);
+            } catch (failure) {
+              menu.status.textContent =
+                failure instanceof Error
+                  ? failure.message
+                  : "Could not open a project.";
+            } finally {
+              for (const control of buttons) control.disabled = false;
+              menu.setBusy(false);
+            }
+          });
+        }
+      }
       const cleanupFiles = installFileInputControls(
         surface,
         menu.status,
@@ -2945,7 +3148,13 @@ export async function runPolkaVmApplication(
         menu.cleanup();
       };
     };
+    let workspace: ActiveWorkspace | null = selectedWorkspace ?? null;
     try {
+      if (descriptor.workspaceEnabled && workspace === null) {
+        const { status } = createShell();
+        status.textContent = "Opening workspace…";
+        workspace = await openWorkspace();
+      }
       await startPolkaVmApplication(
         nextFiles,
         cid,
@@ -2953,8 +3162,10 @@ export async function runPolkaVmApplication(
         launch,
         () => launch(files),
         recover,
+        workspace,
       );
     } catch (error) {
+      await workspace?.close();
       recover(error);
     }
   };
@@ -2965,9 +3176,10 @@ async function startPolkaVmApplication(
   files: ArchiveFiles,
   cid: string,
   descriptor: PolkaVmDescriptor,
-  launch: (files: ArchiveFiles) => Promise<void>,
+  launch: (files: ArchiveFiles, workspace?: ActiveWorkspace) => Promise<void>,
   launcher: () => Promise<void>,
   recover: (error: unknown) => void,
+  workspace: ActiveWorkspace | null,
 ): Promise<void> {
   validateFiles(files, descriptor);
   const forceInterpreter =
@@ -3055,6 +3267,7 @@ async function startPolkaVmApplication(
     parentOrigin,
   );
   const worker = new Worker(polkaVmRuntimeAssetUrl("polkavm-worker.js"));
+  let readableFormatter: ReadableFormatter | null = null;
   const closeHostFramePort = (): void => {
     hostFramePort.onmessage = null;
     hostFramePort.onmessageerror = null;
@@ -3507,8 +3720,13 @@ async function startPolkaVmApplication(
       return;
     }
     stopped = true;
+    readableFormatter?.close();
     cleanupFileInputControls();
-    menu.cleanup();
+    workspaceMenu?.cleanup();
+    void workspace?.close().catch((error: unknown) => {
+      console.error("Failed to close browser workspace", error);
+    });
+    menu?.cleanup();
     document.removeEventListener("visibilitychange", visibilityChanged);
     window.removeEventListener("pagehide", stop);
     window.clearTimeout(timer);
@@ -3560,7 +3778,7 @@ async function startPolkaVmApplication(
   window.addEventListener("pagehide", stop, { once: true });
   // pagehide stops the runtime, so a back-forward cache restore must recreate
   // it. Ordinary tab/app switches only change visibility and must preserve
-  // the live guest and its session-only state.
+  // the live guest and its in-memory editing state.
   installPageCacheRestoreReload();
   const syncPause = (): void => {
     const next = menuPaused || document.visibilityState === "hidden";
@@ -3589,6 +3807,9 @@ async function startPolkaVmApplication(
       }
     } else {
       setInputPaused(false);
+      // Surface updates are suppressed while paused, including during startup.
+      // Resend even if the last observed dimensions did not change.
+      sendSurfaceMetrics();
       if (!firstFrame) {
         timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
       }
@@ -3598,23 +3819,59 @@ async function startPolkaVmApplication(
   const visibilityChanged = (): void => {
     syncPause();
   };
-  const menu = installPolkaVmMenu(surface, canvas, descriptor.controls, {
-    pause: (value) => {
-      menuPaused = value;
-      syncPause();
-    },
-    hasFileInput: descriptor.fileInputHandlers.length > 0,
-    retry: () => {
-      resolveStarted(undefined);
-      stop();
-      void launch(files);
-    },
-    launcher: () => {
-      resolveStarted(undefined);
-      stop();
-      void launcher();
-    },
-  });
+  const menu =
+    workspace === null
+      ? installPolkaVmMenu(surface, canvas, descriptor.controls, {
+          pause: (value) => {
+            menuPaused = value;
+            syncPause();
+          },
+          hasFileInput: descriptor.fileInputHandlers.length > 0,
+          retry: () => {
+            resolveStarted(undefined);
+            stop();
+            void launch(files);
+          },
+          launcher: () => {
+            resolveStarted(undefined);
+            stop();
+            void launcher();
+          },
+        })
+      : null;
+  const workspaceMenu =
+    workspace === null
+      ? null
+      : workspace.installMenu(surface, {
+          name: workspace.snapshot.project.name,
+          pause: (value) => {
+            menuPaused = value;
+            syncPause();
+          },
+          changeProject: async (choice) => {
+            const selected = await selectWorkspace(
+              surface,
+              choice,
+              parentOrigin,
+              workspace.snapshot.project.id,
+            );
+            if (selected === null) return;
+            resolveStarted(undefined);
+            stop();
+            try {
+              await workspace.close();
+              await launch(files, selected);
+            } catch (error) {
+              await selected.close();
+              throw error;
+            }
+          },
+          exportProject: () => workspace.export(),
+        });
+  let lastWorkspaceCommit = 0;
+  let workspaceCommitPending = false;
+  let lastWorkspaceFormat = 0;
+  let workspaceFormatPending = false;
   document.addEventListener("visibilitychange", visibilityChanged);
 
   worker.onmessage = (event: MessageEvent<unknown>): void => {
@@ -3626,6 +3883,119 @@ async function startPolkaVmApplication(
       return;
     }
     switch (message?.type) {
+      case "workspace-format": {
+        const id = message.id;
+        if (
+          workspace === null ||
+          !Number.isSafeInteger(id) ||
+          (id as number) <= lastWorkspaceFormat ||
+          workspaceFormatPending ||
+          typeof message.path !== "string" ||
+          !(message.bytes instanceof Uint8Array)
+        ) {
+          failRuntime(
+            new Error("PolkaVM guest emitted an invalid formatting request"),
+          );
+          return;
+        }
+        lastWorkspaceFormat = id as number;
+        workspaceFormatPending = true;
+        const path = message.path;
+        const bytes = message.bytes;
+        void (async () => {
+          if (readableFormatter === null) {
+            // Older standalone hosts do not serve optional workspace tools.
+            const { createReadableFormatter } =
+              await import("./polkavm-readable");
+            if (stopped)
+              throw new Error(
+                "The editor was closed before formatting started.",
+              );
+            readableFormatter = createReadableFormatter();
+          }
+          return readableFormatter.format(path, bytes);
+        })().then(
+          (formatted) => {
+            workspaceFormatPending = false;
+            if (!stopped) {
+              worker.postMessage(
+                {
+                  type: "workspace-format-result",
+                  id,
+                  ok: true,
+                  bytes: formatted,
+                },
+                [formatted.buffer],
+              );
+            }
+          },
+          (error: unknown) => {
+            workspaceFormatPending = false;
+            if (!stopped) {
+              worker.postMessage({
+                type: "workspace-format-result",
+                id,
+                ok: false,
+                error: (error instanceof Error
+                  ? error.message
+                  : String(error)
+                ).slice(0, 2048),
+              });
+            }
+          },
+        );
+        break;
+      }
+      case "workspace-commit": {
+        const id = message.id;
+        if (
+          workspace === null ||
+          !Number.isSafeInteger(id) ||
+          (id as number) <= lastWorkspaceCommit ||
+          workspaceCommitPending
+        ) {
+          failRuntime(
+            new Error("PolkaVM guest emitted an invalid workspace commit"),
+          );
+          return;
+        }
+        lastWorkspaceCommit = id as number;
+        workspaceCommitPending = true;
+        void workspace
+          .commit({
+            modified: message.modified as WorkspaceCommit["modified"],
+            removed: message.removed as WorkspaceCommit["removed"],
+            metadata: message.metadata as WorkspaceCommit["metadata"],
+          })
+          .then(
+            () => {
+              workspaceCommitPending = false;
+              if (!stopped) {
+                status.textContent = "";
+                worker.postMessage({
+                  type: "workspace-commit-result",
+                  id,
+                  ok: true,
+                });
+              }
+            },
+            (error: unknown) => {
+              workspaceCommitPending = false;
+              if (!stopped) {
+                const detail =
+                  error instanceof Error ? error.message : String(error);
+                status.textContent = `Workspace was not saved: ${detail}`;
+                worker.postMessage({
+                  type: "workspace-commit-result",
+                  id,
+                  ok: false,
+                  error: detail,
+                });
+              }
+            },
+          );
+        break;
+      }
       case "pause-state": {
         if (typeof message.paused === "boolean") {
           pauseAcknowledged = message.paused;
@@ -4017,12 +4387,25 @@ async function startPolkaVmApplication(
   if (gpuCapabilitiesBuffer !== undefined) {
     transfers.push(gpuCapabilitiesBuffer);
   }
+  const workspaceStart =
+    workspace === null
+      ? undefined
+      : {
+          name: workspace.snapshot.project.name,
+          files: workspace.snapshot.files,
+          metadata: workspace.snapshot.metadata,
+        };
+  for (const file of workspaceStart?.files ?? []) {
+    transfers.push(file.bytes.buffer as ArrayBuffer);
+  }
   worker.postMessage(
     {
       type: "start",
       runtime: runtimeCopy,
       program,
       assets,
+      workspace: workspaceStart,
+      workspaceFormat: workspace !== null,
       audioEnabled: descriptor.audioEnabled,
       cacheKey,
       compiledProgram,
@@ -4043,21 +4426,22 @@ async function startPolkaVmApplication(
   );
 
   syncPause();
-  cleanupFileInputControls = installFileInputControls(
-    surface,
-    menu.status,
-    descriptor.fileInputHandlers,
-    async (handler, bytes) => {
-      const relaunchedFiles: ArchiveFiles = {
-        ...files,
-        [handler.mountPath]: bytes,
-      };
-      resolveStarted(undefined);
-      stop();
-      await launch(relaunchedFiles);
-    },
-    menu,
-  );
+  if (menu !== null)
+    cleanupFileInputControls = installFileInputControls(
+      surface,
+      menu.status,
+      descriptor.fileInputHandlers,
+      async (handler, bytes) => {
+        const relaunchedFiles: ArchiveFiles = {
+          ...files,
+          [handler.mountPath]: bytes,
+        };
+        resolveStarted(undefined);
+        stop();
+        await launch(relaunchedFiles);
+      },
+      menu,
+    );
   await startedPromise.then(
     () => {
       if (!stopped && !menuPaused && !paused) {

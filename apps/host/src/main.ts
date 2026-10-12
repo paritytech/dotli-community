@@ -86,12 +86,15 @@ import {
   onProtocolChainSync,
   onProtocolNetBytes,
   resetProtocolFrame,
-  resolveDotNameRemote,
   resolveExecutableManifestRemote,
   resolveRootManifestRemote,
   setProtocolSubMode,
   warmupProtocol,
 } from "@dotli/protocol/client";
+import {
+  resolveAppContenthash,
+  resolveAppExecutableManifest,
+} from "@dotli/resolver/app-content";
 import {
   evictCachedInstalledExecutable,
   getCachedInstalledExecutable,
@@ -398,17 +401,6 @@ function setShieldState(state: ShieldState): void {
   }
 }
 
-async function resolveAppExecutableManifest(
-  label: string,
-  chainBackend: Backend,
-): Promise<ManifestResult<ExecutableManifest>> {
-  if (chainBackend === "rpc-gateway") {
-    const mod = await import("@dotli/resolver/rpc-resolve");
-    return mod.resolveExecutableManifestViaRpc(label, "app");
-  }
-  return resolveExecutableManifestRemote(label, "app");
-}
-
 async function loadAppExecutableManifest(
   label: string,
   chainBackend: Backend,
@@ -455,29 +447,6 @@ function cachedAppManifest(
         raw: executable.executableManifest,
       }
     : null;
-}
-
-async function resolveAppContenthash(
-  label: string,
-  chainBackend: Backend,
-  onProgress?: (message: string) => void,
-): Promise<string | null> {
-  let contenthash: string | null;
-  if (chainBackend === "rpc-gateway") {
-    const { resolveDotNameViaRpc } =
-      await import("@dotli/resolver/rpc-resolve");
-    contenthash = await resolveDotNameViaRpc(`app.${label}`, onProgress);
-    contenthash ??= await resolveDotNameViaRpc(label, onProgress);
-  } else {
-    contenthash = await resolveDotNameRemote(`app.${label}`, onProgress);
-    contenthash ??= await resolveDotNameRemote(label, onProgress);
-  }
-  if (contenthash === null) {
-    log.warn(
-      `[dot.li resolve] neither app.${withActiveTld(label)} nor ${withActiveTld(label)} has a contenthash`,
-    );
-  }
-  return contenthash;
 }
 
 /**

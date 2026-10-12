@@ -141,6 +141,7 @@ function classifyBitswapError(
 async function fetchViaGateway(
   cidString: string,
   onStatus?: StatusCallback,
+  signal?: AbortSignal,
 ): Promise<FetchResult> {
   const stopGw = m.timer(S.CONTENT_GATEWAY);
   try {
@@ -149,7 +150,7 @@ async function fetchViaGateway(
       onStatus?.("Fetching archive from IPFS gateway...");
       log.warn(`[dot.li fetch] Gateway: requesting CAR (codec dag-pb)...`);
       const gatewayStart = performance.now();
-      const carBuffer = await fetchCarFromIpfs(cidString);
+      const carBuffer = await fetchCarFromIpfs(cidString, undefined, signal);
       log.warn(
         `[dot.li fetch] Gateway CAR: fetched ${String(Math.round(carBuffer.length / 1024))} KB in ${dur(gatewayStart)}`,
       );
@@ -163,7 +164,7 @@ async function fetchViaGateway(
       onStatus?.("Fetching content via IPFS gateway...");
       log.warn(`[dot.li fetch] Gateway: plain GET (codec raw)...`);
       const gatewayStart = performance.now();
-      const { data } = await fetchFromIpfs(cidString);
+      const { data } = await fetchFromIpfs(cidString, undefined, signal);
       log.warn(
         `[dot.li fetch] Gateway: fetched ${String(Math.round(data.length / 1024))} KB in ${dur(gatewayStart)}`,
       );
@@ -199,8 +200,11 @@ export async function fetchArchive(
   options?: {
     useGateway?: boolean;
     bitswapBlockSource?: BitswapBlockSource;
+    /** Cancels gateway requests. Bitswap sources own their cancellation. */
+    signal?: AbortSignal;
   },
 ): Promise<FetchResult> {
+  options?.signal?.throwIfAborted();
   performance.mark("dotli:fetch:start");
   const stopFetch = m.timer(S.CONTENT_FETCH);
   const blockSource = options?.bitswapBlockSource;
@@ -222,7 +226,8 @@ export async function fetchArchive(
     const result =
       blockSource !== undefined
         ? await fetchViaBitswapRpc(cidString, blockSource, onStatus)
-        : await fetchViaGateway(cidString, onStatus);
+        : await fetchViaGateway(cidString, onStatus, options?.signal);
+    options?.signal?.throwIfAborted();
     performance.mark("dotli:fetch:end");
     log.warn(`[dot.li fetch] Content fetched via ${method}`);
     measureContentSize(result);

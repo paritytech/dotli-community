@@ -4,6 +4,10 @@
 import runtimeLock from "../../../scripts/polkavm-runtime.lock.json";
 
 export const POLKAVM_RUNTIME_SOURCE = `parity-polkavm-browser-runtime-${runtimeLock.packageVersion}-${runtimeLock.upstreamRevision}`;
+export const POLKAVM_WORKSPACE_AVAILABLE = Object.hasOwn(
+  runtimeLock.assets,
+  "polkavm-workspace.js",
+);
 
 export function polkaVmRuntimeAssetUrl(
   asset: keyof typeof runtimeLock.assets,

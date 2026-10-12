@@ -36,6 +36,7 @@ window.addEventListener("vite:preloadError", (event) => {
   });
 });
 import { packArchive, type ArchiveFiles } from "@dotli/content/archive";
+import { WORKSPACE_DB_NAME } from "./polkavm-workspace-store";
 import type { FetchResult } from "@dotli/content/fetch";
 import { isEncrypted, decryptContent } from "@dotli/content/decrypt";
 import { showError } from "@dotli/ui/ui";
@@ -559,12 +560,12 @@ async function decryptIfNeeded(
 }
 
 /**
- * Wipe every piece of sandbox-origin state before init. Triggered by the
+ * Reset sandbox application/cache state before init, preserving user projects.
  * `fullReset=1` URL param the host sets on the first load after "Save &
  * Apply".
  *
  * Clears, in order:
- *   - IndexedDB   (all databases enumerable via `indexedDB.databases()`)
+ *   - IndexedDB   (enumerable databases except durable user workspaces)
  *   - CacheStorage (every named cache the document can see)
  *   - ServiceWorker registrations (next `registerAppServiceWorker()` call
  *     installs a fresh one against empty caches)
@@ -593,7 +594,11 @@ async function purgeSandboxOriginState(): Promise<void> {
         dbs.map(
           (db) =>
             new Promise<void>((resolve) => {
-              if (db.name === undefined || db.name === "") {
+              if (
+                db.name === undefined ||
+                db.name === "" ||
+                db.name === WORKSPACE_DB_NAME
+              ) {
                 resolve();
                 return;
               }

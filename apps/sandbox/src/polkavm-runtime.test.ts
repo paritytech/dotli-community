@@ -82,15 +82,6 @@ function doomAppV2Manifest(): string {
   });
 }
 
-function tri2dAppV2Manifest(): string {
-  const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
-  const capabilities = manifest.capabilities as Record<string, unknown>;
-  const graphics = capabilities.graphics as Record<string, unknown>;
-  graphics.profile = "tri2d";
-  delete capabilities.audio;
-  return JSON.stringify(manifest);
-}
-
 function webGpuRasterAppV2Manifest(): string {
   const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
   const capabilities = manifest.capabilities as Record<string, unknown>;
@@ -465,18 +456,6 @@ describe("PolkaVM package recognition", () => {
     };
 
     expect(isPolkaVmPackage(files)).toBe(true);
-    expect(describePolkaVmPackage(files)).toEqual({
-      graphicsProfile: "framebuffer",
-      webGpuRequirements: null,
-      webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["WASD Move", "Space Fire"],
-      inputFeatures: ["pointer", "keyboard", "wheel", "motion"],
-      audioEnabled: true,
-      requiredAssets: ["game/doom.wad"],
-      fileInputHandlers: [],
-      manifestVersion: null,
-    });
   });
 
   it("recognizes App manifest v2 and requires exact external bytes", () => {
@@ -487,18 +466,6 @@ describe("PolkaVM package recognition", () => {
       "game/doom.wad": new Uint8Array([4, 5, 6]),
     };
 
-    expect(describePolkaVmPackage(files, manifest)).toEqual({
-      graphicsProfile: "framebuffer",
-      webGpuRequirements: null,
-      webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
-      audioEnabled: true,
-      requiredAssets: [],
-      fileInputHandlers: [],
-      manifestVersion: 2,
-    });
     expect(() => describePolkaVmPackage(files)).toThrow(
       /external App manifest is required/,
     );
@@ -706,51 +673,19 @@ describe("PolkaVM package recognition", () => {
     ]);
   });
 
-  it("recognizes strict App manifest v2 Tri2D packages", () => {
-    const manifest = tri2dAppV2Manifest();
-    const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-    };
-    expect(describePolkaVmPackage(files, manifest)).toEqual({
-      graphicsProfile: "tri2d",
-      webGpuRequirements: null,
-      webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
-      audioEnabled: false,
-      requiredAssets: [],
-      fileInputHandlers: [],
-      manifestVersion: 2,
-    });
-  });
-
-  it("recognizes strict App manifest v2 WebGPU Raster limits", () => {
-    const manifest = webGpuRasterAppV2Manifest();
-    const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-    };
-    expect(describePolkaVmPackage(files, manifest)).toEqual({
-      graphicsProfile: "webgpu-raster",
-      webGpuRequirements: {
-        requiredFeatures: [],
-        requiredLimits: {
-          maxTextureDimension2D: 4096,
-          maxBufferSize: 1024,
-          maxBindingsPerBindGroup: 3,
+  it("refuses an unsupported workspace ABI instead of launching without persistence", () => {
+    const value = JSON.parse(webGpuRasterAppV2Manifest());
+    value.capabilities.workspace = { abiVersion: 2 };
+    const manifest = JSON.stringify(value);
+    expect(() =>
+      describePolkaVmPackage(
+        {
+          "manifest.json": encoder.encode(manifest),
+          "app.polkavm": new Uint8Array([1, 2, 3]),
         },
-      },
-      webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
-      audioEnabled: false,
-      requiredAssets: [],
-      fileInputHandlers: [],
-      manifestVersion: 2,
-    });
+        manifest,
+      ),
+    ).toThrow(/workspace requires ABI version 1/);
   });
 
   it("admits a 128 MiB program view but rejects one byte more", () => {

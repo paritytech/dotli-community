@@ -11,6 +11,7 @@ import { getActiveServicesConfig } from "@dotli/config/network";
 export async function fetchFromIpfs(
   cid: string,
   gateway: string = getActiveServicesConfig().bulletin.ipfsGateways[0],
+  signal?: AbortSignal,
 ): Promise<{
   data: Uint8Array;
   contentType?: string;
@@ -20,6 +21,7 @@ export async function fetchFromIpfs(
   const url = `${gateway}/ipfs/${cid}?format=raw`;
 
   const response = await fetch(url, {
+    signal,
     headers: { Accept: "application/vnd.ipld.raw" },
   });
 
@@ -45,10 +47,12 @@ export async function fetchFromIpfs(
 export async function fetchCarFromIpfs(
   cid: string,
   gateway: string = getActiveServicesConfig().bulletin.ipfsGateways[0],
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   const url = `${gateway}/ipfs/${cid}?format=car`;
 
   const response = await fetch(url, {
+    signal,
     headers: { Accept: "application/vnd.ipld.car" },
   });
 

@@ -104,6 +104,9 @@ export interface PolkaVmAppManifestV2 {
       requiredFeatures: readonly string[];
     };
     fileInput?: FileInputRequirement;
+    workspace?: {
+      abiVersion: 1;
+    };
   };
 }
 
@@ -382,6 +385,20 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     !validFileInput(capabilities.fileInput, runtime.entrypoint as string)
   ) {
     errors.push(`${p}fileInput capability is unsupported`);
+  }
+  if (capabilities?.workspace !== undefined) {
+    const workspace = isPlainObject(capabilities.workspace)
+      ? capabilities.workspace
+      : null;
+    if (
+      workspace?.abiVersion !== 1 ||
+      Object.keys(workspace).some((key) => key !== "abiVersion") ||
+      capabilities.fileInput !== undefined
+    ) {
+      errors.push(
+        `${p}workspace requires ABI version 1 and cannot accompany fileInput`,
+      );
+    }
   }
   return errors;
 }

@@ -145,6 +145,62 @@ restarts the guest in the same iframe. The file remains local to that product
 origin; it is not uploaded. Save storage is keyed by the mounted file digest so
 two cartridges do not share save data.
 
+An App may instead declare `capabilities.workspace: { "abiVersion": 1 }` for a
+browser-private project rooted at `/home`. This requires a workspace-enabled
+runtime distribution; the Host rejects older pins rather than starting a guest
+without its filesystem service. Workspace and single-file input capabilities
+cannot be combined.
+
+The editor opens the last-opened project without a startup chooser. First use
+creates an empty `Untitled` project. The **Project** menu provides **Open Recent**,
+**New Project**, **Import Project**, and **New from Template: SPA Starter**.
+The starter is a working HTML/CSS/JavaScript counter app with no dependencies:
+export and extract it, then open `index.html` in a browser. Imports copy selected
+files/directories or uncompressed TAR archives into a separate project.
+
+Project selection stays over the running editor. Cancelling, selecting the same
+project, or failing to acquire another project's writer lock keeps the current
+editor and its buffers intact. The selected project's lock is acquired before
+the old editor is stopped. Last-opened ordering is stored separately from file
+revisions and does not modify saved contents.
+
+In the workspace-enabled Zed guest, **File → Make Code Readable (Saved Copy)**
+formats a saved JS/JSX, HTML, CSS, or JSON file into a sibling such as
+`app.readable.js`, then opens it in another tab. Existing names get numbered
+suffixes rather than being overwritten. Save the active file first; the original
+file and other unsaved buffers are not changed.
+
+Formatting uses standalone Prettier in a separate worker, with fixed bundled
+parsers and no execution of source code or project configuration. It does not
+recover original names or source maps. HTML uses strict whitespace sensitivity;
+embedded-language formatting is disabled to preserve tagged-template contents.
+HTML script/style code is not beautified.
+Invalid UTF-8, unsupported formats, syntax errors, and output exceeding the
+1 MiB file limit are rejected without creating a partial copy. Formatter
+computation times out after 15 seconds; durable storage commits do not use that
+timeout. A copy is acknowledged only after its storage transaction completes.
+
+Files and filesystem metadata live in the product origin's
+`dotli-polkavm-workspaces` IndexedDB
+database, keyed by project ID rather than executable version or digest.
+Successful saves require strict transaction completion. Web Locks permit one
+writer per project, with revision checks also rejecting stale commits.
+Failed saves leave the previous saved version intact and report an error to
+the editor; unsaved buffers must be preserved before reloading.
+
+The **Project** menu exports every saved file and directory as TAR, including
+unopened binary files, hidden files, and empty directories. It excludes unsaved
+editor buffers and warns before switching projects. Only validated
+workspace-capable app frames receive the sandbox's download permission.
+Directory pickers cannot supply empty directories; TAR preserves complete
+trees. Limits are 64 files, 256 non-root directories, 1 MiB per file, and
+200-byte UTF-8 paths. Links and special filesystem nodes are rejected.
+Imports never modify the desktop originals. There is no Git, terminal, cloud
+sync, or desktop-folder synchronization. Ordinary cache resets preserve the
+project database, but site-data clearing, browser eviction, or ending a private
+session can remove it. Export is a separate backup, not automatic persistence
+outside the browser.
+
 While a guest text field is active, native paste shortcuts (`Cmd+V`, `Ctrl+V`,
 `Ctrl+Shift+V`, or `Shift+Insert`, where supported by the browser) deliver
 plain text through bounded text-input records. They do not also invoke the

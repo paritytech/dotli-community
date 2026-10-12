@@ -25,6 +25,7 @@
   "dependencies": {
     "@dotli/config": "workspace:*",
     "@dotli/metrics": "workspace:*",
+    "@dotli/protocol": "workspace:*",
     "@dotli/shared": "workspace:*",
     "@dotli/storage": "workspace:*",
     "@noble/hashes": "^2.2.0",

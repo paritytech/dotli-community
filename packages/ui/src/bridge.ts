@@ -41,6 +41,8 @@ import {
 } from "@dotli/config/network";
 import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+import { parseExecutableManifest } from "@dotli/resolver/manifest-types";
+import type { PolkaVmAppManifestV2 } from "@dotli/resolver/manifest-types";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
 import {
@@ -98,6 +100,7 @@ import {
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
 import { installPolkaVmViewInsetsRelay } from "./polkavm-view-insets";
+import { installWorkspaceImportBridge } from "./workspace-import";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
@@ -1407,6 +1410,26 @@ export function initBridgeEventListeners(
   }
   blockingModalCoordinator = modalCoordinator;
   bridgeEventListenersInitialized = true;
+  installWorkspaceImportBridge(() => {
+    const host = currentHost;
+    const product = currentProduct;
+    if (
+      host === null ||
+      host.generation !== renderGeneration ||
+      product?.mode !== "subdomain" ||
+      !parsePolkaVmExecutableManifest(product.executableManifest)?.capabilities
+        .workspace
+    )
+      return null;
+    const source = host.iframe.contentWindow;
+    if (source === null) return null;
+    return {
+      source,
+      origin: sandboxOriginForLabel(product.label),
+      owner: host,
+      backend: getBackend(),
+    };
+  });
   (
     window as typeof window & { __dotliTruapiBridgeReady?: boolean }
   ).__dotliTruapiBridgeReady = true;
@@ -2438,26 +2461,23 @@ export async function renderIframe(
   });
 }
 
-function isPolkaVmExecutableManifest(value: string | null): boolean {
+function parsePolkaVmExecutableManifest(
+  value: string | null,
+): PolkaVmAppManifestV2 | null {
   if (value === null) {
-    return false;
+    return null;
   }
-  try {
-    const manifest: unknown = JSON.parse(value);
-    if (
-      manifest === null ||
-      typeof manifest !== "object" ||
-      !("runtime" in manifest) ||
-      manifest.runtime === null ||
-      typeof manifest.runtime !== "object" ||
-      !("kind" in manifest.runtime)
-    ) {
-      return false;
-    }
-    return manifest.runtime.kind === "polkavm";
-  } catch {
-    return false;
+  const parsed = parseExecutableManifest(value);
+  if (!parsed.ok) {
+    return null;
   }
+  const manifest = parsed.value;
+  return manifest.kind === "app" &&
+    manifest.$v === 2 &&
+    manifest.runtime.kind === "polkavm" &&
+    "capabilities" in manifest
+    ? manifest
+    : null;
 }
 
 /**
@@ -2563,7 +2583,8 @@ export async function renderAppSubdomain(
   }
 
   const iframeUrl = new URL(url);
-  const isPolkaVm = isPolkaVmExecutableManifest(executableManifest);
+  const polkaVmManifest = parsePolkaVmExecutableManifest(executableManifest);
+  const isPolkaVm = polkaVmManifest !== null;
   emitDotliDebugEvent({
     layer: "bridge",
     event: "setup_begin",
@@ -2582,7 +2603,8 @@ export async function renderAppSubdomain(
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
     sandbox:
-      "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
+      "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups" +
+      (polkaVmManifest?.capabilities.workspace ? " allow-downloads" : ""),
     label,
     archiveCid: cid,
     extraAllow: isPolkaVm ? ["accelerometer", "gyroscope"] : [],

@@ -258,10 +258,12 @@ describe("bridge render lifecycle", () => {
         iframeUrl: string;
         allowedOrigin: string;
         allow: string;
+        sandbox: string;
         container: HTMLElement;
       }) => {
         const iframe = document.createElement("iframe");
         iframe.dataset.src = args.iframeUrl;
+        iframe.setAttribute("sandbox", args.sandbox);
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -424,9 +426,54 @@ describe("bridge render lifecycle", () => {
     expect(mocks.iframeHosts[0].allow).not.toContain("gyroscope");
   });
 
+  it.each([
+    { name: "workspace ABI 1", workspace: { abiVersion: 1 }, downloads: true },
+    { name: "no workspace capability", workspace: undefined, downloads: false },
+    {
+      name: "unsupported workspace ABI",
+      workspace: { abiVersion: 2 },
+      downloads: false,
+    },
+  ])(
+    "confines export downloads to validated workspaces: $name",
+    async ({ workspace, downloads }) => {
+      const executableManifest = JSON.stringify({
+        $v: 2,
+        kind: "app",
+        appVersion: [0, 4, 0],
+        runtime: { kind: "polkavm", abiVersion: 1, entrypoint: "app.polkavm" },
+        capabilities: {
+          graphics: {
+            abiVersion: 1,
+            profile: "webgpu-raster",
+            requiredFeatures: [],
+          },
+          workspace,
+        },
+      });
+      // The per-test module reset must isolate the bridge's singleton state.
+      const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+      const render = renderAppSubdomain(
+        "workspace-cid",
+        "workspace",
+        executableManifest,
+      );
+      await waitForProviderRequests(1);
+      mocks.coreProviderDefers[0].resolve(makeProvider());
+      await render;
+
+      expect(
+        mocks.iframeHosts[0].iframe
+          .getAttribute("sandbox")
+          ?.split(" ")
+          .includes("allow-downloads"),
+      ).toBe(downloads);
+    },
+  );
+
   it("delegates motion sensors to PolkaVM product frames with web fallbacks", async () => {
     const executableManifest =
-      '{"$v":2,"kind":"app","appVersion":[0,1,12],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm","fallback":{"kind":"web","entrypoint":"fallback/index.html"}},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+      '{"$v":2,"kind":"app","appVersion":[0,1,12],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm","fallback":{"kind":"web","entrypoint":"fallback/index.html"}},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
 
     const render = renderAppSubdomain(
@@ -451,7 +498,7 @@ describe("bridge render lifecycle", () => {
     }
     vi.stubGlobal("DeviceMotionEvent", TestDeviceMotionEvent);
     const executableManifest =
-      '{"$v":2,"kind":"app","appVersion":[0,1,9],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+      '{"$v":2,"kind":"app","appVersion":[0,1,9],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const render = renderAppSubdomain(
       "motion-relay-cid",
@@ -530,7 +577,7 @@ describe("bridge render lifecycle", () => {
 
   it("mediates one PolkaVM platform command per trusted app-frame activation", async () => {
     const executableManifest =
-      '{"$v":2,"kind":"app","appVersion":[0,2,0],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"tri2d","requiredFeatures":[]}}}';
+      '{"$v":2,"kind":"app","appVersion":[0,2,0],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"tri2d","requiredFeatures":[]}}}';
     // Import after the per-test module reset so bridge singleton state is isolated.
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const render = renderAppSubdomain(
