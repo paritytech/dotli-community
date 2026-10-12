@@ -327,10 +327,10 @@ the approved HTTPS origin.
 
 The shell exposes **Background receiving** in Settings. Enabling Web Push must come from that button's user gesture; it
 does not enroll products. Enrollment requires a separate trusted host consent prompt. Revoke all receiving disables the
-durable registrations locally before any asynchronous relay synchronization. Explicit disconnect, wallet erase, network
-replacement, and full reset use the same local-first fence. A full reset retains the receiver's durable revocation
-ledger so pending remote deletions are not lost; ordinary product close, page close, and suspension do not erase consent
-or enrollments.
+durable registrations locally before any asynchronous relay synchronization. Explicit disconnect, wallet erase, turning
+the signing local wallet off in Settings, network replacement, and full reset use the same local-first fence. A full
+reset retains the receiver's durable revocation ledger so pending remote deletions are not lost; ordinary product close,
+page close, and suspension do not erase consent or enrollments.
 
 Local Chromium qualification exercised the built host at `https://browser-smoke.receiving.test`: Settings enabled a real
 provider subscription through the button, with exactly one root-scoped `/host-sw.js`; the receiving UI reported enabled

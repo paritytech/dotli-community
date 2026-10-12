@@ -31,6 +31,7 @@ import { getProductState } from './state/product.js';
 import { THEME_KEY } from './theme-controller.js';
 import { flushSharedModeWrites } from './shared-mode.js';
 import { revokeReceivingOnLogout } from './receiving.js';
+import { getWalletMode } from './state/wallet-mode.js';
 
 /** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */
 export interface ModeDraft {
@@ -50,8 +51,10 @@ export async function applyAndReset(
   prior: ModeDraft,
   { forceFullWipe = false }: { forceFullWipe?: boolean } = {},
 ): Promise<void> {
-  // Fence the previous network locally before replacing its selected scope.
-  if (draft.network !== prior.network) {
+  // Fence the previous network locally before replacing its selected scope. Turning the local wallet off while it
+  // signs logs its account out, as forgetting it does, so its receiving registrations go first too.
+  const leavesLocalWallet = prior.localWalletEnabled && !draft.localWalletEnabled && getWalletMode() === 'local';
+  if (draft.network !== prior.network || leavesLocalWallet) {
     await revokeReceivingOnLogout();
   }
   if (forceFullWipe) {
