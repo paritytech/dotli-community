@@ -31,7 +31,8 @@ export interface CreateHostCallbacksOptions {
   pairingDotSuffix?: boolean | undefined;
   pairingHostGlobal?: boolean | undefined;
   blockingModalScope?: BlockingModalScope;
-  custodyLease?: string;
+  /** For a local wallet core, whose storage must not touch the paired session. */
+  local?: boolean | undefined;
   contacts?: Required<ContactsPlatform>;
 }
 
@@ -42,7 +43,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
-    custodyLease,
+    local,
     contacts,
   } = options;
   const presentAuth = createAuthStateChanged(pairingLabel ?? label, {
@@ -64,7 +65,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: createSessionStoreAdapters(custodyLease),
+    coreStorage: createSessionStoreAdapters({ local }),
     auth: {
       authStateChanged: state => {
         setNotificationAccount(label, state.tag === 'Connected' ? state.value.identityAccountId : undefined);
@@ -77,8 +78,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
     hop: createHopProvider(),
-    // Always served; the core itself denies chat calls on non-Chat
-    // executions and without an active session.
+    // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),
     ...(contacts === undefined ? {} : { contacts }),
   };

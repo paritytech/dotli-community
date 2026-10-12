@@ -231,28 +231,6 @@ describe('chat panel', () => {
     expect(byId('chat-panel').hidden).toBe(true);
   });
 
-  it('closes authenticated Chat when the native wallet becomes unavailable', async () => {
-    const { panel } = await loadChatModules();
-    panel.initChatPanel();
-    // loadChatModules resets the module graph; use that graph's controller/store.
-    const { initAuthController } = await import('../src/auth-controller.js');
-    const { createBlockingModalCoordinator } = await import('../src/blocking-modal-queue.js');
-    initAuthController(createBlockingModalCoordinator());
-    loadProduct('chatty-wallet-unavailable');
-    const button = byId('chat-button');
-    clickChat();
-    expect(byId('chat-panel').hidden).toBe(false);
-
-    stores.auth.setAuthState({ tag: 'WalletUnavailable', reason: 'Native worker stopped' });
-    flushUi();
-    expect(button.hidden).toBe(true);
-    expect(byId('chat-panel').hidden).toBe(true);
-
-    setLoggedIn(true);
-    expect(button.hidden).toBe(false);
-    expect(byId('chat-panel').hidden).toBe(true);
-  });
-
   it('As a user, an empty room list shows a waiting hint', async () => {
     const { panel } = await loadChatModules();
     panel.initChatPanel();

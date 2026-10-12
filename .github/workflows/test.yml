@@ -169,8 +169,8 @@ jobs:
     name: E2E
     runs-on: ubuntu-latest
     needs: unit
-    # Include source-pinned CLI generation/build before Playwright's 30-minute limit.
-    timeout-minutes: 60
+    # Over Playwright's 30 min globalTimeout, so Playwright cuts a stuck run off with diagnostics.
+    timeout-minutes: 35
     if: ${{ github.event.sender.type != 'Bot' }}
     env:
       # Must match the host's `defaultNetwork()`.

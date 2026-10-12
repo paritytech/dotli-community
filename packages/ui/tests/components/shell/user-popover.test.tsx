@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { requestTruapiDisconnect } from '../../../src/auth-controller.js';
 import { setAuthState } from '../../../src/state/auth.js';
+import { setWalletModeState } from '../../../src/state/wallet-mode.js';
 import type { TruapiSessionUiState } from '../../../src/host-callbacks/SessionStore.js';
 import { popoverBody, renderComponent, waitForContent } from '../../helpers/solid.js';
 import { byId, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
@@ -169,6 +170,39 @@ describe('UserPopover', () => {
       hint: true,
       open: true,
     });
+  });
+
+  it('As a local wallet user, the popover marks my account as local', async () => {
+    // Given
+    setWalletModeState({ mode: 'local', failure: null });
+
+    // When
+    await renderAccount({ connected: true, publicKey: PUBLIC_KEY, liteUsername: 'pgherveou.04' });
+    await openPopover();
+
+    // Then
+    expect(byTestId('account-local').textContent).toBe('Local account');
+  });
+
+  it('As a local wallet user restored from a bare session, the popover says I am connected, not through Polkadot Mobile', async () => {
+    // Given
+    setWalletModeState({ mode: 'local', failure: null });
+
+    // When
+    await renderAccount({ connected: true });
+    await openPopover();
+
+    // Then
+    expect(byId('user-popover-username').textContent).toBe('Connected');
+  });
+
+  it('As a Polkadot App user, the popover has no local account mark', async () => {
+    // When
+    await renderAccount({ connected: true, publicKey: PUBLIC_KEY, liteUsername: 'pgherveou.04' });
+    await openPopover();
+
+    // Then
+    expect(document.querySelector('[data-testid="account-local"]')).toBeNull();
   });
 
   it('As a phone user, my account opens as a sheet titled Account, its body without a heading of its own', async () => {

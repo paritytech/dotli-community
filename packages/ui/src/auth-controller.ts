@@ -11,7 +11,6 @@ import { ERRORS } from './errors.js';
 import type { DotliAuthState } from './host-callbacks/AuthState.js';
 import { authStore, setLoggedIn } from './state/auth.js';
 import { resetAuthModal, updateAuthModal } from './state/auth-modal.js';
-import { isExperimentalWalletActive } from './host-callbacks/SessionStore.js';
 
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
@@ -24,9 +23,7 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
 
   window.addEventListener('dotli:request-login', (e: Event) => {
     const detail = (e as CustomEvent<{ reason?: string; label?: string }>).detail;
-    if (openAuthModal(detail.reason, detail.label)) {
-      requestTruapiLogin(detail.reason);
-    }
+    startHostLogin(detail.reason, detail.label);
   });
 
   // The store never drops a set as equal, so every step of the ordered stream reaches here.
@@ -35,12 +32,10 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
   });
 
   setLoggedIn(false);
-  document.documentElement.classList.toggle('experimental-wallet-active', isExperimentalWalletActive());
 }
 
 /** `Disconnected` only updates the session, so an unrelated disconnect never closes an active pairing. */
 function applyAuthState(state: DotliAuthState): void {
-  document.documentElement.classList.toggle('experimental-wallet-active', isExperimentalWalletActive());
   // The tag and failure kind only: a failure's reason can carry wallet text.
   log.event('auth state', {
     flow: 'wallet',
@@ -51,10 +46,7 @@ function applyAuthState(state: DotliAuthState): void {
     case 'Restoring':
       break;
     case 'Disconnected':
-      setLoggedIn(false);
-      break;
-    case 'WalletUnavailable':
-      closeAuthModal({ skipTruapiCancel: true });
+    case 'Unreachable':
       setLoggedIn(false);
       break;
     case 'Pairing':
@@ -200,12 +192,17 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
 }
 
 export function startLogin(): void {
-  if (isExperimentalWalletActive()) {
-    window.dispatchEvent(new Event('dotli:wallet-open'));
+  startHostLogin();
+}
+
+/** A pairing writes its session to the shared store, so one started while the store is down would be lost. */
+function startHostLogin(reason?: string, label?: string): void {
+  if (authStore.get().tag === 'Unreachable') {
+    log.event('sign-in refused while the saved session is unreachable', { flow: 'wallet' });
     return;
   }
-  if (openAuthModal()) {
-    requestTruapiLogin();
+  if (openAuthModal(reason, label)) {
+    requestTruapiLogin(reason);
   }
 }
 export { startLogin as retryLogin };
