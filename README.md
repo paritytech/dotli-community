@@ -101,6 +101,11 @@ through a Service Worker that acts as a virtual file system.
 4. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
 5. Create an iframe to `<label>.app.paseo.li?cid=<cid>` which fetches and renders the content
 
+A resolver read never outlives its chain follow. When the follow stops, is torn down, or the node refuses to unpin a
+block the resolver no longer needs, every read still in flight fails as stopped instead of reporting the name as not
+found: the light-client resolver reads it again on a rebuilt client, and both backends redial for the next read. A stop
+heard from a follow that was already replaced leaves the replacement alone.
+
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 

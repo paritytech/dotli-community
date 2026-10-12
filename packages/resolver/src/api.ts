@@ -46,6 +46,7 @@ export class ApiStoppedError extends Error {
 }
 
 export interface Api {
+  /** Rejects with `ApiStoppedError` once the follow stops, even after it was ready. */
   whenReady(): Promise<void>;
   /** Keeps the best block pinned until `read` settles. Multi-call reads must go through here. */
   withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T>;
@@ -58,34 +59,43 @@ export interface Api {
     atHash?: string,
     trieId?: Uint8Array,
   ): Promise<Uint8Array | null>;
-  /** Fires at most once. */
+  /** Fires once, on a stop or `destroy`; a late subscriber fires at once. */
   onStop(cb: () => void): () => void;
-  /** Leaves the owning `SubstrateClient` alive. */
+  /** Ends this follow, failing its outstanding reads with `ApiStoppedError`. Leaves the owning `SubstrateClient` alive. */
   destroy(): void;
 }
 
 /** Opens its own `chainHead` follow without runtime. The caller owns the client. */
 export function createRawApi(client: SubstrateClient): Api {
   let bestHashRef: string | null = null;
-  let stopped = false;
+  let stopped: ApiStoppedError | null = null;
   const stopCbs = new Set<() => void>();
-  let resolveReady: (() => void) | null = null;
-  let rejectReady: ((err: unknown) => void) | null = null;
-  const ready = new Promise<void>((res, rej) => {
-    resolveReady = res;
-    rejectReady = rej;
+  /** Settles every read in flight, since an operation on a dead transport may never answer. */
+  const inFlight = new Set<(err: ApiStoppedError) => void>();
+  let resolveReady!: () => void;
+  let rejectReady!: (err: ApiStoppedError) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
   });
+  // A follow destroyed before anyone awaits it must not surface as an unhandled rejection.
+  void ready.catch(() => undefined);
 
-  function markStopped(err?: unknown): void {
-    if (stopped) {
+  function terminate(err?: unknown): void {
+    if (stopped !== null) {
       return;
     }
-    stopped = true;
-    if (rejectReady !== null) {
-      const wrapped = err instanceof ApiStoppedError ? err : new ApiStoppedError(err);
-      rejectReady(wrapped);
-      rejectReady = null;
-      resolveReady = null;
+    stopped = err instanceof ApiStoppedError ? err : new ApiStoppedError(err);
+    rejectReady(stopped);
+    for (const reject of inFlight) {
+      reject(stopped);
+    }
+    inFlight.clear();
+    try {
+      follow.unfollow();
+      // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: the follow may already be stopped.
+    } catch {
+      /* already stopped */
     }
     for (const cb of stopCbs) {
       try {
@@ -95,6 +105,7 @@ export function createRawApi(client: SubstrateClient): Api {
         /* ignore */
       }
     }
+    stopCbs.clear();
   }
 
   // A server may stop a follow that lets pins pile up. Reads only target descendants of the newest finalized
@@ -104,12 +115,11 @@ export function createRawApi(client: SubstrateClient): Api {
   const retiredWhileHeld = new Set<string>();
 
   function unpin(hashes: string[]): void {
-    if (hashes.length === 0 || stopped) {
+    if (hashes.length === 0 || stopped !== null) {
       return;
     }
-    follow.unpin(hashes).catch(() => {
-      /* the follow stopped, and its pins went with it */
-    });
+    // A refused unpin leaves blocks pinned that nothing will release, so the follow ends and its owner redials.
+    follow.unpin(hashes).catch(terminate);
   }
 
   function retire(hashes: string[]): void {
@@ -152,34 +162,39 @@ export function createRawApi(client: SubstrateClient): Api {
     event => {
       if (event.type === 'initialized') {
         bestHashRef = event.finalizedBlockHashes.at(-1) ?? null;
+        if (bestHashRef === null) {
+          terminate();
+          return;
+        }
         retire(advanceFinalized(event.finalizedBlockHashes));
-        resolveReady?.();
-        resolveReady = null;
-        rejectReady = null;
+        resolveReady();
       } else if (event.type === 'bestBlockChanged') {
         bestHashRef = event.bestBlockHash;
       } else if (event.type === 'finalized') {
         retire([...advanceFinalized(event.finalizedBlockHashes), ...event.prunedBlockHashes]);
       }
     },
-    err => {
-      markStopped(err);
-    },
+    terminate,
   );
 
-  async function withStopGuard<T>(fn: () => Promise<T>): Promise<T> {
-    if (stopped) {
-      throw new ApiStoppedError();
+  function withStopGuard<T>(fn: () => Promise<T>): Promise<T> {
+    if (stopped !== null) {
+      return Promise.reject(stopped);
     }
-    try {
-      return await fn();
-    } catch (err) {
-      if (err instanceof StopError) {
-        markStopped(err);
-        throw new ApiStoppedError(err);
-      }
-      throw err;
-    }
+    return new Promise<T>((resolve, reject) => {
+      inFlight.add(reject);
+      void new Promise<T>(run => {
+        run(fn());
+      })
+        .then(resolve, (err: unknown) => {
+          if (err instanceof StopError) {
+            terminate(err);
+          }
+          // After a stop, papi's own rejection (a `DisjointError` once unfollowed) means the same thing.
+          reject(stopped ?? (err instanceof Error ? err : new Error('Storage read failed', { cause: err })));
+        })
+        .finally(() => inFlight.delete(reject));
+    });
   }
 
   async function resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null> {
@@ -232,7 +247,7 @@ export function createRawApi(client: SubstrateClient): Api {
   }
 
   return {
-    whenReady: () => ready,
+    whenReady: () => (stopped === null ? ready : Promise.reject(stopped)),
     withBestBlock,
     resolveTrieId,
     async readSlot(contractAddress, slotKey, atHash, trieId) {
@@ -259,13 +274,8 @@ export function createRawApi(client: SubstrateClient): Api {
         stopCbs.delete(cb);
       };
     },
-    destroy() {
-      try {
-        follow.unfollow();
-        // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: the follow may already be stopped.
-      } catch {
-        /* already stopped */
-      }
+    destroy: () => {
+      terminate();
     },
   };
 }
