@@ -9,8 +9,9 @@ import type { JSX } from '@solidjs/web';
 import { correlationKeyOf, type EventSeq, type EventStore, type StoredEvent } from '@dotli/truapi-debug';
 import { GroupDetail } from './detail/GroupDetail.js';
 import { SingleDetail } from './detail/SingleDetail.js';
-import type { PanelView } from './Tabs.js';
-import s from './DetailPane.module.css';
+import type { PanelView } from './ViewTabs.js';
+import { EmptyState } from './shared/EmptyState.js';
+import { Pane } from './shared/Pane.js';
 
 type Content =
   | { kind: 'empty'; message: string }
@@ -60,11 +61,7 @@ export function DetailPane(props: {
   const render = (snap: Snapshot): JSX.Element => {
     switch (snap.kind) {
       case 'empty':
-        return (
-          <div class={s['empty']} data-testid="td-detail-empty">
-            {snap.message}
-          </div>
-        );
+        return <EmptyState testId="td-detail-empty">{snap.message}</EmptyState>;
       case 'group':
         return <GroupDetail event={snap.event} group={snap.group} first={snap.first} />;
       case 'single':
@@ -73,8 +70,8 @@ export function DetailPane(props: {
   };
 
   return (
-    <div class={s['detail']} data-testid="td-detail" hidden={props.hidden}>
+    <Pane testId="td-detail" hidden={props.hidden} padded>
       {render(snapshot())}
-    </div>
+    </Pane>
   );
 }

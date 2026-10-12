@@ -30,14 +30,6 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
   `'frame'`, and nothing redials by itself, except a product's own requests,
   which may boot a new frame at most once per backoff window (1 s, doubling
   to 30 s, back to 1 s only for a frame that stayed up more than 30 s).
-- Resetting the protocol iframe rejects pending requests immediately and clears
-  their deadlines. Requests still waiting for the old frame to load or become
-  ready fail with that generation; wallet mutations are never replayed into its
-  replacement. Wallet-state refresh failures report `WalletUnavailable` rather
-  than becoming unhandled promise rejections. Every reset, including `pagehide`
-  on BFCache entry, retires remote chain IDs and revokes the page's signer before
-  removing the iframe that owns its Web Lock. A restored page must explicitly
-  verify the wallet again using a fresh frame.
 
 ## Where chains are used
 
@@ -253,7 +245,7 @@ sequenceDiagram
   consumer leases it again.
 - The resolver's papi clients drop themselves when their follow gets `stop`;
   their next read takes a fresh lease. A resolution running at that moment is
-  retried within a bounded four-attempt policy (see below).
+  retried once on it (see below).
 - On the smoldot backends the host pool's remote connection hears
   `onHalt('chain')`, and the host pool halts that chain the same way. Each
   TrUAPI core connection delivers its answers and stays open; its next request
@@ -277,16 +269,16 @@ sequenceDiagram
   Note over Pool: the Asset Hub chain halts
   Pool-->>Res: "Chain transport halted", then stop
   Res->>Res: stop drops the client
-  Res->>Pool: retry within budget: fresh lease, chain rebuilt
+  Res->>Pool: retry once: fresh lease, chain rebuilt
   Pool-->>Res: storage answer
   Res-->>Ctx: CID
   Ctx-->>Host: CID
 ```
 
-- `withHaltRetry` in `packages/resolver/src/sync-deadline.ts` wraps the
-  light-client and RPC-gateway readers for `resolveDotName`,
-  `resolveExecutableManifest`, `resolveOwner` and `resolveRootManifest`.
-  All three backends use the same bounded policy.
+- `withHaltRetry` in `packages/resolver/src/resolve.ts` wraps
+  `resolveDotName`, `resolveExecutableManifest`, `resolveOwner` and
+  `resolveRootManifest`. Both smoldot backends (`smoldot-direct`,
+  `smoldot-shared-worker`) run them.
 - A halt reaches a read in one of three shapes, and each one is retried:
   - the pool's answer to a request in flight, `Chain transport halted` with
     `data: 'dotli:chain-halted'`;
@@ -295,18 +287,15 @@ sequenceDiagram
   - papi's `DisjointError` (`ChainHead disjointed`): the same `stop` cut off an
     operation already running.
 - The retry gets what is left of the request's sync budget, not a new one.
-- **Four attempts at most.** If the last attempt halts too, the error reaches the host. Its error
+- **Once only.** If the retry halts too, the error reaches the host. Its error
   page shows the network-dropped copy: `chain-halted` for the first two
   shapes, which needs only a reload; the existing `chainhead-disjointed` for
   the third, which also purges the light client's caches.
 - A light client that keeps dying does not loop: its next connect fails, and
   that is a fatal. Nor does a single chain that halts again each time it is
-  rebuilt: products rebuild it only through its chain gate, and the block bars
-  back off.
-- RPC socket reconnection does not prevent a node from stopping its
-  `chainHead` follow. Gateway resolution drops that stopped client and opens
-  a fresh follow through the same bounded policy and remaining sync budget.
-  Protocol callers do not add another retry around the resolver.
+  rebuilt: products rebuild it only through its chain gate.
+- `rpc-gateway` resolution needs no retry. Its RPC socket never halts: it
+  reconnects and replays.
 
 ### …the light client cannot work (a fatal)
 
@@ -325,15 +314,14 @@ sequenceDiagram
   Cli->>Use: onProtocolReady, the host pool's frame gate ends its wait
 ```
 
-- A fatal is raised when the light client **cannot connect a chain** or its
-  SharedWorker crashes. Pending requests receive terminal answers, existing
-  follows stop, and retired-generation requests and replies are fenced.
-- Before a SharedWorker iframe reports fatal, it advances the per-network
-  worker URL generation under a shared-origin Web Lock. The localStorage
-  generation is shared within the browser's storage partition; concurrent
-  tabs retire it once, and stale callbacks cannot replace a newer generation.
-  The next frame joins that replacement instead of a closed worker identity
-  retained by the browser. Other dot.li tabs do not need to close.
+- A fatal is only raised when the light client **cannot connect a chain**. A
+  crashed light client shows up that way: every chain halts, consumers
+  reconnect, and the first reconnect fails.
+- In the SharedWorker a fatal is **permanent** while any document holds the
+  worker: tabs that connect later, and reloads, get the error at once instead
+  of retrying a dead light client. It ends when the browser drops the worker,
+  so closing every dot.li tab gets a new one. The error page says so:
+  "Closing other dot.li tabs, then reloading."
 - After `'frame'` the codebase never retries on its own: bitswap fails the
   fetch in progress. A product's requests are demand, but its papi client
   re-follows every 250 ms, so the host pool lets them boot a frame only

@@ -86,10 +86,7 @@ export function popoverBody(id: string): HTMLElement | null {
 
 /** Waits for the popover's lazy content chunk, a dynamic import that resolves over several microtasks. */
 export async function waitForContent(id: string): Promise<HTMLElement> {
-  flush();
-  await vi.dynamicImportSettled();
   const body = await vi.waitFor(() => {
-    flush();
     const found = popoverBody(id);
     const loaded =
       found !== null &&

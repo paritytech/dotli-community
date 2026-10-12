@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { getAuthModalState } from '../../../src/state/auth-modal.js';
 import { authStore, setAuthState } from '../../../src/state/auth.js';
+import { setWalletModeState } from '../../../src/state/wallet-mode.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { renderComponent, resetStores } from '../../helpers/solid.js';
 import { byTestId } from '../../support.js';
@@ -75,6 +76,34 @@ describe('AuthButton in the bar and on the landing page', () => {
     expect(button.textContent).not.toContain('Alice Smith');
     expect(button.getAttribute('aria-label')).toBe('AS, account');
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
+  });
+
+  it('As a signed-in local wallet user, my badge is marked as a local account', async () => {
+    // Given
+    setWalletModeState({ mode: 'local', failure: null });
+    const button = await renderButton();
+
+    // When
+    setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
+    await settleAll();
+
+    // Then
+    expect(byTestId('user-badge').getAttribute('data-wallet')).toBe('local');
+    expect(button.title).toBe('Local account');
+    expect(button.getAttribute('aria-label')).toBe('AS, local account');
+  });
+
+  it('As a signed-in Polkadot App user, my badge carries no local account mark', async () => {
+    // Given
+    const button = await renderButton();
+
+    // When
+    setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
+    await settleAll();
+
+    // Then
+    expect(byTestId('user-badge').hasAttribute('data-wallet')).toBe(false);
+    expect(button.title).toBe('Account');
   });
 
   it('As a signed-in user whose name changes, the badge in the bar follows the new initials', async () => {
@@ -392,5 +421,24 @@ describe('AuthButton', () => {
     expect(loginRequests.details).toEqual([{ reason: undefined }]);
     expect(getAuthModalState().open).toBe(true);
     expect(getAuthModalState().productLabel).toBeNull();
+  });
+
+  it('As a user whose saved sign-in cannot be reached, I see a busy reconnecting button that starts no sign-in', async () => {
+    // Given
+    const loginRequests = recordEvents('dotli:truapi-login-request');
+    const button = await renderButton();
+    setAuthState({ tag: 'Unreachable' });
+    await settleAll();
+
+    // When
+    button.click();
+    await settleAll();
+
+    // Then
+    expect(button.getAttribute('aria-label')).toBe('Reconnecting to your sign-in');
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.hasAttribute('disabled')).toBe(true);
+    expect(loginRequests.details).toEqual([]);
+    expect(getAuthModalState().open).toBe(false);
   });
 });

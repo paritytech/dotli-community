@@ -7,6 +7,13 @@ import { isEncrypted, type ArchiveFiles } from '@dotli/content';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import type { ArchiveLoader } from './archive-source.js';
+import { Bar } from './shared/Bar.js';
+import { CodeBlock } from './shared/CodeBlock.js';
+import { EmptyState } from './shared/EmptyState.js';
+import { Item, ItemList } from './shared/ItemList.js';
+import { Note } from './shared/Note.js';
+import { Pane } from './shared/Pane.js';
+import { Stack } from './shared/Stack.js';
 import s from './ArchiveView.module.css';
 
 interface ArchiveFile {
@@ -162,67 +169,57 @@ export function ArchiveView(props: { active: boolean; load: ArchiveLoader }): JS
     <div class={s['archive']} data-testid="td-archive" hidden={!props.active}>
       <Switch>
         <Match when={product().status !== 'loaded'}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             No product loaded yet.
-          </div>
+          </EmptyState>
         </Match>
         <Match when={cid() === undefined}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             This product is not served from a CID, so it has no archive.
-          </div>
+          </EmptyState>
         </Match>
         <Match when={failure() !== undefined}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             Could not read the archive: {failure()}
-          </div>
+          </EmptyState>
         </Match>
         <Match when={loaded() === undefined}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             Reading archive {cid()}…
-          </div>
+          </EmptyState>
         </Match>
         <Match when={loaded()}>
           {archive => (
             <>
               <div class={s['sidebar']}>
-                <div class={s['summary']} data-testid="td-archive-summary">
+                <Bar testId="td-archive-summary">
                   {`${String(archive().files.length)} ${archive().files.length === 1 ? 'file' : 'files'} · ${formatBytes(archive().total)}`}
-                </div>
-                <ul class={s['files']}>
+                </Bar>
+                <ItemList>
                   <For each={archive().files}>
                     {file => (
-                      <li>
-                        <button
-                          type="button"
-                          class={s['file']}
-                          data-testid="td-archive-file"
-                          data-active={selectedPath() === file.path ? '' : undefined}
-                          data-path={file.path}
-                          title={file.path}
-                          onClick={() => {
-                            setSelectedPath(file.path);
-                          }}
-                        >
-                          <span class={s['path']}>{file.path}</span>
-                          <span class={s['size']}>{formatBytes(file.bytes.length)}</span>
-                        </button>
-                      </li>
+                      <Item
+                        testId="td-archive-file"
+                        value={file.path}
+                        selected={selectedPath() === file.path}
+                        title={file.path}
+                        meta={formatBytes(file.bytes.length)}
+                        onSelect={() => {
+                          setSelectedPath(file.path);
+                        }}
+                      >
+                        {file.path}
+                      </Item>
                     )}
                   </For>
-                </ul>
+                </ItemList>
               </div>
-              <div class={s['content']} data-testid="td-archive-content">
-                <Switch
-                  fallback={
-                    <div class={s['empty']} data-testid="td-archive-empty">
-                      Select a file.
-                    </div>
-                  }
-                >
+              <Pane testId="td-archive-content" padded>
+                <Switch fallback={<EmptyState testId="td-archive-empty">Select a file.</EmptyState>}>
                   <Match when={shown()?.kind === 'encrypted'}>
-                    <div class={s['empty']} data-testid="td-archive-empty">
+                    <EmptyState testId="td-archive-empty">
                       Encrypted, not decrypted: the sandbox asks for its password.
-                    </div>
+                    </EmptyState>
                   </Match>
                   <Match when={shown()?.kind === 'image'}>
                     <Show when={imageUrl()}>
@@ -230,22 +227,22 @@ export function ArchiveView(props: { active: boolean; load: ArchiveLoader }): JS
                     </Show>
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>
-                    <div class={s['empty']} data-testid="td-archive-empty">
+                    <EmptyState testId="td-archive-empty">
                       Binary, {formatBytes(selected()?.bytes.length ?? 0)}
-                    </div>
+                    </EmptyState>
                   </Match>
                   <Match when={shownText()}>
                     {text => (
-                      <>
+                      <Stack>
                         <Show when={text().length > MAX_TEXT_CHARS}>
-                          <div class={s['note']}>Showing the first {MAX_TEXT_CHARS.toLocaleString()} characters.</div>
+                          <Note>Showing the first {MAX_TEXT_CHARS.toLocaleString()} characters.</Note>
                         </Show>
-                        <pre class={s['text']}>{text().slice(0, MAX_TEXT_CHARS)}</pre>
-                      </>
+                        <CodeBlock>{text().slice(0, MAX_TEXT_CHARS)}</CodeBlock>
+                      </Stack>
                     )}
                   </Match>
                 </Switch>
-              </div>
+              </Pane>
             </>
           )}
         </Match>

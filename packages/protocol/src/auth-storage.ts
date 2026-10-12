@@ -22,6 +22,20 @@ export function isSharedModeRequestMethod(method: ProtocolRequestMethod): method
   return SHARED_MODE_METHODS.has(method);
 }
 
+export type SharedWalletRequestMethod =
+  'localWalletRead' | 'localWalletSave' | 'localWalletIdentity' | 'localWalletForget';
+
+const SHARED_WALLET_METHODS = new Set<ProtocolRequestMethod>([
+  'localWalletRead',
+  'localWalletSave',
+  'localWalletIdentity',
+  'localWalletForget',
+]);
+
+export function isSharedWalletRequestMethod(method: ProtocolRequestMethod): method is SharedWalletRequestMethod {
+  return SHARED_WALLET_METHODS.has(method);
+}
+
 /**
  * Sessions are scoped to the root domain the shell runs on, so a host accepts only its own `SITE_ID`.
  * No allowlist, so unrelated roots never share sessions and new deployment domains need no change.

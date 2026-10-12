@@ -4,9 +4,9 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { buildTimeline, type EventSeq, type StoredEvent, type TimelineLane } from '@dotli/truapi-debug';
-import { wireHoverTooltips } from './hover-tooltip.js';
+import { wireHoverTooltips } from './shared/hover-tooltip.js';
+import { Pane } from './shared/Pane.js';
 import { Timeline } from './timeline/Timeline.js';
-import s from './TimelineView.module.css';
 
 export function TimelineView(props: {
   active: boolean;
@@ -44,11 +44,10 @@ export function TimelineView(props: {
   });
 
   return (
-    <div
-      class={s['timeline']}
-      data-testid="td-timeline"
-      tabindex="0"
+    <Pane
+      testId="td-timeline"
       hidden={!props.active}
+      focusable
       ref={el => {
         container = el;
         unwireTooltips = wireHoverTooltips(
@@ -59,6 +58,6 @@ export function TimelineView(props: {
       }}
     >
       <Timeline lanes={lanes()} selectedSeq={props.selectedSeq} onSelect={select} />
-    </div>
+    </Pane>
   );
 }
