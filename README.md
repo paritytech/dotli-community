@@ -432,6 +432,25 @@ display language. Products should use that date for day grouping rather than sli
 The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
 bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
 
+Rebuild the vendored SDK with one command. By default it builds the recorded `upstreamRevision` from the recorded
+`upstreamRepository`:
+
+```bash
+scripts/build-vendored-truapi-host.sh                                  # reproduce the recorded revision
+scripts/build-vendored-truapi-host.sh --revision <sha> --branch <name> --pr <number>
+scripts/build-vendored-truapi-host.sh --repo ../host-rust-core --revision <sha>  # objects from a local checkout
+```
+
+The script exports the revision with `git archive`, runs upstream's standard release steps (`npm ci --ignore-scripts`,
+`scripts/codegen.sh`, both package builds, `build:wasm`, `npm pack`), replaces `vendor/truapi` and `vendor/truapi-host`
+with the packed archives, applies the `@parity/truapi=file:../truapi` dependency override, and rewrites the lock's
+revision, archive, client and WASM hashes and the WASM features `build-wasm.mjs` reports. wasm-bindgen must match the
+revision's `Cargo.lock` and wasm-opt the Binaryen release its `install-wasm-artifact-tools.sh` pins; the script stops
+with the install command when either is missing. Cargo steps run with `RUSTC_WRAPPER=` and, when installed, under
+`dev-maintenance run` for the per-revision target in `~/.cache/dotli-truapi-host/<revision>/target`. Rebuilding the
+recorded revision leaves `git diff vendor` empty; anything else in the diff is a real SDK change to review. Run
+`npx npm@12.2.0 install --allow-remote=root` afterwards when the packages' dependencies change.
+
 ### Running the functional browser suite locally
 
 Use the same instrumentation as CI. Metrics enable the light-client ownership checks, and the loopback Sentry DSN lets
