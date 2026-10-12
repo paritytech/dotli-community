@@ -8,13 +8,13 @@ import type {
   NativeChatContactsSnapshot,
   ProductContext,
 } from '@parity/truapi-host';
-import type { WorkerSigningHostRuntime } from '@parity/truapi-host/web';
+import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { blockingModalAbortError, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { presentModal } from '../overlays/load.js';
 
 const HEX32 = /^0x[0-9a-f]{64}$/;
 
-type ContactsRuntime = Pick<WorkerSigningHostRuntime, 'getNativeChatContacts' | 'notifyContactsChanged'>;
+type ContactsRuntime = Pick<WorkerPairingHostRuntime, 'getNativeChatContacts' | 'notifyContactsChanged'>;
 
 type ContactSnapshot = Omit<NativeChatContactsSnapshot, 'contacts'> & {
   contacts: { peerIdentity: Bytes32; username?: string }[];

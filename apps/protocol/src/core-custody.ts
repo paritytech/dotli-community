@@ -1,25 +1,28 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { CORE_CUSTODY_BUSY_ERROR, type CoreCustodyOperation } from '@dotli/protocol';
+// Native Chat's private records for the local wallet: the main purse, device records, attachment chunks and the
+// product index. One tab of the browser profile holds them at a time, through this frame's Web Lock.
+
+import { CORE_CUSTODY_BUSY_ERROR, localWalletCustodyId, type CoreCustodyOperation } from '@dotli/protocol';
+import { loadLocalWallet } from '@dotli/storage';
 
 export const CORE_CUSTODY_DB_NAME = 'dotli-native-core-custody';
 const STORE = 'records';
 const KEY = 'encryption-key';
 const CUSTODY_LOCK = 'dotli:native-core-custody';
 /**
- * The test-wallet owner lease moves the wallet between tabs; custody only
- * waits while the previous owner finishes stopping its runtimes.
+ * Long enough for a reloaded or replaced page core to stop and release. A core of another live tab keeps the lock, so
+ * this one is refused once the wait runs out.
  */
 const CUSTODY_WAIT_MS = 10_000;
-let lease:
-  | {
-      token: string;
-      released: Promise<void>;
-      release(): void;
-    }
-  | undefined;
-let acquiring = false;
+interface Lease {
+  wallet: string;
+  released: Promise<void>;
+  release(): void;
+}
+// The Web Lock admits one at a time; a replacement core of this page queues on it like another tab would.
+const leases = new Map<string, Lease>();
 let pageActive = true;
 let pageLifetime = 0;
 
@@ -28,12 +31,29 @@ let pageLifetime = 0;
 window.addEventListener('pagehide', () => {
   pageActive = false;
   pageLifetime++;
-  lease?.release();
-  lease = undefined;
+  for (const lease of leases.values()) {
+    lease.release();
+  }
+  leases.clear();
 });
 window.addEventListener('pageshow', () => {
   pageActive = true;
 });
+
+/** A forgotten or replaced local wallet ends the lease's authority, so every operation checks the stored record. */
+async function assertLocalWallet(wallet: string): Promise<void> {
+  const stored = await loadLocalWallet();
+  if (stored === null) {
+    throw new Error('Private custody requires the local wallet');
+  }
+  try {
+    if ((await localWalletCustodyId(stored.entropy)) !== wallet) {
+      throw new Error('The local wallet changed');
+    }
+  } finally {
+    stored.entropy.fill(0);
+  }
+}
 
 async function openDatabase(): Promise<IDBDatabase> {
   const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
@@ -95,10 +115,6 @@ export async function handleCoreCustody(
     ) {
       throw new Error('Private custody requires Web Locks, Web Crypto and IndexedDB');
     }
-    if (lease || acquiring) {
-      throw new Error('A signing runtime already owns this wallet in this page');
-    }
-    acquiring = true;
     const lifetime = pageLifetime;
     const ready = Promise.withResolvers<string>();
     const released = Promise.withResolvers<undefined>();
@@ -109,7 +125,8 @@ export async function handleCoreCustody(
     void navigator.locks
       .request(CUSTODY_LOCK, { signal: AbortSignal.timeout(waitMs) }, async () => {
         const held = Promise.withResolvers<undefined>();
-        // Check durable storage before giving any runtime custody authority.
+        // Check the wallet and durable storage before giving any runtime custody authority.
+        await assertLocalWallet(operation.wallet);
         const db = await openDatabase();
         db.close();
         if (!pageActive || lifetime !== pageLifetime) {
@@ -119,19 +136,21 @@ export async function handleCoreCustody(
           throw new Error('Private custody request expired');
         }
         const token = crypto.randomUUID();
-        lease = {
-          token,
+        leases.set(token, {
+          wallet: operation.wallet,
           released: released.promise,
           release: () => {
             held.resolve(undefined);
           },
-        };
+        });
         ready.resolve(token);
         await held.promise;
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
-          const busy = new Error('The test wallet is active in another tab. Close it before opening it here.');
+          const busy = new Error(
+            'Chat is open with this local wallet in another tab. Close it there to use Chat here.',
+          );
           busy.name = CORE_CUSTODY_BUSY_ERROR;
           ready.reject(busy);
           return;
@@ -139,28 +158,23 @@ export async function handleCoreCustody(
         ready.reject(error);
       })
       .finally(() => {
-        acquiring = false;
         released.resolve(undefined);
       });
-    try {
-      return await ready.promise;
-    } catch (error) {
-      acquiring = false;
-      throw error;
-    }
+    return ready.promise;
   }
-  const owner = lease;
-  if (operation.lease !== owner?.token) {
+  const owner = leases.get(operation.lease);
+  if (owner === undefined) {
     throw new Error('Private custody lease is unavailable');
   }
   if (operation.action === 'release') {
-    lease = undefined;
+    leases.delete(operation.lease);
     owner.release();
     await owner.released;
     return;
   }
   let result: Uint8Array | Blob | undefined;
-  if (lease !== owner) {
+  await assertLocalWallet(owner.wallet);
+  if (leases.get(operation.lease) !== owner) {
     throw new Error('Private custody lease changed');
   }
   const db = await openDatabase();
@@ -253,7 +267,7 @@ export async function handleCoreCustody(
       const record = new Uint8Array(iv.length + ciphertext.length);
       record.set(iv);
       record.set(ciphertext, iv.length);
-      if (lease !== owner) {
+      if (leases.get(operation.lease) !== owner) {
         throw new Error('Private custody lease changed');
       }
       await transaction(db, 'readwrite', store => store.put(record, storageKey));

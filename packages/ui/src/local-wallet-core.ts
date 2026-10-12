@@ -19,6 +19,8 @@ import { refreshLiteUsername } from './local-wallet-identity.js';
 import { holdPermissionsInMemory } from './signing-host-permissions.js';
 import { reportLocalWalletFailure, type LocalWalletBoot } from './wallet-boot.js';
 
+export { createLocalWalletChat } from './local-wallet-chat.js';
+
 type CreateRuntime = typeof createWebWorkerPairingHostRuntime;
 
 export async function bootLocalWalletCore(

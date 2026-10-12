@@ -349,6 +349,28 @@ on `Actions`-content buttons flow back as `ActionTriggered` chat actions. Replac
 loads and revokes its object URLs; scrolling a message out of view or closing the panel releases its render subscription
 and tree resources.
 
+### Native Chat with the local wallet
+
+Native Chat (the method-12 `account.deviceChat` actor, its main purse and payments) runs only while the debug panel's
+local wallet is the active signer. With a Polkadot App session the phone holds Chat, so the browser serves none of its
+private slots and offers no contacts.
+
+The local wallet core keeps Chat's main purse, device records, attachment chunks and product index in the protocol
+origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Records are authenticated-encrypted with a
+non-extractable key; immutable attachment source Blobs are host-private but not encrypted at rest. They never enter
+product storage or the product RPC interface. Each core takes a custody lease for the wallet it booted, named by a
+domain-separated hash of the wallet's entropy, and every operation rechecks the stored wallet, so forgetting or
+replacing it ends the lease's authority. A Web Lock admits one holder per browser profile: a replacement core of the
+same page waits for its predecessor to release, and a core in another tab is refused after a bounded wait, so its Chat
+operations fail while the tab's other products keep working. There is no handover between tabs at this layer. Closing a
+product connection does not stop receiving while the page core remains alive.
+
+Each payment requires a new host review of the authenticated product and recipient, exact amount, maximum debit
+including fees, selected chain and Coinage asset, and payment operation. Chat or automatic-signing grants never approve
+spending. Contacts are read from the active native wallet and People-chain binding, never from a product-provided
+roster. The picker shows verified contact names, with a generic label for unnamed contacts, cancels when its connection
+closes or the session, roster or network changes, and revalidates a selection before returning a contact handle.
+
 ### App iframe model
 
 The host creates one TrUAPI bridge for the rendered product iframe. dApp-in-dApp iframes are opaque to the host and must

@@ -33,7 +33,8 @@ export interface CreateHostCallbacksOptions {
   blockingModalScope?: BlockingModalScope;
   /** For a local wallet core, whose storage must not touch the paired session. */
   local?: boolean | undefined;
-  contacts?: Required<ContactsPlatform>;
+  /** Served only beside the local signer, from the native Chat directory. */
+  contacts?: Required<ContactsPlatform> | undefined;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {

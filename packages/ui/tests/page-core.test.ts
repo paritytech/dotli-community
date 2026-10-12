@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import type * as PageCoreNamespace from '../src/page-core.js';
 
@@ -21,7 +21,15 @@ const mocks = vi.hoisted(() => ({
   readWalletBoot: vi.fn(),
   reportLocalWalletFailure: vi.fn(),
   refreshLiteUsername: vi.fn(),
-  createHostCallbacks: vi.fn(() => ({})),
+  createHostCallbacks: vi.fn(() => ({ auth: { authStateChanged: vi.fn() }, coreStorage: {} })),
+  chats: [] as {
+    wallet: unknown;
+    storage: object;
+    nativeChatFiles: object;
+    contacts: object;
+    activated: Mock;
+    dispose: Mock;
+  }[],
 }));
 
 vi.mock('@parity/truapi-host/web', () => ({
@@ -37,6 +45,27 @@ vi.mock('../src/local-wallet-identity.js', () => ({ refreshLiteUsername: mocks.r
 vi.mock('../src/host-callbacks/handlers.js', () => ({ createHostCallbacks: mocks.createHostCallbacks }));
 vi.mock('../src/host-callbacks/SessionStore.js', () => ({ onStoredSessionChanged: () => () => {} }));
 vi.mock('../../metrics/src/metrics.js', () => ({ m: { count: vi.fn() }, getResolutionId: vi.fn(() => null) }));
+vi.mock('../src/local-wallet-chat.js', () => ({
+  createLocalWalletChat: (wallet: unknown) => {
+    const chat = {
+      wallet,
+      storage: { custody: true },
+      nativeChatFiles: { files: true },
+      contacts: { contacts: true },
+      activated: vi.fn(),
+      dispose: vi.fn(),
+    };
+    mocks.chats.push(chat);
+    return {
+      coreStorage: () => chat.storage,
+      nativeChatFiles: chat.nativeChatFiles,
+      openContacts: () => ({ callbacks: chat.contacts, dispose: vi.fn() }),
+      authStateChanged: vi.fn(),
+      activated: chat.activated,
+      dispose: chat.dispose,
+    };
+  },
+}));
 
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const WALLET = {
@@ -72,6 +101,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.runtimes.length = 0;
+  mocks.chats.length = 0;
   mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
   mocks.refreshLiteUsername.mockResolvedValue(undefined);
 });
@@ -149,6 +179,36 @@ describe('page core wallet mode', () => {
 
     // Then
     expect(mocks.createHostCallbacks).toHaveBeenCalledWith(expect.objectContaining({ local: false }));
+    expect(mocks.chats).toHaveLength(0);
+  });
+
+  it('As a local wallet user, my core holds native Chat custody and contacts until it is disposed', async () => {
+    // Given
+    mocks.readWalletBoot.mockResolvedValue(WALLET);
+    const { acquireCore } = await loadPageCore();
+
+    // When
+    const lease = await acquireCore();
+
+    // Then
+    const chat = mocks.chats[0];
+    expect(chat?.wallet).toBe(WALLET);
+    expect(mocks.createHostCallbacks).toHaveBeenCalledWith(
+      expect.objectContaining({ local: true, contacts: chat?.contacts }),
+    );
+    const callbacks = mocks.createWebWorkerPairingHostRuntime.mock.calls[0]?.[1] as {
+      coreStorage: unknown;
+      nativeChatFiles: unknown;
+    };
+    expect(callbacks.coreStorage).toBe(chat?.storage);
+    expect(callbacks.nativeChatFiles).toBe(chat?.nativeChatFiles);
+    expect(chat?.activated).toHaveBeenCalledWith(mocks.runtimes[0]);
+
+    // When
+    lease.release();
+
+    // Then
+    expect(chat?.dispose).toHaveBeenCalledTimes(1);
   });
 
   it('As a local wallet user whose username changed, I am activated again with the new name', async () => {
