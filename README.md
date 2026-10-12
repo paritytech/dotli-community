@@ -115,6 +115,12 @@ When a CID points to an IPFS directory (not a single file):
    archive
 5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) just work
 
+Files larger than one chunk are read in full, however deeply the importer nested their chunks, and a file node's own
+inline bytes come before its linked chunks. Gateway CAR requests select their representation with `?format=car`, leaving
+the browser's default Accept header intact: a media-specific Accept header bypasses the gateway's immutable-content
+cache despite returning the same archive. URL-based format selection follows
+[IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block verification are unchanged.
+
 ## Caching and verification
 
 dotli uses a two-layer cache for fast repeat visits:
