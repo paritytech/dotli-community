@@ -5,10 +5,6 @@
 // products are not modeled separately, so any nested traffic must share the top-level core.
 
 import {
-  AllocatableResource,
-  createClient,
-  createTransport,
-  type TrUApiClient,
   decodeWireMessage,
   encodeWireMessage,
   MESSAGE_TYPE_REQUEST,
@@ -24,7 +20,6 @@ import {
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import {
   DEBUG,
-  getActiveServicesConfig,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
   getBackend,
@@ -40,7 +35,6 @@ import { chatCapabilityFor, log } from '@dotli/shared';
 
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
-import { createIframeHost } from '@parity/truapi-host/web';
 import { buildAllowAttribute, registerPermissionAuthorizationProvider, setPermissionStatus } from './permissions.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createContactAvatars, installProfileDebugTrigger } from './host-callbacks/Profile.js';
@@ -54,42 +48,17 @@ import {
   cancelPairing,
   initPageCore,
   setPageProduct,
-  activeLocalWallet,
-  assertLocalWallet,
-  disposePageCores,
-  withLocalIdentityUpdate,
-  type LiveLocalWallet,
   type CoreConnection,
   type CoreLease,
 } from './page-core.js';
-import type { InspectorProduct } from '@dotli/truapi-debug';
-import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
-import {
-  ALL_PERMISSIONS,
-  automaticPreimageAccount,
-  authorizationRequest,
-  fromAuthorizationStatus,
-} from './permissions.js';
-import { getAuthState } from './state/auth.js';
-import {
-  createLocalWalletSecret,
-  deleteLocalWalletSecret,
-  exportLocalWalletMnemonic,
-  importLocalWalletMnemonic,
-  isExperimentalWalletActive,
-  initializeLocalWalletState,
-  isLocalWalletStoredInOtherApp,
-  setLocalWalletEnabled,
-  readLocalWalletDisplay,
-  writeVerifiedLocalIdentity,
-  LOCAL_WALLET_ENABLED_KEY,
-  LOCAL_WALLET_REVISION_KEY,
-} from './host-callbacks/SessionStore.js';
 
 export { setPageProduct } from './page-core.js';
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';
+import { getWalletMode } from './state/wallet-mode.js';
+import { reportLocalWalletFailure } from './wallet-boot.js';
+import { switchToPolkadotApp } from './wallet-switch.js';
 import { describeWireFrame } from './debug-wire-describe.js';
 import { throwIfAborted, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createRendererImageLoader, registerChatConnection } from './chat/service.js';
@@ -98,7 +67,6 @@ import { registerProductNotificationTarget } from './notification-activation.js'
 import { ERRORS } from './errors.js';
 import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
 import { jamPeerTransportUnavailableMessage } from './jam-peer-browser-support.js';
-import { mountViolationPanel } from './components/sandbox-checker/mount.js';
 import { CameraInputCancelledError, CameraInputPermissionError, scanCameraUr } from './mediated-input-camera.js';
 import { MediatedInputHost, validatedMediatedInputRequest } from './mediated-input-host.js';
 import { decidePromptPermission } from './host-callbacks/PromptPermission.js';
@@ -111,12 +79,22 @@ import { createMediaHost, mediaOwnsCapture, PROTECTED_MEDIA_ALLOW, PROTECTED_MED
 
 const noop = (): void => undefined;
 
+// Preloaded so they are ready when the first product renders.
+const chunkLoadStart = performance.now();
+const runtimeChunkPromise = Promise.all([
+  import('@parity/truapi-host/web'),
+  import('@parity/truapi-host/worker-runtime?worker'),
+]).then(([web]) => {
+  m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
+  return { createIframeHost: web.createIframeHost };
+});
+void runtimeChunkPromise.catch(() => {
+  // The render that awaits it reports the failure.
+});
+
 const app = document.getElementById('app') ?? document.body;
 
 interface ActiveHost {
-  core: CoreProviderBase;
-  wallet: LiveLocalWallet | undefined;
-  generation: number;
   productId: string;
   iframe: HTMLIFrameElement;
   receiving: ReceivingExecution;
@@ -223,488 +201,6 @@ const mediatedInputHost = new MediatedInputHost({
     error instanceof CameraInputCancelledError || (error instanceof DOMException && error.name === 'AbortError'),
   isPermissionDenied: error => error instanceof CameraInputPermissionError,
 });
-
-let localIdentityOperationPending = false;
-
-async function updateLocalIdentity(
-  baseUsername?: string,
-  onProgress?: (progress: LocalIdentityProgress) => void,
-): Promise<LocalIdentity> {
-  if (localIdentityOperationPending) {
-    throw new Error('A username operation is already pending.');
-  }
-  localIdentityOperationPending = true;
-  try {
-    const wallet = await activeLocalWallet();
-    return await withLocalIdentityUpdate(async () => {
-      assertLocalWallet(wallet);
-      const identity =
-        baseUsername === undefined
-          ? await wallet.runtime.refreshLocalIdentity()
-          : await wallet.runtime.registerLocalLiteUsername(
-              baseUsername,
-              new URL(getActiveServicesConfig().identityBackendBaseUrl, window.location.origin).href,
-              onProgress === undefined
-                ? undefined
-                : progress => {
-                    try {
-                      assertLocalWallet(wallet);
-                    } catch {
-                      return;
-                    }
-                    onProgress(progress);
-                  },
-            );
-      assertLocalWallet(wallet);
-      if (
-        identity.identityAccountId !== wallet.binding.identityAccountId ||
-        (baseUsername !== undefined && (identity.liteUsername?.trim() ?? '') === '')
-      ) {
-        throw new Error('Native username confirmation did not match the active identity.');
-      }
-      // Every page connection sees the same native session update; no second
-      // product runtime needs reactivation (which would reset its grants).
-      wallet.identity = identity;
-      wallet.usernameVerified = true;
-      if (baseUsername !== undefined && identity.liteUsername !== undefined) {
-        showNotification({
-          text: identity.liteUsername + ' is confirmed on-chain and ready to use.',
-          label: 'Username claimed',
-          browserNotification: false,
-        });
-      }
-      try {
-        await writeVerifiedLocalIdentity(wallet.binding, identity);
-      } catch {
-        throw new Error(
-          'Chain confirmed ' +
-            (identity.liteUsername ?? 'no registered Lite username') +
-            ', but saving shared metadata failed. Use Check username to retry; do not submit another claim.',
-        );
-      }
-      assertLocalWallet(wallet);
-      return identity;
-    });
-  } finally {
-    localIdentityOperationPending = false;
-  }
-}
-
-const INSPECTOR_REQUEST_PREFIX = 'dotli:host-inspector:';
-let inspectorRequestSequence = 0;
-let inspectorResourcePending = false;
-
-function inspectorRequestId(message: Uint8Array): string | null {
-  try {
-    // Read only the leading SCALE string; decoding the whole wire message
-    // would copy every guest payload solely to check this reserved namespace.
-    const id = scale.str.dec(message);
-    return id.startsWith(INSPECTOR_REQUEST_PREFIX) ? id : null;
-  } catch {
-    return null;
-  }
-}
-
-function assertInspectorWallet(wallet: LiveLocalWallet): void {
-  assertLocalWallet(wallet);
-}
-
-function inspectorProductContext(): InspectorProductContext | null {
-  const product = currentProduct;
-  const host = currentHost;
-  if (product === null) {
-    return null;
-  }
-  const wallet = host?.wallet;
-  if (host?.generation !== renderGeneration || wallet === undefined) {
-    throw new Error("The current product's test wallet is not ready.");
-  }
-  assertInspectorWallet(wallet);
-  const generation = renderGeneration;
-  const core = host.core;
-  return {
-    product,
-    host,
-    wallet,
-    id:
-      product.mode === 'iframe'
-        ? (product.productId ?? labelToProductId(product.label))
-        : labelToProductId(product.label),
-    assertCurrent(): void {
-      assertInspectorWallet(wallet);
-      if (currentProduct !== product || currentHost !== host || generation !== renderGeneration || host.core !== core) {
-        throw new Error(
-          'The product changed during the Wallet tab operation. An allocation already submitted may have completed; check its outcome before making another request.',
-        );
-      }
-    },
-  };
-}
-
-interface InspectorProductContext {
-  product: CurrentProduct;
-  host: ActiveHost;
-  wallet: LiveLocalWallet;
-  id: string;
-  assertCurrent(): void;
-}
-
-// The generated transport starts at p:1 and auto-answers inbound handshakes.
-// Give it only its own namespaced responses, never the guest's handshake or
-// traffic. Its dispose() detaches listeners; this adapter never owns the core.
-async function withInspectorClient<T>(
-  context: InspectorProductContext,
-  operation: (client: TrUApiClient) => PromiseLike<T>,
-): Promise<T> {
-  context.assertCurrent();
-  const prefix = `${INSPECTOR_REQUEST_PREFIX}${String(++inspectorRequestSequence)}:`;
-  const transport = createTransport({
-    postMessage(message) {
-      context.assertCurrent();
-      const decoded = decodeWireMessage(message);
-      if (decoded.isErr()) {
-        throw decoded.error;
-      }
-      const frame = encodeWireMessage({
-        ...decoded.value,
-        requestId: prefix + decoded.value.requestId,
-      });
-      if (frame.isErr()) {
-        throw frame.error;
-      }
-      context.host.core.postMessage(frame.value);
-    },
-    subscribe(callback) {
-      return context.host.core.subscribe(message => {
-        if (inspectorRequestId(message)?.startsWith(prefix) !== true) {
-          return;
-        }
-        const decoded = decodeWireMessage(message);
-        if (decoded.isErr()) {
-          return;
-        }
-        const frame = encodeWireMessage({
-          ...decoded.value,
-          requestId: decoded.value.requestId.slice(prefix.length),
-        });
-        if (frame.isOk()) {
-          callback(frame.value);
-        }
-      });
-    },
-    subscribeClose(callback) {
-      return context.host.core.subscribeClose?.(callback) ?? noop;
-    },
-    dispose: noop,
-  });
-  try {
-    // createClient merely binds methods; do not invoke system.handshake().
-    const result = await operation(createClient(transport));
-    context.assertCurrent();
-    return result;
-  } finally {
-    transport.dispose();
-  }
-}
-
-// SCALE encoders may coerce invalid numbers or ignore extra fields. Require
-// the decoded canonical value to match the input, not just encode successfully.
-function matchesResourceValue(input: unknown, canonical: unknown): boolean {
-  if (input === canonical) {
-    return true;
-  }
-  if (typeof input !== 'object' || input === null || typeof canonical !== 'object' || canonical === null) {
-    return false;
-  }
-  const actual = input as Record<string, unknown>;
-  const expected = canonical as Record<string, unknown>;
-  return (
-    Object.keys(actual).every(key => actual[key] === undefined || Object.hasOwn(expected, key)) &&
-    Object.keys(expected).every(key => matchesResourceValue(actual[key], expected[key]))
-  );
-}
-
-function describeResource(resource: unknown): {
-  id: string;
-  label: string;
-  request: AllocatableResource;
-} | null {
-  try {
-    const encoded = AllocatableResource.enc(resource as AllocatableResource);
-    const request = AllocatableResource.dec(encoded);
-    if (request.tag === 'AutoSigning' || !matchesResourceValue(resource, request)) {
-      return null;
-    }
-    const selector = request.value as unknown;
-    const suffix =
-      typeof selector === 'object' &&
-      selector !== null &&
-      'tag' in selector &&
-      'value' in selector &&
-      (selector.tag === 'Index' || selector.tag === 'Raw')
-        ? ` (${selector.tag} ${String(selector.value)})`
-        : '';
-    return {
-      id: Array.from(encoded, byte => byte.toString(16).padStart(2, '0')).join(''),
-      label: request.tag.replace(/([a-z])([A-Z])/g, '$1 $2') + suffix,
-      request,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function getInspectorProduct(): Promise<InspectorProduct | null> {
-  const context = inspectorProductContext();
-  if (context === null) {
-    return null;
-  }
-  const auth = getAuthState();
-  const rootPublicKey = automaticPreimageAccount(auth);
-  const permissions = ALL_PERMISSIONS.filter(
-    ({ name }) => name !== 'AutomaticPreimageSubmit' || rootPublicKey !== null,
-  );
-  const statuses = await context.host.core.getPermissionAuthorizationStatuses(
-    permissions.map(({ name }) => authorizationRequest(name, rootPublicKey)),
-  );
-  context.assertCurrent();
-  if (getAuthState() !== auth) {
-    throw new Error('The account changed during the permission lookup.');
-  }
-  if (statuses.length !== permissions.length) {
-    throw new Error('Native permission status response was incomplete.');
-  }
-  let accountPublicKey: string | undefined;
-  let accountError: string | undefined;
-  try {
-    const result = await withInspectorClient(context, client =>
-      client.account.getAccount({
-        productAccountId: {
-          dotNsIdentifier: context.id,
-          derivationIndex: { tag: 'Index', value: 0 },
-        },
-      }),
-    );
-    if (result.isErr()) {
-      accountError = 'Native host did not disclose this product account.';
-    } else {
-      accountPublicKey = result.value.account.publicKey;
-    }
-  } catch (error) {
-    context.assertCurrent();
-    accountError = error instanceof Error ? error.message : 'Product account lookup failed.';
-  }
-  context.assertCurrent();
-  if (getAuthState() !== auth) {
-    throw new Error('The account changed during the permission lookup.');
-  }
-  const defaults: AllocatableResource[] = [
-    { tag: 'StatementStoreAllowance' },
-    { tag: 'BulletinAllowance' },
-    { tag: 'SmartContractAllowance', value: { tag: 'Index', value: 0 } },
-  ];
-  return {
-    id: context.id,
-    name: context.product.label,
-    origin:
-      context.product.mode === 'iframe'
-        ? new URL(context.product.url, window.location.href).origin
-        : sandboxOriginForLabel(context.product.label),
-    accountPublicKey,
-    accountError,
-    derivation: `ProductAccountId: ${context.id}; derivationIndex: Index 0 (native product-scoped account, not a BIP-44 path).`,
-    permissions: permissions.map(({ name, label }, index) => {
-      const status = statuses[index];
-      if (status === undefined) {
-        throw new Error('Native permission status response was incomplete.');
-      }
-      return { id: name, label, status: fromAuthorizationStatus(status) };
-    }),
-    resources: defaults.flatMap(resource => {
-      const description = describeResource(resource);
-      return description === null ? [] : [description];
-    }),
-  };
-}
-
-async function getInspectorAllowanceSnapshot(): Promise<WalletAllowanceSnapshot> {
-  const product = currentProduct;
-  const generation = renderGeneration;
-  const network = getNetwork();
-  const networkSuffix = getActiveServicesConfig().dotns.TLD;
-  const productIds =
-    product === null
-      ? []
-      : [
-          product.mode === 'iframe'
-            ? (product.productId ?? labelToProductId(product.label))
-            : labelToProductId(product.label),
-        ];
-  const wallet = await activeLocalWallet();
-  const assertCurrent = (): void => {
-    if (product !== currentProduct || generation !== renderGeneration || network !== getNetwork()) {
-      throw new Error('The wallet inspection context changed. Refresh the Wallet tab.');
-    }
-    assertInspectorWallet(wallet);
-  };
-  assertCurrent();
-  const snapshot = await wallet.runtime.getWalletAllowanceSnapshot(productIds);
-  assertCurrent();
-  if (
-    snapshot.identityAccountId !== wallet.binding.identityAccountId ||
-    snapshot.networkSuffix !== networkSuffix ||
-    snapshot.productIds.length !== productIds.length ||
-    snapshot.productIds.some((id, index) => id !== productIds[index])
-  ) {
-    throw new Error('Native allowance inspection returned a different wallet or product scope.');
-  }
-  return snapshot;
-}
-
-async function requestInspectorResource(
-  productId: string,
-  resource: unknown,
-): Promise<'Allocated' | 'Rejected' | 'NotAvailable'> {
-  if (inspectorResourcePending) {
-    throw new Error('A resource request is already pending.');
-  }
-  const context = inspectorProductContext();
-  if (context?.id !== productId) {
-    throw new Error('Select the current product before requesting an allowance.');
-  }
-  const description = describeResource(resource);
-  if (description === null) {
-    throw new Error('Unsupported allowance request. Auto-signing is a permission, not an allowance.');
-  }
-  inspectorResourcePending = true;
-  try {
-    // This is the same native product provider and its host confirmation flow.
-    // An outcome is not a balance: the API exposes no remaining-quota counter.
-    const result = await withInspectorClient(context, client =>
-      client.resourceAllocation.request({ resources: [description.request] }),
-    );
-    if (result.isErr()) {
-      throw new Error('Native resource allocation failed.', {
-        cause: result.error,
-      });
-    }
-    if (result.value.outcomes.length !== 1) {
-      throw new Error('Native allocation returned no unique outcome. Do not retry blindly.');
-    }
-    const outcome = result.value.outcomes[0];
-    if (outcome === undefined) {
-      throw new Error('Native allocation outcome missing');
-    }
-    return outcome;
-  } finally {
-    inspectorResourcePending = false;
-  }
-}
-
-// Mode switches reload deliberately: no signing worker from the previous
-// identity may survive switching back to mobile pairing.
-export const experimentalWalletControls = {
-  isActive: isExperimentalWalletActive,
-  networkLabel(): string {
-    return getActiveServicesConfig().label;
-  },
-  getCachedIdentity() {
-    const display = readLocalWalletDisplay();
-    return display === undefined ? undefined : { ...display, network: getActiveServicesConfig().label };
-  },
-  async storedInOtherApp(): Promise<boolean> {
-    try {
-      await initializeLocalWalletState();
-    } catch (error) {
-      log.warn('[dot.li] Shared wallet state unavailable:', error);
-      return false;
-    }
-    return isLocalWalletStoredInOtherApp();
-  },
-  async getIdentity(): Promise<
-    LocalIdentity & {
-      network: string;
-      publicKey?: string | undefined;
-      fullUsername?: string | undefined;
-      usernameVerified: boolean;
-    }
-  > {
-    const wallet = await activeLocalWallet();
-    assertInspectorWallet(wallet);
-    return {
-      ...wallet.identity,
-      usernameVerified: wallet.usernameVerified,
-      ...wallet.nativeSessionUiInfo,
-      network: getActiveServicesConfig().label,
-    };
-  },
-  getProduct: getInspectorProduct,
-  getAllowanceSnapshot: getInspectorAllowanceSnapshot,
-  describeResource,
-  requestResource: requestInspectorResource,
-  refreshUsername(): Promise<LocalIdentity> {
-    return updateLocalIdentity();
-  },
-  claimLiteUsername(
-    baseUsername: string,
-    onProgress?: (progress: LocalIdentityProgress) => void,
-  ): Promise<LocalIdentity> {
-    const username = baseUsername.trim();
-    if (username === '' || username.includes('.')) {
-      return Promise.reject(new Error('Enter a base username only, without a network suffix.'));
-    }
-    return updateLocalIdentity(username, onProgress);
-  },
-  async activate(): Promise<void> {
-    if (!DEBUG) {
-      throw new Error('Experimental wallets require a debug build');
-    }
-    const { secret } = await createLocalWalletSecret();
-    secret.fill(0);
-    disposePageCores();
-    await setLocalWalletEnabled(true);
-    window.location.reload();
-  },
-  async disconnect(): Promise<void> {
-    if (!DEBUG) {
-      return Promise.reject(new Error('Experimental wallets require a debug build'));
-    }
-    await revokeReceivingOnLogout();
-    if (isExperimentalWalletActive()) {
-      disposePageCores();
-    }
-    await setLocalWalletEnabled(false);
-    window.location.reload();
-  },
-  async exportMnemonic(): Promise<string> {
-    if (!DEBUG) {
-      throw new Error('Experimental wallets require a debug build');
-    }
-    return exportLocalWalletMnemonic();
-  },
-  async importMnemonic(mnemonic: string): Promise<void> {
-    if (!DEBUG) {
-      throw new Error('Experimental wallets require a debug build');
-    }
-    await importLocalWalletMnemonic(mnemonic, () => {
-      disposePageCores();
-    });
-    await setLocalWalletEnabled(true);
-    window.location.reload();
-  },
-  async deleteWallet(): Promise<void> {
-    if (!DEBUG) {
-      throw new Error('Experimental wallets require a debug build');
-    }
-    await revokeReceivingOnLogout();
-    if (isExperimentalWalletActive()) {
-      disposePageCores();
-    }
-    await deleteLocalWalletSecret();
-    await setLocalWalletEnabled(false);
-    window.location.reload();
-  },
-};
 
 function rerenderProduct(product: CurrentProduct): void {
   const expectedGeneration = renderGeneration + 1;
@@ -1256,32 +752,14 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
   (window as typeof window & { __dotliTruapiBridgeReady?: boolean }).__dotliTruapiBridgeReady = true;
   if (DEBUG) {
     installProfileDebugTrigger();
-    window.addEventListener('storage', event => {
-      if (event.key === LOCAL_WALLET_ENABLED_KEY || event.key === LOCAL_WALLET_REVISION_KEY || event.key === null) {
-        disposePageCores();
-        window.location.reload();
-      }
-    });
-    void initializeLocalWalletState().then(
-      () => {
-        if (isExperimentalWalletActive()) {
-          void activeLocalWallet().catch(noop);
-        }
-      },
-      (error: unknown) => {
-        if (isExperimentalWalletActive()) {
-          dispatchAuthState({
-            tag: 'WalletUnavailable',
-            reason: error instanceof Error ? error.message : String(error),
-          });
-        }
-      },
-    );
   }
   window.addEventListener('dotli:truapi-disconnect-request', () => {
     log.event('logout requested', { flow: 'wallet' });
-    if (isExperimentalWalletActive()) {
-      void experimentalWalletControls.disconnect();
+    if (getWalletMode() === 'local') {
+      // A local session lives only in memory, so logging out means leaving local mode.
+      switchToPolkadotApp().catch((error: unknown) => {
+        reportLocalWalletFailure(error, 'forget');
+      });
       return;
     }
     void disconnectSession();
@@ -1403,9 +881,6 @@ function pipeProviders(
   let sawOutbound = false;
   const unsubs = [
     product.subscribe(message => {
-      if (inspectorRequestId(message) !== null) {
-        return;
-      }
       if (!sawInbound) {
         sawInbound = true;
         emitDotliDebugEvent({
@@ -1419,9 +894,6 @@ function pipeProviders(
       core.postMessage(message);
     }),
     core.subscribe(message => {
-      if (inspectorRequestId(message) !== null) {
-        return;
-      }
       if (!sawOutbound) {
         sawOutbound = true;
         emitDotliDebugEvent({
@@ -1469,7 +941,9 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
       direction,
       productId,
       requestId: decoded.value.requestId,
-      payload: describeWireFrame(decoded.value.payload),
+      payload: describeWireFrame(decoded.value.payload, decoded.value.payload.value, {
+        decodeWalletFrames: getWalletMode() === 'local',
+      }),
     });
     // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
   } catch {
@@ -1732,6 +1206,7 @@ async function createHost(args: {
   let hasProductPort = false;
   let pendingPort: MessagePort | null = null;
   let connecting = false;
+  const { createIframeHost } = await runtimeChunkPromise;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   let productProbeCleanup: (() => void) | null = null;
@@ -1975,16 +1450,6 @@ async function createHost(args: {
       productProbeCleanup = null;
     };
     return {
-      get core() {
-        if (coreProvider === null) {
-          throw new Error('The product execution is not connected.');
-        }
-        return coreProvider;
-      },
-      get wallet() {
-        return connection.wallet;
-      },
-      generation: hostGeneration,
       productId: connection.productId,
       get receiving() {
         return connection.receiving;
@@ -2131,6 +1596,11 @@ export async function renderIframe(
   );
 
   if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
+    const { mountViolationPanel } = await import('./components/sandbox-checker/mount.js');
+    if (myRenderGeneration !== renderGeneration) {
+      stopSetup();
+      return;
+    }
     currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
@@ -2329,6 +1799,11 @@ export async function renderAppSubdomain(
   );
 
   if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
+    const { mountViolationPanel } = await import('./components/sandbox-checker/mount.js');
+    if (myRenderGeneration !== renderGeneration) {
+      stopSetup();
+      return;
+    }
     currentPanelDispose = mountViolationPanel(host.iframe);
   }
 

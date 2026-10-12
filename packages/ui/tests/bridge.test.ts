@@ -95,16 +95,10 @@ const mocks = vi.hoisted(() => ({
     dispose: Mock;
   }[],
   createWebWorkerPairingHostRuntime: vi.fn(),
-  createWebWorkerSigningHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
   timerStop: vi.fn(),
   HostWorker: vi.fn(),
-}));
-
-vi.mock('@dotli/config', async importOriginal => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  DEBUG: false,
 }));
 
 vi.mock('@parity/truapi-host', async importOriginal => ({
@@ -116,7 +110,6 @@ vi.mock('@parity/truapi-host', async importOriginal => ({
 vi.mock('@parity/truapi-host/web', async () => ({
   createBrowserNativeChatFilesHost: vi.fn(),
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
-  createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
   createIframeHost: mocks.createIframeHost,
   createBrowserMediaBackend: (await import('./helpers/web-locks.js')).fakeBrowserMediaBackend,
 }));
@@ -127,6 +120,13 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
 vi.mock('../../metrics/src/sentry.js', () => sentry);
+vi.mock('../src/wallet-boot.js', () => ({
+  readWalletBoot: () => Promise.resolve(null),
+  reportLocalWalletFailure: vi.fn(),
+}));
+
+const walletSwitch = vi.hoisted(() => ({ switchToPolkadotApp: vi.fn(() => Promise.resolve()) }));
+vi.mock('../src/wallet-switch.js', () => walletSwitch);
 
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
@@ -282,7 +282,6 @@ describe('bridge render lifecycle', () => {
     mocks.coreProviderDefers.length = 0;
     mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
-    localStorage.clear();
     document.body.innerHTML = `<div id="app"></div>`;
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
@@ -500,19 +499,6 @@ describe('bridge render lifecycle', () => {
     await notify();
     expect(nth(mocks.iframeHosts, 1).iframe.isConnected).toBe(true);
     expect(mocks.iframeHosts).toHaveLength(2);
-  });
-
-  it('does not enable experimental custody through stored state or a debug URL in production', async () => {
-    localStorage.setItem('dotli:local-wallet-enabled', '1');
-    window.history.replaceState(null, '', '/?debug=true');
-    const { experimentalWalletControls } = await import('../src/bridge.js');
-    expect(experimentalWalletControls.isActive()).toBe(false);
-    await expect(experimentalWalletControls.activate()).rejects.toThrow();
-    await expect(experimentalWalletControls.disconnect()).rejects.toThrow();
-    await expect(experimentalWalletControls.deleteWallet()).rejects.toThrow();
-    await expect(experimentalWalletControls.exportMnemonic()).rejects.toThrow();
-    await expect(experimentalWalletControls.importMnemonic('abandon '.repeat(11) + 'about')).rejects.toThrow();
-    expect(localStorage.getItem('dotli:local-wallet-enabled')).toBe('1');
   });
 
   it('delivers direct-frame notifications without carrying activations into a replacement execution', async ({
@@ -1167,10 +1153,8 @@ describe('bridge render lifecycle', () => {
     onTestFinished,
   }) => {
     const product = await renderWithProductPort('document-permission');
-    const { disposePageCores } = await import('../src/page-core.js');
     const { overlaysReady: readyOverlays, resetOverlays: resetCurrentOverlays } = await import('./helpers/overlays.js');
     onTestFinished(() => {
-      disposePageCores();
       resetCurrentOverlays();
       product.productPort.close();
       for (const port of product.inits()) {
@@ -1689,6 +1673,23 @@ describe('bridge render lifecycle', () => {
       expect(mocks.coreRuntimes[0]?.dispose).toHaveBeenCalledTimes(1);
     });
   }, 10_000);
+
+  it('As a local wallet user, I log out by leaving local mode instead of disconnecting a session', async () => {
+    // Given
+    await import('../src/bridge.js');
+    const { setWalletModeState } = await import('../src/state/wallet-mode.js');
+    setWalletModeState({ mode: 'local', failure: null });
+
+    // When
+    window.dispatchEvent(new Event('dotli:truapi-disconnect-request'));
+
+    // Then
+    await vi.waitFor(() => {
+      expect(walletSwitch.switchToPolkadotApp).toHaveBeenCalledTimes(1);
+    });
+    // No core was booted to disconnect a session.
+    expect(mocks.coreRuntimes).toHaveLength(0);
+  });
 });
 
 describe('bridge app roots', () => {

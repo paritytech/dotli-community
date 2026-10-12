@@ -17,6 +17,7 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
+    "fake-indexeddb": "^6.2.5",
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
     "@dotli/protocol": "*",
     "@dotli/resolver": "*",
     "@dotli/shared": "*",
+    "@dotli/storage": "*",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@sentry/browser": "^11.4.0",
     "@sentry/vite-plugin": "^5.4.1"

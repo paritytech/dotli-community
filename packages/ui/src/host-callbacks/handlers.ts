@@ -34,13 +34,16 @@ export interface CreateHostCallbacksOptions {
   pairingDotSuffix?: boolean | undefined;
   pairingHostGlobal?: boolean | undefined;
   blockingModalScope?: BlockingModalScope;
-  custodyLease?: string;
+  /** For a local wallet core, whose storage must not touch the paired session. */
+  local?: boolean | undefined;
+  /** Served only beside the local signer, from the native Chat directory. */
+  contacts?: Required<ContactsPlatform> | undefined;
   /** Avatar layer of the product frame this connection serves, if any. */
-  contactAvatars?: ContactAvatarOverlay;
+  contactAvatars?: ContactAvatarOverlay | undefined;
   /** Retires Profile presentations with the connection or its current session. */
   profileSignal?: AbortSignal | (() => AbortSignal);
-  contacts?: Required<ContactsPlatform>;
-  contactsDirectory?: NativeChatContactsDirectory;
+  /** The native Chat contacts directory beside the local signer, for Profile lookups. */
+  contactsDirectory?: NativeChatContactsDirectory | undefined;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
@@ -50,7 +53,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
-    custodyLease,
+    local,
     contactAvatars,
     profileSignal,
     contacts,
@@ -75,7 +78,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: createSessionStoreAdapters(custodyLease),
+    coreStorage: createSessionStoreAdapters({ local }),
     auth: {
       authStateChanged: state => {
         setNotificationAccount(
@@ -91,8 +94,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
     hop: createHopProvider(),
-    // Always served; the core itself denies chat calls on non-Chat
-    // executions and without an active session.
+    // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),
     // Any product may ask the host to show a profile it references; the
     // drawer attributes it to the product and returns nothing to it. Placed

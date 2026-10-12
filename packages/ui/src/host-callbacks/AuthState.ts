@@ -1,15 +1,22 @@
 import type { AuthPresenter, AuthState, LoginFailureKind } from '@parity/truapi-host';
-import { toSessionUiState, writeUiStateCache, type TruapiSessionUiState } from './SessionStore.js';
+import {
+  isSharedSessionUnreachable,
+  toSessionUiState,
+  writeUiStateCache,
+  type TruapiSessionUiState,
+} from './SessionStore.js';
 import { setAuthState } from '../state/auth.js';
+import { getWalletMode } from '../state/wallet-mode.js';
 
 /**
  * The core's `AuthState` with byte fields converted for rendering, plus the pairing context the modal needs.
- * `Restoring` is the host's own: boot has not yet read the saved session, so the user is neither signed in nor out.
+ * `Restoring` and `Unreachable` are the host's own. Boot has not yet read the saved session, or the read failed, so
+ * the user is neither signed in nor out. The session state layer leaves both on its own.
  */
 export type DotliAuthState =
   | { tag: 'Restoring' }
+  | { tag: 'Unreachable' }
   | { tag: 'Disconnected' }
-  | { tag: 'WalletUnavailable'; reason: string }
   | {
       tag: 'Pairing';
       deeplink: string;
@@ -51,12 +58,22 @@ export function createAuthStateChanged(
       }
       case 'Connected': {
         const session = toSessionUiState(state.value);
-        void writeUiStateCache(session);
+        // The cache belongs to the paired session, which a local session must not overwrite.
+        if (getWalletMode() !== 'local') {
+          void writeUiStateCache(session);
+        }
         dispatchAuthState({ tag: 'Connected', session });
         break;
       }
       case 'Disconnected': {
-        void writeUiStateCache({ connected: false });
+        if (getWalletMode() !== 'local') {
+          // The core reads an unreadable store as no session, which is not a logout, so the cached account stays.
+          if (isSharedSessionUnreachable()) {
+            dispatchAuthState({ tag: 'Unreachable' });
+            break;
+          }
+          void writeUiStateCache({ connected: false });
+        }
         dispatchAuthState({ tag: 'Disconnected' });
         break;
       }

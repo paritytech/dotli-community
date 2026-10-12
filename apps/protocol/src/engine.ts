@@ -17,6 +17,7 @@ import {
   type ChainBrokerManager,
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
+  isSharedWalletRequestMethod,
   getRequestSyncTimeoutMs,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
@@ -93,14 +94,11 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
     origin: string,
     respond: ResponseCallback,
   ): Promise<void> {
-    // Engine-facing listeners filter shared custody out; reaching this
-    // engine means one of those trusted iframe boundaries is broken.
+    // Both engine-facing listeners filter these out, so reaching here means a filter is broken.
     if (
       isSharedAuthRequestMethod(request.method) ||
       isSharedModeRequestMethod(request.method) ||
-      request.method === 'walletStorage' ||
-      request.method === 'coreCustody' ||
-      request.method === 'walletOwner'
+      isSharedWalletRequestMethod(request.method)
     ) {
       throw new Error(`Shared storage request reached the chain engine: ${request.method}`);
     }

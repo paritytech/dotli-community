@@ -142,7 +142,7 @@ export function automaticPreimageAccount(auth: DotliAuthState): string | null {
   return auth.tag === 'Connected' ? (auth.session.publicKey ?? null) : null;
 }
 
-export function authorizationRequest(
+function authorizationRequest(
   permission: PermissionName,
   rootPublicKey: string | null = null,
 ): PermissionAuthorizationRequest {
@@ -170,7 +170,7 @@ export function authorizationRequest(
   return { tag: 'Device', value: permission };
 }
 
-export function fromAuthorizationStatus(status: PermissionAuthorizationStatus): PermissionStatus {
+function fromAuthorizationStatus(status: PermissionAuthorizationStatus): PermissionStatus {
   switch (status) {
     case 'Authorized':
       return 'granted';

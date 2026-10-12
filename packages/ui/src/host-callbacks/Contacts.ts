@@ -9,7 +9,7 @@ import type {
   PlacedContactLabels,
   ProductContext,
 } from '@parity/truapi-host';
-import type { WorkerSigningHostRuntime } from '@parity/truapi-host/web';
+import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { blockingModalAbortError, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { presentModal } from '../overlays/load.js';
 import type { ContactLabelOverlay } from '../contacts/label-overlay.js';
@@ -17,7 +17,7 @@ import type { ContactLabelOverlay } from '../contacts/label-overlay.js';
 const HEX32 = /^0x[0-9a-f]{64}$/;
 const MAX_CONTACTS = 256;
 
-type ContactsRuntime = Pick<WorkerSigningHostRuntime, 'getNativeChatContacts' | 'notifyContactsChanged'>;
+type ContactsRuntime = Pick<WorkerPairingHostRuntime, 'getNativeChatContacts' | 'notifyContactsChanged'>;
 
 type ContactSnapshot = Omit<NativeChatContactsSnapshot, 'contacts'> & {
   contacts: { peerIdentity: Bytes32; username?: string }[];

@@ -1,27 +1,28 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { CORE_CUSTODY_BUSY_ERROR, type CoreCustodyOperation } from '@dotli/protocol';
-import { withSharedWalletRevision } from './wallet-storage.js';
+// Native Chat's private records for the local wallet: the main purse, device records, attachment chunks and the
+// product index. One tab of the browser profile holds them at a time, through this frame's Web Lock.
+
+import { CORE_CUSTODY_BUSY_ERROR, localWalletCustodyId, type CoreCustodyOperation } from '@dotli/protocol';
+import { loadLocalWallet } from '@dotli/storage';
 
 export const CORE_CUSTODY_DB_NAME = 'dotli-native-core-custody';
 const STORE = 'records';
 const KEY = 'encryption-key';
 const CUSTODY_LOCK = 'dotli:native-core-custody';
 /**
- * The test-wallet owner lease moves the wallet between tabs; custody only
- * waits while the previous owner finishes stopping its runtimes.
+ * Long enough for a reloaded or replaced page core to stop and release. A core of another live tab keeps the lock, so
+ * this one is refused once the wait runs out.
  */
 const CUSTODY_WAIT_MS = 10_000;
-let lease:
-  | {
-      token: string;
-      revision: string | null;
-      released: Promise<void>;
-      release(): void;
-    }
-  | undefined;
-let acquiring = false;
+interface Lease {
+  wallet: string;
+  released: Promise<void>;
+  release(): void;
+}
+// The Web Lock admits one at a time; a replacement core of this page queues on it like another tab would.
+const leases = new Map<string, Lease>();
 let pageActive = true;
 let pageLifetime = 0;
 
@@ -30,12 +31,29 @@ let pageLifetime = 0;
 window.addEventListener('pagehide', () => {
   pageActive = false;
   pageLifetime++;
-  lease?.release();
-  lease = undefined;
+  for (const lease of leases.values()) {
+    lease.release();
+  }
+  leases.clear();
 });
 window.addEventListener('pageshow', () => {
   pageActive = true;
 });
+
+/** A forgotten or replaced local wallet ends the lease's authority, so every operation checks the stored record. */
+async function assertLocalWallet(wallet: string): Promise<void> {
+  const stored = await loadLocalWallet();
+  if (stored === null) {
+    throw new Error('Private custody requires the local wallet');
+  }
+  try {
+    if ((await localWalletCustodyId(stored.entropy)) !== wallet) {
+      throw new Error('The local wallet changed');
+    }
+  } finally {
+    stored.entropy.fill(0);
+  }
+}
 
 async function openDatabase(): Promise<IDBDatabase> {
   const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
@@ -97,10 +115,6 @@ export async function handleCoreCustody(
     ) {
       throw new Error('Private custody requires Web Locks, Web Crypto and IndexedDB');
     }
-    if (lease || acquiring) {
-      throw new Error('A signing runtime already owns this wallet in this page');
-    }
-    acquiring = true;
     const lifetime = pageLifetime;
     const ready = Promise.withResolvers<string>();
     const released = Promise.withResolvers<undefined>();
@@ -111,36 +125,32 @@ export async function handleCoreCustody(
     void navigator.locks
       .request(CUSTODY_LOCK, { signal: AbortSignal.timeout(waitMs) }, async () => {
         const held = Promise.withResolvers<undefined>();
-        await withSharedWalletRevision(
-          operation.walletRevision,
-          async () => {
-            // Check durable storage before giving any runtime custody authority.
-            const db = await openDatabase();
-            db.close();
-            if (!pageActive || lifetime !== pageLifetime) {
-              throw new Error('Private custody host closed while acquiring custody');
-            }
-            if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-              throw new Error('Private custody request expired');
-            }
-            const token = crypto.randomUUID();
-            lease = {
-              token,
-              revision: operation.walletRevision,
-              released: released.promise,
-              release: () => {
-                held.resolve(undefined);
-              },
-            };
-            ready.resolve(token);
+        // Check the wallet and durable storage before giving any runtime custody authority.
+        await assertLocalWallet(operation.wallet);
+        const db = await openDatabase();
+        db.close();
+        if (!pageActive || lifetime !== pageLifetime) {
+          throw new Error('Private custody host closed while acquiring custody');
+        }
+        if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+          throw new Error('Private custody request expired');
+        }
+        const token = crypto.randomUUID();
+        leases.set(token, {
+          wallet: operation.wallet,
+          released: released.promise,
+          release: () => {
+            held.resolve(undefined);
           },
-          deadlineMs,
-        );
+        });
+        ready.resolve(token);
         await held.promise;
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
-          const busy = new Error('The test wallet is active in another tab. Close it before opening it here.');
+          const busy = new Error(
+            'Chat is open with this local wallet in another tab. Close it there to use Chat here.',
+          );
           busy.name = CORE_CUSTODY_BUSY_ERROR;
           ready.reject(busy);
           return;
@@ -148,153 +158,141 @@ export async function handleCoreCustody(
         ready.reject(error);
       })
       .finally(() => {
-        acquiring = false;
         released.resolve(undefined);
       });
-    try {
-      return await ready.promise;
-    } catch (error) {
-      acquiring = false;
-      throw error;
-    }
+    return ready.promise;
   }
-  const owner = lease;
-  if (operation.lease !== owner?.token) {
+  const owner = leases.get(operation.lease);
+  if (owner === undefined) {
     throw new Error('Private custody lease is unavailable');
   }
   if (operation.action === 'release') {
-    lease = undefined;
+    leases.delete(operation.lease);
     owner.release();
     await owner.released;
     return;
   }
   let result: Uint8Array | Blob | boolean | undefined;
-  await withSharedWalletRevision(
-    owner.revision,
-    async () => {
-      if (lease !== owner) {
-        throw new Error('Private custody lease changed');
-      }
-      const db = await openDatabase();
-      try {
-        if (operation.action === 'putSources') {
-          // IndexedDB commits immutable Blob snapshots without materializing an
-          // entire attachment as a JavaScript byte array. No names or paths persist.
-          await transaction(db, 'readwrite', store => {
-            let last: IDBRequest<IDBValidKey> | undefined;
-            for (const source of operation.sources) {
-              last = store.add(
-                source.blob.slice(0, source.blob.size, 'application/octet-stream'),
-                `source:${source.sourceId}`,
-              );
-            }
-            if (!last) {
-              throw new Error('No Chat sources supplied');
-            }
-            return last;
-          });
-          return;
-        }
-        if (operation.action === 'readSource') {
-          const blob: unknown = await transaction(db, 'readonly', store => store.get(`source:${operation.sourceId}`));
-          if (blob !== undefined && !(blob instanceof Blob)) {
-            throw new Error('Private Chat source is corrupt');
-          }
-          result = blob;
-          return;
-        }
-        if (operation.action === 'releaseSource') {
-          await transaction(db, 'readwrite', store => store.delete(`source:${operation.sourceId}`));
-          return;
-        }
-        const storageKey = `core:${operation.key}`;
-        if (operation.action === 'clear') {
-          await transaction(db, 'readwrite', store => store.delete(storageKey));
-          return;
-        }
-        const storedKey: unknown = await transaction(db, 'readonly', store => store.get(KEY));
-        const stored: unknown =
-          operation.action === 'write' ? undefined : await transaction(db, 'readonly', store => store.get(storageKey));
-        if (operation.action === 'read' && stored === undefined) {
-          return;
-        }
-        let key: CryptoKey;
-        if (storedKey === undefined) {
-          if (stored !== undefined) {
-            throw new Error('Private custody encryption key is missing');
-          }
-          const existing = await transaction(db, 'readonly', store => store.count(IDBKeyRange.bound('core:', 'core;')));
-          if (existing > 0) {
-            throw new Error('Private custody encryption key is missing');
-          }
-          key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-          await transaction(db, 'readwrite', store => store.add(key, KEY));
-        } else {
-          if (
-            !(storedKey instanceof CryptoKey) ||
-            storedKey.type !== 'secret' ||
-            storedKey.algorithm.name !== 'AES-GCM' ||
-            storedKey.extractable
-          ) {
-            throw new Error('Private custody encryption key is invalid');
-          }
-          key = storedKey;
-        }
-        const additionalData = new TextEncoder().encode(storageKey);
-        const decrypt = async (record: unknown): Promise<Uint8Array> => {
-          if (!(record instanceof Uint8Array) || record.length < 28) {
-            throw new Error('Private custody record is corrupt');
-          }
-          // Failure is not absence: never delete/recreate an undecryptable purse or device.
-          return new Uint8Array(
-            await crypto.subtle.decrypt(
-              {
-                name: 'AES-GCM',
-                iv: new Uint8Array(record.subarray(0, 12)),
-                additionalData,
-              },
-              key,
-              new Uint8Array(record.subarray(12)),
-            ),
+  await assertLocalWallet(owner.wallet);
+  if (leases.get(operation.lease) !== owner) {
+    throw new Error('Private custody lease changed');
+  }
+  const db = await openDatabase();
+  try {
+    if (operation.action === 'putSources') {
+      // IndexedDB commits immutable Blob snapshots without materializing an
+      // entire attachment as a JavaScript byte array. No names or paths persist.
+      await transaction(db, 'readwrite', store => {
+        let last: IDBRequest<IDBValidKey> | undefined;
+        for (const source of operation.sources) {
+          last = store.add(
+            source.blob.slice(0, source.blob.size, 'application/octet-stream'),
+            `source:${source.sourceId}`,
           );
-        };
-        if (operation.action === 'read') {
-          result = await decrypt(stored);
-          return;
         }
-        if (operation.action === 'compareExchange') {
-          // The custody lock above serializes this read with every write and clear.
-          const current = stored === undefined ? null : await decrypt(stored);
-          const expected = operation.expected;
-          const matches =
-            current === null || expected === null
-              ? current === expected
-              : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
-          if (!matches) {
-            result = false;
-            return;
-          }
+        if (!last) {
+          throw new Error('No Chat sources supplied');
         }
-        const value = operation.action === 'write' ? operation.value : operation.replacement;
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const ciphertext = new Uint8Array(
-          await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData }, key, new Uint8Array(value)),
-        );
-        const record = new Uint8Array(iv.length + ciphertext.length);
-        record.set(iv);
-        record.set(ciphertext, iv.length);
-        if (lease !== owner) {
-          throw new Error('Private custody lease changed');
-        }
-        await transaction(db, 'readwrite', store => store.put(record, storageKey));
-        if (operation.action === 'compareExchange') {
-          result = true;
-        }
-      } finally {
-        db.close();
+        return last;
+      });
+      return;
+    }
+    if (operation.action === 'readSource') {
+      const blob: unknown = await transaction(db, 'readonly', store => store.get(`source:${operation.sourceId}`));
+      if (blob !== undefined && !(blob instanceof Blob)) {
+        throw new Error('Private Chat source is corrupt');
       }
-    },
-    deadlineMs,
-  );
+      result = blob;
+      return;
+    }
+    if (operation.action === 'releaseSource') {
+      await transaction(db, 'readwrite', store => store.delete(`source:${operation.sourceId}`));
+      return;
+    }
+    const storageKey = `core:${operation.key}`;
+    if (operation.action === 'clear') {
+      await transaction(db, 'readwrite', store => store.delete(storageKey));
+      return;
+    }
+    const storedKey: unknown = await transaction(db, 'readonly', store => store.get(KEY));
+    const stored: unknown =
+      operation.action === 'write' ? undefined : await transaction(db, 'readonly', store => store.get(storageKey));
+    if (operation.action === 'read' && stored === undefined) {
+      return;
+    }
+    let key: CryptoKey;
+    if (storedKey === undefined) {
+      if (stored !== undefined) {
+        throw new Error('Private custody encryption key is missing');
+      }
+      const existing = await transaction(db, 'readonly', store => store.count(IDBKeyRange.bound('core:', 'core;')));
+      if (existing > 0) {
+        throw new Error('Private custody encryption key is missing');
+      }
+      key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      await transaction(db, 'readwrite', store => store.add(key, KEY));
+    } else {
+      if (
+        !(storedKey instanceof CryptoKey) ||
+        storedKey.type !== 'secret' ||
+        storedKey.algorithm.name !== 'AES-GCM' ||
+        storedKey.extractable
+      ) {
+        throw new Error('Private custody encryption key is invalid');
+      }
+      key = storedKey;
+    }
+    const additionalData = new TextEncoder().encode(storageKey);
+    const decrypt = async (record: unknown): Promise<Uint8Array> => {
+      if (!(record instanceof Uint8Array) || record.length < 28) {
+        throw new Error('Private custody record is corrupt');
+      }
+      // Failure is not absence: never delete/recreate an undecryptable purse or device.
+      return new Uint8Array(
+        await crypto.subtle.decrypt(
+          {
+            name: 'AES-GCM',
+            iv: new Uint8Array(record.subarray(0, 12)),
+            additionalData,
+          },
+          key,
+          new Uint8Array(record.subarray(12)),
+        ),
+      );
+    };
+    if (operation.action === 'read') {
+      result = await decrypt(stored);
+      return result;
+    }
+    if (operation.action === 'compareExchange') {
+      // The custody lock above serializes this read with every write and clear.
+      const current = stored === undefined ? null : await decrypt(stored);
+      const expected = operation.expected;
+      const matches =
+        current === null || expected === null
+          ? current === expected
+          : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+      if (!matches) {
+        return false;
+      }
+    }
+    const value = operation.action === 'write' ? operation.value : operation.replacement;
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData }, key, new Uint8Array(value)),
+    );
+    const record = new Uint8Array(iv.length + ciphertext.length);
+    record.set(iv);
+    record.set(ciphertext, iv.length);
+    if (leases.get(operation.lease) !== owner) {
+      throw new Error('Private custody lease changed');
+    }
+    await transaction(db, 'readwrite', store => store.put(record, storageKey));
+    if (operation.action === 'compareExchange') {
+      result = true;
+    }
+  } finally {
+    db.close();
+  }
   return result;
 }

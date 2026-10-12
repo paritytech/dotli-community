@@ -9,8 +9,10 @@ export {
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
+  isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
+  type SharedWalletRequestMethod,
 } from './auth-storage.js';
 export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
 export {
@@ -31,9 +33,14 @@ export {
   clearSharedAuthStorage,
   compareExchangeSharedAuthStorage,
   clearSharedModeStorage,
+  forgetSharedLocalWallet,
+  readSharedLocalWallet,
+  saveSharedLocalWallet,
+  updateSharedLocalWalletIdentity,
   createRemoteChainProvider,
   ensureProtocolFrame,
   getProtocolOrigin,
+  getSharedStoreStatus,
   getSmoldotDbOutcome,
   isProtocolBooting,
   isProtocolReady,
@@ -45,49 +52,38 @@ export {
   onProtocolReady,
   readSharedAuthStorage,
   readSharedModeStorage,
-  resetProtocolFrame,
   requestCoreCustody,
-  requestSharedWallet,
-  requestWalletOwner,
+  resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
   resolveOwnerRemote,
   resolveRootManifestRemote,
   resolveSeitySlotRemote,
   setProtocolSubMode,
+  type SharedStoreStatus,
   subscribeSharedAuthStorage,
-  subscribeSharedWallet,
-  subscribeWalletOwnerRevoked,
+  subscribeSharedStoreStatus,
   type RemoteChainProvider,
   warmupProtocol,
   writeSharedAuthStorage,
   writeSharedModeStorage,
   type RemoteSeitySlot,
 } from './client.js';
-export { CORE_CUSTODY_BUSY_ERROR, isCoreCustodyOperation, type CoreCustodyOperation } from './core-custody.js';
+export {
+  CORE_CUSTODY_BUSY_ERROR,
+  isCoreCustodyOperation,
+  localWalletCustodyId,
+  type CoreCustodyOperation,
+} from './core-custody.js';
 export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 export {
   getRequestSyncTimeoutMs,
   isProtocolEnvelope,
+  type LocalWalletIdentity,
+  type LocalWalletReadResult,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type SmoldotDbChain,
   type SmoldotDbOutcome,
 } from './messages.js';
-export {
-  isSharedWalletOperation,
-  isSharedWalletState,
-  type SharedWalletOperation,
-  type SharedWalletResult,
-  type SharedWalletState,
-} from './wallet-storage.js';
-export {
-  createWalletOwner,
-  isWalletOwnerOperation,
-  WALLET_OWNER_BUSY_ERROR,
-  WALLET_OWNER_REVOKED_EVENT,
-  type WalletOwner,
-  type WalletOwnerDeps,
-  type WalletOwnerOperation,
-} from './wallet-owner.js';

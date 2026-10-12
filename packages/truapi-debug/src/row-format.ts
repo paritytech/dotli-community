@@ -64,8 +64,6 @@ export interface TruapiRowData {
   direction: StoredTruapiEvent['direction'];
   productId: string | undefined;
   requestId: string;
-  ridShort: string;
-  ridColor: string;
   tagKind: TagKind;
   displayTag: string;
   summary: string;
@@ -80,8 +78,6 @@ export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null):
     direction: ev.direction,
     productId: ev.productId,
     requestId: ev.requestId,
-    ridShort: ev.requestId.slice(0, 6),
-    ridColor: ridColor(ev.requestId),
     tagKind: tagKind(ev.tag),
     displayTag,
     summary,
@@ -93,8 +89,6 @@ export interface SystemRowData {
   layer: string;
   source: StoredSystemEvent['source'];
   flowId: string;
-  flowIdShort: string;
-  ridColor: string;
   eventText: string;
   summary: string;
 }
@@ -104,8 +98,6 @@ export function systemRowData(ev: StoredSystemEvent): SystemRowData {
     layer: ev.layer,
     source: ev.source,
     flowId: ev.flowId,
-    flowIdShort: ev.flowId.slice(0, 6),
-    ridColor: ridColor(ev.flowId),
     eventText: `${ev.layer}.${ev.event}`,
     summary: summariseSystemEvent(ev),
   };

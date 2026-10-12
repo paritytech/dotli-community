@@ -2,10 +2,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
+// Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from '@dotli/config';
-import type { SharedWalletOperation, SharedWalletState } from './wallet-storage.js';
 import type { CoreCustodyOperation } from './core-custody.js';
-import type { WalletOwnerOperation } from './wallet-owner.js';
+
+/** Wire shape of the local wallet's cached identity. */
+export interface LocalWalletIdentity {
+  identityAccountId: string;
+  liteUsername: string | null;
+}
+
+/** `unreadable` means the frame found a record it could not decrypt, and has already deleted it. */
+export type LocalWalletReadResult =
+  | { status: 'none' }
+  | { status: 'unreadable' }
+  | { status: 'ok'; entropy: Uint8Array; identity: LocalWalletIdentity | null };
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
@@ -18,12 +29,7 @@ export interface ProtocolRequestMap {
   };
   resolveRootManifest: { label: string };
   authStorageRead: { siteId: string; key: string };
-  authStorageWrite: {
-    siteId: string;
-    key: string;
-    value: string;
-    walletRevision?: string | null;
-  };
+  authStorageWrite: { siteId: string; key: string; value: string };
   authStorageClear: { siteId: string; key: string };
   authStorageCompareExchange: {
     siteId: string;
@@ -34,9 +40,11 @@ export interface ProtocolRequestMap {
   modeStorageRead: { siteId: string; key: string };
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };
-  walletStorage: { siteId: string; operation: SharedWalletOperation };
+  localWalletRead: { siteId: string };
+  localWalletSave: { siteId: string; entropy: Uint8Array };
+  localWalletIdentity: { siteId: string; identity: LocalWalletIdentity };
+  localWalletForget: { siteId: string };
   coreCustody: { siteId: string; operation: CoreCustodyOperation };
-  walletOwner: { siteId: string; operation: WalletOwnerOperation };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };
@@ -114,6 +122,12 @@ export interface ProtocolReadyEnvelope {
   kind: 'ready';
 }
 
+/** The iframe's shared storage listeners are bound. Sent before init, so storage requests need not wait for `ready`. */
+export interface ProtocolListeningEnvelope {
+  namespace: 'dotli:protocol';
+  kind: 'listening';
+}
+
 /**
  * Whether a chain started from existing smoldot state, sent once per chain. "hit" is a loaded database
  * or an already synced SharedWorker chain, "unavailable" a store that could not answer. The store lives
@@ -184,21 +198,6 @@ export interface ProtocolAuthStorageChangedEnvelope {
   value: string | null;
 }
 
-export interface ProtocolWalletStorageChangedEnvelope {
-  namespace: 'dotli:protocol';
-  kind: 'wallet-storage-changed';
-  siteId: string;
-  state: SharedWalletState;
-}
-
-/** Another tab asked for the test wallet; stop it, then release the lease. */
-export interface ProtocolWalletOwnerRevokedEnvelope {
-  namespace: 'dotli:protocol';
-  kind: 'wallet-owner-revoked';
-  siteId: string;
-  lease: string;
-}
-
 export type ProtocolEnvelope =
   | ProtocolRequestEnvelope
   | ProtocolProgressEnvelope
@@ -207,15 +206,14 @@ export type ProtocolEnvelope =
   | ProtocolChainMessageEnvelope
   | ProtocolChainHaltEnvelope
   | ProtocolReadyEnvelope
+  | ProtocolListeningEnvelope
   | ProtocolSmoldotDbEnvelope
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
   | ProtocolChainSyncEnvelope
   | ProtocolChainDetailEnvelope
   | ProtocolNetBytesEnvelope
-  | ProtocolAuthStorageChangedEnvelope
-  | ProtocolWalletStorageChangedEnvelope
-  | ProtocolWalletOwnerRevokedEnvelope;
+  | ProtocolAuthStorageChangedEnvelope;
 
 const VALID_KINDS = new Set([
   'request',
@@ -224,6 +222,7 @@ const VALID_KINDS = new Set([
   'chain-message',
   'chain-halt',
   'ready',
+  'listening',
   'smoldot-db',
   'fatal',
   'init-failed',
@@ -231,8 +230,6 @@ const VALID_KINDS = new Set([
   'chain-detail',
   'net-bytes',
   'auth-storage-changed',
-  'wallet-storage-changed',
-  'wallet-owner-revoked',
 ]);
 
 // postMessage data is untrusted, so chain and kind are checked at runtime. The lists are copied because

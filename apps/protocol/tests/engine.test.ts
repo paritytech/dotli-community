@@ -92,13 +92,19 @@ function setup(
   return { engine, built };
 }
 
+// The broker traces each lease it opens and closes at debug level.
+let debug: Mock<(...args: unknown[]) => void>;
+
 beforeEach(() => {
-  vi.spyOn(log, 'debug').mockImplementation(() => undefined);
+  debug = vi.fn<(...args: unknown[]) => void>();
+  vi.spyOn(log, 'debug').mockImplementation(debug);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+const traced = (line: string): unknown[] => ['[dot.li broker]', expect.stringContaining(line)];
 
 describe('createEngine chain connections', () => {
   it('As a dotli integrator, a remote chain connection carries requests and answers', async () => {
@@ -116,6 +122,7 @@ describe('createEngine chain connections', () => {
 
     // Then
     expect(connected[0]).toMatchObject({ kind: 'response', ok: true, result: true });
+    expect(debug).toHaveBeenCalledWith(...traced('c1 connecting'));
     expect(connected[1]).toMatchObject({ kind: 'chain-message', connectionId: 'c1' });
     expect(JSON.parse((connected[1] as { message: string }).message)).toEqual({
       jsonrpc: '2.0',
