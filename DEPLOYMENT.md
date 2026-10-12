@@ -87,8 +87,9 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
 - For code-only redeployments (no infra changes), `make deploy ENV=<env>` is enough.
 - For nginx-only updates, `make deploy-nginx ENV=<env>`, or run the **Deploy nginx** workflow from the Actions tab: pick
   the environment and it runs the same target against that environment's box, behind that environment's protection
-  rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag
-  and `paseoli.dev` from `main`.
+  rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag.
+  The workflow offers only `paseo.li` and `testnet.li`: `paseoli.dev` and `paseo.fyi` get their nginx config only
+  through the [opt-in CI rollout](#opt-in-ci-nginx-rollout), which a shared-directory deploy would overwrite.
 
 ## Media TURN credentials
 
@@ -104,9 +105,10 @@ needed.
   `Cross-Origin-Resource-Policy: same-origin`. Each client IP gets 6 requests per minute (burst 10); excess gets 429.
   Non-browser clients can still mint relay credentials; the per-IP limit bounds that.
 - `make deploy-nginx` reads `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` from `deploy.env` or
-  the environment, and the CI nginx rollout passes the environment secrets of the same names. It pipes them over SSH
-  into `/etc/nginx/dotli-private/<site>-media-turn.conf` (`root:root`, `0600`). The token is not in the rendered site
-  config, `/tmp`, rsync uploads, the frontend build or the make log, and the route has access and error logging off.
+  the environment, and the [opt-in CI nginx rollout](#opt-in-ci-nginx-rollout) passes the environment secrets of the
+  same names. It pipes them over SSH into `/etc/nginx/dotli-private/<site>-media-turn.conf` (`root:root`, `0600`). The
+  token is not in the rendered site config, `/tmp`, rsync uploads, the frontend build or the make log, and the route has
+  access and error logging off.
 - Set both secrets or neither. Unset, `deploy-nginx` warns and writes the file empty: the route answers 503 and calls
   cannot connect. Removing the secrets and redeploying disables the route.
 - The token is the Cloudflare Realtime TURN key's API token (`Authorization: Bearer`), paired with that key's id. Rotate
@@ -133,12 +135,18 @@ servers answer 404. It accepts a fixed route, method and header set, only same-o
 redirects, CORS or caching headers. The template's resolver is systemd-resolved at `127.0.0.53`, the Ubuntu default, and
 upstream TLS is verified against the `ca-certificates` roots that `provision-prereqs` installs.
 
-### Opt-in CI rollout
+## Opt-in CI nginx rollout
 
-CI normally uploads only the three frontend builds. To also deploy the nginx template and identity proxy with the same
-revision as the frontend, set the GitHub Actions **environment variable** `DEPLOY_NGINX=true` on the `paseoli.dev` or
-`paseo.fyi` environment. Each environment opts in independently; other environments stay dist-only even if the variable
-is set there. Deployment planning and triggers are unchanged. Enable it only for reviewed deployment commits.
+CI normally uploads only the three frontend builds. To also deploy the nginx config with the same revision as the
+frontend, set the GitHub Actions **environment variable** `DEPLOY_NGINX=true` on the `paseoli.dev` or `paseo.fyi`
+environment. Each environment opts in independently; other environments stay dist-only even if the variable is set
+there. Deployment planning and triggers are unchanged. Enable it only for reviewed deployment commits.
+
+This one **Deploy nginx config** step renders the whole site config from `nginx/nginx.conf.template`: the identity proxy
+above, the [Media TURN route](#media-turn-credentials) with its private include, the
+[receiving worker CSP and relay proxy](#optional-browser-background-receiving) when `RECEIVING_RELAY_URL` (and
+`RECEIVING_PROXY_PORT`) are set, and the shared snippets (assets, service workers, Sentry tunnel). It runs after the
+frontend build, whose generated `host-receiving-csp.conf` it installs, and before the frontend upload.
 
 Only these environment-to-site mappings are accepted by `ci-deploy-nginx`:
 
@@ -158,9 +166,14 @@ The selected environment must already be provisioned:
   Brotli modules and the resolver at `127.0.0.53`.
 - Keep the environment's `SENTRY_DSN` secret: CI forwards the value the frontend build uses to render the `/t` tunnel.
   An unset secret disables the tunnel.
+- Keep `DOTLI_TURN_CLOUDFLARE_KEY_ID` and `DOTLI_TURN_CLOUDFLARE_API_TOKEN` set as environment secrets wherever calls
+  must connect: every rollout rewrites the server's TURN include, and unset secrets disable the Media TURN route.
+- Keep the `RECEIVING_*` variables set wherever receiving is deployed: a rollout without `RECEIVING_RELAY_URL` installs
+  the empty worker CSP, and one without `RECEIVING_PROXY_PORT` makes `/__receiving/` answer 404.
 
-The config-only command CI runs, with `DEPLOY_USER`, `DEPLOY_HOST`, `DEPLOY_PATH` and `SENTRY_DSN` exported from the
-approved environment and its SSH key loaded:
+The config-only command CI runs, with `DEPLOY_USER`, `DEPLOY_HOST`, `DEPLOY_PATH`, `SENTRY_DSN`, the TURN secret pair
+and the `RECEIVING_CSP_FILE`/`RECEIVING_PUSH_ORIGIN`/`RECEIVING_PROXY_PORT` values exported from the approved
+environment and its SSH key loaded:
 
 ```sh
 make ci-deploy-nginx ENV=fyi-paseo   # or ENV=dev-paseo
@@ -170,14 +183,22 @@ It delegates to `deploy-nginx` with the CI SSH destination, ignoring local `REMO
 under the site's isolated directory, rewriting both the site's and the snippets' include paths to it. Shared snippets
 and other sites' directories on the box are left alone, so each opted-in site keeps its own snapshot: later shared
 snippet fixes reach it only through this target. Plain `deploy-nginx` and the **Deploy nginx** workflow keep the shared
-`/etc/nginx/snippets/` and re-render the site to point there. nginx still validates and reloads the whole server
-configuration; if `nginx -t` fails, the installed files stay for operator repair and the running service is not
-reloaded. This is not an atomic rollback.
+`/etc/nginx/snippets/` and re-render the site to point there, so do not use them for an opted-in site. nginx still
+validates and reloads the whole server configuration; if `nginx -t` fails, the installed files stay for operator repair
+and the running service is not reloaded. This is not an atomic rollback.
 
-After the frontend upload, the opted-in job sends a read-only GET to `https://<site>/__dotli-identity/paseo/attester`
-and requires a JSON object whose `attester` is a 32-byte hex string, so a frontend HTML page with status 200 fails. It
-creates no challenge, token or username. Unsetting `DEPLOY_NGINX` returns to dist-only CI; it does not remove an
-installed proxy.
+After the frontend upload, the opted-in job runs three smokes:
+
+- Identity proxy: a read-only GET to `https://<site>/__dotli-identity/paseo/attester` must return a JSON object whose
+  `attester` is a 32-byte hex string, so a frontend HTML page with status 200 fails. It creates no challenge, token or
+  username.
+- Media TURN: when `DOTLI_TURN_CLOUDFLARE_KEY_ID` is set, a GET to `https://<site>/__dotli-media/turn` must return a
+  credentialed `turn:`/`turns:` relay; only the verdict is printed. This mints one short-lived relay credential.
+- Receiving: when `RECEIVING_RELAY_URL` and `RECEIVING_PROXY_PORT` are set,
+  `<RECEIVING_PUSH_ORIGIN>/__receiving/healthz` must answer `{"ok":true}` through the proxy, and that host's
+  `/host-sw.js` must carry the worker CSP naming the relay origin.
+
+Unsetting `DEPLOY_NGINX` returns to dist-only CI; it does not remove an installed config.
 
 ## Qualify and deploy Chat on paseo.fyi
 
@@ -261,9 +282,11 @@ fetched from an unrelated provider. Keep VAPID private keys and provider credent
 settings automatically.
 
 For GitHub deployments, set the environment-scoped `RECEIVING_RELAY_URL`, `RECEIVING_PUSH_ORIGIN`, and
-`RECEIVING_VAPID_PUBLIC_KEY`; the workflow passes them to the corresponding `VITE_*` build settings. Enable
-`DEPLOY_NGINX` so the same deployment runs `make deploy-nginx` with the worker CSP generated by that build. Dist-only
-upload does not update nginx policy.
+`RECEIVING_VAPID_PUBLIC_KEY`; the workflow passes them to the corresponding `VITE_*` build settings. On `paseoli.dev` or
+`paseo.fyi`, enable `DEPLOY_NGINX` so the same deployment's [nginx rollout](#opt-in-ci-nginx-rollout) installs the
+worker CSP generated by that build. Other environments are dist-only in CI; their receiving nginx policy changes only
+through `make deploy-nginx` with `RECEIVING_CSP_FILE` from the matching build. Dist-only upload does not update nginx
+policy.
 
 For a loopback relay exposed at the configured product origin's `/__receiving`, also set `RECEIVING_PROXY_PORT` to its
 listening port. The nginx deployment requires the matching generated CSP and an HTTPS product subdomain of the
