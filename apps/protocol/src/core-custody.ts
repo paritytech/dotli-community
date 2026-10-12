@@ -202,8 +202,7 @@ export async function handleCoreCustody(
       if (blob !== undefined && !(blob instanceof Blob)) {
         throw new Error('Private Chat source is corrupt');
       }
-      result = blob;
-      return;
+      return blob;
     }
     if (operation.action === 'releaseSource') {
       await transaction(db, 'readwrite', store => store.delete(`source:${operation.sourceId}`));
