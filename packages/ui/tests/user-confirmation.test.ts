@@ -607,44 +607,6 @@ describe('user confirmation modal', () => {
     await expect(confirmation).rejects.toThrow('User dismissed identity disclosure dialog');
   });
 
-  it('As a dotli integrator, the host allows preimage submission from its dedicated dialog', async () => {
-    // Given
-    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
-    // When
-    const confirmation = confirmUserAction({
-      tag: 'PreimageSubmit',
-      value: { size: 2048n },
-    });
-    await overlaysReady();
-
-    // Then
-    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Submit Preimage');
-    expect(modalFields()).toEqual({ 'Data size': '2 KB' });
-
-    // When
-    byTestId('signing-btn-sign').click();
-
-    // Then
-    await expect(confirmation).resolves.toBe(true);
-  });
-
-  it('As a dotli integrator, the host denies preimage submission when the user cancels', async () => {
-    // Given
-    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
-    // When
-    const confirmation = confirmUserAction({
-      tag: 'PreimageSubmit',
-      value: { size: 512n },
-    });
-    await overlaysReady();
-
-    // When
-    byTestId('signing-btn-cancel').click();
-
-    // Then
-    await expect(confirmation).resolves.toBe(false);
-  });
-
   it('As a dotli user, an account access prompt highlights Allow once', async () => {
     // When
     void createUserConfirmationAdapters('localhost:3000').confirmPermission({

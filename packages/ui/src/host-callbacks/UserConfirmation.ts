@@ -5,7 +5,6 @@ import type {
   CreateTransactionReview,
   IdentityDisclosureReview,
   PermissionDecision,
-  PreimageSubmitReview,
   ProductSubtreeReview,
   ResourceAllocationReview,
   SignPayloadReview,
@@ -24,9 +23,8 @@ import type {
   RingLocationJunction,
 } from '@parity/truapi';
 import { iconMarkup, PERMISSION_ICONS } from '../permission-icons.js';
-import { showPreimageSubmitModal } from '../preimage-modal.js';
 import { ERRORS } from '../errors.js';
-import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { createBlockingModalScope, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { presentModal } from '../overlays/load.js';
 import type { ModalButton, ModalField } from '../state/modals.js';
 
@@ -45,8 +43,8 @@ type ConfirmationField = ModalField;
 
 type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismissed';
 
-/** PreimageSubmit gets its own modal. */
-type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' }>;
+// truapi 0.25 has no PreimageSubmit review: a granted PreimageSubmit permission covers each upload.
+type ModalReview = UserConfirmationReview;
 
 async function showConfirmationModal(
   label: string,
@@ -341,16 +339,6 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
   }
 }
 
-async function handlePreimageSubmitReview(review: PreimageSubmitReview, signal: AbortSignal): Promise<boolean> {
-  try {
-    await showPreimageSubmitModal(Number(review.size), signal);
-    return true;
-  } catch {
-    throwIfAborted(signal);
-    return false;
-  }
-}
-
 async function handleConfirmationReview(
   label: string,
   review: ModalReview,
@@ -384,19 +372,11 @@ export function createUserConfirmationAdapters(
     // Per-action reviews confirm a single operation, so there is no lifetime
     // to choose and the modal keeps two buttons.
     confirmUserAction: review =>
-      modalScope.enqueue(async signal =>
-        review.tag === 'PreimageSubmit'
-          ? handlePreimageSubmitReview(review.value, signal)
-          : (await handleConfirmationReview(label, review, signal, false)) === 'accepted',
-      ),
+      modalScope.enqueue(async signal => (await handleConfirmationReview(label, review, signal, false)) === 'accepted'),
     // The core stores AllowAlways and Deny, and honours AllowOnce for this request only.
     confirmPermission: review =>
       modalScope.enqueue(async signal =>
-        review.tag === 'PreimageSubmit'
-          ? (await handlePreimageSubmitReview(review.value, signal))
-            ? 'AllowOnce'
-            : 'Deny'
-          : permissionDecision(await handleConfirmationReview(label, review, signal, true)),
+        permissionDecision(await handleConfirmationReview(label, review, signal, true)),
       ),
   };
 }
