@@ -6,7 +6,6 @@ import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import type { CachedManifests } from '@dotli/storage';
 import type { ShowNotification } from '@dotli/ui';
 import { revalidateCachedCopy, type CacheRevalidationDeps } from './cache-revalidate.js';
-import { revalidateCachedProduct } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
 
 type Notice = Parameters<ShowNotification>[0];
@@ -39,7 +38,6 @@ function setup(published: Record<string, string> | Error): {
   return {
     deps: {
       names: nameSource(published),
-      decide: revalidateCachedProduct,
       cache: {
         set: (label, cid, manifests) => {
           written.push({ label, cid, manifests });

@@ -34,6 +34,17 @@ export interface SyncStoreOptions<T> {
   onListenerError?: (error: Error) => void;
 }
 
+/** A store listener that threw. The page's error handler groups it by `store`. */
+export class StoreListenerError extends Error {
+  override readonly name = 'StoreListenerError';
+  readonly store: string;
+
+  constructor(store: string, cause: unknown) {
+    super(`store ${store} listener failed`, { cause });
+    this.store = store;
+  }
+}
+
 function rethrowInMicrotask(error: Error): void {
   queueMicrotask(() => {
     throw error;
@@ -89,7 +100,7 @@ export function createSyncStore<T>(name: string, initial: T, options: SyncStoreO
         listener();
       } catch (cause) {
         // A broken UI listener must not stop the producer's event dispatch.
-        onListenerError(new Error(`store ${name} listener failed`, { cause }));
+        onListenerError(new StoreListenerError(name, cause));
       }
     }
   };

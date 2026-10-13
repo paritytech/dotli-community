@@ -18,8 +18,8 @@ export interface ToastInput {
   text: string;
   label: string;
   deeplink?: string;
-  /** Drawn in the toast's tile, which sizes it and colors it by tone. */
-  icon: Component<IconProps>;
+  /** Drawn in the toast's tile, which sizes it and colors it by tone. Its tone's icon without one. */
+  icon?: Component<IconProps>;
   /** Tints the icon tile. */
   tone?: StatusTone;
   /** 0 is persistent. */
@@ -33,7 +33,7 @@ export interface ToastEntry {
   text: string;
   label: string;
   deeplink?: string;
-  icon: Component<IconProps>;
+  icon?: Component<IconProps>;
   tone: StatusTone;
   action?: ToastAction;
   leaving: boolean;
@@ -168,12 +168,14 @@ export function pushToast(input: ToastInput): number {
     id,
     text: input.text,
     label: input.label,
-    icon: input.icon,
     tone: input.tone ?? 'info',
     leaving: false,
   };
   if (input.deeplink !== undefined) {
     entry.deeplink = input.deeplink;
+  }
+  if (input.icon !== undefined) {
+    entry.icon = input.icon;
   }
   if (input.action !== undefined) {
     entry.action = input.action;

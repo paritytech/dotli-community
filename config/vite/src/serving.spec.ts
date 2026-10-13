@@ -103,12 +103,23 @@ describe('headerPolicy', () => {
     expect(policies).toEqual(['isolated', 'plain']);
   });
 
-  it('As the isolated preview page, I load a host asset and it carries COEP so I can start its worker', () => {
+  it('As a product host, my assets carry no COEP', () => {
     // Given
     const shell = routeFor('browse.localhost');
 
     // When
     const policy = headerPolicy(shell, '/assets/w.js');
+
+    // Then
+    expect(policy).toBe('plain');
+  });
+
+  it('As the bare host, my assets carry COEP so /__preview can start their workers', () => {
+    // Given
+    const bare = routeFor('localhost');
+
+    // When
+    const policy = headerPolicy(bare, '/assets/w.js');
 
     // Then
     expect(policy).toBe('worker-coep');
@@ -166,10 +177,15 @@ describe('the table against nginx', () => {
 
   it('As an operator, I run a Node server and host and sandbox assets carry the headers nginx sends', () => {
     // Given
-    const nginx = [nginxHeaders('dotli-assets-host.conf'), nginxHeaders('dotli-assets-iframeable.conf')];
+    const nginx = [
+      nginxHeaders('dotli-assets-host.conf'),
+      nginxHeaders('dotli-assets-preview.conf'),
+      nginxHeaders('dotli-assets-iframeable.conf'),
+    ];
 
     // When
     const headers = [
+      { ...securityHeaders('plain', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
       { ...securityHeaders('worker-coep', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
       { ...securityHeaders('isolated', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
     ];

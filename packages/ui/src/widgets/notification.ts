@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Component } from 'solid-js';
-import { AlertTriangleIcon, BanIcon, BellIcon, CheckIcon, type IconProps } from '../icons.js';
+import type { IconProps } from '../components/icons/icon-props.js';
 import { pushToast, type ToastInput } from '../page/state/toasts.js';
 import type { StatusTone } from '../page/status-tone.js';
 
@@ -10,19 +10,11 @@ type NoticeTone = Exclude<StatusTone, 'quiet'>;
 
 export const NOTIFICATION_DISMISS_MS = 10_000;
 
-const TONE_ICON: Record<NoticeTone, Component<IconProps>> = {
-  info: BellIcon,
-  ok: CheckIcon,
-  warn: AlertTriangleIcon,
-  err: AlertTriangleIcon,
-  idle: BanIcon,
-};
-
 export interface NotificationParams {
   text: string;
   label: string;
   deeplink?: string | undefined;
-  /** Drawn in currentColor, so it takes the tone. The tone's own icon without one. */
+  /** Drawn in currentColor, so it takes the tone. The tone's own icon without one, chosen when the toast renders. */
   icon?: Component<IconProps>;
   tone?: NoticeTone;
   /** 0 keeps it until closed. */
@@ -105,7 +97,7 @@ export function createNotifier({ present, visible, system }: NotifierDeps): Show
     present({
       text,
       label: params.label,
-      icon: params.icon ?? TONE_ICON[tone],
+      ...(params.icon === undefined ? {} : { icon: params.icon }),
       tone,
       dismissMs: params.dismissMs ?? NOTIFICATION_DISMISS_MS,
       ...(deeplink === undefined ? {} : { deeplink }),

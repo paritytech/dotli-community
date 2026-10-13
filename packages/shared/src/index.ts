@@ -20,6 +20,7 @@ export {
   createSyncStore,
   registerStoreStateReset,
   shallowEqual,
+  StoreListenerError,
   type ReadableStore,
   type SyncStore,
   type SyncStoreOptions,

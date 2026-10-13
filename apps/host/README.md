@@ -7,7 +7,7 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 
 - Route a page load to a product, a local or preview target, or the landing page.
 - Take a `.dot` label to a product on screen, or to the screen that says why not.
-- Own the page chrome: topbar, URL pill, loading screen, chat dock, settings, account, permissions and network views.
+- Own the page chrome: topbar, URL pill, loading screen, settings, account, permissions and network views.
 - Own the domain building blocks the chrome composes: account, chat, permission, appearance and chain views and their
   icons. Each takes props, reads no store and reports the user's intent through a callback, so the flow that composes it
   owns the data.
@@ -27,21 +27,25 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - Settings are read once at boot from the link, the store every subdomain shares and this origin's storage, and stored
   back to both stores. A link that changes a saved choice wipes and reloads, as Save does. A store that cannot be read
   leaves the page on this origin's settings and the link's.
+- The shell page has one script. It also binds the static markup of the topbar and the URL pill, which only that page
+  renders. The chat dock is off the page until the chat button returns.
 - Static markup is Astro. Interactive controls are Solid islands, one module per island, bound to sync stores that
   import no Solid.
 - The building blocks group by domain beside the flows that use them, and take their types from the runtime, so a
   permission, a theme or a chat message has one type. Each has a CSS module beside it and most have a story that carries
   their tests.
-- The TrUAPI side lives in its own folder. The bridge is a lazy chunk, so the boot path never loads the TrUAPI host. One
+- The TrUAPI side lives in its own folder. The bridge is its own chunk, which every page loads in parallel with its
+  boot. It brings the TrUAPI host, the session state and the TrUAPI codecs, so none of them is in the boot chunk. One
   runtime boots per page core, a signing host on the local wallet when there is one, else the pairing host. A core that
   goes stale is rebuilt without being asked. The signing worker and the local wallet core load on demand.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time.
 - The toasts and dialogs are one idle island on each page. What boot queues before it hydrates shows once it does.
 - Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
-- Views and rarely used modules load on demand through a lazy loader, each in its own chunk: load-failure screens, cache
-  revalidation, product branding, chat, account, chains, permissions, settings, verification, the violation panel, the
-  debug panel and the workbox.
+- The bridge, and what a visit may never open, load on demand through a lazy loader, each in its own chunk: the bridge,
+  the panel bodies (chat, account, chains, permissions, settings), the violation panel, the debug panel and its wire
+  describer, the local wallet and workbox. The small pieces of a product load (branding, the cache check, the failure
+  screen, the verification tooltip) are plain imports.
 - The error page and the no-content page replace the page's content at once, through the shared screen owner. A
   full-page screen ends the loading screen and the landing islands, and the product frame takes the screen down when it
   shows.
@@ -55,9 +59,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   frame renders. The last answer is cached per label, so a warm load picks the connection's execution kind without
   waiting on a dotNS read.
 - An island that must stand in for itself when it breaks (the landing page, the sign-in modal, the loading screen) wraps
-  its tree in its own error boundary. An island whose code fails to load once page start has run is reported and offers
-  a reload, the same offer as a page chunk that fails. One that fails before then, such as an island that loads with the
-  page, reaches the console alone.
+  its tree in its own error boundary. An island whose code never ran is reported and offers a reload, and the auth modal
+  and the overlays each have a stand-in that releases the sign-in lease or refuses pending prompts. One that fails
+  before page start listens, such as an island that loads with the page, reaches the console alone.
 - The Astro config adds the PWA service worker, the signing worker, the dev SPA fallback and a Sentry release upload,
   all from the shared Vite tooling.
 

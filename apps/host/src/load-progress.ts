@@ -12,7 +12,12 @@ import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { LoadingPhase } from './loading-controller.js';
 import { log } from '@dotli/shared';
 import type { ChainPhase } from './state/network-monitor.js';
-import { createChainPhaseTracker, type CacheResult, type ChainSyncFacts } from './resolution-trace.js';
+import {
+  chainTelemetryName,
+  createChainPhaseTracker,
+  type CacheResult,
+  type ChainSyncFacts,
+} from './resolution-trace.js';
 import {
   describeProgressStall,
   describeStall,
@@ -318,7 +323,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
         }
         const peers = peersByRole.get(role);
         if (phaseChanged) {
-          log.event(`${event.chain} ${phase}`, {
+          log.event(`${chainTelemetryName(event.chain)} ${phase}`, {
             flow: 'chain',
             ...(peers === undefined ? {} : { peers }),
             ...(event.reason === undefined ? {} : { reason: event.reason }),

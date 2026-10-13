@@ -4,6 +4,7 @@
 import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { dismissToast, removeToast, type ToastEntry } from '../../page/state/toasts.js';
+import { toastIcon } from './toast-icon.js';
 import { Button } from '../primitives/Button.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
@@ -22,8 +23,8 @@ export interface ToastCardProps {
 export function ToastCard(props: ToastCardProps): JSX.Element {
   // The stack keys cards by id, so it never changes.
   const id = untrack(() => props.entry.id);
-  // A toast keeps the icon it was pushed with.
-  const Icon = untrack(() => props.entry.icon);
+  // A toast keeps the icon it shows first.
+  const Icon = untrack(() => toastIcon(props.entry));
   const [entering, setEntering] = createSignal(true);
   // A leaving card keeps the layout it had when it started to leave.
   const hidden = createMemo<boolean>(prev => (props.entry.leaving ? (prev ?? false) : props.hidden));

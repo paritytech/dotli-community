@@ -6,7 +6,6 @@ import type { Backend } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext, type SpanHandle } from '@dotli/metrics';
 import type { ExecutableManifest, ManifestResult, ResolvePhase } from '@dotli/resolver';
 import type { CachedManifests } from '@dotli/storage';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { LoadFailure } from './load-failure.js';
 import type { NameSource } from './name-source.js';
@@ -49,8 +48,8 @@ interface Options {
   /** What the worker manifest read answers. An empty manifest without it. */
   workerManifest?: ManifestResult<ExecutableManifest>;
   resolveError?: Error;
-  /** Settles the failure screen, which shows at once without it. */
-  presentFailure?: () => Promise<void>;
+  /** Runs as the failure screen shows. */
+  presentFailure?: () => void;
 }
 
 function harness(options: Options = {}): Harness {
@@ -143,7 +142,7 @@ function harness(options: Options = {}): Harness {
     },
     presentFailure: failure => {
       failures.push(failure);
-      return options.presentFailure?.() ?? Promise.resolve();
+      options.presentFailure?.();
     },
     forgetFailure: vi.fn(),
     idle: callback => {
@@ -178,32 +177,20 @@ function events(debug: DotliDebugEvent[]): string[] {
 
 describe('createProductLoader', () => {
   const captured: CaptureContext[] = [];
-  const expectedMisses: { err: unknown; ctx: unknown }[] = [];
   let unbind: () => void;
-  /** Settles at the first expected miss reported. */
-  let missReported: Promise<void> = Promise.resolve();
 
   beforeEach(() => {
     captured.length = 0;
-    expectedMisses.length = 0;
-    let markMissed: () => void = () => undefined;
-    missReported = new Promise(resolve => {
-      markMissed = resolve;
-    });
     unbind = bindCaptureSink({
       exception: (_err, ctx) => {
         captured.push(ctx);
       },
-      expected: (err, ctx) => {
-        expectedMisses.push({ err, ctx });
-        markMissed();
-      },
+      expected: () => undefined,
     });
   });
 
   afterEach(() => {
     unbind();
-    bindLogSink({ emit: () => undefined });
   });
 
   it('As a visitor opening a name for the first time, I get its app subname content rendered and remembered for next time', async () => {
@@ -303,51 +290,6 @@ describe('createProductLoader', () => {
     expect(debug.at(-1)?.payload).toMatchObject({ label: 'doom', path: 'fast' });
   });
 
-  it('As a visitor returning to a cached app whose check cannot be fetched, I keep the app and the miss is logged', async () => {
-    // Given
-    const chunkMiss = new TypeError('Failed to fetch dynamically imported module');
-    const { loader, deps, runIdle } = harness({
-      cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS },
-    });
-    const warned: string[] = [];
-    const warning = new Promise<void>(resolve => {
-      bindLogSink({
-        emit: (level: LogLevel, message: string) => {
-          if (level === 'warn') {
-            warned.push(message);
-            resolve();
-          }
-        },
-      });
-    });
-    deps.revalidate = vi.fn(() => Promise.reject(chunkMiss));
-
-    // When
-    await loader.load('doom');
-    runIdle();
-
-    // Then
-    await warning;
-    expect(warned).toHaveLength(1);
-    expect(expectedMisses).toEqual([{ err: chunkMiss, ctx: { flow: 'resolve', step: 'cache_revalidation_load' } }]);
-    expect(deps.page.setProductError).not.toHaveBeenCalled();
-  });
-
-  it('As a visitor whose branding chunk fails to load, the app stays and the miss is reported once', async () => {
-    // Given
-    const chunkMiss = new TypeError('Failed to fetch dynamically imported module');
-    const { loader, deps } = harness({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });
-    deps.brand = vi.fn(() => Promise.reject(chunkMiss));
-
-    // When
-    await loader.load('doom');
-
-    // Then
-    await missReported;
-    expect(expectedMisses).toEqual([{ err: chunkMiss, ctx: { flow: 'resolve', step: 'product_branding_load' } }]);
-    expect(deps.page.setProductError).not.toHaveBeenCalled();
-  });
-
   it('As a visitor whose cached copy no longer passes, I see why, and the copy is checked without reloading me', async () => {
     // Given
     const { loader, deps, failures, runIdle } = harness({
@@ -401,53 +343,14 @@ describe('createProductLoader', () => {
     expect(deps.page.setProductError).toHaveBeenCalledTimes(1);
   });
 
-  it('As a visitor whose name read fails, I see the load settle only once the failure screen is up', async () => {
-    // Given a failure screen still being fetched
-    let screenUp = (): void => undefined;
-    const screen = new Promise<void>(resolve => {
-      screenUp = resolve;
-    });
-    let presenting = (): void => undefined;
-    const presented = new Promise<void>(resolve => {
-      presenting = resolve;
-    });
-    const { loader, failures } = harness({
-      resolveError: new Error('Asset Hub went quiet'),
-      presentFailure: () => {
-        presenting();
-        return screen;
-      },
-    });
-    let settled = false;
-
-    // When
-    const loaded = loader.load('doom').then(() => {
-      settled = true;
-    });
-    await presented;
-    expect(failures).toHaveLength(1);
-    // More microtask turns than a load that skipped the wait would need to settle.
-    for (let turn = 0; turn < 10; turn += 1) {
-      await Promise.resolve();
-    }
-
-    // Then it waits for the screen
-    expect(settled).toBe(false);
-
-    // When the screen is up
-    screenUp();
-    await loaded;
-
-    // Then
-    expect(settled).toBe(true);
-  });
-
   it('As a visitor whose failure screen itself fails, I see the load reject with that failure', async () => {
     // Given
     const screenFailure = new Error('the failure screen threw');
     const { loader } = harness({
       resolveError: new Error('Asset Hub went quiet'),
-      presentFailure: () => Promise.reject(screenFailure),
+      presentFailure: () => {
+        throw screenFailure;
+      },
     });
 
     // When

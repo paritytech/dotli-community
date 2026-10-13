@@ -2,9 +2,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { createSyncStore, resetAllStoresForTests, shallowEqual } from './sync-store.js';
+import { createSyncStore, resetAllStoresForTests, shallowEqual, StoreListenerError } from './sync-store.js';
 
 describe('createSyncStore', () => {
+  it('As a page, a listener that throws reaches me as a store listener error naming its store', () => {
+    // Given
+    const heard: Error[] = [];
+    const store = createSyncStore('topbar', 0, { onListenerError: error => heard.push(error) });
+    const cause = new Error('render failed');
+    store.subscribe(() => {
+      throw cause;
+    });
+
+    // When
+    store.set(1);
+
+    // Then
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toBeInstanceOf(StoreListenerError);
+    expect(heard[0]).toMatchObject({ store: 'topbar', message: 'store topbar listener failed', cause });
+  });
+
   it('As non-UI code, the getter returns the value just set', () => {
     // Given
     const store = createSyncStore<{ n: number }>('test', { n: 0 });

@@ -83,16 +83,13 @@ import { createProductLoader } from './product-loader.js';
 import { readChatCapability } from './chat-capability.js';
 import { startSandboxContent } from './sandbox-content.js';
 import { startShieldAutoHide } from './shield-autohide.js';
-import type { CacheRevalidationDeps } from './cache-revalidate.js';
-import { revalidateCachedProduct } from './manifest-gate.js';
+import { revalidateCachedCopy, type CacheRevalidationDeps } from './cache-revalidate.js';
+import { applyProductBranding } from './product-branding.js';
+import { presentLoadFailure } from './load-failure.js';
+import { trustedProviderHosts } from './errors.js';
 import { createNameSource, type RpcResolver } from './name-source.js';
-import { loadCacheRevalidation, loadDebugPanelParts, loadFailureScreens, loadProductBranding } from './lazy.js';
-import {
-  reloadAfterFailure,
-  sessionErrorSightings,
-  showLoadFailure,
-  switchBackendAndReload,
-} from './show-load-failure.js';
+import { loadDebugPanelParts } from './lazy.js';
+import { reloadAfterFailure, sessionErrorSightings, switchBackendAndReload } from './show-load-failure.js';
 import {
   leaveForLanding,
   localTargetPath,
@@ -111,6 +108,8 @@ import { reportSandboxHandlerFailure } from './sandbox-handler.js';
 import { pageNotifications } from './page-notifications.js';
 import { recordRecentLabel } from './recent-labels.js';
 import { recordChainPhase, recordPeerCount, recordTransfer } from './state/network-monitor.js';
+import { bindTopbar } from './topbar.js';
+import { bindUrlPill } from './url-pill.js';
 
 interface Shell extends ShellServices {
   sandboxChannel: SandboxChannel;
@@ -135,6 +134,10 @@ async function startShell(): Promise<Shell> {
   const debugMode = resolveDebugMode(window, DEBUG);
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
+    // The describer reports its own failed load, and the boot reports the bridge's.
+    void loadBridge()
+      .then(bridge => bridge.preloadWireDescriber())
+      .catch(() => undefined);
     void startDebugPanel({
       load: loadTruapiDebugMount,
       host: async () =>
@@ -252,7 +255,6 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
   });
   const revalidation: CacheRevalidationDeps = {
     names,
-    decide: revalidateCachedProduct,
     cache: {
       set: (cachedLabel, cid, manifests) => setCachedCid(cachedLabel, getNetwork(), cid, manifests),
       evict: evictCachedCid,
@@ -312,14 +314,9 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
     scheduleNotifications: options => {
       pageNotifications().init(options);
     },
-    revalidate: async (cachedLabel, servedCid, onScreen) => {
-      const { revalidateCachedCopy } = await loadCacheRevalidation();
-      await revalidateCachedCopy(cachedLabel, servedCid, onScreen, revalidation);
-    },
-    brand: async (brandedLabel, manifests) => {
-      const { applyProductBranding } = await loadProductBranding();
-      await applyProductBranding(brandedLabel, manifests, { fetchBlock: bitswapGet });
-    },
+    revalidate: (cachedLabel, servedCid, onScreen) =>
+      revalidateCachedCopy(cachedLabel, servedCid, onScreen, revalidation),
+    brand: (brandedLabel, manifests) => applyProductBranding(brandedLabel, manifests, { fetchBlock: bitswapGet }),
     page: {
       showProductPill,
       settleShield: state => {
@@ -333,9 +330,8 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
       setContentShown: setProductContentShown,
       recordRecentLabel,
     },
-    presentFailure: failure =>
-      showLoadFailure(failure, {
-        load: loadFailureScreens,
+    presentFailure: failure => {
+      presentLoadFailure(failure, {
         showErrorPage,
         openSettings,
         reload: reloadAfterFailure,
@@ -355,8 +351,10 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
           }
         },
         sightings: sessionErrorSightings,
+        trustedProviderHosts,
         emit,
-      }),
+      });
+    },
     forgetFailure: sessionErrorSightings.forget,
     idle: callback => {
       requestIdleCallback(callback);
@@ -396,6 +394,16 @@ async function main(): Promise<void> {
       }),
     deepPath: () => window.location.pathname + window.location.search,
   });
+}
+
+// The shell's chrome is static markup that only this page renders, so its bindings run from this one script.
+const topbarElement = document.getElementById('topbar');
+if (topbarElement !== null) {
+  bindTopbar(topbarElement);
+}
+const urlPillElement = document.getElementById('topbar-url');
+if (urlPillElement !== null) {
+  bindUrlPill(urlPillElement);
 }
 
 startPwa();

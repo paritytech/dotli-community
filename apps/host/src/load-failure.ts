@@ -6,10 +6,16 @@
 import { withActiveTld, type Backend } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import type { Component } from 'solid-js';
-import { SlidersIcon, type IconProps } from '@dotli/ui/icons';
+import { RotateCwIcon, SlidersIcon } from '@dotli/ui/icons';
 import type { ShowErrorPage } from '@dotli/ui';
-import type { ErrorDescription } from './errors.js';
+import {
+  FAILOVER_BTN_LABELS,
+  GO_BACK_BTN_LABEL,
+  OPEN_SETTINGS_BTN_LABEL,
+  RELOAD_BTN_LABEL,
+  TRY_ANYWAY_BTN_LABEL,
+  type ErrorDescription,
+} from './errors.js';
 
 export interface LoadFailure {
   /** The verdict the failure was reported under. */
@@ -28,21 +34,7 @@ export interface ErrorSightings {
   remember: (kind: string) => void;
 }
 
-/**
- * The screens' button labels and reload icon. Given by the caller, since the boot chunks already hold them and importing
- * them here would split them out into boot chunks of their own.
- */
-export interface FailureScreenCopy {
-  reload: string;
-  reloadIcon: Component<IconProps>;
-  openSettings: string;
-  tryAnyway: string;
-  goBack: string;
-  failover: Readonly<Record<'rpc-gateway' | 'smoldot-shared-worker', string>>;
-}
-
 export interface LoadFailureDeps {
-  copy: FailureScreenCopy;
   /** Who the visitor trusts instead when they leave the light client, read when the warning shows. */
   trustedProviderHosts: () => string[];
   showErrorPage: ShowErrorPage;
@@ -60,7 +52,7 @@ export interface LoadFailureDeps {
 /** Shows the failure's screen. Its buttons may move between screens, and none of them reports the failure again. */
 export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps): void {
   const { error, backend } = failure;
-  const { copy } = deps;
+  log.event('Error page shown', { flow: 'resolve', error_kind: error.kind, recovery: error.recovery });
   if (error.recovery === 'none') {
     deps.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
     return;
@@ -70,7 +62,7 @@ export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps):
       title: error.title,
       detail: error.message,
       tips: error.tips,
-      actions: [{ label: copy.reload, icon: copy.reloadIcon, onClick: deps.reload }],
+      actions: [{ label: RELOAD_BTN_LABEL, icon: RotateCwIcon, onClick: deps.reload }],
     });
     return;
   }
@@ -107,8 +99,8 @@ export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps):
       title: "Your connection won't be verified",
       detail: trustedProviderWarning(withActiveTld(failure.label), deps.trustedProviderHosts()),
       actions: [
-        { label: copy.tryAnyway, onClick: commitFailover },
-        { label: copy.goBack, primary: true, onClick: showResolutionError },
+        { label: TRY_ANYWAY_BTN_LABEL, onClick: commitFailover },
+        { label: GO_BACK_BTN_LABEL, primary: true, onClick: showResolutionError },
       ],
     });
   };
@@ -125,11 +117,11 @@ export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps):
       detail: error.message,
       tips: error.tips,
       actions: [
-        { label: copy.reload, icon: copy.reloadIcon, primary: !failoverIsPrimary, onClick: reloadForRecovery },
+        { label: RELOAD_BTN_LABEL, icon: RotateCwIcon, primary: !failoverIsPrimary, onClick: reloadForRecovery },
         gateFailover
-          ? { label: copy.openSettings, icon: SlidersIcon, onClick: deps.openSettings }
+          ? { label: OPEN_SETTINGS_BTN_LABEL, icon: SlidersIcon, onClick: deps.openSettings }
           : {
-              label: copy.failover[nextBackend],
+              label: FAILOVER_BTN_LABELS[nextBackend],
               primary: failoverIsPrimary,
               onClick: nextBackend === 'rpc-gateway' ? showFailoverWarning : commitFailover,
             },

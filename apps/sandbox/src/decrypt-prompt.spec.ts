@@ -31,9 +31,6 @@ function visitor(passwords: string[], options: { corrupt?: boolean } = {}): Visi
       const password = passwords.shift();
       return password === undefined ? new Promise<string>(() => undefined) : Promise.resolve(password);
     },
-    preparePrompt: () => {
-      steps.push('prepare');
-    },
     dismissHostLoading: () => {
       steps.push('dismiss');
       dismissed += 1;
@@ -65,7 +62,7 @@ describe('createDecryptIfNeeded', () => {
     expect(dismissed()).toBe(1);
   });
 
-  it('As a visitor of encrypted content, the prompt starts loading before the loading screen goes, once', async () => {
+  it('As a visitor of encrypted content, the loading screen goes before the prompt asks me, once', async () => {
     // Given
     const { deps, steps } = visitor(['guess', 'secret']);
     const decryptIfNeeded = createDecryptIfNeeded(deps);
@@ -74,7 +71,7 @@ describe('createDecryptIfNeeded', () => {
     await decryptIfNeeded(CIPHERTEXT, CID);
 
     // Then
-    expect(steps).toEqual(['prepare', 'dismiss', 'prompt', 'prompt']);
+    expect(steps).toEqual(['dismiss', 'prompt', 'prompt']);
   });
 
   it('As a visitor, a corrupt archive fails at once rather than asking me again', async () => {
@@ -92,7 +89,7 @@ describe('createDecryptIfNeeded', () => {
 
   it('As a visitor, the same content fetched again in my tab opens without a second prompt', async () => {
     // Given content I already unlocked
-    const { deps, prompts, steps } = visitor(['secret']);
+    const { deps, prompts } = visitor(['secret']);
     const decryptIfNeeded = createDecryptIfNeeded(deps);
     await decryptIfNeeded(CIPHERTEXT, CID);
 
@@ -102,7 +99,6 @@ describe('createDecryptIfNeeded', () => {
     // Then
     expect(files).toBe(FILES);
     expect(prompts).toHaveLength(1);
-    expect(steps.filter(step => step === 'prepare')).toHaveLength(1);
   });
 
   it('As a visitor, content that is not encrypted passes through without a prompt', async () => {

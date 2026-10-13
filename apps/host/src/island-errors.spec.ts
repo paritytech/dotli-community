@@ -4,7 +4,7 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import type { ShowNotification } from '@dotli/ui';
-import { reportIslandErrors } from './island-errors.js';
+import { pageStandIns, reportIslandErrors } from './island-errors.js';
 
 type Notice = Parameters<ShowNotification>[0];
 
@@ -35,7 +35,7 @@ function failOn(page: EventTarget, island: FakeIsland | null): Event {
   return ev;
 }
 
-function setup(): {
+function setup(standIns: Readonly<Record<string, () => void>> = {}): {
   captures: { exception: ReturnType<typeof vi.fn> };
   page: EventTarget;
   notices: Notice[];
@@ -46,7 +46,7 @@ function setup(): {
   const page = new EventTarget();
   const notices: Notice[] = [];
   const reload = vi.fn();
-  onTestFinished(reportIslandErrors({ target: page, notify: notice => notices.push(notice), reload }));
+  onTestFinished(reportIslandErrors({ target: page, notify: notice => notices.push(notice), reload, standIns }));
   return { captures, page, notices, reload };
 }
 
@@ -113,5 +113,54 @@ describe('island failures', () => {
     // Then
     expect(captures.exception).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('As a visitor, an island whose code never ran still does its part through its stand-in', () => {
+    // Given
+    const standIn = vi.fn();
+    const { page } = setup({ AuthModal: standIn });
+
+    // When
+    failOn(page, new FakeIsland('AuthModal'));
+
+    // Then
+    expect(standIn).toHaveBeenCalledOnce();
+  });
+
+  it('As a visitor, an island with no stand-in is only reported', () => {
+    // Given
+    const standIn = vi.fn();
+    const { captures, page } = setup({ AuthModal: standIn });
+
+    // When
+    failOn(page, new FakeIsland('TopbarReveal'));
+
+    // Then
+    expect(standIn).not.toHaveBeenCalled();
+    expect(captures.exception).toHaveBeenCalledOnce();
+  });
+
+  it('As a visitor, an auth modal that never ran releases the sign-in lease', () => {
+    // Given
+    const disableAuthModal = vi.fn();
+    const { page } = setup(pageStandIns({ disableAuthModal, refuseModals: vi.fn() }));
+
+    // When
+    failOn(page, new FakeIsland('AuthModal'));
+
+    // Then
+    expect(disableAuthModal).toHaveBeenCalledOnce();
+  });
+
+  it('As a product, overlays that never ran refuse my prompts rather than leave them waiting', () => {
+    // Given
+    const refuseModals = vi.fn();
+    const { page } = setup(pageStandIns({ disableAuthModal: vi.fn(), refuseModals }));
+
+    // When
+    failOn(page, new FakeIsland('Overlays'));
+
+    // Then
+    expect(refuseModals).toHaveBeenCalledOnce();
   });
 });

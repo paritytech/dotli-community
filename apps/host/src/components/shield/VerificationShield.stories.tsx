@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { bindCaptureSink } from '@dotli/metrics';
-import { expect, fn, waitFor, within } from 'storybook/test';
+import { expect, waitFor, within } from 'storybook/test';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import { productPill, setShield, storyShieldState } from '../../../.storybook/shield-fixtures.js';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verification-shield.js';
-import { VerificationShield, type ExplainerLoader } from './VerificationShield.js';
+import { VerificationShield } from './VerificationShield.js';
 
 const shown = openSurface({ surface: 'verification-tooltip' });
 
@@ -161,63 +160,6 @@ export const FocusElsewhereHides: Story = {
       // Then
       await expectClosed();
       await expect(other).toHaveFocus();
-    });
-  },
-};
-
-const chunk = { fail: true, imports: 0 };
-const captured = fn().mockName('captureException');
-
-/** The explainer chunk, gone after a deploy until `chunk.fail` is cleared. */
-const loadFlakyExplainer: ExplainerLoader = async () => {
-  chunk.imports += 1;
-  if (chunk.fail) {
-    throw new Error('chunk failed');
-  }
-  return import('./VerificationContent.js');
-};
-
-export const ExplainerLoadFailureRetries: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    chunk.fail = true;
-    chunk.imports = 0;
-    captured.mockClear();
-    return bindCaptureSink({ exception: captured, expected: () => undefined });
-  },
-  render: () => (
-    <TopbarFrame center>
-      <VerificationShield state={storyShieldState} loadExplainer={loadFlakyExplainer} />
-    </TopbarFrame>
-  ),
-  play: async ({ step }) => {
-    await step('As a visitor after a deploy, an explainer that cannot load is reported once and hides', async () => {
-      // When
-      shieldButton().click();
-
-      // Then
-      await waitFor(() => expect(captured).toHaveBeenCalled());
-      await expectClosed();
-      await expect(captured).toHaveBeenCalledTimes(1);
-      await expect(captured).toHaveBeenCalledWith(expect.any(Error), {
-        flow: 'ui',
-        step: 'root_render',
-        tags: { root: 'tooltip:verification-tooltip' },
-      });
-    });
-    await step('And the next showing, with the chunk back, loads it again', async () => {
-      // When
-      chunk.fail = false;
-      await showByKey();
-
-      // Then
-      await expect(chunk.imports).toBe(2);
-      await waitFor(() =>
-        expect(explainer().querySelector('[data-testid="verification-tooltip-row-verified"]')).toHaveTextContent(
-          'Verified',
-        ),
-      );
-      await expect(captured).toHaveBeenCalledTimes(1);
     });
   },
 };

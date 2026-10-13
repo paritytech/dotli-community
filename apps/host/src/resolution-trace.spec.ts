@@ -181,6 +181,22 @@ describe('A resolution is traced as one unit', () => {
     expect(span('chain.relay.connecting')?.ended).toBe(true);
   });
 
+  it("As an operator, Asset Hub's spans and summary keep the name asset-hub that dashboards read", () => {
+    // Given
+    const trace = startResolutionTrace(OPTS);
+
+    // When
+    trace.chainSync({ chain: 'assethub', syncKind: 'connecting' });
+    trace.chainSync({ chain: 'assethub', syncKind: 'bootstrapComplete' });
+    trace.finish('rendered');
+
+    // Then
+    expect(names()).toContain('dotli.chain.asset-hub');
+    expect(names()).not.toContain('dotli.chain.assethub');
+    expect(span('resolution')?.attributes).toHaveProperty('chain.asset-hub.ready_ms');
+    expect(span('chain.asset-hub')?.attributes).toMatchObject({ chain: 'asset-hub' });
+  });
+
   it('As a maintainer, I can read how far the relay had to catch up', () => {
     // Given
     const trace = startResolutionTrace(OPTS);

@@ -34,17 +34,20 @@ export function rootPage(route: Route): string {
 }
 
 /**
- * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a host asset, whose worker script must
+ * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a bare-host asset, whose worker script must
  * carry COEP itself or the isolated /__preview page cannot start it.
  */
 export type HeaderPolicy = 'isolated' | 'worker-coep' | 'plain';
 
-/** COEP on the host's other documents would block the localhost proxy iframe, so only /__preview is isolated there. */
+/**
+ * COEP on the host's other documents would block the localhost proxy iframe, so only /__preview is isolated there.
+ * Its workers come from the bare host's /assets/, which carry COEP for it.
+ */
 export function headerPolicy(route: Route, pathname: string): HeaderPolicy {
   if (route.site !== 'host' || (route.bare && pathname === '/__preview')) {
     return 'isolated';
   }
-  return pathname.startsWith('/assets/') ? 'worker-coep' : 'plain';
+  return route.bare && pathname.startsWith('/assets/') ? 'worker-coep' : 'plain';
 }
 
 /** Ports matter: CSP host-sources without one mean the scheme's default. */

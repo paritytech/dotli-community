@@ -405,26 +405,6 @@ for (const [label, backend] of [
   });
 }
 
-test('As a user whose failure screens cannot load, I still see why the domain failed, with no buttons that cannot work', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
-  await page.route('**/assets/load-failure.*.js', route => route.abort());
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  const errorPage = page.getByTestId('error-page');
-  await expect(errorPage.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(errorPage.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
-  await expect(errorPage.getByRole('button')).toHaveCount(0);
-});
-
 test('As a user who opens Settings from a failure before the topbar is ready, I see Settings open once it is', async ({
   page,
 }) => {

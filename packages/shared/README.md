@@ -26,8 +26,8 @@ sync store, the status cell and a few formatting helpers.
 
 ### `@dotli/shared`
 
-- Concurrency and state: `createAsyncTaskPool`, `DEFAULT_POOL`, `createSyncStore`, `registerStoreStateReset`,
-  `shallowEqual`, `createStatusCell`, `toAbortError`.
+- Concurrency and state: `createAsyncTaskPool`, `DEFAULT_POOL`, `createSyncStore`, `StoreListenerError`,
+  `registerStoreStateReset`, `shallowEqual`, `createStatusCell`, `toAbortError`.
 - Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `endpointHost`,
   `gatewayUnreachable`.
 - Byte counts as people read them: `formatSize`, `formatRate`.

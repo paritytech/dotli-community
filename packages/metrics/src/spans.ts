@@ -189,12 +189,6 @@ export const PERMISSIONS_READ = 'permissions.read';
 export const PERMISSIONS_CHANGE = 'permissions.change';
 
 /**
- * One fetch of the host's failure screens after a failed load. Tagged `outcome` and, on error, `reason`, as a failed one
- * leaves the visitor on a bare message without recovery buttons.
- */
-export const FAILURE_SCREEN_LOAD = 'failure_screen.load';
-
-/**
  * One Share diagnostic click in the debug panel. Tagged `outcome` and, on error, `reason`, as a failed one opens no
  * issue.
  */

@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Backend } from '@dotli/config';
+import { bindLogSink } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { ErrorPageContent } from '@dotli/ui';
 import {
@@ -51,14 +52,6 @@ function present(
   const pages: Page[] = [];
   const debug: DotliDebugEvent[] = [];
   const deps = {
-    copy: {
-      reload: RELOAD_BTN_LABEL,
-      reloadIcon: () => null,
-      openSettings: OPEN_SETTINGS_BTN_LABEL,
-      tryAnyway: TRY_ANYWAY_BTN_LABEL,
-      goBack: GO_BACK_BTN_LABEL,
-      failover: FAILOVER_BTN_LABELS,
-    },
     trustedProviderHosts: () => ['rpc.example', 'ipfs.example'],
     showErrorPage: (page: Page) => {
       pages.push(page);
@@ -215,5 +208,36 @@ describe('presentLoadFailure', () => {
 
     // Then
     expect(sightings.last()).toBeNull();
+  });
+
+  it('As a visitor on a failed load, I leave one error page breadcrumb however many of its screens I move between', () => {
+    // Given
+    const events: { message: string; attrs: Record<string, unknown> | undefined }[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message, attrs) => {
+          if (level === 'info') {
+            events.push({ message, attrs });
+          }
+        },
+      }),
+    );
+    const { click } = present(
+      described('hub-sync-timeout', 'switch-backend'),
+      'smoldot-direct',
+      memorySightings('hub-sync-timeout'),
+    );
+
+    // When
+    click(FAILOVER_BTN_LABELS['rpc-gateway']);
+    click(GO_BACK_BTN_LABEL);
+
+    // Then
+    expect(events.filter(event => event.message === 'Error page shown')).toEqual([
+      {
+        message: 'Error page shown',
+        attrs: expect.objectContaining({ error_kind: 'hub-sync-timeout', recovery: 'switch-backend' }) as unknown,
+      },
+    ]);
   });
 });

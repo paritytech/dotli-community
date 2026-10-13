@@ -54,8 +54,8 @@ for (const pkg of packages) {
 
 // Workspace-local installs shadow the root link, so drop them.
 for (const [workspace, name] of [
-  ['packages/ui', 'truapi'],
-  ['packages/ui', 'truapi-host'],
+  ['apps/host', 'truapi'],
+  ['apps/host', 'truapi-host'],
   ['packages/chains', 'truapi-provider'],
 ] as const) {
   rmSync(resolve(dotliRoot, workspace, 'node_modules/@parity', name), {

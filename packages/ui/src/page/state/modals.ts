@@ -121,6 +121,29 @@ export function settleModal(id: number, result: string, value?: string): void {
   take(id)?.resolve(value === undefined ? { result } : { result, value });
 }
 
+/** A dialog's refusal: its dismiss result, else its cancel or reject button's. */
+function refusalOf(view: ModalView<string>): string | undefined {
+  return view.dismissResult ?? view.buttons.find(b => b.variant === 'cancel' || b.variant === 'danger')?.result;
+}
+
+/**
+ * Answers every open dialog with its refusal, and each one opened later, until the returned stop. For a page whose
+ * overlays cannot render, so a product's request is refused at once rather than waiting until it aborts. A dialog with
+ * no refusal stays open. Calling it again is safe: a dialog settles once.
+ */
+export function refuseModals(): () => void {
+  const refuseOpen = (): void => {
+    for (const entry of modals.get()) {
+      const refusal = refusalOf(entry.view);
+      if (refusal !== undefined) {
+        settleModal(entry.id, refusal);
+      }
+    }
+  };
+  refuseOpen();
+  return modals.subscribe(refuseOpen);
+}
+
 export function resetModalsForTests(): void {
   for (const entry of pending.values()) {
     entry.detach();

@@ -16,13 +16,14 @@ function identifierToLabel(identifier: string): string {
 /** The tab the product runs in. */
 export interface NavigationPage {
   location: () => Pick<Location, 'protocol' | 'port' | 'assign'>;
-  open: (url: string) => void;
+  /** Opens a website apart from the product's tab. */
+  open: (url: string, target: string, features: string) => void;
 }
 
 const browserPage: NavigationPage = {
   location: () => window.location,
-  open: url => {
-    window.open(url, '_blank', 'noopener');
+  open: (url, target, features) => {
+    window.open(url, target, features);
   },
 };
 
@@ -58,7 +59,8 @@ export function createNavigateTo(page: NavigationPage = browserPage): Navigation
       return Promise.resolve(undefined);
     }
 
-    page.open(url);
+    // `noopener`, so the site cannot steer this tab through `window.opener`.
+    page.open(url, '_blank', 'noopener');
     return Promise.resolve(undefined);
   };
 }

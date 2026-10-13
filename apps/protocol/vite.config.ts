@@ -15,6 +15,7 @@ const OUT_DIR = 'dist';
 
 export default defineConfig({
   envDir: app.envDir,
+  define: app.define,
   base: app.base,
   plugins: [app.wasm(), runtimeNetworkConfigScript(), buildInfo('protocol'), modeSync(), app.sentry()],
   worker: {

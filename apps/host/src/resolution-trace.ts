@@ -207,7 +207,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedP
     if (state === undefined) {
       state = newChainState();
       // Opens when the chain is first heard from, or Bulletin, created only for content, would look idle, not absent.
-      state.span = sampled ? root.child(`chain.${key}`, { startTime: at() }) : null;
+      state.span = sampled ? root.child(`chain.${chainTelemetryName(key)}`, { startTime: at() }) : null;
       chains.set(key, state);
     }
     return state;
@@ -245,7 +245,8 @@ export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedP
     state.phaseSpan?.end(at());
     state.phase = phase;
     // Named in full, since `child` does not inherit the parent's name and every chain would report `dotli.ready`.
-    state.phaseSpan = state.span === null ? null : state.span.child(`chain.${key}.${phase}`, { startTime: at() });
+    state.phaseSpan =
+      state.span === null ? null : state.span.child(`chain.${chainTelemetryName(key)}.${phase}`, { startTime: at() });
   };
 
   const trace: ResolutionTrace = {
@@ -427,7 +428,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedP
 
 function chainAttributes(key: ChainRole, state: ChainState): Record<string, SpanValue> {
   const attrs: Record<string, SpanValue> = {
-    chain: key,
+    chain: chainTelemetryName(key),
     peers_max: state.peersMax,
     stall_count: state.stallCount,
   };
@@ -473,10 +474,16 @@ function chainAttributes(key: ChainRole, state: ChainState): Record<string, Span
   return attrs;
 }
 
+/** The names dashboards were built on. The code calls Asset Hub `assethub`. */
+export function chainTelemetryName(role: ChainRole): string {
+  return role === 'assethub' ? 'asset-hub' : role;
+}
+
 /** Flattened for the root, so an unsampled load still has them. */
 function chainSummary(chains: ReadonlyMap<ChainRole, ChainState>): Record<string, SpanValue> {
   const out: Record<string, SpanValue> = {};
-  for (const [key, state] of chains) {
+  for (const [role, state] of chains) {
+    const key = chainTelemetryName(role);
     if (state.readyMs !== null) {
       out[`chain.${key}.ready_ms`] = state.readyMs;
     }

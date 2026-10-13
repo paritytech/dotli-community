@@ -24,6 +24,11 @@ import { walletSwitch } from './wallet-switch.js';
 
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
+// Started from here, so the session state and the TrUAPI codecs it reads stay in this chunk.
+export { startSessionState } from './host-callbacks/session-state.js';
+
+// Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
+export { preloadWireDescriber } from './core-connection.js';
 
 // Preloaded so they are ready when the first product renders.
 const chunkLoadStart = performance.now();

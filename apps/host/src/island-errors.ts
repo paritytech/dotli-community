@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // An island whose code failed to load or hydrate. Astro catches it and dispatches `astro:hydration-error` on the
-// island, so it would reach the console alone. A failure inside a hydrated island is its own boundary's.
+// island, so it would reach the console alone. A failure inside a hydrated island is its own boundary's. An island that
+// never ran gets its stand-in here. One that fails before boot listens, such as an island that loads with the page,
+// reaches the console alone.
 
 import { captureException } from '@dotli/metrics';
 import { offerReload, type ShowNotification } from '@dotli/ui';
@@ -12,6 +14,8 @@ export interface IslandErrorDeps {
   target?: EventTarget;
   notify: ShowNotification;
   reload: () => void;
+  /** What an island must still do when its code never ran, by its `component-export` name. */
+  standIns?: Readonly<Record<string, () => void>>;
 }
 
 interface HydrationErrorDetail {
@@ -30,10 +34,10 @@ function islandOf(ev: Event): Island | null {
 }
 
 /**
- * Reports each island that fails to load or hydrate and offers a reload, from now until the returned stop. An island
- * that never ran cannot stand in for itself, and a reload is the one way out that fits every island.
+ * Reports each island that fails to load or hydrate and offers a reload, from now until the returned stop. A reload is
+ * the one way out that fits every island.
  */
-export function reportIslandErrors({ target = document, notify, reload }: IslandErrorDeps): () => void {
+export function reportIslandErrors({ target = document, notify, reload, standIns = {} }: IslandErrorDeps): () => void {
   const onError = (ev: Event): void => {
     // Replaces Astro's console log.
     ev.preventDefault();
@@ -43,10 +47,19 @@ export function reportIslandErrors({ target = document, notify, reload }: Island
       step: 'island_hydration',
       tags: { root: `island:${component}`, kind: 'island_hydration_error' },
     });
+    standIns[component]?.();
     offerReload(notify, reload);
   };
   target.addEventListener('astro:hydration-error', onError);
   return () => {
     target.removeEventListener('astro:hydration-error', onError);
   };
+}
+
+/** The page's stand-ins: a sign-in must never hold the lease for a modal nobody sees, nor a prompt wait forever. */
+export function pageStandIns(deps: {
+  disableAuthModal: () => void;
+  refuseModals: () => void;
+}): Record<string, () => void> {
+  return { AuthModal: deps.disableAuthModal, Overlays: deps.refuseModals };
 }

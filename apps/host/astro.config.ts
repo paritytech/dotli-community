@@ -91,7 +91,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
         // Loaded only on demand. Precaching would make every installed shell download them after each release. The
         // worker lives on product hosts only, which never show the landing page.
-        // The local wallet's signing worker, its wasm and its core module load only in local mode.
+        // The local wallet's signing worker, its wasm and its core module load only in local mode, and the debug
+        // panel and its wire describer only in debug mode.
         globIgnores: [
           '**/truapi_provider_bg*.wasm',
           '**/truapi_verifiable_bg*.wasm',
@@ -99,6 +100,9 @@ export default defineConfig({
           '**/truapi_signing_bg*.wasm',
           '**/signing-worker*.js',
           '**/local-wallet-core*.js',
+          '**/truapi-debug-panel*',
+          '**/debug-panel-parts*',
+          '**/debug-wire-describe*',
         ],
         cleanupOutdatedCaches: true,
         // Prompted updates need the waiting SW to sit idle until the user opts in.
@@ -131,6 +135,7 @@ export default defineConfig({
       rolldownOptions: rolldownOptions(),
     },
     define: {
+      ...app.define,
       __DOTLI_VERSION__: JSON.stringify(readReleaseVersion(import.meta.dirname)),
       // smoldot is compiled into truapi-provider's wasm, so the provider version identifies the light client.
       __LIGHT_CLIENT_VERSION__: JSON.stringify(versionOf('@parity/truapi-provider')),

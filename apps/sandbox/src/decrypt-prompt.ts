@@ -7,8 +7,6 @@ import { log } from '@dotli/shared';
 export interface DecryptDeps {
   /** Asks the visitor for the password, showing why the attempt before failed. */
   prompt: (options?: { error?: string }) => Promise<string>;
-  /** Starts loading what `prompt` needs once the content is known to be encrypted, so the visitor waits less. */
-  preparePrompt: () => void;
   /** The host's loading screen would cover the prompt. */
   dismissHostLoading: () => void;
   isEncrypted: (data: Uint8Array) => boolean;
@@ -30,9 +28,6 @@ export function createDecryptIfNeeded(
     log.event(`Content ${cid} is encrypted, asking for the password`, { flow: 'content' });
 
     let password = decryptedPasswords.get(cid);
-    if (password === undefined) {
-      deps.preparePrompt();
-    }
     deps.dismissHostLoading();
 
     let error: string | undefined;

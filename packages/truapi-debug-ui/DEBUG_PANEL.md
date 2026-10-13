@@ -6,7 +6,8 @@ yet.
 
 The panel ships in every build. In dev environments (`VITE_APP_DEBUG=true`) it auto-mounts collapsed; in staging/prod it
 stays off until enabled via the Settings panel's "Open in debug mode" button or `?debug=true`. Its heavy chunk is
-dynamically imported, so users who never see the panel pay zero download cost.
+dynamically imported, so users who never open debug mode never download the panel: it is its own chunk, and the service
+worker leaves it out of its precache.
 
 ---
 
@@ -61,7 +62,8 @@ The panel ships in every build. Default behavior depends on the build flag `VITE
 
 When the panel isn't mounted, the bus stays in a null-stub state and every `emitDotliDebugEvent(...)` call site
 scattered through the host's startup and bridge is a cheap early-return. The panel UI
-(`packages/truapi-debug-ui/src/mount.tsx`, a Solid tree) is a dynamic import. It isn't fetched until the panel mounts.
+(`packages/truapi-debug-ui/src/truapi-debug-panel.tsx`, a Solid tree) is a dynamic import. It isn't fetched until the
+panel mounts.
 
 Two ways to explicitly turn the panel on (mounts **expanded**):
 
@@ -91,7 +93,9 @@ into one time- aligned store.
 
 The postMessage protocol between the dotli host and product iframes, captured from the Rust-backed TrUAPI bridge. Every
 frame's tag and payload come from `describeWireFrame` (`apps/host/src/runtime/debug-wire-describe.ts`), which resolves
-the wire discriminant against `@parity/truapi/wire-table`:
+the wire discriminant against `@parity/truapi/wire-table`. Frames reach the panel in the order they crossed, once the
+describer, which debug mode starts loading at boot, has loaded. If it cannot load, frames stop reaching the panel until
+a reload.
 
 - `remote_chain_*` — chainHead, chainSpec, and transaction methods (one-to-one wrap of the new Substrate JSON-RPC spec).
   These keep the pre-port legacy tag names on purpose, the panel's swimlane and annotation logic keys on them. Their

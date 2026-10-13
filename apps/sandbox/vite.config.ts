@@ -20,6 +20,7 @@ const OUT_DIR = 'dist';
 export default defineConfig({
   css: { modules: cssModules() },
   envDir: app.envDir,
+  define: app.define,
   base: app.base,
   plugins: [
     inlineScript(),

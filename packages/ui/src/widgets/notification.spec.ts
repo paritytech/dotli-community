@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pushToast, toastsStore } from '../page/state/toasts.js';
 import { FakePage } from '@dotli/shared/testing';
-import { AlertTriangleIcon, BanIcon, BellIcon } from '../icons.js';
 import { bindToastPage, resetToastsForTests } from '../testing/index.js';
 import { createNotifier, NOTIFICATION_DISMISS_MS, type SystemNotifications } from './notification.js';
 
@@ -40,7 +39,7 @@ describe('showNotification', () => {
     expect(toastsStore.get().items.map(t => t.tone)).toEqual(['info', 'err']);
   });
 
-  it('As a dotli user, a notification shows its title, its trimmed text and the default bell icon', () => {
+  it('As a dotli user, a notification shows its title, its trimmed text, and leaves the icon to its tone', () => {
     // When
     showNotification({ label: 'Hello', text: '  World  ' });
 
@@ -48,7 +47,7 @@ describe('showNotification', () => {
     const [toast] = toastsStore.get().items;
     expect(toast?.label).toBe('Hello');
     expect(toast?.text).toBe('World');
-    expect(toast?.icon).toBe(BellIcon);
+    expect(toast?.icon).toBeUndefined();
   });
 
   it('As a dotli integrator, empty text shows nothing, long text is cut to 200 characters, and non-http links are dropped', () => {
@@ -107,7 +106,7 @@ describe('showNotification', () => {
     expect(created).toEqual([{ title: 'Ping', body: 'Background' }]);
   });
 
-  it('As a dotli user, a notification without its own icon shows the icon of its tone', () => {
+  it('As a dotli user, a notification keeps the icon it was given and carries none otherwise', () => {
     // Given
     const ownIcon = (): null => null;
 
@@ -120,6 +119,6 @@ describe('showNotification', () => {
     // Then
     const items = toastsStore.get().items;
     expect(items.map(t => t.tone)).toEqual(['info', 'err', 'idle', 'err']);
-    expect(items.map(t => t.icon)).toEqual([BellIcon, AlertTriangleIcon, BanIcon, ownIcon]);
+    expect(items.map(t => t.icon)).toEqual([undefined, undefined, undefined, ownIcon]);
   });
 });

@@ -31,8 +31,8 @@ and no data source.
 - The action group measures its items and moves the lowest priority ones into More, which lists them as menu rows and
   raises their status as its badge. Items join through `ActionsContext` and say how they read as a row. The group waits
   out a container's resize animation and measures once it ends.
-- `ToastStack` only renders the toast store, which decides how a toast settles. A toast or dialog carries its icon as a
-  component, which the views draw.
+- `ToastStack` only renders the toast store, which decides how a toast settles. A dialog carries its icon as a
+  component. A toast may carry one, and without one the card draws its tone's, so raising a toast imports no component.
 - Text goes into the error page and the notifier as text, so nothing a visitor typed is parsed as markup. An action
   carries its icon as a component.
 - `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
@@ -41,8 +41,8 @@ and no data source.
   one is shown, so what the screen covered can end itself. A view that throws is reported.
 - Toasts and dialogs are queued on the stores and show once the app has mounted `Overlays`, in a container it marks
   `data-overlays` so that a full-page screen keeps it.
-- The notifier always shows a toast, led by the caller's icon component or else its tone's. While the tab is hidden it
-  also fires a system notification, when the browser has one.
+- The notifier always shows a toast. While the tab is hidden it also fires a system notification, when the browser has
+  one.
 - Every icon is a Solid component that draws an `<svg>` in `currentColor`, one module per icon. It keeps the size,
   stroke and geometry it was drawn at, and takes a `size` for another size, a `class` and a test id.
 - `mountRoot` renders a view inside an error boundary. A view that throws is reported once under the root's name and the
@@ -60,10 +60,10 @@ and no data source.
   tracking (`LayerTracker`, `AnchorBoundary`, `ModalFocusFallback`).
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar`, `ActionEntry` and `MoreRow`.
-- Stores: the modal store (`openModal`, `settleModal`, `modalsStore` and the types `ModalView`, `ModalOptions`,
-  `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`, `ModalButtonVariant`) and the toast store (`pushToast`,
-  `clearToasts`, `toastsStore`, `dismissToast`, `removeToast`, `dismissAllToasts`, `setToastsExpanded` and the types
-  `ToastInput`, `ToastEntry`).
+- Stores: the modal store (`openModal`, `settleModal`, `modalsStore`, `refuseModals`, which answers every dialog with
+  its refusal while the overlays cannot render, and the types `ModalView`, `ModalOptions`, `ModalOutcome`, `ModalEntry`,
+  `ModalField`, `ModalButton`, `ModalButtonVariant`) and the toast store (`pushToast`, `clearToasts`, `toastsStore`,
+  `dismissToast`, `removeToast`, `dismissAllToasts`, `setToastsExpanded` and the types `ToastInput`, `ToastEntry`).
 - Page helpers: `focusables`, `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`, `watchPhoneViewport`,
   `prefersReducedMotion` and the type `StatusTone`.
 - Helpers: `useStore`, `startDrag`, `focusLostOrInside`, `focusTrigger`.

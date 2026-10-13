@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
-import { modalsStore, openModal, resetModalsForTests, settleModal, type ModalView } from './modals.js';
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
+import { modalsStore, openModal, refuseModals, resetModalsForTests, settleModal, type ModalView } from './modals.js';
 import { nth } from '@dotli/shared/testing';
 
 type Choice = 'yes' | 'no' | 'dismissed';
@@ -88,5 +88,63 @@ describe('modal store', () => {
     // Then
     await expect(outcome).rejects.toMatchObject({ name: 'AbortError' });
     expect(modalsStore.get()).toEqual([]);
+  });
+});
+
+describe('dialogs that cannot be shown', () => {
+  it('As a product, a request waiting on overlays that cannot render is refused at once', async () => {
+    // Given
+    const asked = openModal({
+      title: 'Allow camera?',
+      fields: [],
+      buttons: [
+        { label: 'Deny', variant: 'danger', result: 'deny' },
+        { label: 'Allow', variant: 'primary', result: 'allow' },
+      ],
+      dismissOnBackdrop: false,
+    });
+
+    // When
+    onTestFinished(refuseModals());
+
+    // Then
+    await expect(asked).resolves.toEqual({ result: 'deny' });
+  });
+
+  it('As a product, a request made after the overlays broke is refused too, with its dismiss answer', async () => {
+    // Given
+    onTestFinished(refuseModals());
+
+    // When
+    const asked = openModal({
+      title: 'Submit Preimage',
+      fields: [],
+      buttons: [
+        { label: 'Cancel', variant: 'cancel', result: 'cancel' },
+        { label: 'Allow', variant: 'primary', result: 'allow' },
+      ],
+      dismissOnBackdrop: true,
+      dismissResult: 'cancel',
+    });
+
+    // Then
+    await expect(asked).resolves.toEqual({ result: 'cancel' });
+  });
+
+  it('As a product, once the refusal stops, a new request waits for an answer again', () => {
+    // Given
+    const stop = refuseModals();
+    stop();
+
+    // When
+    void openModal({
+      title: 'Sign',
+      fields: [],
+      buttons: [{ label: 'Cancel', variant: 'cancel', result: 'cancel' }],
+      dismissOnBackdrop: false,
+    });
+
+    // Then
+    expect(modalsStore.get()).toHaveLength(1);
   });
 });

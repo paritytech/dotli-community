@@ -8,11 +8,11 @@ import '@dotli/ui/styles.css';
 import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
-import { listenForChunkFailures, showError, showNotification } from '@dotli/ui';
+import { listenForChunkFailures, refuseModals, showError, showNotification } from '@dotli/ui';
 import { configureProtocolFrame, ensureProtocolFrame, warmupProtocol, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktop-offer.js';
-import { reportIslandErrors } from './island-errors.js';
+import { pageStandIns, reportIslandErrors } from './island-errors.js';
 import { log } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import {
@@ -30,8 +30,7 @@ import { createBlockingModalCoordinator } from './runtime/blocking-modal-queue.j
 import { setProductError } from './runtime/state/product.js';
 import { takePendingReset } from './runtime/pending-reset.js';
 import { readSharedSettings, writeSharedSettings } from './runtime/shared-mode.js';
-import { initAuthController } from './runtime/auth-controller.js';
-import { startSessionState } from './runtime/host-callbacks/session-state.js';
+import { disableAuthModal, initAuthController } from './runtime/auth-controller.js';
 import { describeError, RELOAD_BTN_LABEL } from './errors.js';
 import { bootSettings } from './boot-settings.js';
 import { initSettingsStore } from './state/settings.js';
@@ -54,7 +53,16 @@ export function startPage(): void {
     window.location.reload();
   };
   listenForChunkFailures({ target: window, notify: showNotification, reload });
-  reportIslandErrors({ notify: showNotification, reload });
+  reportIslandErrors({
+    notify: showNotification,
+    reload,
+    standIns: pageStandIns({
+      disableAuthModal,
+      refuseModals: () => {
+        refuseModals();
+      },
+    }),
+  });
 
   if (!isMobileDevice()) {
     offerDesktopApp({
@@ -216,7 +224,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
   boot.step = 'topbar';
   // At once, not on idle: the auth button spins until the saved session is read, and a busy boot can starve an idle
   // callback.
-  startSessionState();
+  bridgeModule.startSessionState();
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'topbar_ready',

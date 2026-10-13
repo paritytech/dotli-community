@@ -7,7 +7,7 @@
 import { m, spans as S } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
-import { createAsyncTaskPool, log } from '@dotli/shared';
+import { log } from '@dotli/shared';
 
 export type SandboxParams = Extract<ReturnType<typeof validateSandboxParams>, { ok: true }>['params'];
 
@@ -16,15 +16,7 @@ export type SandboxParams = Extract<ReturnType<typeof validateSandboxParams>, { 
  * it from whichever step fetched or parsed the bytes.
  */
 export type LoadStep =
-  | 'init'
-  | 'sw_register'
-  | 'chunk_load'
-  | 'content_fetch'
-  | 'verify'
-  | 'decrypt'
-  | 'sw_store'
-  | 'archive_index'
-  | 'render';
+  'init' | 'sw_register' | 'content_fetch' | 'verify' | 'decrypt' | 'sw_store' | 'archive_index' | 'render';
 
 export interface LoadInput {
   params: SandboxParams;
@@ -43,20 +35,6 @@ type FetchArchive = typeof fetchArchive;
 /** Reads one block through the host's relay. */
 export type BlockSource = (cid: string) => Promise<Uint8Array>;
 
-/**
- * One block source for the document, built by the first load that asks and reused by every retry, so the page keeps
- * one bridge and one set of listeners. A build that fails is tried again by the next load.
- */
-export function blockSourcePerDocument(build: () => Promise<BlockSource>): () => Promise<BlockSource> {
-  const builds = createAsyncTaskPool({ poolSize: 1 });
-  let built: BlockSource | null = null;
-  return () =>
-    builds.call(async () => {
-      built ??= await build();
-      return built;
-    });
-}
-
 export interface LoadProductDeps {
   /** Progress text for the host's loading screen. */
   showStatus: (message: string) => void;
@@ -65,8 +43,8 @@ export interface LoadProductDeps {
   /** Settles once a service worker controls the page, or the page goes on without one. */
   registerWorker: (options: { waitForFreshController: boolean }) => Promise<void>;
   fetchArchive: FetchArchive;
-  /** The block source the host relays, loaded only on a light client backend. */
-  loadBlockSource: () => Promise<BlockSource>;
+  /** The block source the host relays, or null on the IPFS gateway. */
+  blockSource: BlockSource | null;
   /** The files of encrypted content once its password is given, or null when it is not encrypted. */
   decrypt: (data: Uint8Array, cid: string) => Promise<ArchiveFiles | null>;
   /** Hands the archive to the service worker that serves its files. */
@@ -119,9 +97,6 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     step = 'sw_register';
     const stopSw = m.timer(S.APP_SW_REGISTER);
     const swReady = deps.registerWorker({ waitForFreshController: freshStart }).then(stopSw);
-    const blockSource = isGateway ? null : deps.loadBlockSource();
-    // Awaited after the worker is ready, so an early failure must not also reach the global rejection handler.
-    void blockSource?.catch(() => undefined);
 
     // The worker must control the page before the archive is handed to it.
     await swReady;
@@ -131,7 +106,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     });
 
     let result: FetchResult;
-    if (blockSource === null) {
+    if (deps.blockSource === null) {
       contentLog.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.sinceStart() });
       deps.showStatus('Fetching via IPFS gateway...');
       step = 'content_fetch';
@@ -140,10 +115,8 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
       contentLog.event(`Fetching ${cid} via bitswap`, { chainBackend, ms: deps.sinceStart() });
       deps.showStatus('Fetching via bitswap...');
-      step = 'chunk_load';
-      const bitswapBlockSource = await blockSource;
       step = 'content_fetch';
-      result = await deps.fetchArchive(cid, deps.showStatus, { bitswapBlockSource });
+      result = await deps.fetchArchive(cid, deps.showStatus, { bitswapBlockSource: deps.blockSource });
     }
     contentLog.event(`Content fetched via ${isGateway ? 'gateway' : 'bitswap'}`, {
       type: result.type,

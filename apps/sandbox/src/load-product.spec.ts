@@ -5,13 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ArchiveFiles, FetchResult } from '@dotli/content';
 
-import {
-  blockSourcePerDocument,
-  loadProduct,
-  type BlockSource,
-  type LoadProductDeps,
-  type SandboxParams,
-} from './load-product.js';
+import { loadProduct, type LoadProductDeps, type SandboxParams } from './load-product.js';
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -68,7 +62,7 @@ function harness(fetched: FetchResult | Error, overrides: Partial<LoadProductDep
       fetches.push(options);
       return fetched instanceof Error ? Promise.reject(fetched) : Promise.resolve(fetched);
     },
-    loadBlockSource: () => Promise.resolve(BLOCK_SOURCE),
+    blockSource: null,
     decrypt: () => Promise.resolve(null),
     storeArchive: files => {
       events.push('store');
@@ -112,58 +106,13 @@ describe('loadProduct', () => {
 
   it("As a visitor on a light client backend, I get the content fetched through the host's block relay", async () => {
     // Given a light client backend whose block source is the relay
-    const page = harness({ type: 'single', content: enc('<h1>hi</h1>') });
+    const page = harness({ type: 'single', content: enc('<h1>hi</h1>') }, { blockSource: BLOCK_SOURCE });
 
     // When the first attempt loads it
     const outcome = await loadProduct({ params: params({ chainBackend: 'smoldot-direct' }), attempt: 1 }, page.deps);
 
     // Then the fetch reads its blocks from the relay
     expect(outcome).toEqual({ outcome: 'loaded' });
-    expect(page.fetches).toEqual([{ bitswapBlockSource: BLOCK_SOURCE }]);
-  });
-
-  it('As a visitor whose first light client load fails, my retry fetches through the block bridge the first attempt built', async () => {
-    // Given a fetch that fails once, and a block bridge built per document that counts its builds
-    let builds = 0;
-    const bridges: BlockSource[] = [];
-    const loadBlockSource = blockSourcePerDocument(() => {
-      builds += 1;
-      const bridge: BlockSource = () => Promise.resolve(new Uint8Array());
-      bridges.push(bridge);
-      return Promise.resolve(bridge);
-    });
-    const page = harness(new Error('content unreachable'), { loadBlockSource });
-    const light = params({ chainBackend: 'smoldot-direct' });
-
-    // When the first attempt fails and the retry runs on the same load deps
-    const first = await loadProduct({ params: light, attempt: 1 }, page.deps);
-    const retry = await loadProduct({ params: light, attempt: 2 }, page.deps);
-
-    // Then the bridge was built once, and both attempts fetched through it
-    expect([first.outcome, retry.outcome]).toEqual(['failed', 'failed']);
-    expect(builds).toBe(1);
-    expect(page.fetches).toEqual([{ bitswapBlockSource: bridges[0] }, { bitswapBlockSource: bridges[0] }]);
-  });
-
-  it('As a visitor whose block bridge chunk failed to load, my retry builds the bridge again and loads', async () => {
-    // Given a bridge chunk that fails to load once
-    const missing = new TypeError('Failed to fetch dynamically imported module');
-    let builds = 0;
-    const loadBlockSource = blockSourcePerDocument(() => {
-      builds += 1;
-      return builds === 1 ? Promise.reject(missing) : Promise.resolve(BLOCK_SOURCE);
-    });
-    const page = harness({ type: 'single', content: enc('<h1>hi</h1>') }, { loadBlockSource });
-    const light = params({ chainBackend: 'smoldot-direct' });
-
-    // When the first attempt fails at the chunk and the retry runs
-    const first = await loadProduct({ params: light, attempt: 1 }, page.deps);
-    const retry = await loadProduct({ params: light, attempt: 2 }, page.deps);
-
-    // Then the retry built the bridge again and loaded through it
-    expect(first).toEqual({ outcome: 'failed', step: 'chunk_load', error: missing });
-    expect(retry).toEqual({ outcome: 'loaded' });
-    expect(builds).toBe(2);
     expect(page.fetches).toEqual([{ bitswapBlockSource: BLOCK_SOURCE }]);
   });
 
@@ -234,7 +183,6 @@ describe('loadProduct', () => {
 
   it.each<[string, (broken: Error) => Partial<LoadProductDeps>, FetchResult]>([
     ['sw_register', broken => ({ registerWorker: () => Promise.reject(broken) }), { type: 'single', content: enc('') }],
-    ['chunk_load', broken => ({ loadBlockSource: () => Promise.reject(broken) }), { type: 'single', content: enc('') }],
     ['decrypt', broken => ({ decrypt: () => Promise.reject(broken) }), { type: 'single', content: enc('sealed') }],
     [
       'sw_store',
@@ -251,7 +199,7 @@ describe('loadProduct', () => {
     async (step, breaks, fetched) => {
       // Given a light client load whose step throws
       const broken = new Error(`${step} broke`);
-      const page = harness(fetched, breaks(broken));
+      const page = harness(fetched, { blockSource: BLOCK_SOURCE, ...breaks(broken) });
 
       // When the first attempt loads it
       const outcome = await loadProduct({ params: params({ chainBackend: 'smoldot-direct' }), attempt: 1 }, page.deps);

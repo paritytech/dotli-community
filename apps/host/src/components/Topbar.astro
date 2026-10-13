@@ -25,35 +25,3 @@ import s from './Topbar.module.css';
   {/* Announces the offline state the capsule only shows. */}
   <span id="topbar-offline" class={s['offline']} role="status"></span>
 </header>
-
-<script>
-  import { topbarStore } from '../state/topbar.js';
-  import { networkHealthStore } from '../state/network-health.js';
-  import {
-    registerTopbarElement,
-    revealTopbar,
-    scheduleTopbarHide,
-    TOPBAR_REVEAL_SHORTCUT,
-  } from '../topbar-autohide.js';
-  import { bindTopbarStatus } from '../topbar-status.js';
-
-  const bar = document.getElementById('topbar');
-  if (bar !== null) {
-    registerTopbarElement(bar);
-    bindTopbarStatus(bar, networkHealthStore);
-    bar.addEventListener('mouseenter', revealTopbar);
-    bar.addEventListener('mouseleave', scheduleTopbarHide);
-
-    const render = (): void => {
-      const { visible, autoHide } = topbarStore.get();
-      bar.toggleAttribute('data-hidden', !visible);
-      if (autoHide) {
-        bar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
-      } else {
-        bar.removeAttribute('aria-keyshortcuts');
-      }
-    };
-    render();
-    topbarStore.subscribe(render);
-  }
-</script>

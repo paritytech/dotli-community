@@ -56,7 +56,7 @@ server {
     }
 
     # The host's chunks and workers, which carry COEP so the cross-origin isolated /__preview page can start them.
-    include /etc/nginx/snippets/dotli-assets-host.conf;
+    include /etc/nginx/snippets/dotli-assets-preview.conf;
 
     include /etc/nginx/snippets/dotli-host-version.conf;
 

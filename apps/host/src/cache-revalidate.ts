@@ -8,16 +8,11 @@ import { captureException, m, spans as S } from '@dotli/metrics';
 import type { CachedManifests } from '@dotli/storage';
 import { log } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
-import type { revalidateCachedProduct } from './manifest-gate.js';
+import { revalidateCachedProduct } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
 
 export interface CacheRevalidationDeps {
   names: Pick<NameSource, 'resolveProduct' | 'readManifests'>;
-  /**
-   * Weighs the network's answer against the served copy. Given by the caller, since the boot already holds the manifest
-   * gate and importing it here would split it into a boot file of its own.
-   */
-  decide: typeof revalidateCachedProduct;
   /** The CID cache entry for this network. */
   cache: {
     set: (label: string, cid: string, manifests: CachedManifests) => Promise<void>;
@@ -37,7 +32,7 @@ export async function revalidateCachedCopy(
 ): Promise<void> {
   const stopTimer = m.timer(S.CACHE_REVALIDATE_LATENCY);
   try {
-    const decision = await deps.decide(
+    const decision = await revalidateCachedProduct(
       servedCid,
       // The same lookup the load made, or a product published under its app subname never matches.
       () => deps.names.resolveProduct(label),

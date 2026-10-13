@@ -86,9 +86,9 @@ jobs:
               echo "${label}: ${gz} B gzip (budget ${max} B) — ok"
             fi
           }
-          check_eager "host-eager-path" apps/host/dist 168000
-          check_eager "landing-eager-path" apps/host/dist 152000 landing.html
-          check_eager "sandbox-eager-path" apps/sandbox/dist 87000
+          check_eager "host-eager-path" apps/host/dist 172000
+          check_eager "landing-eager-path" apps/host/dist 132000 landing.html
+          check_eager "sandbox-eager-path" apps/sandbox/dist 84000
 
       - name: Download baseline from main
         if: github.event_name == 'pull_request'

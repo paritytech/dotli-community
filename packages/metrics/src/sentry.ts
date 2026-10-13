@@ -4,7 +4,7 @@
 // The one module that imports the SDK. Its calls sit behind the compile-time metrics flag.
 
 import * as Sentry from '@sentry/browser';
-import { bindLogSink, log, type LogLevel, serializeError, fullErrorChain } from '@dotli/shared';
+import { bindLogSink, log, type LogLevel, serializeError, fullErrorChain, StoreListenerError } from '@dotli/shared';
 
 import { bindCaptureSink, type CaptureSink } from './capture.js';
 import { m, sentrySpanOf } from './metrics.js';
@@ -33,20 +33,6 @@ interface SmoldotEventLike {
 const SMOLDOT_PATH_RE = /[/\\]smoldot(?:@[\w.+-]+)?[/\\]/i;
 // Rust panics read `panicked at /__w/smoldot/...`, the JS wrapper "Smoldot has panicked" or "crashed".
 const SMOLDOT_VALUE_RE = /panicked at [^\n]*[/\\]smoldot[/\\]|Smoldot has (?:panicked|crashed)/i;
-
-const BROWSER_API_ERRORS_INTEGRATION = 'BrowserApiErrors';
-const CONSOLE_BREADCRUMBS_INTEGRATION = 'Console';
-// `installGlobalErrorHandlers` owns uncaught errors. With Sentry's handler also on, Dedupe drops our tagged copy.
-const GLOBAL_HANDLERS_INTEGRATION = 'GlobalHandlers';
-
-/**
- * Drop Sentry's BrowserApiErrors callback wrapper.
- * `@polkadot-api/utils` registers `Function.prototype` as a listener on disconnect. Marking it
- * `__sentry_wrapped__` makes every later callback look wrapped, so Sentry swaps them all for a no-op.
- */
-export function excludeBrowserApiErrorsIntegration<T extends { name: string }>(defaultIntegrations: T[]): T[] {
-  return defaultIntegrations.filter(integration => integration.name !== BROWSER_API_ERRORS_INTEGRATION);
-}
 
 export function isSmoldotEvent(event: SmoldotEventLike): boolean {
   const values = event.exception?.values ?? [];
@@ -96,6 +82,28 @@ function sentryRelease(): string | undefined {
   return release !== undefined && release !== '' ? release : import.meta.env.VITE_COMMIT_SHA;
 }
 
+/**
+ * Listed rather than filtered from the defaults, so the bundle carries only these. Left out on purpose:
+ * `globalHandlers` (`installGlobalErrorHandlers` owns uncaught errors, and with both on Dedupe drops our tagged copy),
+ * `browserApiErrors` (`@polkadot-api/utils` registers `Function.prototype` as a listener, and once Sentry marks it
+ * wrapped every later callback looks wrapped and becomes a no-op), and on pages the automatic breadcrumbs and console
+ * capture, since DOM selectors and console output can carry user data. `addBreadcrumb` works without them.
+ * Unlike `Sentry.init`, this skips the SDK's own stringifier for Window, Document and elements in `extra`, which dotli
+ * never sends.
+ */
+function integrationsFor(source: SentrySource) {
+  const kept = [
+    Sentry.eventFiltersIntegration(),
+    Sentry.functionToStringIntegration(),
+    Sentry.linkedErrorsIntegration(),
+    Sentry.dedupeIntegration(),
+    Sentry.httpContextIntegration(),
+    Sentry.cultureContextIntegration(),
+    Sentry.browserSessionIntegration(),
+  ];
+  return source === 'worker' ? [...kept, Sentry.breadcrumbsIntegration(), Sentry.consoleIntegration()] : kept;
+}
+
 /** Initialize Sentry and bind it to `m`. Safe without a DSN, where a non-development build warns once. */
 export function initSentry(source: SentrySource): void {
   if (!ENABLED) {
@@ -103,35 +111,15 @@ export function initSentry(source: SentrySource): void {
   }
   const dsn = import.meta.env.VITE_SENTRY_DSN;
   const env = sentryEnvironment();
-  const extraIntegrations =
-    source === 'worker'
-      ? []
-      : [
-          // Replaces the default instance so nothing is collected automatically. `addBreadcrumb` still works.
-          Sentry.breadcrumbsIntegration({
-            dom: false, // selectors and sometimes text
-            history: false,
-            fetch: false,
-            xhr: false,
-          }),
-        ];
-  // Console output can carry user data, and Sentry 11 records it in its own integration, not Breadcrumbs.
-  const excludedDefaults =
-    source === 'worker'
-      ? [GLOBAL_HANDLERS_INTEGRATION]
-      : [CONSOLE_BREADCRUMBS_INTEGRATION, GLOBAL_HANDLERS_INTEGRATION];
-  Sentry.init({
+  const client = new Sentry.BrowserClient({
     dsn,
     tunnel: '/t',
     environment: env,
     release: sentryRelease(),
     beforeSend: tagSmoldotEvents,
-    integrations: defaultIntegrations => [
-      ...excludeBrowserApiErrorsIntegration(defaultIntegrations).filter(
-        integration => !excludedDefaults.includes(integration.name),
-      ),
-      ...extraIntegrations,
-    ],
+    integrations: integrationsFor(source),
+    transport: Sentry.makeFetchTransport,
+    stackParser: Sentry.defaultStackParser,
     // Never attach user info or let Sentry infer the IP.
     dataCollection: { userInfo: false },
     // Sends the manual spans. Without browserTracingIntegration nothing is traced automatically.
@@ -139,6 +127,8 @@ export function initSentry(source: SentrySource): void {
     // No sentry-trace or baggage headers, so trace ids never reach third parties.
     tracePropagationTargets: [],
   });
+  Sentry.getCurrentScope().setClient(client);
+  client.init();
 
   bindCaptureSink(sentrySink);
 
@@ -208,6 +198,15 @@ export function installGlobalErrorHandlers(source: SentrySource): void {
   });
 
   self.addEventListener('error', (event: ErrorEvent) => {
+    if (event.error instanceof StoreListenerError) {
+      log.error(`[dot.li ${source}] store listener failed:`, event.error);
+      sentrySink.exception(event.error, {
+        flow: 'ui',
+        step: 'store_listener',
+        tags: { store: event.error.store, kind: 'store_listener_error', source },
+      });
+      return;
+    }
     log.error(`[dot.li ${source}] window error:`, event.error ?? event.message);
     const extra: Record<string, unknown> = {
       filename: event.filename,

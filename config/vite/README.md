@@ -5,8 +5,8 @@ Build plugins and options shared by the host, sandbox and protocol builds, plus 
 ## Responsibility
 
 - Hold the Vite and Astro plugins that more than one app uses, or that are too large to live in an app config.
-- Not an app's own config: ports, plugin order and `define` stay in each app. What every app's build shares is one
-  preset.
+- Not an app's own config: ports and plugin order stay in each app, and each app adds its own `define` values to the
+  shared ones. What every app's build shares is one preset.
 
 ## Design
 
@@ -24,8 +24,9 @@ Imported by the apps' Vite and Astro configs. Beyond them, the host's Storybook 
 its page head takes the social meta entry, the dev scripts take the mode sync, runtime network config and serving
 entries, and the host runtime takes the signing worker entry.
 
-- `./app`: `dotliApp`, the settings every app's build shares (base, env directory, wasm, the Sentry upload), which also
-  fills in the commit and a `dotli@semver` Sentry release.
+- `./app`: `dotliApp`, the settings every app's build shares (base, env directory, wasm, the Sentry upload, and the
+  compile-time values that strip the Sentry SDK's debug logger), which also fills in the commit and a `dotli@semver`
+  Sentry release.
 - `./build-options`: `appBuildOptions` and `rolldownOptions`, the shared minify chain (terser then oxc) and tree-shaking
   settings.
 - `./css-modules`: CSS-modules options with one short-name counter across every Vite environment of a build.

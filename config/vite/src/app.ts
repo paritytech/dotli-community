@@ -19,6 +19,8 @@ export interface DotliApp {
   base: string;
   /** The repo root, where `.env` lives. */
   envDir: string;
+  /** Compile-time values every bundle shares, the app's workers included. */
+  define: { readonly __SENTRY_DEBUG__: false };
   wasm: () => Plugin;
   /** Uploads source maps when metrics are on and a token is set. Otherwise nothing, so local builds keep them. */
   sentry: () => PluginOption;
@@ -48,6 +50,8 @@ export function dotliApp(appDir: string): DotliApp {
   return {
     base: appUrl === '' ? '/' : new URL(appUrl).pathname,
     envDir,
+    // Strips the Sentry SDK's debug logger, as its bundler plugin's size options would.
+    define: { __SENTRY_DEBUG__: false },
     wasm,
     sentry: () => {
       if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {

@@ -6,7 +6,7 @@
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
-import { startPage } from './page-start.js';
+import '@dotli/ui/styles.css';
 import { BASE_DOMAIN, TIMEOUTS, getActiveServicesConfig, setActiveNetwork } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
@@ -14,10 +14,9 @@ import { m, setResolutionId } from '@dotli/metrics';
 import { endpointHost } from '@dotli/shared';
 
 import { createDecryptIfNeeded } from './decrypt-prompt.js';
-import { showError } from '@dotli/ui';
-import { showRetryScreen } from './retry-screen.js';
-import { loadPasswordDialog, loadSandboxChecker } from './lazy.js';
-import { createPasswordPrompt } from './password-prompt.js';
+import { listenForChunkFailures, showNotification, toastsStore } from '@dotli/ui';
+import { loadPageUi, loadSandboxChecker } from './lazy.js';
+import { createSandboxUi } from './sandbox-ui.js';
 import { showPasswordPrompt } from './show-password-prompt.js';
 import {
   askHostToRerender,
@@ -26,7 +25,8 @@ import {
   reportSandboxDebug,
   showStatus,
 } from './host-messages.js';
-import { blockSourcePerDocument, loadProduct, type SandboxParams } from './load-product.js';
+import { createBitswapBridge, hostOriginRule } from './bitswap-bridge.js';
+import { loadProduct, type BlockSource, type SandboxParams } from './load-product.js';
 import { purgeSandboxOriginState } from './origin-purge.js';
 import { runSandbox } from './sandbox-run.js';
 import {
@@ -37,7 +37,21 @@ import {
   type AppServiceWorker,
 } from './service-worker.js';
 
-startPage();
+listenForChunkFailures({
+  target: window,
+  notify: showNotification,
+  reload: () => {
+    window.location.reload();
+  },
+});
+
+const ui = createSandboxUi({
+  load: loadPageUi,
+  toasts: toastsStore,
+  showText: text => {
+    document.body.textContent = text;
+  },
+});
 
 const T0 = performance.now();
 
@@ -47,20 +61,12 @@ const appWorker: AppServiceWorker = {
   offerReload: offerReloadNotice,
 };
 
-const passwordPrompt = createPasswordPrompt({ load: loadPasswordDialog, show: view => showPasswordPrompt(view) });
-
 const decryptIfNeeded = createDecryptIfNeeded({
-  prompt: passwordPrompt.prompt,
-  preparePrompt: passwordPrompt.prepare,
+  prompt: async options => showPasswordPrompt((await ui.ready()).passwordPromptDialog(options)),
   dismissHostLoading,
   isEncrypted,
   decryptContent,
   parseIpfsResponse,
-});
-
-const loadBlockSource = blockSourcePerDocument(async () => {
-  const { createBitswapBridge, hostOriginRule } = await import('./bitswap-bridge.js');
-  return createBitswapBridge({ window, parent: window.parent, isHostOrigin: hostOriginRule(BASE_DOMAIN) }).requestBlock;
 });
 
 function sinceStart(): number {
@@ -85,6 +91,9 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
   return injectSandboxChecker(html);
 }
 
+// One bridge for the document, so every retry reuses its listeners. Built in `configure`, once the backend is known.
+let blockSource: BlockSource | null = null;
+
 function configure(params: SandboxParams): void {
   // Before the first load, so a failure in it is still attributed to its page load.
   if (params.resolutionId !== null) {
@@ -93,6 +102,13 @@ function configure(params: SandboxParams): void {
   setActiveNetwork(params.network);
   m.setDefaults({ chain_backend: params.chainBackend, network: params.network });
   listenForArchiveFailures(appWorker.container);
+  if (params.chainBackend !== 'rpc-gateway') {
+    blockSource = createBitswapBridge({
+      window,
+      parent: window.parent,
+      isHostOrigin: hostOriginRule(BASE_DOMAIN),
+    }).requestBlock;
+  }
 }
 
 void runSandbox(
@@ -114,7 +130,7 @@ void runSandbox(
           }),
         registerWorker: options => registerAppServiceWorker(appWorker, options),
         fetchArchive,
-        loadBlockSource,
+        blockSource,
         decrypt: decryptIfNeeded,
         storeArchive: files => storeArchiveInSW(appWorker.container, files),
         prepareHtml: maybeInjectSandboxChecker,
@@ -123,6 +139,7 @@ void runSandbox(
           notifyLoadingDone({ outcome: 'loaded' });
         },
         write: html => {
+          ui.close();
           stripContractParamsFromUrl();
           document.open();
           // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
@@ -135,7 +152,7 @@ void runSandbox(
       notifyLoadingDone({ outcome: 'failed', failedStep: step });
     },
     show: (title, message, retry) => {
-      showError(
+      ui.showError(
         title,
         message,
         retry === undefined
@@ -146,7 +163,7 @@ void runSandbox(
       );
     },
     retrying: () => {
-      showRetryScreen();
+      ui.showRetryScreen();
     },
     askRerender: askHostToRerender,
     gatewayHost: () => endpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),

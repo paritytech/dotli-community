@@ -17,8 +17,9 @@ compile time.
   `VITE_METRICS` check, so a build without metrics drops the SDK.
 - Capture forwards to a bound sink. Tests bind their own sink instead of mocking the package. A `CaptureContext` carries
   a `Flow` and a stable snake_case `step`, which together form the issue fingerprint.
-- The Sentry module is the only one that imports `@sentry/browser`, a peer dependency. It binds the capture and log
-  sinks and sets the `source` tag (`host`, `protocol`, `worker`, `sandbox`).
+- The Sentry module is the only one that imports `@sentry/browser`, a peer dependency. It sets the SDK up with a listed
+  set of integrations, so the bundle carries only those. It binds the capture and log sinks and sets the `source` tag
+  (`host`, `protocol`, `worker`, `sandbox`).
 - `spans` lists every metric name without the `dotli.` prefix.
 - The testing entry records counts, distributions, gauges and tags. It needs no test runner.
 - Lint holds this package to its own rules.

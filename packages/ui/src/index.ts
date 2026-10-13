@@ -49,6 +49,7 @@ export { ToastStack } from './components/overlays/ToastStack.js';
 export {
   modalsStore,
   openModal,
+  refuseModals,
   settleModal,
   type ModalButton,
   type ModalButtonVariant,

@@ -4,7 +4,7 @@
 // Runs in its own project with VITE_METRICS off, as a build without metrics compiles the module.
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { m } from './metrics.js';
+import { getResolutionId, m, setResolutionId } from './metrics.js';
 import { bindRecordingSentry } from './testing.js';
 
 describe('metrics in a build without metrics', () => {
@@ -49,5 +49,13 @@ describe('metrics in a build without metrics', () => {
     // Then
     expect(m.enabled).toBe(false);
     expect(sentry.counts).toEqual([]);
+  });
+
+  it('As the sandbox on a build without metrics, I read back the resolution id the host passed, so the frames line up', () => {
+    // When
+    setResolutionId('resolution-1');
+
+    // Then
+    expect(getResolutionId()).toBe('resolution-1');
   });
 });

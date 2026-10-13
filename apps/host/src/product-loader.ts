@@ -13,15 +13,12 @@ import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { ShieldState } from './state/url-pill.js';
 import type { ProductFrame } from './runtime/product-frame.js';
 import { describeError } from './errors.js';
-import { reportLazyMiss } from './lazy-miss.js';
 import type { Attempt } from './journey.js';
 import type { LoadFailure } from './load-failure.js';
 import type { LoadProgress } from './load-progress.js';
 import { assertLaunchable, fromCache, manifestFacts, toCache, type ProductManifests } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
 import type { CidCacheResult, ResolutionTrace, ResolutionTraceOptions } from './resolution-trace.js';
-
-const resolveLog = log.child({ flow: 'resolve' });
 
 /** What the loader draws the product with. */
 export interface LoaderFrame {
@@ -58,8 +55,9 @@ export interface ProductLoaderDeps {
   /** Whether the product's worker manifest asks for chat, read alongside the name and cached for the next load. */
   readChat: (label: string, read: () => Promise<boolean>) => Promise<boolean>;
   scheduleNotifications: (options: { label: string }) => void;
-  /** Rejects only when the check's code could not be fetched. */
+  /** Never rejects. */
   revalidate: (label: string, servedCid: string, onScreen: boolean) => Promise<void>;
+  /** Never rejects. */
   brand: (label: string, manifests: ProductManifests) => Promise<void>;
   page: {
     showProductPill: (label: string, tld: string) => void;
@@ -70,8 +68,8 @@ export interface ProductLoaderDeps {
     setContentShown: (shown: boolean) => void;
     recordRecentLabel: (label: string) => Promise<void>;
   };
-  /** Settles once the failure's screen is up, which may first fetch the screen code. */
-  presentFailure: (failure: LoadFailure) => Promise<void>;
+  /** Shows the failure's screen. */
+  presentFailure: (failure: LoadFailure) => void;
   /** The previous attempt's failure is behind the visitor. */
   forgetFailure: () => void;
   idle: (callback: () => void) => void;
@@ -177,17 +175,11 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
   const rendered = (manifests: ProductManifests): void => {
     deps.forgetFailure();
     void deps.page.recordRecentLabel(label);
-    void deps.brand(label, manifests).catch((err: unknown) => {
-      resolveLog.warn(`[dot.li manifest] branding failed for ${withActiveTld(label)}:`, err);
-      reportLazyMiss('resolve', 'product_branding_load', err);
-    });
+    void deps.brand(label, manifests);
   };
   const revalidateLater = (servedCid: string, onScreen: boolean): void => {
     deps.idle(() => {
-      void deps.revalidate(label, servedCid, onScreen).catch((err: unknown) => {
-        resolveLog.warn(`[dot.li cache] revalidation could not run for ${withActiveTld(label)}:`, err);
-        reportLazyMiss('resolve', 'cache_revalidation_load', err);
-      });
+      void deps.revalidate(label, servedCid, onScreen);
     });
   };
   const handedOff = (): void => {
@@ -379,6 +371,6 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     });
     // Once for the failed load, however many times the user moves between its error screens.
     deps.page.setProductError();
-    await deps.presentFailure({ error, cause: err, label, backend });
+    deps.presentFailure({ error, cause: err, label, backend });
   }
 }

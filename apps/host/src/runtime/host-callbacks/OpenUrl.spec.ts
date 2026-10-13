@@ -8,16 +8,19 @@ import { createNavigateTo as createPageNavigateTo } from './OpenUrl.js';
 const PORT = '3000';
 
 let assign: Mock<(url: string) => void>;
-let open: Mock<(url: string) => void>;
+let open: Mock<(url: string, target: string, features: string) => void>;
 
 /** Navigation on a dev tab at localhost:3000 that records where it is sent. */
 function createNavigateTo(): ReturnType<typeof createPageNavigateTo> {
   assign = vi.fn<(url: string) => void>();
-  open = vi.fn<(url: string) => void>();
+  open = vi.fn<(url: string, target: string, features: string) => void>();
   return createPageNavigateTo({ location: () => ({ protocol: 'http:', port: PORT, assign }), open });
 }
 
-function spyOnNavigation(): { assign: Mock<(url: string) => void>; open: Mock<(url: string) => void> } {
+function spyOnNavigation(): {
+  assign: Mock<(url: string) => void>;
+  open: Mock<(url: string, target: string, features: string) => void>;
+} {
   return { assign, open };
 }
 
@@ -61,7 +64,7 @@ describe('OpenUrl host callback', () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, the host opens external websites apart from the current tab', async () => {
+  it('As a dotli integrator, a website opens in a new tab that cannot reach back into dotli', async () => {
     // Given
     const navigateTo = createNavigateTo();
     const { assign, open } = spyOnNavigation();
@@ -73,7 +76,7 @@ describe('OpenUrl host callback', () => {
     // Then
     expect(assign).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledTimes(2);
-    expect(open).toHaveBeenCalledWith('https://example.com/path');
-    expect(open).toHaveBeenCalledWith('example.dot/path');
+    expect(open).toHaveBeenCalledWith('https://example.com/path', '_blank', 'noopener');
+    expect(open).toHaveBeenCalledWith('example.dot/path', '_blank', 'noopener');
   });
 });

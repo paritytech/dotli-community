@@ -6,7 +6,8 @@
 import { decodeWireMessage, type WireProvider } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
-import { describeWireFrame } from './debug-wire-describe.js';
+import { loadWireDescriber } from '../lazy.js';
+import { reportLazyMiss } from '../lazy-miss.js';
 import type { CoreConnection } from './page-core.js';
 import { getWalletMode } from './state/wallet-mode.js';
 
@@ -18,28 +19,53 @@ export type CoreProvider = WireProvider &
 
 const noop = (): void => undefined;
 
+/** One load of the describer for the page. A failed load is reported once and kept, since a deploy replaced the chunk. */
+export function createWireDescriber(load: typeof loadWireDescriber): {
+  preload: () => ReturnType<typeof loadWireDescriber>;
+} {
+  // Every frame waits on the same load, so frames reach the panel in the order they crossed.
+  let loaded: ReturnType<typeof loadWireDescriber> | undefined;
+  return {
+    preload: () =>
+      (loaded ??= load().catch((err: unknown) => {
+        reportLazyMiss('ui', 'wire_describe_load', err);
+        throw err;
+      })),
+  };
+}
+
+const wireDescriber = createWireDescriber(loadWireDescriber);
+
+/** Started with debug mode, so the first frames are not held back by the chunk. */
+export function preloadWireDescriber(): ReturnType<typeof loadWireDescriber> {
+  return wireDescriber.preload();
+}
+
 function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: string, message: Uint8Array): void {
   if (!hasDotliDebugListeners()) {
     return;
   }
-  try {
-    const decoded = decodeWireMessage(message);
-    if (decoded.isErr()) {
-      return;
-    }
-    emitDotliDebugEvent({
-      kind: 'truapi',
-      direction,
-      productId,
-      requestId: decoded.value.requestId,
-      payload: describeWireFrame(decoded.value.payload, decoded.value.payload.value, {
-        decodeWalletFrames: getWalletMode() === 'local',
-      }),
-    });
-    // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
-  } catch {
-    // Debug tap failures must not affect the transport.
+  const decoded = decodeWireMessage(message);
+  if (decoded.isErr()) {
+    return;
   }
+  const { requestId, payload } = decoded.value;
+  const decodeWalletFrames = getWalletMode() === 'local';
+  // Off the transport path: a panel listener that throws becomes a rejection the page reports, and delivery goes on.
+  void preloadWireDescriber().then(
+    ({ describeWireFrame }) => {
+      emitDotliDebugEvent({
+        kind: 'truapi',
+        direction,
+        productId,
+        requestId,
+        payload: describeWireFrame(payload, payload.value, { decodeWalletFrames }),
+      });
+    },
+    () => {
+      // Reported once where it loads.
+    },
+  );
 }
 
 /** Disposing it closes the connection, which the page core reads as deliberate. */

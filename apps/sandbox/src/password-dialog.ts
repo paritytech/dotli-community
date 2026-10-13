@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The password dialog's view, loaded through src/lazy.ts, so it stays out of the sandbox's boot.
+// The password dialog's view. It reaches the page through the page UI chunk.
 
 import { LockIcon } from '@dotli/ui/icons';
 import type { ModalView } from '@dotli/ui';
