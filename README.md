@@ -209,6 +209,9 @@ Contacts are independent, so movement, aiming, and firing can overlap. Cancellin
 focus loss, backgrounding, resizing, and disabling controls release all held virtual input and stop aiming. Physical
 keyboard/mouse input remains independent of virtual holds. The default overlay respects safe-area insets and is absent
 on desktop-only devices and apps that do not request capture; ordinary apps continue receiving raw multi-touch records.
+Capture loss also releases contacts when the browser targets the document instead of the control. If the overlay is
+detached, all holds are released, including pending capture on stationary buttons. An empty native touch list recovers
+touch-owned controls when terminal PointerEvents are missing, without releasing mouse/pen holds or newer contacts.
 
 Halo (`halo.app.<host>`, WebGPU Raster) uses its own host-owned compatibility layout, following the same HID
 keyboard/pointer approach as Epoca's iOS SNES controls. **Controls** opens an Xbox-to-keyboard/pointer reference and an
