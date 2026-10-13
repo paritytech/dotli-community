@@ -5,8 +5,6 @@ import { merge } from 'solid-js';
 import { createJSXDecorator, type Preview } from 'storybook-solidjs-vite';
 import { themes } from 'storybook/theming';
 import '@dotli/ui/styles.css';
-import { ReporterContext } from '@dotli/ui';
-import { createRecordingReporter } from '@dotli/ui-core/testing';
 import s from './preview.module.css';
 
 const preview: Preview = {
@@ -48,10 +46,7 @@ const preview: Preview = {
           data-chrome={context.parameters['chrome'] === true ? '' : undefined}
           data-testid="story-root"
         >
-          {/* As a mount or an island gives its surfaces one. A story that asserts reports provides its own inside. */}
-          <ReporterContext value={createRecordingReporter()}>
-            <Story />
-          </ReporterContext>
+          <Story />
         </div>
       );
     }),

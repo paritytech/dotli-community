@@ -6,8 +6,8 @@
 
 import { withActiveTld } from '@dotli/config';
 import { type HostPrompts, isDevicePermission } from '@dotli/host-runtime';
-import type { PresentModal } from '@dotli/ui-widgets';
-import { presentModal, showNotification } from './overlays.js';
+import { openModal } from '@dotli/ui';
+import { showNotification } from '@dotli/ui-widgets';
 import { permissionIcon } from '@dotli/ui-entities';
 import { permissionRequestDialog } from './components/permissions/permission-dialog.js';
 import { preimageSubmitDialog } from './components/permissions/preimage-dialog.js';
@@ -20,13 +20,13 @@ const FROM_PRODUCT = { focusFallback: () => currentProductFrame() ?? undefined }
 
 export interface HostPromptsDeps {
   /** Where the dialogs queue. The page's overlays by default. */
-  present?: PresentModal | undefined;
+  present?: typeof openModal | undefined;
   notify?: HostPrompts['notify'] | undefined;
 }
 
 /** The user's answers come from the page's dialogs, and the runtime's notices are the page's notifications. */
 export function createHostPrompts({
-  present = presentModal,
+  present = openModal,
   notify = showNotification,
 }: HostPromptsDeps = {}): HostPrompts {
   return {

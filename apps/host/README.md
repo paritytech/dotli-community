@@ -17,18 +17,18 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 ## Design
 
 - Two Astro pages, the shell and the landing page. Each has its own entry. Both start Sentry before any other module
-  runs, then call one page start (the chunk failure offer, the overlays and the desktop offer) and share one startup
-  step: settings, the protocol iframe, the bridge and auth.
+  runs, then call one page start (the chunk and island failure offers and the desktop offer) and share one startup step:
+  settings, the protocol iframe, the bridge and auth.
 - Static markup is Astro. Interactive controls are Solid islands, one module per island, bound to sync stores that
   import no Solid.
-- Boot modules never import views. They take UI only from the UI core, which imports no Solid, and the icons entry,
-  since a toast or dialog they open carries its icon component. Lint bans the views and the island and view folders from
-  every module that is not allowed to touch views.
+- The toasts and dialogs are one idle island on each page. What boot queues before it hydrates shows once it does.
+- Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
 - Views and rarely used modules load on demand through a lazy loader, each in its own chunk: bridge ports, load-failure
-  screens, the no-content page, cache revalidation, product branding, chat, account, chains, permissions, settings,
-  verification, the violation panel, the debug panel and the workbox.
-- The error page and the no-content page take the page's content down at once and show their Solid view once its chunk
-  arrives. When it cannot load, they show the shared error page as text, with the same title and line and no icon.
+  screens, cache revalidation, product branding, chat, account, chains, permissions, settings, verification, the
+  violation panel, the debug panel and the workbox.
+- The error page and the no-content page replace the page's content at once, through the shared screen owner. A
+  full-page screen ends the loading screen and the landing islands, and the product frame takes the screen down when it
+  shows.
 - Flows take their data sources and screens as parameters, so they run under Node without mocks. Two binders connect the
   runtime's `BridgePorts` to the page's dialogs, notifications, frame layout and network monitor.
 - The network monitor opens no chain. The bridge reports who holds each host chain and its best blocks to it through the
@@ -38,10 +38,12 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - Whether a product declares chat is read from its worker manifest alongside its name and travels on the product the
   frame renders. The last answer is cached per label, so a warm load picks the connection's execution kind without
   waiting on a dotNS read.
-- Two small scripts run in the page head before anything loads: an island error queue and the early database open. They
-  are real modules inlined as classic scripts at build time.
-- The Astro config adds a CSS split per page, the PWA service worker, the signing worker, the dev SPA fallback and a
-  Sentry release upload, all from the shared Vite tooling.
+- An island that must stand in for itself when it breaks (the landing page, the sign-in modal, the loading screen) wraps
+  its tree in its own error boundary. An island whose code fails to load once page start has run is reported and offers
+  a reload, the same offer as a page chunk that fails. One that fails before then, such as an island that loads with the
+  page, reaches the console alone.
+- The Astro config adds the PWA service worker, the signing worker, the dev SPA fallback and a Sentry release upload,
+  all from the shared Vite tooling.
 
 ```mermaid
 flowchart LR

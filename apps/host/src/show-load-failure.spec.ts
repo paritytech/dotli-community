@@ -62,7 +62,6 @@ function harness(): Harness {
         load,
         showErrorPage: (page: Page) => {
           pages.push(page);
-          return Promise.resolve();
         },
         openSettings: vi.fn(),
         reload: vi.fn(),

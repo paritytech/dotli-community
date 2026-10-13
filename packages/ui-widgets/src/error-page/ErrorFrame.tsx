@@ -23,10 +23,7 @@ export interface ErrorFrameProps {
   children?: JSX.Element;
 }
 
-/**
- * The error page's frame: a centred column under an icon and a title. `data-error-page` lets the page find and clear a
- * stray error page.
- */
+/** The error page's frame: a centred column under an icon and a title. */
 export function ErrorFrame(props: ErrorFrameProps): JSX.Element {
   const Icon = dynamic(() => props.icon);
   let title: HTMLHeadingElement | undefined;
@@ -36,11 +33,7 @@ export function ErrorFrame(props: ErrorFrameProps): JSX.Element {
     }
   });
   return (
-    <div
-      class={[s['page'], props.standalone ? s['standalone'] : undefined]}
-      data-testid="error-page"
-      data-error-page=""
-    >
+    <div class={[s['page'], props.standalone ? s['standalone'] : undefined]} data-testid="error-page">
       <div class={[s['inner'], props.class]}>
         <div
           class={s['glyph']}

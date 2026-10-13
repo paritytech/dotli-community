@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page's islands mounted in their slots: the page's document listener, the corner button with its surface
-// in the body, and what leaving takes with it. The controls are story plays beside NavForm and RecentList in
-// ui-entities, and the static markup is Astro's, which the functional smoke test covers.
+// The landing page's islands mounted in their slots: the page's document listener, the corner button, and what
+// leaving takes with it. The controls are story plays beside NavForm and RecentList in ui-entities, and the static
+// markup is Astro's, which the functional smoke test covers.
 
 import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +13,6 @@ import { memorySharedChannel, type MemorySharedChannel } from '@dotli/host-runti
 import { setAuthState } from '@dotli/host-runtime';
 import { createRecentLabels, type RecentLabels } from '../../src/recent-labels.js';
 import { mountLandingPage } from '../helpers/landing.js';
-import { stubIdleBrowser } from '../helpers/idle.js';
 import { appears, byId, query } from '@dotli/ui/testing';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
@@ -83,29 +82,20 @@ describe('landing page', () => {
     expect(remove).toHaveBeenCalledWith('pointerdown', added[0]?.[1]);
   });
 
-  it("As a visitor, the auth button sits in the page's corner, with its surface in the body", async () => {
-    // Given: an idle browser, whose preload puts the surface in the page.
-    const idle = stubIdleBrowser();
-
+  it("As a visitor, the auth button sits in the page's corner", async () => {
     // When
     mount();
-    await idle.requested;
-    await vi.runOnlyPendingTimersAsync();
-    await appears('#landing-user-popover');
+    await appears('#landing-auth-button');
 
-    // Then: the button in its item wrapper, always inline (there is no
-    // topbar to collapse it into). The page is always dark, so it has no
-    // theme button.
+    // Then: the button in its item wrapper, always inline (there is no topbar to collapse it into). The page is always
+    // dark, so it has no theme button.
     const corner = byId('landing-auth');
     expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth']);
     expect(query(corner, '[data-item="auth"] > #landing-auth-button', HTMLButtonElement).disabled).toBe(false);
     expect(document.getElementById('landing-theme-toggle')).toBeNull();
     expect(corner.querySelector('[data-parked]')).toBeNull();
     expect(document.getElementById('more-button')).toBeNull();
-    expect(byId('landing-user-popover').parentElement).toBe(document.body);
-    for (const id of ['landing-auth-button', 'landing-user-popover']) {
-      expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
-    }
+    expect(document.querySelectorAll('[id="landing-auth-button"]')).toHaveLength(1);
     expect(captures.exception).not.toHaveBeenCalled();
   });
 

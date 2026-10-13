@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSignal, flush, onCleanup, useContext } from 'solid-js';
+import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ReporterContext } from '../../src/components/reporter-context.js';
-import { createRecordingReporter } from '@dotli/ui-core/testing';
-import type { Reporter, ReportFailure } from '@dotli/ui-core';
+import { bindCaptureSink } from '@dotli/metrics';
 import { settle } from '../../src/testing/settle.js';
 
-const failure = vi.fn<ReportFailure>();
-const report: Reporter = { ...createRecordingReporter(), failure };
+const failure = vi.fn();
+bindCaptureSink({ exception: failure, expected: vi.fn() });
 
 function container(id: string): HTMLElement {
   const el = document.createElement('div');
@@ -31,7 +29,7 @@ describe('mountRoot', () => {
     const el = container('a');
 
     // When
-    const dispose = mountRoot('a', el, () => <p class="hello">hi</p>, { report });
+    const dispose = mountRoot('a', el, () => <p class="hello">hi</p>);
     await settle();
 
     // Then
@@ -40,22 +38,17 @@ describe('mountRoot', () => {
     expect(el.childNodes.length).toBe(0);
   });
 
-  it('As a user, a root whose view throws is reported through its reporter and does not break sibling roots', async () => {
+  it('As a user, a root whose view throws is reported and does not break sibling roots', async () => {
     // Given
     const { mountRoot } = await import('../../src/mount/root.js');
     const good = container('good');
     const bad = container('bad');
-    mountRoot('good', good, () => <span class="ok">ok</span>, { report });
+    mountRoot('good', good, () => <span class="ok">ok</span>);
 
     // When
-    mountRoot(
-      'bad',
-      bad,
-      () => {
-        throw new Error('boom');
-      },
-      { report },
-    );
+    mountRoot('bad', bad, () => {
+      throw new Error('boom');
+    });
     await settle();
 
     // Then
@@ -68,28 +61,9 @@ describe('mountRoot', () => {
     expect(document.body.contains(good)).toBe(true);
   });
 
-  it('As a surface inside a mounted root, I report through the reporter the mount was given', async () => {
-    // Given
-    const { mountRoot } = await import('../../src/mount/root.js');
-    const el = container('reporting');
-    let seen: Reporter | undefined;
-    const Surface = (): JSX.Element => {
-      seen = useContext(ReporterContext);
-      return null;
-    };
-
-    // When
-    mountRoot('reporting', el, () => <Surface />, { report });
-    await settle();
-
-    // Then
-    expect(seen).toBe(report);
-  });
-
   it('As a sub-project, a disposer runs once and removeContainer takes the container out', async () => {
     // Given
     const { mountRoot } = await import('../../src/mount/root.js');
-    const { disposeAppRoot } = await import('@dotli/ui-core');
     const el = container('removable');
     const cleanups = vi.fn();
     const dispose = mountRoot(
@@ -99,39 +73,20 @@ describe('mountRoot', () => {
         onCleanup(cleanups);
         return <span>x</span>;
       },
-      { report, removeContainer: true },
+      { removeContainer: true },
     );
     await settle();
 
     // When
     dispose();
     dispose();
-    disposeAppRoot('removable');
 
     // Then
     expect(cleanups).toHaveBeenCalledTimes(1);
     expect(el.isConnected).toBe(false);
   });
 
-  it('As a full-page screen, I take down a root mounted as page content and leave other roots alone', async () => {
-    // Given
-    const { mountRoot } = await import('../../src/mount/root.js');
-    const { disposeContentRoots } = await import('@dotli/ui-core');
-    const page = container('content');
-    const chrome = container('chrome');
-    mountRoot('content', page, () => <span class="page">page</span>, { report, content: true });
-    mountRoot('chrome', chrome, () => <span class="chrome">chrome</span>, { report });
-    await settle();
-
-    // When
-    disposeContentRoots();
-
-    // Then
-    expect(page.querySelector('.page')).toBeNull();
-    expect(chrome.querySelector('.chrome')?.textContent).toBe('chrome');
-  });
-
-  it('As a sub-project, a root that breaks after it mounted is reported once, disposed, then hears onBroken once', async () => {
+  it('As a sub-project, a root that breaks after it mounted is reported once and disposed a microtask later', async () => {
     // Given a view that throws a new error on every change
     const { mountRoot } = await import('../../src/mount/root.js');
     const el = container('late');
@@ -152,29 +107,21 @@ describe('mountRoot', () => {
         },
       ];
     };
-    const onError = vi.fn(() => {
-      order.push(`onError:${String(el.querySelector('.live') !== null)}`);
-    });
-    const onBroken = vi.fn(() => order.push('onBroken'));
-    mountRoot('late', el, view, { report, onError, onBroken });
+    mountRoot('late', el, view);
     await settle();
     expect(el.querySelector('.live')).not.toBeNull();
 
-    // When it breaks twice before the microtask, so Solid runs the fallback
-    // twice
+    // When it breaks twice before the microtask, so Solid runs the fallback twice
     breakAgain();
     flush();
     breakAgain();
     flush();
 
-    // Then onError ran inside the boundary, with the nodes still there, and
-    // the rest waits a microtask
-    expect(order).toEqual(['onError:true']);
+    // Then the disposal waits a microtask, and the break is reported once
+    expect(order).toEqual([]);
     await Promise.resolve();
     await Promise.resolve();
-    expect(order).toEqual(['onError:true', 'disposed', 'onBroken']);
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect(onBroken).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['disposed']);
     expect(failure).toHaveBeenCalledTimes(1);
     expect(failure).toHaveBeenCalledWith(expect.objectContaining({ message: 'broke 1' }), {
       flow: 'ui',
@@ -183,30 +130,21 @@ describe('mountRoot', () => {
     });
   });
 
-  it('As a sub-project, a view that throws on its first render is disposed and hears onBroken once', async () => {
+  it('As a sub-project, a view that throws on its first render is reported once and its root disposed', async () => {
     // Given
     const { mountRoot } = await import('../../src/mount/root.js');
-    const { disposeAppRoot } = await import('@dotli/ui-core');
     const el = container('broken-at-once');
-    const onBroken = vi.fn();
     const Broken = (): JSX.Element => {
       throw new Error('render failed');
     };
 
     // When
-    mountRoot('broken-at-once', el, () => <Broken />, {
-      report,
-      onBroken,
-      removeContainer: true,
-    });
-    expect(onBroken).not.toHaveBeenCalled();
+    mountRoot('broken-at-once', el, () => <Broken />, { removeContainer: true });
     await settle();
     await Promise.resolve();
 
     // Then
-    expect(onBroken).toHaveBeenCalledTimes(1);
+    expect(failure).toHaveBeenCalledTimes(1);
     expect(el.isConnected).toBe(false);
-    disposeAppRoot('broken-at-once');
-    expect(onBroken).toHaveBeenCalledTimes(1);
   });
 });

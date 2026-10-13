@@ -1,22 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  type Accessor,
-  createEffect,
-  createSignal,
-  Errored,
-  lazy,
-  Loading,
-  onSettled,
-  Show,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createSignal, Errored, lazy, Loading, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
-import { preloadWhenIdle } from '@dotli/ui-core';
-import { ReporterContext } from '@dotli/ui';
+import { preloadWhenIdle } from '@dotli/ui';
 import type { ChatConversation } from './chat.js';
 import { type ChatPanelModule, loadChatPanel } from '../../lazy.js';
 import s from './ChatDock.module.css';
@@ -49,7 +37,6 @@ export interface ChatDockProps {
 export function ChatDock(props: ChatDockProps): JSX.Element {
   const loadPanel = untrack(() => props.loadPanel);
   const ChatPanel = loadPanel === undefined ? PageChatPanel : lazy(loadPanel, { export: 'ChatPanel' });
-  const report = useContext(ReporterContext);
   let aside: HTMLElement | undefined;
 
   // Keeps the panel rendered while closed once it has opened.
@@ -57,7 +44,7 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
 
   createEffect(
     () => props.available(),
-    visible => (visible ? preloadWhenIdle(ChatPanel, report) : undefined),
+    visible => (visible ? preloadWhenIdle(ChatPanel) : undefined),
   );
   createEffect(
     () => props.open(),

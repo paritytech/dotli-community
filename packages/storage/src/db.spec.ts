@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { IDBDatabase, IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, it, expect, vi, type Mock } from 'vitest';
-import { bindCaptureSink } from '@dotli/metrics';
-import { createDbConnection, createPageDb, isExpectedDbError, type PreOpenSlot } from './db.js';
+import { IDBFactory } from 'fake-indexeddb';
+import { describe, it, expect, vi, type Mock } from 'vitest';
+import { createDbConnection, isExpectedDbError } from './db.js';
+import { DB_NAME, DB_VERSION, openDotliDb, upgradeDotliDb } from './schema.js';
 
 /** A connection on the previous schema that ignores `versionchange`, as a frozen older tab would. */
 function openPreviousSchema(factory: IDBFactory): Promise<IDBDatabase> {
@@ -23,7 +23,7 @@ describe('the dotli database connection', () => {
   it('As a dotli user, I open the database again after an older tab blocked it and get a connection', async () => {
     // Given an older tab that holds the database on the previous schema
     const factory = new IDBFactory();
-    const getDb = createPageDb({ factory: () => factory, slot: undefined });
+    const getDb = createDbConnection(() => openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
     const olderTab = await openPreviousSchema(factory);
     await expect(getDb()).rejects.toThrow('Failed to open dotli DB: blocked by another tab');
 
@@ -39,7 +39,7 @@ describe('the dotli database connection', () => {
   it('As a dotli user, I leave no stray connection behind after a blocked open succeeds late', async () => {
     // Given a blocked open that succeeded once the older tab closed, and the live handle released
     const factory = new IDBFactory();
-    const getDb = createPageDb({ factory: () => factory, slot: undefined });
+    const getDb = createDbConnection(() => openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
     const olderTab = await openPreviousSchema(factory);
     await expect(getDb()).rejects.toThrow('blocked by another tab');
     olderTab.close();
@@ -106,7 +106,7 @@ describe('createDbConnection', () => {
     // Given
     const first = fakeDb('first');
     const open = opener(first);
-    const getDb = createDbConnection({ open, takePreOpened: () => undefined });
+    const getDb = createDbConnection(open);
 
     // When
     const both = await Promise.all([getDb(), getDb()]);
@@ -120,7 +120,7 @@ describe('createDbConnection', () => {
     // Given
     const first = fakeDb('first');
     const second = fakeDb('second');
-    const getDb = createDbConnection({ open: opener(first, second), takePreOpened: () => undefined });
+    const getDb = createDbConnection(opener(first, second));
     await getDb();
 
     // When
@@ -134,7 +134,7 @@ describe('createDbConnection', () => {
     // Given
     const first = fakeDb('first');
     const second = fakeDb('second');
-    const getDb = createDbConnection({ open: opener(first, second), takePreOpened: () => undefined });
+    const getDb = createDbConnection(opener(first, second));
     await getDb();
 
     // When
@@ -150,7 +150,7 @@ describe('createDbConnection', () => {
     const first = fakeDb('first');
     const second = fakeDb('second');
     const open = opener(first, second);
-    const getDb = createDbConnection({ open, takePreOpened: () => undefined });
+    const getDb = createDbConnection(open);
     await getDb();
     first.versionChange();
     await getDb();
@@ -167,7 +167,7 @@ describe('createDbConnection', () => {
     // Given
     const blocked = new Error('Failed to open dotli DB: blocked by another tab');
     const later = fakeDb('later');
-    const getDb = createDbConnection({ open: opener(blocked, later), takePreOpened: () => undefined });
+    const getDb = createDbConnection(opener(blocked, later));
     await expect(getDb()).rejects.toBe(blocked);
 
     // When
@@ -175,59 +175,6 @@ describe('createDbConnection', () => {
 
     // Then
     expect(db).toBe(later.db);
-  });
-
-  it('As a page whose pre-open succeeded, my first read takes it and never opens', async () => {
-    // Given
-    const preOpened = fakeDb('pre');
-    const open = opener();
-    const getDb = createDbConnection({ open, takePreOpened: () => Promise.resolve(preOpened.db) });
-
-    // When
-    const db = await getDb();
-
-    // Then
-    expect(db).toBe(preOpened.db);
-    expect(open).not.toHaveBeenCalled();
-  });
-
-  it('As an operator, a rejected pre-open is reported and the read opens afresh', async () => {
-    // Given
-    const captures = { exception: vi.fn(), expected: vi.fn() };
-    const unbind = bindCaptureSink(captures);
-    const failure = new Error('UnknownError');
-    const fresh = fakeDb('fresh');
-    const getDb = createDbConnection({ open: opener(fresh), takePreOpened: () => Promise.reject(failure) });
-
-    // When
-    const db = await getDb();
-
-    // Then
-    expect(db).toBe(fresh.db);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'storage',
-      step: 'db_open',
-      tags: { kind: 'db_pre_opened_rejected' },
-    });
-    unbind();
-  });
-
-  it('As a page whose pre-open was blocked by an older tab, the block is recorded as expected and the read opens afresh', async () => {
-    // Given
-    const captures = { exception: vi.fn(), expected: vi.fn() };
-    const unbind = bindCaptureSink(captures);
-    const blocked = new Error('Failed to open dotli DB: blocked by another tab');
-    const fresh = fakeDb('fresh');
-    const getDb = createDbConnection({ open: opener(fresh), takePreOpened: () => Promise.reject(blocked) });
-
-    // When
-    const db = await getDb();
-
-    // Then
-    expect(db).toBe(fresh.db);
-    expect(captures.expected).toHaveBeenCalledWith(blocked, { flow: 'storage', step: 'db_open' });
-    expect(captures.exception).not.toHaveBeenCalled();
-    unbind();
   });
 });
 
@@ -251,58 +198,5 @@ describe('isExpectedDbError', () => {
   ])('As a store whose database fails, I take "%s" as a fault to report', err => {
     // When / Then
     expect(isExpectedDbError(err)).toBe(false);
-  });
-});
-
-describe('the pre-opened database handle', () => {
-  const captures = { exception: vi.fn(), expected: vi.fn() };
-
-  beforeEach(() => {
-    captures.exception.mockClear();
-    captures.expected.mockClear();
-    return bindCaptureSink(captures);
-  });
-
-  /** A page whose pre-open failed with `err`. */
-  function preOpened(err: Error): PreOpenSlot {
-    const rejected = Promise.reject(err);
-    // As the inline pre-open script does, so the rejection is never unhandled.
-    rejected.catch(() => undefined);
-    return { __dotliDb: rejected };
-  }
-
-  it('As an operator, a pre-open that failed is reported once, with its cause, and the page still gets a database', async () => {
-    // Given a pre-open that failed
-    const failure = new Error('Failed to open dotli DB: UnknownError: Internal error opening backing store');
-    const getDb = createPageDb({ factory: () => new IDBFactory(), slot: preOpened(failure) });
-
-    // When the page asks for the database, and asks again after it closed
-    const first = await getDb();
-    first.onclose?.call(first, new Event('close'));
-    await getDb();
-
-    // Then one issue names the open step, and a fresh open served the page
-    expect(first).toBeInstanceOf(IDBDatabase);
-    expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'storage',
-      step: 'db_open',
-      tags: { kind: 'db_pre_opened_rejected' },
-    });
-  });
-
-  it('As an operator, a pre-open blocked by another tab leaves a breadcrumb, not an issue', async () => {
-    // Given a pre-open another tab blocked
-    const getDb = createPageDb({
-      factory: () => new IDBFactory(),
-      slot: preOpened(new Error('Failed to open dotli DB: blocked by another tab')),
-    });
-
-    // When the page asks for the database
-    await getDb();
-
-    // Then
-    expect(captures.exception).not.toHaveBeenCalled();
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'storage', step: 'db_open' });
   });
 });

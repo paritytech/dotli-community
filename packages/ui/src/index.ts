@@ -39,13 +39,39 @@ export {
 export { useStore } from './components/use-store.js';
 export { startDrag } from './components/drag.js';
 export { focusLostOrInside, focusTrigger } from './components/focus.js';
-// The reporter ui's surfaces report through. The app passes its metrics in, at a mount or an island.
-export { ReporterContext } from './components/reporter-context.js';
 
-// Mounting a view into one of the page's roots, the overlays root and the toast view. The roots and the toast and
-// dialog stores they render live in ui-core.
+// Mounting a view inside an error boundary, the overlays container and the toast view.
 export { ensureOverlayRoot } from './mount/overlay-root.js';
 export { mountRoot } from './mount/root.js';
-// A toast's, a dialog's or an error page action's icon as the component it is, from the type the UI core stores it as.
-export { storeIcon } from './components/icons/store-icon.js';
 export { ToastStack } from './components/overlays/ToastStack.js';
+
+// The dialog and toast stores. The overlays render them and everything else opens, pushes and settles through them.
+export {
+  modalsStore,
+  openModal,
+  settleModal,
+  type ModalButton,
+  type ModalButtonVariant,
+  type ModalEntry,
+  type ModalOptions,
+  type ModalOutcome,
+  type ModalView,
+} from './page/state/modals.js';
+export {
+  clearToasts,
+  dismissAllToasts,
+  dismissToast,
+  pushToast,
+  removeToast,
+  setToastsExpanded,
+  toastsStore,
+  type ToastEntry,
+  type ToastInput,
+} from './page/state/toasts.js';
+
+// Page helpers.
+export { focusables } from './page/focusables.js';
+export { preloadWhenIdle, type IdleScheduler } from './page/idle.js';
+export { isPhoneViewport, watchPhoneViewport } from './page/phone-viewport.js';
+export { prefersReducedMotion } from './page/reduced-motion.js';
+export type { StatusTone } from './page/status-tone.js';

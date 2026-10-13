@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { children, createEffect, createSignal, isHydrating, onSettled, Show } from 'solid-js';
+import { children, createEffect, createSignal, isHydrating, onSettled, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport, watchPhoneViewport, type IconComponent } from '@dotli/ui-core';
+import { isPhoneViewport, watchPhoneViewport } from '../../page/phone-viewport.js';
+import type { IconProps } from '../icons/icon-props.js';
 import { IconTile } from '../primitives/IconTile.js';
 import { InSheet } from './in-sheet.js';
 import { ModalLayer } from './ModalLayer.js';
@@ -122,7 +123,7 @@ function Head(props: {
   titleId: string;
   title: string;
   /** Drawn in the IconTile. */
-  icon?: IconComponent | undefined;
+  icon?: Component<IconProps> | undefined;
   iconTestId?: string;
 }): JSX.Element {
   return (

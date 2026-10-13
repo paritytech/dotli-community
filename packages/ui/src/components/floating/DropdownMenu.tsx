@@ -1,37 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, lazy, untrack, useContext, type Accessor } from 'solid-js';
+import { createContext, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import {
-  createAnchored,
-  createSurfaceLoad,
-  createTriggerWiring,
-  SurfaceSlot,
-  type Anchored,
-  type SurfaceChunk,
-} from './anchored.js';
+import { createAnchored, createTriggerWiring, SurfaceSlot, type Anchored } from './anchored.js';
 import type { CloseReason } from './close-reason.js';
+import { DropdownMenuSurface, SheetChoice } from './DropdownMenuSurface.js';
 import type { Placement } from './FloatingLayer.js';
 import s from './DropdownMenu.module.css';
-
-/** Off the first visit's path. */
-const Surface = lazy(() => import('./DropdownMenuSurface.js'), { export: 'DropdownMenuSurface' });
-
-let surfaceLoaded = false;
-
-function preloadDropdownMenuSurface(): Promise<unknown> {
-  const loading = Surface.preload();
-  loading.then(
-    () => {
-      surfaceLoaded = true;
-    },
-    () => undefined,
-  );
-  return loading;
-}
-
-const chunk: SurfaceChunk = { load: preloadDropdownMenuSurface, loaded: () => surfaceLoaded };
 
 export type MenuState = Anchored & {
   /** The opening came from a key, so it lands on the first item. */
@@ -39,11 +15,6 @@ export type MenuState = Anchored & {
 };
 
 const MenuContext = createContext<MenuState | null>(null);
-
-/** How a choice made in the sheet runs. The surface provides the hand-off so its chunk carries it. */
-export const SheetChoice = createContext<(select: () => void) => void>(select => {
-  select();
-});
 
 function useMenuState(): MenuState {
   const state = useContext(MenuContext);
@@ -100,13 +71,12 @@ function DropdownMenuRoot(props: {
       }
     },
   });
-  createSurfaceLoad(state, chunk, () => undefined);
   return (
     <MenuContext value={state}>
       <SurfaceSlot state={state}>
-        <Surface state={state} class={props.class} placement={props.placement}>
+        <DropdownMenuSurface state={state} class={props.class} placement={props.placement}>
           {props.children}
-        </Surface>
+        </DropdownMenuSurface>
       </SurfaceSlot>
     </MenuContext>
   );
@@ -114,8 +84,7 @@ function DropdownMenuRoot(props: {
 
 /**
  * Focus goes back before `onSelect` runs, so a surface it opens takes focus on its own terms.
- * In a sheet it runs as a hand-off, so a sheet it opens takes the menu's place in the same frame. On the first
- * visit's path, so the menu's keys live in the surface.
+ * In a sheet it runs as a hand-off, so a sheet it opens takes the menu's place in the same frame.
  */
 function Item(props: {
   onSelect: (ev: MouseEvent) => void;

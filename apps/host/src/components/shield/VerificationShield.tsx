@@ -1,10 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, lazy, onSettled, untrack, useContext, type Accessor } from 'solid-js';
+import { createSignal, lazy, onSettled, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { preloadWhenIdle } from '@dotli/ui-core';
-import { ReporterContext, Tooltip } from '@dotli/ui';
+import { preloadWhenIdle, Tooltip } from '@dotli/ui';
 import { TrustedShieldIcon, VerifiedShieldIcon } from '@dotli/ui-entities';
 import type { ShieldState } from '../../state/url-pill.js';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verification-shield.js';
@@ -28,8 +27,7 @@ export function VerificationShield(props: {
   const load = untrack(() => props.loadExplainer);
   const Explainer = load === undefined ? PageExplainer : lazy(load, { export: 'VerificationContent' });
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
-  const report = useContext(ReporterContext);
-  onSettled(() => preloadWhenIdle(Explainer, report));
+  onSettled(() => preloadWhenIdle(Explainer));
 
   return (
     <div class={s['wrap']}>

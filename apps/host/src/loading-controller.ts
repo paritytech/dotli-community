@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The loading screen's behaviour. It writes the loading store and touches no DOM, so it stays on the
-// startup path without Solid.
+// The loading screen's behaviour. It writes the loading store and touches no DOM.
 
 import { getActiveTldSuffix } from '@dotli/config';
 import type { SandboxChannel } from '@dotli/sandbox-wire';
-import { disposeAppRoot, prefersReducedMotion, registerAppRoot } from '@dotli/ui-core';
+import type { ReadableStore } from '@dotli/shared';
+import { prefersReducedMotion } from '@dotli/ui';
+import { pageContentStore, type PageContent } from '@dotli/ui-widgets';
 import { getLoadingState, updateLoading, type StepPart } from './state/loading.js';
-import { uiReporter } from './ui-reporter.js';
 
 /** A loading step owning the `[base, target]` band of the bar, crossed in about `expectedMs`. */
 export interface LoadingPhase {
@@ -105,12 +105,14 @@ export interface LoadingFrames {
 export interface LoadingControllerDeps {
   reducedMotion: () => boolean;
   frames: LoadingFrames;
+  /** What fills the page. A full-page screen takes the loading screen down with the page. */
+  pageContent: ReadableStore<PageContent>;
 }
 
 export type LoadingController = ReturnType<typeof createLoadingController>;
 
-/** The controller registers the loading screen as an app root as it is made, as the screen is live from first paint. */
-export function createLoadingController({ reducedMotion, frames }: LoadingControllerDeps) {
+/** The screen is live from first paint, so a full-page screen ends it even before any load started. */
+export function createLoadingController({ reducedMotion, frames, pageContent }: LoadingControllerDeps) {
   let phases: LoadingPhase[] = [];
   let currentPhase = -1;
 
@@ -145,7 +147,7 @@ export function createLoadingController({ reducedMotion, frames }: LoadingContro
 
   function armProgressWatch(pct: number): void {
     stopProgressWatch();
-    if (pct >= 100 || !trackLoadingRoot()) {
+    if (pct >= 100 || !live()) {
       return;
     }
     progressStallTimer = setTimeout(() => {
@@ -173,7 +175,7 @@ export function createLoadingController({ reducedMotion, frames }: LoadingContro
 
   function startProgressCrawl(): void {
     stopProgressCrawl();
-    if (!trackLoadingRoot()) {
+    if (!live()) {
       return;
     }
     progressInterval = setInterval(() => {
@@ -223,7 +225,6 @@ export function createLoadingController({ reducedMotion, frames }: LoadingContro
     lastShown = -1;
     lastRealShown = -1;
     lastShownAt = Date.now();
-    trackLoadingRoot();
 
     // Not on the first `advancePhase`, seconds later. The markup already shows this stage's step line, so
     // the explanation clock starts now.
@@ -266,7 +267,7 @@ export function createLoadingController({ reducedMotion, frames }: LoadingContro
     // Screen readers get the whole sentence once, from an element the typing never touches.
     updateLoading({ srText: next });
     const previous = getLoadingState().explanation;
-    if (next === previous || reducedMotion() || !trackLoadingRoot()) {
+    if (next === previous || reducedMotion() || !live()) {
       updateLoading({ explanation: next });
       return;
     }
@@ -312,7 +313,7 @@ export function createLoadingController({ reducedMotion, frames }: LoadingContro
     // The opening step line has been up since first paint, so its first explanation is due from then.
     const firstDelay = openingLine ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
     openingLine = false;
-    if (explanations.length === 0 || !trackLoadingRoot()) {
+    if (explanations.length === 0 || !live()) {
       return;
     }
     let line = -1;
@@ -398,40 +399,22 @@ export function createLoadingController({ reducedMotion, frames }: LoadingContro
     stopProgressWatch();
   }
 
-  let loadingRootLive = false;
-
-  /**
-   * Registers the `"loading"` app root so whatever replaces the screen stops its timers. Called whenever a
-   * timer starts. False once the screen is gone for good, so a late signal starts no orphan timer.
-   */
-  function trackLoadingRoot(): boolean {
-    if (getLoadingState().phase === 'gone') {
-      return false;
-    }
-    if (loadingRootLive) {
-      return true;
-    }
-    loadingRootLive = true;
-    registerAppRoot(
-      'loading',
-      () => {
-        loadingRootLive = false;
-        stopStatusTick();
-        updateLoading({ phase: 'gone' });
-      },
-      uiReporter.failure,
-      { content: true },
-    );
-    return true;
+  /** False once the screen is gone for good, so a late signal starts no orphan timer. */
+  function live(): boolean {
+    return getLoadingState().phase !== 'gone';
   }
-
-  // The screen is live from first paint, so it is a root before any timer starts, for whatever replaces it first.
-  trackLoadingRoot();
 
   /** Without the fade, for a page that replaces the screen. */
   function hideLoading(): void {
-    disposeAppRoot('loading');
+    stopStatusTick();
+    updateLoading({ phase: 'gone' });
   }
+
+  pageContent.subscribe(() => {
+    if (pageContent.get() === 'screen') {
+      hideLoading();
+    }
+  });
 
   /** Null hides it. */
   function setLoadingWarning(message: string | null): void {
@@ -445,12 +428,11 @@ export function createLoadingController({ reducedMotion, frames }: LoadingContro
     if (getLoadingState().phase !== 'active') {
       return;
     }
-    // Tracked first, so there is a root to dispose even when no timer ever started. 300ms matches the fade.
-    trackLoadingRoot();
     updateLoading({ phase: 'dismissing' });
+    // 300ms matches the fade.
     setTimeout(() => {
       if (getLoadingState().phase === 'dismissing') {
-        disposeAppRoot('loading');
+        hideLoading();
       }
     }, 300);
   }
@@ -509,6 +491,7 @@ const pageLoading = createLoadingController({
     },
     now: () => performance.now(),
   },
+  pageContent: pageContentStore,
 });
 
 export const {
@@ -520,6 +503,7 @@ export const {
   nudgePhaseProgress,
   releasePhaseProgress,
   stopStatusTick,
+  hideLoading,
   setLoadingWarning,
   onSandboxDone,
   listenForSandboxStatus,

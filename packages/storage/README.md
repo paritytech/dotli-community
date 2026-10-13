@@ -12,8 +12,7 @@ scheduled notifications.
 
 ## Design
 
-- The schema (name, version, upgrade) is kept free of imports, because the page bundles `preOpenDotliDb` into an inline
-  head script. The open starts during HTML parse and is published on `window.__dotliDb`.
+- The schema (name, version, upgrade) and its open live together. The page opens the database on its first read.
 - One connection is made from a `DotliIdb` port with `connect` and `keyRange`. Stores take the port as an optional
   argument, so tests pass an in-memory database. The default is `pageIdb`.
 - A cache reporter reports a cache's failures once per action. Expected errors (`isExpectedDbError`, such as quota or a
@@ -29,7 +28,7 @@ scheduled notifications.
 
 ### `@dotli/storage`
 
-- Schema: `DB_NAME`, `DB_VERSION`, `preOpenDotliDb`, `upgradeDotliDb`, `isExpectedDbError`.
+- Schema: `DB_NAME`, `DB_VERSION`, `upgradeDotliDb`, `isExpectedDbError`.
 - Block cache: `getCachedBlock`, `putCachedBlock`, `deleteCachedBlock`, `pruneBlockCache`, `clearBlockCache`.
 - CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`, `getRecentLabels`, `withRecentLabel`,
   `parseRecentLabels`, `serializeRecentLabels`, `writeRecentLabels`, `RECENT_KEY`.

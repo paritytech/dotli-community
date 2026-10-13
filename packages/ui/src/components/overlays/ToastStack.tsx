@@ -3,7 +3,7 @@
 
 import { createEffect, createMemo, For, Show, untrack, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dismissAllToasts, setToastsExpanded, toastsStore } from '@dotli/ui-core';
+import { dismissAllToasts, setToastsExpanded, toastsStore } from '../../page/state/toasts.js';
 import { useStore } from '../use-store.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { ToastCard, type ToastCardProps } from './ToastCard.js';

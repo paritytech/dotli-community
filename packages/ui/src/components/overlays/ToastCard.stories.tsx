@@ -3,7 +3,7 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn } from 'storybook/test';
-import type { ToastEntry } from '@dotli/ui-core';
+import type { ToastEntry } from '../../page/state/toasts.js';
 import { BellIcon } from '../icons/BellIcon.js';
 import { ToastCard } from './ToastCard.js';
 

@@ -48,7 +48,6 @@
     "simple-statistics": "^7.12.1",
     "storybook": "^10.6.1",
     "storybook-solidjs-vite": "^10.7.2",
-    "vite-plugin-wasm": "^3.6.0",
     "workbox-window": "^7.4.1"
   },
   "dependencies": {
@@ -67,11 +66,9 @@
     "@dotli/truapi-debug": "*",
     "@dotli/truapi-debug-ui": "*",
     "@dotli/ui": "*",
-    "@dotli/ui-core": "*",
     "@dotli/ui-entities": "*",
     "@dotli/ui-widgets": "*",
     "@sentry/browser": "^11.4.0",
-    "@sentry/vite-plugin": "^5.4.1",
     "@solidjs/web": "2.0.0-rc.13",
     "astro": "^7.3.6",
     "qrcode": "^1.5.4",

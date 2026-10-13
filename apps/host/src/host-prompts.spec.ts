@@ -3,8 +3,8 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { withActiveTld } from '@dotli/config';
-import { chooseModalButton, dismissModal, resetModalsForTests, shownModal } from '@dotli/ui-core/testing';
-import { openModal } from '@dotli/ui-core';
+import { chooseModalButton, dismissModal, resetModalsForTests, shownModal } from '@dotli/ui/testing';
+import { openModal } from '@dotli/ui';
 import { permissionIcon } from '@dotli/ui-entities';
 import { createHostPrompts } from './host-prompts.js';
 import { attachProductFrame, resetProductFrameLayout } from './product-frame-layout.js';
@@ -33,7 +33,6 @@ describe('host prompts', () => {
         ],
         dismissOnBackdrop: true,
         dismissResult: 'dismissed',
-        fallbackResult: 'dismissed',
       },
       live(),
     );
@@ -56,7 +55,6 @@ describe('host prompts', () => {
         fields: [],
         buttons: [{ label: 'Allow', variant: 'primary', result: 'accepted' }],
         dismissOnBackdrop: false,
-        fallbackResult: 'accepted',
       },
       live(),
     );
@@ -231,7 +229,6 @@ describe('dialog focus', () => {
         fields: [],
         buttons: [{ label: 'Sign', variant: 'primary', result: 'accepted' }],
         dismissOnBackdrop: false,
-        fallbackResult: 'accepted',
       },
       live(),
     );

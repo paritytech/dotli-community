@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveTldSuffix, isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
 import { createLoadingController, type LoadingController, type LoadingPhase } from './loading-controller.js';
-import { disposeAppRoot, disposeContentRoots } from '@dotli/ui-core';
+import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
+import type { PageContent } from '@dotli/ui-widgets';
 import * as store from './state/loading.js';
 import type { StepPart } from './state/loading.js';
 
@@ -30,6 +31,7 @@ let reducedMotion = false;
 let page: EventTarget;
 let sandboxChannel: StartedSandboxChannel | null = null;
 let ctl: LoadingController;
+let pageContent: SyncStore<PageContent>;
 
 /** As the host wires it: the controller hears the sandbox through the channel, which checks the origin. */
 function listenForSandbox(controller: LoadingController): void {
@@ -41,9 +43,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   reducedMotion = false;
   page = new EventTarget();
-  // Whatever an earlier controller registered goes first, so this one starts on a live screen.
-  disposeContentRoots();
   resetAllStoresForTests();
+  pageContent = createSyncStore<PageContent>('page-content-spec', 'page');
   ctl = createLoadingController({
     reducedMotion: () => reducedMotion,
     // A frame every 16ms on the faked clock.
@@ -57,13 +58,13 @@ beforeEach(() => {
       },
       now: () => performance.now(),
     },
+    pageContent,
   });
 });
 
 afterEach(() => {
   sandboxChannel?.stop();
   sandboxChannel = null;
-  disposeContentRoots();
   vi.useRealTimers();
 });
 
@@ -396,7 +397,7 @@ describe('The loading controller drives the loading store', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
-  it('As the shell, disposing the loading root stops every loading timer and marks the screen gone', () => {
+  it('As the shell, hiding the loading screen stops every loading timer and marks the screen gone', () => {
     // Given a crawling bar, a rotating explanation and an armed stall watch
     const onStall = vi.fn();
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
@@ -405,7 +406,7 @@ describe('The loading controller drives the loading store', () => {
     vi.advanceTimersByTime(1_000);
 
     // When
-    disposeAppRoot('loading');
+    ctl.hideLoading();
     const frozen = store.getLoadingState();
     vi.advanceTimersByTime(ROTATE_MS * 5);
 
@@ -415,7 +416,7 @@ describe('The loading controller drives the loading store', () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
-  it('As the shell, a late signal after the loading root was disposed starts no timer', () => {
+  it('As the shell, a late signal after the loading screen was hidden starts no timer', () => {
     // Given a load whose screen has gone
     ctl.initPhases([
       { label: 'a', base: 5, target: 50, expectedMs: 60_000, stage: 'relay' },
@@ -428,7 +429,7 @@ describe('The loading controller drives the loading store', () => {
       },
     ]);
     ctl.advancePhase(0);
-    disposeAppRoot('loading');
+    ctl.hideLoading();
     expect(vi.getTimerCount()).toBe(0);
 
     // When late signals arrive: content bytes, a progress fraction and a
@@ -442,29 +443,13 @@ describe('The loading controller drives the loading store', () => {
     expect(store.getLoadingState().phase).toBe('gone');
   });
 
-  it('As the shell, the static screen is the loading root from the moment the controller loads', () => {
+  it('As the shell, a full-page screen shown before the load started takes the static screen down', () => {
     // Given a controller that has started nothing
 
-    // When whatever replaces the screen disposes the roots
-    disposeContentRoots();
+    // When a full-page screen takes the page
+    pageContent.set('screen');
 
     // Then the screen is gone
-    expect(store.getLoadingState().phase).toBe('gone');
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('As the shell, starting the phases keeps the root the controller registered on load', () => {
-    // When
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    ctl.advancePhase(0);
-
-    // Then the screen is still up and the load is running
-    expect(store.getLoadingState().phase).toBe('active');
-
-    // When
-    disposeAppRoot('loading');
-
-    // Then one root, disposed once
     expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -672,7 +657,7 @@ describe('The loading bar never stands still', () => {
 // One long clock-driven band.
 const ROOT_PHASES: LoadingPhase[] = [{ label: 'Connecting', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }];
 
-describe('The loading screen is a tracked app root', () => {
+describe('Restarting the loading phases', () => {
   it('As the shell, starting the loading phases again keeps the overlay on screen', () => {
     // Given
     ctl.initPhases(ROOT_PHASES);
@@ -684,7 +669,7 @@ describe('The loading screen is a tracked app root', () => {
     expect(store.getLoadingState().phase).toBe('active');
 
     // When
-    disposeAppRoot('loading');
+    ctl.hideLoading();
 
     // Then
     expect(store.getLoadingState().phase).toBe('gone');

@@ -20,10 +20,7 @@ export default defineConfig([
     },
   },
   ...importBans([
-    onlyAllowedScopes(
-      ['@dotli/ui', '@dotli/ui-core', '@parity/truapi', '@config/eslint', '@config/vite', '@config/storybook'],
-      message,
-    ),
+    onlyAllowedScopes(['@dotli/ui', '@parity/truapi', '@config/eslint', '@config/vite', '@config/storybook'], message),
   ]),
   {
     rules: {
@@ -32,7 +29,7 @@ export default defineConfig([
         'error',
         ...restrictedSyntax,
         dynamicImportBan(
-          '^(?!@dotli.ui([^\\w-]|$)|@dotli.ui-core([^\\w-]|$)|@parity.truapi([^\\w-]|$))(@dotli|@config|@parity)([^\\w-]|$)',
+          '^(?!@dotli.ui([^\\w-]|$)|@parity.truapi([^\\w-]|$))(@dotli|@config|@parity)([^\\w-]|$)',
           message,
         ),
       ],

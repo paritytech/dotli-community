@@ -34,7 +34,6 @@
   },
   "dependencies": {
     "@dotli/ui": "*",
-    "@dotli/ui-core": "*",
     "@parity/truapi": "0.24.0",
     "@solidjs/web": "2.0.0-rc.13",
     "solid-js": "2.0.0-rc.13"

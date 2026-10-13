@@ -3,9 +3,7 @@
 
 import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ReporterContext } from '@dotli/ui';
-import type { Reporter } from '@dotli/ui-core';
-import { createRecordingReporter } from '@dotli/ui-core/testing';
+import { bindCaptureSink } from '@dotli/metrics';
 import { HISTORY_SLOTS } from '@dotli/ui-entities';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
@@ -624,8 +622,7 @@ export const UnmountStopsCountdown: Story = {
   },
 };
 
-const captured = fn().mockName('reportFailure');
-const capturing: Reporter = { ...createRecordingReporter(), failure: captured };
+const captured = fn().mockName('captureException');
 
 /** As a dotli user, a render error while open is reported, closes the popover and its countdown, and the next open works. */
 export const RenderErrorCloses: Story = {
@@ -633,13 +630,12 @@ export const RenderErrorCloses: Story = {
   beforeEach: () => {
     captured.mockClear();
     given([chain({ latest: 10, sinceLast: 1000 })]);
+    return bindCaptureSink({ exception: captured, expected: () => undefined });
   },
   render: () => (
-    <ReporterContext value={capturing}>
-      <TopbarFrame>
-        <StoryChains />
-      </TopbarFrame>
-    </ReporterContext>
+    <TopbarFrame>
+      <StoryChains />
+    </TopbarFrame>
   ),
   play: async ctx => {
     await open(ctx);

@@ -4,16 +4,16 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { ReporterContext, useStore } from '@dotli/ui';
+import { useStore } from '@dotli/ui';
 import { LoadingScreen as Screen } from '../components/loading/LoadingScreen.js';
 import { loadingStore } from '../state/loading.js';
-import { uiReporter } from '../ui-reporter.js';
+import { IslandBoundary } from './IslandBoundary.js';
 
 /** The screen the host page paints first, bound to the loading store, so progress made before hydration shows. */
 export function LoadingScreen(): JSX.Element {
   return (
-    <ReporterContext value={uiReporter}>
+    <IslandBoundary root="island:LoadingScreen">
       <Screen state={useStore(loadingStore)} />
-    </ReporterContext>
+    </IslandBoundary>
   );
 }

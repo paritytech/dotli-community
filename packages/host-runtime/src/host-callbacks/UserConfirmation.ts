@@ -81,7 +81,6 @@ function showConfirmationModal(
       buttons,
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
-      fallbackResult: 'dismissed',
     },
     signal,
   );

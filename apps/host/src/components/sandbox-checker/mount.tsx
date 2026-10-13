@@ -6,7 +6,6 @@
 import type { JSX } from '@solidjs/web';
 import { mountRoot } from '@dotli/ui';
 import { setDockInset } from '../../product-frame-layout.js';
-import { uiReporter } from '../../ui-reporter.js';
 import { ViolationPanel, type ViolationPanelProps } from './ViolationPanel.js';
 
 const ROOT = 'sandbox-checker';
@@ -33,6 +32,6 @@ export function mountViolationPanel(iframe: HTMLIFrameElement, View: ViolationPa
         }}
       />
     ),
-    { report: uiReporter, removeContainer: true },
+    { removeContainer: true },
   );
 }

@@ -74,12 +74,6 @@ github-actions:
           - 'packages/ui/**'
           - '!packages/ui/package.json'
 
-'pkg: ui-core':
-  - changed-files:
-      - all-globs-to-any-file:
-          - 'packages/ui-core/**'
-          - '!packages/ui-core/package.json'
-
 'pkg: eslint':
   - changed-files:
       - all-globs-to-any-file:

@@ -4,7 +4,7 @@
 // The password dialog's view, loaded through src/lazy.ts, so it stays out of the sandbox's boot.
 
 import { LockIcon } from '@dotli/ui/icons';
-import type { ModalView } from '@dotli/ui-core';
+import type { ModalView } from '@dotli/ui';
 
 /** `unlock` carries the typed password. */
 export type PasswordDecision = 'cancel' | 'unlock';
@@ -29,6 +29,5 @@ export function passwordPromptDialog(opts?: { error?: string }): ModalView<Passw
       { label: 'Unlock', variant: 'primary', result: 'unlock' },
     ],
     dismissOnBackdrop: false,
-    fallbackResult: 'cancel',
   };
 }

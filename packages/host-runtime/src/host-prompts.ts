@@ -54,8 +54,6 @@ export interface ReviewDialog<R extends string> {
   dismissOnBackdrop: boolean;
   /** Result of a backdrop click or Escape. Required when `dismissOnBackdrop`. */
   dismissResult?: R;
-  /** Result when the dialog cannot be shown at all. */
-  fallbackResult: R;
 }
 
 /** Each ask settles with the user's answer, and rejects with an AbortError once `signal` aborts. */

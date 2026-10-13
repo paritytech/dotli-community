@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ModalView } from '@dotli/ui-core';
+import type { ModalView } from '@dotli/ui';
 
 /** What a press on the scrim or Escape answers, or nothing for a prompt that must be answered. */
 export function scrimAnswer<R extends string>(view: ModalView<R>): R | undefined {

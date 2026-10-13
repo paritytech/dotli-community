@@ -9,6 +9,10 @@ import { cssModules } from '@config/vite/css-modules';
 export default defineConfig({
   plugins: [solid()],
   css: { modules: cssModules() },
+  define: {
+    // On, so tests read the real counts from a fake Sentry, not a stripped build's no-ops.
+    'import.meta.env.VITE_METRICS': '"true"',
+  },
   test: {
     globals: false,
     // So `s['foo']` is a real scoped class in tests rather than undefined.

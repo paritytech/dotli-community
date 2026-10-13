@@ -358,43 +358,39 @@ export function onlyAllowedScopes(allowed, message) {
  * Bans imports that cross a package's layer, on top of what `config` bans. Each ban is a gitignore-style `group` of
  * import paths, or a `regex` of them, with the reason as its `message`. With `allowImportNames`, the ban refuses only
  * the other names imported from a matching path. The files match relative to the package's own config, so the package
- * spreads this after `config`. With `within`, the bans hold only in files that also match one of its globs, and never
- * in files that match one of `except`. Spread after the package's own bans, a zone repeats them, since the zone's rule
- * replaces theirs.
+ * spreads this after `config`. With `within`, the bans hold only in files that also match one of its globs. Spread after
+ * the package's own bans, a zone repeats them, since the zone's rule replaces theirs.
  *
  * @param {(({ group: string[] } | { regex: string }) & { message: string, allowImportNames?: string[] })[]} bans
  * @param {string[]} [within]
- * @param {string[]} [except]
  */
-export function importBans(bans, within, except = []) {
+export function importBans(bans, within) {
   const directLoads = ['**/vite.config.ts', '**/src/vite.ts'];
   /** @param {string[]} globs */
   const scoped = globs => (within === undefined ? globs : globs.flatMap(glob => within.map(zone => [glob, zone])));
   return defineConfig([
     {
       files: scoped(['**/*.ts', '**/*.tsx', '**/*.js']),
-      ignores: [...directLoads, ...except],
+      ignores: directLoads,
       rules: {
         'no-restricted-imports': ['error', { patterns: [tsExtensionImport, ...bans] }],
       },
     },
     {
       files: scoped(['**/src/**/*.ts', '**/src/**/*.tsx']),
-      ignores: [...directLoads, ...except],
+      ignores: directLoads,
       rules: {
         'no-restricted-imports': ['error', { patterns: [...shippedImportPatterns, ...bans] }],
       },
     },
     {
       files: scoped(storyFiles),
-      ignores: except,
       rules: {
         'no-restricted-imports': ['error', { patterns: [...storyImportPatterns, ...bans] }],
       },
     },
     {
       files: scoped(testOnlyFiles),
-      ignores: except,
       rules: {
         'no-restricted-imports': ['error', { patterns: [...domToolingImports.patterns, ...bans] }],
       },

@@ -9,7 +9,6 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./views": "./src/views.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -26,7 +25,6 @@
     "@config/storybook": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@dotli/shared": "*",
     "@solidjs/vite-plugin": "3.0.0-next.47",
     "@storybook/addon-a11y": "^10.6.1",
     "@storybook/addon-docs": "^10.6.1",
@@ -35,8 +33,9 @@
     "storybook-solidjs-vite": "^10.7.2"
   },
   "dependencies": {
+    "@dotli/metrics": "*",
+    "@dotli/shared": "*",
     "@dotli/ui": "*",
-    "@dotli/ui-core": "*",
     "@solidjs/web": "2.0.0-rc.13",
     "solid-js": "2.0.0-rc.13"
   }

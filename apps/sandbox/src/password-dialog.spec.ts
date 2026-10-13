@@ -19,7 +19,6 @@ describe('password prompt dialog', () => {
       hint: 'This content is password-protected. Enter the password to decrypt.',
     });
     expect(view.dismissOnBackdrop).toBe(false);
-    expect(view.fallbackResult).toBe('cancel');
   });
 
   it('As a dotli user who typed a wrong password, I see the error and can cancel or unlock', () => {

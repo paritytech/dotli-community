@@ -4,7 +4,6 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { createPopoverSurface, loadPopoverSurface, PopoverSurfaceContext } from '@dotli/ui/testing';
 import type { PermissionStatus } from '@dotli/ui-entities';
 import { expectPhone, openSurface, reachable } from '../../../.storybook/topbar-frame.js';
 import { GroupFrame, moreRow, openMore } from '../../../.storybook/frames.js';
@@ -121,40 +120,21 @@ export const RowOpensCollapsedPopover: Story = {
   },
 };
 
-/** Popover's chunk as this story's popovers load it, counting each fetch. New per run, so none is in yet. */
-const counted = { fetched: 0 };
-let countedSurface = createPopoverSurface(loadPopoverSurface);
-
-/** As a phone user choosing Permissions in More right after load, the permissions sheet still takes More's place. */
-export const PhoneRowBeforeChunk: Story = {
+/** As a phone user choosing Permissions in More before any popover opened, the permissions sheet takes More's place. */
+export const PhoneRowFirstOpening: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
-  beforeEach: () => {
-    counted.fetched = 0;
-    countedSurface = createPopoverSurface(() => {
-      counted.fetched += 1;
-      return loadPopoverSurface();
-    });
-  },
   render: () => (
-    <PopoverSurfaceContext value={countedSurface}>
-      <GroupFrame room={40}>
-        <StoryPermissions />
-      </GroupFrame>
-    </PopoverSurfaceContext>
+    <GroupFrame room={40}>
+      <StoryPermissions />
+    </GroupFrame>
   ),
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
-    await step('Given Permissions collapsed into More and no popover chunk fetched', async () => {
-      await expect(counted.fetched).toBe(0);
+    await step('Given Permissions collapsed into More and More open', async () => {
       await reachable(el('#more-button'));
-    });
-    await step('When More opens', async () => {
       await userEvent.click(el('#more-button'));
-    });
-    await step("Then its surface fetches Popover's chunk", async () => {
-      await waitFor(() => expect(counted.fetched).toBe(1));
-      await countedSurface.chunk.load();
+      await waitFor(() => expect(el('#more-popover')).toHaveAttribute('data-open'));
     });
     await step('When I tap the Permissions row', async () => {
       await userEvent.click(el('#more-popover [role="menuitem"][data-item="permissions"]'));

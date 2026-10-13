@@ -4,7 +4,6 @@
 
 // The head tags the shell and the landing page share.
 import { socialMetaAttributes } from '@config/vite/social-meta';
-import islandErrors from '../head/island-errors.js?inline-script';
 
 const TITLE = 'Polkadot - The decentralized web, in your browser';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
@@ -28,8 +27,6 @@ const socialMeta = socialMetaAttributes({
 />
 <title>{TITLE}</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-{/* An island can hydrate before the page's entry runs, so its errors queue here until reportIslandErrors listens. */}
-<script is:inline set:html={islandErrors} />
 {socialMeta.map(attrs => (
   <meta {...attrs} />
 ))}

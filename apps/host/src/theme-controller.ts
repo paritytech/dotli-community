@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Imports no Solid because it runs on the boot path.
-
 import { setTheme, type ThemePref } from '@dotli/host-runtime';
 
 /** The stored choice's key, also cleared by a settings reset. */

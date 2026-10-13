@@ -1,28 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createEffect,
-  createSignal,
-  Errored,
-  Loading,
-  onSettled,
-  Show,
-  untrack,
-  useContext,
-  type Accessor,
-} from 'solid-js';
+import { createEffect, createSignal, Errored, onSettled, Show, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport, preloadWhenIdle, type Reporter } from '@dotli/ui-core';
+import { isPhoneViewport } from '../../page/phone-viewport.js';
+import { preloadWhenIdle } from '../../page/idle.js';
 import { focusLostOrInside, focusTrigger } from '../focus.js';
-import { ReporterContext } from '../reporter-context.js';
 import { anchorName } from './anchor-name.js';
 import { Broken } from './broken.js';
 import type { CloseReason } from './close-reason.js';
 import { AnchorBoundary } from './layer-context.js';
-import { modalLayerShown } from './modal-stack.js';
 
-/** The open state Popover and DropdownMenu share. It stays on the first visit's path, the surface is a lazy chunk. */
+/** The open state Popover and DropdownMenu share. */
 export interface Anchored {
   readonly id: string;
   readonly title: string;
@@ -33,15 +22,10 @@ export interface Anchored {
   trigger: () => HTMLElement | undefined;
   /** To the trigger, or to the boundary's fallback while the boundary has hidden it. */
   focusBack: () => void;
-  /** Focus is on the body, or where focusBack puts it. */
-  focusAtTrigger: () => boolean;
-  /** From the first opening or preload on. */
+  /** From the first opening on. */
   mounted: Accessor<boolean>;
-  mount: () => void;
-  /** Unmounts the surface so the next opening loads it again. */
+  /** Unmounts the surface and closes it, so the next opening renders it afresh. */
   fail: () => void;
-  /** Read where the layer is created, so one rendered without a reporter fails before it can fail unreported. */
-  report: Reporter;
 }
 
 /** Focus returns to the trigger after a close in `returnFocusOn`, if it was lost or still inside. */
@@ -50,7 +34,6 @@ export function createAnchored(
   returnFocusOn: ReadonlySet<CloseReason>,
 ): Anchored & { setTrigger: (el: HTMLElement | undefined) => void } {
   const boundary = useContext(AnchorBoundary);
-  const report = useContext(ReporterContext);
   const [open, setOpenSignal] = createSignal(false, { ownedWrite: true });
   const [sheet, setSheet] = createSignal(false, { ownedWrite: true });
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
@@ -100,21 +83,11 @@ export function createAnchored(
       triggerEl = el;
     },
     focusBack,
-    focusAtTrigger: () => {
-      const active = document.activeElement;
-      return (
-        active === null || active === document.body || active === triggerEl || active === boundary?.fallbackFocus()
-      );
-    },
     mounted,
-    mount: () => {
-      setMounted(true);
-    },
     fail: () => {
       setMounted(false);
       setOpen(false);
     },
-    report,
   };
 }
 
@@ -151,7 +124,7 @@ export function createTriggerWiring(
       // The invoker closes (back through `beforetoggle`), but the opening is the signal's. Solid flushes after this
       // listener, so the invoker's toggle would hide the just-shown layer, and a phone opens a sheet instead.
       if (untrack(state.open)) {
-        // No layer for the invoker to close: a sheet drops `popovertarget`, and a loading layer is not in the page.
+        // No layer for the invoker to close, as when a sheet drops `popovertarget`.
         if (!el.hasAttribute('popovertarget') || document.getElementById(id)?.hasAttribute('popover') !== true) {
           state.setOpen(false, 'trigger');
         }
@@ -194,75 +167,23 @@ export function createTriggerWiring(
   );
 }
 
-export interface SurfaceChunk {
-  load: () => Promise<unknown>;
-  loaded: () => boolean;
+/** Preloads the content's chunk when the browser is idle, so the first opening doesn't wait on the network. */
+export function createContentPreload(content: () => (() => Promise<unknown>) | undefined): void {
+  onSettled(() => {
+    const preload = content();
+    return preload === undefined ? undefined : preloadWhenIdle({ preload });
+  });
 }
 
 /**
- * Preloads the surface and the content's `preload` when idle, so the first opening doesn't wait on the network.
- * An opening made before the chunk arrives closes on arrival if the user moved on (a modal opened, or focus left
- * the trigger), since none of the layer's own closes were listening yet.
+ * Renders nothing until the first opening, so never in the server's render. A surface that throws is reported and
+ * closed.
  */
-export function createSurfaceLoad(
-  state: Anchored,
-  surface: SurfaceChunk,
-  content: () => (() => Promise<unknown>) | undefined,
-): void {
-  /** Where focus was as an opening began before the chunk was in. */
-  let waiting: { focus: Element | null } | undefined;
-  const load = (): Promise<void> =>
-    surface.load().then(() => {
-      const opening = waiting;
-      waiting = undefined;
-      if (opening === undefined || !untrack(state.open)) {
-        return;
-      }
-      const moved = document.activeElement !== opening.focus && !state.focusAtTrigger();
-      if (moved || modalLayerShown()) {
-        state.setOpen(false, 'focus-out');
-      }
-    });
-  createEffect(state.open, open => {
-    if (!open) {
-      waiting = undefined;
-      return;
-    }
-    if (!surface.loaded()) {
-      waiting = { focus: document.activeElement };
-      // SurfaceSlot reports a failure, since the lazy surface fails with it.
-      load().catch(() => undefined);
-    }
-  });
-  onSettled(() => {
-    const cancels = [preloadWhenIdle({ preload: () => load().then(state.mount) }, state.report)];
-    const preload = content();
-    if (preload !== undefined) {
-      cancels.push(preloadWhenIdle({ preload }, state.report));
-    }
-    return () => {
-      for (const cancel of cancels) {
-        cancel();
-      }
-    };
-  });
-}
-
-/** Renders nothing until mounted, so never in the server's render. A failed chunk loads again at the next opening. */
 export function SurfaceSlot(props: { state: Anchored; children: JSX.Element }): JSX.Element {
   return (
     <Show when={props.state.mounted()}>
-      <Errored
-        fallback={err => (
-          <Broken
-            root={`popover:${props.state.id}`}
-            error={err()}
-            fail={props.state.fail}
-            report={props.state.report.failure}
-          />
-        )}
-      >
-        <Loading>{props.children}</Loading>
+      <Errored fallback={err => <Broken root={`popover:${props.state.id}`} error={err()} fail={props.state.fail} />}>
+        {props.children}
       </Errored>
     </Show>
   );

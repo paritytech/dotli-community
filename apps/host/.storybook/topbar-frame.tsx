@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web';
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expect, waitFor } from 'storybook/test';
-import { isPhoneViewport } from '@dotli/ui-core';
+import { isPhoneViewport } from '@dotli/ui';
 
 /**
  * The host bar as surfaces read it. Its box matches the `--topbar-bottom` and `--topbar-inline-end` fallbacks, so they

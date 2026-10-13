@@ -6,9 +6,7 @@
 import { untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { type ChatStore, chatStore } from '@dotli/host-runtime';
-import { ReporterContext } from '@dotli/ui';
 import { ChatDock as Dock } from '../components/chat/ChatDock.js';
-import { uiReporter } from '../ui-reporter.js';
 import { useChatDock } from './chat.js';
 
 /**
@@ -18,9 +16,5 @@ import { useChatDock } from './chat.js';
 export function ChatDock(props: { chat?: ChatStore }): JSX.Element {
   // Fixed for the island's life.
   const chat = untrack(() => props.chat) ?? chatStore;
-  return (
-    <ReporterContext value={uiReporter}>
-      <Dock {...useChatDock(chat)} />
-    </ReporterContext>
-  );
+  return <Dock {...useChatDock(chat)} />;
 }

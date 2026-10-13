@@ -103,7 +103,11 @@ describe('AuthModal island', () => {
     const frame = document.createElement('iframe');
     const button = document.createElement('button');
     document.body.append(frame, button);
-    createProductFrameView({ container: () => document.body, body: () => document.body }).attachFrame(frame);
+    createProductFrameView({
+      body: () => document.body,
+      clearScreen: () => undefined,
+      hideLoading: () => undefined,
+    }).attachFrame(frame);
     const handBack = setAuthModalTrigger(button);
     mountIsland();
     button.focus();

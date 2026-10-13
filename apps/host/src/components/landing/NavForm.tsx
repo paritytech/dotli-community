@@ -4,7 +4,7 @@
 import { createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { validateDotLabel, type DotLabelResult } from '@dotli/resolver';
-import { prefersReducedMotion } from '@dotli/ui-core';
+import { prefersReducedMotion } from '@dotli/ui';
 import { ArrowRightIcon } from '@dotli/ui/icons';
 import { dotUrl, typedName } from './dot-url.js';
 import { animatePlaceholder, PLACEHOLDER_NAMES } from './placeholder.js';

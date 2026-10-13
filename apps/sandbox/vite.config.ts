@@ -1,62 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { sentryVitePlugin } from '@sentry/vite-plugin';
-import { defineConfig, build as viteBuild, type Plugin, type PluginOption, type ResolvedConfig } from 'vite';
-import { execSync } from 'node:child_process';
+import { defineConfig, build as viteBuild, type Plugin, type ResolvedConfig } from 'vite';
 import { resolve } from 'node:path';
 import solid from '@solidjs/vite-plugin';
-import wasmPlugin from 'vite-plugin-wasm';
+import { dotliApp } from '@config/vite/app';
 import { buildInfo } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { cssModules } from '@config/vite/css-modules';
 import { inlineScript } from '@config/vite/inline-script';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { socialMetaTags } from '@config/vite/social-meta';
-import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
-// Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
-const wasm = wasmPlugin as unknown as () => Plugin;
-
-// Falls back to git HEAD, as the host does, so the SW's baked version is a real commit in local builds too.
-if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
-  try {
-    process.env['VITE_COMMIT_SHA'] = execSync('git rev-parse HEAD', {
-      cwd: import.meta.dirname,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .toString()
-      .trim();
-    // eslint-disable-next-line no-restricted-syntax -- no git checkout is a normal build, not an error.
-  } catch {
-    // Not a git checkout, leave unset.
-  }
-}
-
-// Before Vite reads the environment, so the SDK reports the release the sourcemaps are uploaded under.
-provideSentryRelease(import.meta.dirname);
+const app = dotliApp(import.meta.dirname);
 
 const OUT_DIR = 'dist';
-const APP_URL = process.env['VITE_APP_URL'] ?? '';
-
-/** Skipped when metrics are off, since the SDK is a no-op, and locally, which keeps source maps for debugging. */
-function sentry(): PluginOption {
-  if (process.env['VITE_METRICS'] !== 'true') {
-    return false;
-  }
-  if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
-    return false;
-  }
-  return sentryVitePlugin({
-    org: 'paritytech',
-    project: 'dotli',
-    telemetry: false,
-    authToken: process.env['SENTRY_AUTH_TOKEN'],
-    release: sentryUploadRelease(import.meta.dirname),
-    sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
-  });
-}
 
 function buildServiceWorker(): Plugin {
   // The page's resolved env settings, so the worker sees the same `.env` flags in the same mode.
@@ -75,7 +34,7 @@ function buildServiceWorker(): Plugin {
         configFile: false,
         envDir: env.envDir,
         mode: env.mode,
-        plugins: [inlineScript(), wasm()],
+        plugins: [inlineScript(), app.wasm()],
         build: {
           ...appBuildOptions({ codeSplitting: false }),
           emptyOutDir: false,
@@ -97,13 +56,13 @@ function buildServiceWorker(): Plugin {
 
 export default defineConfig({
   css: { modules: cssModules() },
-  envDir: resolve(import.meta.dirname, '../..'),
-  base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
+  envDir: app.envDir,
+  base: app.base,
   plugins: [
     stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
     inlineScript(),
     solid(),
-    wasm(),
+    app.wasm(),
     runtimeNetworkConfigScript(),
     buildInfo('app'),
     socialMetaTags({
@@ -115,7 +74,7 @@ export default defineConfig({
       imageAlt: 'Polkadot logo',
     }),
     buildServiceWorker(),
-    sentry(),
+    app.sentry(),
   ],
   worker: {
     plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],

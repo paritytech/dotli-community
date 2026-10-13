@@ -5,8 +5,10 @@
 // notifications, layout and network panel. Loaded beside the bridge, so the dialogs stay out of the boot chunk.
 
 import type { BridgePorts, HostPrompts, NotificationScheduler, ProductFrameView } from '@dotli/host-runtime';
+import { clearScreen } from '@dotli/ui-widgets';
 import { createProductFrameView } from './product-frame-view.js';
 import { createHostPrompts } from './host-prompts.js';
+import { hideLoading } from './loading-controller.js';
 import { pageNotifications } from './page-notifications.js';
 import { recordBestBlock, recordChainActivity } from './state/network-monitor.js';
 
@@ -18,8 +20,9 @@ export const scheduledNotifications: NotificationScheduler = {
 };
 
 export const productFrameView: ProductFrameView = createProductFrameView({
-  container: () => document.getElementById('app') ?? document.body,
   body: () => document.body,
+  clearScreen,
+  hideLoading,
 });
 
 export const chainActivity: BridgePorts['chainActivity'] = {

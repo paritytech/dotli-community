@@ -3,8 +3,7 @@
 
 import { Show, useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ModalFocusFallback, useStore } from '@dotli/ui';
-import { modalsStore, type ModalEntry } from '@dotli/ui-core';
+import { ModalFocusFallback, useStore, modalsStore, type ModalEntry } from '@dotli/ui';
 import { PromptDialog } from './PromptDialog.js';
 
 export function ModalOutlet(): JSX.Element {

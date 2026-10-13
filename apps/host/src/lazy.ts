@@ -25,8 +25,7 @@ export const loadProductBranding = (): Promise<ProductBrandingModule> => import(
 export type DebugPanelPartsModule = typeof DebugPanelPartsNamespace;
 export const loadDebugPanelParts = (): Promise<DebugPanelPartsModule> => import('./debug-panel-parts.js');
 
-// The host's own views take their types from their loaders, since the boot zone refuses even a type-only import of
-// them.
+// The host's own views, each its own chunk, for panels and pages a visit may never open.
 export const loadChatPanel = () => import('./components/chat/ChatPanel.js');
 export type ChatPanelModule = Awaited<ReturnType<typeof loadChatPanel>>;
 
@@ -35,9 +34,6 @@ export const loadChainsContent = () => import('./components/chains/ChainsContent
 export const loadPermissionsContent = () => import('./components/permissions/PermissionsContent.js');
 export const loadSettingsContent = () => import('./components/settings/SettingsContent.js');
 export const loadVerificationContent = () => import('./components/shield/VerificationContent.js');
-
-export const loadNoContentPage = () => import('./components/no-content/NoContentPage.js');
-export type NoContentPageModule = Awaited<ReturnType<typeof loadNoContentPage>>;
 
 /** Sandbox checker builds only. */
 export const loadViolationPanelMount = () => import('./components/sandbox-checker/mount.js');

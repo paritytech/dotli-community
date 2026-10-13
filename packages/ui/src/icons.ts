@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Every icon is a Solid component that draws an svg in the current text color. Boot may import them, as a toast or
-// dialog it opens carries the component.
+// Every icon is a Solid component that draws an svg in the current text color. This entry carries no stylesheet, so
+// importing an icon brings no component CSS with it.
 
 export type { IconProps } from './components/icons/icon-props.js';
 export { AlertTriangleIcon } from './components/icons/AlertTriangleIcon.js';

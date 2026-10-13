@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ModalView } from '@dotli/ui-core';
+import type { ModalView } from '@dotli/ui';
 import type { PasswordDialogModule } from './lazy.js';
 
 export interface PasswordPromptDeps {

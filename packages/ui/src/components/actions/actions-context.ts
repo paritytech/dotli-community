@@ -3,7 +3,7 @@
 
 import { createContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { StatusTone } from '@dotli/ui-core';
+import type { StatusTone } from '../../page/status-tone.js';
 
 /** A status a collapsed item raises on More: the badge's tone, and words for More's accessible name. */
 export interface ActionAlert {

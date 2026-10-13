@@ -34,7 +34,7 @@ Shared ESLint flat configs and the import-layer helpers that enforce the package
 
 Helpers from `@config/eslint/vite`:
 
-- `importBans(bans, within?, except?)`: bans imports that cross a layer, optionally only in some files.
+- `importBans(bans, within?)`: bans imports that cross a layer, optionally only in some files.
 - `onlyAllowedScopes(allowed, message)`: refuses every `@dotli/*`, `@config/*` and `@parity/*` import but `allowed`.
 - `dynamicImportBan(pattern, message)`: refuses `import()` of a matching module.
 - `fixedServicesConfigOnly(files)`: limits those files to the fixed services part of the configuration.

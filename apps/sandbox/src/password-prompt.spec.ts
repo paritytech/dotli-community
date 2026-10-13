@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { ModalView } from '@dotli/ui-core';
+import type { ModalView } from '@dotli/ui';
 import type { PasswordDialogModule } from './lazy.js';
 import { createPasswordPrompt } from './password-prompt.js';
 
@@ -13,7 +13,6 @@ const DIALOG: PasswordDialogModule = {
     fields: [],
     buttons: [],
     dismissOnBackdrop: false,
-    fallbackResult: 'cancel',
   }),
 };
 

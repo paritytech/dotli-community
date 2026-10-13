@@ -4,9 +4,8 @@
 import { Show } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { Button, ModalFocusFallback } from '@dotli/ui';
-import { openModal, type ModalOutcome, type ModalView } from '@dotli/ui-core';
-import { resetModalsForTests } from '@dotli/ui-core/testing';
+import { Button, ModalFocusFallback, openModal, type ModalOutcome, type ModalView } from '@dotli/ui';
+import { resetModalsForTests } from '@dotli/ui/testing';
 import { ModalOutlet } from './ModalOutlet.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
@@ -22,7 +21,6 @@ const permissionLike = (overrides: Partial<ModalView<Choice>> = {}): ModalView<C
   ],
   dismissOnBackdrop: true,
   dismissResult: 'dismissed',
-  fallbackResult: 'dismissed',
   ...overrides,
 });
 
@@ -35,7 +33,6 @@ const passwordView: ModalView<'cancel' | 'unlock'> = {
     { label: 'Unlock', variant: 'primary', result: 'unlock' },
   ],
   dismissOnBackdrop: false,
-  fallbackResult: 'cancel',
 };
 
 /** What the story asks each time I press the page's Ask button, and every outcome it got back, in order. */

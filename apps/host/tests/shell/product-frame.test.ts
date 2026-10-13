@@ -14,7 +14,7 @@ import {
   createProductFrame,
   type FakePageCore,
 } from '@dotli/host-runtime/testing';
-import { showErrorPage } from '../../src/error-page.js';
+import { clearScreen, showErrorPage } from '@dotli/ui-widgets';
 import { createProductFrameView } from '../../src/product-frame-view.js';
 import { nth } from '@dotli/shared/testing';
 
@@ -41,6 +41,7 @@ interface Harness extends FakePageCore {
 let channel: StartedSandboxChannel | null = null;
 
 afterEach(() => {
+  clearScreen();
   channel?.stop();
   channel = null;
 });
@@ -74,7 +75,7 @@ function harness(fakes: FakePageCore = createFakePageCore()): Harness {
     channel,
     onPermissionsChanged: () => () => undefined,
     // The page around the frame, as the host wires it.
-    view: createProductFrameView({ container: () => container, body: () => document.body }),
+    view: createProductFrameView({ body: () => document.body, clearScreen, hideLoading: () => undefined }),
     notify: () => undefined,
   });
   return { ...fakes, frame, container, hosts };
@@ -111,7 +112,7 @@ describe('product frame rebuilds on the page', () => {
     // Given a product whose load failed after its frame went up
     const fakes = harness();
     await settle(fakes, subdomainProduct('reloaded'), 0);
-    await showErrorPage({ title: 'Failed' });
+    showErrorPage({ title: 'Failed' });
 
     // When its sandbox asks to be rebuilt
     askToRecover(fakes);

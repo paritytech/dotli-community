@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, Errored, Loading, onCleanup, untrack, useContext } from 'solid-js';
+import { createEffect, createSignal, Errored, Loading, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ReporterContext } from '../reporter-context.js';
 import { Broken } from './broken.js';
 import { anchorName } from './anchor-name.js';
 import { FloatingLayer, type Placement } from './FloatingLayer.js';
@@ -30,8 +29,6 @@ export interface TooltipProps {
  * alone, anchored on a phone too. The window's blur (a press in the product's iframe) hides it.
  */
 export function Tooltip(props: TooltipProps): JSX.Element {
-  // Read now, so a tooltip rendered without a reporter fails before it can fail unreported.
-  const report = useContext(ReporterContext);
   const [open, setOpenSignal] = createSignal(false, { ownedWrite: true });
   /** Open as last set, for a read in the same tick as the write. */
   let current = false;
@@ -194,9 +191,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         }
       }}
     >
-      <Errored
-        fallback={err => <Broken root={`tooltip:${props.id}`} error={err()} fail={hide} report={report.failure} />}
-      >
+      <Errored fallback={err => <Broken root={`tooltip:${props.id}`} error={err()} fail={hide} />}>
         <Loading fallback={null}>
           <Surface width={props.width ?? 'md'}>{props.children}</Surface>
         </Loading>

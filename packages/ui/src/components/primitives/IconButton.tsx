@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { StatusTone } from '@dotli/ui-core';
+import type { StatusTone } from '../../page/status-tone.js';
 import s from './IconButton.module.css';
 
 // Explicit props, not a rest spread: splitting the rest off pulls Solid's `omit` into the boot bundle.

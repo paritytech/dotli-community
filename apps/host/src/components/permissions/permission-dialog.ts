@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ModalView } from '@dotli/ui-core';
+import type { ModalView } from '@dotli/ui';
 import { permissionIcon, type PermissionName } from '@dotli/ui-entities';
 
 const PERMISSION_DESCRIPTIONS: Record<PermissionName, string> = {
@@ -58,6 +58,5 @@ export function permissionRequestDialog(request: PermissionRequest): ModalView<P
     buttons,
     dismissOnBackdrop: true,
     dismissResult: 'dismissed',
-    fallbackResult: 'dismissed',
   };
 }

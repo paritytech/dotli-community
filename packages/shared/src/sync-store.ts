@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Imports no Solid because boot-path code imports stores, and Solid's reactive core would otherwise ship
-// before any component reads one. Components read a store through `useStore` in `@dotli/ui`.
+// Plain stores with no framework in them. Components read one through `useStore` in `@dotli/ui`.
 
 export interface ReadableStore<T> {
   get: () => T;

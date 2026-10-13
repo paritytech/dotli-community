@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, vi } from 'vitest';
-import { PHONE_QUERY, resetPhoneViewport } from '@dotli/ui-core/testing';
+import { PHONE_QUERY, resetPhoneViewport } from '@dotli/ui/testing';
 
-// ui-core's phone viewport keeps one MediaQueryList, so a stub dropped by `vi.unstubAllGlobals()` must not outlive its
-// test.
+// ui's phone viewport keeps one MediaQueryList, so a stub dropped by `vi.unstubAllGlobals()` must not outlive its test.
 afterEach(() => {
   resetPhoneViewport();
 });

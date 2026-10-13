@@ -6,6 +6,7 @@
 // paint. With no `#app`, an error page takes over the whole body.
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
 import { AuthModal } from '../islands/AuthModal.jsx';
+import { Overlays } from '../islands/Overlays.jsx';
 import Landing from '../components/Landing.astro';
 import PageHead from '../components/PageHead.astro';
 ---
@@ -18,6 +19,10 @@ import PageHead from '../components/PageHead.astro';
   <body data-landing>
     <Landing />
     <AuthModal client:idle />
+    {/* Marked, so a full-page screen keeps it. */}
+    <div data-overlays>
+      <Overlays client:idle />
+    </div>
     <script src="../landing.ts"></script>
   </body>
 </html>

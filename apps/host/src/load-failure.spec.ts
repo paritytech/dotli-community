@@ -64,7 +64,6 @@ function present(
     trustedProviderHosts: () => ['rpc.example', 'ipfs.example'],
     showErrorPage: (page: Page) => {
       pages.push(page);
-      return Promise.resolve();
     },
     openSettings: vi.fn(),
     reload: vi.fn(),

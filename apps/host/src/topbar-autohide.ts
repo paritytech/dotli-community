@@ -6,7 +6,7 @@
 
 import { isMobileDevice } from './device.js';
 import { productStore } from '@dotli/host-runtime';
-import { focusables, isPhoneViewport, watchPhoneViewport } from '@dotli/ui-core';
+import { focusables, isPhoneViewport, watchPhoneViewport } from '@dotli/ui';
 import { currentProductFrame, setTopbarLayout, type TopbarLayout } from './product-frame-layout.js';
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';

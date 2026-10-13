@@ -4,8 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import { dismissToast, pushToast as pushToastTo, toastsStore, type ToastInput } from '@dotli/ui-core';
-import { resetToastsForTests } from '@dotli/ui-core/testing';
+import { dismissToast, pushToast, resetToastsForTests, toastsStore, type ToastInput } from '../../page/state/toasts.js';
 import { BellIcon } from '../icons/BellIcon.js';
 import { ToastCard, type ToastCardProps } from './ToastCard.js';
 import { ToastStack } from './ToastStack.js';
@@ -19,8 +18,6 @@ const labelled = (label: string, over: Partial<ToastInput> = {}): ToastInput => 
   ...over,
 });
 const onAction = fn<() => void>().mockName('onAction');
-const reportFailure = fn().mockName('reportFailure');
-const pushToast = (input: ToastInput): number => pushToastTo(input, reportFailure);
 /** Ids of the toasts the story's beforeEach pushed, oldest first. */
 let pushed: number[] = [];
 const showLabelled =

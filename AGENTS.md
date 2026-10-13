@@ -46,8 +46,9 @@ What a package owns and exposes is in its `README.md`. What it may import is in 
 - A view or screen used by one app lives in that app. A screen or overlay both apps show lives in `@dotli/ui-widgets`.
 - A component that owns an interaction with the product (a subscription, an action and its error copy) is a flow and
   lives in the app. An entity reports the user's intent through a callback.
-- Boot modules import UI only from the UI core (`@dotli/ui-core`) and the icons entry (`@dotli/ui/icons`), never the
-  rest of `@dotli/ui` or `@dotli/ui-entities`. Views load in islands and lazy chunks.
+- Import a component where it is used and let the bundler split chunks. What a visit may never open (a panel's content,
+  the debug panel) loads through `lazy()` or a loader in `src/lazy.ts`. The startup size budgets in CI guard what a page
+  loads first, not import rules.
 
 ## Code style
 
@@ -74,7 +75,7 @@ TypeScript:
 UI:
 
 - Astro for static markup. Solid islands only for interactive controls, one module per island.
-- Keep the sync stores, which import no Solid. Don't swap them for Solid stores on the boot path.
+- Keep the sync stores (`createSyncStore`) for app state. Don't swap them for Solid stores.
 - Styles in a CSS module beside the component.
 - Colors only from tokens in `packages/ui/src/global.css`. dotli chrome is dark only.
 - Every icon is a Solid component with an `<svg>` inside, drawn in `currentColor`, with a `size` prop when it needs

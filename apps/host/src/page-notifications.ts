@@ -4,7 +4,7 @@
 // The page's one scheduler of product notifications, shown as the page's own notifications.
 
 import { createPageScheduledNotifications, type ScheduledNotifications } from '@dotli/host-runtime';
-import { showNotification } from './overlays.js';
+import { showNotification } from '@dotli/ui-widgets';
 
 let page: ScheduledNotifications | null = null;
 

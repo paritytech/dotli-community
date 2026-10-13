@@ -3,16 +3,11 @@
 
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
-import { DB_NAME, DB_VERSION, preOpenDotliDb } from './schema.js';
+import { DB_NAME, DB_VERSION, openDotliDb, upgradeDotliDb } from './schema.js';
 
-/** Runs the page's pre-open against `factory`, as its head script does during HTML parse. */
-function runPreOpen(factory: IDBFactory): Promise<IDBDatabase> {
-  const page: { __dotliDb?: Promise<IDBDatabase> } = {};
-  preOpenDotliDb(page, factory);
-  if (page.__dotliDb === undefined) {
-    throw new Error('the pre-open exposed no database promise');
-  }
-  return page.__dotliDb;
+/** Opens the database on the current schema against `factory`, as the page's first read does. */
+function openCurrent(factory: IDBFactory): Promise<IDBDatabase> {
+  return openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb);
 }
 
 /** A connection on the previous schema that ignores `versionchange`, as a frozen older tab would. */
@@ -28,13 +23,13 @@ function openPreviousSchema(factory: IDBFactory): Promise<IDBDatabase> {
   });
 }
 
-describe('the page IndexedDB pre-open', () => {
-  it('As a dotli user, the page pre-open hands the app the database on the current schema', async () => {
+describe('the database open', () => {
+  it('As a dotli user, opening the database hands the app the current schema', async () => {
     // Given a browser that has never opened the database
     const factory = new IDBFactory();
 
-    // When the page pre-opens it
-    const db = await runPreOpen(factory);
+    // When the page opens it
+    const db = await openCurrent(factory);
 
     // Then it is on the current version, with the newest store in place
     expect(db.name).toBe(DB_NAME);
@@ -43,11 +38,11 @@ describe('the page IndexedDB pre-open', () => {
     db.close();
   });
 
-  it('As a dotli user, I leave no stray connection behind after the page pre-open is blocked and succeeds late', async () => {
-    // Given a pre-open blocked by an older tab, which then closes so the open goes through unowned
+  it('As a dotli user, I leave no stray connection behind after an open is blocked and succeeds late', async () => {
+    // Given an open blocked by an older tab, which then closes so the open goes through unowned
     const factory = new IDBFactory();
     const olderTab = await openPreviousSchema(factory);
-    await expect(runPreOpen(factory)).rejects.toThrow('blocked by another tab');
+    await expect(openCurrent(factory)).rejects.toThrow('blocked by another tab');
     olderTab.close();
 
     // When another tab upgrades the schema further

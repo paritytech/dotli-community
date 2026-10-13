@@ -8,13 +8,11 @@ import '@dotli/ui/styles.css';
 import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
-import { listenForChunkFailures } from '@dotli/ui-widgets';
-import { showError } from './error-page.js';
-import { prefetchOverlays, showNotification } from './overlays.js';
-import { reportChunkFailure } from './ui-reporter.js';
+import { listenForChunkFailures, showError, showNotification } from '@dotli/ui-widgets';
 import { configureProtocolFrame, ensureProtocolFrame, warmupProtocol, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktop-offer.js';
+import { reportIslandErrors } from './island-errors.js';
 import { log } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import { getBackend, getCacheSettings, getNetwork, persistDefaults, type Backend } from '@dotli/config';
@@ -38,7 +36,7 @@ import { pageSettingsActions } from './settings-actions.js';
 
 export const T0 = performance.now();
 
-/** What a page load starts first: the chunk failure offer, the overlays, the desktop offer and the wasm timings. */
+/** What a page load starts first: the chunk and island failure offers, the desktop offer and the wasm timings. */
 export function startPage(): void {
   // Safari before 18.4 lacks requestIdleCallback.
   if (typeof globalThis.requestIdleCallback !== 'function') {
@@ -48,18 +46,12 @@ export function startPage(): void {
       }, 1) as unknown as number;
   }
 
-  listenForChunkFailures({
-    target: window,
-    notify: showNotification,
-    reload: () => {
-      markContinuation('app_update');
-      window.location.reload();
-    },
-    report: reportChunkFailure,
-  });
-
-  // In memory before a deploy could make later chunk loads fail.
-  prefetchOverlays();
+  const reload = (): void => {
+    markContinuation('app_update');
+    window.location.reload();
+  };
+  listenForChunkFailures({ target: window, notify: showNotification, reload });
+  reportIslandErrors({ notify: showNotification, reload });
 
   if (!isMobileDevice()) {
     offerDesktopApp({
@@ -245,7 +237,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
 export function reportBootFailure(err: unknown): void {
   captureException(err, { flow: 'boot', step: boot.step });
   const error = describeError(err, getBackend() !== 'rpc-gateway');
-  void showError(error.title, error.message, {
+  showError(error.title, error.message, {
     label: RELOAD_BTN_LABEL,
     icon: RotateCwIcon,
     onClick: () => {

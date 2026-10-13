@@ -4,12 +4,9 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
 import { ReloadIcon, SlidersIcon } from '@dotli/ui/icons';
-import { createRecordingReporter } from '@dotli/ui-core/testing';
-import { createErrorPage } from './error-page.js';
+import { showError, showErrorPage } from './show-error-page.js';
 
 // The page mounts its own root, so each play shows one in the story's `#app` as the host page does.
-
-const { showError, showErrorPage } = createErrorPage(createRecordingReporter());
 
 const XSS = '<img src=x onerror="alert(1)">';
 
@@ -27,7 +24,7 @@ export const TitleActionsAndIcons: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor, I see what failed under its mark, and each action with its icon', async () => {
       // When
-      await showErrorPage({
+      showErrorPage({
         title: 'Could not load the app',
         detail: 'The network did not answer.',
         actions: [
@@ -54,7 +51,7 @@ export const MarkupShownAsText: Story = {
       'As a visitor, markup in a message, its plain and bold parts, the title, a tip and a button label is shown to me as text',
       async () => {
         // Given
-        await showErrorPage({
+        showErrorPage({
           title: XSS,
           detail: [XSS, ' tail ', { strong: XSS }],
           tips: [XSS],
@@ -83,7 +80,7 @@ export const NoEmptyTipsOrActions: Story = {
       'As a visitor, I see no empty Try list or button row when there is nothing to suggest or click',
       async () => {
         // Given
-        await showErrorPage({ title: 't', tips: [], actions: [] });
+        showErrorPage({ title: 't', tips: [], actions: [] });
 
         // Then
         await expect(canvas.getByTestId('error-page')).toBeVisible();
@@ -103,7 +100,7 @@ export const ButtonGetsClickEvent: Story = {
       async () => {
         // Given
         let got: MouseEvent | null = null;
-        await showErrorPage({
+        showErrorPage({
           title: 't',
           actions: [
             {
@@ -131,13 +128,13 @@ export const WarningGlyphOnlyWhenWarning: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor, I see the warning mark only on a screen that warns me', async () => {
       // When
-      await showErrorPage({ title: 't', glyph: 'warning' });
+      showErrorPage({ title: 't', glyph: 'warning' });
 
       // Then
       await expect(canvas.getByTestId('error-page-glyph')).toHaveAttribute('data-warning');
 
       // When
-      await showErrorPage({ title: 't' });
+      showErrorPage({ title: 't' });
 
       // Then
       await expect(canvas.getByTestId('error-page-glyph')).not.toHaveAttribute('data-warning');
@@ -153,7 +150,7 @@ export const TitleTakesFocusWithoutTabStop: Story = {
       'As a screen-reader user, the new screen is announced when it replaces the old one, and the title takes no tab stop',
       async () => {
         // When
-        await showErrorPage({ title: "Your connection won't be verified" });
+        showErrorPage({ title: "Your connection won't be verified" });
 
         // Then
         const title = canvas.getByTestId('error-page-title');
@@ -172,7 +169,7 @@ export const KeyboardOrderMatchesReading: Story = {
       'As a keyboard user, I reach the buttons in the order I read them, the recommended one last',
       async () => {
         // When
-        await showErrorPage({
+        showErrorPage({
           title: 't',
           actions: [
             { label: 'Reload', primary: true, onClick: () => undefined },
@@ -199,7 +196,7 @@ export const ShimTipsAndRetryButton: Story = {
       async () => {
         // Given
         let clicked = false;
-        await showError(
+        showError(
           't',
           'd',
           () => {

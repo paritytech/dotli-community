@@ -3,70 +3,52 @@
 
 import { createComponent, Errored } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
-import { ReporterContext } from '../components/reporter-context.js';
-import { disposeAppRoot, registerAppRoot, type Reporter } from '@dotli/ui-core';
+import { captureException } from '@dotli/metrics';
 
 export interface MountRootOptions {
-  /** Takes the root's render and disposal failures, and the surfaces inside it report through it too. */
-  report: Reporter;
-  /** Runs inside the error boundary on the first render error, while the view's nodes are still in place. */
-  onError?: () => void;
-  /** Runs after the broken root is disposed, a microtask later since a root cannot dispose inside its own boundary. */
-  onBroken?: () => void;
+  /** The container goes with the root, for one the caller made for it. */
   removeContainer?: boolean;
-  /** The root is the page's own content, which a full-page screen takes down. */
-  content?: boolean;
 }
 
 /**
- * A throwing view renders nothing, so other roots keep working, and the owner recovers in `onBroken`.
- * Solid may re-invoke the fallback, but a broken root is handled once. The disposer may run more than once.
+ * Renders `view` into `container` inside an error boundary, so a view that throws renders nothing and other roots keep
+ * working. A broken root is reported once under `name` and disposed a microtask later, since a root cannot dispose
+ * inside its own boundary. The returned disposer may run more than once.
  */
 export function mountRoot(
   name: string,
   container: HTMLElement,
   view: () => JSX.Element,
-  options: MountRootOptions,
+  options: MountRootOptions = {},
 ): () => void {
-  const { report } = options;
-  disposeAppRoot(name);
   let broken = false;
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    disposeView();
+    if (options.removeContainer === true) {
+      container.remove();
+    }
+  };
   const disposeView = render(
     () =>
       createComponent(Errored, {
         fallback: (err: () => unknown) => {
           if (!broken) {
             broken = true;
-            report.failure(err(), { flow: 'ui', step: 'root_render', tags: { root: name } });
-            options.onError?.();
-            queueMicrotask(() => {
-              dispose();
-              options.onBroken?.();
-            });
+            captureException(err(), { flow: 'ui', step: 'root_render', tags: { root: name } });
+            queueMicrotask(dispose);
           }
           return null;
         },
         get children() {
-          return createComponent(ReporterContext, {
-            value: report,
-            get children() {
-              return view();
-            },
-          });
+          return view();
         },
       }),
     container,
-  );
-  const dispose = registerAppRoot(
-    name,
-    () => {
-      disposeView();
-      if (options.removeContainer === true) {
-        container.remove();
-      }
-    },
-    report.failure,
-    { content: options.content === true },
   );
   return dispose;
 }

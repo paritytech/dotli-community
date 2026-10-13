@@ -7,7 +7,7 @@ import { DropdownMenu, useDropdownMenu } from '../floating/DropdownMenu.js';
 import { ChevronRightIcon } from '../icons/ChevronRightIcon.js';
 import { MoreIcon } from '../icons/MoreIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
-import type { StatusTone } from '@dotli/ui-core';
+import type { StatusTone } from '../../page/status-tone.js';
 import type { ActionAlert, ActionEntry } from './actions-context.js';
 import { moreLabel, worstTone } from './alerts.js';
 import s from './OverflowMenu.module.css';

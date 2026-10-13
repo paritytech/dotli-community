@@ -4,11 +4,10 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { LayerTracker, ReporterContext, useStore } from '@dotli/ui';
+import { LayerTracker, useStore } from '@dotli/ui';
 import { UrlPillShield as Shield } from '../components/shield/UrlPillShield.js';
 import { registerTopbarSurface } from '../state/topbar-surfaces.js';
 import { pillShield, urlPillStore } from '../state/url-pill.js';
-import { uiReporter } from '../ui-reporter.js';
 
 /**
  * The URL pill's verification shield, bound to the url-pill store that bindUrlPill renders the rest of the pill from.
@@ -16,10 +15,8 @@ import { uiReporter } from '../ui-reporter.js';
  */
 export function UrlPillShield(): JSX.Element {
   return (
-    <ReporterContext value={uiReporter}>
-      <LayerTracker value={registerTopbarSurface}>
-        <Shield shield={useStore(urlPillStore, pillShield)} />
-      </LayerTracker>
-    </ReporterContext>
+    <LayerTracker value={registerTopbarSurface}>
+      <Shield shield={useStore(urlPillStore, pillShield)} />
+    </LayerTracker>
   );
 }

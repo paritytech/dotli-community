@@ -6,9 +6,9 @@
 import { withActiveTld, type Backend } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import { SlidersIcon } from '@dotli/ui/icons';
-import type { IconComponent } from '@dotli/ui-core';
-import type { ErrorPageScreen } from '@dotli/ui-widgets';
+import type { Component } from 'solid-js';
+import { SlidersIcon, type IconProps } from '@dotli/ui/icons';
+import type { ShowErrorPage } from '@dotli/ui-widgets';
 import type { ErrorDescription } from './errors.js';
 
 export interface LoadFailure {
@@ -34,7 +34,7 @@ export interface ErrorSightings {
  */
 export interface FailureScreenCopy {
   reload: string;
-  reloadIcon: IconComponent;
+  reloadIcon: Component<IconProps>;
   openSettings: string;
   tryAnyway: string;
   goBack: string;
@@ -45,7 +45,7 @@ export interface LoadFailureDeps {
   copy: FailureScreenCopy;
   /** Who the visitor trusts instead when they leave the light client, read when the warning shows. */
   trustedProviderHosts: () => string[];
-  showErrorPage: ErrorPageScreen['showErrorPage'];
+  showErrorPage: ShowErrorPage;
   openSettings: () => void;
   /** The visitor's own retry. */
   reload: () => void;
@@ -62,11 +62,11 @@ export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps):
   const { error, backend } = failure;
   const { copy } = deps;
   if (error.recovery === 'none') {
-    void deps.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
+    deps.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
     return;
   }
   if (error.recovery === 'reload') {
-    void deps.showErrorPage({
+    deps.showErrorPage({
       title: error.title,
       detail: error.message,
       tips: error.tips,
@@ -102,7 +102,7 @@ export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps):
   };
   // Dropping to a trusted provider gives up verification, so the user confirms it and staying put is primary.
   const showFailoverWarning = (): void => {
-    void deps.showErrorPage({
+    deps.showErrorPage({
       glyph: 'warning',
       title: "Your connection won't be verified",
       detail: trustedProviderWarning(withActiveTld(failure.label), deps.trustedProviderHosts()),
@@ -120,7 +120,7 @@ export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps):
     if (nextBackend === 'rpc-gateway' && error.kind !== 'unknown') {
       deps.sightings.remember(error.kind);
     }
-    void deps.showErrorPage({
+    deps.showErrorPage({
       title: error.title,
       detail: error.message,
       tips: error.tips,

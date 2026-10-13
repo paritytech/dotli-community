@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page's islands share the page root: an error page disposes all of them, and any one throwing shows the
-// reload error page.
+// A full-page screen ends the landing page's islands together, and any one throwing shows the reload error page.
 
 import { createComponent, flush } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
@@ -10,15 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { must, resetAllStoresForTests } from '@dotli/shared/testing';
 import { memorySharedChannel } from '@dotli/host-runtime/testing';
-import { disposeContentRoots } from '@dotli/ui-core';
+import { clearScreen, showErrorPage } from '@dotli/ui-widgets';
 import { LandingAuth } from '../../src/islands/LandingAuth.js';
 import { LandingNav } from '../../src/islands/LandingNav.js';
 import { LandingPart } from '../../src/islands/LandingPart.js';
 import { LandingRecents } from '../../src/islands/LandingRecents.js';
-import { showErrorPage } from '../../src/error-page.js';
 import { createRecentLabels } from '../../src/recent-labels.js';
 import { appears, byTestId } from '@dotli/ui/testing';
-import { stubIdleBrowser } from '../helpers/idle.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
@@ -65,7 +62,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  disposeContentRoots();
+  clearScreen();
   for (const unmount of unmounts) {
     unmount();
   }
@@ -78,18 +75,12 @@ afterEach(() => {
 
 describe('landing page islands', () => {
   it('As a visitor, the landing page shows its own account button', async () => {
-    // Given: an idle browser, whose preload puts the account surface in the page.
-    stubIdleBrowser();
-
     // When
     await mountIslands();
 
     // Then
     expect([...slot(SLOTS.auth).children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth']);
-    await appears('#landing-user-popover');
-    for (const id of ['landing-auth-button', 'landing-user-popover']) {
-      expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
-    }
+    expect(document.querySelectorAll('[id="landing-auth-button"]')).toHaveLength(1);
     expect(captures.exception).not.toHaveBeenCalled();
   });
 
@@ -105,7 +96,7 @@ describe('landing page islands', () => {
       expect(byId('landing-auth-button')).not.toBeNull();
 
       // When
-      await showErrorPage({ title: 'Failed' });
+      showErrorPage({ title: 'Failed' });
       flush();
 
       // Then

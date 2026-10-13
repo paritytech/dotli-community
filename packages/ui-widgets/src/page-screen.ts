@@ -1,80 +1,50 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A full-page screen whose view loads in a lazy chunk, with a text version for when it cannot. Both apps' boot imports
-// this, so it imports no Solid.
+// What fills the page: its own content, or one full-page screen in its place. Both apps show their error page and
+// their own screens through here, so a later screen always replaces an earlier one.
 
-import { disposeContentRoots, registerAppRoot, type Reporter } from '@dotli/ui-core';
+import type { JSX } from '@solidjs/web';
+import { createSyncStore, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { mountRoot } from '@dotli/ui';
+import s from './page-screen.module.css';
 
-/** Where a screen shows: the page's `#app`, or the body of a page without one. */
-export interface PageSlot {
-  app: HTMLElement;
-  /** No `#app` frames the screen, so it fills the body itself. */
-  standalone: boolean;
+/** `screen` while a full-page screen holds the page. */
+export type PageContent = 'page' | 'screen';
+
+const content = createSyncStore<PageContent>('page-content', 'page');
+export const pageContentStore: ReadableStore<PageContent> = content;
+
+let disposeShown: (() => void) | undefined;
+
+/** Takes the shown screen down, for the page's own content to come back. */
+export function clearScreen(): void {
+  disposeShown?.();
+  disposeShown = undefined;
+  content.set('page');
 }
 
-/** What a screen's view mounts with: its slot and the content root it registers as. */
-export interface ScreenSlot extends PageSlot {
-  root: string;
-  report: Reporter;
-  /** Shows the text version once a view that broke while rendering is gone. */
-  onBroken: () => void;
-}
-
-export interface PageScreen<M> {
-  /** The app root the screen registers as, so a later full-page screen takes it down. */
-  root: string;
-  load: () => Promise<M>;
-  /** Mounts the view through `mountScreen`. */
-  mount: (module: M, slot: ScreenSlot) => void;
-  /** Puts the screen in the slot as text alone, built without the chunk, and returns what it put there. */
-  fallback: (slot: PageSlot) => HTMLElement;
-  /** Takes a chunk that failed to load and a view that broke while rendering. */
-  report: Reporter;
-}
+registerStoreStateReset(clearScreen);
 
 /**
- * Takes the page's content roots down at once, then shows the screen's view, or its text version when the chunk cannot
- * load. Never rejects. A full-page screen shown before this one's chunk arrives takes it down, so it never mounts.
+ * Shows `view` in place of the page's content: `#app`, or the body of a page without one, which the screen then fills
+ * itself (`standalone`). The screen shown before goes first. The element marked `data-overlays` stays, so a toast
+ * raised after the screen still shows. A view that throws is reported.
  */
-export async function showPageScreen<M>(screen: PageScreen<M>): Promise<void> {
-  const { root, report } = screen;
-  disposeContentRoots();
-  // Read now, since the page this screen replaces may be gone by the time the chunk arrives.
+export function showScreen(view: (standalone: boolean) => JSX.Element): void {
+  disposeShown?.();
   const app = document.getElementById('app') ?? document.body;
-  const page: PageSlot = { app, standalone: app === document.body };
-  const showText = (): void => {
-    const shown = screen.fallback(page);
-    registerAppRoot(
-      root,
-      () => {
-        shown.remove();
-      },
-      report.failure,
-      { content: true },
-    );
-  };
-  // The screen is the page's content from now on. Its view replaces this root when it mounts.
-  const pending = new AbortController();
-  registerAppRoot(
-    root,
-    () => {
-      pending.abort();
-    },
-    report.failure,
-    { content: true },
-  );
-  let module: M;
-  try {
-    module = await screen.load();
-  } catch (err: unknown) {
-    report.failure(err, { flow: 'ui', step: 'root_load', tags: { root, kind: `${root}_load_error` } });
-    if (!pending.signal.aborted) {
-      showText();
+  const standalone = app === document.body;
+  for (const node of [...app.childNodes]) {
+    if (!(node instanceof Element && node.hasAttribute('data-overlays'))) {
+      node.remove();
     }
-    return;
   }
-  if (!pending.signal.aborted) {
-    screen.mount(module, { ...page, root, report, onBroken: showText });
-  }
+  // Its own element, so taking the screen down keeps what the page put beside it since, like the product frame.
+  // Before the overlays, which stack and tab above it.
+  const holder = document.createElement('div');
+  holder.className = s['holder'] ?? '';
+  app.prepend(holder);
+  disposeShown = mountRoot('page-screen', holder, () => view(standalone), { removeContainer: true });
+  content.set('screen');
 }

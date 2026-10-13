@@ -1,53 +1,28 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { sentryVitePlugin } from '@sentry/vite-plugin';
-import { defineConfig, type Plugin, type PluginOption } from 'vite';
-import { resolve } from 'node:path';
-import wasmPlugin from 'vite-plugin-wasm';
+import { defineConfig } from 'vite';
+import { dotliApp } from '@config/vite/app';
 import { buildInfo } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { modeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
-import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
-// The CommonJS-style declarations make NodeNext see the module object. At runtime the default export is the plugin.
-const wasm = wasmPlugin as unknown as () => Plugin;
-
-// Before Vite reads the environment, so the SDK reports the release the sourcemaps are uploaded under.
-provideSentryRelease(import.meta.dirname);
+const app = dotliApp(import.meta.dirname);
 
 const OUT_DIR = 'dist';
-const APP_URL = process.env['VITE_APP_URL'] ?? '';
-
-function sentry(): PluginOption {
-  if (process.env['VITE_METRICS'] !== 'true') {
-    return false;
-  }
-  if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
-    return false;
-  }
-  return sentryVitePlugin({
-    org: 'paritytech',
-    project: 'dotli',
-    telemetry: false,
-    authToken: process.env['SENTRY_AUTH_TOKEN'],
-    release: sentryUploadRelease(import.meta.dirname),
-    sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
-  });
-}
 
 export default defineConfig({
-  envDir: resolve(import.meta.dirname, '../..'),
-  base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
+  envDir: app.envDir,
+  base: app.base,
   plugins: [
     stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
-    wasm(),
+    app.wasm(),
     runtimeNetworkConfigScript(),
     buildInfo('protocol'),
     modeSync(),
-    sentry(),
+    app.sentry(),
   ],
   worker: {
     plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],

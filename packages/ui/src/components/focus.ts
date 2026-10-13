@@ -3,7 +3,7 @@
 
 // Focus and scroll helpers for floating surfaces and modal layers.
 
-import { focusables } from '@dotli/ui-core';
+import { focusables } from '../page/focusables.js';
 
 /** Keeps Tab and Shift+Tab inside `surface`. */
 export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {

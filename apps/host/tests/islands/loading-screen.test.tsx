@@ -14,7 +14,6 @@ vi.hoisted(() => {
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
-import { disposeContentRoots } from '@dotli/ui-core';
 import { LoadingScreen } from '../../src/islands/LoadingScreen.js';
 import * as ctl from '../../src/loading-controller.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
@@ -66,7 +65,6 @@ afterEach(() => {
   for (const dispose of mounted.splice(0).reverse()) {
     dispose();
   }
-  disposeContentRoots();
   ctl.stopStatusTick();
   resetAllStoresForTests();
   app().innerHTML = '';

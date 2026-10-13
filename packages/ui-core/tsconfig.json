@@ -1,9 +1,0 @@
-{
-  "extends": "@config/typescript/base.json",
-  "compilerOptions": {
-    // Unit specs run under Node, so they may use ES2024 APIs such as Promise.withResolvers. tsconfig.shipped.json holds
-    // shipped code to the browsers' ES2022.
-    "lib": ["ES2024", "DOM", "DOM.Iterable"]
-  },
-  "include": ["src", "vitest.config.ts", "eslint.config.js"]
-}

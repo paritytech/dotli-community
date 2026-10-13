@@ -23,7 +23,7 @@ export const MarkupShownAsText: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor, markup in the domain of a no-content error is shown to me as text', async () => {
       // Given
-      await showNoContentError(XSS);
+      showNoContentError(XSS);
 
       // Then
       await expect(canvasElement.querySelector('img')).toBeNull();
@@ -38,7 +38,7 @@ export const TitleLineAndIcon: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor, I see that the app cannot be reached under a globe, with the name to check', async () => {
       // When
-      await showNoContentError('nothing');
+      showNoContentError('nothing');
 
       // Then
       await expect(canvas.getByTestId('error-page-title')).toHaveTextContent("This app can't be reached");
@@ -55,7 +55,7 @@ export const TitleTakesNoFocus: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor, the page names the app it could not reach, with no tab stop on its title', async () => {
       // When
-      await showNoContentError('nothing');
+      showNoContentError('nothing');
 
       // Then
       await expect(canvas.getByTestId('error-page-title')).toHaveTextContent("This app can't be reached");

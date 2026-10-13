@@ -4,7 +4,7 @@
 import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import type { ModalEntry, ModalView } from '@dotli/ui-core';
+import type { ModalEntry, ModalView } from '@dotli/ui';
 import { LockIcon } from '@dotli/ui/icons';
 import { CameraIcon, UploadIcon } from '../../.storybook/glyphs.js';
 import { PromptDialog } from './PromptDialog.js';
@@ -34,7 +34,6 @@ const meta = {
       ],
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
-      fallbackResult: 'dismissed',
     }),
   },
   // The dialog reads its entry once, as the outlet re-creates it per entry, so it gets an untracked copy.
@@ -121,7 +120,6 @@ export const PasswordPrompt: Story = {
         { label: 'Unlock', variant: 'primary', result: 'unlock' },
       ],
       dismissOnBackdrop: false,
-      fallbackResult: 'cancel',
     }),
   },
   play: async ({ userEvent, step }) => {
@@ -164,7 +162,6 @@ export const WrongPassword: Story = {
         { label: 'Unlock', variant: 'primary', result: 'unlock' },
       ],
       dismissOnBackdrop: false,
-      fallbackResult: 'cancel',
     }),
   },
   play: async ({ step }) => {
@@ -185,7 +182,6 @@ export const PreimageSubmit: Story = {
         { label: 'Allow', variant: 'primary', result: 'allow' },
       ],
       dismissOnBackdrop: false,
-      fallbackResult: 'cancel',
     }),
   },
 };
@@ -207,7 +203,6 @@ export const SignTransaction: Story = {
       ],
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
-      fallbackResult: 'dismissed',
     }),
   },
   play: async ({ step }) => {
@@ -236,7 +231,6 @@ export const SignMessage: Story = {
       ],
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
-      fallbackResult: 'dismissed',
     }),
   },
   play: async ({ step }) => {

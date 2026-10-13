@@ -15,7 +15,8 @@ resolution. See the root [README](../../README.md) for the product as a whole.
 
 ## Design
 
-- Boot starts Sentry and listens for chunk preload errors before anything else.
+- Boot starts Sentry before any other module evaluates. The page start then listens for chunk preload errors and mounts
+  the toasts and dialogs, in a container that a full-page screen keeps.
 - A runner performs the load once, and again on each retry the visitor asks for, up to a limit. Every failure is
   reported and shown. It refuses to run as a top-level page.
 - One load fetches and verifies the content, hands an archive to the service worker and writes the page. It never
@@ -24,12 +25,9 @@ resolution. See the root [README](../../README.md) for the product as a whole.
 - The service worker serves the archive, injects the sandbox checker and keeps the archive in IndexedDB for restarts.
   The page side registers it and checks its version. The packed archive reaches the controlling worker by a handoff.
 - After a load the origin's stores are purged of anything the product left behind.
-- Boot never imports the password dialog, the retry screen's view or any entity view. A lazy loader brings them in on
-  demand. Boot takes UI only from the UI core, which imports no Solid, and the icons entry. Its dialogs are `ModalView`
-  data, with an icon component, that the shared dialog renders.
-- The error page and the retry screen take the page over at once and show their Solid view once its chunk arrives. The
-  retry screen's view is the sandbox's one Solid component and draws the brand's petal mark. When a chunk cannot load,
-  the screen shows its words as text alone, with no icon or mark.
+- The password dialog loads on demand through a lazy loader. Its dialogs are `ModalView` data, with an icon component,
+  that the shared dialog renders.
+- The error page and the retry screen take the page over at once. The retry screen draws the brand's petal mark.
 - A small helper for product sub-pages is a real module that the service worker inlines as a classic script. The service
   worker is built as a separate bundle after the page.
 - The checker is a real module inlined as a classic script, so it runs before any product script. Its reports use the

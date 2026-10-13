@@ -3,9 +3,12 @@
 
 // Fakes other packages' tests drive ui with. Never imported by shipped code.
 
-// A story or test counts the fetches of Popover's lazy surface through its own loader.
-export { createPopoverSurface, PopoverSurfaceContext } from '../components/floating/Popover.js';
-export { loadPopoverSurface } from './popover-surface.js';
 export { settle } from './settle.js';
 // Functional tests query and wait on the page through these.
 export { appears, byId, byTestId, query } from './queries.dom.js';
+// The modal store presents a dialog without the overlays, so a spec answers it in their place.
+export { modalsStore, resetModalsForTests } from '../page/state/modals.js';
+export { chooseModalButton, dismissModal, shownModal } from '../page/state/modals.fake.js';
+export { PHONE_QUERY, resetPhoneViewport } from '../page/phone-viewport.js';
+// The toast store on a page whose visibility a spec flips (`FakePage` from `@dotli/shared/testing`).
+export { bindToastPage, resetToastsForTests } from '../page/state/toasts.js';

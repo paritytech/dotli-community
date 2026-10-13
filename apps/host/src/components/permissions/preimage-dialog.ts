@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { formatSize } from '@dotli/shared';
-import type { ModalView } from '@dotli/ui-core';
+import type { ModalView } from '@dotli/ui';
 import { permissionIcon } from '@dotli/ui-entities';
 
 /** `allow` lets the app submit the preimage. */
@@ -19,6 +19,5 @@ export function preimageSubmitDialog(dataSize: number): ModalView<PreimageDecisi
       { label: 'Allow', variant: 'primary', result: 'allow' },
     ],
     dismissOnBackdrop: false,
-    fallbackResult: 'cancel',
   };
 }

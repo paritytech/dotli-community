@@ -5,7 +5,7 @@
 // <body> and cannot see it.
 
 import type { ReadableStore } from '@dotli/shared';
-import { isPhoneViewport } from '@dotli/ui-core';
+import { isPhoneViewport } from '@dotli/ui';
 import { topbarStore } from './state/topbar.js';
 import type { NetworkHealth } from './network-verdict.js';
 import { chatPanelStore, totalChatUnread } from './state/chat-panel.js';

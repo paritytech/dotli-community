@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The "dotli" database's one schema and its open. The page bundles the pre-open into a script inline in its head, so
-// this module imports nothing that script would then carry.
+// The "dotli" database's one schema and its open.
 
 export const DB_NAME = 'dotli';
 export const DB_VERSION = 6;
@@ -95,15 +94,4 @@ export function openDotliDb(
       reject(new Error('Failed to open dotli DB: blocked by another tab'));
     };
   });
-}
-
-/**
- * Starts the open while the page's HTML still parses, overlapping module loading, and leaves it on `page.__dotliDb`
- * for `getDb`.
- */
-export function preOpenDotliDb(page: { __dotliDb?: Promise<IDBDatabase> }, factory: IDBFactory): void {
-  const open = openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb);
-  page.__dotliDb = open;
-  // getDb reports a rejection once it takes the open, so this only keeps it from surfacing as unhandled before then.
-  open.catch(() => undefined);
 }

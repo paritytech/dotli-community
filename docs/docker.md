@@ -169,8 +169,7 @@ landing page regardless.
 
 Every reader of the network table is synchronous, so the config has to be in place
 before the module bundle runs. A blocking classic `<script src="/dotli-network.js">`
-sets `globalThis.__DOTLI_NETWORK__` ahead of the deferred bundle — the same trick
-all three `index.html` files already use to pre-open IndexedDB. The table is then
+sets `globalThis.__DOTLI_NETWORK__` ahead of the deferred bundle. The table is then
 built once at module init, with no async hydration anywhere.
 
 The file does not exist in the image. `docker/entrypoint.sh` generates it at

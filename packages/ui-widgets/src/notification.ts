@@ -1,14 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { AlertTriangleIcon, BanIcon, BellIcon, CheckIcon } from '@dotli/ui/icons';
-import type { IconComponent, StatusTone, ToastInput } from '@dotli/ui-core';
+import type { Component } from 'solid-js';
+import { AlertTriangleIcon, BanIcon, BellIcon, CheckIcon, type IconProps } from '@dotli/ui/icons';
+import { pushToast, type StatusTone, type ToastInput } from '@dotli/ui';
 
 type NoticeTone = Exclude<StatusTone, 'quiet'>;
 
 export const NOTIFICATION_DISMISS_MS = 10_000;
 
-const TONE_ICON: Record<NoticeTone, IconComponent> = {
+const TONE_ICON: Record<NoticeTone, Component<IconProps>> = {
   info: BellIcon,
   ok: CheckIcon,
   warn: AlertTriangleIcon,
@@ -21,7 +22,7 @@ export interface NotificationParams {
   label: string;
   deeplink?: string | undefined;
   /** Drawn in currentColor, so it takes the tone. The tone's own icon without one. */
-  icon?: IconComponent;
+  icon?: Component<IconProps>;
   tone?: NoticeTone;
   /** 0 keeps it until closed. */
   dismissMs?: number;
@@ -117,3 +118,12 @@ export function createNotifier({ present, visible, system }: NotifierDeps): Show
     }
   };
 }
+
+/** The page's notifier over the toast store. */
+export const showNotification: ShowNotification = createNotifier({
+  present: input => {
+    pushToast(input);
+  },
+  visible: () => document.visibilityState === 'visible',
+  system: () => ('Notification' in window ? window.Notification : undefined),
+});

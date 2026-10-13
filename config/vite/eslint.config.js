@@ -15,4 +15,11 @@ export default defineConfig([
       },
     },
   },
+  {
+    // Node loads this through the app configs directly, so its imports name `.ts` files.
+    files: ['src/app.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
 ]);

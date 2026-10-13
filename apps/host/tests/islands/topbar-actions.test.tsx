@@ -63,7 +63,11 @@ describe('TopbarActions island', () => {
     // Given: the product's frame attached, and what the bar provides read from inside it
     const frame = document.createElement('iframe');
     document.body.append(frame);
-    createProductFrameView({ container: () => document.body, body: () => document.body }).attachFrame(frame);
+    createProductFrameView({
+      body: () => document.body,
+      clearScreen: () => undefined,
+      hideLoading: () => undefined,
+    }).attachFrame(frame);
     const seen: { tracker?: unknown; fallback?: () => HTMLElement | undefined } = {};
     function Probe(): JSX.Element {
       seen.tracker = useContext(LayerTracker);

@@ -55,11 +55,8 @@ export class StubElement {
     }
   }
 
-  /** `iframe` among the descendants, or `:scope > [data-error-page]` among the children. */
-  querySelectorAll(selector: 'iframe' | ':scope > [data-error-page]'): StubElement[] {
-    if (selector === ':scope > [data-error-page]') {
-      return this.children.filter(child => 'errorPage' in child.dataset);
-    }
+  /** `iframe` among the descendants. */
+  querySelectorAll(_selector: 'iframe'): StubElement[] {
     return this.children.flatMap(child => [
       ...(child.tagName === 'IFRAME' ? [child] : []),
       ...child.querySelectorAll('iframe'),

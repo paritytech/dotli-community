@@ -1,11 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For, Show } from 'solid-js';
+import { For, Show, type Component } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
-import { storeIcon } from '@dotli/ui';
-import { CloudOffIcon, ShieldAlertIcon } from '@dotli/ui/icons';
-import type { IconComponent } from '@dotli/ui-core';
+import { CloudOffIcon, ShieldAlertIcon, type IconProps } from '@dotli/ui/icons';
 import { arrangeErrorActions, type ArrangedAction, type ErrorPageContent, type ErrorText } from './error-page.js';
 import { ErrorDetail, ErrorFrame } from './ErrorFrame.js';
 import s from './ErrorPage.module.css';
@@ -18,8 +16,8 @@ function Text(props: { text: ErrorText }): JSX.Element {
   );
 }
 
-function ActionIcon(props: { icon: IconComponent }): JSX.Element {
-  const Icon = dynamic(() => storeIcon(props.icon));
+function ActionIcon(props: { icon: Component<IconProps> }): JSX.Element {
+  const Icon = dynamic(() => props.icon);
   return (
     <span class={s['retryIcon']} aria-hidden="true">
       <Icon testId="error-page-action-icon" />

@@ -4,9 +4,11 @@
 // The host's prompts name the product frame as where their dialogs hand focus back, over the real overlays.
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { createComponent } from 'solid-js';
+import { render } from '@solidjs/web';
+import { Overlays } from '@dotli/ui-widgets';
 import type { ReviewDialog } from '@dotli/host-runtime';
-import { appears } from '@dotli/ui/testing';
-import { resetModalsForTests } from '@dotli/ui-core/testing';
+import { appears, resetModalsForTests } from '@dotli/ui/testing';
 import { createHostPrompts } from '../../src/host-prompts.js';
 import { attachProductFrame, resetProductFrameLayout } from '../../src/product-frame-layout.js';
 
@@ -19,10 +21,13 @@ const REVIEW: ReviewDialog<'no' | 'yes' | 'dismissed'> = {
   ],
   dismissOnBackdrop: true,
   dismissResult: 'dismissed',
-  fallbackResult: 'dismissed',
 };
 
+let disposeOverlays: (() => void) | undefined;
+
 afterEach(() => {
+  disposeOverlays?.();
+  disposeOverlays = undefined;
   resetModalsForTests();
   resetProductFrameLayout();
   document.body.replaceChildren();
@@ -35,6 +40,9 @@ describe('dialog focus', () => {
     const opener = document.createElement('button');
     document.body.append(frame, opener);
     attachProductFrame(frame, () => undefined);
+    const root = document.createElement('div');
+    document.body.append(root);
+    disposeOverlays = render(() => createComponent(Overlays, {}), root);
     opener.focus();
     const outcome = createHostPrompts().confirmReview(REVIEW, new AbortController().signal);
     const sign = await appears('[data-testid="signing-btn-sign"]');

@@ -6,6 +6,7 @@
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
+import { startPage } from './page-start.js';
 import { BASE_DOMAIN, TIMEOUTS, getActiveServicesConfig, setNetworkOverride } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
@@ -13,7 +14,7 @@ import { m, setResolutionId } from '@dotli/metrics';
 import { endpointHost } from '@dotli/shared';
 
 import { createDecryptIfNeeded } from './decrypt-prompt.js';
-import { showError } from './error-page.js';
+import { showError } from '@dotli/ui-widgets';
 import { showRetryScreen } from './retry-screen.js';
 import { loadPasswordDialog, loadSandboxChecker } from './lazy.js';
 import { createPasswordPrompt } from './password-prompt.js';
@@ -35,6 +36,8 @@ import {
   storeArchiveInSW,
   type AppServiceWorker,
 } from './service-worker.js';
+
+startPage();
 
 const T0 = performance.now();
 
@@ -132,7 +135,7 @@ void runSandbox(
       notifyLoadingDone({ outcome: 'failed', failedStep: step });
     },
     show: (title, message, retry) => {
-      void showError(
+      showError(
         title,
         message,
         retry === undefined
@@ -143,7 +146,7 @@ void runSandbox(
       );
     },
     retrying: () => {
-      void showRetryScreen();
+      showRetryScreen();
     },
     askRerender: askHostToRerender,
     gatewayHost: () => endpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),

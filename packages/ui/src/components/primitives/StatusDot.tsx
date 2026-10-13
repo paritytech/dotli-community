@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { StatusTone } from '@dotli/ui-core';
+import type { StatusTone } from '../../page/status-tone.js';
 import s from './StatusDot.module.css';
 
 /** A coloured dot with a soft halo, decorative unless a `label` names it. */

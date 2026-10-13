@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Backend } from '@dotli/config';
-import type { StatusTone } from '@dotli/ui-core';
+import type { StatusTone } from '@dotli/ui';
 import type { LiveVerdict } from '../../network-verdict.js';
 import type { ChainView } from './chains.js';
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { ModalView } from '@dotli/ui-core';
+import type { ModalView } from '@dotli/ui';
 import { closeAnswer, scrimAnswer } from './prompt-answer.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
@@ -18,7 +18,6 @@ function permissionLike(overrides: Partial<ModalView<Choice>> = {}): ModalView<C
     ],
     dismissOnBackdrop: true,
     dismissResult: 'dismissed',
-    fallbackResult: 'dismissed',
     ...overrides,
   };
 }
@@ -32,7 +31,6 @@ const passwordView: ModalView<'cancel' | 'unlock'> = {
     { label: 'Unlock', variant: 'primary', result: 'unlock' },
   ],
   dismissOnBackdrop: false,
-  fallbackResult: 'cancel',
 };
 
 describe('prompt answers', () => {

@@ -4,8 +4,18 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ReloadIcon } from '@dotli/ui/icons';
-import { Button, type ButtonVariant, Callout, Field, Modal, Well } from '@dotli/ui';
-import { settleModal, type ModalButton, type ModalButtonVariant, type ModalEntry } from '@dotli/ui-core';
+import {
+  Button,
+  type ButtonVariant,
+  Callout,
+  Field,
+  Modal,
+  Well,
+  settleModal,
+  type ModalButton,
+  type ModalButtonVariant,
+  type ModalEntry,
+} from '@dotli/ui';
 import { closeAnswer, scrimAnswer } from './prompt-answer.js';
 import s from './PromptDialog.module.css';
 

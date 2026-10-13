@@ -48,7 +48,7 @@ export async function showLoadFailure(failure: LoadFailure, deps: ShowLoadFailur
     log.error('[dot.li] failure screens failed to load:', err);
     captureException(err, { flow: 'resolve', step: 'failure_screen_load', tags: { error_kind: failure.error.kind } });
     m.count(S.FAILURE_SCREEN_LOAD, { outcome: 'error', reason: 'chunk_load' });
-    await effects.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
+    effects.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
     return;
   }
   m.count(S.FAILURE_SCREEN_LOAD, { outcome: 'ok' });

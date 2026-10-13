@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { StatusTone } from '@dotli/ui-core';
+import type { StatusTone } from '../../page/status-tone.js';
 
 /**
  * How a view's button reads as a row of a bar's More menu, for the page that puts the view in a collapsing bar. The

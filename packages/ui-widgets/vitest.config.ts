@@ -11,6 +11,8 @@ export default defineConfig({
   define: {
     // getEnabledNetworks() requires VITE_NETWORKS and has no default by design.
     'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
+    // On, so tests read the real counts from a fake Sentry, not a stripped build's no-ops.
+    'import.meta.env.VITE_METRICS': '"true"',
   },
   css: { modules: cssModules() },
   test: {

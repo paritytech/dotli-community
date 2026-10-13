@@ -24,7 +24,6 @@ icon. They show domain data and take everything as props.
 - Chat: `MessageBubble` renders a `ChatMessage`. `CustomNode` renders a product's custom body. Both draw their actions
   with one chat action button. The echo hold and relative time logic is kept apart from the views so it runs under Node.
 - Lint holds its imports to the UI layer and TrUAPI's types, for dynamic imports too.
-- Solid views load in islands and lazy chunks, never on a boot path. Boot modules must not import this package.
 
 ## Public API
 

@@ -7,8 +7,7 @@
 import './boot.js';
 import { startPwa } from './pwa.js';
 import { boot, createBootFlowId, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
-import { showErrorPage } from './error-page.js';
-import { showNotification } from './overlays.js';
+import { showErrorPage, showNotification } from '@dotli/ui-widgets';
 import { showNoContentError } from './no-content-page.js';
 import {
   initPhases,
@@ -331,7 +330,7 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
         autoHide.settle();
       },
       showNoContent: label => {
-        void showNoContentError(label);
+        showNoContentError(label);
       },
       setProductError,
       setContentShown: setProductContentShown,

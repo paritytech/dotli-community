@@ -15,8 +15,18 @@ import {
 import type { JSX } from '@solidjs/web';
 import { shallowEqual } from '@dotli/shared';
 import { ClockIcon, PolkadotIcon } from '@dotli/ui/icons';
-import { Button, ButtonLink, IconTile, LayerTracker, Modal, Spinner, StatusDot, Surface, Well } from '@dotli/ui';
-import { watchPhoneViewport } from '@dotli/ui-core';
+import {
+  Button,
+  ButtonLink,
+  IconTile,
+  LayerTracker,
+  Modal,
+  Spinner,
+  StatusDot,
+  Surface,
+  Well,
+  watchPhoneViewport,
+} from '@dotli/ui';
 import type { AuthModalState, AuthModalView } from '@dotli/host-runtime';
 import { isMobileDevice } from '../../device.js';
 import { drawQrCode, type DrawQr } from './qr-code.js';

@@ -16,8 +16,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@config/vite": "*",
-    "vite-plugin-wasm": "^3.6.0"
+    "@config/vite": "*"
   },
   "dependencies": {
     "@dotli/chains": "*",
@@ -28,7 +27,6 @@
     "@dotli/shared": "*",
     "@dotli/storage": "*",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
-    "@sentry/browser": "^11.4.0",
-    "@sentry/vite-plugin": "^5.4.1"
+    "@sentry/browser": "^11.4.0"
   }
 }

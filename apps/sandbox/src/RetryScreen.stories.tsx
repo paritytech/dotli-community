@@ -3,7 +3,7 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
-import { showError } from './error-page.js';
+import { showError } from '@dotli/ui-widgets';
 import { showRetryScreen } from './retry-screen.js';
 
 // The screens mount their own root, so each play shows one in the story's `#app` as the sandbox page does.
@@ -22,7 +22,7 @@ export const MarkOverStatus: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor whose app is starting again, I see the pulsing mark over what is happening', async () => {
       // When
-      await showRetryScreen();
+      showRetryScreen();
 
       // Then
       await expect(canvas.getByTestId('retry-screen-mark').tagName).toBe('svg');
@@ -39,10 +39,10 @@ export const RetryScreenReplacesErrorPage: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor whose load failed, retrying swaps the error page for the retry screen', async () => {
       // Given
-      await showError('Failed to load content', 'd', () => undefined);
+      showError('Failed to load content', 'd', () => undefined);
 
       // When
-      await showRetryScreen();
+      showRetryScreen();
 
       // Then
       await expect(canvas.queryByTestId('error-page')).toBeNull();

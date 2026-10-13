@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { ReporterContext } from '@dotli/ui';
-import type { Reporter } from '@dotli/ui-core';
-import { createRecordingReporter } from '@dotli/ui-core/testing';
+import { bindCaptureSink } from '@dotli/metrics';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import { productPill, setShield, storyShieldState } from '../../../.storybook/shield-fixtures.js';
@@ -168,8 +166,7 @@ export const FocusElsewhereHides: Story = {
 };
 
 const chunk = { fail: true, imports: 0 };
-const captured = fn().mockName('reportFailure');
-const capturing: Reporter = { ...createRecordingReporter(), failure: captured };
+const captured = fn().mockName('captureException');
 
 /** The explainer chunk, gone after a deploy until `chunk.fail` is cleared. */
 const loadFlakyExplainer: ExplainerLoader = async () => {
@@ -186,13 +183,12 @@ export const ExplainerLoadFailureRetries: Story = {
     chunk.fail = true;
     chunk.imports = 0;
     captured.mockClear();
+    return bindCaptureSink({ exception: captured, expected: () => undefined });
   },
   render: () => (
-    <ReporterContext value={capturing}>
-      <TopbarFrame center>
-        <VerificationShield state={storyShieldState} loadExplainer={loadFlakyExplainer} />
-      </TopbarFrame>
-    </ReporterContext>
+    <TopbarFrame center>
+      <VerificationShield state={storyShieldState} loadExplainer={loadFlakyExplainer} />
+    </TopbarFrame>
   ),
   play: async ({ step }) => {
     await step('As a visitor after a deploy, an explainer that cannot load is reported once and hides', async () => {

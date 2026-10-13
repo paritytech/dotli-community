@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The page around the product frame for specs: it records what the frame shows, and its screens are disposers a spec
-// puts up, which run once each as the page's app roots do.
+// puts up, which run once each as the page's screens come down.
 
 import type { ProductFrameView, TitledProduct } from './product-frame.js';
 

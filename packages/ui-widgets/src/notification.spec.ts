@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { pushToast, toastsStore, type ReportFailure } from '@dotli/ui-core';
+import { pushToast, toastsStore } from '@dotli/ui';
 import { FakePage } from '@dotli/shared/testing';
 import { AlertTriangleIcon, BanIcon, BellIcon } from '@dotli/ui/icons';
-import { bindToastPage, resetToastsForTests } from '@dotli/ui-core/testing';
+import { bindToastPage, resetToastsForTests } from '@dotli/ui/testing';
 import { createNotifier, NOTIFICATION_DISMISS_MS, type SystemNotifications } from './notification.js';
 
 let page: FakePage;
 let system: SystemNotifications | undefined;
 
-const report = vi.fn<ReportFailure>();
-
 /** The notifier over the toast store, on a page whose visibility the test sets. */
 const showNotification = createNotifier({
   present: input => {
-    pushToast(input, report);
+    pushToast(input);
   },
   visible: () => page.visibilityState === 'visible',
   system: () => system,

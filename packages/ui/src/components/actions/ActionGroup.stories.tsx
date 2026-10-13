@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
-import { isPhoneViewport } from '@dotli/ui-core';
+import { isPhoneViewport } from '../../page/phone-viewport.js';
 import { ActionGroup, type ActionGroupMorph, type MoreIds } from './ActionGroup.js';
 import { ActionItem } from './ActionItem.js';
 import { ActionsContext, type ActionAlert, type ActionBar } from './actions-context.js';
