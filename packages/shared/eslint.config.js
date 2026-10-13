@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@config/eslint/vite';
+import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
@@ -15,4 +15,10 @@ export default defineConfig([
       },
     },
   },
+  ...importBans([
+    onlyAllowedScopes(
+      ['@config/eslint'],
+      'Shared is the bottom layer and imports no workspace package. A helper that needs one belongs to its owner.',
+    ),
+  ]),
 ]);

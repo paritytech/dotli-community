@@ -1,0 +1,24 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { Accessor } from 'solid-js';
+import type { AccountSession } from '@dotli/ui-entities';
+
+/** The signed-in account as the account views read it. */
+export interface Account {
+  /** True from `Connected` until `Disconnected`. */
+  loggedIn: Accessor<boolean>;
+  /**
+   * The last connected session, kept through the states in between.
+   * A login whose session the page never saw shows as a bare session with no names.
+   */
+  session: Accessor<AccountSession | undefined>;
+  /** True while the auth state is `Connected`. */
+  connected: Accessor<boolean>;
+  /** True until boot has read the saved session. */
+  restoring: Accessor<boolean>;
+  /** True while the saved session could not be read. */
+  unreachable: Accessor<boolean>;
+  /** True while the keys live in this browser, not in Polkadot App. */
+  local: Accessor<boolean>;
+}

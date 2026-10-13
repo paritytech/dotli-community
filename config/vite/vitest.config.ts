@@ -5,8 +5,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'node',
     globals: false,
+    projects: [
+      { extends: true, test: { name: 'config-vite:unit', include: ['src/**/*.spec.ts'], environment: 'node' } },
+    ],
   },
 });

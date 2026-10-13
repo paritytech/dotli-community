@@ -19,6 +19,7 @@
     "@config/typescript": "*"
   },
   "dependencies": {
+    "@dotli/chains": "*",
     "@dotli/config": "*",
     "@dotli/metrics": "*",
     "@dotli/resolver": "*",

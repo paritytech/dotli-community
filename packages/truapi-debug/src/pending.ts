@@ -10,7 +10,7 @@ import { firstNewIndex, type StoredEvent, type StoredTruapiEvent } from './event
 export const SLOW_AFTER_MS = 3000;
 
 /** `requestId` is minted per product, so two products in one tab can share it. */
-export function callKeyOf(ev: StoredTruapiEvent): string {
+function callKeyOf(ev: StoredTruapiEvent): string {
   return `${ev.productId ?? 'dotli'}::${ev.requestId}`;
 }
 

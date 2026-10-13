@@ -12,10 +12,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
 import astroSolid from '@config/astro-solid';
+import { astroPageCss } from '@config/vite/astro-page-css';
 import { astroPwa } from '@config/vite/astro-pwa';
 import { buildInfo, readReleaseVersion } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { cssModules } from '@config/vite/css-modules';
+import { inlineScript } from '@config/vite/inline-script';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
 import { spaFallback } from '@config/vite/spa-fallback';
@@ -131,14 +133,10 @@ function readPolkadotApiVersion(): string {
   return direct.find(p => p.name === 'polkadot-api')?.version ?? 'unknown';
 }
 
-/**
- * The modulepreloads Vite writes for an HTML entry and Astro does not, plus, on the shell's subdomain pages, the `resolve`
- * chunk a product load imports first.
- */
+/** The modulepreloads Vite writes for an HTML entry and Astro does not. */
 function pagePreloads(): AstroIntegration {
   let base = '/';
   const imports = new Map<string, readonly string[]>();
-  const byName = new Map<string, string>();
   const graph: Plugin = {
     name: 'page-preloads:graph',
     applyToEnvironment: environment => environment.name === 'client',
@@ -146,13 +144,12 @@ function pagePreloads(): AstroIntegration {
       for (const output of Object.values(bundle)) {
         if (output.type === 'chunk') {
           imports.set(output.fileName, output.imports);
-          byName.set(output.name, output.fileName);
         }
       }
     },
   };
 
-  async function addPreloads(page: string, shell: boolean): Promise<void> {
+  async function addPreloads(page: string): Promise<void> {
     let html = await readFile(page, 'utf8');
 
     const strip = (url: string): string => (url.startsWith(base) ? url.slice(base.length) : url);
@@ -173,20 +170,7 @@ function pagePreloads(): AstroIntegration {
       preload.delete(script);
     }
     const links = [...preload].map(file => `<link rel="modulepreload" crossorigin href="${base}${file}">`).join('');
-
-    const resolveChunk = byName.get('resolve');
-    const critical =
-      !shell || resolveChunk === undefined
-        ? ''
-        : `<script>${[
-            '(function(){',
-            'var h=location.hostname,l;',
-            'if(h==="dot.li"||h==="localhost")return;',
-            'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
-            `l=document.createElement("link");l.rel="modulepreload";l.href="${base}${resolveChunk}";document.head.appendChild(l);`,
-            '})()',
-          ].join('')}</script>`;
-    html = html.replace('</head>', `${links}${critical}</head>`);
+    html = html.replace('</head>', `${links}</head>`);
     await writeFile(page, html);
   }
 
@@ -201,7 +185,7 @@ function pagePreloads(): AstroIntegration {
       },
       'astro:build:done': async ({ dir }) => {
         for (const name of ['index.html', 'landing.html']) {
-          await addPreloads(join(fileURLToPath(dir), name), name === 'index.html');
+          await addPreloads(join(fileURLToPath(dir), name));
         }
       },
     },
@@ -254,6 +238,7 @@ export default defineConfig({
   build: { assets: 'assets', format: 'file' },
   integrations: [
     astroSolid(),
+    astroPageCss(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     // src/pwa.ts prompts for updates.
@@ -310,6 +295,7 @@ export default defineConfig({
     envPrefix: 'VITE_',
     plugins: [
       stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
+      inlineScript(),
       wasm(),
       // Serves /dotli-network.js under `astro dev`.
       runtimeNetworkConfigScript(),

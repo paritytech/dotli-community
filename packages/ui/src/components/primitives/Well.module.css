@@ -20,9 +20,6 @@
 .well[data-layout='controls'] {
   padding: 0 6px 0 var(--sp-3);
 }
-.well[data-layout='kv'] {
-  padding: var(--sp-1) var(--sp-3);
-}
 .well[data-layout='flush'] {
   overflow: hidden;
   padding: 0;
@@ -34,8 +31,7 @@
   min-height: 40px;
   font-size: var(--fs-body);
 }
-.row + .row,
-.kv:not([data-dense]) + .kv:not([data-dense]) {
+.row + .row {
   border-top: 1px solid var(--chrome-line);
 }
 .rowLabel {
@@ -44,84 +40,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-:where(.kv) {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 28px;
-  font-size: var(--fs-small);
-  cursor: default;
-}
-.kv[data-dense] {
-  min-height: 20px;
-}
-.key {
-  flex: none;
-  color: var(--chrome-text-muted);
-}
-/* Long package names outgrow the Settings column, so the name truncates before its version. */
-.kv[data-dense] .key {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kv[data-dense] .value {
-  flex: none;
-}
-.value {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--chrome-text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kv[data-copyable] {
-  position: relative;
-  cursor: pointer;
-}
-:where(.copy) {
-  all: unset;
-  /* Flex blockifies the code, so its ellipsis still applies. */
-  display: flex;
-  min-width: 0;
-  cursor: pointer;
-}
-/* The button's hit area is the whole row, so no interactive element nests. */
-.copy::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-}
-/* The global ring out-specifies the :where base's all: unset, so it is removed here. */
-.copy:focus-visible {
-  outline: none;
-}
-.copy:focus-visible::after {
-  outline: var(--chrome-focus-ring);
-  outline-offset: -2px;
-}
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.kv[data-copyable]:hover .value {
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 :where(.callout) {
   flex-direction: row;
@@ -152,19 +70,9 @@
   .well[data-layout='controls'] {
     padding: 0 var(--sp-2) 0 var(--sp-4);
   }
-  .well[data-layout='kv'] {
-    padding: var(--sp-1) var(--sp-4);
-  }
   :where(.row) {
     gap: var(--sp-3);
     min-height: var(--h-row);
-  }
-  :where(.kv) {
-    gap: var(--sp-3);
-    min-height: var(--h-row-sm);
-  }
-  .kv[data-dense] {
-    min-height: var(--h-row-xs);
   }
   :where(.callout) {
     gap: var(--sp-2);

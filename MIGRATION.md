@@ -12,12 +12,12 @@ dotli still has two protocol layers:
 2. dotli's internal host-smoldot protocol in `packages/protocol/`, which owns `.dot` resolution and is not replaced by
    TrUAPI.
 
-The active launch path is `packages/ui/src/bridge.ts`:
+The active launch path is `packages/host-runtime/src/bridge.ts`:
 
 - imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`;
 - starts a Web Worker that owns the `truapi-server` WASM core;
 - creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`;
-- supplies typed callbacks from `packages/ui/src/host-callbacks/handlers.ts`;
+- supplies typed callbacks from `packages/host-runtime/src/host-callbacks/handlers.ts`;
 - creates a product-scoped provider with `runtime.createProvider({ productId })`;
 - calls `createIframeHost(...)` with the product URL, sandbox policy, allowed origin, and the worker-backed provider.
 
@@ -28,30 +28,30 @@ restore, and logout are core-owned and do not cross the JS host callback boundar
 
 dotli still supplies platform primitives that are host policy or browser UI:
 
-| Area                      | Files                                                                                  |
-| ------------------------- | -------------------------------------------------------------------------------------- |
-| navigation                | `packages/ui/src/host-callbacks/OpenUrl.ts`                                            |
-| notifications             | `packages/ui/src/host-callbacks/PushNotification.ts`                                   |
-| device/remote permissions | `packages/ui/src/host-callbacks/PromptPermission.ts`, `packages/ui/src/permissions.ts` |
-| feature support           | `packages/ui/src/host-callbacks/FeatureSupported.ts`                                   |
-| product storage           | `packages/ui/src/host-callbacks/LocalStorage.ts`                                       |
-| session persistence       | `packages/ui/src/host-callbacks/SessionStore.ts`                                       |
-| pairing presentation      | `packages/ui/src/host-callbacks/AuthState.ts`                                          |
-| user confirmations        | `packages/ui/src/host-callbacks/UserConfirmation.ts`                                   |
-| preimage lookup UI        | `packages/ui/src/host-callbacks/Preimage.ts`                                           |
-| theme subscription        | `packages/ui/src/host-callbacks/Theme.ts`                                              |
-| chain backend connection  | `packages/ui/src/host-callbacks/Chain.ts`                                              |
+| Area                      | Files                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| navigation                | `packages/host-runtime/src/host-callbacks/OpenUrl.ts`                                                      |
+| notifications             | `packages/host-runtime/src/host-callbacks/PushNotification.ts`                                             |
+| device/remote permissions | `packages/host-runtime/src/host-callbacks/PromptPermission.ts`, `packages/host-runtime/src/permissions.ts` |
+| feature support           | `packages/host-runtime/src/host-callbacks/FeatureSupported.ts`                                             |
+| product storage           | `packages/host-runtime/src/host-callbacks/LocalStorage.ts`                                                 |
+| session persistence       | `packages/host-runtime/src/host-callbacks/core-storage.ts`, `session-state.ts`                             |
+| pairing presentation      | `packages/host-runtime/src/host-callbacks/AuthState.ts`                                                    |
+| user confirmations        | `packages/host-runtime/src/host-callbacks/UserConfirmation.ts`                                             |
+| preimage lookup UI        | `packages/host-runtime/src/host-callbacks/Preimage.ts`                                                     |
+| theme subscription        | `packages/host-runtime/src/host-callbacks/Theme.ts`                                                        |
+| chain backend connection  | `packages/host-runtime/src/host-callbacks/Chain.ts`                                                        |
 
 These callbacks must remain generic host primitives. They should not re-add Nova package imports, wallet-specific JS
 channels, or statement-store request routing that belongs inside the Rust core.
 
 ## Dependencies
 
-`packages/ui/package.json` depends on the published TrUAPI packages:
+`packages/host-runtime/package.json` depends on the published TrUAPI packages:
 
 ```jsonc
-"@parity/truapi": "0.5.0",
-"@parity/truapi-host": "0.2.0"
+"@parity/truapi": "0.24.0",
+"@parity/truapi-host": "0.24.0"
 ```
 
 Standalone dotli installs and CI exercise these npm artifacts. TrUAPI's development and E2E Make targets run
@@ -77,7 +77,7 @@ These areas remain dotli-owned and are intentionally outside the host-product re
 - `apps/sandbox/src/main.ts`: content renderer.
 - `packages/protocol/`: smoldot protocol client/broker/session plumbing.
 - `packages/resolver/`: `.dot` name resolution.
-- `packages/content/` and `packages/storage/`: archive fetch and cache.
+- `packages/bitswap/`, `packages/content/` and `packages/storage/`: block fetch and relay, archive fetch and cache.
 - `packages/config/`, `packages/metrics/`, and `packages/shared/`: support libraries.
 
 When auditing the migration, treat Nova runtime imports/dependencies as a regression, but do not confuse dotli's

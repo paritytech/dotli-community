@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
+import type { ChainKey, ChainPeer, ChainSyncKind, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
+import type { ResolvePhase } from '@dotli/resolver';
 // Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from '@dotli/config';
 
@@ -67,11 +68,12 @@ export function getRequestSyncTimeoutMs(request: ProtocolRequestEnvelope): numbe
   return Math.max(1, Math.floor(request.deadlineMs - Date.now() - TIMEOUTS.RESPONSE_DELIVERY_GRACE));
 }
 
+/** How far a name read has come, for the loading bar. */
 export interface ProtocolProgressEnvelope {
   namespace: 'dotli:protocol';
   kind: 'progress';
   id: string;
-  message: string;
+  phase: ResolvePhase;
 }
 
 export interface ProtocolResponseEnvelope {
@@ -119,14 +121,13 @@ export interface ProtocolListeningEnvelope {
   kind: 'listening';
 }
 
+export type { SmoldotDbChain, SmoldotDbOutcome };
+
 /**
  * Whether a chain started from existing smoldot state, sent once per chain. "hit" is a loaded database
  * or an already synced SharedWorker chain, "unavailable" a store that could not answer. The store lives
  * in the protocol origin's IndexedDB, so this is the host's only view of it.
  */
-export type SmoldotDbChain = 'relay' | 'hub' | 'bulletin';
-export type SmoldotDbOutcome = 'hit' | 'miss' | 'unavailable';
-
 export interface ProtocolSmoldotDbEnvelope {
   namespace: 'dotli:protocol';
   kind: 'smoldot-db';
@@ -244,7 +245,15 @@ export const ENVELOPE_SYNC_KINDS = Object.keys({
   warpSyncFinished: true,
 } satisfies Record<ChainSyncKind, true>) as ChainSyncKind[];
 
+const ENVELOPE_RESOLVE_PHASES = Object.keys({
+  'asset-hub-connecting': true,
+  'asset-hub-syncing': true,
+  'asset-hub-ready': true,
+  'resolving-content': true,
+} satisfies Record<ResolvePhase, true>) as ResolvePhase[];
+
 const CHAIN_KEY_VALUES = new Set<string>(ENVELOPE_CHAIN_KEYS);
+const RESOLVE_PHASE_VALUES = new Set<unknown>(ENVELOPE_RESOLVE_PHASES);
 
 // Wider than the union on purpose, since the sender's declared type is a claim and a narrowed check would compile away.
 const CACHE_RESULT_VALUES = new Set<string>(['hit', 'miss']);
@@ -267,6 +276,11 @@ export function isChainSyncPayloadValid(msg: ProtocolChainSyncEnvelope): boolean
     }
   }
   return true;
+}
+
+/** Whether a `progress` envelope names a phase the resolver reports, which is all the loading bar reads. */
+export function isProgressPayloadValid(msg: ProtocolProgressEnvelope): boolean {
+  return RESOLVE_PHASE_VALUES.has(msg.phase);
 }
 
 // Peer ids and roles land in telemetry attributes, so a spoofed frame could write unbounded junk into spans.

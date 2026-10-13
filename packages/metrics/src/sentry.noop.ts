@@ -13,14 +13,6 @@ export function installGlobalErrorHandlers(_source: SentrySource): void {
   /* no-op */
 }
 
-export function captureException(_err: unknown, _ctx: unknown): void {
-  /* no-op */
-}
-
-export function recordExpected(_err: unknown, _ctx: unknown): void {
-  /* no-op */
-}
-
 export function isSmoldotEvent(_event: unknown): boolean {
   return false;
 }

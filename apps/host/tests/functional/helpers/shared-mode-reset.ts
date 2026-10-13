@@ -29,11 +29,15 @@ async function disableTruapiDebugPanel(page: Page): Promise<void> {
 }
 
 /** Specs that seed `dotli:chain-backend` must import `test` from here. */
-export const test = base.extend<{ _resetSharedMode: undefined }>({
+export const test = base.extend<{ keepDebugChoice: boolean; _resetSharedMode: undefined }>({
+  /** Leaves the debug panel to the page, for a test of how the page turns it on and off. */
+  keepDebugChoice: [false, { option: true }],
   _resetSharedMode: [
-    async ({ request, page }, use) => {
+    async ({ request, page, keepDebugChoice }, use) => {
       await resetSharedMode(request);
-      await disableTruapiDebugPanel(page);
+      if (!keepDebugChoice) {
+        await disableTruapiDebugPanel(page);
+      }
       await use(undefined);
     },
     { auto: true },

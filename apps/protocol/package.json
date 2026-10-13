@@ -17,10 +17,10 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "fake-indexeddb": "^6.2.5",
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
+    "@dotli/chains": "*",
     "@dotli/config": "*",
     "@dotli/metrics": "*",
     "@dotli/protocol": "*",

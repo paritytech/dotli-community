@@ -5,7 +5,7 @@
 export type ResolverErrorName =
   'PartialStorageReadError' | 'UnsupportedContenthashCodecError' | 'ContenthashDecodeError' | 'NetworkSyncTimeoutError';
 
-export abstract class ResolverError extends Error {
+abstract class ResolverError extends Error {
   abstract override readonly name: ResolverErrorName;
 }
 

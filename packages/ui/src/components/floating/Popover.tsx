@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, createEffect, lazy, useContext, type Accessor } from 'solid-js';
+import { createContext, createEffect, lazy, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
   createAnchored,
@@ -13,28 +13,36 @@ import {
 } from './anchored.js';
 import type { CloseReason } from './close-reason.js';
 import type { Placement } from './FloatingLayer.js';
+import type * as PopoverSurfaceModule from './PopoverSurface.js';
 
-/** Off the first visit's path. */
-const Surface = lazy(() => import('./PopoverSurface.js'), { export: 'PopoverSurface' });
-
-let surfaceLoaded = false;
-
-/**
- * Loads the surface ahead of the idle preload. A More row's popover must render synchronously in the sheet
- * hand-off, and tests read a surface in the tick that opens it.
- */
-export function preloadPopoverSurface(): Promise<unknown> {
-  const loading = Surface.preload();
-  loading.then(
-    () => {
-      surfaceLoaded = true;
-    },
-    () => undefined,
-  );
-  return loading;
+/** The lazy surface a Popover renders, with the chunk state its openings and idle preload share. */
+export interface PopoverSurfaceLoader {
+  Surface: typeof PopoverSurfaceModule.PopoverSurface;
+  chunk: SurfaceChunk;
 }
 
-const chunk: SurfaceChunk = { load: preloadPopoverSurface, loaded: () => surfaceLoaded };
+/** A surface fetched by `load` on first need. A failed fetch is tried again at the next opening. */
+export function createPopoverSurface(load: () => Promise<typeof PopoverSurfaceModule>): PopoverSurfaceLoader {
+  const Surface = lazy(load, { export: 'PopoverSurface' });
+  let loaded = false;
+  const preload = (): Promise<unknown> => {
+    const loading = Surface.preload();
+    loading.then(
+      () => {
+        loaded = true;
+      },
+      () => undefined,
+    );
+    return loading;
+  };
+  return { Surface, chunk: { load: preload, loaded: () => loaded } };
+}
+
+/** Off the first visit's path. */
+const pageSurface = createPopoverSurface(() => import('./PopoverSurface.js'));
+
+/** The surface chunk the popovers below it load, and More preloads for their hand-off. The page's by default. */
+export const PopoverSurfaceContext = createContext<PopoverSurfaceLoader>(pageSurface);
 
 export interface PopoverApi {
   id: string;
@@ -71,6 +79,8 @@ export interface PopoverProps {
   placement?: Placement | undefined;
   /** The content's chunk, loaded when the browser is idle. */
   preload?: (() => Promise<unknown>) | undefined;
+  /** Read once. Without one, the surface chunk of the context, the page's by default. */
+  surface?: PopoverSurfaceLoader | undefined;
   testId?: string | undefined;
   children: JSX.Element;
 }
@@ -81,6 +91,7 @@ export interface PopoverProps {
  * it pressed. An opening before the lazy surface loads is open at once and the surface shows when it arrives.
  */
 export function Popover(props: PopoverProps): JSX.Element {
+  const { Surface, chunk } = untrack(() => props.surface) ?? useContext(PopoverSurfaceContext);
   const anchored = createAnchored(props, RETURN_FOCUS_ON);
   const state: PopoverState & { setTrigger: (el: HTMLElement | undefined) => void } = Object.assign(anchored, {
     close: () => {

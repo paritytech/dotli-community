@@ -3,7 +3,8 @@
 
 import { flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { CloseIcon, IconButton } from '../primitives/IconButton.js';
+import { CloseIcon } from '../icons/CloseIcon.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { InSheet } from './in-sheet.js';
 import { dragSheet } from './sheet-drag.js';
 import s from './SheetFrame.module.css';

@@ -1,15 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Must not import `@dotli/ui` or `solid-js`, whose truapi-debug components consume it.
+// Must not import `@dotli/truapi-debug-ui` or `solid-js`, whose components consume it.
+
+import type { PanelStorage } from './section-storage.js';
 
 export type DockPosition = 'bottom' | 'right';
 
-export const DOCK_STORAGE_KEY = 'truapi-debug:dock';
+const DOCK_STORAGE_KEY = 'truapi-debug:dock';
 
-export function readStoredDock(): DockPosition {
+/** The stored dock, or bottom. `storage` is a thunk because reading `localStorage` itself may throw. */
+export function readStoredDock(storage: () => PanelStorage = () => localStorage): DockPosition {
   try {
-    const raw = localStorage.getItem(DOCK_STORAGE_KEY);
+    const raw = storage().getItem(DOCK_STORAGE_KEY);
     if (raw === 'right') {
       return 'right';
     }
@@ -20,9 +23,9 @@ export function readStoredDock(): DockPosition {
   return 'bottom';
 }
 
-export function writeStoredDock(dock: DockPosition): void {
+export function writeStoredDock(dock: DockPosition, storage: () => PanelStorage = () => localStorage): void {
   try {
-    localStorage.setItem(DOCK_STORAGE_KEY, dock);
+    storage().setItem(DOCK_STORAGE_KEY, dock);
     // eslint-disable-next-line no-restricted-syntax -- localStorage may throw on quota/private mode; persistence is best-effort.
   } catch {
     /* swallow */

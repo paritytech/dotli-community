@@ -1,0 +1,59 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { merge } from 'solid-js';
+import { createJSXDecorator, type Preview } from 'storybook-solidjs-vite';
+import { themes } from 'storybook/theming';
+import '@dotli/ui/styles.css';
+import { ReporterContext } from '@dotli/ui';
+import { createRecordingReporter } from '@dotli/ui-core/testing';
+import s from './preview.module.css';
+
+const preview: Preview = {
+  tags: ['autodocs'],
+  parameters: {
+    // The decorator's wrapper pads every story, so docs blocks get the page too.
+    layout: 'fullscreen',
+    docs: { theme: themes.dark },
+    // The addon's default, 'todo', only warns, so a violation would pass CI.
+    a11y: { test: 'error' },
+    viewport: {
+      options: {
+        // Phone sits below the 560 px PHONE_QUERY breakpoint, so the phone layouts apply.
+        phone: { name: 'Phone', styles: { width: '390px', height: '844px' }, type: 'mobile' },
+        desktop: { name: 'Desktop', styles: { width: '1280px', height: '800px' }, type: 'desktop' },
+      },
+    },
+  },
+  // The default render passes the args store itself as props, so a prop read once in the body
+  // is an untracked store read and trips STRICT_READ_UNTRACKED. A merge view checks `in` first.
+  render: (args, context) => {
+    const Component = context.component;
+    if (Component === undefined) {
+      throw new Error(`Story ${context.id} has no component and no render`);
+    }
+    const props = merge(args, {});
+    return <Component {...props} />;
+  },
+  decorators: [
+    // Once per mount, since the story memo will not render twice and a re-run on a globals change
+    // empties the canvas. `parameters.chrome` marks stories the app renders under data-chrome.
+    createJSXDecorator((Story, context) => {
+      document.body.style.background = 'var(--bg-page)';
+      return (
+        <div
+          class={s['root']}
+          data-chrome={context.parameters['chrome'] === true ? '' : undefined}
+          data-testid="story-root"
+        >
+          {/* As a mount or an island gives its surfaces one. A story that asserts reports provides its own inside. */}
+          <ReporterContext value={createRecordingReporter()}>
+            <Story />
+          </ReporterContext>
+        </div>
+      );
+    }),
+  ],
+};
+
+export default preview;

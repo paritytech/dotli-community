@@ -25,8 +25,9 @@ export interface CacheSettings {
 export const BACKEND_KEY = 'dotli:chain-backend';
 export const CACHE_KEY = 'dotli:cache-settings';
 
-export function isSharedWorkerAvailable(): boolean {
-  return typeof SharedWorker !== 'undefined';
+/** Whether `scope` (the page's global by default) can start a SharedWorker. */
+export function isSharedWorkerAvailable(scope: { SharedWorker?: unknown } = globalThis): boolean {
+  return typeof scope.SharedWorker !== 'undefined';
 }
 
 // Read once, migrated and deleted.
@@ -74,43 +75,45 @@ export const localStorageAdapter: ModeStorage = {
 
 let storage: ModeStorage = localStorageAdapter;
 
-/** Call once at host boot, before any reader. A later swap does not invalidate values already returned. */
-export function configureModeStorage(adapter: ModeStorage): void {
+/**
+ * Call once at host boot, before any reader. A later swap does not invalidate values already returned. Returns a
+ * function that puts the previous store back.
+ */
+export function configureModeStorage(adapter: ModeStorage): () => void {
+  const previous = storage;
   storage = adapter;
+  return () => {
+    storage = previous;
+  };
 }
 
-/**
- * Migrates legacy keys into `BACKEND_KEY` on `target`. The shared-mode bootstrap runs it on per-origin localStorage
- * before swapping to the cache-only adapter, which cannot see legacy keys.
- */
-export function migrateLegacyOn(target: ModeStorage): Backend | null {
+/** The store every setting of this package is read from and written to. */
+export function modeStorage(): ModeStorage {
+  return storage;
+}
+
+/** Moves an old build's keys into `BACKEND_KEY` on `target`. */
+export function migrateLegacyOn(target: ModeStorage): void {
   const migrated = readAndClearLegacy(target);
   if (migrated !== null) {
     target.setItem(BACKEND_KEY, migrated);
   }
-  return migrated;
 }
 
+/** From the stored choice, an old build's keys or the default. Writes nothing, `persistDefaults` stores it. */
 export function getBackend(): Backend {
-  const stored = storage.getItem(BACKEND_KEY);
-  if (stored !== null && VALID_BACKENDS.has(stored)) {
-    if (stored === 'smoldot-shared-worker' && !isSharedWorkerAvailable()) {
-      storage.removeItem(BACKEND_KEY);
-      return 'smoldot-direct';
-    }
-    return stored as Backend;
-  }
-  const migrated = migrateLegacyOn(storage);
-  if (migrated !== null) {
-    if (migrated === 'smoldot-shared-worker' && !isSharedWorkerAvailable()) {
-      storage.removeItem(BACKEND_KEY);
-      return 'smoldot-direct';
-    }
-    return migrated;
-  }
-  const computed = defaultBackend();
-  storage.setItem(BACKEND_KEY, computed);
-  return computed;
+  return backendRunnable(isSharedWorkerAvailable());
+}
+
+/** `getBackend` for a browser that has SharedWorker or not. */
+export function backendRunnable(sharedWorkerAvailable: boolean): Backend {
+  const chosen = storedBackend(storage) ?? readLegacy(storage) ?? defaultBackend();
+  return chosen === 'smoldot-shared-worker' && !sharedWorkerAvailable ? 'smoldot-direct' : chosen;
+}
+
+function storedBackend(target: ModeStorage): Backend | null {
+  const stored = target.getItem(BACKEND_KEY);
+  return stored !== null && VALID_BACKENDS.has(stored) ? (stored as Backend) : null;
 }
 
 export function setBackend(chainBackend: Backend): void {
@@ -123,24 +126,31 @@ export function defaultBackend(): Backend {
 
 /** Clears the legacy keys on success. The caller decides whether to write the result back. */
 function readAndClearLegacy(target: ModeStorage): Backend | null {
-  const chain = target.getItem(BACKEND_KEY);
-  const content = target.getItem(LEGACY_CONTENT_BACKEND_KEY);
-  const legacyMode = target.getItem(LEGACY_MODE_KEY);
-  let chosen: Backend | null = null;
-  if (chain === 'rpc' || content === 'ipfs-gateway') {
-    chosen = 'rpc-gateway';
-  } else if (legacyMode === 'p2p-shared-worker' || legacyMode === 'p2p') {
-    chosen = 'smoldot-shared-worker';
-  } else if (legacyMode === 'p2p-direct') {
-    chosen = 'smoldot-direct';
-  } else if (legacyMode === 'gateway' || legacyMode === 'centralized') {
-    chosen = 'rpc-gateway';
-  }
+  const chosen = readLegacy(target);
   if (chosen !== null) {
     target.removeItem(LEGACY_MODE_KEY);
     target.removeItem(LEGACY_CONTENT_BACKEND_KEY);
   }
   return chosen;
+}
+
+function readLegacy(target: ModeStorage): Backend | null {
+  const chain = target.getItem(BACKEND_KEY);
+  const content = target.getItem(LEGACY_CONTENT_BACKEND_KEY);
+  const legacyMode = target.getItem(LEGACY_MODE_KEY);
+  if (chain === 'rpc' || content === 'ipfs-gateway') {
+    return 'rpc-gateway';
+  }
+  if (legacyMode === 'p2p-shared-worker' || legacyMode === 'p2p') {
+    return 'smoldot-shared-worker';
+  }
+  if (legacyMode === 'p2p-direct') {
+    return 'smoldot-direct';
+  }
+  if (legacyMode === 'gateway' || legacyMode === 'centralized') {
+    return 'rpc-gateway';
+  }
+  return null;
 }
 
 /** Verified means smoldot end to end. rpc-gateway trusts operators for chain access and content. */

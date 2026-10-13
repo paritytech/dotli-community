@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@config/eslint/vite';
+import { config, fixedServicesConfigOnly } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
@@ -15,4 +15,5 @@ export default defineConfig([
       },
     },
   },
+  ...fixedServicesConfigOnly(['src/protocol-worker.ts']),
 ]);

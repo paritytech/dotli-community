@@ -87,7 +87,7 @@ docs/superpowers/
 
 # Storybook
 storybook-static
-packages/ui/.vrt/
+.vrt/
 
 # test:vrt screenshot attachments
-packages/ui/.vitest/
+.vitest/

@@ -6,9 +6,9 @@ import s from './Well.module.css';
 
 /**
  * `plain` padded content, `list` text rows, `controls` rows ending in a control (right inset matches
- * its vertical inset), `kv` key-value rows, `flush` full-bleed menu rows.
+ * its vertical inset), `flush` full-bleed menu rows.
  */
-export type WellLayout = 'plain' | 'list' | 'controls' | 'kv' | 'flush';
+export type WellLayout = 'plain' | 'list' | 'controls' | 'flush';
 
 /** A sunken panel inside the glass. */
 export function Well(props: {
@@ -36,73 +36,6 @@ export function Row(props: {
       <span class={s['rowLabel']}>{props.label}</span>
       {props.children}
     </div>
-  );
-}
-
-/**
- * A key and its mono value. A `copyable` row is the click target, its value a button stretched over
- * the row so the keyboard reaches it while the click handler stays on the row.
- */
-export function KeyValue(props: {
-  k: string;
-  v: JSX.Element;
-  /** Compact rows keyed by code, for long lists such as packages. */
-  dense?: boolean;
-  copyable?: boolean;
-  title?: string | undefined;
-  /** Announced politely after a click, such as "Copied". Empty reads nothing. */
-  status?: string | undefined;
-  onClick?: (() => void) | undefined;
-  class?: string | undefined;
-  testId?: string;
-}): JSX.Element {
-  return (
-    <div
-      onClick={() => {
-        props.onClick?.();
-      }}
-      title={props.title}
-      class={[s['kv'], props.class]}
-      data-copyable={props.copyable === true ? '' : undefined}
-      data-dense={props.dense === true ? '' : undefined}
-      data-testid={props.testId}
-    >
-      <span class={s['key']}>{props.k}</span>
-      {props.copyable === true ? (
-        // The value stays in the accessible name so speech input can say what it sees.
-        <button type="button" class={s['copy']}>
-          <span class={s['srOnly']}>Copy {props.k} </span>
-          <code class={s['value']}>{props.v}</code>
-        </button>
-      ) : (
-        <code class={s['value']}>{props.v}</code>
-      )}
-      {props.copyable === true ? (
-        <span role="status" class={s['srOnly']}>
-          {props.status}
-        </span>
-      ) : undefined}
-    </div>
-  );
-}
-
-/** The info glyph that leads a Callout. */
-export function InfoIcon(): JSX.Element {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4m0-4h.01" />
-    </svg>
   );
 }
 

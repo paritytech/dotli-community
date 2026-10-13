@@ -44,13 +44,13 @@ the app pages (`index.html`) on each app's subdomain.
 dotli uses a **two-build, per-product subdomain architecture** that separates concerns between the host shell and the
 app content layer:
 
-```
-name.paseo.li            Host build (topbar, dotns resolution, smoldot, bridge)
-                          Resolves name -> CID, iframes name.app.paseo.li with the CID
-                          threaded through the URL contract
-
-name.app.paseo.li        App build (CID from URL contract, content fetch, render)
-                          Reads CID from URL, fetches via bitswap/gateway, renders
+```mermaid
+flowchart LR
+  host["name.paseo.li: host build<br/>topbar, dotNS resolution, smoldot, bridge"]
+  app["name.app.paseo.li: app build<br/>content fetch, render"]
+  content["bitswap or IPFS gateway"]
+  host -- "resolves the name to a CID, iframes the app with the CID in the URL contract" --> app
+  app -- fetches --> content
 ```
 
 | URL                            | Role         | What happens                                                                            |
@@ -71,12 +71,14 @@ products stay isolated for SW/storage/security purposes.
 3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request
    accounts, sign transactions, connect to chains, and use scoped storage.
 
-```
-host-playground.paseo.li
-    -> Host: smoldot resolves dotNS -> IPFS CID
-    -> Host: iframes <label>.app.paseo.li with cid in URL contract
-    -> App:  fetches content via smoldot bitswap_v1_get or IPFS gateway
-    -> App:  renders dApp in sandboxed iframe with container bridge
+```mermaid
+sequenceDiagram
+  participant Host as host-playground.paseo.li
+  participant App as host-playground.app.paseo.li
+  Host->>Host: smoldot resolves dotNS to an IPFS CID
+  Host->>App: iframes the app origin with the CID in the URL contract
+  App->>App: fetches content via smoldot bitswap_v1_get or an IPFS gateway
+  App->>App: renders the dApp in a sandboxed iframe with the container bridge
 ```
 
 Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetched as CAR archives, parsed, and served

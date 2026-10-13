@@ -5,9 +5,10 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'happy-dom',
     globals: false,
+    projects: [
+      { extends: true, test: { name: 'protocol-app:unit', include: ['src/**/*.spec.ts'], environment: 'node' } },
+    ],
   },
   define: {
     'import.meta.env.DEV': 'false',

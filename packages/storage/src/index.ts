@@ -15,6 +15,7 @@ export {
   type ChatRoomRecord,
 } from './chat.js';
 export { isExpectedDbError } from './db.js';
+export { DB_NAME, DB_VERSION, preOpenDotliDb, upgradeDotliDb } from './schema.js';
 export {
   RECENT_KEY,
   clearCidCache,
@@ -29,6 +30,7 @@ export {
   type CachedManifests,
 } from './cid-cache.js';
 export {
+  createLocalWalletStore,
   forgetLocalWallet,
   loadLocalWallet,
   LocalWalletUnreadableError,
@@ -36,6 +38,7 @@ export {
   updateLocalWalletIdentity,
   type LocalWallet,
   type LocalWalletIdentity,
+  type LocalWalletStore,
 } from './local-wallet.js';
 export {
   allocateId,

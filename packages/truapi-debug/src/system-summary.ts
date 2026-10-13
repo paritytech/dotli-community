@@ -40,7 +40,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'resolve:started':
       return `Resolving ${withActiveTld(str(p['label']))} via ${str(p['source'])}.`;
     case 'resolve:phase':
-      return `Phase ${str(p['phase'])}: ${str(p['message'])}`;
+      return `Phase ${str(p['phase'])}.`;
     case 'resolve:storage_read':
       return `Read dotns contenthash slot (${str(p['bytes'])} bytes in ${numMs(p['durationMs'])}).`;
     case 'resolve:completed':

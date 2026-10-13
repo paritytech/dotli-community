@@ -21,7 +21,7 @@ export function isUint8ArrayLike(v: unknown): v is Uint8Array {
   return (v as { constructor?: { name?: string } }).constructor?.name === 'Uint8Array';
 }
 
-export function makeReplacer(): (this: unknown, k: string, v: unknown) => unknown {
+function makeReplacer(): (this: unknown, k: string, v: unknown) => unknown {
   const seen = new WeakSet();
   return function replacer(_k, v) {
     if (typeof v === 'bigint') {

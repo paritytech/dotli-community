@@ -526,7 +526,7 @@ const SYSTEM_TERMINATOR_SUFFIXES: readonly string[] = [
   'resolve_failed',
 ];
 
-export function isSystemFlowTerminator(ev: StoredSystemEvent): boolean {
+function isSystemFlowTerminator(ev: StoredSystemEvent): boolean {
   const event = ev.event;
   if (SYSTEM_TERMINATOR_EVENTS.has(`${ev.layer}:${event}`)) {
     return true;

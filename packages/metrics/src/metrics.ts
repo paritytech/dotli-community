@@ -101,18 +101,25 @@ function warnUnboundOnce(): void {
     return;
   }
   _unboundWarned = true;
+  // eslint-disable-next-line no-console -- an unbound pipeline cannot report that it is unbound
   console.warn(
     '[dot.li metrics] VITE_METRICS=true but Sentry is not bound — every metric will silently no-op until `initSentry()` / `m.bind()` runs. Check your app entry point.',
   );
 }
 
 /**
- * Bind a live Sentry after `Sentry.init()`.
+ * Bind a live Sentry after `Sentry.init()`. Returns a function that restores the binding before, so unbind in reverse order.
  * Pass the functions, not the namespace: a namespace value keeps every SDK export in the bundle.
  */
-function bind(s: SentryLike): void {
+function bind(s: SentryLike): () => void {
+  const previous = _sentry;
+  const previousWarned = _unboundWarned;
   _sentry = s;
   _unboundWarned = false;
+  return () => {
+    _sentry = previous;
+    _unboundWarned = previousWarned;
+  };
 }
 
 const ENABLED = import.meta.env.VITE_METRICS === 'true';

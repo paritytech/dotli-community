@@ -15,6 +15,7 @@ export function defaultGateway(): string {
 export async function fetchFromIpfs(
   cid: string,
   gateway: string = defaultGateway(),
+  fetchImpl: typeof fetch = fetch,
 ): Promise<{
   data: Uint8Array;
   contentType?: string;
@@ -22,7 +23,7 @@ export async function fetchFromIpfs(
   // A bare GET lets the gateway content-negotiate and mutate the body, which breaks CID verification.
   const url = `${gateway}/ipfs/${cid}?format=raw`;
 
-  const response = await fetch(url, {
+  const response = await fetchImpl(url, {
     headers: { Accept: 'application/vnd.ipld.raw' },
   });
 
@@ -39,10 +40,14 @@ export async function fetchFromIpfs(
   };
 }
 
-export async function fetchCarFromIpfs(cid: string, gateway: string = defaultGateway()): Promise<Uint8Array> {
+export async function fetchCarFromIpfs(
+  cid: string,
+  gateway: string = defaultGateway(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<Uint8Array> {
   const url = `${gateway}/ipfs/${cid}?format=car`;
 
-  const response = await fetch(url, {
+  const response = await fetchImpl(url, {
     headers: { Accept: 'application/vnd.ipld.car' },
   });
 

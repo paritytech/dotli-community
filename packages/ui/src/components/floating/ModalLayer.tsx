@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, onCleanup, untrack } from 'solid-js';
+import { createEffect, onCleanup, untrack, useContext } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
-import { currentProductFrame } from '../../product-frame-layout.js';
 import { containTab, focusLostOrInside, lockScroll } from '../focus.js';
+import { ModalFocusFallback } from './layer-context.js';
 import { hideLayer, showLayer, topLayer } from './modal-stack.js';
 import { handOffSheetOnPress } from './SheetFrame.js';
 import s from './ModalLayer.module.css';
@@ -50,8 +50,8 @@ function restoreTargetNow(): HTMLElement | null {
   return active instanceof HTMLElement ? active : null;
 }
 
-/** Falls back to the product frame the layer was most likely raised from when `target` left the page. */
-function restoreFocus(target: HTMLElement | null): void {
+/** A `target` that left the page hands focus to `fallback`, so it does not drop to the body. */
+function restoreFocus(target: HTMLElement | null, fallback: () => HTMLElement | undefined): void {
   if (target === null) {
     return;
   }
@@ -59,7 +59,7 @@ function restoreFocus(target: HTMLElement | null): void {
     target.focus();
     return;
   }
-  currentProductFrame()?.focus();
+  fallback()?.focus();
 }
 
 /**
@@ -67,6 +67,7 @@ function restoreFocus(target: HTMLElement | null): void {
  * takes one out of the top layer at once on close() and draws a closing sheet over the phone bar.
  */
 export function ModalLayer(props: ModalLayerProps): JSX.Element {
+  const focusFallback = useContext(ModalFocusFallback);
   let frame: HTMLDivElement | undefined;
   let unlockScroll: (() => void) | undefined;
   let restoreTo: HTMLElement | null = null;
@@ -111,7 +112,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
       return;
     }
     const trigger = untrack(() => props.restoreFocus?.());
-    restoreFocus(trigger?.isConnected === true ? trigger : restoreTo);
+    restoreFocus(trigger?.isConnected === true ? trigger : restoreTo, focusFallback);
   };
 
   const opening = (): { follows: boolean; restoreTo: HTMLElement | null } => ({

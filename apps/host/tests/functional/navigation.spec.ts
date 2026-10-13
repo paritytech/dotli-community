@@ -27,7 +27,9 @@ const GATEWAY_FLAKY = 'flaky on CI: the product loads from the uncached IPFS gat
 test.describe('URL parameters are forwarded into the product', () => {
   test.skip(true, GATEWAY_FLAKY);
 
-  test('when I open http://<label>.dot.li/foo?a=b#h, I land on /foo?a=b#h inside the product', async ({ page }) => {
+  test('As a visitor, I open http://<label>.dot.li/foo?a=b#h and land on /foo?a=b#h inside the product', async ({
+    page,
+  }) => {
     // Given
     await seedBackend(page);
 
@@ -42,7 +44,7 @@ test.describe('URL parameters are forwarded into the product', () => {
     expect(loc.hash).toBe('#h');
   });
 
-  test('when I open http://<label>.dot.li/foo%20bar, the percent-encoding survives into the product pathname', async ({
+  test('As a visitor, I open http://<label>.dot.li/foo%20bar and the percent-encoding survives into the product pathname', async ({
     page,
   }) => {
     // Given
@@ -57,7 +59,7 @@ test.describe('URL parameters are forwarded into the product', () => {
     expect(loc.pathname).toBe('/foo%20bar');
   });
 
-  test('when I open http://<label>.dot.li/?a=1&a=2, both values reach the product', async ({ page }) => {
+  test('As a visitor, I open http://<label>.dot.li/?a=1&a=2 and both values reach the product', async ({ page }) => {
     // Given
     await seedBackend(page);
 
@@ -70,7 +72,9 @@ test.describe('URL parameters are forwarded into the product', () => {
     expect(new URLSearchParams(loc.search).getAll('a')).toEqual(['1', '2']);
   });
 
-  test('when I open http://<label>.dot.li/?a=, the empty query value reaches the product', async ({ page }) => {
+  test('As a visitor, I open http://<label>.dot.li/?a= and the empty query value reaches the product', async ({
+    page,
+  }) => {
     // Given
     await seedBackend(page);
 
@@ -88,7 +92,7 @@ test.describe('Host URL bar preserves the entered URL after render', () => {
   test.skip(true, GATEWAY_FLAKY);
 
   // Canonicalisation re-inserts non-default settings on every load, so only the user's own params are asserted.
-  test('after the product renders from http://<label>.dot.li/foo?a=b#h, the URL bar still shows /foo?a=b#h', async ({
+  test('As a visitor, I open http://<label>.dot.li/foo?a=b#h and the URL bar still shows /foo?a=b#h after the product renders', async ({
     page,
   }) => {
     // Given
@@ -109,7 +113,9 @@ test.describe('Host URL bar preserves the entered URL after render', () => {
 test.describe('Reloading the page preserves the URL', () => {
   test.skip(true, GATEWAY_FLAKY);
 
-  test('when I reload http://<label>.dot.li/foo?a=b, the path and query survive the reload', async ({ page }) => {
+  test('As a visitor, I reload http://<label>.dot.li/foo?a=b and the path and query survive the reload', async ({
+    page,
+  }) => {
     // Given
     await seedBackend(page);
     await page.goto(`${HOST_BY_LABEL}/foo?a=b`);
@@ -130,7 +136,7 @@ test.describe('Reloading the page preserves the URL', () => {
 test.describe('Sandbox URL hygiene: host contract keys never reach the product', () => {
   test.skip(true, GATEWAY_FLAKY);
 
-  test("with a cold cache, when the product loads, the host contract keys are not visible in the product's URL", async ({
+  test("As a visitor, I load a product with a cold cache and the host contract keys are not visible in the product's URL", async ({
     page,
   }) => {
     // Given
@@ -146,7 +152,7 @@ test.describe('Sandbox URL hygiene: host contract keys never reach the product',
     assertNoContractKeys(loc.search);
   });
 
-  test("with a warm cache, when the product loads, the host contract keys are still not visible in the product's URL", async ({
+  test("As a visitor, I load a product with a warm cache and the host contract keys are still not visible in the product's URL", async ({
     page,
   }) => {
     // Given
@@ -168,7 +174,7 @@ test.describe('Sandbox URL hygiene: host contract keys never reach the product',
 });
 
 test.describe('Validator regression guards', () => {
-  test('when the sandbox receives an unknown chainBackend value, the sandbox renders an error page instead of guessing a default', async ({
+  test('As a visitor, I reach a sandbox given an unknown chainBackend value and it renders an error page instead of guessing a default', async ({
     browser,
   }) => {
     // Given
@@ -203,7 +209,7 @@ test.describe('Validator regression guards', () => {
     }
   });
 
-  test('when I open http://<label>.dot.li/?ref=42, the unknown key reaches the product and does not trigger the validator', async ({
+  test('As a visitor, I open http://<label>.dot.li/?ref=42 and the unknown key reaches the product without tripping the validator', async ({
     page,
   }) => {
     test.skip(true, GATEWAY_FLAKY);
@@ -226,7 +232,7 @@ test.describe('Validator regression guards', () => {
     assertNoContractKeys(loc.search);
   });
 
-  test("when I open http://<label>.dot.li/?chainBackend=foo, the host's valid value wins and my value is dropped from the product's URL", async ({
+  test("As a visitor, I open http://<label>.dot.li/?chainBackend=foo and the host's valid value wins while mine is dropped from the product's URL", async ({
     page,
   }) => {
     test.skip(true, GATEWAY_FLAKY);
@@ -249,7 +255,7 @@ test.describe('Validator regression guards', () => {
 test.describe('Sandbox side-effects from URL contract keys', () => {
   test.skip(true, GATEWAY_FLAKY);
 
-  test('when I open http://<label>.dot.li/?fullReset=1, sandbox-origin IndexedDB is purged before the product loads', async ({
+  test('As a visitor, I open http://<label>.dot.li/?fullReset=1 and the sandbox origin IndexedDB is purged before the product loads', async ({
     browser,
   }) => {
     // Given

@@ -1,0 +1,126 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.panel {
+  composes: palette from './palette.module.css';
+
+  position: fixed;
+  bottom: var(--td-content-bottom);
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  background: var(--td-bg);
+  color: var(--td-fg);
+  color-scheme: dark;
+  border-top: 1px solid var(--td-line);
+  z-index: 950;
+  font-family: var(--td-font);
+  font-size: 12px;
+  display: grid;
+  /* An `auto` column would grow to the header's min-content and widen the panel past the viewport. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 5px 32px auto 1fr;
+  /* Named, so a hidden filter row leaves the body in its own row. */
+  grid-template-areas:
+    'handle'
+    'header'
+    'filters'
+    'body';
+  height: 360px;
+  max-height: 80dvh;
+  box-shadow: 0 -4px 12px var(--td-shadow);
+}
+.panel[data-collapsed] {
+  grid-template-rows: 0 32px 0 0;
+  height: 32px;
+}
+
+.panel[data-dock='right'] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: 480px;
+  height: auto;
+  max-height: none;
+  max-width: 80vw;
+  border-top: none;
+  border-left: 1px solid var(--td-line);
+  grid-template-columns: 5px minmax(0, 1fr);
+  /* The header takes two lines here, its controls above the tabs. */
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    'handle header'
+    'handle filters'
+    'handle body';
+  box-shadow: -4px 0 12px var(--td-shadow);
+}
+.panel[data-dock='right'][data-collapsed] {
+  bottom: auto;
+  height: auto;
+  grid-template-rows: auto 0 0;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: var(--td-left-width, 33%) 6px 1fr;
+  overflow: hidden;
+  min-height: 0;
+  grid-area: body;
+}
+.panel[data-layout='stacked'] .body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--td-top-height, 50%) 6px 1fr;
+}
+.panel[data-collapsed] .body {
+  display: none;
+}
+/* Tabs other than TrUAPI have nothing to select for the detail pane, so they take the whole body. */
+.panel[data-section='resolution'] .body,
+.panel[data-section='archive'] .body,
+.panel[data-section='diagnostics'] .body,
+.panel[data-section='wallet'] .body,
+.panel[data-section='resolution'] .views,
+.panel[data-section='archive'] .views,
+.panel[data-section='diagnostics'] .views,
+.panel[data-section='wallet'] .views {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.views {
+  display: grid;
+  grid-template-rows: 26px 1fr;
+  overflow: hidden;
+  min-height: 0;
+  border-right: 1px solid var(--td-line);
+}
+.panel[data-layout='stacked'] .views {
+  border-right: none;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 1000;
+  pointer-events: none;
+  box-sizing: border-box;
+  background: var(--td-line);
+  color: var(--td-fg-strong);
+  border: 1px solid var(--td-line-hover);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.05s;
+  box-shadow: 0 4px 10px var(--td-shadow);
+}
+.tooltip[data-visible] {
+  opacity: 1;
+}
+.tooltip[data-prose] {
+  white-space: normal;
+  max-width: 46ch;
+  line-height: 1.45;
+}

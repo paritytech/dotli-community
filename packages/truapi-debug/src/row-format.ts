@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Must not import `@dotli/ui` or `solid-js`. Returns plain data that callers render as JSX text, which escapes it.
+// Must not import `@dotli/truapi-debug-ui` or `solid-js`. Returns plain data that callers render as JSX text, which escapes it.
 
 import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
 import type { StoredSystemEvent, StoredTruapiEvent } from './event-store.js';
 import { formatPayloadSummary } from './format.js';
 import { summariseSystemEvent } from './system-summary.js';
 
-export function chainSummary(ann: ChainAnnotations): string {
+function chainSummary(ann: ChainAnnotations): string {
   const parts: string[] = [];
   if (ann.chainEventTag !== undefined && ann.operationId !== undefined) {
     parts.push(`op ${shortHex(ann.operationId)}`);
@@ -26,7 +26,7 @@ export function chainSummary(ann: ChainAnnotations): string {
   return parts.join(' · ');
 }
 
-export function shortHex(v: string): string {
+function shortHex(v: string): string {
   if (v.startsWith('0x') && v.length > 12) {
     return `${v.slice(0, 8)}…${v.slice(-4)}`;
   }
@@ -36,6 +36,7 @@ export function shortHex(v: string): string {
   return v;
 }
 
+/** A colour per id, light enough for 4.5:1 at any hue on the panel's backgrounds, the selected row's included. */
 export function ridColor(rid: string): string {
   let h = 0;
   for (let i = 0; i < rid.length; i++) {

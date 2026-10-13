@@ -4,7 +4,7 @@
 // A journey strings a tab's page loads at one app together until one reaches it, so Sentry can tell a recovered
 // failure from an abandoned one. The id lives in sessionStorage only, so it never identifies a person.
 
-import { takeContinuation, type Continuation } from '@dotli/shared';
+import { takeContinuation, type Continuation } from './continuation.js';
 
 /**
  * The app's own reloads say why (`markContinuation`). Others come from the navigation, which cannot tell a typed URL
@@ -25,11 +25,25 @@ interface StoredJourney {
   attempts: number;
 }
 
+/** The page's session storage, navigation timing and reload reason, in place of the browser's own in a spec. */
+export interface JourneyDeps {
+  /** A getter, since reading `sessionStorage` itself throws where storage is blocked. */
+  session: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  navigationType: () => NavigationTimingType | undefined;
+  takeContinuation: () => Continuation | null;
+}
+
+const pageJourney: JourneyDeps = {
+  session: () => sessionStorage,
+  navigationType: () => (performance.getEntriesByType('navigation') as PerformanceNavigationTiming[])[0]?.type,
+  takeContinuation,
+};
+
 const KEY = 'dotli:journey';
 
-function readJourney(): StoredJourney | null {
+function readJourney(deps: JourneyDeps): StoredJourney | null {
   try {
-    const raw = sessionStorage.getItem(KEY);
+    const raw = deps.session().getItem(KEY);
     if (raw === null) {
       return null;
     }
@@ -44,21 +58,21 @@ function readJourney(): StoredJourney | null {
   }
 }
 
-function writeJourney(journey: StoredJourney): void {
+function writeJourney(deps: JourneyDeps, journey: StoredJourney): void {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify(journey));
+    deps.session().setItem(KEY, JSON.stringify(journey));
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, where every attempt starts its own journey.
   } catch {
     /* sessionStorage unavailable */
   }
 }
 
-function navigationEntry(): AttemptEntry {
-  const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
-  if (entry?.type === 'reload') {
+function navigationEntry(deps: JourneyDeps): AttemptEntry {
+  const type = deps.navigationType();
+  if (type === 'reload') {
     return 'browser_reload';
   }
-  return entry?.type === 'back_forward' ? 'back_forward' : 'navigation';
+  return type === 'back_forward' ? 'back_forward' : 'navigation';
 }
 
 function newJourneyId(): string {
@@ -67,19 +81,19 @@ function newJourneyId(): string {
     : `journey-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 }
 
-export function beginAttempt(label: string): Attempt {
-  const entry = takeContinuation() ?? navigationEntry();
-  const stored = readJourney();
+export function beginAttempt(label: string, deps: JourneyDeps = pageJourney): Attempt {
+  const entry = deps.takeContinuation() ?? navigationEntry(deps);
+  const stored = readJourney(deps);
   const journey: StoredJourney =
     stored?.label === label ? { ...stored, attempts: stored.attempts + 1 } : { id: newJourneyId(), label, attempts: 1 };
-  writeJourney(journey);
+  writeJourney(deps, journey);
   return { journeyId: journey.id, attemptNumber: journey.attempts, entry };
 }
 
 /** The visitor reached the app, or learned there is nothing to reach. */
-export function endJourney(): void {
+export function endJourney(deps: JourneyDeps = pageJourney): void {
   try {
-    sessionStorage.removeItem(KEY);
+    deps.session().removeItem(KEY);
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, where nothing was stored.
   } catch {
     /* sessionStorage unavailable */

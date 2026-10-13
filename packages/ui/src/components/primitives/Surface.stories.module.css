@@ -1,0 +1,15 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Surface sets no padding, so the stories pad it as the settings panel does. */
+.padded {
+  padding: var(--sp-3);
+}
+@media (max-width: 560px) {
+  .padded {
+    padding: var(--sp-4);
+  }
+}
+.padded[data-sheet] {
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+}

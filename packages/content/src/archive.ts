@@ -6,7 +6,7 @@ import * as dagPb from '@ipld/dag-pb';
 import { UnixFS } from 'ipfs-unixfs';
 import type { CID } from 'multiformats/cid';
 import { concatBytes } from '@noble/hashes/utils.js';
-import { log } from '@dotli/shared';
+import { createAsyncTaskPool, log } from '@dotli/shared';
 import { assertBlockMatchesCid, assertSameContentId, verifyingBlockSource } from './verify.js';
 
 export type ArchiveFiles = Record<string, Uint8Array>;
@@ -60,7 +60,7 @@ function joinPath(base: string, name: string): string {
   return base ? `${base}/${name}` : name;
 }
 
-/** Per node, so one big file or directory cannot saturate the smoldot bitswap queue. */
+/** Per walk, so one site cannot saturate the smoldot bitswap queue. */
 const MAX_PARALLEL_BLOCK_FETCHES = 8;
 
 /**
@@ -69,9 +69,12 @@ const MAX_PARALLEL_BLOCK_FETCHES = 8;
  */
 export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
+  // Bounds the fetches alone. A slot held across the recursion would wait on its own children.
+  const fetches = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
+  const fetchBlock = (cid: CID): Promise<Uint8Array> => fetches.call(() => blockSource(cid));
 
   async function getChunkData(cid: CID): Promise<Uint8Array> {
-    const bytes = await blockSource(cid);
+    const bytes = await fetchBlock(cid);
 
     if (cid.code === RAW) {
       return bytes;
@@ -85,21 +88,8 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
     throw new Error(`Unsupported chunk codec 0x${cid.code.toString(16)} for ${cid.toString()}`);
   }
 
-  async function runBounded<T>(items: readonly T[], work: (item: T, i: number) => Promise<void>): Promise<void> {
-    if (items.length === 0) {
-      return;
-    }
-    const pending = items.entries();
-    const worker = async (): Promise<void> => {
-      for (const [idx, item] of pending) {
-        await work(item, idx);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_BLOCK_FETCHES, items.length) }, () => worker()));
-  }
-
   async function processNode(cid: CID, path: string): Promise<void> {
-    const bytes = await blockSource(cid);
+    const bytes = await fetchBlock(cid);
     const isRoot = path === '';
 
     // A CAR at the root is a whole site packed as one block. Deeper CAR-shaped blocks stay content.
@@ -128,9 +118,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
       const entries = node.Links.filter(
         (link): link is typeof link & { Name: string } => link.Name !== undefined && link.Name !== '',
       );
-      await runBounded(entries, async link => {
-        await processNode(link.Hash, joinPath(path, link.Name));
-      });
+      await Promise.all(entries.map(link => processNode(link.Hash, joinPath(path, link.Name))));
       return;
     }
 
@@ -139,11 +127,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
       if (node.Links.length === 0) {
         content = uf?.data ?? new Uint8Array(0);
       } else {
-        const chunks = new Array<Uint8Array>(node.Links.length);
-        await runBounded(node.Links, async (link, i) => {
-          chunks[i] = await getChunkData(link.Hash);
-        });
-        content = concatBytes(...chunks);
+        content = concatBytes(...(await Promise.all(node.Links.map(link => getChunkData(link.Hash)))));
       }
 
       // A CAR at the root, uploaded as a chunked file.
@@ -169,7 +153,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
  * Pass `expectedRoot` for untrusted transports, so the root must match it. Every block is hash-verified.
  * Omit it only for bytes already trusted, such as a CAR re-packed under a smoldot-verified CID.
  */
-export async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Promise<ArchiveFiles> {
+async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Promise<ArchiveFiles> {
   const reader = await CarReader.fromBytes(buffer);
   const roots = await reader.getRoots();
   const rootCid = roots[0];

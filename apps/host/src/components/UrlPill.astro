@@ -3,26 +3,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Empty and hidden until bindUrlPill fills it from the url-pill store. bindUrlPill finds the pill and the name by id.
-import { UrlPillShield } from '@dotli/ui/islands/UrlPillShield';
+// `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
+import { UrlPillShield } from '../islands/UrlPillShield.jsx';
+import { TerminalIcon } from '@dotli/ui/icons';
 import s from './UrlPill.module.css';
 ---
 
 <div class={s['url']} id="topbar-url" hidden>
   <div class={s['pill']} id="url-pill">
     <UrlPillShield client:idle />
-    <svg
-      class={s['localhostIcon']}
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="m4 17 6-6-6-6m8 14h8" />
-    </svg>
+    <TerminalIcon class={s['localhostIcon']} size={12} />
     <span class={s['text']} data-testid="url-pill-text">
       <span class={s['domain']} id="url-pill-domain"></span>
       <span class={s['tld']} id="url-pill-tld"></span>
@@ -31,7 +21,7 @@ import s from './UrlPill.module.css';
 </div>
 
 <script>
-  import { bindUrlPill } from '@dotli/ui';
+  import { bindUrlPill } from '../url-pill.js';
 
   const bar = document.getElementById('topbar-url');
   if (bar !== null) {

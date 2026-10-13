@@ -18,16 +18,3 @@ export function raceSyncTimeout<T>(work: Promise<T>, chain: string, timeoutMs: n
     clearTimeout(timer);
   });
 }
-
-/** Apply a caller's budget to a wait already bounded by `capMs`, only when it is tighter. */
-export function withSyncBudget<T>(
-  work: Promise<T>,
-  chain: string,
-  requestedMs: number | undefined,
-  capMs: number,
-): Promise<T> {
-  if (requestedMs === undefined || requestedMs >= capMs) {
-    return work;
-  }
-  return raceSyncTimeout(work, chain, requestedMs);
-}

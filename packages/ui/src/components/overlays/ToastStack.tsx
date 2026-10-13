@@ -1,17 +1,22 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, For, Show, untrack, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dismissAllToasts, setToastsExpanded, toastsStore } from '../../state/toasts.js';
+import { dismissAllToasts, setToastsExpanded, toastsStore } from '@dotli/ui-core';
 import { useStore } from '../use-store.js';
-import { CloseIcon } from '../primitives/IconButton.js';
-import { ToastCard } from './ToastCard.js';
+import { CloseIcon } from '../icons/CloseIcon.js';
+import { ToastCard, type ToastCardProps } from './ToastCard.js';
+import { pileDepths, scrollsToNewest, visibleToasts } from './toast-pile.js';
 import s from './ToastStack.module.css';
 
-const MAX_STACK = 3;
+export interface ToastStackProps {
+  /** Draws each toast. Read once, and without one the stack's own card. */
+  card?: Component<ToastCardProps>;
+}
 
-export function ToastStack(): JSX.Element {
+export function ToastStack(props: ToastStackProps): JSX.Element {
+  const Card = untrack(() => props.card) ?? ToastCard;
   const items = useStore(toastsStore, state => state.items);
   const expanded = useStore(toastsStore, state => state.expanded);
   let root: HTMLDivElement | undefined;
@@ -19,24 +24,14 @@ export function ToastStack(): JSX.Element {
 
   // Worked out once per update, not once per card.
   const active = createMemo(() => items().filter(t => !t.leaving));
-  const visible = createMemo(() => (expanded() ? active() : active().slice(-MAX_STACK)));
-  // Depth in the collapsed pile, 0 for the newest. A card missing from the map is hidden behind the pile.
-  const depths = createMemo(() => {
-    const shown = visible();
-    const collapsed = !expanded();
-    const map = new Map<number, number>();
-    shown.forEach((t, i) => {
-      map.set(t.id, collapsed ? shown.length - 1 - i : 0);
-    });
-    return map;
-  });
+  const visible = createMemo(() => visibleToasts(active(), expanded()));
+  const depths = createMemo(() => pileDepths(visible(), expanded()));
   const many = createMemo(() => active().length > 1);
 
-  // Only a new toast scrolls to the newest card, not a dismissal or an unrelated write.
   createEffect(
     () => items().length,
     (count, previous) => {
-      if (previous !== undefined && count > previous && cards !== undefined && untrack(expanded)) {
+      if (cards !== undefined && scrollsToNewest(count, previous, untrack(expanded))) {
         cards.scrollTop = cards.scrollHeight;
       }
     },
@@ -98,7 +93,7 @@ export function ToastStack(): JSX.Element {
         >
           <For each={items()} keyed={t => t.id}>
             {entry => (
-              <ToastCard
+              <Card
                 entry={entry()}
                 hidden={!depths().has(entry().id)}
                 depth={depths().get(entry().id) ?? (expanded() ? 0 : visible().length)}

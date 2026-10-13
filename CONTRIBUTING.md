@@ -14,7 +14,8 @@
   separate setup, action, and assertions.
 - **Test selectors, not styles.** Tests find elements by `data-testid`, ARIA role or id, never by CSS class, because
   module class names are hashed. Reusable components take an optional `testId` prop that becomes `data-testid` on their
-  root. In ui tests, use `byTestId(id, root)` from `tests/support.ts`. In Playwright, use `page.getByTestId(id)`.
+  root. In functional tests, use `byTestId(id, root)` from `@dotli/ui/testing`. In Playwright, use
+  `page.getByTestId(id)`.
 - **Don't check CSS in tests.** Don't write tests that check CSS (stylesheets, computed styles or class names). Check
   styling visually.
 

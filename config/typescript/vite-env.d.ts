@@ -17,3 +17,9 @@ interface ImportMetaEnv {
   readonly VITE_SANDBOX_CHECKER?: string;
   readonly VITE_SENTRY_DSN?: string;
 }
+
+// `@config/vite/inline-script` resolves these to the module bundled as one classic script.
+declare module '*?inline-script' {
+  const script: string;
+  export default script;
+}

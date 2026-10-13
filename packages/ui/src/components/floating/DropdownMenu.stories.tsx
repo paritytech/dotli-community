@@ -83,6 +83,13 @@ const row = (testId: string) => body.getByTestId(testId);
 
 export const KeyboardOpensOnFirstItem: Story = {
   play: async ({ step }) => {
+    await step('Given More announces the menu it controls', async () => {
+      const more = body.getByTestId('story-more');
+      await waitFor(() => expect(more).toHaveAttribute('popovertarget', 'story-menu'));
+      await expect(more).toHaveAttribute('aria-haspopup', 'menu');
+      await expect(more).toHaveAttribute('aria-controls', 'story-menu');
+      await expect(more).toHaveAttribute('aria-expanded', 'false');
+    });
     await step('When I focus More and press Enter', async () => {
       body.getByTestId('story-more').focus();
       await (await input()).keyboard('{Enter}');

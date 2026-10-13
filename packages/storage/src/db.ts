@@ -1,97 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The one "dotli" IndexedDB connection, pre-opened during HTML parse by an inline script (`window.__dotliDb`).
+// The one "dotli" IndexedDB connection, pre-opened during HTML parse by `preOpenDotliDb` (`window.__dotliDb`).
 
-import { log } from '@dotli/shared';
+import { createAsyncTaskPool, log } from '@dotli/shared';
 import { captureException, recordExpected } from '@dotli/metrics';
+import { DB_NAME, DB_VERSION, openDotliDb, upgradeDotliDb } from './schema.js';
 
 declare global {
   interface Window {
     __dotliDb?: Promise<IDBDatabase>;
   }
-}
-
-const DB_NAME = 'dotli';
-const DB_VERSION = 6;
-
-const BLOCKED_MESSAGE = 'Failed to open dotli DB: blocked by another tab';
-
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-// Bumped on every new handle, so a late `onclose` from an old handle cannot drop a newer one.
-let dbGeneration = 0;
-
-function openFresh(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains('cids')) {
-        db.createObjectStore('cids', { keyPath: 'label' });
-      }
-      if (!db.objectStoreNames.contains('chains')) {
-        db.createObjectStore('chains', { keyPath: 'chain' });
-      }
-      // v2: scheduled notifications + per-product id counters.
-      if (!db.objectStoreNames.contains('scheduled_notifications')) {
-        const store = db.createObjectStore('scheduled_notifications', {
-          keyPath: 'hostId',
-          autoIncrement: true,
-        });
-        store.createIndex('byProductId', 'productId', { unique: false });
-        store.createIndex('byScheduledAt', 'scheduledAt', { unique: false });
-      }
-      if (!db.objectStoreNames.contains('notification_counters')) {
-        // Value: `{ productId, next }`.
-        db.createObjectStore('notification_counters', { keyPath: 'productId' });
-      }
-      // v3: product chat rooms and messages.
-      if (!db.objectStoreNames.contains('chat_rooms')) {
-        db.createObjectStore('chat_rooms', {
-          keyPath: ['productId', 'roomId'],
-        });
-      }
-      if (!db.objectStoreNames.contains('chat_messages')) {
-        const store = db.createObjectStore('chat_messages', {
-          keyPath: 'seq',
-          autoIncrement: true,
-        });
-        store.createIndex('byRoom', ['productId', 'roomId'], {
-          unique: false,
-        });
-      }
-      // v4: product chat bot identities.
-      if (!db.objectStoreNames.contains('chat_bots')) {
-        db.createObjectStore('chat_bots', {
-          keyPath: ['productId', 'botId'],
-        });
-      }
-      // v5: relayed content blocks, with sizes and last use apart so pruning never loads the bytes.
-      if (!db.objectStoreNames.contains('blocks')) {
-        db.createObjectStore('blocks', { keyPath: 'cid' });
-      }
-      if (!db.objectStoreNames.contains('block_meta')) {
-        const store = db.createObjectStore('block_meta', { keyPath: 'cid' });
-        store.createIndex('byLastUsed', 'lastUsed', { unique: false });
-      }
-      // v6: the local wallet, one encrypted record.
-      if (!db.objectStoreNames.contains('local_wallet')) {
-        db.createObjectStore('local_wallet', { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => {
-      resolve(req.result);
-    };
-    req.onerror = () => {
-      const cause = req.error;
-      reject(new Error(`Failed to open dotli DB: ${cause?.name ?? 'unknown'}`, cause ? { cause } : undefined));
-    };
-    // A tab on an older schema blocks the upgrade, and blocked fires neither onsuccess nor onerror.
-    req.onblocked = () => {
-      reject(new Error(BLOCKED_MESSAGE));
-    };
-  });
 }
 
 /**
@@ -109,49 +28,106 @@ export function isExpectedDbError(err: unknown): boolean {
   return (err.name === 'InvalidStateError' || err.name === 'AbortError') && /clos|no longer/i.test(err.message);
 }
 
-/** Reuses the pre-opened handle once. A rejected pre-open is reported before the fresh open. */
-export function getDb(): Promise<IDBDatabase> {
-  if (dbPromise !== null) {
-    return dbPromise;
+export interface DbConnectionDeps {
+  /** Opens a fresh connection on the current schema. */
+  open: () => Promise<IDBDatabase>;
+  /** The page's own open, started during HTML parse, handed over once. */
+  takePreOpened: () => Promise<IDBDatabase> | undefined;
+}
+
+function reportPreOpenFailure(err: unknown): void {
+  if (isExpectedDbError(err)) {
+    recordExpected(err, { flow: 'storage', step: 'db_open' });
+    return;
+  }
+  log.error('[dot.li db] Pre-opened DB handle rejected; falling back to fresh open:', err);
+  captureException(err, { flow: 'storage', step: 'db_open', tags: { kind: 'db_pre_opened_rejected' } });
+}
+
+/**
+ * One connection shared by every read. A connection that closes, or that another tab's upgrade asks to close, is
+ * dropped, and a failed open is not retried: the next read opens again, which is when it can succeed.
+ */
+export function createDbConnection(deps: DbConnectionDeps): () => Promise<IDBDatabase> {
+  let current: IDBDatabase | null = null;
+  // Reads that overlap an open wait for it instead of opening their own.
+  const opens = createAsyncTaskPool({ poolSize: 1 });
+
+  async function openOnce(): Promise<IDBDatabase> {
+    const preOpened = deps.takePreOpened();
+    if (preOpened === undefined) {
+      return deps.open();
+    }
+    try {
+      return await preOpened;
+    } catch (err: unknown) {
+      reportPreOpenFailure(err);
+      return deps.open();
+    }
   }
 
-  const preOpened = typeof window !== 'undefined' ? window.__dotliDb : undefined;
-  if (preOpened !== undefined) {
-    // One use only, so a reopen after close gets a new handle and a rejected pre-open is reported once.
-    delete window.__dotliDb;
-    dbPromise = preOpened.catch((err: unknown) => {
-      if (isExpectedDbError(err)) {
-        recordExpected(err, { flow: 'storage', step: 'db_open' });
-      } else {
-        log.error('[dot.li db] Pre-opened DB handle rejected; falling back to fresh open:', err);
-        captureException(err, { flow: 'storage', step: 'db_open', tags: { kind: 'db_pre_opened_rejected' } });
+  return () =>
+    opens.call(async () => {
+      if (current !== null) {
+        return current;
       }
-      return openFresh();
-    });
-  } else {
-    dbPromise = openFresh();
-  }
-
-  const thisGeneration = ++dbGeneration;
-
-  void dbPromise
-    .then(db => {
-      db.onclose = () => {
-        if (dbGeneration === thisGeneration) {
-          dbPromise = null;
+      const db = await openOnce();
+      current = db;
+      // Only this handle's own close drops it, so a late close of a replaced one keeps the newer.
+      const release = (): void => {
+        if (current === db) {
+          current = null;
         }
       };
-      // Another tab is upgrading the schema. Close so it is not blocked.
+      db.onclose = release;
       db.onversionchange = () => {
         db.close();
-        if (dbGeneration === thisGeneration) {
-          dbPromise = null;
-        }
+        release();
       };
-    })
-    .catch(() => {
-      /* fire-and-forget */
+      return db;
     });
-
-  return dbPromise;
 }
+
+/** Where the HTML-parse pre-open leaves its handle, which is `window` on the page. */
+export interface PreOpenSlot {
+  __dotliDb?: Promise<IDBDatabase> | undefined;
+}
+
+export interface PageDbDeps {
+  /** Read at each open, as a context without IndexedDB, such as the build, still loads this module. */
+  factory: () => IDBFactory;
+  /** Undefined outside a window, which has no pre-open. */
+  slot: PreOpenSlot | undefined;
+}
+
+/** A connection on the current schema, reusing the pre-opened handle once. A rejected pre-open is reported before the fresh open. */
+export function createPageDb({ factory, slot }: PageDbDeps): () => Promise<IDBDatabase> {
+  return createDbConnection({
+    open: () => openDotliDb(factory(), DB_NAME, DB_VERSION, upgradeDotliDb),
+    takePreOpened: () => {
+      if (slot === undefined) {
+        return undefined;
+      }
+      const preOpened = slot.__dotliDb;
+      // One use only, so a reopen after close gets a new handle and a rejected pre-open is reported once.
+      delete slot.__dotliDb;
+      return preOpened;
+    },
+  });
+}
+
+/** The page's one connection. */
+const getDb = createPageDb({
+  factory: () => indexedDB,
+  slot: typeof window === 'undefined' ? undefined : window,
+});
+
+/** The IndexedDB a store reads and writes: its connection, and key ranges of the same implementation. */
+export interface DotliIdb {
+  connect: () => Promise<IDBDatabase>;
+  /** Read at use, as a context without IndexedDB, such as the build, still loads the stores. */
+  keyRange: () => typeof IDBKeyRange;
+}
+
+/** The page's own IndexedDB. */
+export const pageIdb: DotliIdb = { connect: getDb, keyRange: () => IDBKeyRange };

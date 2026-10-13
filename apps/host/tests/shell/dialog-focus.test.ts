@@ -1,0 +1,54 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The host's prompts name the product frame as where their dialogs hand focus back, over the real overlays.
+
+import { afterEach, describe, expect, it } from 'vitest';
+import type { ReviewDialog } from '@dotli/host-runtime';
+import { appears } from '@dotli/ui/testing';
+import { resetModalsForTests } from '@dotli/ui-core/testing';
+import { createHostPrompts } from '../../src/host-prompts.js';
+import { attachProductFrame, resetProductFrameLayout } from '../../src/product-frame-layout.js';
+
+const REVIEW: ReviewDialog<'no' | 'yes' | 'dismissed'> = {
+  title: 'Question',
+  fields: [],
+  buttons: [
+    { label: 'No', variant: 'cancel', result: 'no' },
+    { label: 'Yes', variant: 'primary', result: 'yes' },
+  ],
+  dismissOnBackdrop: true,
+  dismissResult: 'dismissed',
+  fallbackResult: 'dismissed',
+};
+
+afterEach(() => {
+  resetModalsForTests();
+  resetProductFrameLayout();
+  document.body.replaceChildren();
+});
+
+describe('dialog focus', () => {
+  it('As a dApp user, answering a dialog whose origin left the page hands focus to the product frame', async () => {
+    // Given: a dialog asked from a button over the product, and the button then leaves the page.
+    const frame = document.createElement('iframe');
+    const opener = document.createElement('button');
+    document.body.append(frame, opener);
+    attachProductFrame(frame, () => undefined);
+    opener.focus();
+    const outcome = createHostPrompts().confirmReview(REVIEW, new AbortController().signal);
+    const sign = await appears('[data-testid="signing-btn-sign"]');
+    opener.remove();
+
+    // When
+    const focused = new Promise(resolve => {
+      frame.addEventListener('focus', resolve, { once: true });
+    });
+    sign.click();
+    await expect(outcome).resolves.toBe('yes');
+    await focused;
+
+    // Then
+    expect(document.activeElement).toBe(frame);
+  });
+});

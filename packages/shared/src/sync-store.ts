@@ -1,0 +1,123 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Imports no Solid because boot-path code imports stores, and Solid's reactive core would otherwise ship
+// before any component reads one. Components read a store through `useStore` in `@dotli/ui`.
+
+export interface ReadableStore<T> {
+  get: () => T;
+  /** What a build-time render shows, as nothing writes a store then. */
+  initial: T;
+  /**
+   * Notifications are synchronous, so a listener calling another store's setter runs that nested set
+   * and its listeners before the outer setter notifies its own.
+   */
+  subscribe: (listener: () => void) => () => void;
+}
+
+export interface SyncStore<T> extends ReadableStore<T> {
+  /** A value equal to the current one is dropped and notifies nobody. */
+  set: (next: T) => void;
+  /** Tests only. */
+  reset: () => void;
+}
+
+export interface SyncStoreOptions<T> {
+  /**
+   * Stores whose producers rebuild an object on every write pass {@link shallowEqual}.
+   */
+  equals?: (current: T, next: T) => boolean;
+  /**
+   * Hears a listener that threw, wrapped as `store <name> listener failed` with the throw as its cause. The default
+   * rethrows it in a microtask, so the page's global error handler reports it and the producer's `set` still
+   * completes. This package cannot depend on metrics.
+   */
+  onListenerError?: (error: Error) => void;
+}
+
+function rethrowInMicrotask(error: Error): void {
+  queueMicrotask(() => {
+    throw error;
+  });
+}
+
+/** One level only: a nested object must be the same reference. */
+export function shallowEqual<T>(a: T, b: T): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (
+    typeof a !== 'object' ||
+    typeof b !== 'object' ||
+    a === null ||
+    b === null ||
+    Array.isArray(a) !== Array.isArray(b)
+  ) {
+    return false;
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) {
+    return false;
+  }
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(right, key) || !Object.is(left[key], right[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const registry = new Set<() => void>();
+
+/** `name` tags a failing listener's report, so it says which store dispatched. */
+export function createSyncStore<T>(name: string, initial: T, options: SyncStoreOptions<T> = {}): SyncStore<T> {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  const equals = options.equals ?? Object.is;
+  const onListenerError = options.onListenerError ?? rethrowInMicrotask;
+
+  const set = (next: T): void => {
+    if (equals(current, next)) {
+      return;
+    }
+    current = next;
+    // Snapshot so a listener that unsubscribes (itself or another) during
+    // notification neither skips nor repeats anyone in this round.
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch (cause) {
+        // A broken UI listener must not stop the producer's event dispatch.
+        onListenerError(new Error(`store ${name} listener failed`, { cause }));
+      }
+    }
+  };
+
+  const subscribe = (listener: () => void): (() => void) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  };
+
+  const reset = (): void => {
+    set(initial);
+  };
+  registry.add(reset);
+
+  return { get: () => current, initial, set, subscribe, reset };
+}
+
+/** Adds module state kept beside a store to what `resetAllStoresForTests` resets. */
+export function registerStoreStateReset(reset: () => void): void {
+  registry.add(reset);
+}
+
+/** Tests only, through `@dotli/shared/testing`. */
+export function resetAllStoresForTests(): void {
+  for (const reset of registry) {
+    reset();
+  }
+}

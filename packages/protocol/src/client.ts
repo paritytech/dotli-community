@@ -1,125 +1,37 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { chainHaltedError, type RemoteChainHalt } from './chain-halted.js';
-import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError, ProtocolRequestError } from './errors.js';
-import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
-import {
-  BASE_DOMAIN,
-  DEV_PROTOCOL_PORT,
-  type SiteId,
-  getActiveCoreGatewaySupportedGenesisHashes,
-  getActiveGatewaySupportedGenesisHashes,
-  getActiveSupportedGenesisHashes,
-  getNetwork,
-  getBackend,
-  type Backend,
-} from '@dotli/config';
+// The host page's protocol client: the frame and the facades built on it, and the page's one instance.
 
-import { createAsyncTaskPool, log, serializeError } from '@dotli/shared';
-import { getResolutionId, m, spans as S } from '@dotli/metrics';
-import type { LocalWalletIdentity, LocalWalletReadResult, SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
-import {
-  isChainDetailPayloadValid,
-  isChainSyncPayloadValid,
-  isProtocolEnvelope,
-  type ProtocolChainDetailEnvelope,
-  type ProtocolChainSyncEnvelope,
-  type ProtocolNetBytesEnvelope,
-  type ProtocolRequestEnvelope,
-  type ProtocolRequestMap,
-  type ProtocolRequestMethod,
+import type { ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
+import { BASE_DOMAIN, DEV_PROTOCOL_PORT, type SiteId } from '@dotli/config';
+import type {
+  LocalWalletIdentity,
+  LocalWalletReadResult,
+  ProtocolChainDetailEnvelope,
+  ProtocolChainSyncEnvelope,
+  ProtocolNetBytesEnvelope,
+  SmoldotDbChain,
+  SmoldotDbOutcome,
 } from './messages.js';
-import { isSharedAuthRequestMethod, isSharedModeRequestMethod, isSharedWalletRequestMethod } from './auth-storage.js';
+import { createProtocolFrame, type ProtocolFrameConfig, type ProtocolFrameDeps, type ProtocolStatus } from './frame.js';
+import { createFrameRpc } from './rpc.js';
+import { createRemoteChains, type RemoteChainProvider, type RemoteChains } from './remote-chain.js';
+import { createRemoteResolve, type RemoteResolve } from './remote-resolve.js';
+import {
+  createSharedStore,
+  type SharedAuthStorageListener,
+  type SharedStore,
+  type SharedStoreStatus,
+} from './shared-store.js';
+import { createFrameTelemetry, type FrameTelemetry } from './telemetry.js';
 
-import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
+export { isRemoteChainConnectable, isRemoteChainSupported } from './remote-chain-support.js';
+export type { RemoteChainProvider } from './remote-chain.js';
 
-interface PendingRequest {
-  method: ProtocolRequestMethod;
-  resolve: (value: unknown) => void;
-  reject: (reason?: unknown) => void;
-  onProgress?: ((message: string) => void) | undefined;
-}
+export type { ProtocolFrameConfig, ProtocolFrameMode, ProtocolStatus } from './frame.js';
 
-/**
- * Page load steps, breadcrumbed when sent and settled so a failed load's trail names what it waited on.
- * Storage and chain traffic is per product call and would crowd them out.
- */
-const TRAILED_METHODS: ReadonlySet<ProtocolRequestMethod> = new Set<ProtocolRequestMethod>([
-  'warmup',
-  'chainConnect',
-  'resolveDotName',
-  'resolveOwner',
-  'resolveExecutableManifest',
-  'resolveRootManifest',
-]);
-
-interface RemoteChainConnection {
-  onMessage: (message: JsonRpcMessage) => void;
-  /** Told once when the chain behind this connection halts. */
-  onHalt: ((reason: RemoteChainHalt) => void) | null;
-  pendingMessages: JsonRpcRequest[];
-  connected: boolean;
-}
-
-export interface SharedAuthStorageChange {
-  siteId: SiteId;
-  key: string;
-  value: string | null;
-}
-
-export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => void;
-
-let protocolIframe: HTMLIFrameElement | null = null;
-let hostFramePromise: Promise<void> | null = null;
-let protocolReadyPromise: Promise<void> | null = null;
-// The last ready wait failed and no reset followed, so the frame is not on its way up.
-let protocolReadyWaitFailed = false;
-const pendingRequests = new Map<string, PendingRequest>();
-const chainConnections = new Map<string, RemoteChainConnection>();
-const protocolReadyListeners = new Set<() => void>();
-const sharedAuthListeners = new Set<SharedAuthStorageListener>();
-const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
-let lastNetBytesTotal = 0;
-const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
-const chainDetailListeners = new Set<(event: ProtocolChainDetailEnvelope) => void>();
-let listenerBound = false;
-let protocolReady = false;
-
-/** Whether the shared store can answer. `connecting` until the first frame settles. */
-export type SharedStoreStatus = 'connecting' | 'available' | 'unavailable';
-let sharedStoreStatus: SharedStoreStatus = 'connecting';
-const sharedStoreStatusListeners = new Set<(status: SharedStoreStatus) => void>();
-// The boot in progress, which a reset cancels so its iframe never becomes the frame afterwards.
-let hostFrameBoot: AbortController | null = null;
-interface ReadyWaiter {
-  resolve: () => void;
-  reject: (err: Error) => void;
-}
-let pendingReadyResolvers: ReadyWaiter[] = [];
-
-/** `"rpc"` bridges chain calls over trusted WSS JSON-RPC instead of smoldot. `null` serves shared auth only. */
-type ProtocolSubMode = 'shared-worker' | 'direct' | 'rpc';
-let protocolSubMode: ProtocolSubMode | null = null;
-
-function backendToSubMode(backend: Backend): ProtocolSubMode {
-  if (backend === 'smoldot-shared-worker') {
-    return 'shared-worker';
-  }
-  if (backend === 'smoldot-direct') {
-    return 'direct';
-  }
-  return 'rpc';
-}
-
-/** Asks the iframe to purge its IndexedDB caches first, forcing a cold start. */
-let protocolSkipWorkerCache = false;
-
-export function setProtocolSubMode(mode: ProtocolSubMode, opts: { skipWorkerCache?: boolean } = {}): void {
-  protocolSubMode = mode;
-  protocolSkipWorkerCache = opts.skipWorkerCache === true;
-}
+export type { SharedAuthStorageListener, SharedStoreStatus } from './shared-store.js';
 
 export function getProtocolOrigin(): string {
   const hostname = window.location.hostname;
@@ -133,887 +45,163 @@ export function getProtocolOrigin(): string {
   return `https://host.${BASE_DOMAIN}`;
 }
 
-// A chain stays "unknown" on the gateway path, which runs no light client, and until its store answers.
-const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
+export type ProtocolClientDeps = ProtocolFrameDeps;
 
-/** Whether a chain began from existing smoldot state, so telemetry keeps cold syncs and warm resumes apart. */
-export function getSmoldotDbOutcome(chain: SmoldotDbChain): SmoldotDbOutcome | 'unknown' {
-  return smoldotDbOutcomes.get(chain) ?? 'unknown';
+/** The host page's side of the protocol frame. */
+export interface ProtocolClient extends SharedStore, RemoteResolve, FrameTelemetry, RemoteChains {
+  ensureProtocolFrame(): Promise<void>;
+  getProtocolStatus(): ProtocolStatus;
+  /** Called on each change only. Does not start a frame. */
+  subscribeProtocolStatus(listener: (status: ProtocolStatus) => void): () => void;
+  /**
+   * Says what the frame is built with. Nothing boots before it, and requests made before the first config wait for
+   * it up to a bound, so callers need not order themselves around the host's boot. The same config again does nothing. A different
+   * one rebuilds a frame already asked for at once: its requests and ready waiters are rejected and its chain
+   * connections halt as for a dead frame. A SharedWorker keeps its sync progress, only this tab's port cycles.
+   */
+  configureProtocolFrame(config: ProtocolFrameConfig): void;
 }
 
-function resolveProtocolReady(): void {
-  if (protocolReady) {
-    return;
-  }
-  protocolReady = true;
-  const resolvers = pendingReadyResolvers;
-  pendingReadyResolvers = [];
-  for (const waiter of resolvers) {
-    waiter.resolve();
-  }
+export function createProtocolClient(deps: ProtocolClientDeps): ProtocolClient {
+  // In this order, so a lost frame fails rpc requests before chains halt, and a halt carries that trail.
+  const frame = createProtocolFrame(deps);
+  const rpc = createFrameRpc(frame);
+  const chains = createRemoteChains({ frame, rpc });
+  const sharedStore = createSharedStore({ frame, rpc });
+  return {
+    ensureProtocolFrame: () => frame.whenUp('ready'),
+    getProtocolStatus: () => frame.getStatus(),
+    subscribeProtocolStatus: listener => frame.subscribeStatus(listener),
+    configureProtocolFrame: config => {
+      frame.configure(config);
+    },
+    ...sharedStore,
+    ...createRemoteResolve(rpc),
+    ...createFrameTelemetry(frame),
+    ...chains,
+  };
 }
 
-/**
- * Drops the iframe and ready state so the next request boots a fresh one, for a caller that finds
- * the sub-mode wrong. In-flight requests are orphaned to their own timers, and ready waiters are
- * rejected at once. A SharedWorker keeps its sync progress, only this tab's port cycles.
- */
-export function resetProtocolFrame(): void {
-  resetProtocolFrameState();
+let defaultClient: ProtocolClient | null = null;
+
+/** The page's one client, built on first use so a worker that imports this package never touches `window`. */
+function getProtocolClient(): ProtocolClient {
+  defaultClient ??= createProtocolClient({ origin: getProtocolOrigin(), document, window });
+  return defaultClient;
 }
 
-function resetProtocolFrameState(reason?: Error): void {
-  hostFrameBoot?.abort(reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET));
-  hostFrameBoot = null;
-  protocolIframe?.remove();
-  protocolIframe = null;
-  // The rebuilt frame's byte meter restarts at zero, and the monotonic gate would drop its reports.
-  lastNetBytesTotal = 0;
-  hostFramePromise = null;
-  protocolReadyPromise = null;
-  protocolReadyWaitFailed = false;
-  protocolReady = false;
-  const orphaned = pendingReadyResolvers;
-  pendingReadyResolvers = [];
-  if (orphaned.length > 0) {
-    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
-    for (const waiter of orphaned) {
-      waiter.reject(err);
-    }
-  }
+export function ensureProtocolFrame(): Promise<void> {
+  return getProtocolClient().ensureProtocolFrame();
 }
 
-/** Deliver to every listener, so one that throws cannot silence the rest. */
-function broadcast<T>(listeners: ReadonlySet<(event: T) => void>, event: T, label: string): void {
-  for (const listener of listeners) {
-    try {
-      listener(event);
-    } catch (err: unknown) {
-      log.error(`[dot.li protocol] ${label} listener threw:`, err instanceof Error ? err.message : err);
-    }
-  }
+export function getProtocolStatus(): ProtocolStatus {
+  return getProtocolClient().getProtocolStatus();
 }
 
-function bindMessageListener(): void {
-  if (listenerBound) {
-    return;
-  }
-  listenerBound = true;
-
-  window.addEventListener('message', (event: MessageEvent) => {
-    if (!isProtocolEnvelope(event.data)) {
-      return;
-    }
-
-    if (event.origin !== getProtocolOrigin()) {
-      return;
-    }
-
-    const frameWindow = protocolIframe?.contentWindow;
-    if (frameWindow !== null && frameWindow !== undefined && event.source !== frameWindow) {
-      return;
-    }
-
-    const msg = event.data;
-    switch (msg.kind) {
-      case 'progress':
-        pendingRequests.get(msg.id)?.onProgress?.(msg.message);
-        return;
-      case 'response': {
-        const pending = pendingRequests.get(msg.id);
-        if (!pending) {
-          return;
-        }
-        pendingRequests.delete(msg.id);
-        if (msg.ok) {
-          pending.resolve(msg.result);
-        } else {
-          pending.reject(
-            new ProtocolRequestError(
-              msg.error || 'Unknown protocol error',
-              // A bare `"Error"` carries nothing, and would cost us the
-              // "crossed the protocol boundary" signal dashboards filter on.
-              msg.errorName !== undefined && msg.errorName !== 'Error' ? msg.errorName : 'ProtocolResponseError',
-              pending.method,
-              typeof msg.errorStack === 'string' ? msg.errorStack : undefined,
-            ),
-          );
-        }
-        return;
-      }
-      case 'chain-sync': {
-        if (!isChainSyncPayloadValid(msg)) {
-          return;
-        }
-        broadcast(chainSyncListeners, msg, 'Chain sync');
-        return;
-      }
-      case 'chain-detail': {
-        if (!isChainDetailPayloadValid(msg)) {
-          return;
-        }
-        broadcast(chainDetailListeners, msg, 'Chain detail');
-        return;
-      }
-      case 'net-bytes': {
-        // Cumulative, so a total below the last one is spoofed or corrupt
-        // traffic and would feed a negative rate into the network panel.
-        if (!Number.isFinite(msg.received) || msg.received < lastNetBytesTotal) {
-          return;
-        }
-        lastNetBytesTotal = msg.received;
-        broadcast(netBytesListeners, msg, 'Net bytes');
-        return;
-      }
-      case 'fatal':
-      case 'init-failed': {
-        // Smoldot or the iframe died, so nothing will answer any request in flight.
-        const kind = msg.kind === 'fatal' ? 'Fatal' : 'Init failed';
-        log.error(`[dot.li protocol] ${kind}: ${msg.message}`);
-        const err =
-          msg.kind === 'fatal'
-            ? new ProtocolFatalError(`${kind}: ${msg.message}`)
-            : new ProtocolInitFailedError(`${kind}: ${msg.message}`);
-
-        for (const [id, pending] of pendingRequests) {
-          pendingRequests.delete(id);
-          pending.reject(err);
-        }
-
-        // The reset rejects ready waiters and clears cached promises so the next ensureProtocolFrame()
-        // can reboot. It runs before halting so a `'frame'` listener that dials again misses the dead frame.
-        const orphanedConnections = [...chainConnections];
-        chainConnections.clear();
-        resetProtocolFrameState(err);
-        for (const [id, connection] of orphanedConnections) {
-          haltRemote(id, connection, 'frame');
-        }
-        return;
-      }
-      case 'chain-message': {
-        const conn = chainConnections.get(msg.connectionId);
-        if (!conn) {
-          log.warn(
-            `[dot.li protocol] chain-message for unknown connectionId: ${msg.connectionId} (known: ${[...chainConnections.keys()].join(', ')})`,
-          );
-          return;
-        }
-        let parsed: JsonRpcMessage;
-        try {
-          parsed = JSON.parse(msg.message) as JsonRpcMessage;
-        } catch (err: unknown) {
-          log.error(
-            `[dot.li protocol] chain-message JSON parse failed (conn=${msg.connectionId.slice(-8)}):`,
-            err instanceof Error ? err.message : err,
-          );
-          return;
-        }
-        guardConsumer(msg.connectionId, 'onMessage', () => {
-          conn.onMessage(parsed);
-        });
-        return;
-      }
-      case 'chain-halt': {
-        const halted = chainConnections.get(msg.connectionId);
-        chainConnections.delete(msg.connectionId);
-        if (halted !== undefined) {
-          haltRemote(msg.connectionId, halted, 'chain');
-        }
-        return;
-      }
-      case 'request':
-      case 'listening':
-        return;
-      case 'ready':
-        resolveProtocolReady();
-        for (const listener of [...protocolReadyListeners]) {
-          try {
-            listener();
-          } catch (err: unknown) {
-            log.error('[dot.li protocol] onProtocolReady listener threw:', err instanceof Error ? err.message : err);
-          }
-        }
-        return;
-      case 'smoldot-db':
-        // These become Sentry tags and the envelope check covers only namespace and kind, so a buggy
-        // frame could otherwise write unbounded tag values.
-        {
-          const chain: string = msg.chain;
-          const outcome: string = msg.outcome;
-          if (
-            (chain === 'relay' || chain === 'hub' || chain === 'bulletin') &&
-            (outcome === 'hit' || outcome === 'miss' || outcome === 'unavailable')
-          ) {
-            smoldotDbOutcomes.set(chain, outcome);
-          }
-        }
-        return;
-      case 'auth-storage-changed': {
-        const change: SharedAuthStorageChange = {
-          siteId: msg.siteId,
-          key: msg.key,
-          value: msg.value,
-        };
-        broadcast(sharedAuthListeners, change, 'Shared auth');
-        return;
-      }
-    }
-  });
+export function subscribeProtocolStatus(listener: (status: ProtocolStatus) => void): () => void {
+  return getProtocolClient().subscribeProtocolStatus(listener);
 }
 
-function createRequestId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-const IFRAME_LOAD_TIMEOUT_MS = 30_000;
-// Module scripts run before `load`, so a frame whose listeners are not bound this long after it is not booting.
-const IFRAME_LISTEN_TIMEOUT_MS = 5_000;
-// Ready follows the SharedWorker presync, so this must exceed `TIMEOUTS.SHARED_WORKER_READY`.
-const IFRAME_READY_TIMEOUT_MS = 240_000;
-// A failed load surfaces at once, and a dead frame is rebuilt on this interval so the shared store heals unasked.
-const HOST_FRAME_REBUILD_INTERVAL_MS = 2_000;
-
-// Retries without end, so its one task settles only once a frame listens.
-const hostFrameHealing = createAsyncTaskPool({
-  poolSize: 1,
-  retryCount: Number.POSITIVE_INFINITY,
-  retryDelay: HOST_FRAME_REBUILD_INTERVAL_MS,
-});
-
-/**
- * Resolves once the frame's request listeners are bound, not on `load`, which also fires when its script failed
- * and would leave every request to its full timeout. `ready` counts too, since the frame binds before init.
- * Aborting removes the iframe and rejects with the signal's reason.
- */
-function createHostIframe(signal: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    // Not cleared on teardown, which runs inside the `fatal` arm before the host's pending rejection
-    // and would strip the tags from the very failures they explain.
-    smoldotDbOutcomes.clear();
-    const iframe = document.createElement('iframe');
-    const params = new URLSearchParams();
-    // The async setProtocolSubMode() may not have run yet.
-    const mode: ProtocolSubMode = protocolSubMode ?? backendToSubMode(getBackend());
-    params.set('mode', mode);
-    params.set('network', getNetwork());
-    if (protocolSkipWorkerCache) {
-      params.set('skipWorkerCache', '1');
-    }
-    // On the URL, not posted after load, because the iframe's Sentry client emits before any handshake.
-    const resolutionId = getResolutionId();
-    if (resolutionId !== null) {
-      params.set('resolutionId', resolutionId);
-    }
-    const query = params.toString();
-    iframe.src = query.length > 0 ? `${getProtocolOrigin()}?${query}` : getProtocolOrigin();
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.tabIndex = -1;
-    iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
-
-    const fail = (reason: Error): void => {
-      cleanup();
-      iframe.remove();
-      reject(reason);
-    };
-
-    const onAbort = (): void => {
-      fail(signal.reason instanceof Error ? signal.reason : new Error(PROTOCOL_ERRORS.FRAME_RESET));
-    };
-
-    let timer = setTimeout(() => {
-      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
-    }, IFRAME_LOAD_TIMEOUT_MS);
-
-    const onLoad = (): void => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING));
-      }, IFRAME_LISTEN_TIMEOUT_MS);
-    };
-
-    const onError = (): void => {
-      fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
-    };
-
-    const onMessage = (event: MessageEvent): void => {
-      if (
-        event.source !== iframe.contentWindow ||
-        event.origin !== getProtocolOrigin() ||
-        !isProtocolEnvelope(event.data) ||
-        (event.data.kind !== 'listening' && event.data.kind !== 'ready')
-      ) {
-        return;
-      }
-      cleanup();
-      protocolIframe = iframe;
-      resolve();
-    };
-
-    function cleanup(): void {
-      clearTimeout(timer);
-      iframe.removeEventListener('load', onLoad);
-      iframe.removeEventListener('error', onError);
-      window.removeEventListener('message', onMessage);
-      signal.removeEventListener('abort', onAbort);
-    }
-
-    signal.addEventListener('abort', onAbort, { once: true });
-    window.addEventListener('message', onMessage);
-    iframe.addEventListener('load', onLoad, { once: true });
-    iframe.addEventListener('error', onError, { once: true });
-    document.body.appendChild(iframe);
-  });
-}
-
-async function ensureHostFrame(): Promise<void> {
-  bindMessageListener();
-
-  if (protocolIframe?.contentWindow) {
-    return;
-  }
-
-  if (hostFramePromise) {
-    return hostFramePromise;
-  }
-
-  const boot = new AbortController();
-  hostFrameBoot = boot;
-  hostFramePromise = (async () => {
-    try {
-      await createHostIframe(boot.signal);
-    } catch (error: unknown) {
-      // A reset dropped this boot on purpose and cleared the frame state itself, so it is no outage.
-      if (boot.signal.aborted) {
-        throw error;
-      }
-      m.count(S.PROTOCOL_IFRAME_READY, {
-        outcome: 'error',
-        phase: error instanceof Error && error.message === PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING ? 'listen' : 'load',
-        reason: error instanceof Error ? error.name : 'unknown',
-      });
-      m.breadcrumb('protocol iframe load failed', {
-        reason: error instanceof Error ? error.message : String(error),
-      });
-      log.error('[dot.li protocol] Host iframe load failed:', error);
-      resetProtocolFrameState();
-      hostFramePromise = null;
-      const outageStarts = sharedStoreStatus !== 'unavailable';
-      setSharedStoreStatus('unavailable');
-      if (outageStarts) {
-        healHostFrame();
-      }
-      throw error;
-    } finally {
-      if (hostFrameBoot === boot) {
-        hostFrameBoot = null;
-      }
-    }
-    setSharedStoreStatus('available');
-  })();
-
-  return hostFramePromise;
-}
-
-/**
- * Rebuilds the frame until one listens, one healer per outage. A request in between joins the same boot through
- * `ensureHostFrame`, and each failed attempt is counted and logged there.
- */
-function healHostFrame(): void {
-  void hostFrameHealing.call(ensureHostFrame);
-}
-
-function setSharedStoreStatus(next: SharedStoreStatus): void {
-  if (next === sharedStoreStatus) {
-    return;
-  }
-  sharedStoreStatus = next;
-  broadcast(sharedStoreStatusListeners, next, 'Shared store status');
+export function configureProtocolFrame(config: ProtocolFrameConfig): void {
+  getProtocolClient().configureProtocolFrame(config);
 }
 
 export function getSharedStoreStatus(): SharedStoreStatus {
-  return sharedStoreStatus;
+  return getProtocolClient().getSharedStoreStatus();
 }
 
-/** Called on each change only. */
 export function subscribeSharedStoreStatus(listener: (status: SharedStoreStatus) => void): () => void {
-  sharedStoreStatusListeners.add(listener);
-  return () => {
-    sharedStoreStatusListeners.delete(listener);
-  };
+  return getProtocolClient().subscribeSharedStoreStatus(listener);
 }
 
-function waitForProtocolReady(): Promise<void> {
-  const stopIframe = m.timer(S.PROTOCOL_IFRAME_READY);
-  return new Promise<void>((resolve, reject) => {
-    if (protocolReady) {
-      stopIframe();
-      resolve();
-      return;
-    }
-
-    const waiter: ReadyWaiter = {
-      resolve: () => {
-        clearTimeout(timer);
-        stopIframe();
-        resolve();
-      },
-      reject: err => {
-        clearTimeout(timer);
-        stopIframe();
-        reject(err);
-      },
-    };
-
-    const timer = setTimeout(() => {
-      pendingReadyResolvers = pendingReadyResolvers.filter(w => w !== waiter);
-      stopIframe();
-      reject(new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT));
-    }, IFRAME_READY_TIMEOUT_MS);
-
-    pendingReadyResolvers.push(waiter);
-  });
+export function getSmoldotDbOutcome(chain: SmoldotDbChain): SmoldotDbOutcome | 'unknown' {
+  return getProtocolClient().getSmoldotDbOutcome(chain);
 }
 
-export async function ensureProtocolFrame(): Promise<void> {
-  await ensureHostFrame();
-
-  if (protocolReady) {
-    return;
-  }
-
-  if (protocolReadyPromise) {
-    return protocolReadyPromise;
-  }
-
-  protocolReadyWaitFailed = false;
-  protocolReadyPromise = (async () => {
-    try {
-      await waitForProtocolReady();
-    } catch (error: unknown) {
-      // No auto-retry, so the real cause surfaces. Releasing the cached promise lets the user try again.
-      m.count(S.PROTOCOL_IFRAME_READY, {
-        phase: 'ready',
-        outcome: 'error',
-        reason: error instanceof Error ? error.name : 'unknown',
-      });
-      m.breadcrumb('protocol iframe ready wait failed', {
-        reason: error instanceof Error ? error.message : String(error),
-      });
-      log.error('[dot.li protocol] Ready wait failed:', error);
-      protocolReadyPromise = null;
-      protocolReadyWaitFailed = true;
-      throw error;
-    }
-  })();
-
-  return protocolReadyPromise;
+export function warmupProtocol(): Promise<void> {
+  return getProtocolClient().warmupProtocol();
 }
 
-async function postRequest<M extends ProtocolRequestMethod>(
-  method: M,
-  payload: ProtocolRequestMap[M],
-  onProgress?: (message: string) => void,
-  needsProtocolReady = !isSharedAuthRequestMethod(method) &&
-    !isSharedModeRequestMethod(method) &&
-    !isSharedWalletRequestMethod(method),
-): Promise<unknown> {
-  await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
-  const frameWindow = protocolIframe?.contentWindow;
-  if (!frameWindow) {
-    throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
-  }
-
-  const id = createRequestId();
-  const timeoutMs = UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
-  const envelope: ProtocolRequestEnvelope<M> = {
-    namespace: 'dotli:protocol',
-    kind: 'request',
-    id,
-    method,
-    payload,
-    ...(timeoutMs === null ? {} : { deadlineMs: Date.now() + timeoutMs }),
-  };
-  // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it
-  // would swamp the resolution and connect round trips this span measures.
-  const stopReq = method === 'chainSend' ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST);
-  const trailed = TRAILED_METHODS.has(method);
-  const sentAt = performance.now();
-  const settled = (outcome: 'ok' | 'error' | 'timeout', err?: Error): void => {
-    stopReq();
-    if (outcome !== 'ok') {
-      m.count(S.PROTOCOL_REQUEST, { outcome, method });
-    }
-    if (trailed) {
-      log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
-        flow: 'protocol',
-        ms: Math.round(performance.now() - sentAt),
-        ...(err !== undefined ? { error: `${err.name}: ${err.message}`.slice(0, 200) } : {}),
-      });
-    }
-  };
-  if (trailed) {
-    log.event(`${method} sent`, {
-      flow: 'protocol',
-      ...(timeoutMs === null ? {} : { timeout_ms: timeoutMs }),
-    });
-  }
-
-  return new Promise((resolve, reject) => {
-    const timer =
-      timeoutMs === null
-        ? null
-        : setTimeout(() => {
-            pendingRequests.delete(id);
-            const err = new ProtocolRequestError(
-              `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
-              'ProtocolTimeoutError',
-              method,
-            );
-            settled('timeout', err);
-            reject(err);
-          }, timeoutMs);
-
-    pendingRequests.set(id, {
-      method,
-      resolve: value => {
-        if (timer !== null) {
-          clearTimeout(timer);
-        }
-        settled('ok');
-        resolve(value);
-      },
-      reject: (reason?: unknown) => {
-        if (timer !== null) {
-          clearTimeout(timer);
-        }
-        const err = reason instanceof Error ? reason : new Error(String(reason));
-        settled('error', err);
-        reject(err);
-      },
-      onProgress,
-    });
-
-    frameWindow.postMessage(envelope, getProtocolOrigin());
-  });
+export function resolveDotNameRemote(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
+  return getProtocolClient().resolveDotNameRemote(label, onPhase);
 }
 
-export async function warmupProtocol(): Promise<void> {
-  await postRequest('warmup', {});
+/**
+ * Reads a name's owner through the protocol frame.
+ * @public Kept with the frame's `resolveOwner` request, which pages embedding the frame may send, though no dotli page
+ * calls it today.
+ */
+export function resolveOwnerRemote(label: string): Promise<string | null> {
+  return getProtocolClient().resolveOwnerRemote(label);
 }
 
-export async function resolveDotNameRemote(
-  label: string,
-  onStatus?: (message: string) => void,
-): Promise<string | null> {
-  return (await postRequest('resolveDotName', { label }, onStatus)) as string | null;
-}
-
-export async function resolveOwnerRemote(label: string): Promise<string | null> {
-  return (await postRequest('resolveOwner', { label })) as string | null;
-}
-
-export async function resolveExecutableManifestRemote(
+export function resolveExecutableManifestRemote(
   label: string,
   kind: 'app' | 'widget' | 'worker',
 ): Promise<ManifestResult<ExecutableManifest>> {
-  return (await postRequest('resolveExecutableManifest', {
-    label,
-    kind,
-  })) as ManifestResult<ExecutableManifest>;
+  return getProtocolClient().resolveExecutableManifestRemote(label, kind);
 }
 
-export async function resolveRootManifestRemote(label: string): Promise<ManifestResult<RootManifest>> {
-  return (await postRequest('resolveRootManifest', {
-    label,
-  })) as ManifestResult<RootManifest>;
+export function resolveRootManifestRemote(label: string): Promise<ManifestResult<RootManifest>> {
+  return getProtocolClient().resolveRootManifestRemote(label);
 }
 
-export async function readSharedAuthStorage(siteId: SiteId, key: string): Promise<string | null> {
-  return (await postRequest('authStorageRead', { siteId, key })) as string | null;
+export function readSharedAuthStorage(siteId: SiteId, key: string): Promise<string | null> {
+  return getProtocolClient().readSharedAuthStorage(siteId, key);
 }
 
-export async function writeSharedAuthStorage(siteId: SiteId, key: string, value: string): Promise<void> {
-  await postRequest('authStorageWrite', { siteId, key, value });
+export function writeSharedAuthStorage(siteId: SiteId, key: string, value: string): Promise<void> {
+  return getProtocolClient().writeSharedAuthStorage(siteId, key, value);
 }
 
-export async function clearSharedAuthStorage(siteId: SiteId, key: string): Promise<void> {
-  await postRequest('authStorageClear', { siteId, key });
+export function clearSharedAuthStorage(siteId: SiteId, key: string): Promise<void> {
+  return getProtocolClient().clearSharedAuthStorage(siteId, key);
 }
 
-/** Lives on `host.<BASE_DOMAIN>` so backend and cache preferences follow the user across subdomains. */
-export async function readSharedModeStorage(siteId: SiteId, key: string): Promise<string | null> {
-  return (await postRequest('modeStorageRead', { siteId, key })) as string | null;
+export function readSharedModeStorage(siteId: SiteId, key: string): Promise<string | null> {
+  return getProtocolClient().readSharedModeStorage(siteId, key);
 }
 
-export async function writeSharedModeStorage(siteId: SiteId, key: string, value: string): Promise<void> {
-  await postRequest('modeStorageWrite', { siteId, key, value });
+export function writeSharedModeStorage(siteId: SiteId, key: string, value: string): Promise<void> {
+  return getProtocolClient().writeSharedModeStorage(siteId, key, value);
 }
 
-export async function clearSharedModeStorage(siteId: SiteId, key: string): Promise<void> {
-  await postRequest('modeStorageClear', { siteId, key });
+export function clearSharedModeStorage(siteId: SiteId, key: string): Promise<void> {
+  return getProtocolClient().clearSharedModeStorage(siteId, key);
 }
 
-/** The record lives on `host.<BASE_DOMAIN>`, so one import covers every app on the domain. */
-export async function readSharedLocalWallet(siteId: SiteId): Promise<LocalWalletReadResult> {
-  return (await postRequest('localWalletRead', { siteId })) as LocalWalletReadResult;
+export function readSharedLocalWallet(siteId: SiteId): Promise<LocalWalletReadResult> {
+  return getProtocolClient().readSharedLocalWallet(siteId);
 }
 
-export async function saveSharedLocalWallet(siteId: SiteId, entropy: Uint8Array): Promise<void> {
-  await postRequest('localWalletSave', { siteId, entropy });
+export function saveSharedLocalWallet(siteId: SiteId, entropy: Uint8Array): Promise<void> {
+  return getProtocolClient().saveSharedLocalWallet(siteId, entropy);
 }
 
-export async function updateSharedLocalWalletIdentity(siteId: SiteId, identity: LocalWalletIdentity): Promise<void> {
-  await postRequest('localWalletIdentity', { siteId, identity });
+export function updateSharedLocalWalletIdentity(siteId: SiteId, identity: LocalWalletIdentity): Promise<void> {
+  return getProtocolClient().updateSharedLocalWalletIdentity(siteId, identity);
 }
 
-export async function forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
-  await postRequest('localWalletForget', { siteId });
+export function forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
+  return getProtocolClient().forgetSharedLocalWallet(siteId);
 }
 
-/**
- * Hears shared-auth writes from sibling tabs of the same root domain, relayed by the host iframe
- * over `BroadcastChannel`. A tab's own writes do not arrive here.
- */
 export function subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
-  sharedAuthListeners.add(listener);
-  // Not awaited, since subscribe is synchronous. A failed warm-up is retried by the next request.
-  void ensureHostFrame().catch((error: unknown) => {
-    log.warn('[dot.li protocol] Failed to ensure host frame for shared auth subscription:', error);
-  });
-  return () => {
-    sharedAuthListeners.delete(listener);
-  };
+  return getProtocolClient().subscribeSharedAuthStorage(listener);
 }
 
-/** Events arrive only after the origin- and source-gated listener validates them. */
 export function onProtocolChainSync(listener: (event: ProtocolChainSyncEnvelope) => void): () => void {
-  bindMessageListener();
-  chainSyncListeners.add(listener);
-  return () => {
-    chainSyncListeners.delete(listener);
-  };
-}
-
-/** Whether a frame signalled ready and has not been reset or died since. Does not start a frame. */
-export function isProtocolReady(): boolean {
-  return protocolReady;
-}
-
-/** Whether a started frame is still on its way up, so a dial now waits on it. Does not start a frame. */
-export function isProtocolBooting(): boolean {
-  return !protocolReady && !protocolReadyWaitFailed && (hostFramePromise !== null || protocolReadyPromise !== null);
-}
-
-/** Fires each time the frame comes up. Does not start a frame. */
-export function onProtocolReady(listener: () => void): () => void {
-  bindMessageListener();
-  protocolReadyListeners.add(listener);
-  return () => {
-    protocolReadyListeners.delete(listener);
-  };
+  return getProtocolClient().onProtocolChainSync(listener);
 }
 
 export function onProtocolChainDetail(listener: (event: ProtocolChainDetailEnvelope) => void): () => void {
-  bindMessageListener();
-  chainDetailListeners.add(listener);
-  return () => {
-    chainDetailListeners.delete(listener);
-  };
+  return getProtocolClient().onProtocolChainDetail(listener);
 }
 
 export function onProtocolNetBytes(listener: (event: ProtocolNetBytesEnvelope) => void): () => void {
-  bindMessageListener();
-  netBytesListeners.add(listener);
-  return () => {
-    netBytesListeners.delete(listener);
-  };
-}
-
-/**
- * Wider than the advertised `isRemoteChainSupported`, since gateway mode keeps Bulletin connectable for bitswap's
- * content fetches through the frame.
- */
-export function isRemoteChainConnectable(genesisHash: string): boolean {
-  const supported =
-    getBackend() === 'rpc-gateway' ? getActiveCoreGatewaySupportedGenesisHashes() : getActiveSupportedGenesisHashes();
-  return supported.has(genesisHash.toLowerCase());
-}
-
-export function isRemoteChainSupported(genesisHash: string): boolean {
-  // Gateway mode bridges a curated RPC subset, while smoldot can run any configured chain.
-  const supported =
-    getBackend() === 'rpc-gateway' ? getActiveGatewaySupportedGenesisHashes() : getActiveSupportedGenesisHashes();
-  return supported.has(genesisHash.toLowerCase());
-}
-
-/** `null` for a notification, which has no `id` to answer. */
-function buildJsonRpcError(
-  request: JsonRpcRequest,
-  error: string | ReturnType<typeof chainHaltedError>,
-): JsonRpcMessage | null {
-  if (request.id === undefined || request.id === null) {
-    return null;
-  }
-  return {
-    jsonrpc: '2.0',
-    id: request.id,
-    error: typeof error === 'string' ? { code: -32603, message: error } : error,
-  };
-}
-
-/** A consumer callback that throws is logged, not propagated. */
-function guardConsumer(connectionId: string, label: string, call: () => void): void {
-  try {
-    call();
-  } catch (err: unknown) {
-    log.error(
-      `[dot.li protocol] ${label} threw (conn=${connectionId.slice(-8)}):`,
-      err instanceof Error ? err.message : err,
-    );
-  }
-}
-
-/** Unsent messages get the retryable halt error on a chain halt, and a plain close error on a dead frame. */
-function haltRemote(connectionId: string, connection: RemoteChainConnection, reason: RemoteChainHalt): void {
-  for (const message of connection.pendingMessages) {
-    const errResponse = buildJsonRpcError(
-      message,
-      reason === 'chain' ? chainHaltedError() : 'Chain connection is closed',
-    );
-    if (errResponse !== null) {
-      guardConsumer(connectionId, 'onMessage', () => {
-        connection.onMessage(errResponse);
-      });
-    }
-  }
-  connection.pendingMessages = [];
-  guardConsumer(connectionId, 'onHalt', () => {
-    connection.onHalt?.(reason);
-  });
-}
-
-/**
- * A remote chain provider whose connections may hear `onHalt` once:
- *
- * - `'chain'`: the chain halted and is rebuilt on the next connect. Every request in flight or unsent
- *   gets an error with `CHAIN_HALTED_ERROR_DATA`, and every follow its `stop`.
- * - `'frame'`: the frame died, never came up or refused the connection. Only unsent requests are
- *   answered, so a consumer without `onHalt` may wait on the rest forever.
- *
- * Later sends fail with `Chain connection is closed`. A message already on its way may still arrive
- * after `onHalt` and should be ignored.
- */
-export type RemoteChainProvider = (
-  onMessage: (message: JsonRpcMessage) => void,
-  onHalt?: (reason: RemoteChainHalt) => void,
-) => JsonRpcConnection;
-
-function postDisconnect(connectionId: string): void {
-  void postRequest('chainDisconnect', { connectionId }).catch((error: unknown) => {
-    log.warn('[dot.li protocol] Remote disconnect failed:', error);
-  });
+  return getProtocolClient().onProtocolNetBytes(listener);
 }
 
 export function createRemoteChainProvider(genesisHash: string): RemoteChainProvider | null {
-  if (!isRemoteChainConnectable(genesisHash)) {
-    return null;
-  }
-
-  return (onMessage, onHalt): JsonRpcConnection => {
-    const connectionId = createRequestId();
-    const remote: RemoteChainConnection = {
-      onMessage,
-      onHalt: onHalt ?? null,
-      pendingMessages: [],
-      connected: false,
-    };
-
-    chainConnections.set(connectionId, remote);
-    // Not yet halted or disconnected. Whoever removes it tells the consumer.
-    const isOpen = (): boolean => chainConnections.get(connectionId) === remote;
-
-    void ensureProtocolFrame()
-      .then(async () => {
-        // Disconnected before the connect is posted: the frame never hears of it.
-        if (!isOpen()) {
-          return;
-        }
-        await postRequest('chainConnect', { genesisHash, connectionId });
-        // Disconnected while the connect was in flight: it is closed in the
-        // frame now that the connect settled, not before, or the frame would
-        // keep a connection opened after its disconnect.
-        if (!isOpen()) {
-          postDisconnect(connectionId);
-          return;
-        }
-        remote.connected = true;
-        for (const message of remote.pendingMessages) {
-          void postRequest('chainSend', {
-            connectionId,
-            message: JSON.stringify(message),
-          }).catch((error: unknown) => {
-            if (!isOpen()) {
-              return;
-            }
-            const errResponse = buildJsonRpcError(message, serializeError(error));
-            if (errResponse !== null) {
-              onMessage(errResponse);
-            }
-          });
-        }
-        remote.pendingMessages = [];
-      })
-      .catch((error: unknown) => {
-        if (!isOpen()) {
-          return;
-        }
-        // Halts like a dead frame so a caching consumer drops it. Removed first so a send made during
-        // the halt is answered at once, not queued and lost.
-        log.error('[dot.li protocol] Failed to connect remote chain:', error);
-        chainConnections.delete(connectionId);
-        haltRemote(connectionId, remote, 'frame');
-      });
-
-    return {
-      send(message) {
-        if (!isOpen()) {
-          const errResponse = buildJsonRpcError(message, 'Chain connection is closed');
-          if (errResponse !== null) {
-            onMessage(errResponse);
-          }
-          return;
-        }
-        if (!remote.connected) {
-          remote.pendingMessages.push(message);
-          return;
-        }
-        void postRequest('chainSend', {
-          connectionId,
-          message: JSON.stringify(message),
-        }).catch((error: unknown) => {
-          // A papi client re-follows on the `stop` that comes before
-          // `chain-halt`, and the frame refuses that send for a connection it
-          // has already forgotten.
-          if (!isOpen()) {
-            return;
-          }
-          const reason = serializeError(error);
-          log.error('[dot.li protocol] Remote chain send failed:', error);
-          const errResponse = buildJsonRpcError(message, reason);
-          if (errResponse !== null) {
-            onMessage(errResponse);
-          }
-        });
-      },
-      disconnect() {
-        const wasOpen = isOpen();
-        chainConnections.delete(connectionId);
-        // Not accepted yet: a connect not posted is never posted, and one in
-        // flight is closed in the frame once it settles.
-        if (wasOpen && remote.connected) {
-          postDisconnect(connectionId);
-        }
-      },
-    };
-  };
+  return getProtocolClient().createRemoteChainProvider(genesisHash);
 }

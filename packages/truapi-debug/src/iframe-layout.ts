@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Must not import `@dotli/ui` or `solid-js`, whose truapi-debug components consume it.
+// Must not import `@dotli/truapi-debug-ui` or `solid-js`, whose components consume it.
 
 import type { DockPosition } from './dock-storage.js';
 

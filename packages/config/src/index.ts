@@ -16,7 +16,6 @@ export {
   isSandboxOrigin,
   type SiteId,
 } from './config.js';
-export { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, validateSandboxParams } from './host-sandbox-contract.js';
 export {
   BACKEND_KEY,
   BACKEND_LABELS,
@@ -27,7 +26,6 @@ export {
   isSharedWorkerAvailable,
   isVerifiedSession,
   localStorageAdapter,
-  migrateLegacyOn,
   setBackend,
   setCacheSettings,
   type Backend,
@@ -39,10 +37,12 @@ export {
   CHAIN_ROLE_LABELS,
   NETWORK_KEY,
   NETWORK_NAME_TO_SERVICES_CONFIG,
+  NetworkName,
   chainRoleForGenesis,
   getActiveChainRoles,
   getActiveCoreGatewayChains,
   getActiveCoreGatewaySupportedGenesisHashes,
+  getActiveFixedServicesConfig,
   getActiveGatewayChains,
   getActiveGatewaySupportedGenesisHashes,
   getActiveServicesConfig,
@@ -60,7 +60,10 @@ export {
   type ChainRole,
   type ChainService,
   type DotnsContracts,
+  type FixedChainService,
+  type FixedServicesConfig,
   type Network,
 } from './network.js';
+export { persistDefaults } from './persist-defaults.js';
 export { TIMEOUTS } from './timeouts.js';
 export { parseSettingsFromSearch, writeSettingsToSearch } from './url-settings.js';

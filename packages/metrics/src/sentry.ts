@@ -6,27 +6,11 @@
 import * as Sentry from '@sentry/browser';
 import { bindLogSink, log, type LogLevel, serializeError, fullErrorChain } from '@dotli/shared';
 
-import { m, sentrySpanOf, type SpanHandle } from './metrics.js';
+import { bindCaptureSink, type CaptureSink } from './capture.js';
+import { m, sentrySpanOf } from './metrics.js';
 
 /** All surfaces report to one Sentry project, and this `source` tag tells them apart. */
 export type SentrySource = 'host' | 'protocol' | 'worker' | 'sandbox';
-
-/** The user flow an event belongs to, so failures can be read and counted per flow from tags alone. */
-export type Flow =
-  'boot' | 'resolve' | 'content' | 'protocol' | 'wallet' | 'storage' | 'notifications' | 'pwa' | 'ui' | 'chat';
-
-export interface CaptureContext {
-  flow: Flow;
-  /**
-   * The failing step in snake_case (`manifest_read`). Part of the issue fingerprint, so keep it
-   * stable and low-cardinality: never a label, CID or message.
-   */
-  step: string;
-  tags?: Record<string, string>;
-  extra?: Record<string, unknown>;
-  /** The error shows inside this span's trace. */
-  span?: SpanHandle;
-}
 
 /** Structural view of a Sentry event, so tests need no SDK types. */
 interface SmoldotEventLike {
@@ -150,6 +134,8 @@ export function initSentry(source: SentrySource): void {
     tracePropagationTargets: [],
   });
 
+  bindCaptureSink(sentrySink);
+
   m.bind({
     startSpan: Sentry.startSpan,
     startInactiveSpan: Sentry.startInactiveSpan,
@@ -166,6 +152,7 @@ export function initSentry(source: SentrySource): void {
   }
 
   if ((dsn === undefined || dsn === '') && env !== 'development') {
+    // eslint-disable-next-line no-console -- error reporting is off, so the console is the only place to say so
     console.warn(`[dot.li sentry] VITE_SENTRY_DSN missing in env "${env}" — error reporting is DISABLED.`);
   }
 
@@ -234,47 +221,44 @@ export function installGlobalErrorHandlers(source: SentrySource): void {
   });
 }
 
-/**
- * Report a caught exception as a failure of one flow step.
- * Flow and step join the fingerprint because errors rebuilt from another realm share one receiving stack.
- */
-export function captureException(err: unknown, ctx: CaptureContext): void {
-  const error = err instanceof Error ? err : nonErrorThrow(err);
-  const facts = remoteFacts(err);
-  const tags: Record<string, string> = {
-    ...ctx.tags,
-    flow: ctx.flow,
-    step: ctx.step,
-    ...(facts.method !== undefined ? { protocol_method: facts.method } : {}),
-  };
-  const extra: Record<string, unknown> = {
-    ...ctx.extra,
-    ...(err instanceof Error ? {} : nonErrorExtra(err)),
-    ...(facts.remoteStack !== undefined ? { remote_stack: facts.remoteStack } : {}),
-  };
-  const capture = (): void => {
-    Sentry.captureException(error, {
-      tags,
-      extra,
-      fingerprint: ['{{ default }}', ctx.flow, ctx.step],
+/** Sends captures to Sentry. Bound by `initSentry`, so before it runs captures drop. */
+const sentrySink: CaptureSink = {
+  exception: (err, ctx) => {
+    const error = err instanceof Error ? err : nonErrorThrow(err);
+    const facts = remoteFacts(err);
+    const tags: Record<string, string> = {
+      ...ctx.tags,
+      flow: ctx.flow,
+      step: ctx.step,
+      ...(facts.method !== undefined ? { protocol_method: facts.method } : {}),
+    };
+    const extra: Record<string, unknown> = {
+      ...ctx.extra,
+      ...(err instanceof Error ? {} : nonErrorExtra(err)),
+      ...(facts.remoteStack !== undefined ? { remote_stack: facts.remoteStack } : {}),
+    };
+    const capture = (): void => {
+      Sentry.captureException(error, {
+        tags,
+        extra,
+        fingerprint: ['{{ default }}', ctx.flow, ctx.step],
+      });
+    };
+    const span = ctx.span === undefined ? undefined : sentrySpanOf(ctx.span);
+    if (span === undefined) {
+      capture();
+      return;
+    }
+    Sentry.withActiveSpan(span as Parameters<typeof Sentry.withActiveSpan>[0], capture);
+  },
+  expected: (err, ctx) => {
+    Sentry.addBreadcrumb({
+      category: ctx.flow,
+      level: 'warning',
+      message: `${ctx.step}: ${err instanceof Error ? `${err.name}: ${err.message}` : serializeError(err)}`,
     });
-  };
-  const span = ctx.span === undefined ? undefined : sentrySpanOf(ctx.span);
-  if (span === undefined) {
-    capture();
-    return;
-  }
-  Sentry.withActiveSpan(span as Parameters<typeof Sentry.withActiveSpan>[0], capture);
-}
-
-/** Record an expected, handled failure as a breadcrumb rather than an issue, to explain any later event. */
-export function recordExpected(err: unknown, ctx: Pick<CaptureContext, 'flow' | 'step'>): void {
-  Sentry.addBreadcrumb({
-    category: ctx.flow,
-    level: 'warning',
-    message: `${ctx.step}: ${err instanceof Error ? `${err.name}: ${err.message}` : serializeError(err)}`,
-  });
-}
+  },
+};
 
 /** Origin facts the protocol client attaches to errors it rebuilds from a response envelope. */
 function remoteFacts(err: unknown): { method?: string; remoteStack?: string } {

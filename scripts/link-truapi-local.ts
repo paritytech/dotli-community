@@ -56,7 +56,7 @@ for (const pkg of packages) {
 for (const [workspace, name] of [
   ['packages/ui', 'truapi'],
   ['packages/ui', 'truapi-host'],
-  ['packages/resolver', 'truapi-provider'],
+  ['packages/chains', 'truapi-provider'],
 ] as const) {
   rmSync(resolve(dotliRoot, workspace, 'node_modules/@parity', name), {
     force: true,

@@ -4,7 +4,8 @@
 
 // On a phone it is drawn over the sheets resting on it and stays live while one is open (`data-over-sheets`),
 // so a control pressed there hands the open sheet over to its own.
-import { TopbarActions } from '@dotli/ui/islands/TopbarActions';
+// `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
+import { TopbarActions } from '../islands/TopbarActions.jsx';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
 import s from './Topbar.module.css';
@@ -26,19 +27,20 @@ import s from './Topbar.module.css';
 </header>
 
 <script>
+  import { topbarStore } from '../state/topbar.js';
+  import { networkHealthStore } from '../state/network-health.js';
   import {
-    bindTopbarStatus,
     registerTopbarElement,
     revealTopbar,
     scheduleTopbarHide,
     TOPBAR_REVEAL_SHORTCUT,
-    topbarStore,
-  } from '@dotli/ui';
+  } from '../topbar-autohide.js';
+  import { bindTopbarStatus } from '../topbar-status.js';
 
   const bar = document.getElementById('topbar');
   if (bar !== null) {
     registerTopbarElement(bar);
-    bindTopbarStatus(bar);
+    bindTopbarStatus(bar, networkHealthStore);
     bar.addEventListener('mouseenter', revealTopbar);
     bar.addEventListener('mouseleave', scheduleTopbarHide);
 

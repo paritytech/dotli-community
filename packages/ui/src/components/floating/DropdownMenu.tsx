@@ -20,8 +20,7 @@ const Surface = lazy(() => import('./DropdownMenuSurface.js'), { export: 'Dropdo
 
 let surfaceLoaded = false;
 
-/** Loads the surface ahead of the idle preload, for tests that read a surface in the tick that opens it. */
-export function preloadDropdownMenuSurface(): Promise<unknown> {
+function preloadDropdownMenuSurface(): Promise<unknown> {
   const loading = Surface.preload();
   loading.then(
     () => {

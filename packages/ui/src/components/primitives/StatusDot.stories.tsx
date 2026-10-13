@@ -3,6 +3,7 @@
 
 import { For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
+import { expect } from 'storybook/test';
 import { StatusDot } from './StatusDot.js';
 
 const TONES = ['ok', 'warn', 'err', 'info', 'idle'] as const;
@@ -32,3 +33,14 @@ export const Tones: Story = {
 };
 export const Small: Story = { args: { size: 'sm' } };
 export const Pulse: Story = { args: { tone: 'warn', pulse: true, label: 'Syncing' } };
+
+// With no label it only repeats the text beside it.
+export const Decorative: Story = {
+  render: () => <StatusDot tone="warn" testId="dot" />,
+  play: async ({ canvas, step }) => {
+    await step('Then assistive technology skips the dot', async () => {
+      await expect(canvas.getByTestId('dot')).toHaveAttribute('aria-hidden', 'true');
+      await expect(canvas.queryByRole('img')).toBeNull();
+    });
+  },
+};

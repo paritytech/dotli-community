@@ -4,11 +4,17 @@
 // None of these wait for a chain: they stop at what the shell renders by itself.
 
 import { expect, type Locator } from '@playwright/test';
+import jsQR from 'jsqr';
 import { PORT } from '../env.js';
+import { seedBackend } from './fixtures/settings.js';
+import { productPage, rawBlock } from './helpers/blocks.js';
+import { fakeProtocol } from './helpers/fake-protocol.js';
+import { waitForRenderedSandbox } from './helpers/frames.js';
 import { test } from './helpers/shared-mode-reset.js';
 
 const LANDING_URL = `http://localhost:${PORT}/`;
 const LABEL_URL = `http://browse.localhost:${PORT}/`;
+const PRODUCT_URL = `http://host-playground.localhost:${PORT}/`;
 // 127.0.0.1 because Node on Linux does not resolve *.localhost.
 const SHARED_STORE = `http://127.0.0.1:${PORT}/__dotli-mode/`;
 
@@ -426,5 +432,99 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#dotli-nav-input')).toBeVisible();
 
     await context.close();
+  });
+  test('As a returning user, I remove a site from my recent list and it stays removed', async ({ page, request }) => {
+    // Given
+    const put = await request.put(`${SHARED_STORE}dotli_recent`, {
+      data: JSON.stringify(['browse', 'playground']),
+    });
+    expect(put.ok()).toBe(true);
+    await page.goto(LANDING_URL);
+    const links = page.locator('#dotli-recent').getByTestId('landing-recent-link');
+    await expect(links).toHaveCount(2);
+
+    // When
+    await links.first().hover();
+    await page.getByRole('button', { name: /^Remove browse/ }).click();
+
+    // Then
+    await expect(links).toHaveCount(1);
+    await expect(links.first()).toHaveAttribute('href', /playground/);
+    await expect
+      .poll(async () => (await request.get(`${SHARED_STORE}dotli_recent`)).text())
+      .toBe(JSON.stringify(['playground']));
+
+    // When
+    await page.reload();
+
+    // Then
+    await expect(links).toHaveCount(1);
+  });
+
+  test('As a user on a product, I open the network popover and see how the chains stand', async ({ page }) => {
+    // Given
+    const block = await rawBlock(productPage('chains'));
+    await seedBackend(page, 'smoldot-direct');
+    await fakeProtocol(page, { resolve: { kind: 'cid', cid: block.cid }, blocks: { [block.cid]: block.hex } });
+    await page.goto(PRODUCT_URL);
+    await waitForRenderedSandbox(page, 15_000);
+    const popover = page.locator('#chains-popover');
+
+    // When
+    await page.getByRole('button', { name: 'Network' }).click();
+
+    // Then
+    await expect(popover).toHaveAttribute('data-open');
+    await expect(popover.getByTestId('chains-content')).toBeVisible();
+    await expect(popover.getByTestId('chains-status')).not.toHaveText('');
+
+    // When
+    await page.keyboard.press('Escape');
+
+    // Then
+    await expect(popover).not.toHaveAttribute('data-open');
+  });
+
+  test('As a user on a light client, I hover the shield while my product downloads and read that it was verified', async ({
+    page,
+  }) => {
+    // Given: the content never arrives, so the bar stays unfolded over the loading screen
+    const block = await rawBlock(productPage('shield'));
+    await seedBackend(page, 'smoldot-direct');
+    await fakeProtocol(page, {
+      resolve: { kind: 'cid', cid: block.cid },
+      blocks: { [block.cid]: block.hex },
+      modes: { [block.cid]: 'hold' },
+    });
+    await page.goto(PRODUCT_URL);
+    const shield = page.getByRole('button', { name: 'Site verification' });
+    await expect(shield).toHaveAttribute('data-state', 'verified', { timeout: 15_000 });
+
+    // When
+    await shield.hover();
+
+    // Then
+    await expect(page.getByTestId('verification-tooltip-row-verified')).toBeVisible();
+  });
+
+  test('As a visitor signing in, I see a QR code that carries the pairing link', async ({ page }) => {
+    // Given: the idle-hydrated sign-in island has taken over its markup.
+    await page.goto(LANDING_URL);
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
+
+    // When
+    await page.locator('#landing-auth-button').click();
+
+    // Then
+    const canvas = page.getByTestId('auth-modal-qr-tile').locator('canvas');
+    await expect(canvas).toHaveAttribute('data-qr-payload', /^polkadotapp:\/\//, { timeout: 15_000 });
+    const payload = await canvas.getAttribute('data-qr-payload');
+    const pixels = await canvas.evaluate((node: HTMLCanvasElement) => {
+      const image = node.getContext('2d')?.getImageData(0, 0, node.width, node.height);
+      return image === undefined ? null : { data: [...image.data], width: image.width, height: image.height };
+    });
+    expect(pixels).not.toBeNull();
+    const decoded = jsQR(new Uint8ClampedArray(pixels?.data ?? []), pixels?.width ?? 0, pixels?.height ?? 0);
+    expect(decoded?.data).toBe(payload);
   });
 });

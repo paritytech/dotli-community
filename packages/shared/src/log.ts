@@ -4,7 +4,8 @@
 // Console output only under DEBUG, while warn, error and event always reach the sink so production keeps a trace.
 // The sink is bound from `@dotli/metrics`, since this package cannot depend on it.
 
-import { DEBUG } from '@dotli/config';
+// Read from the build flag here rather than set at boot, so the first log of every entry point already honours it.
+const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -15,9 +16,13 @@ export interface LogSink {
 
 let sink: LogSink | null = null;
 
-/** A later bind replaces the earlier sink. */
-export function bindLogSink(next: LogSink): void {
+/** A later bind replaces the earlier sink. Returns a function that puts back the sink bound before. */
+export function bindLogSink(next: LogSink): () => void {
+  const previous = sink;
   sink = next;
+  return () => {
+    sink = previous;
+  };
 }
 
 function safeEmit(level: LogLevel, message: string, attrs?: Record<string, unknown>, args?: unknown[]): void {
@@ -51,12 +56,14 @@ function createLogger(scope: Record<string, unknown>): BoundLogger {
     debug: DEBUG ? console.debug.bind(console) : noop,
     warn: (...args: unknown[]) => {
       if (DEBUG) {
+        // eslint-disable-next-line no-console -- the logger is what writes to the console
         console.warn(...args);
       }
       safeEmit('warn', stringifyArgs(args), scope, args);
     },
     error: (...args: unknown[]) => {
       if (DEBUG) {
+        // eslint-disable-next-line no-console -- the logger is what writes to the console
         console.error(...args);
       }
       safeEmit('error', stringifyArgs(args), scope, args);

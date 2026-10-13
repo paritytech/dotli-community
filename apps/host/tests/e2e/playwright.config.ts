@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from '@playwright/test';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { baseConfig } from '../playwright.base.config.js';
 
@@ -31,29 +31,6 @@ try {
 }
 
 const localProductUrl = process.env['E2E_PRODUCT_URL'];
-
-// A dist older than the lockfile is stale, and its failures look like obscure SDK bugs. CI always builds fresh.
-if (process.env['CI'] !== 'true') {
-  try {
-    const lockMtime = statSync(resolve(repoRoot, 'package-lock.json')).mtimeMs;
-    for (const app of ['host', 'sandbox', 'protocol']) {
-      const distIndex = resolve(repoRoot, `apps/${app}/dist/index.html`);
-      const distMtime = statSync(distIndex).mtimeMs;
-      if (distMtime < lockMtime) {
-        throw new Error(
-          `apps/${app}/dist is older than package-lock.json — run \`npm run build\` from the repo root before re-running e2e.`,
-        );
-      }
-    }
-  } catch (e) {
-    if (e instanceof Error && e.message.includes('ENOENT')) {
-      throw new Error('dist directories missing — run `npm run build` from the repo root before running e2e.', {
-        cause: e,
-      });
-    }
-    throw e;
-  }
-}
 
 const dotliWebServer = {
   command: 'node ../../../../scripts/preview-server.ts',

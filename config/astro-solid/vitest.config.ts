@@ -4,8 +4,8 @@
 import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
 
-// One project per renderer side. Both compile hydratable to match the integration, which the plugin's test posture
-// would not.
+// Unit specs sit beside their module under Node, where the server renderer runs. Client hydration needs a DOM, so it
+// is a functional test. Both compile hydratable to match the integration, which the plugin's test posture would not.
 export default defineConfig({
   plugins: [solid({ ssr: true, solid: { hydratable: true } })],
   test: {
@@ -15,11 +15,11 @@ export default defineConfig({
         extends: true,
         // Solid's test posture resolves browser builds, but the server renderer needs the server ones.
         resolve: { conditions: ['node'] },
-        test: { name: 'astro-solid:server', include: ['tests/server.test.tsx'], environment: 'node' },
+        test: { name: 'astro-solid:unit', include: ['src/**/*.spec.{ts,tsx}'], environment: 'node' },
       },
       {
         extends: true,
-        test: { name: 'astro-solid:client', include: ['tests/client.test.tsx'], environment: 'happy-dom' },
+        test: { name: 'astro-solid:functional', include: ['tests/**/*.test.{ts,tsx}'], environment: 'happy-dom' },
       },
     ],
   },

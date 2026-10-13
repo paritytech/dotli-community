@@ -52,13 +52,17 @@ function parseBoolean(raw: string | null): boolean | null {
   return raw === '1';
 }
 
-export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSettings {
+/** `scope` is the page's global by default, where the shared light client needs SharedWorker. */
+export function parseSettingsFromSearch(
+  search: URLSearchParams,
+  scope: { SharedWorker?: unknown } = globalThis,
+): ParsedUrlSettings {
   const rawNetwork = search.get(URL_PARAM_NAMES.network);
   const rawBackend = search.get(URL_PARAM_NAMES.chainBackend);
   const backend = rawBackend !== null && VALID_BACKENDS.has(rawBackend) ? (rawBackend as Backend) : null;
   return {
     network: rawNetwork !== null && isValidNetwork(rawNetwork) ? rawNetwork : null,
-    chainBackend: backend === 'smoldot-shared-worker' && !isSharedWorkerAvailable() ? null : backend,
+    chainBackend: backend === 'smoldot-shared-worker' && !isSharedWorkerAvailable(scope) ? null : backend,
     skipArchiveCache: parseBoolean(search.get(URL_PARAM_NAMES.skipArchiveCache)),
     skipCidCache: parseBoolean(search.get(URL_PARAM_NAMES.skipCidCache)),
     skipWorkerCache: parseBoolean(search.get(URL_PARAM_NAMES.skipWorkerCache)),

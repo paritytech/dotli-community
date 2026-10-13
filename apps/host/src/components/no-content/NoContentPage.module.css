@@ -1,0 +1,35 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The domain chip sits in the sentence for screen readers, on its own row for the eye. */
+.unreached .line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: center;
+  margin-top: var(--sp-3);
+}
+
+.domain {
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: var(--h-row-sm);
+  padding: 6px var(--sp-3);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  font-size: var(--fs-small);
+  line-height: 20px;
+  /* A name runs up to 63 characters and must stay whole for spotting a typo. */
+  overflow-wrap: anywhere;
+}
+
+.domain-host {
+  font-weight: var(--fw-medium);
+  color: var(--text-strong);
+}
+
+.domain-tld {
+  color: var(--text-secondary);
+}

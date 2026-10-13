@@ -19,7 +19,7 @@ client for Rust-core `chain.connect` requests.
 | Origin | Purpose | Triggered by |
 |---|---|---|
 | Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/ui/src/host-callbacks/Chain.ts` |
+| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/host-runtime/src/host-callbacks/Chain.ts` |
 
 Both origins construct smoldot through the singletons in
 `packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests
@@ -64,7 +64,7 @@ The host shell selects the submode from `chainBackend` at `apps/host/src/main.ts
 
 Sandbox-facing consumers use the cross-origin seam exposed by
 `@dotli/protocol`. The host's Rust-core `chain.connect` callback is the
-exception: it imports the chain providers from `@dotli/resolver` to honor the
+exception: it imports the chain providers from `@dotli/chains` to honor the
 selected backend.
 
 ```ts
@@ -104,7 +104,7 @@ These resolver-package exports are owner-only and must not be imported outside
 
 - `smoldot.ts`: `getSmoldot`, `getSmoldotDirect`, `terminateSmoldot`, `onSmoldotFatal`, `onConnectionIssue`, `getRelayChain`, `getBulletinChain`, `getPeopleChain`, `getDappAssetHubChain`, `getDappAssetHubProvider`, `makeNonRemovingChain`, `getPeopleChainProvider`
 - `chains.ts`: `createChainProvider`, `isChainSupported` (host chain callback only)
-- `resolve.ts` re-exports of `getSmoldot`, `getSmoldotDirect`, `getRelayChain`, `onConnectionIssue` plus the chain-touching helpers `resolveDotName`, `resolveOwner`, `waitForAssetHubFinalized`, `destroyResolverClient`, and `setResolverAssetHubProvider` (the bootstrap seam that points the resolver's Asset Hub reads at the broker's local session)
+- `resolve.ts`: `createDotnsResolver`, which the iframe and the SharedWorker build on the broker's local sessions. The host builds one on its own chain pool for rpc-gateway.
 
 ## Adding a new chain
 

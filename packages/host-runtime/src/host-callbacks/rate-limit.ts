@@ -1,0 +1,28 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+const SUBMIT_WINDOW_MS = 10_000;
+const SUBMIT_MAX_PER_WINDOW = 20;
+
+export interface SubmitRateLimiter {
+  allow: () => boolean;
+}
+
+export function createSubmitRateLimiter(): SubmitRateLimiter {
+  const timestamps: number[] = [];
+  return {
+    allow() {
+      const now = Date.now();
+      let oldest = timestamps[0];
+      while (oldest !== undefined && oldest <= now - SUBMIT_WINDOW_MS) {
+        timestamps.shift();
+        oldest = timestamps[0];
+      }
+      if (timestamps.length >= SUBMIT_MAX_PER_WINDOW) {
+        return false;
+      }
+      timestamps.push(now);
+      return true;
+    },
+  };
+}

@@ -5,12 +5,21 @@ import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { Button } from '../primitives/Button.js';
+import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layer-context.js';
 import { Popover } from './Popover.js';
 
 const onOther = fn().mockName('onOther');
 const onOpenChange = fn().mockName('onOpenChange');
 const onOpenChangeA = fn().mockName('onOpenChangeA');
 const onOpenChangeB = fn().mockName('onOpenChangeB');
+/** The layers the page tracks, as an auto-hiding bar tracks its own. */
+const tracked = new Set<TrackedLayer>();
+const track = (layer: TrackedLayer): (() => void) => {
+  tracked.add(layer);
+  return () => {
+    tracked.delete(layer);
+  };
+};
 
 function Harness() {
   const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
@@ -214,6 +223,54 @@ export const OneClickMovesToAnotherPopover: Story = {
       await waitFor(() => expect(body.getByTestId('inside-b')).toHaveFocus());
       await expect(onOpenChangeA.mock.calls).toEqual([[true], [false]]);
       await expect(onOpenChangeB.mock.calls).toEqual([[true]]);
+    });
+  },
+};
+
+export const PageTracksOpenLayer: Story = {
+  render: () => (
+    <LayerTracker value={track}>
+      <Harness />
+    </LayerTracker>
+  ),
+  play: async ({ step }) => {
+    await step('Given the page tracks the layers below it, and the popover is open with focus inside', async () => {
+      await openIt();
+      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
+    });
+    await step('Then the page sees one layer, open and holding the focus', async () => {
+      const layers = [...tracked];
+      await expect(layers).toHaveLength(1);
+      await expect(layers[0]?.open()).toBe(true);
+      await expect(layers[0]?.element()?.contains(document.activeElement)).toBe(true);
+    });
+    await step('When I press Escape', async () => {
+      await (await input()).keyboard('{Escape}');
+    });
+    await step('Then the page sees it closed', async () => {
+      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await expect([...tracked].map(layer => layer.open())).toEqual([false]);
+    });
+  },
+};
+
+export const HiddenTriggerHandsFocusToBoundary: Story = {
+  render: () => (
+    <AnchorBoundary value={{ fallbackFocus: () => body.getByTestId('other') }}>
+      <Harness />
+    </AnchorBoundary>
+  ),
+  play: async ({ step }) => {
+    await step('Given the popover is open and the page then hid its trigger', async () => {
+      await openIt();
+      body.getByTestId('trigger').style.display = 'none';
+    });
+    await step('When I press Escape', async () => {
+      await (await input()).keyboard('{Escape}');
+    });
+    await step("Then it closed and the boundary's fallback has focus", async () => {
+      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(body.getByTestId('other')).toHaveFocus());
     });
   },
 };

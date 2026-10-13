@@ -55,7 +55,13 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 };
 
-function serveFile(filePath: string, coep: boolean): Response | null {
+/**
+ * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a host asset, whose worker script must
+ * carry COEP itself or the isolated /__preview page cannot start it.
+ */
+type HeaderPolicy = 'isolated' | 'worker-coep' | 'plain';
+
+function serveFile(filePath: string, policy: HeaderPolicy): Response | null {
   try {
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
       return null;
@@ -73,10 +79,12 @@ function serveFile(filePath: string, coep: boolean): Response | null {
     'Access-Control-Allow-Private-Network': 'true',
     'Cache-Control': 'no-cache',
   };
-  if (coep) {
+  if (policy === 'isolated') {
     headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
-    headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
     headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+  }
+  if (policy !== 'plain') {
+    headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
   }
   const body = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
   return new Response(body as BodyInit, { headers });
@@ -173,21 +181,23 @@ async function handle(req: Request): Promise<Response> {
     pathname = isBare ? '/landing.html' : `/${fallback}`;
   }
 
-  // As nginx does. COEP on the rest of the host build would block the /localhost:<port> proxy iframe.
-  const coep = isApp || isProtocol || pathname.startsWith('/__preview');
+  // As nginx does. COEP on the host's other documents would block the /localhost:<port> proxy iframe.
+  const isolated = isApp || isProtocol || pathname.startsWith('/__preview');
+  const pagePolicy: HeaderPolicy = isolated ? 'isolated' : 'plain';
+  const policy: HeaderPolicy = !isolated && pathname.startsWith('/assets/') ? 'worker-coep' : pagePolicy;
 
   const exact = join(baseDir, pathname);
-  const res = serveFile(exact, coep);
+  const res = serveFile(exact, policy);
   if (res) {
     return res;
   }
 
-  const res2 = serveFile(join(exact, 'index.html'), coep);
+  const res2 = serveFile(join(exact, 'index.html'), pagePolicy);
   if (res2) {
     return res2;
   }
 
-  return serveFile(join(baseDir, fallback), coep) ?? new Response('Not Found', { status: 404 });
+  return serveFile(join(baseDir, fallback), pagePolicy) ?? new Response('Not Found', { status: 404 });
 }
 
 // The Request URL takes its hostname from the Host header, which the routing keys on.

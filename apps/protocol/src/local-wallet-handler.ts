@@ -19,7 +19,10 @@ import {
   LocalWalletUnreadableError,
   saveLocalWallet,
   updateLocalWalletIdentity,
+  type LocalWalletStore,
 } from '@dotli/storage';
+
+const pageWallet: LocalWalletStore = { forgetLocalWallet, loadLocalWallet, saveLocalWallet, updateLocalWalletIdentity };
 
 const ENTROPY_LENGTHS = new Set([16, 20, 24, 28, 32]);
 
@@ -42,20 +45,25 @@ function assertIdentity(value: unknown): asserts value is LocalWalletIdentity {
 }
 
 /** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
-async function read(): Promise<LocalWalletReadResult> {
+async function read(store: LocalWalletStore): Promise<LocalWalletReadResult> {
   try {
-    const wallet = await loadLocalWallet();
+    const wallet = await store.loadLocalWallet();
     return wallet === null ? { status: 'none' } : { status: 'ok', entropy: wallet.entropy, identity: wallet.identity };
   } catch (error) {
     if (!(error instanceof LocalWalletUnreadableError)) {
       throw error;
     }
-    await forgetLocalWallet();
+    await store.forgetLocalWallet();
     return { status: 'unreadable' };
   }
 }
 
-export async function handleLocalWalletRequest(request: ProtocolRequestEnvelope, origin: string): Promise<unknown> {
+/** Serves one request from a host page on `origin`, over the page's own wallet store by default. */
+export async function handleLocalWalletRequest(
+  request: ProtocolRequestEnvelope,
+  origin: string,
+  store: LocalWalletStore = pageWallet,
+): Promise<unknown> {
   if (!isSharedAuthOriginAllowed(origin)) {
     throw new Error(`Local wallet request denied from origin: ${origin}`);
   }
@@ -69,21 +77,21 @@ export async function handleLocalWalletRequest(request: ProtocolRequestEnvelope,
 
   switch (request.method) {
     case 'localWalletRead':
-      return read();
+      return read(store);
     case 'localWalletSave': {
       const { entropy } = request.payload as ProtocolRequestMap['localWalletSave'];
       assertEntropy(entropy);
-      await saveLocalWallet(entropy);
+      await store.saveLocalWallet(entropy);
       return true;
     }
     case 'localWalletIdentity': {
       const { identity } = request.payload as ProtocolRequestMap['localWalletIdentity'];
       assertIdentity(identity);
-      await updateLocalWalletIdentity(identity);
+      await store.updateLocalWalletIdentity(identity);
       return true;
     }
     case 'localWalletForget':
-      await forgetLocalWallet();
+      await store.forgetLocalWallet();
       return true;
   }
 }

@@ -1,11 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { AnchoredContent } from './AnchoredContent.js';
 import { SheetChoice, type MenuState } from './DropdownMenu.js';
 import type { Placement } from './FloatingLayer.js';
-import { preloadPopoverSurface } from './Popover.js';
+import { PopoverSurfaceContext } from './Popover.js';
 import { handOffSheet } from './SheetFrame.js';
 import s from './DropdownMenu.module.css';
 
@@ -71,7 +72,9 @@ export function DropdownMenuSurface(props: {
   children: JSX.Element;
 }): JSX.Element {
   // The opening that renders it reports a failure.
-  preloadPopoverSurface().catch(() => undefined);
+  useContext(PopoverSurfaceContext)
+    .chunk.load()
+    .catch(() => undefined);
   /** The first item when opened by key, else the menu. */
   const openingFocus = (menu: HTMLElement, root: HTMLElement): HTMLElement => {
     const keyboard = props.state.keyboard.value;

@@ -4,9 +4,10 @@
 
 // Static but for its three controls, which are islands. The logo renders here with no directive, so it ships no code.
 import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
-import { LandingAuth } from '@dotli/ui/islands/LandingAuth';
-import { LandingNav } from '@dotli/ui/islands/LandingNav';
-import { LandingRecents } from '@dotli/ui/islands/LandingRecents';
+// `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
+import { LandingAuth } from '../islands/LandingAuth.jsx';
+import { LandingNav } from '../islands/LandingNav.jsx';
+import { LandingRecents } from '../islands/LandingRecents.jsx';
 import s from './Landing.module.css';
 ---
 

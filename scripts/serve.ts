@@ -34,28 +34,45 @@ const MIME: Record<string, string> = {
 };
 
 /** Mirrors the nginx profile's server blocks. */
-function routeFor(hostHeader: string): { dir: string; iframeable: boolean; root: string } {
+function routeFor(hostHeader: string): { dir: string; iframeable: boolean; root: string; bare: boolean } {
   const hostname = (hostHeader.split(':')[0] ?? '').toLowerCase();
   if (hostname === 'host.localhost') {
-    return { dir: join(DIST, 'protocol'), iframeable: true, root: 'index.html' };
+    return { dir: join(DIST, 'protocol'), iframeable: true, root: 'index.html', bare: false };
   }
   if (hostname.includes('.app.')) {
-    return { dir: join(DIST, 'app'), iframeable: true, root: 'index.html' };
+    return { dir: join(DIST, 'app'), iframeable: true, root: 'index.html', bare: false };
   }
   // The bare host's root is the landing page, as nginx's `location = /` serves it.
   const bare = !hostname.endsWith('.localhost');
-  return { dir: join(DIST, 'host'), iframeable: false, root: bare ? 'landing.html' : 'index.html' };
+  return { dir: join(DIST, 'host'), iframeable: false, root: bare ? 'landing.html' : 'index.html', bare };
+}
+
+/**
+ * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a host asset, whose worker script must
+ * carry COEP itself or the isolated /__preview page cannot start it.
+ */
+type HeaderPolicy = 'isolated' | 'worker-coep' | 'plain';
+
+/** The apex's /__preview is isolated like the sandboxes, and its other documents stay plain. */
+function headerPolicy(route: { iframeable: boolean; bare: boolean }, pathname: string): HeaderPolicy {
+  if (route.iframeable || (route.bare && pathname === '/__preview')) {
+    return 'isolated';
+  }
+  return pathname.startsWith('/assets/') ? 'worker-coep' : 'plain';
 }
 
 /** Split as nginx/snippets/dotli-headers-*.conf does. */
-function securityHeaders(iframeable: boolean): Record<string, string> {
+function securityHeaders(policy: HeaderPolicy): Record<string, string> {
   const shared = {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
   };
-  if (!iframeable) {
-    return { ...shared, 'X-Frame-Options': 'SAMEORIGIN' };
+  if (policy !== 'isolated') {
+    const plain = { ...shared, 'X-Frame-Options': 'SAMEORIGIN' };
+    return policy === 'worker-coep' ? { ...plain, 'Cross-Origin-Embedder-Policy': 'credentialless' } : plain;
   }
   return {
     ...shared,
@@ -101,7 +118,7 @@ function send(
   res: ServerResponse,
   filePath: string,
   pathname: string,
-  iframeable: boolean,
+  policy: HeaderPolicy,
   acceptEncoding: string,
 ): void {
   const chosen = negotiate(filePath, acceptEncoding);
@@ -109,7 +126,7 @@ function send(
     // From the requested file, not its .br or .gz sibling.
     'Content-Type': MIME[extname(filePath)] ?? 'application/octet-stream',
     'Cache-Control': cacheControl(pathname),
-    ...securityHeaders(iframeable),
+    ...securityHeaders(policy),
   };
   if (chosen.encoding !== undefined) {
     headers['Content-Encoding'] = chosen.encoding;
@@ -143,10 +160,13 @@ for (const sub of ['host', 'app', 'protocol']) {
 }
 
 createServer((req, res) => {
-  const { dir, iframeable, root } = routeFor(req.headers.host ?? '');
+  const route = routeFor(req.headers.host ?? '');
+  const { dir, root } = route;
   const url = new URL(req.url ?? '/', 'http://placeholder');
   const acceptEncoding = req.headers['accept-encoding'] ?? '';
   const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
+
+  const policy = headerPolicy(route, url.pathname);
 
   // Ahead of the SPA fallback, whose index.html would fail as a script syntax error rather than a missing file.
   if (url.pathname === RUNTIME_CONFIG_PATH) {
@@ -154,7 +174,7 @@ createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': 'application/javascript',
       'Cache-Control': 'no-store',
-      ...securityHeaders(iframeable),
+      ...securityHeaders(policy),
     });
     res.end(body);
     return;
@@ -169,14 +189,14 @@ createServer((req, res) => {
   }
 
   if (requested !== '/' && isFile(candidate)) {
-    send(res, candidate, url.pathname, iframeable, accept);
+    send(res, candidate, url.pathname, policy, accept);
     return;
   }
 
   const page = requested === '/' ? root : 'index.html';
   const index = join(dir, page);
   if (isFile(index)) {
-    send(res, index, `/${page}`, iframeable, accept);
+    send(res, index, `/${page}`, policy, accept);
     return;
   }
   res.writeHead(404).end('Not Found');

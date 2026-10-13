@@ -3,7 +3,7 @@
 
 import { children, createEffect, createSignal, isHydrating, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport, watchPhoneViewport } from '../../phone-viewport.js';
+import { isPhoneViewport, watchPhoneViewport, type IconComponent } from '@dotli/ui-core';
 import { IconTile } from '../primitives/IconTile.js';
 import { InSheet } from './in-sheet.js';
 import { ModalLayer } from './ModalLayer.js';
@@ -121,13 +121,13 @@ function Head(props: {
   /** The modal's `labelledBy`. */
   titleId: string;
   title: string;
-  /** Trusted SVG markup for the IconTile. */
-  icon?: string | undefined;
+  /** Drawn in the IconTile. */
+  icon?: IconComponent | undefined;
   iconTestId?: string;
 }): JSX.Element {
   return (
     <div class={s['head']}>
-      <Show when={props.icon}>{icon => <IconTile markup={icon()} testId={props.iconTestId} />}</Show>
+      <Show when={props.icon}>{icon => <IconTile icon={icon()} testId={props.iconTestId} />}</Show>
       <h2 class={s['title']} id={props.titleId}>
         {props.title}
       </h2>

@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn } from 'storybook/test';
 import { Button, ButtonLink } from './Button.js';
@@ -53,14 +54,60 @@ export const Sizes: Story = {
 
 export const Block: Story = { args: { block: true, variant: 'primary' } };
 
+// In a form, so a press that went through would also submit it.
 export const Disabled: Story = {
   args: { disabled: true },
+  render: args => {
+    const [submitted, setSubmitted] = createSignal(false);
+    return (
+      <form
+        data-testid="form"
+        data-submitted={submitted() ? '' : undefined}
+        onSubmit={ev => {
+          ev.preventDefault();
+          setSubmitted(true);
+        }}
+      >
+        <Button {...args} />
+      </form>
+    );
+  },
   play: async ({ args, canvas, userEvent, step }) => {
-    await step('When I press the disabled button', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Continue' }));
+    const button = canvas.getByRole('button', { name: 'Continue' });
+    await step('Given the button is disabled', async () => {
+      await expect(button).toBeDisabled();
     });
-    await step('Then nothing happens', async () => {
+    await step('When I press the disabled button', async () => {
+      await userEvent.click(button);
+    });
+    await step('Then nothing happens and its form is not submitted', async () => {
       await expect(args.onClick).not.toHaveBeenCalled();
+      await expect(button).toHaveAttribute('type', 'button');
+      await expect(canvas.getByTestId('form')).not.toHaveAttribute('data-submitted');
+    });
+  },
+};
+
+export const WithPopup: Story = {
+  args: {
+    children: 'alice',
+    'aria-label': 'alice, account',
+    'aria-expanded': 'true',
+    'aria-controls': 'story-user-popover',
+    'aria-haspopup': 'dialog',
+  },
+  render: args => (
+    <>
+      <Button {...args} />
+      <div id="story-user-popover">Account details</div>
+    </>
+  ),
+  play: async ({ canvas, step }) => {
+    await step('Then I hear the label and the open popup the button controls', async () => {
+      const button = canvas.getByRole('button', { name: 'alice, account' });
+      await expect(button).toHaveAttribute('aria-expanded', 'true');
+      await expect(button).toHaveAttribute('aria-controls', 'story-user-popover');
+      await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
     });
   },
 };
@@ -83,8 +130,17 @@ export const Loading: Story = {
 
 export const Link: Story = {
   render: () => (
-    <ButtonLink href="https://dot.li" variant="primary">
+    <ButtonLink href="https://dot.li" variant="primary" size="lg" block>
       Open dot.li
     </ButtonLink>
   ),
+  play: async ({ canvas, step }) => {
+    await step('Then the link drawn as a large primary button points where it says', async () => {
+      const link = canvas.getByRole('link', { name: 'Open dot.li' });
+      await expect(link).toHaveAttribute('href', 'https://dot.li');
+      await expect(link).toHaveAttribute('data-variant', 'primary');
+      await expect(link).toHaveAttribute('data-size', 'lg');
+      await expect(link).toHaveAttribute('data-block', '');
+    });
+  },
 };

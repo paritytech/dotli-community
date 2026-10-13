@@ -1,22 +1,22 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
+import { CHAIN_ROLE_LABELS, CHAIN_ROLES, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 
+/** Every network's chains, so an event from a chain of another network is still named after its own. */
 function buildRegistry(): ReadonlyMap<string, string> {
   const out = new Map<string, string>();
   for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
-    out.set(cfg.relay.genesis.toLowerCase(), 'Paseo');
-    out.set(cfg.assethub.genesis.toLowerCase(), 'Paseo Asset Hub');
-    out.set(cfg.bulletin.genesis.toLowerCase(), 'Paseo Bulletin');
-    out.set(cfg.people.genesis.toLowerCase(), 'Paseo People');
+    for (const role of CHAIN_ROLES) {
+      out.set(cfg[role].genesis.toLowerCase(), `${cfg.label} ${CHAIN_ROLE_LABELS[role]}`);
+    }
   }
   return out;
 }
 
 const NAME_BY_GENESIS: ReadonlyMap<string, string> = buildRegistry();
 
-export function getChainName(genesisHash: string): string | null {
+function getChainName(genesisHash: string): string | null {
   return NAME_BY_GENESIS.get(genesisHash.toLowerCase()) ?? null;
 }
 

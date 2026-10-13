@@ -1,48 +1,51 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { createBlockingModalCoordinator } from './blocking-modal-queue.js';
-export { chainRoleForKey } from './chain-roles.js';
+// Primitives and what the page gives them.
+export { Button, ButtonLink, type ButtonVariant } from './components/primitives/Button.js';
+export { Chip } from './components/primitives/Chip.js';
+export { IconButton } from './components/primitives/IconButton.js';
+export { IconTile } from './components/primitives/IconTile.js';
+export { Choice } from './components/primitives/Choice.js';
+export { SectionLabel, Stack } from './components/primitives/SectionLabel.js';
+export { SegmentedControl, type SegmentOption } from './components/primitives/SegmentedControl.js';
+export { Spinner } from './components/primitives/Spinner.js';
+export { StatusDot } from './components/primitives/StatusDot.js';
+export { Hint, Surface, SurfaceFoot, SurfaceHead } from './components/primitives/Surface.js';
+export { Switch } from './components/primitives/Switch.js';
+export { Callout, Row, Well } from './components/primitives/Well.js';
+export { Field } from './components/primitives/Field.js';
+export { Modal } from './components/floating/Modal.js';
+export { Popover, usePopover } from './components/floating/Popover.js';
+export { DropdownMenu, useDropdownMenu } from './components/floating/DropdownMenu.js';
+export { Tooltip } from './components/floating/Tooltip.js';
+// A row of actions that collapses what does not fit into a More menu.
+export { ActionGroup, type ActionGroupMorph, type MoreIds } from './components/actions/ActionGroup.js';
+export { ActionItem, type ActionItemProps } from './components/actions/ActionItem.js';
 export {
-  advancePhase,
-  initPhases,
-  listenForSandboxStatus,
-  nudgePhaseProgress,
-  onProgressStall,
-  onSandboxDone,
-  releasePhaseProgress,
-  setLoadingDomain,
-  setLoadingStage,
-  setLoadingWarning,
-  stopStatusTick,
-  type LoadingPhase,
-} from './loading-controller.js';
-export { reportIslandErrors } from './mount/islands.js';
-export { recordChainPhase, recordPeerCount, recordTransfer, type ChainPhase } from './network-monitor.js';
-export { showNotification } from './notification.js';
-export { prefetchOverlays } from './overlays/load.js';
-export { showPasswordPrompt } from './password-prompt.js';
-export { recordRecentLabel } from './recent-labels.js';
-export { initScheduledNotifications } from './scheduled-notifications.js';
-export { wipeOriginState } from './settings-actions.js';
-export { getLoadingState } from './state/loading.js';
-export { initSettingsStore } from './state/settings.js';
-export { openSettings, topbarStore } from './state/topbar.js';
-export { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
-export { bindUrlPill } from './url-pill.js';
-export { bindTopbarStatus } from './topbar-status.js';
+  ActionsContext,
+  type ActionAlert,
+  type ActionBar,
+  type ActionEntry,
+} from './components/actions/actions-context.js';
+export { PINNED } from './components/actions/fit.js';
+export type { MoreRow } from './components/actions/more-row.js';
 export {
-  armTopbarAutoHide,
-  setProductContentShown,
-  registerTopbarElement,
-  revealTopbar,
-  scheduleTopbarHide,
-  TOPBAR_REVEAL_SHORTCUT,
-} from './topbar-autohide.js';
-export { initTopBar } from './topbar.js';
-export { startSessionState } from './host-callbacks/SessionStore.js';
-export { SETTINGS_GLYPH } from './settings-glyph.js';
-export { RELOAD_GLYPH } from './reload-glyph.js';
-export { showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';
-export { type ShieldState } from './verification-shield.js';
-export { loadBridge, loadTruapiDebugMount, loadSharedMode, type BridgeModule } from './lazy.js';
+  AnchorBoundary,
+  LayerTracker,
+  ModalFocusFallback,
+  type TrackedLayer,
+} from './components/floating/layer-context.js';
+export { useStore } from './components/use-store.js';
+export { startDrag } from './components/drag.js';
+export { focusLostOrInside, focusTrigger } from './components/focus.js';
+// The reporter ui's surfaces report through. The app passes its metrics in, at a mount or an island.
+export { ReporterContext } from './components/reporter-context.js';
+
+// Mounting a view into one of the page's roots, the overlays root and the toast view. The roots and the toast and
+// dialog stores they render live in ui-core.
+export { ensureOverlayRoot } from './mount/overlay-root.js';
+export { mountRoot } from './mount/root.js';
+// A toast's, a dialog's or an error page action's icon as the component it is, from the type the UI core stores it as.
+export { storeIcon } from './components/icons/store-icon.js';
+export { ToastStack } from './components/overlays/ToastStack.js';

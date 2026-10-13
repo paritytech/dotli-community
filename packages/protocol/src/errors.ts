@@ -49,4 +49,6 @@ export const PROTOCOL_ERRORS = {
   HOST_FRAME_NOT_LISTENING: 'Shared host iframe loaded but never started listening',
   /** Fallback rejection when a reset carries no reason, so readiness waiters fail at once instead of timing out. */
   FRAME_RESET: 'Protocol frame state reset before ready signal',
+  /** Nothing said how to build the frame, as on a page that never configures it. */
+  FRAME_UNCONFIGURED: 'Protocol frame was never configured',
 } as const;

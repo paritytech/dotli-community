@@ -9,6 +9,8 @@ export const TIMEOUTS = {
   SANDBOX_RECOVER: 6_000,
   /** Wait for `controllerchange` after registration. */
   SW_READY: 10_000,
+  /** Wait for the service worker to acknowledge the archive the sandbox hands it. */
+  SW_ARCHIVE_ACK: 10_000,
   /** Per attempt. */
   P2P_FETCH: 30_000,
   /**

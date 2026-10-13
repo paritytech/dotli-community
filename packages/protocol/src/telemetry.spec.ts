@@ -1,0 +1,42 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { describe, expect, it } from 'vitest';
+import type { SmoldotDbOutcome } from './messages.js';
+import { createFrameTelemetry } from './telemetry.js';
+import { createFakeFrame } from './frame.fake.js';
+
+describe('createFrameTelemetry', () => {
+  it("As the network panel, I drop a byte total that goes back and start a rebuilt frame's count over", () => {
+    // Given
+    const fake = createFakeFrame();
+    const telemetry = createFrameTelemetry(fake.frame);
+    const totals: number[] = [];
+    telemetry.onProtocolNetBytes(event => totals.push(event.received));
+
+    // When
+    fake.send({ namespace: 'dotli:protocol', kind: 'net-bytes', received: 100 });
+    fake.send({ namespace: 'dotli:protocol', kind: 'net-bytes', received: 50 });
+    fake.lose(new Error('Fatal: boom'));
+    fake.send({ namespace: 'dotli:protocol', kind: 'net-bytes', received: 10 });
+
+    // Then
+    expect(totals).toEqual([100, 10]);
+  });
+
+  it('As a dotli integrator, a smoldot DB outcome outside the known values is ignored, and a new frame forgets the last ones', () => {
+    // Given
+    const fake = createFakeFrame();
+    const telemetry = createFrameTelemetry(fake.frame);
+
+    // When
+    fake.send({ namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'relay', outcome: 'hit' });
+    fake.send({ namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'hub', outcome: 'bogus' as SmoldotDbOutcome });
+    const beforeRebuild = [telemetry.getSmoldotDbOutcome('relay'), telemetry.getSmoldotDbOutcome('hub')];
+    fake.setStatus('booting');
+
+    // Then
+    expect(beforeRebuild).toEqual(['hit', 'unknown']);
+    expect(telemetry.getSmoldotDbOutcome('relay')).toBe('unknown');
+  });
+});

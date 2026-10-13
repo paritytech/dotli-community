@@ -13,13 +13,13 @@ import {
   type Accessor,
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport } from '../../phone-viewport.js';
+import { isPhoneViewport, preloadWhenIdle, type Reporter } from '@dotli/ui-core';
 import { focusLostOrInside, focusTrigger } from '../focus.js';
-import { preloadWhenIdle } from '../idle.js';
-import { TopbarContext } from '../shell/topbar/context.js';
+import { ReporterContext } from '../reporter-context.js';
 import { anchorName } from './anchor-name.js';
 import { Broken } from './broken.js';
 import type { CloseReason } from './close-reason.js';
+import { AnchorBoundary } from './layer-context.js';
 import { modalLayerShown } from './modal-stack.js';
 
 /** The open state Popover and DropdownMenu share. It stays on the first visit's path, the surface is a lazy chunk. */
@@ -31,7 +31,7 @@ export interface Anchored {
   sheet: Accessor<boolean>;
   setOpen: (open: boolean, reason?: CloseReason) => void;
   trigger: () => HTMLElement | undefined;
-  /** To the trigger, or to More while the topbar has collapsed it. */
+  /** To the trigger, or to the boundary's fallback while the boundary has hidden it. */
   focusBack: () => void;
   /** Focus is on the body, or where focusBack puts it. */
   focusAtTrigger: () => boolean;
@@ -40,6 +40,8 @@ export interface Anchored {
   mount: () => void;
   /** Unmounts the surface so the next opening loads it again. */
   fail: () => void;
+  /** Read where the layer is created, so one rendered without a reporter fails before it can fail unreported. */
+  report: Reporter;
 }
 
 /** Focus returns to the trigger after a close in `returnFocusOn`, if it was lost or still inside. */
@@ -47,7 +49,8 @@ export function createAnchored(
   props: { id: string; title: string; onOpenChange?: ((open: boolean) => void) | undefined },
   returnFocusOn: ReadonlySet<CloseReason>,
 ): Anchored & { setTrigger: (el: HTMLElement | undefined) => void } {
-  const bar = useContext(TopbarContext);
+  const boundary = useContext(AnchorBoundary);
+  const report = useContext(ReporterContext);
   const [open, setOpenSignal] = createSignal(false, { ownedWrite: true });
   const [sheet, setSheet] = createSignal(false, { ownedWrite: true });
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
@@ -58,7 +61,7 @@ export function createAnchored(
   let current = false;
   let triggerEl: HTMLElement | undefined;
   const focusBack = (): void => {
-    focusTrigger(triggerEl, bar?.moreButton());
+    focusTrigger(triggerEl, boundary?.fallbackFocus());
   };
   const setOpen = (next: boolean, reason: CloseReason = 'programmatic'): void => {
     if (next === current) {
@@ -99,7 +102,9 @@ export function createAnchored(
     focusBack,
     focusAtTrigger: () => {
       const active = document.activeElement;
-      return active === null || active === document.body || active === triggerEl || active === bar?.moreButton();
+      return (
+        active === null || active === document.body || active === triggerEl || active === boundary?.fallbackFocus()
+      );
     },
     mounted,
     mount: () => {
@@ -109,6 +114,7 @@ export function createAnchored(
       setMounted(false);
       setOpen(false);
     },
+    report,
   };
 }
 
@@ -229,10 +235,10 @@ export function createSurfaceLoad(
     }
   });
   onSettled(() => {
-    const cancels = [preloadWhenIdle({ preload: () => load().then(state.mount) })];
+    const cancels = [preloadWhenIdle({ preload: () => load().then(state.mount) }, state.report)];
     const preload = content();
     if (preload !== undefined) {
-      cancels.push(preloadWhenIdle({ preload }));
+      cancels.push(preloadWhenIdle({ preload }, state.report));
     }
     return () => {
       for (const cancel of cancels) {
@@ -246,7 +252,16 @@ export function createSurfaceLoad(
 export function SurfaceSlot(props: { state: Anchored; children: JSX.Element }): JSX.Element {
   return (
     <Show when={props.state.mounted()}>
-      <Errored fallback={err => <Broken root={`popover:${props.state.id}`} error={err()} fail={props.state.fail} />}>
+      <Errored
+        fallback={err => (
+          <Broken
+            root={`popover:${props.state.id}`}
+            error={err()}
+            fail={props.state.fail}
+            report={props.state.report.failure}
+          />
+        )}
+      >
         <Loading>{props.children}</Loading>
       </Errored>
     </Show>

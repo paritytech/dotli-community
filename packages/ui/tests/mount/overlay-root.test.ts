@@ -9,8 +9,10 @@ describe('ensureOverlayRoot', () => {
     document.body.innerHTML = '<main></main>';
   });
 
-  it('As the overlays root, the container is created once as the last child of body', () => {
-    // When
+  it('As a dotli user, toasts and modals stack above the page from one container, made once as the last child of body', () => {
+    // Given the page's app in the body
+
+    // When the overlays ask for their container twice
     const first = ensureOverlayRoot();
     const second = ensureOverlayRoot();
 

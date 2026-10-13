@@ -8,7 +8,7 @@ const packageNames = ['truapi', 'truapi-host', 'truapi-provider'];
 const installRoots = [
   resolve(dotliRoot, 'node_modules/@parity'),
   resolve(dotliRoot, 'packages/ui/node_modules/@parity'),
-  resolve(dotliRoot, 'packages/resolver/node_modules/@parity'),
+  resolve(dotliRoot, 'packages/chains/node_modules/@parity'),
 ];
 
 for (const root of installRoots) {

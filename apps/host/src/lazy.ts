@@ -1,0 +1,46 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Lazy entry points, each its own chunk, so the product page boot leaves them out.
+
+import type * as BridgePortsNamespace from './bridge-ports.js';
+import type * as CacheRevalidateNamespace from './cache-revalidate.js';
+import type * as DebugPanelPartsNamespace from './debug-panel-parts.js';
+import type * as LoadFailureNamespace from './load-failure.js';
+import type * as ProductBrandingNamespace from './product-branding.js';
+import type * as WorkboxWindowNamespace from 'workbox-window';
+
+export type BridgePortsModule = typeof BridgePortsNamespace;
+export const loadBridgePorts = (): Promise<BridgePortsModule> => import('./bridge-ports.js');
+
+export type LoadFailureModule = typeof LoadFailureNamespace;
+export const loadFailureScreens = (): Promise<LoadFailureModule> => import('./load-failure.js');
+
+export type CacheRevalidateModule = typeof CacheRevalidateNamespace;
+export const loadCacheRevalidation = (): Promise<CacheRevalidateModule> => import('./cache-revalidate.js');
+
+export type ProductBrandingModule = typeof ProductBrandingNamespace;
+export const loadProductBranding = (): Promise<ProductBrandingModule> => import('./product-branding.js');
+
+export type DebugPanelPartsModule = typeof DebugPanelPartsNamespace;
+export const loadDebugPanelParts = (): Promise<DebugPanelPartsModule> => import('./debug-panel-parts.js');
+
+// The host's own views take their types from their loaders, since the boot zone refuses even a type-only import of
+// them.
+export const loadChatPanel = () => import('./components/chat/ChatPanel.js');
+export type ChatPanelModule = Awaited<ReturnType<typeof loadChatPanel>>;
+
+export const loadAccountContent = () => import('./components/account/AccountContent.js');
+export const loadChainsContent = () => import('./components/chains/ChainsContent.js');
+export const loadPermissionsContent = () => import('./components/permissions/PermissionsContent.js');
+export const loadSettingsContent = () => import('./components/settings/SettingsContent.js');
+export const loadVerificationContent = () => import('./components/shield/VerificationContent.js');
+
+export const loadNoContentPage = () => import('./components/no-content/NoContentPage.js');
+export type NoContentPageModule = Awaited<ReturnType<typeof loadNoContentPage>>;
+
+/** Sandbox checker builds only. */
+export const loadViolationPanelMount = () => import('./components/sandbox-checker/mount.js');
+
+export type WorkboxWindowModule = typeof WorkboxWindowNamespace;
+export const loadWorkboxWindow = (): Promise<WorkboxWindowModule> => import('workbox-window');

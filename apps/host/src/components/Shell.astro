@@ -2,7 +2,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { AuthModal } from '@dotli/ui/islands/AuthModal';
+// `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
+import { AuthModal } from '../islands/AuthModal.jsx';
 import Topbar from './Topbar.astro';
 ---
 

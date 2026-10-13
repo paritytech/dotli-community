@@ -61,8 +61,7 @@ The panel ships in every build. Default behavior depends on the build flag `VITE
 
 When the panel isn't mounted, the bus stays in a null-stub state and every `emitDotliDebugEvent(...)` call site
 scattered through `main.ts`, `bridge.ts`, and `container.ts` is a cheap early-return. The panel UI
-(`packages/ui/src/components/truapi-debug/mount.tsx`, a Solid tree) is a dynamic import — it isn't fetched until the
-panel mounts.
+(`packages/truapi-debug-ui/src/mount.tsx`, a Solid tree) is a dynamic import. It isn't fetched until the panel mounts.
 
 Two ways to explicitly turn the panel on (mounts **expanded**):
 
@@ -91,8 +90,8 @@ into one time- aligned store.
 ### 1. TrUAPI — host ↔ product messages
 
 The postMessage protocol between the dotli host and product iframes, captured from the Rust-backed TrUAPI bridge. Every
-frame's tag and payload come from `describeWireFrame` (`packages/ui/src/debug-wire-describe.ts`), which resolves the
-wire discriminant against `@parity/truapi/wire-table`:
+frame's tag and payload come from `describeWireFrame` (`packages/host-runtime/src/debug-wire-describe.ts`), which
+resolves the wire discriminant against `@parity/truapi/wire-table`:
 
 - `remote_chain_*` — chainHead, chainSpec, and transaction methods (one-to-one wrap of the new Substrate JSON-RPC spec).
   These keep the pre-port legacy tag names on purpose, the panel's swimlane and annotation logic keys on them. Their
@@ -254,8 +253,8 @@ thin vertical lines in their own left-edge column — not boxes.
 
 - **Chain swimlanes** — one per distinct `genesisHash` observed among TrUAPI chain messages. The swimlane only appears
   once a `remote_chain_head_follow_start` has been observed for that chain (otherwise it'd clutter the view with one-off
-  queries). The header shows the chain's friendly name when known (Paseo, Paseo Asset Hub, Paseo Bulletin) or a short
-  hex hash otherwise.
+  queries). The header shows the chain's friendly name when known (the network and chain role, such as Paseo Hub or
+  Previewnet Storage) or a short hex hash otherwise.
 - **System swimlane** — everything from the system event buses. Always present if any system event is visible.
 - **Other swimlane** — TrUAPI traffic that isn't chain-related (host API calls for signing, storage, accounts, statement
   store, etc.).

@@ -6,10 +6,12 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./astro-page-css": "./src/astro-page-css.ts",
     "./astro-pwa": "./src/astro-pwa.ts",
     "./build-info": "./src/build-info-plugin.ts",
     "./build-options": "./src/build-options.ts",
     "./css-modules": "./src/css-modules.ts",
+    "./inline-script": "./src/inline-script.ts",
     "./mode-sync": "./src/mode-sync.ts",
     "./runtime-network-config": "./src/runtime-network-config-plugin.ts",
     "./sentry-release": "./src/sentry-release.ts",

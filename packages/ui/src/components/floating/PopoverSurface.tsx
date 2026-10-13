@@ -3,7 +3,8 @@
 
 import { Errored, Loading, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { focusables, focusInto } from '../focus.js';
+import { focusables } from '@dotli/ui-core';
+import { focusInto } from '../focus.js';
 import { Spinner } from '../primitives/Spinner.js';
 import { AnchoredContent } from './AnchoredContent.js';
 import { Broken } from './broken.js';
@@ -20,7 +21,16 @@ export function PopoverSurface(props: {
   children: JSX.Element;
 }): JSX.Element {
   const body = (root: () => HTMLElement | null | undefined): JSX.Element => (
-    <Errored fallback={err => <Broken root={`popover:${props.state.id}`} error={err()} fail={props.state.close} />}>
+    <Errored
+      fallback={err => (
+        <Broken
+          root={`popover:${props.state.id}`}
+          error={err()}
+          fail={props.state.close}
+          report={props.state.report.failure}
+        />
+      )}
+    >
       <Loading
         fallback={
           <div class={s['loading']} data-testid="popover-loading" aria-hidden="true">

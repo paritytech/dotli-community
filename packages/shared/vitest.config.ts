@@ -5,14 +5,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'happy-dom',
     globals: false,
+    projects: [{ extends: true, test: { name: 'shared:unit', include: ['src/**/*.spec.ts'], environment: 'node' } }],
   },
   define: {
     'import.meta.env.DEV': 'false',
     'import.meta.env.VITE_APP_DEBUG': '"true"',
-    // Required, with no default. The first network sets the default TLD to `.paseo`.
-    'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
   },
 });

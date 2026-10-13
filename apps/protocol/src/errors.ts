@@ -12,4 +12,5 @@ export const PROTOCOL_APP_ERRORS = {
   RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED: 'resolveExecutableManifest is not served by this protocol mode',
   RESOLVE_ROOT_MANIFEST_UNSUPPORTED: 'resolveRootManifest is not served by this protocol mode',
   CHAIN_BROKER_FAILED: 'Failed to create chain broker',
+  PORT_CLOSED: 'This tab disconnected from the protocol worker',
 } as const;

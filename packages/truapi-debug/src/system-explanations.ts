@@ -87,9 +87,9 @@ After this event, the TrUAPI bus starts producing traffic and the product is dri
 
   'resolve:phase': {
     title: 'Resolver progress',
-    body: `A progress message from the resolver, mapped to a canonical phase identifier. In smoldot mode the phases trace the light-client lifecycle: \`light-client-starting\`, \`relay-chain-adding\`, \`asset-hub-connecting\`, \`asset-hub-syncing\`, \`asset-hub-ready\`, \`resolving-content\`. In RPC mode the messages are terser (\`connecting\`, \`querying storage\`).
+    body: `A phase the resolver reported while it read the name: \`asset-hub-connecting\`, \`asset-hub-syncing\` and \`asset-hub-ready\` while its Asset Hub client is built, then \`resolving-content\`.
 
-These events drive the loading UI's phase bar and ship to this panel so you can see exactly where a slow resolution is stuck.`,
+On the smoldot backends these phases drive the loading UI's phase bar. They ship to this panel so you can see exactly where a slow resolution is stuck.`,
   },
 
   'resolve:storage_read': {

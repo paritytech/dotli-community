@@ -1,33 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Focus and scroll helpers for floating surfaces, modal layers and the topbar auto-hide. Solid-free.
+// Focus and scroll helpers for floating surfaces and modal layers.
 
-const TABBABLE = [
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  'a[href]',
-  '[tabindex]',
-].join(', ');
-
-/** The controls inside `root` that Tab reaches, in order. */
-export function focusables(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE))
-    .filter(
-      // Native tab order reaches unchecked radios with arrow keys, not Tab.
-      el => !(el instanceof HTMLInputElement && el.type === 'radio' && !el.checked),
-    )
-    .filter(
-      // A negative tabindex leaves a control to arrow keys, like unpressed segmented options.
-      el => !(Number.parseInt(el.getAttribute('tabindex') ?? '0', 10) < 0),
-    )
-    .filter(
-      // Skip controls CSS hides, like the sheet close button on desktop.
-      el => typeof el.checkVisibility !== 'function' || el.checkVisibility(),
-    );
-}
+import { focusables } from '@dotli/ui-core';
 
 /** Keeps Tab and Shift+Tab inside `surface`. */
 export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
@@ -50,7 +26,7 @@ export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
 }
 
 /** Focus the first element that takes focus, and report whether one did. */
-export function focusFirst(candidates: Iterable<HTMLElement | SVGElement>): boolean {
+function focusFirst(candidates: Iterable<HTMLElement | SVGElement>): boolean {
   for (const el of candidates) {
     el.focus();
     if (document.activeElement === el) {
@@ -70,35 +46,44 @@ export function focusInto(
   }
 }
 
-let scrollLocks = 0;
+/**
+ * A refcounted page lock: each lock holds it, and `setLocked(false)` runs when the last returned unlock does.
+ * An unlock that runs twice counts once.
+ */
+export function createScrollLock(setLocked: (locked: boolean) => void): () => () => void {
+  let locks = 0;
+  return () => {
+    locks += 1;
+    setLocked(true);
+    let locked = true;
+    return () => {
+      if (!locked) {
+        return;
+      }
+      locked = false;
+      locks -= 1;
+      if (locks === 0) {
+        setLocked(false);
+      }
+    };
+  };
+}
 
 /**
  * Lock page scroll through `data-scroll-locked` on the body until the last returned unlock runs.
- * Not an inline style: bridge.ts hides the body's overflow inline when the product frame attaches, and that
- * must outlive the dialog.
+ * Not an inline style: the page may set the body's overflow inline for its own layout, and that must outlive the
+ * dialog.
  */
-export function lockScroll(): () => void {
-  scrollLocks += 1;
-  document.body.setAttribute('data-scroll-locked', '');
-  let locked = true;
-  return () => {
-    if (!locked) {
-      return;
-    }
-    locked = false;
-    scrollLocks -= 1;
-    if (scrollLocks === 0) {
-      document.body.removeAttribute('data-scroll-locked');
-    }
-  };
-}
+export const lockScroll = createScrollLock(locked => {
+  document.body.toggleAttribute('data-scroll-locked', locked);
+});
 
 export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
   const active = document.activeElement;
   return active === null || active === document.body || surface?.contains(active) === true;
 }
 
-/** Focus the trigger, or `fallback` (the More button) when the topbar has collapsed it into the More menu. */
+/** Focus the trigger, or `fallback` when something hid the trigger, like a bar collapsing it into a menu. */
 export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLElement | undefined): void {
   trigger?.focus();
   if (trigger !== undefined && document.activeElement !== trigger) {

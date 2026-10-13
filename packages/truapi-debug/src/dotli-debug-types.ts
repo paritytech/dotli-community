@@ -270,7 +270,6 @@ export type ResolveEvent =
       payload: {
         label: string;
         phase: string;
-        message: string;
       };
     }
   | {

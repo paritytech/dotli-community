@@ -10,6 +10,7 @@ import wasmPlugin from 'vite-plugin-wasm';
 import { buildInfo } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { cssModules } from '@config/vite/css-modules';
+import { inlineScript } from '@config/vite/inline-script';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { socialMetaTags } from '@config/vite/social-meta';
 import { provideSentryRelease, sentryUploadRelease } from '@config/vite/sentry-release';
@@ -67,7 +68,7 @@ function buildServiceWorker(): Plugin {
       // Takes VITE_COMMIT_SHA from the process environment, as the page does.
       await viteBuild({
         configFile: false,
-        plugins: [wasm()],
+        plugins: [inlineScript(), wasm()],
         build: {
           ...appBuildOptions({ codeSplitting: false }),
           emptyOutDir: false,
@@ -129,6 +130,7 @@ export default defineConfig({
   base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
   plugins: [
     stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
+    inlineScript(),
     solid(),
     wasm(),
     runtimeNetworkConfigScript(),

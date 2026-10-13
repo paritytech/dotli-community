@@ -3,9 +3,11 @@
   "include": [
     ".astro/types.d.ts",
     "src",
+    ".storybook/*",
     "tests",
     "astro.config.ts",
     "vitest.config.ts",
+    "vitest.storybook.config.ts",
     "eslint.config.js",
     "sentry-check.ts"
   ]

@@ -5,9 +5,9 @@
 // product Frame once `dotli:app:end` fires.
 
 import { expect, type Frame, type Page } from '@playwright/test';
-// From its source file: the `@dotli/config` barrel reads `self.location` and `import.meta.env` at load, so Node
-// cannot load it.
-import { SANDBOX_CONTRACT_PARAMS } from '../../../packages/config/src/host-sandbox-contract.js';
+// From its source file: the package barrel loads `@dotli/config`, which reads `self.location` and `import.meta.env` at
+// load, so Node cannot load it.
+import { SANDBOX_CONTRACT_PARAMS } from '../../../packages/sandbox-wire/src/contract-params.js';
 
 export interface ProductLocation {
   pathname: string;
@@ -113,7 +113,7 @@ async function readErrorText(scope: Page | Frame): Promise<string> {
 }
 
 /** "" on timeout. */
-export async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> {
+async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> {
   try {
     await page.getByTestId('error-page-title').first().waitFor({ timeout: timeoutMs });
   } catch {

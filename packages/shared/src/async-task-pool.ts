@@ -11,8 +11,13 @@ export interface AsyncTaskPoolParams {
   poolSize: number;
   /** Extra attempts after a failure. */
   retryCount?: number;
-  /** The wait before a retry, fixed or from the retry's index, which starts at 0. */
-  retryDelay?: number | ((retry: number) => number);
+  /** The wait before a retry, fixed or from the retry's index, which starts at 0, and the failure it follows. */
+  retryDelay?: number | ((retry: number, error: unknown) => number);
+  /**
+   * Whether a failure is worth another attempt. Asked only while retries remain, and without it every failure
+   * retries.
+   */
+  retryIf?: (error: unknown) => boolean;
 }
 
 export interface AsyncTaskParams {
@@ -20,11 +25,13 @@ export interface AsyncTaskParams {
   pool?: string;
   /** Aborting rejects the task with the signal's reason and frees its slot at once. */
   signal?: AbortSignal;
+  /** The wait before the task is queued. `settle` counts it as pending meanwhile. */
+  delay?: number;
 }
 
 export interface AsyncTaskPool {
   call<T>(fn: () => T | PromiseLike<T>, params?: AsyncTaskParams): Promise<T>;
-  /** Resolves once the pool has nothing queued, running or waiting to retry. */
+  /** Resolves once the pool has nothing queued, running, delayed or waiting to retry. */
   settle(pool?: string): Promise<void>;
 }
 
@@ -35,7 +42,8 @@ interface Task {
   readonly reject: (reason: unknown) => void;
   readonly signal: AbortSignal | undefined;
   retry: number;
-  retryTimer: ReturnType<typeof setTimeout> | undefined;
+  // The pending delay or retry wait.
+  timer: ReturnType<typeof setTimeout> | undefined;
   onAbort: (() => void) | undefined;
 }
 
@@ -47,7 +55,7 @@ export function createAsyncTaskPool(params: AsyncTaskPoolParams): AsyncTaskPool 
 class TaskPool implements AsyncTaskPool {
   private readonly queue: Task[] = [];
   private readonly running = new Set<Task>();
-  private readonly retrying = new Set<Task>();
+  private readonly waiting = new Set<Task>();
   private readonly settleWaiters = new Map<string, (() => void)[]>();
   private readonly params: AsyncTaskPoolParams;
 
@@ -70,7 +78,7 @@ class TaskPool implements AsyncTaskPool {
         reject,
         signal,
         retry: 0,
-        retryTimer: undefined,
+        timer: undefined,
         onAbort: undefined,
       };
       if (signal !== undefined) {
@@ -78,6 +86,11 @@ class TaskPool implements AsyncTaskPool {
           this.abort(task);
         };
         signal.addEventListener('abort', task.onAbort, { once: true });
+      }
+      const delay = params.delay ?? 0;
+      if (delay > 0) {
+        this.queueAfter(task, delay);
+        return;
       }
       this.queue.push(task);
       this.pump(task.pool);
@@ -98,7 +111,9 @@ class TaskPool implements AsyncTaskPool {
   /** Starts queued tasks of the pool while it has room, then tells `settle` waiters if nothing is left. */
   private pump(pool: string): void {
     while (this.countRunning(pool) < this.params.poolSize) {
-      const index = this.queue.findIndex(task => task.pool === pool);
+      // A task whose signal is already aborted is left for its own abort listener, which may not have run yet when
+      // another task on the same signal frees a slot.
+      const index = this.queue.findIndex(task => task.pool === pool && task.signal?.aborted !== true);
       if (index < 0) {
         break;
       }
@@ -130,34 +145,48 @@ class TaskPool implements AsyncTaskPool {
       if (!this.running.has(task)) {
         return;
       }
-      if (task.retry >= (this.params.retryCount ?? 0)) {
+      let delay: number | undefined;
+      try {
+        const retry = task.retry < (this.params.retryCount ?? 0) && (this.params.retryIf?.(error) ?? true);
+        delay = retry ? this.retryDelay(task.retry, error) : undefined;
+      } catch (callbackError) {
+        // A throwing retryIf or retryDelay must still settle the call, and the task's own failure stays visible.
+        this.finish(task);
+        task.reject(new AggregateError([callbackError, error], 'Could not decide whether to retry the task'));
+        return;
+      }
+      if (delay === undefined) {
         this.finish(task);
         task.reject(error);
         return;
       }
-      const delay = this.retryDelay(task.retry);
       task.retry += 1;
-      this.retrying.add(task);
-      task.retryTimer = setTimeout(() => {
-        this.retrying.delete(task);
-        task.retryTimer = undefined;
-        this.queue.push(task);
-        this.pump(task.pool);
-      }, delay);
+      this.queueAfter(task, delay);
     } finally {
       this.running.delete(task);
       this.pump(task.pool);
     }
   }
 
+  /** Queues the task once `ms` has passed. Until then it is waiting, so `settle` holds and an abort clears it. */
+  private queueAfter(task: Task, ms: number): void {
+    this.waiting.add(task);
+    task.timer = setTimeout(() => {
+      this.waiting.delete(task);
+      task.timer = undefined;
+      this.queue.push(task);
+      this.pump(task.pool);
+    }, ms);
+  }
+
   private abort(task: Task): void {
-    clearTimeout(task.retryTimer);
+    clearTimeout(task.timer);
     const index = this.queue.indexOf(task);
     if (index >= 0) {
       this.queue.splice(index, 1);
     }
     this.running.delete(task);
-    this.retrying.delete(task);
+    this.waiting.delete(task);
     task.reject(task.signal?.reason);
     this.pump(task.pool);
   }
@@ -180,11 +209,11 @@ class TaskPool implements AsyncTaskPool {
 
   private isIdle(pool: string): boolean {
     const inPool = (task: Task): boolean => task.pool === pool;
-    return !this.queue.some(inPool) && ![...this.running].some(inPool) && ![...this.retrying].some(inPool);
+    return !this.queue.some(inPool) && ![...this.running].some(inPool) && ![...this.waiting].some(inPool);
   }
 
-  private retryDelay(retry: number): number {
+  private retryDelay(retry: number, error: unknown): number {
     const delay = this.params.retryDelay ?? 0;
-    return typeof delay === 'function' ? delay(retry) : delay;
+    return typeof delay === 'function' ? delay(retry, error) : delay;
   }
 }

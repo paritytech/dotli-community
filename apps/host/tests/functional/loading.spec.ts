@@ -13,6 +13,14 @@ import {
   TRY_ANYWAY_BTN_LABEL,
 } from '../../src/error-copy.js';
 import { test } from './helpers/shared-mode-reset.js';
+import {
+  errorResolveResponse,
+  fatalOnResolve,
+  initFailed,
+  mockProtocolIframe,
+  nullResolveResponse,
+  successfulResolveResponse,
+} from './helpers/fake-protocol.js';
 import { findAppFrame } from '../product-frame.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
 // From source files, since the package barrels read `self.location` and `import.meta.env` at load and Node cannot.
@@ -34,105 +42,6 @@ const RESOLVER_SYNC_BUDGET_MS = (METHOD_TIMEOUTS.resolveDotName ?? 0) - TIMEOUTS
 async function setBackend(page: Page, backend: Backend): Promise<void> {
   await seedBackend(page, backend, { onlyIfUnset: true });
 }
-
-async function mockProtocolIframe(page: Page, script: string): Promise<void> {
-  await page.route('**', async route => {
-    const isProtocolDoc =
-      route.request().url().includes(`host.localhost:${PORT}`) && route.request().resourceType() === 'document';
-    if (!isProtocolDoc) {
-      await route.continue();
-      return;
-    }
-    await route.fulfill({
-      contentType: 'text/html',
-      body: `<!DOCTYPE html><html><body><script>${script}</script></body></html>`,
-    });
-  });
-}
-
-const READY = `window.parent.postMessage({namespace:"dotli:protocol",kind:"ready"},"*");`;
-
-// Retried until the parent blanks the iframe, since a single post can land before any waiter is queued.
-const initFailed = (message: string): string => `
-  window.addEventListener("load", function() {
-    var msg = {
-      namespace: "dotli:protocol",
-      kind: "init-failed",
-      message: ${JSON.stringify(message)},
-    };
-    var delay = 20;
-    var attempts = 0;
-    function post() {
-      if (attempts++ >= 12) return;
-      try { window.parent.postMessage(msg, "*"); } catch (e) { return; }
-      delay = Math.min(delay * 2, 500);
-      setTimeout(post, delay);
-    }
-    post();
-  });
-`;
-
-const fatalOnResolve = (message: string): string => `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      window.parent.postMessage({
-        namespace: "dotli:protocol",
-        kind: "fatal",
-        message: ${JSON.stringify(message)},
-      }, "*");
-    }
-  });
-`;
-
-const errorResolveResponse = (error: string, delayMs = 0, errorName?: string): string => `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      var id = e.data.id;
-      setTimeout(function() {
-        window.parent.postMessage({
-          namespace: "dotli:protocol",
-          kind: "response",
-          id: id,
-          ok: false,
-          error: ${JSON.stringify(error)},
-          errorName: ${errorName === undefined ? 'undefined' : JSON.stringify(errorName)},
-        }, "*");
-      }, ${String(delayMs)});
-    }
-  });
-`;
-
-const nullResolveResponse = `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      window.parent.postMessage({
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: e.data.id,
-        ok: true,
-        result: null,
-      }, "*");
-    }
-  });
-`;
-
-const successfulResolveResponse = (cid: string): string => `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      window.parent.postMessage({
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: e.data.id,
-        ok: true,
-        result: ${JSON.stringify(cid)},
-      }, "*");
-    }
-  });
-`;
 
 test('As a user using smoldot directly, when the light client panics mid-resolution, I see the appropriate error and can switch backend', async ({
   page,
@@ -296,8 +205,8 @@ test('As a user using smoldot in shared worker, when the sync times out (>45s) I
 test('As a user, when the app chunks fail to load mid-session, I see the appropriate error with a reload button', async ({
   page,
 }) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
+  // Given: the gateway backend, the one whose name reads load a chunk after boot
+  await setBackend(page, 'rpc-gateway');
   await page.route('**/assets/resolve.*.js', route => route.abort());
 
   // When
@@ -495,3 +404,66 @@ for (const [label, backend] of [
     ).toEqual([]);
   });
 }
+
+test('As a user whose failure screens cannot load, I still see why the domain failed, with no buttons that cannot work', async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, 'smoldot-direct');
+  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await page.route('**/assets/load-failure.*.js', route => route.abort());
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
+
+  // Then
+  const errorPage = page.getByTestId('error-page');
+  await expect(errorPage.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+    timeout: 10_000,
+  });
+  await expect(errorPage.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
+  await expect(errorPage.getByRole('button')).toHaveCount(0);
+});
+
+test('As a user who opens Settings from a failure before the topbar is ready, I see Settings open once it is', async ({
+  page,
+}) => {
+  // Given: the topbar's actions island cannot hydrate until the test lets its chunk through
+  await setBackend(page, 'smoldot-direct');
+  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  let releaseIsland = (): void => undefined;
+  const islandReleased = new Promise<void>(resolve => {
+    releaseIsland = resolve;
+  });
+  await page.route('**/assets/TopbarActions.*.js', async route => {
+    await islandReleased;
+    await route.continue();
+  });
+  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
+  const openSettings = page.getByTestId('error-page').getByRole('button', { name: OPEN_SETTINGS_BTN_LABEL });
+  await expect(openSettings).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('astro-island[component-url*="TopbarActions"][ssr]')).toBeAttached();
+
+  // When
+  await openSettings.click();
+  releaseIsland();
+
+  // Then
+  await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
+});
+
+test('As a user who opens Settings from a failure once the topbar is ready, I see Settings open', async ({ page }) => {
+  // Given
+  await setBackend(page, 'smoldot-direct');
+  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
+  const openSettings = page.getByTestId('error-page').getByRole('button', { name: OPEN_SETTINGS_BTN_LABEL });
+  await expect(openSettings).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+  // When
+  await openSettings.click();
+
+  // Then
+  await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
+});

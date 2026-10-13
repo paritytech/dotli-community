@@ -5,13 +5,13 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'happy-dom',
     globals: false,
+    projects: [{ extends: true, test: { name: 'protocol:unit', include: ['src/**/*.spec.ts'], environment: 'node' } }],
   },
   define: {
     'import.meta.env.DEV': 'false',
-    'import.meta.env.VITE_APP_DEBUG': '"true"',
+    'import.meta.env.VITE_APP_DEBUG': '"false"',
+    'import.meta.env.VITE_METRICS': '"true"',
     // getEnabledNetworks() has no default, so the test build supplies networks like a deployment does.
     'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
   },

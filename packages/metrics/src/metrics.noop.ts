@@ -62,9 +62,13 @@ const noop = (): void => {
   /* no-op */
 };
 
+function bind(_sentry: unknown): () => void {
+  return noop;
+}
+
 export const m = {
   enabled: false as const,
-  bind: noop,
+  bind,
   span,
   open,
   measure: noop,

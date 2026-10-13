@@ -56,7 +56,7 @@
   background: color-mix(in srgb, var(--tone) var(--chrome-tint), transparent);
   color: var(--tone);
 }
-/* Host icons are SVG strings without a size. */
+/* The tile sizes its icon, whatever size it was drawn at. */
 .icon svg {
   width: 16px;
   height: 16px;

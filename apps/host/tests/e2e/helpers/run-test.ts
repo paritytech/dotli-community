@@ -12,7 +12,7 @@ export async function waitForPlaygroundReady(page: PageLike, timeout = 60_000): 
 }
 
 /** Runs one playground test. A stuck entry returns "error" rather than throwing, so one hung test skips no others. */
-export async function runTest(page: PageLike, testId: string, timeout = 20_000): Promise<'success' | 'error'> {
+async function runTest(page: PageLike, testId: string, timeout = 20_000): Promise<'success' | 'error'> {
   const entries = page.locator('[data-testid="log-entry"]');
   const initialCount = await entries.count();
 
@@ -47,8 +47,4 @@ export async function runTest(page: PageLike, testId: string, timeout = 20_000):
 
 export async function runTestExpectSuccess(page: PageLike, testId: string, timeout = 20_000): Promise<void> {
   expect(await runTest(page, testId, timeout)).toBe('success');
-}
-
-export async function runTestExpectError(page: PageLike, testId: string, timeout = 20_000): Promise<void> {
-  expect(await runTest(page, testId, timeout)).toBe('error');
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
-import { getActiveServicesConfig, getBackend, BACKEND_LABELS } from '@dotli/config';
+import { getActiveServicesConfig, getBackend, BACKEND_LABELS, type Backend } from '@dotli/config';
 
 import { endpointHost, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
@@ -21,26 +21,6 @@ export {
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
 } from './error-copy.js';
-
-/** Names only who vouches for the app, since that is what the visitor has to weigh. */
-export function trustedProviderWarning(domain: string, providers: readonly string[]): (string | { strong: string })[] {
-  const named = joinHosts(providers);
-  return [
-    { strong: domain },
-    ` will load through ${named} instead of being verified by your browser. You will trust ${
-      providers.length > 1 ? 'them' : named
-    } to serve you the real app.`,
-  ];
-}
-
-function joinHosts(hosts: readonly string[]): string {
-  const last = hosts.at(-1);
-  if (last === undefined) {
-    return 'a trusted provider';
-  }
-  const rest = hosts.slice(0, -1);
-  return rest.length === 0 ? last : `${rest.join(', ')} and ${last}`;
-}
 
 /** The first entry, since the gateway backend dials the list in order. */
 function assethubHost(): string | undefined {
@@ -119,10 +99,11 @@ const MAINTAINER_TIPS = ['Contacting the app maintainer.'] as const;
 
 /**
  * `isP2p` picks copy that would be wrong in the other mode. Anything a backend switch recovers from is a reachability
- * failure, so it defaults to the connectivity tips unless its branch states its own.
+ * failure, so it defaults to the connectivity tips unless its branch states its own. `readBackend` gives the backend
+ * the page runs, from settings unless the caller passes its own.
  */
-export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
-  const described = classifyError(err, isP2p);
+export function describeError(err: unknown, isP2p: boolean, readBackend: () => Backend = getBackend): ErrorDescription {
+  const described = classifyError(err, isP2p, readBackend);
   return {
     ...described,
     title: described.title ?? ERROR_TITLES.DOMAIN_UNREACHABLE,
@@ -133,6 +114,7 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
 function classifyError(
   err: unknown,
   isP2p: boolean,
+  readBackend: () => Backend,
 ): Omit<ErrorDescription, 'tips' | 'title'> & {
   tips?: readonly string[];
   title?: string;
@@ -272,7 +254,7 @@ function classifyError(
       kind: 'protocol-init-failed',
       message: HOST_ERRORS.SW_FAILED_TO_START,
       recovery: 'switch-backend',
-      ...(getBackend() === 'smoldot-shared-worker' ? { tips: SHARED_WORKER_TIPS } : {}),
+      ...(readBackend() === 'smoldot-shared-worker' ? { tips: SHARED_WORKER_TIPS } : {}),
     };
   }
   if (msg.includes('timed out') || msg.includes('Timed out')) {

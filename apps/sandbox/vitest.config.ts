@@ -3,13 +3,21 @@
 
 import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
+import { inlineScript } from '@config/vite/inline-script';
 
 export default defineConfig({
-  plugins: [solid()],
+  // The service worker inlines its head scripts, bundled as the build does.
+  plugins: [inlineScript(), solid()],
   test: {
-    include: ['tests/**/*.test.{ts,tsx}'],
-    environment: 'happy-dom',
     globals: false,
+    projects: [
+      { extends: true, test: { name: 'sandbox:unit', include: ['src/**/*.spec.{ts,tsx}'], environment: 'node' } },
+      // The screens' DOM, under happy-dom.
+      {
+        extends: true,
+        test: { name: 'sandbox:functional', include: ['tests/**/*.test.ts'], environment: 'happy-dom' },
+      },
+    ],
   },
   define: {
     'import.meta.env.DEV': 'false',

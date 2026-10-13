@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainBrokerManager } from '@dotli/protocol';
+import type { ChainBrokerManager } from '@dotli/chains';
 
 /**
  * Holds an idle pool lease on each chain so its sync can be observed.

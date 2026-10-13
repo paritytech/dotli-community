@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { chromium, type FullConfig, type Page } from '@playwright/test';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import {
   formatSigningHostExit,
   signingHostVersion,
@@ -113,7 +113,36 @@ class SigningHostExitError extends Error {
   }
 }
 
+// A dist older than the lockfile is stale, and its failures look like obscure SDK bugs. CI always builds fresh. Checked
+// here rather than in the config, which tools such as knip load without running the tests.
+function assertFreshDist(): void {
+  if (process.env['CI'] === 'true') {
+    return;
+  }
+  const repoRoot = resolve(import.meta.dirname, '../../../..');
+  try {
+    const lockMtime = statSync(resolve(repoRoot, 'package-lock.json')).mtimeMs;
+    for (const app of ['host', 'sandbox', 'protocol']) {
+      const distIndex = resolve(repoRoot, `apps/${app}/dist/index.html`);
+      const distMtime = statSync(distIndex).mtimeMs;
+      if (distMtime < lockMtime) {
+        throw new Error(
+          `apps/${app}/dist is older than package-lock.json — run \`npm run build\` from the repo root before re-running e2e.`,
+        );
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('ENOENT')) {
+      throw new Error('dist directories missing — run `npm run build` from the repo root before running e2e.', {
+        cause: e,
+      });
+    }
+    throw e;
+  }
+}
+
 export default async function globalSetup(_config: FullConfig): Promise<() => Promise<void>> {
+  assertFreshDist();
   console.log(`[globalSetup] signing-host=${SIGNING_HOST_BIN} network=${NETWORK} backend=${E2E_CHAIN_BACKEND}`);
 
   const version = signingHostVersion(SIGNING_HOST_BIN);
@@ -194,14 +223,6 @@ async function killStaleSigningHost(): Promise<void> {
   rmSync(SESSION_FILE, { force: true });
 }
 
-// Set by the init script below.
-interface LoginFailure {
-  tag?: string;
-  kind?: string;
-  reason?: string;
-}
-type LoginFailureWindow = Window & { __e2eLoginFailed?: LoginFailure };
-
 async function pairOnce(
   browser: Awaited<ReturnType<typeof chromium.launch>>,
   badgeTimeoutMs: number,
@@ -214,16 +235,6 @@ async function pairOnce(
   });
 
   await page.addInitScript(initializeChainBackend, E2E_CHAIN_BACKEND);
-  // Installed before the CLI spawns and re-installed on every navigation,
-  // so a LoginFailed fired at any point is never missed.
-  await page.addInitScript(() => {
-    window.addEventListener('dotli:truapi-auth-state', (event: Event) => {
-      const detail = (event as CustomEvent<{ tag?: string; kind?: string; reason?: string } | undefined>).detail;
-      if (detail?.tag === 'LoginFailed') {
-        (window as LoginFailureWindow).__e2eLoginFailed = detail;
-      }
-    });
-  });
 
   let signingHost: SigningHostProcess | null = null;
   try {
@@ -276,8 +287,8 @@ async function pairOnce(
   }
 }
 
-// Signed in when the user badge renders. Racing the host's LoginFailed
-// event and the CLI's exit turns a hang into a fast, attributable failure.
+// Signed in when the user badge renders. Racing the sign-in modal's failure
+// view and the CLI's exit turns a hang into a fast, attributable failure.
 async function waitForSignedIn(
   page: Page,
   signingHost: SigningHostProcess,
@@ -291,10 +302,11 @@ async function waitForSignedIn(
       .waitFor({ state: 'visible', timeout: badgeTimeoutMs })
       .then(() => ({ tag: 'signed-in' as const })),
     page
-      .waitForFunction(() => (window as LoginFailureWindow).__e2eLoginFailed ?? null, undefined, { timeout: 0 })
-      .then(async handle => ({
+      .getByTestId('auth-modal-failure')
+      .waitFor({ state: 'visible', timeout: 0 })
+      .then(async () => ({
         tag: 'login-failed' as const,
-        failure: await handle.jsonValue(),
+        failure: await page.getByTestId('auth-modal-failure').innerText(),
       })),
     signingHost.completed.then(result => ({
       tag: 'signing-host-exit' as const,
@@ -309,6 +321,7 @@ async function waitForSignedIn(
     );
   }
   if (outcome.tag === 'login-failed') {
-    throw new Error(`Login failed (${outcome.failure?.kind ?? 'Other'}): ${outcome.failure?.reason ?? 'unknown'}`);
+    // The modal's title, explanation and, unless the copy hides it, the raw reason.
+    throw new Error(`Login failed: ${outcome.failure.replace(/\s+/g, ' ').trim()}`);
   }
 }

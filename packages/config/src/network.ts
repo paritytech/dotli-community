@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { modeStorage } from './mode.js';
+
 export const NetworkName = {
   PASEO: 'paseo-next-v2',
   PREVIEWNET: 'previewnet',
@@ -24,9 +26,9 @@ export interface DotnsContracts {
   readonly TLD: string;
 }
 
-export interface ChainService {
+/** The part of a chain entry a runtime override cannot change. */
+export interface FixedChainService {
   readonly genesis: string;
-  readonly rpcs: readonly string[];
   /**
    * Expected block interval. Measured, because no runtime constant yields it for a parachain: `Aura.SlotDuration` is
    * the async-backing slot, and `BLOCK_PROCESSING_VELOCITY` is absent from metadata.
@@ -34,11 +36,27 @@ export interface ChainService {
   readonly blockTimeMs: number;
 }
 
+export interface ChainService extends FixedChainService {
+  readonly rpcs: readonly string[];
+}
+
 export interface BulletinService extends ChainService {
   readonly ipfsGateways: readonly string[];
 }
 
-export interface ServicesConfig {
+/**
+ * The part of a network entry a runtime override cannot change. The protocol SharedWorker has no document, so it never
+ * sees the runtime config and reads only this, which keeps it in agreement with the documents.
+ */
+export interface FixedServicesConfig {
+  readonly relay: FixedChainService;
+  readonly assethub: FixedChainService;
+  readonly bulletin: FixedChainService;
+  readonly people: FixedChainService;
+  readonly dotns: DotnsContracts;
+}
+
+export interface ServicesConfig extends FixedServicesConfig {
   readonly label: string;
   readonly description: string;
   readonly relay: ChainService;
@@ -198,9 +216,20 @@ function asString(value: unknown, path: string): string {
 // Field by field rather than a deep merge, so nothing walks the prototype chain and what an override can reach stays
 // legible. `genesis` and `blockTimeMs` are never read from the patch.
 
+// Typed so a fixed field cannot be added to an allow list.
+const CHAIN_OVERRIDES = ['rpcs'] as const satisfies readonly Exclude<keyof ChainService, keyof FixedChainService>[];
+const BULLETIN_OVERRIDES = ['rpcs', 'ipfsGateways'] as const satisfies readonly Exclude<
+  keyof BulletinService,
+  keyof FixedChainService
+>[];
+const NETWORK_OVERRIDES = ['label', 'relay', 'assethub', 'bulletin', 'people'] as const satisfies readonly Exclude<
+  keyof ServicesConfig,
+  'dotns'
+>[];
+
 function mergeChain(base: ChainService, patch: unknown, path: string): ChainService {
   const p = asObject(patch, path);
-  checkFields(p, ['rpcs'], path);
+  checkFields(p, CHAIN_OVERRIDES, path);
   return {
     genesis: base.genesis,
     blockTimeMs: base.blockTimeMs,
@@ -210,7 +239,7 @@ function mergeChain(base: ChainService, patch: unknown, path: string): ChainServ
 
 function mergeBulletin(base: BulletinService, patch: unknown, path: string): BulletinService {
   const p = asObject(patch, path);
-  checkFields(p, ['rpcs', 'ipfsGateways'], path);
+  checkFields(p, BULLETIN_OVERRIDES, path);
   return {
     genesis: base.genesis,
     blockTimeMs: base.blockTimeMs,
@@ -222,7 +251,7 @@ function mergeBulletin(base: BulletinService, patch: unknown, path: string): Bul
 
 function mergeNetwork(base: ServicesConfig, patch: unknown, path: string): ServicesConfig {
   const p = asObject(patch, path);
-  checkFields(p, ['label', 'relay', 'assethub', 'bulletin', 'people'], path);
+  checkFields(p, NETWORK_OVERRIDES, path);
   return {
     ...base,
     label: p['label'] === undefined ? base.label : asString(p['label'], `${path}.label`),
@@ -235,8 +264,11 @@ function mergeNetwork(base: ServicesConfig, patch: unknown, path: string): Servi
   };
 }
 
-function applyNetworkOverrides(base: Record<NetworkName, ServicesConfig>): Record<NetworkName, ServicesConfig> {
-  const patches = readRuntimeConfig()?.networks;
+/** `base` with the runtime config's per-network `patches` merged over it. */
+export function applyNetworkOverrides(
+  base: Record<NetworkName, ServicesConfig>,
+  patches: Record<string, unknown> | undefined = readRuntimeConfig()?.networks,
+): Record<NetworkName, ServicesConfig> {
   if (patches === undefined) {
     return base;
   }
@@ -325,18 +357,24 @@ export function isValidNetwork(value: string): value is Network {
   return VALID_NETWORKS.has(value);
 }
 
-export function setNetworkOverride(network: Network): void {
+/** Returns a function that puts the previous override back. */
+export function setNetworkOverride(network: Network): () => void {
+  const previous = networkOverride;
   networkOverride = network;
+  return () => {
+    networkOverride = previous;
+  };
 }
 
-function storedNetwork(enabled: readonly Network[]): Network | null {
-  const stored = localStorage.getItem(NETWORK_KEY);
+/** The stored choice when this build still offers it. */
+export function storedNetwork(enabled: readonly Network[] = getEnabledNetworks()): Network | null {
+  const stored = modeStorage().getItem(NETWORK_KEY);
   return stored !== null && isValidNetwork(stored) && enabled.includes(stored) ? stored : null;
 }
 
 /**
- * The network as this page can tell it before settings apply, from the URL's `fromUrl`, then localStorage, then the
- * default. Unlike getNetwork it writes nothing, as settings tell a fresh visit from a stored choice by what is stored.
+ * The network as this page can tell it before settings apply, from the URL's `fromUrl`, then the stored choice, then
+ * the default.
  */
 export function peekNetwork(fromUrl: Network | null): Network {
   if (networkOverride !== null) {
@@ -346,40 +384,16 @@ export function peekNetwork(fromUrl: Network | null): Network {
   if (fromUrl !== null && enabled.includes(fromUrl)) {
     return fromUrl;
   }
-  try {
-    return storedNetwork(enabled) ?? defaultNetwork();
-  } catch {
-    // localStorage is unavailable, where getNetwork falls back to the default too.
-    return defaultNetwork();
-  }
+  return storedNetwork(enabled) ?? defaultNetwork();
 }
 
+/** From this context's override, the stored choice or the default. Writes nothing, `persistDefaults` stores it. */
 export function getNetwork(): Network {
-  if (networkOverride !== null) {
-    return networkOverride;
-  }
-  try {
-    const stored = storedNetwork(getEnabledNetworks());
-    if (stored !== null) {
-      return stored;
-    }
-    const computed = defaultNetwork();
-    localStorage.setItem(NETWORK_KEY, computed);
-    return computed;
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric, noisy on every page load.
-  } catch {
-    /* localStorage unavailable. Intentionally non-fatal. */
-  }
-  return defaultNetwork();
+  return peekNetwork(null);
 }
 
 export function setNetwork(network: Network): void {
-  try {
-    localStorage.setItem(NETWORK_KEY, network);
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable, and the write is best effort.
-  } catch {
-    /* localStorage unavailable */
-  }
+  modeStorage().setItem(NETWORK_KEY, network);
 }
 
 /**
@@ -404,9 +418,14 @@ export function getActiveServicesConfig(): ServicesConfig {
   return NETWORK_NAME_TO_SERVICES_CONFIG[getNetwork()];
 }
 
-/** Genesis hashes dApps may target on the active network. */
+/** The active network's fields no override can change, for a context that never sees the runtime config. */
+export function getActiveFixedServicesConfig(): FixedServicesConfig {
+  return BUILTIN_NETWORK_SERVICES[getNetwork()];
+}
+
+/** Genesis hashes dApps may target on the active network. No override changes a genesis, so a worker may read it. */
 export function getActiveSupportedGenesisHashes(): Set<string> {
-  const cfg = getActiveServicesConfig();
+  const cfg = getActiveFixedServicesConfig();
   return new Set(
     [cfg.relay.genesis, cfg.assethub.genesis, cfg.bulletin.genesis, cfg.people.genesis].map(h => h.toLowerCase()),
   );

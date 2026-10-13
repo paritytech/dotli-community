@@ -3,7 +3,8 @@
 
 // A warning is not an error: the load is still running and may finish, so each line says what is happening.
 
-import type { ChainKey } from '@dotli/resolver';
+import type { ChainKey } from '@dotli/chains';
+import { formatRate } from '@dotli/shared';
 
 /** How long a chain may sit in one lifecycle state before it owes an explanation. */
 export const STALL_WARNING_MS = 3_000;
@@ -38,13 +39,7 @@ function throughput(bytesPerSecond: number | null): string | null {
   if (bytesPerSecond === null || bytesPerSecond < 1) {
     return null;
   }
-  // Bytes, not kB, so a trickle never rounds to "0 kB/s".
-  if (bytesPerSecond < 1024) {
-    return `${String(Math.round(bytesPerSecond))} B/s`;
-  }
-  return bytesPerSecond < 1_048_576
-    ? `${String(Math.round(bytesPerSecond / 1024))} kB/s`
-    : `${(bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
+  return formatRate(bytesPerSecond);
 }
 
 /**

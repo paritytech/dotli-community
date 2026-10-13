@@ -30,7 +30,7 @@ jobs:
       - name: Run tests
         run: npx turbo run test
 
-  # Stories run as browser tests. Playwright comes from apps/host's pin, which packages/ui matches.
+  # Stories run as browser tests. Playwright comes from apps/host's pin, which @config/storybook matches.
   stories:
     name: Stories
     runs-on: ubuntu-latest
@@ -43,11 +43,30 @@ jobs:
         uses: ./.github/actions/setup-playwright
 
       - name: Run stories as tests
-        working-directory: packages/ui
-        run: npm run test:stories
+        run: npm run test:stories --workspaces --if-present
 
       - name: Build Storybook
         working-directory: packages/ui
+        run: npm run build-storybook
+
+      - name: Build the debug panel's Storybook
+        working-directory: packages/truapi-debug-ui
+        run: npm run build-storybook
+
+      - name: Build the domain views' Storybook
+        working-directory: packages/ui-entities
+        run: npm run build-storybook
+
+      - name: Build the page widgets' Storybook
+        working-directory: packages/ui-widgets
+        run: npm run build-storybook
+
+      - name: Build the host chrome's Storybook
+        working-directory: apps/host
+        run: npm run build-storybook
+
+      - name: Build the sandbox pages' Storybook
+        working-directory: apps/sandbox
         run: npm run build-storybook
 
   functional:
@@ -76,56 +95,50 @@ jobs:
         working-directory: apps/host
         env:
           VITE_METRICS: 'true'
-        run:
-          npx playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts
-          tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts
-          tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts
-          tests/functional/host-settings.spec.ts || true
+        # Every spec in the directory. The threshold below decides what fails the job.
+        run: npm run test:functional || true
 
       - name: Apply functional threshold
         working-directory: apps/host
         run: |
-          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
-          if [ "$TOTAL" -lt 12 ]; then
-            echo "::error::expected at least 12 tests, got $TOTAL."
+          # A spec file that fails to load, as when a shared helper breaks, leaves an error here and no tests at all.
+          ERRORS=$(jq '.errors | length' tests/functional/results.json)
+          if [ "$ERRORS" -gt 0 ]; then
+            jq -r '.errors[] | .message // tostring' tests/functional/results.json
+            echo "::error::$ERRORS error(s) outside any test, such as a spec file that failed to load."
             exit 1
           fi
-          LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          TRANSPORT_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          SMOKE_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "ui-smoke.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          SETTINGS_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-settings.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          # The suite lists 106 tests, skipped ones included. The margin lets a few go without touching this line,
+          # while losing a larger spec file fails the job even when the file left no error.
+          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
+          if [ "$TOTAL" -lt 100 ]; then
+            echo "::error::expected at least 100 tests, got $TOTAL."
+            exit 1
+          fi
+          # resolution.spec.ts runs many real-network loads and tolerates a few failures. Every other file must have none.
+          tolerated() {
+            case "$1" in
+              resolution.spec.ts) echo 2 ;;
+              *) echo 0 ;;
+            esac
+          }
+          FAILED_BY_FILE=$(jq -r '[.suites[] | recurse(.suites[]?) | .specs[]?] | group_by(.file)[] | "\(.[0].file) \(map(select(.ok == false)) | length)"' tests/functional/results.json)
+          STATUS=0
+          while read -r FILE FAILED; do
+            ALLOWED=$(tolerated "$FILE")
+            echo "$FILE failures: $FAILED (max $ALLOWED)"
+            if [ "$FAILED" -gt "$ALLOWED" ]; then
+              echo "::error::$FILE: $FAILED failures (max $ALLOWED)"
+              STATUS=1
+            fi
+          done <<< "$FAILED_BY_FILE"
           # A skipped spec counts as ok, and network-transport.spec.ts skips itself without VITE_METRICS.
           TRANSPORT_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
-          echo "loading.spec.ts failures: $LOADING_FAILED"
-          echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
-          echo "network-transport.spec.ts failures: $TRANSPORT_FAILED (skipped: $TRANSPORT_SKIPPED)"
-          echo "ui-smoke.spec.ts failures: $SMOKE_FAILED"
-          echo "host-settings.spec.ts failures: $SETTINGS_FAILED"
-          if [ "$LOADING_FAILED" -gt 0 ]; then
-            echo "::error::loading.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$RESOLUTION_FAILED" -gt 2 ]; then
-            echo "::error::resolution.spec.ts: $RESOLUTION_FAILED failures (max 2 tolerated)"
-            exit 1
-          fi
-          if [ "$TRANSPORT_FAILED" -gt 0 ]; then
-            echo "::error::network-transport.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$SMOKE_FAILED" -gt 0 ]; then
-            echo "::error::ui-smoke.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$SETTINGS_FAILED" -gt 0 ]; then
-            echo "::error::host-settings.spec.ts must have 0 failures"
-            exit 1
-          fi
           if [ "$TRANSPORT_SKIPPED" -gt 0 ]; then
             echo "::error::network-transport.spec.ts skipped $TRANSPORT_SKIPPED test(s); VITE_METRICS is not reaching the run step"
-            exit 1
+            STATUS=1
           fi
+          exit $STATUS
 
   # host-playground product tests, with pairing and signing handled headlessly by the truapi-host CLI.
   e2e-product:

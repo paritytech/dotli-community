@@ -119,8 +119,8 @@ mirroring what `scripts/preview-server.ts` does for local previews.
 
 This needs no code changes and no DNS setup: the flat `*.localhost` shape is
 already special-cased in `getProtocolOrigin` (`packages/protocol/src/client.ts`),
-`dotUrl` (`packages/ui/src/ui.ts`) and `getAppOrigin`
-(`packages/ui/src/bridge.ts`), browsers resolve every `*.localhost` name to
+`dotUrl` (`apps/host/src/components/landing/dot-url.ts`) and `appOrigin`
+(`packages/host-runtime/src/product-frame.ts`), browsers resolve every `*.localhost` name to
 loopback, and `http://*.localhost` is a secure context so `crypto.subtle`,
 service workers and SharedWorker all work.
 

@@ -26,6 +26,12 @@ github-actions:
           - 'packages/config/**'
           - '!packages/config/package.json'
 
+'pkg: sandbox-wire':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/sandbox-wire/**'
+          - '!packages/sandbox-wire/package.json'
+
 'pkg: shared':
   - changed-files:
       - all-globs-to-any-file:
@@ -44,6 +50,18 @@ github-actions:
           - 'packages/resolver/**'
           - '!packages/resolver/package.json'
 
+'pkg: chains':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/chains/**'
+          - '!packages/chains/package.json'
+
+'pkg: bitswap':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/bitswap/**'
+          - '!packages/bitswap/package.json'
+
 'pkg: content':
   - changed-files:
       - all-globs-to-any-file:
@@ -55,6 +73,12 @@ github-actions:
       - all-globs-to-any-file:
           - 'packages/ui/**'
           - '!packages/ui/package.json'
+
+'pkg: ui-core':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/ui-core/**'
+          - '!packages/ui-core/package.json'
 
 'pkg: sandbox-checker':
   - changed-files:

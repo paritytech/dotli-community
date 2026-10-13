@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { StatusTone } from './StatusDot.js';
+import type { StatusTone } from '@dotli/ui-core';
 import s from './IconButton.module.css';
 
 // Explicit props, not a rest spread: splitting the rest off pulls Solid's `omit` into the boot bundle.
@@ -53,24 +53,5 @@ export function IconButton(props: IconButtonProps): JSX.Element {
     >
       {props.children}
     </button>
-  );
-}
-
-/** The close cross for a small icon button. */
-export function CloseIcon(props: { size?: number }): JSX.Element {
-  return (
-    <svg
-      width={props.size ?? 16}
-      height={props.size ?? 16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
   );
 }

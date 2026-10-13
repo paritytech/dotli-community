@@ -38,7 +38,7 @@ export function signingHostVersion(binary: string): string | null {
   return probe.stdout.trim();
 }
 
-export function sanitizeSigningHostOutput(text: string): string {
+function sanitizeSigningHostOutput(text: string): string {
   return text.replace(PAIRING_DEEPLINK, '<pairing deeplink>');
 }
 

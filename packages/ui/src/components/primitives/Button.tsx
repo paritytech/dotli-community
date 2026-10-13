@@ -3,7 +3,7 @@
 
 import { createEffect } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { prefersReducedMotion } from '../../reduced-motion.js';
+import { prefersReducedMotion } from '@dotli/ui-core';
 import { Spinner } from './Spinner.js';
 import s from './Button.module.css';
 

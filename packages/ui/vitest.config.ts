@@ -8,21 +8,31 @@ import { cssModules } from '@config/vite/css-modules';
 // In test mode the Solid plugin compiles non-hydratable DOM output, which the component tests render with.
 export default defineConfig({
   plugins: [solid()],
-  define: {
-    // getEnabledNetworks() requires VITE_NETWORKS and has no default by design.
-    'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
-  },
-  // `npm run link:truapi` points @parity/truapi-provider outside the workspace, and Vite's
-  // strict file serving would refuse its `?url` wasm import.
-  server: { fs: { strict: false } },
   css: { modules: cssModules() },
   test: {
     globals: false,
-    environment: 'happy-dom',
-    name: 'ui',
-    include: ['tests/**/*.test.{ts,tsx}'],
-    setupFiles: ['tests/setup/popover-polyfill.ts'],
     // So `s['foo']` is a real scoped class in tests rather than undefined.
     css: { include: [/\.module\.css$/], modules: { classNameStrategy: 'scoped' } },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'ui:unit',
+          include: ['src/**/*.spec.{ts,tsx}'],
+          environment: 'node',
+        },
+        // Node's own conditions pick Solid's server build, whose effects never re-run.
+        ssr: { resolve: { conditions: ['browser', 'development'] } },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'ui:functional',
+          include: ['tests/**/*.test.{ts,tsx}'],
+          environment: 'happy-dom',
+          setupFiles: ['tests/setup/popover-polyfill.ts'],
+        },
+      },
+    ],
   },
 });
