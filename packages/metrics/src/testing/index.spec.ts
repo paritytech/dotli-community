@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { m } from './metrics.js';
+import { m } from '../metrics.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 
 describe('bindRecordingSentry', () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // happy-dom has no popover API. This covers open state and the two events FloatingLayer listens to. Light dismiss
-// and the top layer are tested in the stories lane.
+// and the top layer are tested in the stories.
 
 function dispatchToggle(el: HTMLElement, type: 'beforetoggle' | 'toggle', open: boolean): void {
   const ev = new Event(type);
@@ -19,7 +19,11 @@ function setOpen(el: HTMLElement, open: boolean): void {
   dispatchToggle(el, 'toggle', open);
 }
 
-if (typeof HTMLElement.prototype.showPopover !== 'function') {
+/** For functional tests under happy-dom. A browser that has the API keeps its own. */
+export function installPopoverPolyfill(): void {
+  if (typeof HTMLElement.prototype.showPopover === 'function') {
+    return;
+  }
   Object.assign(HTMLElement.prototype, {
     showPopover(this: HTMLElement) {
       setOpen(this, true);

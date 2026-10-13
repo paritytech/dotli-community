@@ -4,7 +4,7 @@
 // Outside Solid because the eager topbar button and the lazy panel both read it. Rooms, bots and
 // messages are not kept here, the open panel follows them in the chat store's view.
 
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, registerStoreStateReset, shallowEqual, type ReadableStore } from '@dotli/shared';
 import { chatStore } from '../runtime/chat/chat-store.js';
 import type { ChatChange, ChatStore, ChatView } from '../runtime/chat/store.js';
 import { labelToProductId } from '../runtime/runtime-config.js';
@@ -250,10 +250,10 @@ export function initChatPanelState(
   };
 }
 
-export function resetChatPanelStateForTests(): void {
-  panel.set(INITIAL);
+// The store resets itself. The width storage beside it goes back to the page's.
+registerStoreStateReset(() => {
   widthStorage = pageWidthStorage;
-}
+});
 
 // The chat button, a separate island, reads it to tell whether focus was in the panel.
 let panelElement: HTMLElement | undefined;

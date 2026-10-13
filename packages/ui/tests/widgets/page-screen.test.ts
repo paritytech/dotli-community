@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createComponent, onCleanup } from 'solid-js';
 import { render } from '@solidjs/web';
 import { pushToast } from '../../src/page/state/toasts.js';
-import { byTestId, resetToastsForTests, settle } from '../../src/testing/index.js';
+import { byTestId, settle } from '../../src/testing/index.js';
 import { BellIcon } from '../../src/icons.js';
 import { Overlays } from '../../src/widgets/overlays/Overlays.js';
 import { clearScreen, pageContentStore, showScreen } from '../../src/widgets/page-screen.js';
@@ -28,7 +29,7 @@ afterEach(() => {
   clearScreen();
   disposeOverlays?.();
   disposeOverlays = undefined;
-  resetToastsForTests();
+  resetAllStoresForTests();
   document.body.replaceChildren();
   disposed = [];
 });

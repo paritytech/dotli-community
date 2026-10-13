@@ -5,6 +5,7 @@ import { createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
 import { Button } from '../primitives/Button.js';
 import { Popover } from './Popover.js';
 
@@ -145,12 +146,8 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/**
- * Trusted input, which the browser's invokers require. Imported lazily so Storybook loads the stories outside Vitest.
- */
-const input = async () => (await import('vitest/browser')).userEvent;
 const press = async (testId: string) => {
-  await (await input()).click(body.getByTestId(testId));
+  await (await trustedInput()).click(body.getByTestId(testId));
 };
 
 export const Open: Story = {
@@ -172,7 +169,7 @@ export const Open: Story = {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it closed and the button says so', async () => {
       await waitFor(() => expect(body.getByTestId('story-popover-surface')).not.toHaveAttribute('data-open'));
@@ -215,7 +212,7 @@ export const PhoneClosesReturnFocus: Story = {
     await step('Given the sheet is open again', () => press('trigger'));
     await step('When I press Escape', async () => {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it closed once more and the trigger has focus', () => settled([[true], [false], [true], [false]]));
   },
@@ -267,7 +264,7 @@ const surfaceOpen = async () => {
   await waitFor(() => expect(body.getByTestId('story-popover-surface')).toHaveAttribute('data-open'));
 };
 const tab = async (shift = false) => {
-  await (await input()).keyboard(shift ? '{Shift>}{Tab}{/Shift}' : '{Tab}');
+  await (await trustedInput()).keyboard(shift ? '{Shift>}{Tab}{/Shift}' : '{Tab}');
 };
 
 export const FirstControlTakesFocus: Story = {

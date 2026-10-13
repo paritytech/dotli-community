@@ -59,7 +59,7 @@ function harness(fakes: FakePageCore = createFakePageCore()): Harness {
     core: fakes.core,
     createIframeHost: options => {
       const iframe = document.createElement('iframe');
-      options.container.appendChild(iframe);
+      container.appendChild(iframe);
       const dispose = vi.fn(() => {
         iframe.remove();
         fakes.changes.notify();
@@ -67,11 +67,15 @@ function harness(fakes: FakePageCore = createFakePageCore()): Harness {
       hosts.push({ options, iframe, dispose });
       return Promise.resolve({ iframe, dispose });
     },
-    container,
     channel,
     onPermissionsChanged: () => () => undefined,
     // The page around the frame, as the host wires it.
-    view: createProductFrameView({ body: () => document.body, clearScreen, hideLoading: () => undefined }),
+    view: createProductFrameView({
+      body: () => document.body,
+      container: () => container,
+      clearScreen,
+      hideLoading: () => undefined,
+    }),
     notify: () => undefined,
   });
   return { ...fakes, frame, container, hosts };

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { Show } from 'solid-js';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
 import { Button } from '../../components/primitives/Button.js';
 import { ModalFocusFallback } from '../../components/floating/layer-context.js';
-import { openModal, resetModalsForTests, type ModalOutcome, type ModalView } from '../../page/state/modals.js';
+import { openModal, type ModalOutcome, type ModalView } from '../../page/state/modals.js';
 import { ModalOutlet } from './ModalOutlet.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
@@ -43,12 +45,12 @@ let appFrame: HTMLIFrameElement | undefined;
 const ask =
   (...views: ModalView<string>[]) =>
   () => {
-    resetModalsForTests();
+    resetAllStoresForTests();
     appFrame = undefined;
     asked.views = views;
     asked.outcomes = [];
     return () => {
-      resetModalsForTests();
+      resetAllStoresForTests();
       appFrame = undefined;
     };
   };
@@ -98,16 +100,14 @@ type Story = StoryObj<typeof meta>;
 
 // The dialog is portalled into the body, outside the story's canvas.
 const body = within(document.body);
-/** Trusted input, as the Tab trap and the scrim meet it. Imported lazily so Storybook loads the stories outside Vitest. */
-const input = async () => (await import('vitest/browser')).userEvent;
 const backdrop = () => body.queryByTestId('signing-modal-backdrop');
 const title = () => body.getByRole('heading', { level: 2 }).textContent;
 const press = async (el: Element) => {
-  await (await input()).click(el);
+  await (await trustedInput()).click(el);
 };
 /** A press on the scrim beside the card, as a real press there lands. */
 const pressScrim = async () => {
-  await (await input()).click(body.getByTestId('signing-modal-scrim'), { position: { x: 4, y: 4 } });
+  await (await trustedInput()).click(body.getByTestId('signing-modal-scrim'), { position: { x: 4, y: 4 } });
 };
 const askNow = async () => {
   await press(body.getByTestId('opener'));
@@ -159,7 +159,7 @@ export const ScrimAndEscapeDismiss: Story = {
       await waitFor(() => expect(title()).toBe('Second'));
     });
     await step('When I press Escape, then the second is dismissed', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
       await expect(asked.outcomes[1]).resolves.toEqual({ result: 'dismissed' });
       await closed();
     });
@@ -178,7 +178,7 @@ export const EscapeHandledForPage: Story = {
       document.addEventListener('keydown', listener);
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then the prompt closed and the page heard the key as handled', async () => {
       await closed();
@@ -200,7 +200,7 @@ export const MustAnswerIgnoresScrimAndEscape: Story = {
     });
     await step('When I press the scrim and Escape', async () => {
       await pressScrim();
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it is still up and unanswered', async () => {
       await new Promise(resolve => requestAnimationFrame(resolve));
@@ -231,7 +231,7 @@ export const PhoneSheetCloseCancels: Story = {
   play: async ({ step }) => {
     await step('Given a password prompt is up on a phone and I typed', async () => {
       await askNow();
-      await (await input()).type(body.getByTestId('password-prompt-input'), 'typed');
+      await (await trustedInput()).type(body.getByTestId('password-prompt-input'), 'typed');
     });
     await step("When I press the sheet's Close", async () => {
       await press(await body.findByTestId('signing-modal-sheet-close'));
@@ -264,14 +264,14 @@ export const PasswordEnterSubmits: Story = {
       await expect(body.getByRole('alert')).toHaveTextContent('Wrong password');
     });
     await step('When I press Enter with nothing typed, then nothing is sent', async () => {
-      await (await input()).keyboard('{Enter}');
+      await (await trustedInput()).keyboard('{Enter}');
       await expect(backdrop()).toHaveAttribute('data-open');
       await expect(body.getByRole('button', { name: 'Unlock' })).toBeDisabled();
     });
     await step('When I type the password and press Enter', async () => {
-      await (await input()).type(field(), 'hunter2');
+      await (await trustedInput()).type(field(), 'hunter2');
       await expect(body.getByRole('button', { name: 'Unlock' })).toBeEnabled();
-      await (await input()).keyboard('{Enter}');
+      await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then it unlocks with what I typed, and the Enter does not ask again from the page', async () => {
       await expect(asked.outcomes).toHaveLength(1);
@@ -287,7 +287,7 @@ export const PasswordCancelDropsText: Story = {
   play: async ({ step }) => {
     await step('Given I typed in the password prompt', async () => {
       await askNow();
-      await (await input()).type(body.getByTestId('password-prompt-input'), 'typed');
+      await (await trustedInput()).type(body.getByTestId('password-prompt-input'), 'typed');
     });
     await step('When I press Cancel', () => press(body.getByRole('button', { name: 'Cancel' })));
     await step('Then it settles without the typed value', async () => {

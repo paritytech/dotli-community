@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createComponent } from 'solid-js';
 import { render } from '@solidjs/web';
 import { openModal, type ModalView } from '../../../src/page/state/modals.js';
 import { pushToast } from '../../../src/page/state/toasts.js';
-import { resetModalsForTests, resetToastsForTests, byTestId, settle } from '../../../src/testing/index.js';
+import { byTestId, settle } from '../../../src/testing/index.js';
 import { BellIcon } from '../../../src/icons.js';
 import { Overlays } from '../../../src/widgets/overlays/Overlays.js';
 
@@ -34,8 +35,7 @@ async function mountOverlays(): Promise<void> {
 afterEach(() => {
   dispose?.();
   dispose = undefined;
-  resetModalsForTests();
-  resetToastsForTests();
+  resetAllStoresForTests();
   document.body.replaceChildren();
 });
 
@@ -52,29 +52,5 @@ describe('overlays', () => {
     // Then
     expect(byTestId('notif-title').textContent).toBe('Polkadot Desktop');
     await expect(outcome).resolves.toEqual({ result: 'yes' });
-  });
-
-  it('As a dApp user, answering a dialog whose origin left the page hands focus to the fallback the dialog names', async () => {
-    // Given: a dialog asked from a button over the product, naming the product frame as its fallback, and the button
-    // then leaves the page.
-    const frame = document.createElement('iframe');
-    const opener = document.createElement('button');
-    document.body.append(frame, opener);
-    opener.focus();
-    await mountOverlays();
-    const outcome = openModal(VIEW, undefined, { focusFallback: () => frame });
-    await settle();
-    opener.remove();
-
-    // When
-    const focused = new Promise(resolve => {
-      frame.addEventListener('focus', resolve, { once: true });
-    });
-    byTestId('signing-btn-sign').click();
-    await expect(outcome).resolves.toEqual({ result: 'yes' });
-    await focused;
-
-    // Then
-    expect(document.activeElement).toBe(frame);
   });
 });

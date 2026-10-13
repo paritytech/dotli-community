@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
+import { memoryStorage } from '@dotli/shared/testing';
 import { SITE_ID } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope, ProtocolRequestMap } from '@dotli/protocol';
@@ -13,20 +14,6 @@ const PRODUCT = 'http://bafy.app.localhost:5173';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
-
-function memoryStorage(): ReturnType<SharedStoreDeps['storage']> & { entries: Map<string, string> } {
-  const entries = new Map<string, string>();
-  return {
-    entries,
-    getItem: key => entries.get(key) ?? null,
-    setItem: (key, value) => {
-      entries.set(key, value);
-    },
-    removeItem: key => {
-      entries.delete(key);
-    },
-  };
-}
 
 interface FakeChannel {
   channel: SharedAuthChannel;
@@ -63,7 +50,7 @@ function fakeChannel(post: (message: unknown) => void = () => undefined): FakeCh
 
 function setup(overrides: Partial<SharedStoreDeps> = {}): {
   handler: ReturnType<typeof createSharedStoreHandler>;
-  storage: ReturnType<typeof memoryStorage>;
+  storage: Storage;
   channel: FakeChannel;
   toParent: { message: ProtocolEnvelope; origin: string }[];
 } {
@@ -288,7 +275,8 @@ describe('the shared mode store', () => {
 
     // Then
     expect(read).toEqual([ok('r2', 'direct')]);
-    expect([...storage.entries.keys()]).toEqual([`DOTLI_MODE_${SITE_ID}_session`]);
+    expect(storage.length).toBe(1);
+    expect(storage.key(0)).toBe(`DOTLI_MODE_${SITE_ID}_session`);
     expect(channel.posted).toEqual([]);
   });
 
@@ -304,6 +292,6 @@ describe('the shared mode store', () => {
 
     // Then
     expect(cleared).toEqual([ok('r1', true)]);
-    expect(storage.entries.size).toBe(0);
+    expect(storage.length).toBe(0);
   });
 });

@@ -17,8 +17,6 @@ export interface BridgeDeps extends Omit<CoreAuthCommandsDeps, 'core'> {
   /** Returns the unsubscribe. */
   onStoredSessionChanged: (listener: () => void) => () => void;
   createIframeHost: ProductFrameDeps['createIframeHost'];
-  /** Where the product frame mounts, read once when it starts. */
-  container: () => HTMLElement;
   onPermissionsChanged: ProductFrameDeps['onPermissionsChanged'];
   /** What the page shows around the frame. */
   frameView: ProductFrameDeps['view'];
@@ -74,7 +72,6 @@ export function createBridge(deps: BridgeDeps): Bridge {
       productFrame ??= createProductFrame({
         core: getCore(),
         createIframeHost: deps.createIframeHost,
-        container: deps.container(),
         channel,
         onPermissionsChanged: deps.onPermissionsChanged,
         view: deps.frameView,

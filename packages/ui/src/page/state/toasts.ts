@@ -4,7 +4,7 @@
 // A countdown pauses while the tab is hidden or the stack is expanded and resumes from what was left.
 
 import { captureException } from '@dotli/metrics';
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, registerStoreStateReset, shallowEqual, type ReadableStore } from '@dotli/shared';
 import type { StatusTone } from '../status-tone.js';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/icon-props.js';
@@ -250,8 +250,8 @@ export function clearToasts(): void {
   toasts.set(INITIAL);
 }
 
-export function resetToastsForTests(): void {
+registerStoreStateReset(() => {
   clearToasts();
   nextId = 0;
   unbindToastPage();
-}
+});

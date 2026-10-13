@@ -6,6 +6,7 @@ import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expect, waitFor } from 'storybook/test';
 import { isPhoneViewport } from '@dotli/ui';
+import { byId } from '@dotli/ui/testing';
 
 /**
  * The host bar as surfaces read it. Its box matches the `--topbar-bottom` and `--topbar-inline-end` fallbacks, so they
@@ -39,14 +40,6 @@ export function TopbarFrame(props: { children?: JSX.Element; center?: boolean; m
 }
 
 type Play = (ctx: StoryContext<SolidRenderer>) => Promise<void>;
-
-function byId(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (el === null) {
-    throw new Error(`No #${id}`);
-  }
-  return el;
-}
 
 /** The `Open` play of a surface: press its trigger, wait for the surface and its content. */
 export function openSurface(ids: { trigger?: string; surface: string }): Play {

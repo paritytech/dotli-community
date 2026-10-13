@@ -4,13 +4,13 @@
 import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
 import { cssModules } from '@config/vite/css-modules';
+import { TEST_DEFINES } from '@config/vite/test-defines';
 
 // In test mode the Solid plugin compiles non-hydratable DOM output, which the component tests render with.
 export default defineConfig({
   plugins: [solid()],
   define: {
-    // getEnabledNetworks() requires VITE_NETWORKS and has no default by design.
-    'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
+    ...TEST_DEFINES,
     // On, so a test reads what the page reports through a bound fake Sentry.
     'import.meta.env.VITE_METRICS': '"true"',
   },

@@ -4,6 +4,7 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
 import { Button } from '../primitives/Button.js';
 import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layer-context.js';
 import { Popover } from './Popover.js';
@@ -109,13 +110,8 @@ type Story = StoryObj<typeof meta>;
 // The surface is portalled into the body, outside the story's canvas.
 const body = within(document.body);
 const surface = () => body.getByTestId('story-popover-surface');
-/**
- * Trusted input, which light dismiss, invokers, close requests and iframe focus require.
- * Imported lazily so Storybook loads the stories outside Vitest.
- */
-const input = async () => (await import('vitest/browser')).userEvent;
 const openIt = async () => {
-  await (await input()).click(body.getByTestId('trigger'));
+  await (await trustedInput()).click(body.getByTestId('trigger'));
   await waitFor(() => expect(surface()).toHaveAttribute('data-open'));
 };
 
@@ -123,7 +119,7 @@ export const ClickOutsideReachesTarget: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
     await step('When I click the Other button', async () => {
-      await (await input()).click(body.getByTestId('other'));
+      await (await trustedInput()).click(body.getByTestId('other'));
     });
     await step('Then the popover closed and Other got the click', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -136,7 +132,7 @@ export const ClosesOnWindowBlur: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
     await step('When I click inside the product iframe', async () => {
-      await (await input()).click(body.getByTestId('product'));
+      await (await trustedInput()).click(body.getByTestId('product'));
     });
     await step('Then the popover closed and focus stayed in the iframe', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -152,7 +148,7 @@ export const EscapeReturnsFocusToTrigger: Story = {
       (document.activeElement as HTMLElement | null)?.blur();
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it closed and the trigger has focus', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -168,7 +164,7 @@ export const TabStaysInside: Story = {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
     });
     await step('When I Tab twice', async () => {
-      const user = await input();
+      const user = await trustedInput();
       await user.tab();
       await user.tab();
     });
@@ -182,7 +178,7 @@ export const TriggerTogglesClosed: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
     await step('When I click the trigger again', async () => {
-      await (await input()).click(body.getByTestId('trigger'));
+      await (await trustedInput()).click(body.getByTestId('trigger'));
     });
     await step('Then it is closed, once', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -211,11 +207,11 @@ export const OneClickMovesToAnotherPopover: Story = {
   render: () => <TwoPopovers />,
   play: async ({ step }) => {
     await step('Given popover A is open', async () => {
-      await (await input()).click(body.getByTestId('trigger-a'));
+      await (await trustedInput()).click(body.getByTestId('trigger-a'));
       await waitFor(() => expect(body.getByTestId('surface-a')).toHaveAttribute('data-open'));
     });
     await step("When I click B's trigger once", async () => {
-      await (await input()).click(body.getByTestId('trigger-b'));
+      await (await trustedInput()).click(body.getByTestId('trigger-b'));
     });
     await step('Then A closed and B is open with focus inside it, each change reported once', async () => {
       await waitFor(() => expect(body.getByTestId('surface-b')).toHaveAttribute('data-open'));
@@ -245,7 +241,7 @@ export const PageTracksOpenLayer: Story = {
       await expect(layers[0]?.element()?.contains(document.activeElement)).toBe(true);
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then the page sees it closed', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -266,7 +262,7 @@ export const HiddenTriggerHandsFocusToBoundary: Story = {
       body.getByTestId('trigger').style.display = 'none';
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step("Then it closed and the boundary's fallback has focus", async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));

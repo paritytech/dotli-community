@@ -4,7 +4,7 @@
 // A Sentry for tests that records what the page reports. Apart from the barrel so no browser bundle reaches it, and
 // free of any test runner so every package's tests can share it.
 
-import { m } from './metrics.js';
+import { m } from '../metrics.js';
 
 export interface RecordedMetric {
   /** With the `dotli.` prefix, as Sentry receives it. */

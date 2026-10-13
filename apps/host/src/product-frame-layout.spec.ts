@@ -8,7 +8,6 @@ import {
   attachProductFrame,
   currentProductFrame,
   frameBox,
-  resetProductFrameLayout,
   setChatWidth,
   setDockInset,
   setTopbarLayout,
@@ -38,7 +37,6 @@ beforeEach(() => {
 
 afterEach(() => {
   resetAllStoresForTests();
-  resetProductFrameLayout();
 });
 
 describe('frameBox', () => {

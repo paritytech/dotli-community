@@ -38,7 +38,6 @@ Helpers from `@config/eslint/vite`:
 - `onlyAllowedScopes(allowed, message)`: refuses every `@dotli/*`, `@config/*` and `@parity/*` import but `allowed`.
 - `dynamicImportBan(pattern, message)`: refuses `import()` of a matching module.
 - `fixedServicesConfigOnly(files)`: limits those files to the fixed services part of the configuration.
-- `metricsPackageConfig`: the rules for the metrics package itself.
 - `restrictedSyntax`: the shared syntax bans, for a package that adds its own `no-restricted-syntax` rule.
 
 Each package re-exports a config from its own lint config:

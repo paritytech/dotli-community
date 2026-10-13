@@ -11,7 +11,6 @@ import {
   exhaustedAllowanceError,
   friendlyAuthError,
   initAuthController,
-  resetAuthControllerForTests,
   startLogin,
   type AuthController,
 } from './auth-controller.js';
@@ -450,7 +449,7 @@ describe('auth controller: blocking-modal lease', () => {
           },
         }),
     });
-    disposers.push(resetAuthControllerForTests);
+    disposers.push(resetAllStoresForTests);
 
     // Then
     expect(controller.openAuthModal()).toBe(false);
@@ -616,7 +615,6 @@ describe('auth controller: auth states', () => {
 
 describe('auth controller on the page stores', () => {
   afterEach(() => {
-    resetAuthControllerForTests();
     resetAllStoresForTests();
   });
 

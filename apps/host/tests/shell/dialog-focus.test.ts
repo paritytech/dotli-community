@@ -4,13 +4,14 @@
 // The host's prompts name the product frame as where their dialogs hand focus back, over the real overlays.
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createComponent } from 'solid-js';
 import { render } from '@solidjs/web';
 import { Overlays } from '@dotli/ui';
 import type { ModalView } from '@dotli/ui';
-import { appears, resetModalsForTests } from '@dotli/ui/testing';
+import { appears } from '@dotli/ui/testing';
 import { createHostPrompts } from '../../src/page-prompts.js';
-import { attachProductFrame, resetProductFrameLayout } from '../../src/product-frame-layout.js';
+import { attachProductFrame } from '../../src/product-frame-layout.js';
 
 const REVIEW: ModalView<'no' | 'yes' | 'dismissed'> = {
   title: 'Question',
@@ -28,8 +29,7 @@ let disposeOverlays: (() => void) | undefined;
 afterEach(() => {
   disposeOverlays?.();
   disposeOverlays = undefined;
-  resetModalsForTests();
-  resetProductFrameLayout();
+  resetAllStoresForTests();
   document.body.replaceChildren();
 });
 

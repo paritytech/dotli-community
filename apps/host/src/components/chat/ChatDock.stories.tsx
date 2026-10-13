@@ -4,6 +4,7 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { bindCaptureSink } from '@dotli/metrics';
 import { expect, fn, waitFor } from 'storybook/test';
+import { byId } from '@dotli/ui/testing';
 import { expectPhone, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import { type ChatStage, chatStage } from '../../../.storybook/chat-fixtures.js';
 import { GroupFrame, moreRow, openMore } from '../../../.storybook/frames.js';
@@ -18,14 +19,6 @@ const SLOW = { timeout: 5000 };
 /** A one-pixel PNG, as a real browser drops an icon it cannot decode for the letter fallback. */
 const ICON =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-
-function byId(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (el === null) {
-    throw new Error(`no #${id}`);
-  }
-  return el;
-}
 
 function rows(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')];

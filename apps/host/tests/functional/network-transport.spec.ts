@@ -9,6 +9,8 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { DOMAIN, PORT, TIMEOUT_MS } from '../env.js';
 import { findAppFrame } from '../product-frame.js';
 import { seedBackend, seedSettings } from './fixtures/settings.js';
+import { productPage, rawBlock } from './helpers/blocks.js';
+import { fakeProtocol } from './helpers/fake-protocol.js';
 import { resetSharedMode } from './helpers/shared-mode-reset.js';
 
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -35,23 +37,20 @@ async function readGauge(request: APIRequestContext): Promise<GaugePoint[]> {
   return points.filter(p => p.name === 'dotli.smoldot.active');
 }
 
-// Long enough for a late flush to reveal an extra light client.
-const SETTLE_MS = 5_000;
+/** Sentry sends a report up to one flush interval (5 s) after it is taken. */
+const SENTRY_FLUSH_HOLD_MS = 6_000;
+
+const total = (points: readonly GaugePoint[]): number => points.reduce((sum, p) => sum + p.value, 0);
 
 /**
- * Waits for the expected count, then holds for more. Waiting for the count to stop changing would read the gap
- * between two Sentry flushes as settled and undercount.
+ * Waits for the expected count, then holds for one Sentry flush. The test proves that no further light client reports,
+ * from a SharedWorker Playwright cannot observe, and no event marks that no report is still on its way.
  */
 async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
-  const deadline = Date.now() + TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const points = await readGauge(request);
-    if (points.reduce((sum, p) => sum + p.value, 0) >= expected) {
-      break;
-    }
-    await page.waitForTimeout(1_000);
-  }
-  await page.waitForTimeout(SETTLE_MS);
+  await expect
+    .poll(async () => total(await readGauge(request)), { timeout: TIMEOUT_MS, intervals: [1_000] })
+    .toBeGreaterThanOrEqual(expected);
+  await page.waitForTimeout(SENTRY_FLUSH_HOLD_MS);
   return readGauge(request);
 }
 
@@ -95,8 +94,8 @@ for (const [label, backend, expected] of [
     const points = await settledGauge(request, tabA, expected);
 
     // Then
-    const total = points.reduce((sum, p) => sum + p.value, 0);
-    expect(total, `expected ${String(expected)} light client(s) in ${backend}, saw ${String(total)}`).toBe(expected);
+    const count = total(points);
+    expect(count, `expected ${String(expected)} light client(s) in ${backend}, saw ${String(count)}`).toBe(expected);
 
     // A run that silently fell back to another backend could still report the right number.
     const modes = [...new Set(points.map(p => p.mode))];
@@ -107,14 +106,11 @@ for (const [label, backend, expected] of [
 // The protocol origin serves the same filename, so only the origin separates the legitimate fetch.
 const LIGHT_CLIENT_WASM = /truapi_provider_bg.*\.wasm$/;
 
-// Not derived from TIMEOUT_MS, which a fail-fast run sets low enough to expire inside this wait.
-const WASM_SETTLE_MS = 20_000;
-
 test('As a dotli visitor, the host shell must not download the light client wasm it never runs', async ({ page }) => {
-  // Given
-  // Default transport, which is what a first visit gets (`defaultBackend()` in
-  // packages/config/src/mode.ts returns "smoldot-direct").
-  await seedBackend(page, 'smoldot-direct', { onlyIfUnset: true });
+  // Given: the product served offline from one block
+  const block = await rawBlock(productPage('wasm'));
+  await seedBackend(page, 'smoldot-direct');
+  await fakeProtocol(page, { resolve: { kind: 'cid', cid: block.cid }, blocks: { [block.cid]: block.hex } });
   const hostShellWasm: string[] = [];
   page.context().on('request', request => {
     const url = request.url();
@@ -123,11 +119,11 @@ test('As a dotli visitor, the host shell must not download the light client wasm
     }
   });
 
-  // When
+  // When: the host connects the product, so a fetch it starts after that goes unseen
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  expect(await findAppFrame(page, TIMEOUT_MS)).not.toBeNull();
-  // Gives a slow boot room to make the eager download before concluding it never happens.
-  await page.waitForTimeout(WASM_SETTLE_MS);
+  await expect(page.locator('[data-product-frame]')).toHaveAttribute('data-product-frame', 'connected', {
+    timeout: TIMEOUT_MS,
+  });
 
   // Then
   expect(

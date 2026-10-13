@@ -10,7 +10,6 @@ import { flush, useContext } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
 import { resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
 import { LayerTracker, ModalFocusFallback } from '@dotli/ui';
-import { resetProductFrameLayout } from '../../src/product-frame-layout.js';
 import { TopbarActions, TopbarProviders } from '../../src/islands/TopbarActions.js';
 import { createProductFrameView } from '../../src/product-frame-view.js';
 import { anyTopbarSurfaceOpen, registerTopbarSurface, topbarSurfaceContains } from '../../src/state/topbar-surfaces.js';
@@ -34,7 +33,6 @@ afterEach(() => {
   unmount?.();
   unmount = undefined;
   resetAllStoresForTests();
-  resetProductFrameLayout();
   document.body.replaceChildren();
 });
 
@@ -65,6 +63,7 @@ describe('TopbarActions island', () => {
     document.body.append(frame);
     createProductFrameView({
       body: () => document.body,
+      container: () => document.body,
       clearScreen: () => undefined,
       hideLoading: () => undefined,
     }).attachFrame(frame);

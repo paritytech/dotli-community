@@ -36,7 +36,3 @@ timeouts.
 - Settings: `getSettings`, `setSettings`, `getBackend`, `getCacheSettings`, `isSharedWorkerAvailable`,
   `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`, `setActiveNetwork`,
   `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `Settings`, `SharedSettings`.
-
-### `@dotli/config/testing`
-
-- `memoryModeStorage`: an in-memory `ModeStorage` whose `dump` shows what was written.

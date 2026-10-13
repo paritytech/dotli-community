@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// DOM queries and waits for functional tests, which run under happy-dom.
+// DOM queries and waits for functional tests and story plays.
 
 import { must, untilDom } from '@dotli/shared/testing';
 

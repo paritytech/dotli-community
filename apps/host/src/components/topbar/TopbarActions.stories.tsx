@@ -4,6 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { byId } from '@dotli/ui/testing';
 import { expectPhone, reachable, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import {
   disconnect,
@@ -28,16 +29,8 @@ import { TopbarActions } from './TopbarActions.js';
 /** A phone bar with room for the account and More only, so every other item is a More row. */
 const MORE_ONLY = 80;
 
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
-
-const opened = (id: string): Promise<void> => waitFor(() => expect(el(id)).toHaveAttribute('data-open'));
-const closed = (id: string): Promise<void> => waitFor(() => expect(el(id)).not.toHaveAttribute('data-open'));
+const opened = (id: string): Promise<void> => waitFor(() => expect(byId(id)).toHaveAttribute('data-open'));
+const closed = (id: string): Promise<void> => waitFor(() => expect(byId(id)).not.toHaveAttribute('data-open'));
 
 const phone = { viewport: { value: 'phone', isRotated: false } };
 
@@ -115,7 +108,7 @@ export const PermissionsRowShowsGrants: Story = {
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
     await step('Given the lock button carries the grant badge', async () => {
-      await waitFor(() => expect(el('permissions-button')).toHaveAttribute('data-badge'));
+      await waitFor(() => expect(byId('permissions-button')).toHaveAttribute('data-badge'));
     });
     await step('When I choose Permissions in More', async () => {
       await openMore(userEvent);
@@ -123,8 +116,8 @@ export const PermissionsRowShowsGrants: Story = {
     });
     await step('Then More closed and Permissions is open with focus', async () => {
       await opened('permissions-popover');
-      await expect(el('more-popover')).not.toHaveAttribute('data-open');
-      await waitFor(() => expect(el('permissions-popover').contains(document.activeElement)).toBe(true));
+      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
+      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
     });
   },
 };
@@ -142,16 +135,16 @@ export const NetworkAndSettingsRowsOpen: Story = {
     });
     await step('Then the network panel is open in place of More, and the network button says so', async () => {
       await opened('chains-popover');
-      await expect(el('more-popover')).not.toHaveAttribute('data-open');
-      await expect(el('more-button')).toHaveAttribute('aria-expanded', 'false');
-      await expect(el('chains-button')).toHaveAttribute('aria-expanded', 'true');
+      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
+      await expect(byId('more-button')).toHaveAttribute('aria-expanded', 'false');
+      await expect(byId('chains-button')).toHaveAttribute('aria-expanded', 'true');
     });
     await step('When I press Escape', async () => {
       await userEvent.keyboard('{Escape}');
     });
     await step('Then both are closed', async () => {
       await closed('chains-popover');
-      await expect(el('more-popover')).not.toHaveAttribute('data-open');
+      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
     });
     await step('When I choose Settings in More', async () => {
       await openMore(userEvent);
@@ -159,8 +152,8 @@ export const NetworkAndSettingsRowsOpen: Story = {
     });
     await step('Then only Settings is open', async () => {
       await opened('mode-popover');
-      await expect(el('chains-popover')).not.toHaveAttribute('data-open');
-      await expect(el('more-popover')).not.toHaveAttribute('data-open');
+      await expect(byId('chains-popover')).not.toHaveAttribute('data-open');
+      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
     });
   },
 };
@@ -169,7 +162,7 @@ export const NetworkAndSettingsRowsOpen: Story = {
 export const CollapsibleOnMount: Story = {
   play: async ({ step }) => {
     await step('Then the mounted group is marked collapsible', async () => {
-      await waitFor(() => expect(el('topbar-actions')).toHaveAttribute('data-collapsible'));
+      await waitFor(() => expect(byId('topbar-actions')).toHaveAttribute('data-collapsible'));
     });
   },
 };
@@ -183,11 +176,11 @@ export const PhoneActionsReplaceAddress: Story = {
       await waitFor(() => expect(more).toHaveAttribute('data-parked'));
       const items = [...document.querySelectorAll('#topbar-actions [data-testid="action-item"]')];
       await expect(items.filter(item => item.hasAttribute('data-parked'))).toEqual([]);
-      const account = el('auth-button').closest('[data-testid="action-item"]');
+      const account = byId('auth-button').closest('[data-testid="action-item"]');
       await expect(account).not.toBeNull();
-      await expect(el('more-button').compareDocumentPosition(account as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      );
+      await expect(
+        byId('more-button').compareDocumentPosition(account as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     });
   },
 };
@@ -197,7 +190,7 @@ export const PhoneNetworkRowLeads: Story = {
   render: narrow,
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
-    const more = el('more-button');
+    const more = byId('more-button');
     await step('Given no chain in use', async () => {
       await openMore(userEvent);
       await expect(moreRowNames()[0]).toBe('network');
@@ -227,13 +220,13 @@ export const PhoneRowBadges: Story = {
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
     await step('When I open More', async () => {
-      await waitFor(() => expect(el('permissions-button')).toHaveAttribute('data-badge'));
+      await waitFor(() => expect(byId('permissions-button')).toHaveAttribute('data-badge'));
       await openMore(userEvent);
     });
     await step('Then the Permissions and Settings rows carry their badges and More none', async () => {
       await expect(within(moreRow('permissions')).getByRole('img')).toHaveAttribute('aria-label', 'Has permissions');
       await expect(within(moreRow('settings')).getByRole('img')).toHaveAttribute('aria-label', 'Unverified session');
-      await expect(el('more-button')).toHaveAttribute('aria-label', 'More');
+      await expect(byId('more-button')).toHaveAttribute('aria-label', 'More');
     });
   },
 };
@@ -258,7 +251,7 @@ export const PhoneTabReachesSheetClose: Story = {
   render: narrow,
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
-    const button = el('more-button');
+    const button = byId('more-button');
     await step('Given the More sheet opened from the keyboard', async () => {
       await reachable(button);
       button.focus();
@@ -268,7 +261,7 @@ export const PhoneTabReachesSheetClose: Story = {
     await step('When I press Tab', async () => {
       await userEvent.tab();
     });
-    const close = (): HTMLElement => within(el('more-popover')).getByTestId('menu-sheet-close');
+    const close = (): HTMLElement => within(byId('more-popover')).getByTestId('menu-sheet-close');
     await step("Then focus stays in the sheet, on its head's Close button", async () => {
       await waitFor(() => expect(close()).toHaveFocus());
     });
@@ -293,10 +286,10 @@ export const PhonePermissionsTakesMorePlace: Story = {
     });
     await step('Then More goes and Permissions comes at rest, both marked as a hand-off', async () => {
       await opened('permissions-popover');
-      await expect(el('permissions-popover')).toHaveAttribute('data-handoff');
-      await expect(el('more-popover')).not.toHaveAttribute('data-open');
-      await expect(el('more-popover')).toHaveAttribute('data-handoff');
-      await waitFor(() => expect(el('permissions-popover').contains(document.activeElement)).toBe(true));
+      await expect(byId('permissions-popover')).toHaveAttribute('data-handoff');
+      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
+      await expect(byId('more-popover')).toHaveAttribute('data-handoff');
+      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
     });
   },
 };
@@ -312,8 +305,8 @@ export const PhoneSettingsTakesMorePlace: Story = {
     });
     await step('Then the settings sheet took its place, both marked as a hand-off', async () => {
       await opened('mode-popover');
-      await expect(el('mode-popover')).toHaveAttribute('data-handoff');
-      await expect(el('more-popover')).toHaveAttribute('data-handoff');
+      await expect(byId('mode-popover')).toHaveAttribute('data-handoff');
+      await expect(byId('more-popover')).toHaveAttribute('data-handoff');
     });
   },
 };
@@ -337,23 +330,23 @@ export const PhoneBarSettingsSwapsSheets: Story = {
         root = root.parentElement;
       }
       root.setAttribute('data-over-sheets', '');
-      await reachable(el('permissions-button'));
-      await userEvent.click(el('permissions-button'));
+      await reachable(byId('permissions-button'));
+      await userEvent.click(byId('permissions-button'));
       await opened('permissions-popover');
-      await expect(el('mode-button').closest('[inert]')).toBeNull();
+      await expect(byId('mode-button').closest('[inert]')).toBeNull();
     });
     await step('When I press Settings in the bar', async () => {
-      await userEvent.click(el('mode-button'));
+      await userEvent.click(byId('mode-button'));
     });
     await step('Then the settings sheet took its place with focus, both marked as a hand-off', async () => {
       await opened('mode-popover');
-      await expect(el('mode-popover')).toHaveAttribute('data-handoff');
-      await expect(el('permissions-popover')).not.toHaveAttribute('data-open');
-      await expect(el('permissions-popover')).toHaveAttribute('data-handoff');
-      await waitFor(() => expect(el('mode-popover').contains(document.activeElement)).toBe(true));
+      await expect(byId('mode-popover')).toHaveAttribute('data-handoff');
+      await expect(byId('permissions-popover')).not.toHaveAttribute('data-open');
+      await expect(byId('permissions-popover')).toHaveAttribute('data-handoff');
+      await waitFor(() => expect(byId('mode-popover').contains(document.activeElement)).toBe(true));
     });
     await step('When I press Settings again', async () => {
-      await userEvent.click(el('mode-button'));
+      await userEvent.click(byId('mode-button'));
     });
     await step('Then its sheet closes', async () => {
       await closed('mode-popover');
@@ -376,7 +369,7 @@ export const PhoneClosingSlidesOut: Story = {
     });
     await step('Then it closes with no hand-off mark, so it slides', async () => {
       await closed('permissions-popover');
-      await expect(el('permissions-popover')).not.toHaveAttribute('data-handoff');
+      await expect(byId('permissions-popover')).not.toHaveAttribute('data-handoff');
     });
   },
 };

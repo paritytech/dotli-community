@@ -3,18 +3,6 @@
 
 import type { PanelStorage } from '../model/section-storage.js';
 
-/** A storage over a map the spec reads back. */
-export function memoryStorage(seed: Record<string, string> = {}): PanelStorage & { stored: Map<string, string> } {
-  const stored = new Map(Object.entries(seed));
-  return {
-    stored,
-    getItem: key => stored.get(key) ?? null,
-    setItem: (key, value) => {
-      stored.set(key, value);
-    },
-  };
-}
-
 /** A storage that throws on every call, as in Safari private mode. */
 export function blockedStorage(): PanelStorage {
   return {

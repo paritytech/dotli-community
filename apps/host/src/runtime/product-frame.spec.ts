@@ -3,7 +3,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { encodeWireMessage, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
-import type { IframeHostOptions } from '@parity/truapi-host/web';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
@@ -14,13 +13,13 @@ import type { DotliAuthState } from './host-callbacks/AuthState.js';
 import { schedulePendingReset } from './pending-reset.js';
 import {
   createProductFrame,
+  type FrameHostOptions,
   type FrameProduct,
   type ProductFrame,
   type ProductFrameDeps,
   type ProductFramePage,
   type ProductFrameStatus,
 } from './product-frame.js';
-import { StubElement } from '../testing/stub-element.js';
 import { getProductState } from './state/product.js';
 import type { ManifestFacts } from './manifest-facts.js';
 import type { PermissionsChange } from './state/product-permissions.js';
@@ -35,7 +34,7 @@ import {
 } from './page-core.fake.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
-import { fakeProductFrameView, type FakeProductFrameView } from './product-frame.fake.js';
+import { fakeIframe, fakeProductFrameView, type FakeProductFrameView } from './product-frame.fake.js';
 
 /** A handler that throws fails the test. */
 const rethrow = (error: unknown): never => {
@@ -43,16 +42,17 @@ const rethrow = (error: unknown): never => {
 };
 
 interface FakeIframeHost {
-  options: IframeHostOptions;
+  options: FrameHostOptions;
   iframe: HTMLIFrameElement;
   dispose: ReturnType<typeof vi.fn<() => void>>;
 }
 
 interface Harness extends FakePageCore {
   frame: ProductFrame;
-  container: HTMLElement;
   /** Every frame the product frame created, in order. */
   hosts: FakeIframeHost[];
+  /** The hosts not yet disposed, oldest first. */
+  onScreen(): FakeIframeHost[];
   statuses: ProductFrameStatus[];
   /** Holds the next frame until the returned release, after its render read the permission policy. */
   holdNextFrame(): () => void;
@@ -101,7 +101,6 @@ function harness(
   fakes: FakePageCore = createFakePageCore(),
   overrides: Partial<Pick<ProductFrameDeps, 'createIframeHost'>> = {},
 ): Harness {
-  const container = new StubElement('div', { root: true }).asHtml();
   const hosts: FakeIframeHost[] = [];
   let held: Promise<undefined> | null = null;
   let asked = 0;
@@ -120,18 +119,14 @@ function harness(
       const gate = held;
       held = null;
       await gate;
-      const iframe = new StubElement('iframe').asIframe();
-      iframe.dataset['src'] = options.iframeUrl;
-      options.container.appendChild(iframe);
+      const iframe = fakeIframe();
       const dispose = vi.fn(() => {
-        iframe.remove();
         fakes.changes.notify();
       });
       hosts.push({ options, iframe, dispose });
       fakes.changes.notify();
       return { iframe, dispose };
     },
-    container,
     channel,
     onPermissionsChanged: listener => {
       permissionListeners.add(listener);
@@ -155,8 +150,8 @@ function harness(
   return {
     ...fakes,
     frame,
-    container,
     hosts,
+    onScreen: () => hosts.filter(host => host.dispose.mock.calls.length === 0),
     statuses,
     holdNextFrame() {
       const gate = Promise.withResolvers<undefined>();
@@ -208,26 +203,13 @@ async function reconnect(fakes: Harness, connection: number): Promise<FakeCorePr
   return provider;
 }
 
-/** Register both roots the way the shell does: disposing removes the node. */
-function registerRoots(container: HTMLElement): {
-  loading: HTMLElement;
-  page: HTMLElement;
-  disposeLoading: ReturnType<typeof vi.fn>;
-  disposePage: ReturnType<typeof vi.fn>;
-} {
-  const loading = new StubElement('div').asHtml();
-  container.appendChild(loading);
-  const page = new StubElement('div').asHtml();
-  container.appendChild(page);
-  const disposeLoading = vi.fn(() => {
-    loading.remove();
-  });
-  const disposePage = vi.fn(() => {
-    page.remove();
-  });
+/** Puts up both screens the way the shell does, as disposers the test can count. */
+function registerScreens(): { disposeLoading: ReturnType<typeof vi.fn>; disposePage: ReturnType<typeof vi.fn> } {
+  const disposeLoading = vi.fn();
+  const disposePage = vi.fn();
   frameView.showScreen('loading', disposeLoading);
   frameView.showScreen('page', disposePage);
-  return { loading, page, disposeLoading, disposePage };
+  return { disposeLoading, disposePage };
 }
 
 const iframeProduct = (label: string, url = `https://${label}.example/app`): FrameProduct => ({
@@ -256,7 +238,7 @@ describe('product frame renders', () => {
     await second;
 
     // Then
-    expect(fakes.container.querySelector('iframe')?.dataset['src']).toBe('https://second.example/app');
+    expect(fakes.onScreen()[0]?.options.iframeUrl).toBe('https://second.example/app');
 
     // When
     const firstProvider = await answerConnection(fakes, 0);
@@ -269,7 +251,7 @@ describe('product frame renders', () => {
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(secondProvider.dispose).not.toHaveBeenCalled();
-    expect(fakes.container.querySelector('iframe')?.dataset['src']).toBe('https://second.example/app');
+    expect(fakes.onScreen()[0]?.options.iframeUrl).toBe('https://second.example/app');
   });
 
   it('As a dotli integrator, the frame takes down a frame still being built when a newer render supersedes it', async () => {
@@ -294,8 +276,8 @@ describe('product frame renders', () => {
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.frame.getStatus()).toBe('connected');
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
-    expect(fakes.container.querySelector('iframe')?.dataset['src']).toBe('https://second.example/app');
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(fakes.onScreen()[0]?.options.iframeUrl).toBe('https://second.example/app');
   });
 
   it('As a dotli integrator, the frame keeps the previous iframe visible while its replacement connects', async () => {
@@ -309,7 +291,7 @@ describe('product frame renders', () => {
     await fakes.changes.until(() => fakes.connections.length === 2);
 
     // Then
-    expect(firstHost.iframe.isConnected).toBe(true);
+    expect(fakes.onScreen()).toContain(firstHost);
     expect(firstHost.dispose).not.toHaveBeenCalled();
 
     // When
@@ -318,8 +300,8 @@ describe('product frame renders', () => {
 
     // Then
     expect(firstHost.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
-    expect(fakes.container.querySelector('iframe')?.dataset['src']).toBe('https://second.example/app');
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(fakes.onScreen()[0]?.options.iframeUrl).toBe('https://second.example/app');
   });
 
   it('As a dotli integrator, the frame keeps the previous app subdomain frame visible while its replacement connects', async () => {
@@ -333,7 +315,7 @@ describe('product frame renders', () => {
     await fakes.changes.until(() => fakes.connections.length === 2);
 
     // Then
-    expect(firstHost.iframe.isConnected).toBe(true);
+    expect(fakes.onScreen()).toContain(firstHost);
 
     // When
     await answerConnection(fakes, 1);
@@ -341,8 +323,8 @@ describe('product frame renders', () => {
 
     // Then
     expect(firstHost.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
-    expect(fakes.container.querySelector('iframe')?.dataset['src']).toContain('cid=second-cid');
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(fakes.onScreen()[0]?.options.iframeUrl).toContain('cid=second-cid');
   });
 
   it('As a dApp user, both render paths hand the product frame to the frame layout', async () => {
@@ -391,6 +373,41 @@ describe('product frame renders', () => {
     const [first, second] = fakes.hosts.map(host => new URL(host.options.iframeUrl).searchParams);
     expect(first?.get('fullReset')).toBe('1');
     expect(second?.has('fullReset')).toBe(false);
+  });
+
+  it("As a visitor who opens a link carrying the sandbox's own params, I get the host's values only and my own params arrive intact", async () => {
+    // Given
+    const search = '?fullReset=1&cid=forged&v=0&network=forged&chainBackend=forged&resolutionId=forged&a=b';
+    location = { ...location, href: `http://localhost:3000/foo%20bar${search}`, pathname: '/foo%20bar', search };
+    const fakes = harness();
+
+    // When
+    await settle(fakes, subdomainProduct('product', 'real-cid'), 0);
+
+    // Then
+    const url = new URL(nth(fakes.hosts, 0).options.iframeUrl);
+    expect(url.pathname).toBe('/foo%20bar');
+    expect(url.searchParams.has('fullReset')).toBe(false);
+    expect(url.searchParams.getAll('cid')).toEqual(['real-cid']);
+    expect(url.searchParams.getAll('v')).toHaveLength(1);
+    expect(url.searchParams.getAll('v')).not.toContain('0');
+    expect(url.searchParams.getAll('network')).not.toContain('forged');
+    expect(url.searchParams.getAll('chainBackend')).not.toContain('forged');
+    expect(url.searchParams.getAll('resolutionId')).not.toContain('forged');
+    expect(url.searchParams.get('a')).toBe('b');
+  });
+
+  it('As a visitor whose link says fullReset=0 after the host scheduled a reset, the sandbox is purged once, by the host', async () => {
+    // Given
+    location = { ...location, href: 'http://localhost:3000/?fullReset=0', search: '?fullReset=0' };
+    const fakes = harness();
+    schedulePendingReset(['sandbox']);
+
+    // When
+    await settle(fakes, subdomainProduct('product'), 0);
+
+    // Then
+    expect(new URL(nth(fakes.hosts, 0).options.iframeUrl).searchParams.getAll('fullReset')).toEqual(['1']);
   });
 
   it('As a product that declares chat, I am connected as a Worker and recorded as chat-capable, and one that does not as an App', async () => {
@@ -449,12 +466,12 @@ describe('product frame status', () => {
     expect(fakes.statuses).toEqual(['connecting', 'connected']);
   });
 
-  it('As a browser test, I read each status on the product container as the frame publishes it', async () => {
+  it('As a browser test, I read each status on the product mount as the frame publishes it', async () => {
     // Given
     const fakes = harness();
-    const seen = [fakes.container.dataset['productFrame']];
+    const seen = [frameView.statuses.at(-1)];
     fakes.frame.subscribeStatus(() => {
-      seen.push(fakes.container.dataset['productFrame']);
+      seen.push(frameView.statuses.at(-1));
     });
     const rendered = fakes.frame.render(subdomainProduct('product'));
     const dead = await answerConnection(fakes, 0);
@@ -604,23 +621,21 @@ describe('product frame app roots', () => {
   it('As the shell, an app subdomain render disposes the page root and keeps the loading overlay up', async () => {
     // Given
     const fakes = harness();
-    const { loading, page, disposeLoading, disposePage } = registerRoots(fakes.container);
+    const { disposeLoading, disposePage } = registerScreens();
 
     // When
     await settle(fakes, subdomainProduct('first'), 0);
 
     // Then
     expect(disposePage).toHaveBeenCalledTimes(1);
-    expect(page.isConnected).toBe(false);
     expect(disposeLoading).not.toHaveBeenCalled();
-    expect(loading.parentElement).toBe(fakes.container);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
+    expect(fakes.onScreen()).toHaveLength(1);
   });
 
   it('As the shell, a later app subdomain render disposes a loading overlay the first one kept', async () => {
     // Given
     const fakes = harness();
-    const { loading, disposeLoading } = registerRoots(fakes.container);
+    const { disposeLoading } = registerScreens();
     await settle(fakes, subdomainProduct('first', 'first-cid'), 0);
 
     // When
@@ -628,15 +643,14 @@ describe('product frame app roots', () => {
 
     // Then
     expect(disposeLoading).toHaveBeenCalledTimes(1);
-    expect(loading.isConnected).toBe(false);
-    expect(fakes.container.children).toHaveLength(1);
-    expect(fakes.container.querySelector('iframe')?.dataset['src']).toContain('cid=second-cid');
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(fakes.onScreen()[0]?.options.iframeUrl).toContain('cid=second-cid');
   });
 
   it('As the shell, a direct iframe render disposes both the page and the loading roots', async () => {
     // Given
     const fakes = harness();
-    const { disposeLoading, disposePage } = registerRoots(fakes.container);
+    const { disposeLoading, disposePage } = registerScreens();
 
     // When
     await settle(fakes, iframeProduct('product'), 0);
@@ -645,8 +659,8 @@ describe('product frame app roots', () => {
     expect(disposePage).toHaveBeenCalledTimes(1);
     expect(disposeLoading).toHaveBeenCalledTimes(1);
     expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(nth(disposeLoading.mock.invocationCallOrder, 0));
-    expect(fakes.container.children).toHaveLength(1);
-    expect(fakes.container.firstElementChild?.tagName).toBe('IFRAME');
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(frameView.mountsCleared()).toBe(1);
   });
 });
 
@@ -739,10 +753,10 @@ describe('product frame rebuilds', () => {
       // Given: another window on the product's origin, such as a frame the product nested in itself
       const fakes = harness();
       await settle(fakes, subdomainProduct('nested'), 0);
-      const nested = new StubElement('iframe');
+      const nested = {};
 
       // When
-      askToRecover(fakes, 0, nested.contentWindow);
+      askToRecover(fakes, 0, nested);
       await vi.advanceTimersByTimeAsync(0);
 
       // Then
@@ -898,8 +912,8 @@ describe('product frame and a device grant during a rebuild', () => {
     // Then the frame is built once more, so its policy is read after the grant
     await answerConnection(fakes, 2);
     await fakes.changes.until(() => fakes.frame.getStatus() === 'connected' && fakes.framesAsked() === 3);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
-    expect(fakes.container.querySelector('iframe')).toBe(fakes.hosts.at(-1)?.iframe);
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(fakes.onScreen()[0]).toBe(fakes.hosts.at(-1));
     expect(fakes.hosts[1]?.dispose).toHaveBeenCalled();
   });
 
@@ -1018,7 +1032,7 @@ describe('product frame and the page core', () => {
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
+    expect(fakes.onScreen()).toHaveLength(1);
   });
 
   it('As an operator, I see a render on a replacement core counted as ok with its reason', async () => {
@@ -1120,8 +1134,8 @@ describe('product frame and the page core', () => {
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
-    expect(fakes.container.querySelector('iframe')).toBe(nth(fakes.hosts, 1).iframe);
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(fakes.onScreen()[0]).toBe(nth(fakes.hosts, 1));
   });
 
   it('As a local wallet user whose pairing core turned stale under my product, I see the product rendered again on my local core', async () => {
@@ -1140,7 +1154,7 @@ describe('product frame and the page core', () => {
     expect(fakes.statuses).toEqual(['connecting', 'connected', 'lost', 'connecting', 'connected']);
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
+    expect(fakes.onScreen()).toHaveLength(1);
   });
 
   it('As a dApp user, a core dialed for another product that cannot boot leaves my product connected', async () => {
@@ -1282,7 +1296,7 @@ describe('product frame and the page core', () => {
       // Then the product is back on screen
       expect(fakes.frame.getStatus()).toBe('connected');
       expect(fakes.statuses).not.toContain('failed');
-      expect(fakes.container.querySelector('iframe')?.dataset['src']).toContain('cid=fresh-cid');
+      expect(fakes.onScreen()[0]?.options.iframeUrl).toContain('cid=fresh-cid');
     } finally {
       vi.useRealTimers();
     }
@@ -1308,7 +1322,7 @@ describe('product frame and the page core', () => {
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.container.querySelectorAll('iframe')).toHaveLength(1);
-    expect(fakes.container.querySelector('iframe')?.dataset['src']).toContain('cid=second-cid');
+    expect(fakes.onScreen()).toHaveLength(1);
+    expect(fakes.onScreen()[0]?.options.iframeUrl).toContain('cid=second-cid');
   });
 });

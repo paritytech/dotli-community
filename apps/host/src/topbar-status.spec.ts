@@ -8,7 +8,7 @@ import { labelToProductId } from './runtime/runtime-config.js';
 import { setAuthState } from './runtime/state/auth.js';
 import { setProductLoaded } from './runtime/state/product.js';
 import { memoryChatRepo } from './runtime/chat/store.fake.js';
-import { initChatPanelState, resetChatPanelStateForTests } from './state/chat-panel.js';
+import { initChatPanelState } from './state/chat-panel.js';
 import {
   actionRoom,
   capsuleStatus,
@@ -42,7 +42,6 @@ afterEach(() => {
   stopChatState();
   stopChatState = () => undefined;
   resetAllStoresForTests();
-  resetChatPanelStateForTests();
 });
 
 describe('capsuleStatus', () => {

@@ -4,6 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { byId, query } from '@dotli/ui/testing';
 import type { PermissionStatus } from '../../runtime/permissions.js';
 import { expectPhone, openSurface, reachable } from '../../../.storybook/topbar-frame.js';
 import { GroupFrame, moreRow, openMore } from '../../../.storybook/frames.js';
@@ -27,22 +28,6 @@ function StoryPermissions(): JSX.Element {
 }
 
 const open = openSurface({ trigger: 'more-button', surface: 'more-popover' });
-
-function el(selector: string): HTMLElement {
-  const found = document.querySelector<HTMLElement>(selector);
-  if (found === null) {
-    throw new Error(`No ${selector}`);
-  }
-  return found;
-}
-
-function byId(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
 
 const settingsOpen = (): boolean => document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
 
@@ -101,11 +86,11 @@ export const RowOpensCollapsedPopover: Story = {
   tags: ['!autodocs'],
   play: async ({ userEvent, step }) => {
     await step('Given More is open', async () => {
-      await userEvent.click(el('#more-button'));
+      await userEvent.click(query(document, '#more-button'));
       await waitFor(() => expect(document.getElementById('more-popover')).toHaveAttribute('data-open'));
     });
     await step('When I choose the Settings row', async () => {
-      await userEvent.click(el('#more-popover [data-item="settings"]'));
+      await userEvent.click(query(document, '#more-popover [data-item="settings"]'));
     });
     await step('Then Settings is open under the topbar and More is closed', async () => {
       await waitFor(() => expect(document.getElementById('mode-popover')).toHaveAttribute('data-open'));
@@ -132,18 +117,18 @@ export const PhoneRowFirstOpening: Story = {
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
     await step('Given Permissions collapsed into More and More open', async () => {
-      await reachable(el('#more-button'));
-      await userEvent.click(el('#more-button'));
-      await waitFor(() => expect(el('#more-popover')).toHaveAttribute('data-open'));
+      await reachable(query(document, '#more-button'));
+      await userEvent.click(query(document, '#more-button'));
+      await waitFor(() => expect(query(document, '#more-popover')).toHaveAttribute('data-open'));
     });
     await step('When I tap the Permissions row', async () => {
-      await userEvent.click(el('#more-popover [role="menuitem"][data-item="permissions"]'));
+      await userEvent.click(query(document, '#more-popover [role="menuitem"][data-item="permissions"]'));
     });
     await step("Then Permissions took More's place, both marked as a hand-off", async () => {
-      const sheet = el('#permissions-popover');
+      const sheet = query(document, '#permissions-popover');
       await waitFor(() => expect(sheet).toHaveAttribute('data-open'));
       await expect(sheet).toHaveAttribute('data-handoff');
-      const more = el('#more-popover');
+      const more = query(document, '#more-popover');
       await expect(more).not.toHaveAttribute('data-open');
       await expect(more).toHaveAttribute('data-handoff');
     });
@@ -155,17 +140,19 @@ export const PermissionsRowOpens: Story = {
   tags: ['!autodocs'],
   play: async ({ userEvent, step }) => {
     await step('Given More is open', async () => {
-      await reachable(el('#more-button'));
-      await userEvent.click(el('#more-button'));
+      await reachable(query(document, '#more-button'));
+      await userEvent.click(query(document, '#more-button'));
       await waitFor(() => expect(document.getElementById('more-popover')).toHaveAttribute('data-open'));
     });
     await step('When I choose the Permissions row', async () => {
-      await userEvent.click(el('#more-popover [data-item="permissions"]'));
+      await userEvent.click(query(document, '#more-popover [data-item="permissions"]'));
     });
     await step('Then More closed and Permissions is open with its content', async () => {
       await waitFor(() => expect(document.getElementById('permissions-popover')).toHaveAttribute('data-open'));
       await expect(document.getElementById('more-popover')).not.toHaveAttribute('data-open');
-      await waitFor(() => expect(el('#permissions-popover [data-testid="permissions-popover-row"]')).toBeVisible());
+      await waitFor(() =>
+        expect(query(document, '#permissions-popover [data-testid="permissions-popover-row"]')).toBeVisible(),
+      );
     });
   },
 };
@@ -249,7 +236,7 @@ export const SettingsFromMoreHandsFocusBack: Story = {
     });
     await step('When I open it from More again and press Close', async () => {
       await fromMore();
-      await userEvent.click(el('[data-testid="popover-sheet-close"]'));
+      await userEvent.click(query(document, '[data-testid="popover-sheet-close"]'));
     });
     await step('Then it closed and More has focus', async () => {
       await waitFor(() => expect(settingsOpen()).toBe(false));

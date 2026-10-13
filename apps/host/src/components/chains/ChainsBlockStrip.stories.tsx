@@ -12,6 +12,7 @@ import {
   setProductLoaded,
   storyNetwork,
 } from '../../../.storybook/network-fixtures.js';
+import { byTestId } from '@dotli/ui/testing';
 import type { ChainView } from './chains.js';
 import { NetworkItem } from '../topbar/items.js';
 
@@ -77,11 +78,7 @@ const stripStory = {
 } satisfies Story;
 
 function strip(): HTMLElement {
-  const found = document.querySelector<HTMLElement>('[data-testid="chains-bars"]');
-  if (found === null) {
-    throw new Error('the panel rendered no bar strip');
-  }
-  return found;
+  return byTestId('chains-bars');
 }
 
 function shownBlocks(): string[] {

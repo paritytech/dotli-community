@@ -7,7 +7,6 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/testing/index.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -17,6 +16,8 @@
   },
   "devDependencies": {
     "@config/eslint": "*",
-    "@config/typescript": "*"
+    "@config/typescript": "*",
+    "@config/vite": "*",
+    "@dotli/shared": "*"
   }
 }

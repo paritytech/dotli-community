@@ -4,7 +4,7 @@
 // The overlays render the first entry. Everything that decides how a dialog settles lives
 // here, outside Solid.
 
-import { createSyncStore, toAbortError, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, registerStoreStateReset, toAbortError, type ReadableStore } from '@dotli/shared';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/icon-props.js';
 
@@ -71,6 +71,9 @@ interface Pending {
   resolve: (outcome: ModalOutcome<string>) => void;
   detach: () => void;
 }
+
+// Registered before the store, so the pending dialogs detach before the store empties.
+registerStoreStateReset(resetModalState);
 
 const modals = createSyncStore<readonly ModalEntry[]>('modals', []);
 export const modalsStore: ReadableStore<readonly ModalEntry[]> = modals;
@@ -144,11 +147,10 @@ export function refuseModals(): () => void {
   return modals.subscribe(refuseOpen);
 }
 
-export function resetModalsForTests(): void {
+function resetModalState(): void {
   for (const entry of pending.values()) {
     entry.detach();
   }
   pending.clear();
   nextId = 0;
-  modals.set([]);
 }

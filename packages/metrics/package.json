@@ -4,10 +4,13 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/testing/setup.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/testing.ts",
+    "./testing": "./src/testing/index.ts",
+    "./testing/setup": "./src/testing/setup.ts",
     "./package.json": "./package.json"
   },
   "scripts": {

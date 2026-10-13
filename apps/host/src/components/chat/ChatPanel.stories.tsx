@@ -5,6 +5,7 @@ import type { JSX } from '@solidjs/web';
 import type { ChatMessageContent } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { query } from '@dotli/ui/testing';
 import { type ChatStage, chatStage } from '../../../.storybook/chat-fixtures.js';
 import { ChatPanel } from './ChatPanel.js';
 
@@ -64,14 +65,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function byId(canvasElement: HTMLElement, id: string): HTMLElement {
-  const el = canvasElement.querySelector<HTMLElement>(`#${id}`);
-  if (el === null) {
-    throw new Error(`No #${id}`);
-  }
-  return el;
-}
-
 function at<T>(list: readonly T[], index: number): T {
   const item = list[index];
   if (item === undefined) {
@@ -81,7 +74,7 @@ function at<T>(list: readonly T[], index: number): T {
 }
 
 function conversation(canvasElement: HTMLElement): HTMLElement {
-  return byId(canvasElement, 'chat-panel-messages');
+  return query(canvasElement, '#chat-panel-messages');
 }
 
 /** Scroll room left below the reader. */
@@ -131,7 +124,7 @@ export const ReadFails: Story = {
     stage.contactsFail = true;
   },
   play: async ({ canvasElement, step }) => {
-    const hint = byId(canvasElement, 'chat-panel-hint');
+    const hint = query(canvasElement, '#chat-panel-hint');
     await step('Given the room list cannot be read, the panel says so', async () => {
       await waitFor(() => expect(hint).toBeVisible());
       await expect(hint).toHaveTextContent('Chat could not be loaded.');
@@ -343,7 +336,7 @@ export const DragEdgeResizes: Story = {
     stage.seed(3);
   },
   play: async ({ canvasElement, step }) => {
-    const handle = byId(canvasElement, 'chat-panel-resize');
+    const handle = query(canvasElement, '#chat-panel-resize');
     const drag = (type: string, clientX = 0): void => {
       handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }));
     };

@@ -20,7 +20,6 @@ import {
   chatPanelStore,
   getChatPanelElement,
   initChatPanelState,
-  resetChatPanelStateForTests,
   setChatPanelOpen,
 } from '../../src/state/chat-panel.js';
 import { appears, byId, byTestId } from '@dotli/ui/testing';
@@ -53,7 +52,6 @@ afterEach(() => {
   unmount = undefined;
   stopState();
   resetAllStoresForTests();
-  resetChatPanelStateForTests();
   document.body.replaceChildren();
 });
 

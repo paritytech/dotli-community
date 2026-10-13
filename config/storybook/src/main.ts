@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { mergeConfig, type PluginOption } from 'vite';
 import type { StorybookConfig } from 'storybook-solidjs-vite';
 import { cssModules } from '@config/vite/css-modules';
+import { TEST_DEFINES } from '@config/vite/test-defines';
 
 export interface StorybookMainOptions {
   /**
@@ -46,10 +47,7 @@ export function storybookMain(options: StorybookMainOptions = {}): StorybookConf
         css: { modules: cssModules() },
         plugins: plugins(),
         worker: { plugins },
-        define: {
-          // getEnabledNetworks() requires VITE_NETWORKS and has no default by design.
-          'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
-        },
+        define: { ...TEST_DEFINES },
       }),
   };
 }

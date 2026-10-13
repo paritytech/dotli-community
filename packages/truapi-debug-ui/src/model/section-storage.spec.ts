@@ -3,7 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { readStoredSection, writeStoredSection } from './section-storage.js';
-import { blockedStorage, memoryStorage } from '../testing/memory-storage.js';
+import { memoryStorage } from '@dotli/shared/testing';
+import { blockedStorage } from '../testing/blocked-storage.js';
 
 describe('stored panel tab', () => {
   it('As a dotli developer, the tab I pick is the one the panel opens on next time', () => {
@@ -14,7 +15,7 @@ describe('stored panel tab', () => {
     writeStoredSection('diagnostics', () => storage);
 
     // Then
-    expect(storage.stored.get('truapi-debug:section')).toBe('diagnostics');
+    expect(storage.getItem('truapi-debug:section')).toBe('diagnostics');
     expect(readStoredSection(() => storage)).toBe('diagnostics');
   });
 

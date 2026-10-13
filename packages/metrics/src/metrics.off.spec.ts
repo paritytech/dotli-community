@@ -5,7 +5,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { getResolutionId, m, setResolutionId } from './metrics.js';
-import { bindRecordingSentry } from './testing.js';
+import { bindRecordingSentry } from './testing/index.js';
 
 describe('metrics in a build without metrics', () => {
   it('As a visitor on a build without metrics, a span still runs my function and returns its value', () => {

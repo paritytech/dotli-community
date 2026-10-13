@@ -5,19 +5,12 @@ import { createSignal, flush } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { byId } from '@dotli/ui/testing';
 import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import type { NetworkHealth } from './network-health.js';
 import { ChainsPopover } from './ChainsPopover.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });
-
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
 
 const [health, setHealthSignal] = createSignal<NetworkHealth>('quiet');
 
@@ -56,7 +49,7 @@ type Story = StoryObj<typeof meta>;
 export const OpensBody: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
-    const button = el('chains-button');
+    const button = byId('chains-button');
     await ctx.step('Given the button with its labels and ARIA', async () => {
       await expect(button).toHaveAttribute('title', 'Network');
       await expect(button).toHaveAttribute('aria-label', 'Network');
@@ -66,7 +59,7 @@ export const OpensBody: Story = {
     });
     await open(ctx);
     await ctx.step('Then it announces the open dialog named Network, showing the body', async () => {
-      const popover = el('chains-popover');
+      const popover = byId('chains-popover');
       await expect(button).toHaveAttribute('aria-expanded', 'true');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Network');
@@ -79,7 +72,7 @@ export const OpensBody: Story = {
 export const BadgeFollowsHealth: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
-    const button = el('chains-button');
+    const button = byId('chains-button');
     await step('Given no chain in use, then the badge is quiet', async () => {
       await expect(button).toHaveAttribute('data-badge');
       await expect(button).toHaveAttribute('data-tone', 'quiet');

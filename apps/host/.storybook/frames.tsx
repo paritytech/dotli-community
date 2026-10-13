@@ -7,6 +7,7 @@ import type { StoryContext } from 'storybook/internal/types';
 import { expect, waitFor } from 'storybook/test';
 import { reachable, TopbarFrame } from './topbar-frame.js';
 import { ActionGroup } from '@dotli/ui';
+import { byId, query } from '@dotli/ui/testing';
 import { TOPBAR_MORE } from '../src/components/topbar/TopbarActions.js';
 
 /** The host bar with an action group `room` px wide, so the items that do not fit collapse into More. */
@@ -20,21 +21,9 @@ export function GroupFrame(props: { room: number; children?: JSX.Element }): JSX
   );
 }
 
-function byId(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (el === null) {
-    throw new Error(`No #${id}`);
-  }
-  return el;
-}
-
 /** A row of the open More menu. */
 export function moreRow(name: string): HTMLElement {
-  const row = document.querySelector<HTMLElement>(`#more-popover [role="menuitem"][data-item="${name}"]`);
-  if (row === null) {
-    throw new Error(`No More row ${name}`);
-  }
-  return row;
+  return query(document, `#more-popover [role="menuitem"][data-item="${name}"]`);
 }
 
 /** The open More menu's rows, in order. */

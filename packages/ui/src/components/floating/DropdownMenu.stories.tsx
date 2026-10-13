@@ -4,8 +4,10 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
 import { IconButton } from '../primitives/IconButton.js';
 import { BottomSheet } from './BottomSheet.js';
+import { byId } from '@dotli/ui/testing';
 import { DropdownMenu } from './DropdownMenu.js';
 
 const onRow = fn<(row: string) => void>().mockName('onRow');
@@ -68,17 +70,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/**
- * Trusted input, which the browser's invokers require. Imported lazily so Storybook loads the stories outside Vitest.
- */
-const input = async () => (await import('vitest/browser')).userEvent;
-const menu = (): HTMLElement => {
-  const el = document.getElementById('story-menu');
-  if (el === null) {
-    throw new Error('No #story-menu');
-  }
-  return el;
-};
+const menu = (): HTMLElement => byId('story-menu');
 const row = (testId: string) => body.getByTestId(testId);
 
 export const KeyboardOpensOnFirstItem: Story = {
@@ -92,7 +84,7 @@ export const KeyboardOpensOnFirstItem: Story = {
     });
     await step('When I focus More and press Enter', async () => {
       body.getByTestId('story-more').focus();
-      await (await input()).keyboard('{Enter}');
+      await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then the menu is open on Network', async () => {
       await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
@@ -101,25 +93,25 @@ export const KeyboardOpensOnFirstItem: Story = {
       await waitFor(() => expect(row('row-network')).toHaveFocus());
     });
     await step('When I press ArrowUp', async () => {
-      await (await input()).keyboard('{ArrowUp}');
+      await (await trustedInput()).keyboard('{ArrowUp}');
     });
     await step('Then focus wrapped to Settings', async () => {
       await expect(row('row-settings')).toHaveFocus();
     });
     await step('When I type p', async () => {
-      await (await input()).keyboard('p');
+      await (await trustedInput()).keyboard('p');
     });
     await step('Then typeahead moved to Permissions', async () => {
       await expect(row('row-permissions')).toHaveFocus();
     });
     await step('When I press Tab', async () => {
-      await (await input()).keyboard('{Tab}');
+      await (await trustedInput()).keyboard('{Tab}');
     });
     await step('Then focus stayed on Permissions', async () => {
       await expect(row('row-permissions')).toHaveFocus();
     });
     await step('When I press Enter', async () => {
-      await (await input()).keyboard('{Enter}');
+      await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then Permissions was chosen, the menu closed and More has focus', async () => {
       await expect(onRow).toHaveBeenCalledWith('permissions');
@@ -133,16 +125,16 @@ export const ArrowDownOpensOnFirstItem: Story = {
   play: async ({ step }) => {
     await step('When I focus More and press ArrowDown', async () => {
       body.getByTestId('story-more').focus();
-      await (await input()).keyboard('{ArrowDown}');
+      await (await trustedInput()).keyboard('{ArrowDown}');
     });
     await step('Then the menu is open on Network', async () => {
       await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
       await waitFor(() => expect(row('row-network')).toHaveFocus());
     });
     await step('When I press End, then Escape', async () => {
-      await (await input()).keyboard('{End}');
+      await (await trustedInput()).keyboard('{End}');
       await expect(row('row-settings')).toHaveFocus();
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then the menu closed, nothing was chosen and More has focus', async () => {
       await waitFor(() => expect(menu()).not.toHaveAttribute('data-open'));
@@ -155,20 +147,20 @@ export const ArrowDownOpensOnFirstItem: Story = {
 export const PointerOpensOnTheMenu: Story = {
   play: async ({ step }) => {
     await step('When I click More', async () => {
-      await (await input()).click(body.getByTestId('story-more'));
+      await (await trustedInput()).click(body.getByTestId('story-more'));
     });
     await step('Then the menu itself has focus', async () => {
       await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
       await waitFor(() => expect(menu()).toHaveFocus());
     });
     await step('When I hover Permissions', async () => {
-      await (await input()).hover(row('row-permissions'));
+      await (await trustedInput()).hover(row('row-permissions'));
     });
     await step('Then Permissions has focus', async () => {
       await waitFor(() => expect(row('row-permissions')).toHaveFocus());
     });
     await step('When I click More again', async () => {
-      await (await input()).click(body.getByTestId('story-more'));
+      await (await trustedInput()).click(body.getByTestId('story-more'));
     });
     await step('Then the menu closed', async () => {
       await waitFor(() => expect(menu()).not.toHaveAttribute('data-open'));
@@ -181,7 +173,7 @@ export const Sheet: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
     await step('When I tap More on a phone', async () => {
-      await (await input()).click(body.getByTestId('story-more'));
+      await (await trustedInput()).click(body.getByTestId('story-more'));
     });
     await step('Then a sheet titled More holds the rows as a menu, which has focus', async () => {
       await waitFor(() => expect(body.getByTestId('menu-sheet-title')).toHaveTextContent('More'));
@@ -193,7 +185,7 @@ export const Sheet: Story = {
       await waitFor(() => expect(sheetBody).toHaveFocus());
     });
     await step('When I press ArrowDown', async () => {
-      await (await input()).keyboard('{ArrowDown}');
+      await (await trustedInput()).keyboard('{ArrowDown}');
     });
     await step('Then Network has focus', async () => {
       await expect(row('row-network')).toHaveFocus();
@@ -205,11 +197,11 @@ export const SheetRowHandsOff: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
     await step('Given the More sheet is open', async () => {
-      await (await input()).click(body.getByTestId('story-more'));
+      await (await trustedInput()).click(body.getByTestId('story-more'));
       await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
     });
     await step('When I tap the Settings row, which opens a sheet', async () => {
-      await (await input()).click(row('row-settings'));
+      await (await trustedInput()).click(row('row-settings'));
     });
     await step("Then the Settings sheet took More's place: both marked as a hand-off", async () => {
       await expect(onRow).toHaveBeenCalledWith('settings');
@@ -226,7 +218,7 @@ export const SheetRowHandsOff: Story = {
       await expect(document.getElementById('story-settings')?.contains(document.activeElement)).toBe(true);
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then focus is back on More, where it was before the menu opened', async () => {
       await waitFor(() => expect(document.getElementById('story-settings')).not.toHaveAttribute('data-open'));
@@ -239,11 +231,11 @@ export const SheetRowWithoutSheetSlides: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
     await step('Given the More sheet is open', async () => {
-      await (await input()).click(body.getByTestId('story-more'));
+      await (await trustedInput()).click(body.getByTestId('story-more'));
       await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
     });
     await step('When I tap the Network row, which opens no sheet', async () => {
-      await (await input()).click(row('row-network'));
+      await (await trustedInput()).click(row('row-network'));
     });
     await step('Then More closed as usual, not marked as a hand-off, and More has focus', async () => {
       await expect(onRow).toHaveBeenCalledWith('network');

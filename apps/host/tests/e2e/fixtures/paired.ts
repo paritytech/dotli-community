@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test as base, type Page, type Frame } from '@playwright/test';
+import { test as base, expect, type Page, type Frame } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { STATE_FILE } from './paths.js';
 import { E2E_CHAIN_BACKEND, initializeChainBackend } from '../helpers/chain-backend.js';
@@ -55,26 +55,44 @@ function startAutoAllow(page: Page): () => void {
   };
 }
 
-/** Found by its heading, since the frame URL is a per-CID subdomain that varies between builds. */
-async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promise<Frame> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const f of page.frames()) {
-      if (f === page.mainFrame()) {
-        continue;
-      }
-      const ok = await f
-        .locator('h1:has-text("Host Playground")')
-        .first()
-        .isVisible({ timeout: 500 })
-        .catch(() => false);
-      if (ok) {
-        return f;
-      }
+/** The first frame other than `previous` that shows the playground's heading, or null. */
+async function visiblePlaygroundFrame(page: Page, previous: Frame | undefined): Promise<Frame | null> {
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame() || frame === previous || frame.isDetached()) {
+      continue;
     }
-    await page.waitForTimeout(250);
+    const visible = await frame
+      .locator('h1:has-text("Host Playground")')
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (visible) {
+      return frame;
+    }
   }
-  throw new Error(`host-playground iframe not visible within ${String(timeoutMs)}ms`);
+  return null;
+}
+
+/**
+ * Found by its heading, since the frame URL is a per-CID subdomain that varies between builds. With `previous`, the
+ * frame that replaced it, as after a device grant rebuilds the product.
+ */
+export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number, previous?: Frame): Promise<Frame> {
+  const seen: { frame: Frame | null } = { frame: null };
+  await expect
+    .poll(
+      async () => {
+        seen.frame = await visiblePlaygroundFrame(page, previous);
+        return seen.frame !== null;
+      },
+      { timeout: timeoutMs, message: `host-playground iframe not visible within ${String(timeoutMs)}ms` },
+    )
+    .toBe(true);
+  if (seen.frame === null) {
+    // Narrowing only: the poll above resolves after the callback has set a frame.
+    throw new Error('invariant: the poll passed without a host-playground frame');
+  }
+  return seen.frame;
 }
 
 /** The auto-allow poller answers the prompts meanwhile. */

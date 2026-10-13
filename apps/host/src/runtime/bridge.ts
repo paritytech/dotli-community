@@ -8,7 +8,7 @@ import { m, spans as S } from '@dotli/metrics';
 import { hostPrompts } from '../page-prompts.js';
 import { loadLocalWalletCore } from '../lazy.js';
 import { pageNotifications } from '../page-notifications.js';
-import { productFrameView } from '../product-frame-view.js';
+import { productFrameContainer, productFrameView } from '../product-frame-view.js';
 import { recordBestBlock, recordChainActivity } from '../state/network-monitor.js';
 import { createBridge } from './create-bridge.js';
 import { createCoreRuntimeBoot } from './core-runtime.js';
@@ -62,8 +62,8 @@ const bootRuntime = createCoreRuntimeBoot({
 export const { initBridge, setPageProduct, startProductFrame, authCommands } = createBridge({
   bootRuntime,
   onStoredSessionChanged,
-  createIframeHost: async options => (await runtimeChunkPromise).createIframeHost(options),
-  container: () => document.getElementById('app') ?? document.body,
+  createIframeHost: async options =>
+    (await runtimeChunkPromise).createIframeHost({ ...options, container: productFrameContainer() }),
   onPermissionsChanged,
   frameView: productFrameView,
   notify: hostPrompts.notify,

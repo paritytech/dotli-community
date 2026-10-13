@@ -4,6 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { byId, byTestId } from '@dotli/ui/testing';
 import type { PermissionStatus } from '../../runtime/permissions.js';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import {
@@ -20,18 +21,12 @@ import { PermissionsItem } from '../topbar/items.js';
 
 const open = openSurface({ trigger: 'permissions-button', surface: 'permissions-popover' });
 
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
-
 const STATUSES: readonly PermissionStatus[] = ['ask', 'granted', 'denied'];
 
 function row(name: string): HTMLElement {
-  const found = el(`permissions-popover-name-${name}`).closest<HTMLElement>('[data-testid="permissions-popover-row"]');
+  const found = byId(`permissions-popover-name-${name}`).closest<HTMLElement>(
+    '[data-testid="permissions-popover-row"]',
+  );
   if (found === null) {
     throw new Error(`No ${name} row`);
   }
@@ -44,13 +39,7 @@ const segment = (name: string, status: PermissionStatus): HTMLElement =>
 const statusOf = (name: string): PermissionStatus | undefined =>
   STATUSES.find(status => segment(name, status).getAttribute('aria-pressed') === 'true');
 
-const reset = (): HTMLButtonElement => {
-  const button = document.querySelector<HTMLButtonElement>('[data-testid="permissions-popover-reset"]');
-  if (button === null) {
-    throw new Error('No Reset all to Ask');
-  }
-  return button;
-};
+const reset = (): HTMLButtonElement => byTestId('permissions-popover-reset', document, HTMLButtonElement);
 
 const hint = (): string | null | undefined =>
   document.querySelector('#permissions-popover-list [data-testid="permissions-popover-hint"]')?.textContent;
@@ -96,7 +85,7 @@ export const Open: Story = {
     givenApp({ Camera: 'granted', ChainSubmit: 'denied' });
   },
   play: async ctx => {
-    const button = el('permissions-button');
+    const button = byId('permissions-button');
     await ctx.step('Given the button announces the closed dialog it opens', async () => {
       await expect(button).toHaveAttribute('title', 'Permissions');
       await expect(button).toHaveAttribute('aria-label', 'Permissions');
@@ -108,7 +97,7 @@ export const Open: Story = {
     await open(ctx);
     await ctx.step('Then it is the open dialog named Permissions, under the host', async () => {
       await expect(button).toHaveAttribute('aria-expanded', 'true');
-      const popover = el('permissions-popover');
+      const popover = byId('permissions-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Permissions');
       await expect(within(popover).getByTestId('permissions-popover-header').querySelector('h2')).toHaveTextContent(
@@ -122,7 +111,7 @@ export const Open: Story = {
       await expect(groups.map(group => group.querySelector('h3')?.textContent)).toEqual(GROUPS.map(g => g.label));
       for (const [i, group] of groups.entries()) {
         await expect(group).toHaveAttribute('role', 'group');
-        await expect(el(group.getAttribute('aria-labelledby') ?? '').textContent).toBe(GROUPS[i]?.label);
+        await expect(byId(group.getAttribute('aria-labelledby') ?? '').textContent).toBe(GROUPS[i]?.label);
         const names = [
           ...group.querySelectorAll('[data-testid="permissions-popover-row"] [id^="permissions-popover-name-"]'),
         ].map(name => name.id.replace('permissions-popover-name-', ''));
@@ -158,7 +147,7 @@ export const OpenPhone: Story = {
     await expectPhone(ctx.step);
     await open(ctx);
     await ctx.step('Then the sheet is titled Permissions, with no heading or host of its own', async () => {
-      const sheet = el('permissions-popover');
+      const sheet = byId('permissions-popover');
       await expect(within(sheet).getByTestId('popover-sheet-title')).toHaveTextContent('Permissions');
       await expect(sheet.querySelector('[data-testid="permissions-popover-header"]')).toBeNull();
       await expect(sheet.querySelector('[data-testid="permissions-popover-host"]')).toBeNull();
@@ -197,7 +186,7 @@ export const Unavailable: Story = {
     await open(ctx);
     await ctx.step('Then it says they are unavailable, and the button has no badge', async () => {
       await waitFor(() => expect(hint()).toBe('Permissions are unavailable for this app.'));
-      await expect(el('permissions-button')).not.toHaveAttribute('data-badge');
+      await expect(byId('permissions-button')).not.toHaveAttribute('data-badge');
     });
   },
 };
@@ -217,7 +206,7 @@ export const AllowChooses: Story = {
       await waitFor(() => expect(statusOf('Notifications')).toBe('granted'));
       await expect(permissionsAsked.choices).toHaveBeenCalledTimes(1);
       await expect(permissionsAsked.choices).toHaveBeenCalledWith('Notifications', 'granted');
-      await expect(el('permissions-popover')).toHaveAttribute('data-open');
+      await expect(byId('permissions-popover')).toHaveAttribute('data-open');
     });
     await ctx.step('When I set Camera back to Ask', async () => {
       await ctx.userEvent.click(segment('Camera', 'ask'));
@@ -255,7 +244,7 @@ export const GrantsBadge: Story = {
     givenApp({ ChainSubmit: 'granted' });
   },
   play: async ({ step }) => {
-    const button = el('permissions-button');
+    const button = byId('permissions-button');
     await step("Then the badge shows for the app's grant", async () => {
       await waitFor(() => expect(button).toHaveAttribute('data-badge'));
     });
@@ -293,11 +282,11 @@ export const ReopenReadsAgain: Story = {
       await waitFor(() => expect(permissionsAsked.opens).toBe(1));
       await waitFor(() => expect(statusOf('Camera')).toBe('granted'));
       await ctx.userEvent.keyboard('{Escape}');
-      await waitFor(() => expect(el('permissions-popover')).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(byId('permissions-popover')).not.toHaveAttribute('data-open'));
     });
     await ctx.step('When I open it again', async () => {
-      await ctx.userEvent.click(el('permissions-button'));
-      await waitFor(() => expect(el('permissions-popover')).toHaveAttribute('data-open'));
+      await ctx.userEvent.click(byId('permissions-button'));
+      await waitFor(() => expect(byId('permissions-popover')).toHaveAttribute('data-open'));
     });
     await ctx.step('Then one new read is asked for while the last answer shows', async () => {
       await waitFor(() => expect(permissionsAsked.opens).toBe(2));
@@ -324,9 +313,11 @@ export const MarkupHost: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then the host shows as text and was never rendered', async () => {
-      await expect(within(el('permissions-popover')).getByTestId('permissions-popover-host')).toHaveTextContent(MARKUP);
+      await expect(within(byId('permissions-popover')).getByTestId('permissions-popover-host')).toHaveTextContent(
+        MARKUP,
+      );
       await expect(document.getElementById('injected')).toBeNull();
-      await expect(el('permissions-popover').querySelector('img')).toBeNull();
+      await expect(byId('permissions-popover').querySelector('img')).toBeNull();
     });
   },
 };
@@ -371,8 +362,8 @@ export const ResetKeepsFocus: Story = {
       async () => {
         await waitFor(() => expect(reset()).toBeDisabled());
         await expect(permissionsAsked.resets).toBe(1);
-        await expect(el('permissions-popover')).toHaveAttribute('data-open');
-        await expect(el('permissions-popover')).toHaveFocus();
+        await expect(byId('permissions-popover')).toHaveAttribute('data-open');
+        await expect(byId('permissions-popover')).toHaveFocus();
         await expect(statusOf('Camera')).toBe('ask');
       },
     );

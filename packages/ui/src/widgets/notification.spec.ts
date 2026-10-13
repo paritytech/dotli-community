@@ -3,8 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pushToast, toastsStore } from '../page/state/toasts.js';
-import { FakePage } from '@dotli/shared/testing';
-import { bindToastPage, resetToastsForTests } from '../testing/index.js';
+import { FakePage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { bindToastPage } from '../testing/index.js';
 import { createNotifier, NOTIFICATION_DISMISS_MS, type SystemNotifications } from './notification.js';
 
 let page: FakePage;
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetToastsForTests();
+  resetAllStoresForTests();
 });
 
 describe('showNotification', () => {

@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { byId } from '@dotli/ui/testing';
 import { LayerTracker, Popover, type TrackedLayer } from '@dotli/ui';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import {
@@ -68,17 +69,9 @@ function failed(): void {
   });
 }
 
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
-
 const body = within(document.body);
-const isOpen = (): boolean => el('auth-modal-backdrop').hasAttribute('data-open');
-const qrBox = (): HTMLElement => el('auth-modal-qr');
+const isOpen = (): boolean => byId('auth-modal-backdrop').hasAttribute('data-open');
+const qrBox = (): HTMLElement => byId('auth-modal-qr');
 const qrCanvas = (): HTMLCanvasElement | null => qrBox().querySelector('canvas');
 const drawnCanvases = (): HTMLCanvasElement[] => [...new Set(drawQr.mock.calls.map(([canvas]) => canvas))];
 const drawnWidths = (): number[] => drawQr.mock.calls.map(([, , options]) => options.width);
@@ -92,22 +85,22 @@ async function expectHead(want: {
   hint: string;
   getAppHidden: boolean;
 }): Promise<void> {
-  const backdrop = el('auth-modal-backdrop');
+  const backdrop = byId('auth-modal-backdrop');
   await expect(backdrop).toHaveAttribute('role', 'dialog');
   await expect(backdrop).toHaveAttribute('aria-modal', 'true');
   await expect(backdrop).toHaveAttribute('aria-labelledby', 'auth-modal-title');
-  await expect(el('auth-modal-title').textContent).toBe(want.title);
-  const reason = el('auth-modal-reason');
+  await expect(byId('auth-modal-title').textContent).toBe(want.title);
+  const reason = byId('auth-modal-reason');
   await expect(reason.hidden).toBe(want.reason === undefined);
   await expect(reason.textContent).toBe(want.reason ?? '');
-  await expect(el('auth-modal-hint')).toHaveTextContent(want.hint);
-  const getApp = el('auth-modal-get-app');
+  await expect(byId('auth-modal-hint')).toHaveTextContent(want.hint);
+  const getApp = byId('auth-modal-get-app');
   await expect(getApp.hidden).toBe(want.getAppHidden);
   await expect(getApp).toHaveAttribute('href', 'https://docs.polkadot.com/apps/');
   await expect(getApp).toHaveAttribute('target', '_blank');
   await expect(getApp).toHaveAttribute('rel', 'noopener noreferrer');
   await expect(getApp).toHaveTextContent("Don't have the app? Get Polkadot Mobile");
-  await expect(el('auth-modal-close')).toHaveTextContent('Cancel');
+  await expect(byId('auth-modal-close')).toHaveTextContent('Cancel');
 }
 
 /** The spinner alone holds the code's place. */
@@ -219,7 +212,7 @@ export const OpenPhone: Story = {
       const title = within(head()).getByTestId('auth-modal-sheet-title');
       await expect(title.tagName).toBe('H2');
       await expect(title).toHaveTextContent('Sign in');
-      await expect(el('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
+      await expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
     });
     await ctx.step('When I press its close button', async () => {
       const close = within(head()).getByTestId('auth-modal-sheet-close');
@@ -247,7 +240,7 @@ export const EscapeCloses: Story = {
     await step('Then it closed on one close asked for and gave focus back to the auth button', async () => {
       await closed();
       await expect(modalCalls.closes).toBe(1);
-      await waitFor(() => expect(el('auth-button')).toHaveFocus());
+      await waitFor(() => expect(byId('auth-button')).toHaveFocus());
     });
   },
 };
@@ -269,7 +262,7 @@ export const SpinnerThenQr: Story = {
   tags: ['!autodocs'],
   play: async ({ userEvent, step }) => {
     await step('When I press Sign in', async () => {
-      await userEvent.click(el('auth-button'));
+      await userEvent.click(byId('auth-button'));
     });
     await step('Then the modal opens on the spinner', async () => {
       await opened();
@@ -361,7 +354,7 @@ export const ProductTitleAsText: Story = {
     });
     await step('Then the title and reason are text, over the spinner', async () => {
       await opened();
-      await expect(el('auth-modal-title').querySelector('b')).toBeNull();
+      await expect(byId('auth-modal-title').querySelector('b')).toBeNull();
       await expectHead({
         title: 'localhost:<b>x</b> wants you to sign in',
         reason: '<i>to vote</i>',
@@ -435,7 +428,7 @@ export const CancelCloses: Story = {
   play: async ({ userEvent, step }) => {
     await step('When I press Cancel', async () => {
       await opened();
-      await userEvent.click(el('auth-modal-close'));
+      await userEvent.click(byId('auth-modal-close'));
     });
     await step('Then one close was asked for and the modal closed, empty', async () => {
       await closed();
@@ -454,13 +447,13 @@ export const BackdropCloses: Story = {
   play: async ({ userEvent, step }) => {
     await step('When I click the title inside the card', async () => {
       await opened();
-      await userEvent.click(el('auth-modal-title'));
+      await userEvent.click(byId('auth-modal-title'));
     });
     await step('Then it stays open', async () => {
       await expect(isOpen()).toBe(true);
     });
     await step('When I click the scrim around it', async () => {
-      const scrim = el('auth-modal-backdrop').firstElementChild;
+      const scrim = byId('auth-modal-backdrop').firstElementChild;
       if (scrim === null) {
         throw new Error('No scrim');
       }
@@ -485,7 +478,7 @@ export const ScrollLocked: Story = {
       await waitFor(() => expect(document.body).toHaveAttribute('data-scroll-locked'));
     });
     await step('When I press Cancel', async () => {
-      await userEvent.click(el('auth-modal-close'));
+      await userEvent.click(byId('auth-modal-close'));
     });
     await step('Then the page scrolls again', async () => {
       await closed();
@@ -527,21 +520,21 @@ export const HoldsFocusOverPopover: Story = {
     </Shell>
   ),
   play: async ({ userEvent, step }) => {
-    const backdrop = (): HTMLElement => el('auth-modal-backdrop');
+    const backdrop = (): HTMLElement => byId('auth-modal-backdrop');
     await step('Given a popover of the bar open', async () => {
-      await userEvent.click(el('bar-button'));
-      await waitFor(() => expect(el('bar-popover')).toHaveAttribute('data-open'));
+      await userEvent.click(byId('bar-button'));
+      await waitFor(() => expect(byId('bar-popover')).toHaveAttribute('data-open'));
     });
     await step('When a product asks for a login', () => {
       pairing();
     });
     await step('Then the popover closed and the modal is open with focus', async () => {
       await opened();
-      await waitFor(() => expect(el('bar-popover')).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(byId('bar-popover')).not.toHaveAttribute('data-open'));
       await waitFor(() => expect(backdrop().contains(document.activeElement)).toBe(true));
     });
     await step('When I Tab from Cancel', async () => {
-      el('auth-modal-close').focus();
+      byId('auth-modal-close').focus();
       await userEvent.tab();
     });
     await step('Then focus is still in the modal', async () => {
@@ -559,7 +552,7 @@ export const CompletionReturnsFocus: Story = {
   play: async ({ step }) => {
     await step('Given focus in the open modal', async () => {
       await opened();
-      await waitFor(() => expect(el('auth-modal-backdrop').contains(document.activeElement)).toBe(true));
+      await waitFor(() => expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true));
     });
     await step('When the session connects, which closes the modal', () => {
       connect({ liteUsername: 'pgherveou.04' });
@@ -567,7 +560,7 @@ export const CompletionReturnsFocus: Story = {
     });
     await step('Then the modal closed and focus is on the auth button', async () => {
       await closed();
-      await waitFor(() => expect(el('auth-button')).toHaveFocus());
+      await waitFor(() => expect(byId('auth-button')).toHaveFocus());
     });
   },
 };
@@ -581,7 +574,7 @@ export const PairedBeforeMount: Story = {
   play: async ({ step }) => {
     await step('Then it is open with the product named and the QR in', async () => {
       await opened();
-      await expect(el('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
+      await expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
       await waitFor(() => expect(qrCanvas()).not.toBeNull());
     });
   },
@@ -602,7 +595,7 @@ export const CountsAsOpenLayer: Story = {
       await expect(anyTrackedOpen()).toBe(true);
     });
     await step('When I press Cancel', async () => {
-      await userEvent.click(el('auth-modal-close'));
+      await userEvent.click(byId('auth-modal-close'));
     });
     await step('Then the bar counts nothing open', async () => {
       await closed();
@@ -644,14 +637,14 @@ export const PhoneAppInstallLink: Story = {
   play: async ({ step }) => {
     await step('Then the install link shows', async () => {
       await opened();
-      await waitFor(() => expect(el('auth-modal-get-app').hidden).toBe(false));
-      await expect(el('auth-modal-get-app')).toHaveAttribute('href', 'https://docs.polkadot.com/apps/');
+      await waitFor(() => expect(byId('auth-modal-get-app').hidden).toBe(false));
+      await expect(byId('auth-modal-get-app')).toHaveAttribute('href', 'https://docs.polkadot.com/apps/');
     });
     await step('When the wallet approves', () => {
       showModal({ view: { kind: 'authenticating' } });
     });
     await step('Then installing is no longer the ask', async () => {
-      await waitFor(() => expect(el('auth-modal-get-app').hidden).toBe(true));
+      await waitFor(() => expect(byId('auth-modal-get-app').hidden).toBe(true));
     });
   },
 };
@@ -665,7 +658,7 @@ export const DesktopNoInstallLink: Story = {
   play: async ({ step }) => {
     await step('Then the install link is hidden', async () => {
       await opened();
-      await expect(el('auth-modal-get-app').hidden).toBe(true);
+      await expect(byId('auth-modal-get-app').hidden).toBe(true);
     });
   },
 };
@@ -707,7 +700,7 @@ export const DeeplinkFirst: Story = {
       await expect(within(qrBox()).getByTestId('auth-modal-waiting')).toHaveTextContent('Waiting for your phone');
       await expect(qrBox().lastElementChild).toBe(openApp());
       await expect(qrBox().querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
-      await expect(el('auth-modal-hint')).toHaveTextContent(DESKTOP_HINT);
+      await expect(byId('auth-modal-hint')).toHaveTextContent(DESKTOP_HINT);
     });
     await step('When the wallet approves', () => {
       showModal({ view: { kind: 'authenticating' } });
@@ -796,10 +789,10 @@ export const QrStaysOnUnrelatedWrites: Story = {
       showModal({ reason: 'first' });
     });
     await step('Then the QR, its link and its hint stay, drawn once', async () => {
-      await waitFor(() => expect(el('auth-modal-reason')).toHaveTextContent('first'));
+      await waitFor(() => expect(byId('auth-modal-reason')).toHaveTextContent('first'));
       await expect(qrBox().querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
       await expect(within(qrBox()).getByTestId('auth-modal-qr-link')).toHaveAttribute('href', DEEPLINK);
-      await expect(el('auth-modal-hint')).toHaveTextContent(DESKTOP_HINT);
+      await expect(byId('auth-modal-hint')).toHaveTextContent(DESKTOP_HINT);
       await expect(drawQr).toHaveBeenCalledTimes(1);
     });
   },

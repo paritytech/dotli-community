@@ -19,8 +19,8 @@ const tsExtensionImport = {
 
 const testOnlyMessage = 'Test-only. Import it from specs and tests, never from shipped code.';
 
-// A package's `./testing` entry, such as `@dotli/metrics/testing`.
-const testingEntryImport = { regex: '^@dotli/[^/]+/testing$', message: testOnlyMessage };
+// A package's `./testing` entry and its sub-paths, such as `@dotli/metrics/testing/setup`.
+const testingEntryImport = { regex: '^@dotli/[^/]+/testing(/.*)?$', message: testOnlyMessage };
 
 const testOnlyModuleImport = {
   regex: '^\\.{1,2}/(.*/)?(testing/.*|[^/]+\\.(spec|fake))(\\.js)?$',
@@ -64,7 +64,6 @@ const domToolingImports = {
       ],
       message: noDomMessage,
     },
-    { regex: 'popover-polyfill', message: noDomMessage },
   ],
 };
 
@@ -250,30 +249,6 @@ export const config = defineConfig([
     plugins: { solid: solidPlugin },
     rules: {
       ...solid.configs['flat/typescript'].rules,
-    },
-  },
-]);
-
-/**
- * For `@dotli/metrics` itself, where the recorder is one relative path away and a re-export from the barrel would
- * ship it. Its files match relative to the package's own config, so the package spreads this after `config`.
- */
-export const metricsPackageConfig = defineConfig([
-  {
-    files: ['src/**/*.ts'],
-    ignores: testOnlyFiles,
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            tsExtensionImport,
-            testingEntryImport,
-            testOnlyModuleImport,
-            { regex: '^\\.{1,2}/(.*/)?testing(\\.js)?$', message: testOnlyMessage },
-          ],
-        },
-      ],
     },
   },
 ]);

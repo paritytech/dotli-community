@@ -2,28 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
+import { memoryStorage } from '@dotli/shared/testing';
 import { isDebugModeOn, leaveDebugMode, resolveDebugMode, type DebugModePage } from './debug-mode.js';
 
 interface FakePage extends DebugModePage {
-  stored: Map<string, string>;
+  sessionStorage: Storage;
   replaceState: ReturnType<typeof vi.fn<(data: unknown, unused: string, url: string) => void>>;
 }
 
-/** A page at `href` whose tab storage holds `stored`. */
-function page(href: string, stored: Record<string, string> = {}): FakePage {
-  const map = new Map(Object.entries(stored));
+/** A page at `href` whose tab storage holds `entries`. */
+function page(href: string, entries: Record<string, string> = {}): FakePage {
+  const stored = memoryStorage(entries);
   const replaceState = vi.fn<(data: unknown, unused: string, url: string) => void>();
   return {
-    stored: map,
     replaceState,
     location: { href },
     history: { replaceState },
-    sessionStorage: {
-      getItem: key => map.get(key) ?? null,
-      setItem: (key, value) => {
-        map.set(key, value);
-      },
-    },
+    sessionStorage: stored,
   };
 }
 
@@ -49,7 +44,7 @@ describe('debug mode', () => {
 
     // Then
     expect(mode).toEqual({ enabled: true, explicit: true });
-    expect(tab.stored.get('dotli:truapi-debug')).toBe('1');
+    expect(tab.sessionStorage.getItem('dotli:truapi-debug')).toBe('1');
     expect(tab.replaceState).toHaveBeenCalledWith(null, '', '/path?x=1#top');
   });
 
@@ -62,7 +57,7 @@ describe('debug mode', () => {
 
     // Then
     expect(mode).toEqual({ enabled: false, explicit: true });
-    expect(tab.stored.get('dotli:truapi-debug')).toBe('0');
+    expect(tab.sessionStorage.getItem('dotli:truapi-debug')).toBe('0');
     expect(tab.replaceState).toHaveBeenCalledWith(null, '', '/');
   });
 
@@ -87,7 +82,7 @@ describe('debug mode', () => {
 
     // Then
     expect(mode).toEqual({ enabled: true, explicit: false });
-    expect(tab.stored.size).toBe(0);
+    expect(tab.sessionStorage.length).toBe(0);
     expect(tab.replaceState).not.toHaveBeenCalled();
   });
 

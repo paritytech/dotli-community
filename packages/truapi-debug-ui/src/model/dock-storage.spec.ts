@@ -3,7 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { readStoredDock, writeStoredDock } from './dock-storage.js';
-import { blockedStorage, memoryStorage } from '../testing/memory-storage.js';
+import { memoryStorage } from '@dotli/shared/testing';
+import { blockedStorage } from '../testing/blocked-storage.js';
 
 describe('stored panel dock', () => {
   it('As a dotli developer, a stored right dock is applied on the next mount', () => {
@@ -25,7 +26,7 @@ describe('stored panel dock', () => {
     writeStoredDock('bottom', () => storage);
 
     // Then
-    expect(storage.stored.get('truapi-debug:dock')).toBe('bottom');
+    expect(storage.getItem('truapi-debug:dock')).toBe('bottom');
     expect(readStoredDock(() => storage)).toBe('bottom');
   });
 

@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
 import { RecentList } from './RecentList.js';
 
 const SUFFIX = '.dot';
@@ -88,18 +89,15 @@ export const MarkupAsText: Story = {
   },
 };
 
-/** Trusted keys, as focus reveals the remove button. Imported lazily so Storybook loads the stories outside Vitest. */
-const input = async () => (await import('vitest/browser')).userEvent;
-
 export const RemoveForgets: Story = {
   beforeEach: visited('alpha', 'beta'),
   play: async ({ canvas, step }) => {
     const removeWithKeys = async (label: string) => {
       (await canvas.findByRole('link', { name: `${label}${SUFFIX}` })).focus();
-      await (await input()).keyboard('{Tab}');
+      await (await trustedInput()).keyboard('{Tab}');
       const remove = canvas.getByRole('button', { name: `Remove ${label}${SUFFIX} from recently visited` });
       await expect(remove).toHaveFocus();
-      await (await input()).keyboard('{Enter}');
+      await (await trustedInput()).keyboard('{Enter}');
     };
     await step('When I Tab from alpha to its remove button and press it', () => removeWithKeys('alpha'));
     await step('Then it is forgotten and beta stays', async () => {

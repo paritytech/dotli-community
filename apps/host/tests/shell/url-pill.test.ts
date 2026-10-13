@@ -5,8 +5,9 @@
 // apps/host/src/components/UrlPill.astro renders at build time.
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { bindUrlPill } from '../../src/url-pill.js';
-import { resetUrlPill, showLocalhostPill, showProductPill } from '../../src/state/url-pill.js';
+import { showLocalhostPill, showProductPill } from '../../src/state/url-pill.js';
 import { byId, byTestId } from '@dotli/ui/testing';
 
 let unbind: (() => void) | undefined;
@@ -31,7 +32,7 @@ function text(): string {
 afterEach(() => {
   unbind?.();
   unbind = undefined;
-  resetUrlPill();
+  resetAllStoresForTests();
   document.body.innerHTML = '';
 });
 

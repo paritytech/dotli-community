@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { modalsStore, openModal, refuseModals, resetModalsForTests, settleModal, type ModalView } from './modals.js';
-import { nth } from '@dotli/shared/testing';
+import { modalsStore, openModal, refuseModals, settleModal, type ModalView } from './modals.js';
+import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 
 type Choice = 'yes' | 'no' | 'dismissed';
 
@@ -21,7 +21,7 @@ function view(title: string): ModalView<Choice> {
 }
 
 afterEach(() => {
-  resetModalsForTests();
+  resetAllStoresForTests();
 });
 
 describe('modal store', () => {

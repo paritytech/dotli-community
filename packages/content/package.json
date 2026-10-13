@@ -16,7 +16,8 @@
   },
   "devDependencies": {
     "@config/eslint": "*",
-    "@config/typescript": "*"
+    "@config/typescript": "*",
+    "@config/vite": "*"
   },
   "dependencies": {
     "@dotli/config": "*",

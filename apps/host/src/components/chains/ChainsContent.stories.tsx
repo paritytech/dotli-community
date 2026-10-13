@@ -7,6 +7,7 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { HISTORY_SLOTS } from './chain-strip.js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { byId, query } from '@dotli/ui/testing';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import {
   bars,
@@ -30,24 +31,8 @@ const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' }
 const SEARCHING = 'Finding peers. This takes a few seconds.';
 const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
-
-function q(selector: string): HTMLElement {
-  const found = document.querySelector<HTMLElement>(selector);
-  if (found === null) {
-    throw new Error(`No ${selector}`);
-  }
-  return found;
-}
-
 const isOpen = (): boolean => document.getElementById('chains-popover')?.hasAttribute('data-open') === true;
-const content = (): HTMLElement => q('#chains-popover [data-testid="chains-content"]');
+const content = (): HTMLElement => query(document, '#chains-popover [data-testid="chains-content"]');
 const shownBlocks = (): string[] =>
   [...document.querySelectorAll<HTMLElement>('#chains-popover [data-block]')].map(bar => bar.dataset['block'] ?? '');
 const waitingText = (): string | null | undefined =>
@@ -156,7 +141,7 @@ type Story = StoryObj<typeof meta>;
 export const Open: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
-    const button = el('chains-button');
+    const button = byId('chains-button');
     await ctx.step('Given the button, shown before any product, with its labels and ARIA', async () => {
       await expect(button).toBeVisible();
       await expect(button).toHaveAttribute('title', 'Network');
@@ -173,7 +158,7 @@ export const Open: Story = {
     await open(ctx);
     await ctx.step('Then it announces the open dialog named Network', async () => {
       await expect(button).toHaveAttribute('aria-expanded', 'true');
-      const popover = el('chains-popover');
+      const popover = byId('chains-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Network');
       await expect(popover).toHaveAttribute('tabindex', '-1');
@@ -228,7 +213,7 @@ function statusStory(
         given(chains, network.transfer, network.verdict);
       });
       await ctx.step('Then it shows the status, chains, transfer and tips', async () => {
-        await expect(el('chains-button')).toHaveAttribute('aria-expanded', 'true');
+        await expect(byId('chains-button')).toHaveAttribute('aria-expanded', 'true');
         await waitFor(() => expectBody(expected));
       });
     },
@@ -406,11 +391,11 @@ export const NotInUse: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then its last bars stay under Not in use, with no peers', async () => {
-      const cell = q('[data-testid="chains-cell"]');
+      const cell = query(document, '[data-testid="chains-cell"]');
       await expect(cell).toHaveAttribute('data-state', 'unused');
       await expect(shownBlocks()).toEqual(['11', '12']);
-      await expect(q('[data-testid="chains-group-label"]')).toHaveAttribute('data-state', 'unused');
-      await expect(q('[data-testid="chains-group-unused"]')).toHaveTextContent('Not in use');
+      await expect(query(document, '[data-testid="chains-group-label"]')).toHaveAttribute('data-state', 'unused');
+      await expect(query(document, '[data-testid="chains-group-unused"]')).toHaveTextContent('Not in use');
       await expect(document.querySelector('[data-testid="chains-group-peers"]')).toBeNull();
     });
   },
@@ -425,7 +410,7 @@ export const NeverUsed: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then every slot is empty and nothing counts down', async () => {
-      const cell = q('[data-testid="chains-cell"]');
+      const cell = query(document, '[data-testid="chains-cell"]');
       await expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS);
       await expect(cell.querySelector('[data-testid="chains-bar-pending"]')).toBeNull();
       await expect(cell.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull();
@@ -445,10 +430,10 @@ export const OtherChains: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then it is under a closed Other chains', async () => {
-      const other = q('[data-testid="chains-other"]');
+      const other = query(document, '[data-testid="chains-other"]');
       await expect(other.tagName).toBe('DETAILS');
       await expect(other).not.toHaveAttribute('open');
-      await expect(q('[data-testid="chains-other-summary"]')).toHaveTextContent('Other chains (1)');
+      await expect(query(document, '[data-testid="chains-other-summary"]')).toHaveTextContent('Other chains (1)');
       await expect(within(other).getByText('0xabab…abab')).toBeInTheDocument();
     });
     await ctx.step('When it is no longer in use', () => {
@@ -483,8 +468,8 @@ export const Offline: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then the status says I am offline', async () => {
-      await expect(q('[data-testid="chains-status-dot"]')).toHaveAttribute('data-tone', 'err');
-      await expect(q('[data-testid="chains-status"]')).toHaveTextContent(
+      await expect(query(document, '[data-testid="chains-status-dot"]')).toHaveAttribute('data-tone', 'err');
+      await expect(query(document, '[data-testid="chains-status"]')).toHaveTextContent(
         'You are offlineNo peers on any chain. Retrying.',
       );
     });
@@ -515,7 +500,7 @@ export const ZeroPeers: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then it says 0 peers, marked', async () => {
-      const peers = q('[data-testid="chains-group-peers"]');
+      const peers = query(document, '[data-testid="chains-group-peers"]');
       await expect(peers).toHaveTextContent('0 peers');
       await expect(peers).toHaveAttribute('data-alert');
     });
@@ -538,8 +523,8 @@ export const FollowsNetwork: Story = {
     });
     await ctx.step('Then the bars, peers and status follow', async () => {
       await waitFor(() => expect(shownBlocks()).toEqual(['11', '12']));
-      await expect(q('[data-testid="chains-group-peers"]')).toHaveTextContent('2 peers');
-      await expect(q('[data-testid="chains-status"]')).toHaveTextContent(
+      await expect(query(document, '[data-testid="chains-group-peers"]')).toHaveTextContent('2 peers');
+      await expect(query(document, '[data-testid="chains-status"]')).toHaveTextContent(
         'Your connection is goodLight client is in sync',
       );
     });
@@ -660,11 +645,13 @@ export const RenderErrorCloses: Story = {
     });
     await ctx.step('When the state renders again and I open it', async () => {
       given([chain({ latest: 11, sinceLast: 0 })]);
-      await ctx.userEvent.click(el('chains-button'));
+      await ctx.userEvent.click(byId('chains-button'));
     });
     await ctx.step('Then it opens with the chain', async () => {
       await waitFor(() => expect(isOpen()).toBe(true));
-      await waitFor(() => expect(q('[data-testid="chains-group-label"]')).toHaveTextContent('Relay chain'));
+      await waitFor(() =>
+        expect(query(document, '[data-testid="chains-group-label"]')).toHaveTextContent('Relay chain'),
+      );
     });
   },
 };
@@ -706,7 +693,7 @@ export const NoLayoutReadWithoutBlock: Story = {
     await ctx.step('Given ten bars shown', async () => {
       given([chain({ latest: 10, bars: strip, sinceLast: 0 })]);
       await waitFor(() => expect(shownBlocks()).toHaveLength(10));
-      observer.observe(q('[data-testid="chains-bars"]'), {
+      observer.observe(query(document, '[data-testid="chains-bars"]'), {
         subtree: true,
         attributes: true,
         attributeFilter: ['data-sliding', 'data-new', 'style'],
@@ -722,7 +709,9 @@ export const NoLayoutReadWithoutBlock: Story = {
       }
     });
     await ctx.step('Then the last sample shows and nothing slid', async () => {
-      await waitFor(() => expect(q('[data-testid="chains-transfer-row"]')).toHaveTextContent('Speed1004 B/s'));
+      await waitFor(() =>
+        expect(query(document, '[data-testid="chains-transfer-row"]')).toHaveTextContent('Speed1004 B/s'),
+      );
       observer.disconnect();
       await expect(changed).toEqual([]);
       await expect(shownBlocks()).toHaveLength(10);

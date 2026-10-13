@@ -18,6 +18,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
+    "@config/vite": "*",
     "fake-indexeddb": "^6.2.5"
   },
   "dependencies": {

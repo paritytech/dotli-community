@@ -36,8 +36,13 @@ export default defineConfig([
     },
   },
   ...importBans([scopeBan, dataLibraryBan]),
-  // Shipped modules, stories and specs reach only shared and metrics of the workspace.
+  // Shipped modules and specs reach only shared and metrics of the workspace.
   ...importBans([onlyAllowedScopes(['@dotli/shared', '@dotli/metrics'], message), dataLibraryBan], ['src/**']),
+  // Stories are plays, so they may also reach ui's own testing entry and the shared play helpers.
+  ...importBans(
+    [onlyAllowedScopes(['@dotli/shared', '@dotli/metrics', '@dotli/ui', '@config/storybook'], message), dataLibraryBan],
+    ['src/**/*.stories.tsx'],
+  ),
   {
     rules: {
       'no-restricted-syntax': ['error', ...restrictedSyntax, dynamicBan],

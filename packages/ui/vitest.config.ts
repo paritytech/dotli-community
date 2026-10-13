@@ -34,7 +34,7 @@ export default defineConfig({
           name: 'ui:functional',
           include: ['tests/**/*.test.{ts,tsx}'],
           environment: 'happy-dom',
-          setupFiles: ['tests/setup/popover-polyfill.ts'],
+          setupFiles: ['tests/setup.ts'],
         },
       },
     ],

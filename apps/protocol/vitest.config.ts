@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from 'vitest/config';
+import { TEST_DEFINES } from '@config/vite/test-defines';
 
 export default defineConfig({
   test: {
@@ -11,9 +12,8 @@ export default defineConfig({
     ],
   },
   define: {
+    ...TEST_DEFINES,
     'import.meta.env.DEV': 'false',
     'import.meta.env.VITE_APP_DEBUG': '"true"',
-    // getEnabledNetworks() has no default, so tests supply VITE_NETWORKS like a deployment does.
-    'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
   },
 });

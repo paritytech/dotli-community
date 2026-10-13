@@ -18,7 +18,6 @@ import {
   markFollowedRoomSeen,
   openChatRoom,
   persistChatPanelWidth,
-  resetChatPanelStateForTests,
   setChatComposerError,
   setChatPanelOpen,
   setChatPanelWidth,
@@ -50,7 +49,6 @@ beforeEach(() => {
 afterEach(() => {
   remove();
   resetStores();
-  resetChatPanelStateForTests();
 });
 
 describe('chat panel state', () => {

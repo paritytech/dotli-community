@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { chooseModalButton, resetModalsForTests, shownModal } from '@dotli/ui/testing';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
+import { chooseModalButton, shownModal } from '@dotli/ui/testing';
 import { type ModalView, openModal } from '@dotli/ui';
 import { DECRYPTION_CANCELLED, showPasswordPrompt } from './show-password-prompt.js';
 
@@ -19,7 +20,7 @@ const LOCKED: ModalView<'cancel' | 'unlock'> = {
 };
 
 afterEach(() => {
-  resetModalsForTests();
+  resetAllStoresForTests();
 });
 
 describe('password prompt', () => {

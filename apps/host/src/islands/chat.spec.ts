@@ -9,13 +9,7 @@ import { labelToProductId } from '../runtime/runtime-config.js';
 import { setAuthState } from '../runtime/state/auth.js';
 import { setProductError, setProductLoaded } from '../runtime/state/product.js';
 import { memoryChatRepo, recordingConnection } from '../runtime/chat/store.fake.js';
-import {
-  chatPanelStore,
-  initChatPanelState,
-  openChatRoom,
-  resetChatPanelStateForTests,
-  setChatPanelOpen,
-} from '../state/chat-panel.js';
+import { chatPanelStore, initChatPanelState, openChatRoom, setChatPanelOpen } from '../state/chat-panel.js';
 import { useChatDock } from './chat.js';
 
 const LABEL = 'chatty';
@@ -38,7 +32,6 @@ beforeEach(() => {
 afterEach(() => {
   stopState();
   resetAllStoresForTests();
-  resetChatPanelStateForTests();
 });
 
 /** The dock's props, read from the page's chat state under a fresh owner, with the room it keeps for the panel. */

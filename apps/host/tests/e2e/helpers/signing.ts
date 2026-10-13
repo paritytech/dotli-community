@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, type Page, type Frame, type Locator } from '@playwright/test';
+import { entryText } from './run-test.js';
 
 type PageLike = Page | Frame;
 
@@ -133,11 +134,7 @@ async function waitForLogResult(
 
   const status = await newest.getAttribute('data-status');
   if (status !== 'success') {
-    const msg = await newest
-      .locator('div.break-all')
-      .textContent()
-      .catch(() => '');
-    console.log(`[signed] ${testId}: ${(msg ?? '').slice(0, 300)}`);
+    console.log(`[signed] ${testId}: ${await entryText(newest)}`);
   }
   return status === 'success' ? 'success' : 'error';
 }

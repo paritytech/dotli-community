@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The product frame over the real wallet core: what the user sees when the core under a product dies, and the
-// localhost proxy that only debug builds route. Offline: a fake protocol frame serves the product's one block.
+// The product frame over the real wallet core: what the user sees when the core under a product dies, and a preview
+// of a web container app. Offline: a fake protocol frame serves the product's one block.
 
 import { expect, type Page } from '@playwright/test';
 import { PORT } from '../env.js';
@@ -121,32 +121,6 @@ test('As a dApp user whose wallet core keeps dying under my product, I see it sh
   await expect(notice.getByTestId('notif-title')).toHaveText('dot.li');
   await expect(notice.getByTestId('notif-action')).toHaveText('Reload');
   expect(harness.documents).toHaveLength(3);
-});
-
-test('As a developer on a debug build, I see my localhost app proxied without the host settings in its URL', async ({
-  page,
-}) => {
-  // Given: only debug builds route a localhost path, so a release build has nothing to test here
-  test.skip(process.env['DOTLI_DEBUG_BUILD'] !== '1', 'needs a build made with VITE_APP_DEBUG=true');
-  const documents: string[] = [];
-  await page.route('http://localhost:4123/**', async route => {
-    documents.push(route.request().url());
-    await route.fulfill({
-      contentType: 'text/html',
-      body: '<!DOCTYPE html><html><body><main data-testid="e2e-product">local</main></body></html>',
-    });
-  });
-
-  // When
-  await page.goto(`http://localhost:${PORT}/localhost:4123/deep?a=1&chainBackend=rpc-gateway`);
-
-  // Then
-  await expect(page.locator('[data-product-frame]')).toHaveAttribute('data-product-frame', 'connected', {
-    timeout: 15_000,
-  });
-  expect(documents).toEqual(['http://localhost:4123/deep?a=1']);
-  await expect(page).toHaveURL(`http://localhost:${PORT}/localhost:4123`);
-  await expect(page.getByTestId('url-pill-text')).toHaveText('localhost:4123');
 });
 
 test('As a developer previewing a web container app, I see it in the product frame and the address bar keeps the preview route', async ({

@@ -4,6 +4,7 @@
 // The one writer of the product iframe's inline geometry. Every report recomputes and writes the whole
 // box, so a product reload keeps the chat width and docks, and the chat width keeps the safe-area insets.
 
+import { registerStoreStateReset } from '@dotli/shared';
 import { productIframeBox } from './product-iframe-box.js';
 import { getTopbarState } from './state/topbar.js';
 
@@ -130,7 +131,6 @@ export function setDockInset(inset: DockInset, source: DockSource): void {
   write();
 }
 
-/** Tests only. */
-export function resetProductFrameLayout(): void {
+registerStoreStateReset(() => {
   state = initialState();
-}
+});

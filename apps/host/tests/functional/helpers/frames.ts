@@ -11,15 +11,13 @@ export function isSandboxUrl(url: string): boolean {
 }
 
 /** The first frame whose URL matches, already there or the next one to navigate. */
-export async function waitForFrame(page: Page, matches: (url: string) => boolean, timeout: number): Promise<Frame> {
-  // Armed before the frame tree is read, so a frame that navigates in between is not missed.
-  const navigated = page.waitForEvent('framenavigated', { predicate: frame => matches(frame.url()), timeout });
+export function waitForFrame(page: Page, matches: (url: string) => boolean, timeout: number): Promise<Frame> {
   const present = page.frames().find(frame => matches(frame.url()));
   if (present !== undefined) {
-    navigated.catch(() => undefined);
-    return present;
+    return Promise.resolve(present);
   }
-  return navigated;
+  // `framenavigated` also reports an iframe navigated through `contentWindow.location`, which a locator misses.
+  return page.waitForEvent('framenavigated', { predicate: frame => matches(frame.url()), timeout });
 }
 
 /** Waits until `frame` has written the product's page, which the sandbox marks with `dotli:app:end`. */

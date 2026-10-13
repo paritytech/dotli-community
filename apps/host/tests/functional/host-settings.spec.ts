@@ -223,11 +223,14 @@ test.describe('Settings works', () => {
     expect(state.url).not.toContain('skipWorkerCache=');
   });
 
-  for (const backend of BACKENDS) {
+  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache. The dotNS
+  // cache works the same on every backend, so its tests skip the public RPC nodes too.
+  const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
+
+  for (const backend of RELAYED_BACKENDS) {
     test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
       browser,
     }) => {
-      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,
@@ -253,7 +256,6 @@ test.describe('Settings works', () => {
     test(`As a user on ${backend} who turns the dotNS cache off, every visit looks the name up again`, async ({
       browser,
     }) => {
-      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,
@@ -277,9 +279,6 @@ test.describe('Settings works', () => {
       }
     });
   }
-
-  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache.
-  const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
 
   for (const backend of RELAYED_BACKENDS) {
     test(`As a user on ${backend} with the archive cache on, revisiting a site loads it from the blocks the host kept`, async ({

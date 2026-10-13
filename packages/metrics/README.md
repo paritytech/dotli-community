@@ -38,3 +38,7 @@ compile time.
 ### `@dotli/metrics/testing`
 
 - `bindRecordingSentry`: a recording Sentry that tests bind and restore. Never imported by shipped code.
+
+### `@dotli/metrics/testing/setup`
+
+A setup file for a test runner: importing it binds a recording Sentry for the whole run. Never imported by shipped code.

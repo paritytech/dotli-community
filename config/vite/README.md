@@ -20,9 +20,9 @@ Build plugins and options shared by the host, sandbox and protocol builds, plus 
 
 ## Entry points
 
-Imported by the apps' Vite and Astro configs. Beyond them, the host's Storybook config takes the inline-script entry,
-its page head takes the social meta entry, the dev scripts take the mode sync, runtime network config and serving
-entries, and the host runtime takes the signing worker entry.
+Imported by the apps' Vite and Astro configs. Beyond them, the test and Storybook configs take the test-defines entry,
+the host's Storybook config takes the inline-script entry, its page head takes the social meta entry, the dev scripts
+take the mode sync, runtime network config and serving entries, and the host runtime takes the signing worker entry.
 
 - `./app`: `dotliApp`, the settings every app's build shares (base, env directory, wasm, the Sentry upload, and the
   compile-time values that strip the Sentry SDK's debug logger), which also fills in the commit and a `dotli@semver`
@@ -43,3 +43,4 @@ entries, and the host runtime takes the signing worker entry.
   panel.
 - `./build-info`: writes the build version file and reads the release version.
 - `./social-meta`: link-unfurl meta tags with an absolute image URL.
+- `./test-defines`: the build-time values every test and story build defines, the enabled networks.

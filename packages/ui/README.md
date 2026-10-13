@@ -79,9 +79,10 @@ and no data source.
 
 Fakes for other packages' specs, stories and functional tests. Never imported by shipped code.
 
-- Modal store: `modalsStore`, `resetModalsForTests`, `shownModal`, `chooseModalButton`, `dismissModal`. Toasts:
-  `bindToastPage`, `resetToastsForTests`. Viewport: `PHONE_QUERY`, `resetPhoneViewport`.
-- Other: `settle`, and the page queries `appears`, `byId`, `byTestId`, `query`.
+- Modal store: `modalsStore`, `shownModal`, `chooseModalButton`, `dismissModal`. Modal and toast state reset with the
+  store registry's reset. Toasts: `bindToastPage`. Viewport: `PHONE_QUERY`, `resetPhoneViewport`.
+- Other: `settle`, the page queries `appears`, `byId`, `byTestId`, `query`, and `installPopoverPolyfill` for functional
+  tests under happy-dom.
 
 ### `@dotli/ui/brand`
 

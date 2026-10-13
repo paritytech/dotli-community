@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
+import { memoryStorage } from '@dotli/shared/testing';
 import { readChatCapability, storageCapabilityCache, type CapabilityCache } from './chat-capability.js';
 
 /** A page load whose storage holds `seed`, and what it stores. */
-function page(seed: Record<string, string> = {}): { stored: Map<string, string>; cache: CapabilityCache } {
-  const stored = new Map(Object.entries(seed));
-  const cache = storageCapabilityCache(() => ({
-    getItem: (key: string) => stored.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      stored.set(key, value);
-    },
-  }));
-  return { stored, cache };
+function page(seed: Record<string, string> = {}): { stored: Storage; cache: CapabilityCache } {
+  const stored = memoryStorage(seed);
+  return { stored, cache: storageCapabilityCache(() => stored) };
 }
 
 describe('chat capability', () => {
@@ -26,7 +21,7 @@ describe('chat capability', () => {
 
     // Then
     expect(chat).toBe(true);
-    expect(stored.get('dotli:chat-capable:myapp')).toBe('1');
+    expect(stored.getItem('dotli:chat-capable:myapp')).toBe('1');
   });
 
   it('As a returning visitor, my product answers from the cache without waiting on the manifest read', async () => {
@@ -57,7 +52,7 @@ describe('chat capability', () => {
 
     // Then
     expect(chat).toBe(true);
-    expect(stored.get('dotli:chat-capable:myapp')).toBe('0');
+    expect(stored.getItem('dotli:chat-capable:myapp')).toBe('0');
   });
 
   it('As a visitor whose worker manifest cannot be read, my product gets no chat this load and the cache keeps its answer', async () => {
@@ -69,7 +64,7 @@ describe('chat capability', () => {
 
     // Then
     expect(chat).toBe(false);
-    expect(stored.has('dotli:chat-capable:myapp')).toBe(false);
+    expect(stored.getItem('dotli:chat-capable:myapp')).toBeNull();
   });
 
   it('As a visitor whose browser blocks storage, my product still answers from its manifest', async () => {

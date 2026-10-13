@@ -3,6 +3,8 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
+import { byId, byTestId } from '@dotli/ui/testing';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import { productPill, setShield, storyShieldState } from '../../../.storybook/shield-fixtures.js';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verification-shield.js';
@@ -13,18 +15,12 @@ const shown = openSurface({ surface: 'verification-tooltip' });
 /** A click leaves a tooltip alone, so this hovers with trusted input, which the real `:hover` needs. */
 const open: typeof shown = async ctx => {
   await ctx.step('When the mouse rests on the shield', async () => {
-    const { userEvent } = await import('vitest/browser');
-    const shield = document.getElementById('verification-shield');
-    if (shield === null) {
-      throw new Error('no verification shield');
-    }
-    await userEvent.hover(shield);
+    const userEvent = await trustedInput();
+    await userEvent.hover(byId('verification-shield'));
   });
   await shown(ctx);
   await ctx.step('And its body has loaded', async () => {
-    await waitFor(() =>
-      expect(document.querySelector('[data-testid="verification-tooltip-row-verified"]')).not.toBeNull(),
-    );
+    await waitFor(() => byTestId('verification-tooltip-row-verified'));
   });
 };
 
@@ -64,19 +60,11 @@ export const OpenPhone: Story = {
 };
 
 function shieldButton(): HTMLElement {
-  const shield = document.getElementById(VERIFICATION_SHIELD_ID);
-  if (shield === null) {
-    throw new Error('no verification shield');
-  }
-  return shield;
+  return byId(VERIFICATION_SHIELD_ID);
 }
 
 function explainer(): HTMLElement {
-  const tooltip = document.getElementById(VERIFICATION_TOOLTIP_ID);
-  if (tooltip === null) {
-    throw new Error('no verification explainer');
-  }
-  return tooltip;
+  return byId(VERIFICATION_TOOLTIP_ID);
 }
 
 async function expectOpen(): Promise<void> {
@@ -183,13 +171,7 @@ export const FollowsStateWhileOpen: Story = {
 
         // Then
         await waitFor(() => expect(shieldButton()).toHaveAttribute('data-state', 'trusted'));
-        const trusted = await waitFor(() => {
-          const row = explainer().querySelector('[data-testid="verification-tooltip-row-trusted"]');
-          if (row === null) {
-            throw new Error('no trusted row yet');
-          }
-          return row;
-        });
+        const trusted = await waitFor(() => byTestId('verification-tooltip-row-trusted', explainer()));
         await expect(trusted).toHaveTextContent(
           'TrustedServed by an external RPC provider. Faster, but you rely on its answers.',
         );

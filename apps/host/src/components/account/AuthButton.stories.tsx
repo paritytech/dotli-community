@@ -4,6 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
+import { byId, byTestId } from '@dotli/ui/testing';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import {
   calls,
@@ -27,22 +28,8 @@ const PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c
 const ALICE: AccountSession = { fullUsername: 'Alice Smith' };
 const PG: AccountSession = { liteUsername: 'pgherveou.04' };
 
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
-
-const button = (): HTMLElement => el('auth-button');
-const badge = (): HTMLElement => {
-  const found = button().querySelector<HTMLElement>('[data-testid="user-badge"]');
-  if (found === null) {
-    throw new Error('No user badge');
-  }
-  return found;
-};
+const button = (): HTMLElement => byId('auth-button');
+const badge = (): HTMLElement => byTestId('user-badge', button());
 const isOpen = (): boolean => document.getElementById('user-popover')?.hasAttribute('data-open') === true;
 const popupAria = (): (string | null)[] =>
   ['aria-haspopup', 'aria-expanded', 'aria-controls'].map(name => button().getAttribute(name));
@@ -92,9 +79,9 @@ async function expectButton(state: 'logged-out' | { initials: string | undefined
 
 /** The open account popover's name line and hint. */
 async function expectAccount(username: string, hint: boolean): Promise<void> {
-  await expect(el('user-popover-username').textContent).toBe(username);
+  await expect(byId('user-popover-username').textContent).toBe(username);
   if (hint) {
-    await expect(el('user-popover-hint').textContent).toBe('No username found for this account on this network.');
+    await expect(byId('user-popover-hint').textContent).toBe('No username found for this account on this network.');
   } else {
     await expect(document.getElementById('user-popover-hint')).toBeNull();
   }
@@ -132,13 +119,13 @@ export const Open: Story = {
     });
     await open(ctx);
     await ctx.step('Then it is a dialog named Account with my name and avatar', async () => {
-      const popover = el('user-popover');
+      const popover = byId('user-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Account');
       await expect(popover).toHaveAttribute('tabindex', '-1');
       await expectAccount('Alice Smith', false);
       await expect(popover.querySelector('[data-testid="account-content"]')).toHaveTextContent(/^ASWelcome back/);
-      await expect(el('user-popover-disconnect')).toHaveTextContent('Log out');
+      await expect(byId('user-popover-disconnect')).toHaveTextContent('Log out');
       await expect(document.querySelector('[data-testid="account-local"]')).toBeNull();
     });
   },
@@ -155,7 +142,7 @@ export const OpenPhone: Story = {
     await expectPhone(ctx.step);
     await open(ctx);
     await ctx.step('Then the sheet is titled Account and the body has no heading', async () => {
-      const sheet = el('user-popover');
+      const sheet = byId('user-popover');
       await expect(sheet.querySelector('[data-testid="popover-sheet-title"]')).toHaveTextContent('Account');
       const content = sheet.querySelector('[data-testid="account-content"]');
       await expect(content).toHaveAttribute('data-sheet');
@@ -258,7 +245,7 @@ export const Landing: Story = {
   render: () => <StoryButton idPrefix="landing-" showName />,
   play: async ({ step }) => {
     await step('Then the button shows AS and Alice Smith, and its name starts with both', async () => {
-      const landing = el('landing-auth-button');
+      const landing = byId('landing-auth-button');
       await expect(landing.querySelector('[data-testid="user-badge"]')?.textContent).toBe('AS');
       await expect(landing.textContent).toContain('Alice Smith');
       await expect(landing).toHaveAttribute('aria-label', 'AS Alice Smith, account');
@@ -333,7 +320,7 @@ export const Anonymous: Story = {
       connect(PG);
     });
     await ctx.step('Then the username shows and the hint is gone', async () => {
-      await waitFor(() => expect(el('user-popover-username').textContent).toBe('pgherveou.04'));
+      await waitFor(() => expect(byId('user-popover-username').textContent).toBe('pgherveou.04'));
       await expectAccount('pgherveou.04', false);
     });
   },
@@ -352,8 +339,8 @@ export const MarkupName: Story = {
     });
     await open(ctx);
     await ctx.step('And the account shows the username as text', async () => {
-      await expect(el('user-popover').querySelector('b')).toBeNull();
-      await expect(el('user-popover-username').textContent).toBe('<b>x</b>');
+      await expect(byId('user-popover').querySelector('b')).toBeNull();
+      await expect(byId('user-popover-username').textContent).toBe('<b>x</b>');
     });
   },
 };
@@ -371,7 +358,7 @@ export const RestoredBeforeMount: Story = {
     });
     await open(ctx);
     await ctx.step('And the account shows my username', async () => {
-      await expect(el('user-popover-username').textContent).toBe('alice');
+      await expect(byId('user-popover-username').textContent).toBe('alice');
     });
   },
 };
@@ -400,7 +387,7 @@ export const LocalBareSession: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Then it says Connected', async () => {
-      await expect(el('user-popover-username').textContent).toBe('Connected');
+      await expect(byId('user-popover-username').textContent).toBe('Connected');
     });
   },
 };
@@ -414,7 +401,7 @@ export const LoggedOutNoHint: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Given the hint for an account with no username', async () => {
-      await expect(el('user-popover-hint')).toBeInTheDocument();
+      await expect(byId('user-popover-hint')).toBeInTheDocument();
     });
     await ctx.step('When I am logged out', () => {
       disconnect();
@@ -434,7 +421,7 @@ export const LogOutClosesPopover: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('When I press Log out', async () => {
-      await ctx.userEvent.click(el('user-popover-disconnect'));
+      await ctx.userEvent.click(byId('user-popover-disconnect'));
     });
     await ctx.step('Then one logout was asked for, no login, and the popover closed', async () => {
       await waitFor(() => expect(calls.logouts).toBe(1));
@@ -453,7 +440,7 @@ export const SessionDropReturnsFocus: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('Given focus on Log out', () => {
-      el('user-popover-disconnect').focus();
+      byId('user-popover-disconnect').focus();
     });
     await ctx.step('When the session drops', () => {
       disconnect();
@@ -565,8 +552,8 @@ export const ConnectedAnnouncesPopover: Story = {
     });
     await step('Then it announces it open, a dialog named Account', async () => {
       await waitFor(() => expect(button()).toHaveAttribute('aria-expanded', 'true'));
-      await expect(el('user-popover')).toHaveAttribute('role', 'dialog');
-      await expect(el('user-popover')).toHaveAttribute('aria-label', 'Account');
+      await expect(byId('user-popover')).toHaveAttribute('role', 'dialog');
+      await expect(byId('user-popover')).toHaveAttribute('aria-label', 'Account');
     });
     await step('When I press Escape', async () => {
       await userEvent.keyboard('{Escape}');

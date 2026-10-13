@@ -19,6 +19,7 @@
     "./serving": "./src/serving.ts",
     "./social-meta": "./src/social-meta-plugin.ts",
     "./spa-fallback": "./src/spa-fallback.ts",
+    "./test-defines": "./src/test-defines.ts",
     "./truapi-signing-worker": "./src/truapi-signing-worker.ts",
     "./package.json": "./package.json"
   },

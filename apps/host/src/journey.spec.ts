@@ -2,25 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { memoryStorage } from '@dotli/shared/testing';
 import type { Continuation } from './continuation.js';
 
 import { beginAttempt as beginOnPage, endJourney as endOnPage, type Attempt, type JourneyDeps } from './journey.js';
 
 /** One tab: its session storage, how it was last navigated, and the reason the app gave for its own reload. */
-let session: Map<string, string>;
+let session: Storage;
 let navigation: NavigationTimingType;
 let continuation: Continuation | null;
 
 const tab: JourneyDeps = {
-  session: () => ({
-    getItem: key => session.get(key) ?? null,
-    setItem: (key, value) => {
-      session.set(key, value);
-    },
-    removeItem: key => {
-      session.delete(key);
-    },
-  }),
+  session: () => session,
   navigationType: () => navigation,
   // Read once, as the page reads the reason its last reload left.
   takeContinuation: () => {
@@ -44,7 +37,7 @@ const endJourney = (): void => {
 };
 
 beforeEach(() => {
-  session = new Map();
+  session = memoryStorage();
   navigation = 'navigate';
   continuation = null;
 });
@@ -131,7 +124,7 @@ describe('Attempts at opening an app form a journey', () => {
 
   it('As a maintainer, a corrupt journey entry starts a fresh journey instead of failing the load', () => {
     // Given
-    session.set('dotli:journey', '{not json');
+    session.setItem('dotli:journey', '{not json');
     navigatedBy('navigate');
 
     // When

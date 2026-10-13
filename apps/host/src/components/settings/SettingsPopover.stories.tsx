@@ -5,19 +5,12 @@ import { createSignal, flush, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { byId } from '@dotli/ui/testing';
 import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import type { SavedSettings } from './settings.js';
 import { SettingsPopover } from './SettingsPopover.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
-
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
 
 const VERIFIED: SavedSettings = {
   backend: 'smoldot-direct',
@@ -72,7 +65,7 @@ type Story = StoryObj<typeof meta>;
 export const OpensBody: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
-    const button = el('mode-button');
+    const button = byId('mode-button');
     await ctx.step('Given the closed button with its labels and ARIA state, and no mark', async () => {
       await expect(button).toHaveAttribute('title', 'Settings');
       await expect(button).toHaveAttribute('aria-label', 'Settings');
@@ -85,7 +78,7 @@ export const OpensBody: Story = {
     await ctx.step('Then the page was told, and it is the open dialog named Settings with the body', async () => {
       await expect(untrack(isOpen)).toBe(true);
       await expect(button).toHaveAttribute('aria-expanded', 'true');
-      const popover = el('mode-popover');
+      const popover = byId('mode-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Settings');
       await expect(within(popover).getByTestId('story-settings-body')).toHaveTextContent('Transport and cache');
@@ -107,13 +100,13 @@ export const UnverifiedMark: Story = {
   },
   play: async ({ step }) => {
     await step('Then there is no mark', async () => {
-      await expect(el('mode-button')).not.toHaveAttribute('data-badge');
+      await expect(byId('mode-button')).not.toHaveAttribute('data-badge');
     });
     await step('When the host reads them on trusted providers', () => {
       givenSettings({ ...VERIFIED, backend: 'rpc-gateway', verified: false });
     });
     await step('Then the button carries the mark', async () => {
-      await waitFor(() => expect(el('mode-button')).toHaveAttribute('data-badge'));
+      await waitFor(() => expect(byId('mode-button')).toHaveAttribute('data-badge'));
     });
   },
 };

@@ -4,6 +4,7 @@
 import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
 import type { ModalEntry, ModalView } from '../../page/state/modals.js';
 import { LockIcon } from '../../icons.js';
 import { CameraIcon, UploadIcon } from '../../../.storybook/glyphs.js';
@@ -48,8 +49,6 @@ type Story = StoryObj<typeof meta>;
 
 // The dialog is portalled into the body, outside the story's canvas.
 const body = within(document.body);
-/** Trusted keys, as the Tab trap meets them. Imported lazily so Storybook loads the stories outside Vitest. */
-const input = async () => (await import('vitest/browser')).userEvent;
 const footer = (): [string, string | null][] =>
   within(body.getByTestId('signing-modal-footer'))
     .getAllByRole('button')
@@ -94,11 +93,11 @@ export const FocusStartsOnDialog: Story = {
     });
     await step('When I press Tab on the last answer, then focus wraps to the first', async () => {
       body.getByRole('button', { name: 'Allow once' }).focus();
-      await (await input()).keyboard('{Tab}');
+      await (await trustedInput()).keyboard('{Tab}');
       await expect(body.getByRole('button', { name: 'Deny' })).toHaveFocus();
     });
     await step('When I press Shift+Tab on the first, then focus wraps to the last', async () => {
-      await (await input()).keyboard('{Shift>}{Tab}{/Shift}');
+      await (await trustedInput()).keyboard('{Shift>}{Tab}{/Shift}');
       await expect(body.getByRole('button', { name: 'Allow once' })).toHaveFocus();
     });
   },

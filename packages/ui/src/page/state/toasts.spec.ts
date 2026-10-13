@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { bindCaptureSink } from '@dotli/metrics';
-import { FakePage } from '@dotli/shared/testing';
+import { FakePage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   bindToastPage,
@@ -11,7 +11,6 @@ import {
   dismissToast,
   pushToast as pushToastTo,
   removeToast,
-  resetToastsForTests,
   setToastsExpanded,
   toastsStore,
   type ToastInput,
@@ -69,7 +68,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetToastsForTests();
+  resetAllStoresForTests();
   vi.useRealTimers();
 });
 
@@ -268,7 +267,7 @@ describe('toast store', () => {
     // Given a page bound, reset, and bound again
     const counted = new ListenerCountingPage();
     bindToastPage(counted);
-    resetToastsForTests();
+    resetAllStoresForTests();
 
     // When
     bindToastPage(counted);

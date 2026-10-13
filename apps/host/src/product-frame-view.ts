@@ -13,6 +13,8 @@ import { showProductTitle } from './product-title.js';
 /** The parts of the page the product frame shares. */
 export interface FramePage {
   body: () => Pick<HTMLElement, 'style'>;
+  /** Where the product frame mounts. */
+  container: () => Pick<HTMLElement, 'dataset' | 'replaceChildren'>;
   /** Takes the full-page screen over the frame down. */
   clearScreen: () => void;
   /** Ends the loading screen. */
@@ -37,6 +39,12 @@ export function createProductFrameView(page: FramePage): ProductFrameView {
         page.hideLoading();
       }
     },
+    showStatus: status => {
+      page.container().dataset['productFrame'] = status;
+    },
+    clearMount: () => {
+      page.container().replaceChildren();
+    },
     // Behind the compile-time flag, so other builds drop the panel's chunk.
     loadCheckerPanel:
       import.meta.env.VITE_SANDBOX_CHECKER === undefined
@@ -48,9 +56,15 @@ export function createProductFrameView(page: FramePage): ProductFrameView {
   };
 }
 
+/** Where the page mounts the product frame. */
+export function productFrameContainer(): HTMLElement {
+  return document.getElementById('app') ?? document.body;
+}
+
 /** The page's frame view, over its body, screens and loading screen. */
 export const productFrameView: ProductFrameView = createProductFrameView({
   body: () => document.body,
+  container: productFrameContainer,
   clearScreen,
   hideLoading,
 });

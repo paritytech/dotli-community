@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { memoryModeStorage } from './mode.fake.js';
+import { memoryStorage } from '@dotli/shared/testing';
 import { BACKEND_KEY, CACHE_KEY } from './mode.js';
 import { NETWORK_KEY } from './network.js';
 import { hasStoredSettings, resolveSettings, sharedSettingsOf, writeLocalSettings } from './settings.js';
@@ -14,7 +14,7 @@ const DEFAULT_CACHE = { skipCidCache: false, skipArchiveCache: false, skipWorker
 describe('resolveSettings', () => {
   it('As a first-time visitor, I get the default network, the per-tab light client and every cache on', () => {
     // When
-    const settings = resolveSettings({ local: memoryModeStorage(), shared: null, sharedWorkerAvailable: true });
+    const settings = resolveSettings({ local: memoryStorage(), shared: null, sharedWorkerAvailable: true });
 
     // Then
     expect(settings).toEqual({ network: 'paseo-next-v2', backend: 'smoldot-direct', cache: DEFAULT_CACHE });
@@ -22,7 +22,7 @@ describe('resolveSettings', () => {
 
   it('As a returning visitor, I get the network and backend I chose on this origin', () => {
     // Given
-    const local = memoryModeStorage({ [NETWORK_KEY]: 'previewnet', [BACKEND_KEY]: 'rpc-gateway' });
+    const local = memoryStorage({ [NETWORK_KEY]: 'previewnet', [BACKEND_KEY]: 'rpc-gateway' });
 
     // When
     const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
@@ -33,7 +33,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor on a new subdomain, the backend and caches I chose elsewhere win over this origin', () => {
     // Given
-    const local = memoryModeStorage({ [BACKEND_KEY]: 'smoldot-direct' });
+    const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct' });
     const shared = { backend: 'rpc-gateway', cache: CACHE_OFF };
 
     // When
@@ -46,7 +46,7 @@ describe('resolveSettings', () => {
 
   it('As a parallel test worker on localhost, this origin keeps its own choice over the shared one', () => {
     // Given
-    const local = memoryModeStorage({ [BACKEND_KEY]: 'smoldot-direct' });
+    const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct' });
 
     // When
     const settings = resolveSettings({
@@ -63,7 +63,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor following a shared link, the link wins over both stores', () => {
     // Given
-    const local = memoryModeStorage({ [NETWORK_KEY]: 'paseo-next-v2' });
+    const local = memoryStorage({ [NETWORK_KEY]: 'paseo-next-v2' });
     const url = parseSettingsFromSearch(new URLSearchParams('network=previewnet&chainBackend=rpc-gateway'));
 
     // When
@@ -80,7 +80,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor with a network this build no longer offers, I get the default network', () => {
     // Given
-    const local = memoryModeStorage({ [NETWORK_KEY]: 'kusama' });
+    const local = memoryStorage({ [NETWORK_KEY]: 'kusama' });
 
     // When
     const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
@@ -91,7 +91,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor from an old build, the backend my old mode key names is the one I get', () => {
     // Given
-    const local = memoryModeStorage({ 'dotli:mode': 'gateway' });
+    const local = memoryStorage({ 'dotli:mode': 'gateway' });
 
     // When
     const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
@@ -102,7 +102,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor whose browser lost SharedWorker, I get the light client per tab', () => {
     // Given
-    const local = memoryModeStorage({ [BACKEND_KEY]: 'smoldot-shared-worker' });
+    const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-shared-worker' });
 
     // When
     const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: false });
@@ -113,7 +113,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor whose browser lacks SharedWorker, a link naming the shared light client runs me per tab', () => {
     // Given
-    const local = memoryModeStorage({ [BACKEND_KEY]: 'rpc-gateway' });
+    const local = memoryStorage({ [BACKEND_KEY]: 'rpc-gateway' });
     const url = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
 
     // When
@@ -125,7 +125,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor whose stored cache settings are malformed, every cache is on', () => {
     // Given
-    const local = memoryModeStorage({ [CACHE_KEY]: '{"skipCidCache":' });
+    const local = memoryStorage({ [CACHE_KEY]: '{"skipCidCache":' });
 
     // When
     const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
@@ -137,7 +137,7 @@ describe('resolveSettings', () => {
   it('As a first visit on a localhost origin, I get the default backend whatever the shared store holds', () => {
     // When
     const settings = resolveSettings({
-      local: memoryModeStorage(),
+      local: memoryStorage(),
       shared: { backend: 'rpc-gateway', cache: null },
       sharedWorkerAvailable: true,
       preferLocal: true,
@@ -149,7 +149,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor following a shared link, the cache switches in the link win over both stores', () => {
     // Given
-    const local = memoryModeStorage({ [CACHE_KEY]: CACHE_OFF });
+    const local = memoryStorage({ [CACHE_KEY]: CACHE_OFF });
     const url = parseSettingsFromSearch(new URLSearchParams('skipCidCache=0&skipWorkerCache=1'));
 
     // When
@@ -166,7 +166,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor following a link to a network this build does not offer, I get the stored network', () => {
     // Given
-    const local = memoryModeStorage({ [NETWORK_KEY]: 'previewnet' });
+    const local = memoryStorage({ [NETWORK_KEY]: 'previewnet' });
     const url = {
       network: 'kusama',
       chainBackend: null,
@@ -189,7 +189,7 @@ describe('resolveSettings', () => {
 
   it('As a visitor with a valid backend and a stale old mode key, the backend I chose wins', () => {
     // Given
-    const local = memoryModeStorage({ [BACKEND_KEY]: 'smoldot-direct', 'dotli:mode': 'gateway' });
+    const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct', 'dotli:mode': 'gateway' });
 
     // When
     const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
@@ -202,18 +202,18 @@ describe('resolveSettings', () => {
 describe('writeLocalSettings', () => {
   it('As a visitor from an old build, my settings are stored under the current keys and the old key is gone', () => {
     // Given
-    const local = memoryModeStorage({ 'dotli:mode': 'gateway' });
+    const local = memoryStorage({ 'dotli:mode': 'gateway' });
     const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
 
     // When
     writeLocalSettings(settings, local);
 
     // Then
-    expect(local.dump()).toEqual({
-      [NETWORK_KEY]: 'paseo-next-v2',
-      [BACKEND_KEY]: 'rpc-gateway',
-      [CACHE_KEY]: JSON.stringify(DEFAULT_CACHE),
-    });
+    expect(local.getItem(NETWORK_KEY)).toBe('paseo-next-v2');
+    expect(local.getItem(BACKEND_KEY)).toBe('rpc-gateway');
+    expect(local.getItem(CACHE_KEY)).toBe(JSON.stringify(DEFAULT_CACHE));
+    expect(local.getItem('dotli:mode')).toBeNull();
+    expect(local.length).toBe(3);
   });
 });
 
@@ -230,7 +230,7 @@ describe('sharedSettingsOf', () => {
 describe('hasStoredSettings', () => {
   it('As a first-time visitor, I hold no stored settings, and a returning one does', () => {
     // When / Then
-    expect(hasStoredSettings(memoryModeStorage())).toBe(false);
-    expect(hasStoredSettings(memoryModeStorage({ [CACHE_KEY]: CACHE_OFF }))).toBe(true);
+    expect(hasStoredSettings(memoryStorage())).toBe(false);
+    expect(hasStoredSettings(memoryStorage({ [CACHE_KEY]: CACHE_OFF }))).toBe(true);
   });
 });

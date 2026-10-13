@@ -5,10 +5,11 @@
 // clear of it. The panel itself is tested by its story plays.
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { mountViolationPanel } from '../../../src/components/sandbox-checker/mount.js';
-import { attachProductFrame, type FrameBox, resetProductFrameLayout } from '../../../src/product-frame-layout.js';
+import { attachProductFrame, type FrameBox } from '../../../src/product-frame-layout.js';
 
 /** A panel covering 120 px at the bottom while it shows. */
 function StandInPanel(props: { onReserve: (bottom: number) => void }): JSX.Element {
@@ -21,7 +22,7 @@ function StandInPanel(props: { onReserve: (bottom: number) => void }): JSX.Eleme
 }
 
 afterEach(() => {
-  resetProductFrameLayout();
+  resetAllStoresForTests();
   document.body.replaceChildren();
 });
 

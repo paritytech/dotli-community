@@ -5,7 +5,8 @@ import { onCleanup } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { attachProductFrame, resetProductFrameLayout, setChatWidth } from '../../product-frame-layout.js';
+import { query } from '@dotli/ui/testing';
+import { attachProductFrame, setChatWidth } from '../../product-frame-layout.js';
 import { mountViolationPanel } from './mount.js';
 import violatingProduct from '../../../.storybook/violating-product.js?inline-script';
 
@@ -45,7 +46,6 @@ const meta = {
     a11y: { context: 'body' },
   },
   beforeEach: () => () => {
-    resetProductFrameLayout();
     resetAllStoresForTests();
   },
 } satisfies Meta<typeof Checker>;
@@ -69,11 +69,7 @@ async function product(canvasElement: HTMLElement): Promise<Required<ProductWind
 }
 
 function panel(canvasElement: HTMLElement): HTMLElement {
-  const el = canvasElement.ownerDocument.querySelector<HTMLElement>('#sandbox-checker-panel');
-  if (el === null) {
-    throw new Error('No violation panel');
-  }
-  return el;
+  return query(canvasElement.ownerDocument, '#sandbox-checker-panel');
 }
 
 /** Whether the product frame ends where the panel starts, so the panel covers none of the product. */

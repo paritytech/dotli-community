@@ -45,8 +45,3 @@ export function setVerificationShieldState(state: ShieldState): void {
     urlPill.set({ ...current, shield: state });
   }
 }
-
-/** Back to the empty URL bar. Tests only: the host never resets the pill. */
-export function resetUrlPill(): void {
-  urlPill.set({ kind: 'none' });
-}

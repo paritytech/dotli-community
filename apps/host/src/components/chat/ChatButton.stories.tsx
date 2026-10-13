@@ -3,17 +3,10 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
+import { byId } from '@dotli/ui/testing';
 import { TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import { type ChatStage, chatStage } from '../../../.storybook/chat-fixtures.js';
 import { ChatButton } from './ChatButton.js';
-
-function byId(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (el === null) {
-    throw new Error(`no #${id}`);
-  }
-  return el;
-}
 
 /** The story's chat, fresh for each. */
 let stage: ChatStage = chatStage();

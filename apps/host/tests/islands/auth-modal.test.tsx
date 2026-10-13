@@ -14,7 +14,6 @@ import type { AuthCommands } from '../../src/runtime/auth-commands.js';
 import { createBlockingModalCoordinator } from '../../src/runtime/blocking-modal-queue.js';
 import { initAuthController, startLogin } from '../../src/runtime/auth-controller.js';
 import { setAuthState } from '../../src/runtime/state/auth.js';
-import { resetAuthControllerForTests } from '../../src/runtime/auth-controller.js';
 import { getTopbarState, reportBlockingModals, setTopbarVisible } from '../../src/state/topbar.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
 import { createProductFrameView } from '../../src/product-frame-view.js';
@@ -63,7 +62,6 @@ beforeEach(() => {
 afterEach(() => {
   unmount?.();
   unmount = undefined;
-  resetAuthControllerForTests();
   resetAllStoresForTests();
   document.body.replaceChildren();
   document.body.removeAttribute('style');
@@ -101,6 +99,7 @@ describe('AuthModal island', () => {
     document.body.append(frame, button);
     createProductFrameView({
       body: () => document.body,
+      container: () => document.body,
       clearScreen: () => undefined,
       hideLoading: () => undefined,
     }).attachFrame(frame);

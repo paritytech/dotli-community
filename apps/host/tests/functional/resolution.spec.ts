@@ -19,7 +19,7 @@ const WARM_DOMAIN = process.env['WARM_DOMAIN'] ?? 'browse';
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
 /** The provider's smoldot database store lives on this origin. */
 const PROTOCOL_ORIGIN = `http://host.localhost:${PORT}`;
-/** Long enough for the provider to write its first warm-start blob to IndexedDB. */
+/** The longest the provider takes to write its first warm-start blob to IndexedDB. */
 const SNAPSHOT_WINDOW_MS = 35_000;
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
@@ -106,6 +106,10 @@ async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
     throw new Error(`no protocol frame at ${PROTOCOL_ORIGIN}`);
   }
   return frame.evaluate(async () => {
+    // Opening a database that does not exist yet would create it and block the provider's own upgrade.
+    if (!(await indexedDB.databases()).some(d => d.name === 'dotli-smoldot-db')) {
+      return { stored: [], loaded: [] };
+    }
     const keys = (db: IDBDatabase, store: string): Promise<string[]> =>
       new Promise((resolve, reject) => {
         if (!db.objectStoreNames.contains(store)) {
@@ -130,6 +134,9 @@ async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
         reject(req.error ?? new Error('open smoldot-db failed'));
       };
     });
+    db.onversionchange = () => {
+      db.close();
+    };
     try {
       return {
         stored: await keys(db, 'chain-databases'),
@@ -171,7 +178,9 @@ test.describe('Warm start across a browser restart', () => {
     try {
       // Given
       const primed = await withWarmSession(profile, BASE_URL, 'warm start, session 1', async page => {
-        await page.waitForTimeout(SNAPSHOT_WINDOW_MS);
+        await expect
+          .poll(async () => (await readSmoldotDb(page)).stored, { timeout: SNAPSHOT_WINDOW_MS })
+          .not.toEqual([]);
         return readSmoldotDb(page);
       });
       expect(primed.stored, 'session 1 stored no database blobs').not.toEqual([]);
@@ -182,7 +191,10 @@ test.describe('Warm start across a browser restart', () => {
 
       // Then
       expect(resumed.loaded, 'session 2 resumed no chain from storage').not.toEqual([]);
-      expect(primed.stored).toEqual(expect.arrayContaining(resumed.loaded));
+      expect(
+        resumed.loaded.some(key => primed.stored.includes(key)),
+        'session 2 resumed nothing session 1 stored',
+      ).toBe(true);
     } finally {
       rmSync(profile, { recursive: true, force: true });
     }

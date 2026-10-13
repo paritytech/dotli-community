@@ -11,6 +11,7 @@ import {
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { byId, query } from '@dotli/ui/testing';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import {
   DEFAULT_CACHE,
@@ -25,42 +26,20 @@ import { SettingsItem } from '../topbar/items.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
 
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
-
-function q(selector: string): HTMLElement {
-  const found = document.querySelector<HTMLElement>(selector);
-  if (found === null) {
-    throw new Error(`No ${selector}`);
-  }
-  return found;
-}
-
-function qInput<T extends HTMLButtonElement | HTMLInputElement>(selector: string, type: new () => T): T {
-  const found = q(selector);
-  if (!(found instanceof type)) {
-    throw new Error(`${selector} is not a ${type.name}`);
-  }
-  return found;
-}
 const isOpen = (): boolean => document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
-const applyButton = (): HTMLButtonElement => qInput('[data-testid="mode-apply-row"] button', HTMLButtonElement);
+const applyButton = (): HTMLButtonElement =>
+  query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
 const toggle = (label: string): HTMLButtonElement =>
-  qInput(`[role="switch"][aria-label="${label}"]`, HTMLButtonElement);
+  query(document, `[role="switch"][aria-label="${label}"]`, HTMLButtonElement);
 const radio = (name: string, value: string): HTMLInputElement =>
-  qInput(`input[name="${name}"][value="${value}"]`, HTMLInputElement);
+  query(document, `input[name="${name}"][value="${value}"]`, HTMLInputElement);
 const selectedCategory = (): string | null | undefined =>
   document.querySelector('[data-testid="settings-categories"] [aria-pressed="true"]')?.getAttribute('data-testid');
 
 type Category = 'general' | 'network' | 'advanced';
 
 async function showCategory(click: (el: Element) => Promise<void>, category: Category): Promise<void> {
-  await click(q(`[data-testid="settings-category-${category}"]`));
+  await click(query(document, `[data-testid="settings-category-${category}"]`));
   await waitFor(() => expect(selectedCategory()).toBe(`settings-category-${category}`));
 }
 
@@ -91,12 +70,12 @@ async function expectChoice(
 
 /** The category control, then only the selected category's sections, then the footer. */
 async function expectSections(shown: Shown, category: Category): Promise<void> {
-  const categories = q('[data-testid="settings-categories"]');
+  const categories = query(document, '[data-testid="settings-categories"]');
   await expect(categories).toHaveAttribute('role', 'group');
   await expect(categories).toHaveAttribute('aria-label', 'Settings category');
   await expect([...categories.children].map(b => b.textContent)).toEqual(['General', 'Network', 'Advanced']);
   await expect(selectedCategory()).toBe(`settings-category-${category}`);
-  const sections = q('[data-testid="mode-popover-sections"]');
+  const sections = query(document, '[data-testid="mode-popover-sections"]');
   const theme = sections.querySelector('[role="radiogroup"][aria-label="Theme"]');
   const transports = sections.querySelector('[role="radiogroup"][aria-label="Network transport"]');
   const networks = sections.querySelector('[role="radiogroup"][aria-label="Network"]');
@@ -144,7 +123,7 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
     ] as const) {
       await expect(toggle(label)).toHaveAttribute('aria-checked', String(on));
     }
-    const clear = q('[data-testid="mode-clear-all-row"] button');
+    const clear = query(document, '[data-testid="mode-clear-all-row"] button');
     await expect(clear).toHaveTextContent('Clear all caches');
     await expect(clear).toHaveAttribute(
       'title',
@@ -160,7 +139,9 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
   await expect(applyButton()).toBeDisabled();
   await expect(applyButton()).toHaveAttribute('data-variant', 'primary');
   await expect(applyButton()).toHaveTextContent('Save and apply');
-  await expect(q('[data-testid="mode-apply-warning"]')).toHaveTextContent('Transport and cache changes reload the app');
+  await expect(query(document, '[data-testid="mode-apply-warning"]')).toHaveTextContent(
+    'Transport and cache changes reload the app',
+  );
 }
 
 /** The settings button and panel as the host composes them, given the story's settings. */
@@ -198,7 +179,7 @@ const DEFAULTS: Shown = {
 export const Open: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
-    const button = el('mode-button');
+    const button = byId('mode-button');
     await ctx.step('Given the closed button with its labels and ARIA state', async () => {
       await expect(button).toHaveAttribute('title', 'Settings');
       await expect(button).toHaveAttribute('aria-label', 'Settings');
@@ -210,12 +191,12 @@ export const Open: Story = {
     await open(ctx);
     await ctx.step('Then it is the open dialog named Settings, with its heading and version', async () => {
       await expect(button).toHaveAttribute('aria-expanded', 'true');
-      const popover = el('mode-popover');
+      const popover = byId('mode-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('tabindex', '-1');
       await expect(popover).toHaveAttribute('aria-label', 'Settings');
-      await expect(el('mode-popover-content').querySelector('h2')).toHaveTextContent('Settings');
-      await expect(q('[data-testid="mode-version"]')).toHaveTextContent('v0.0.0');
+      await expect(byId('mode-popover-content').querySelector('h2')).toHaveTextContent('Settings');
+      await expect(query(document, '[data-testid="mode-version"]')).toHaveTextContent('v0.0.0');
     });
   },
 };
@@ -230,10 +211,10 @@ export const OpenPhone: Story = {
     await ctx.step(
       'Then the sheet header says Settings, the body has no heading, and Save spans the foot',
       async () => {
-        const sheet = el('mode-popover');
+        const sheet = byId('mode-popover');
         await expect(sheet).toHaveAttribute('aria-modal', 'true');
         await expect(within(sheet).getByTestId('popover-sheet-title')).toHaveTextContent('Settings');
-        await expect(el('mode-popover-content').querySelector('h2')).toBeNull();
+        await expect(byId('mode-popover-content').querySelector('h2')).toBeNull();
         await expect(applyButton()).toHaveAttribute('data-block');
       },
     );
@@ -248,7 +229,7 @@ export const TrustedMark: Story = {
   },
   play: async ({ step }) => {
     await step('Then the button carries the mark', async () => {
-      await expect(el('mode-button')).toHaveAttribute('data-badge');
+      await expect(byId('mode-button')).toHaveAttribute('data-badge');
     });
   },
 };
@@ -261,13 +242,13 @@ export const UnreadSettingsHaveNoMark: Story = {
   },
   play: async ({ step }) => {
     await step('Then there is no mark', async () => {
-      await expect(el('mode-button')).not.toHaveAttribute('data-badge');
+      await expect(byId('mode-button')).not.toHaveAttribute('data-badge');
     });
     await step('When the host reads them on trusted providers', () => {
       givenSettings({ ...DEFAULT_SETTINGS, backend: 'rpc-gateway', verified: false });
     });
     await step('Then the button carries the mark', async () => {
-      await waitFor(() => expect(el('mode-button')).toHaveAttribute('data-badge'));
+      await waitFor(() => expect(byId('mode-button')).toHaveAttribute('data-badge'));
     });
   },
 };
@@ -282,14 +263,14 @@ export const UnseededPhoneClosesEveryWay: Story = {
   play: async ctx => {
     await expectPhone(ctx.step);
     const press = async (): Promise<void> => {
-      await ctx.userEvent.click(el('mode-button'));
+      await ctx.userEvent.click(byId('mode-button'));
       await waitFor(() => expect(isOpen()).toBe(true));
     };
     await ctx.step('When I open it before the store is seeded', press);
     await ctx.step('Then there are no settings yet, but the sheet head and its Close are there', async () => {
       await expect(document.querySelector('[data-testid="mode-popover-sections"]')).toBeNull();
       await waitFor(() => expect(document.querySelector('[data-testid="popover-sheet-close"]')).not.toBeNull());
-      await expect(el('mode-popover-content')).toHaveAttribute('data-sheet');
+      await expect(byId('mode-popover-content')).toHaveAttribute('data-sheet');
     });
     await ctx.step('When I press Escape', async () => {
       await ctx.userEvent.keyboard('{Escape}');
@@ -299,7 +280,7 @@ export const UnseededPhoneClosesEveryWay: Story = {
     });
     await ctx.step('When I open it again and press Close', async () => {
       await press();
-      await ctx.userEvent.click(q('[data-testid="popover-sheet-close"]'));
+      await ctx.userEvent.click(query(document, '[data-testid="popover-sheet-close"]'));
     });
     await ctx.step('Then it closed', async () => {
       await waitFor(() => expect(isOpen()).toBe(false));
@@ -328,7 +309,7 @@ export const StartsOnGeneral: Story = {
     await open(ctx);
     await ctx.step('Then General shows the theme tiles with System checked, and nothing else', async () => {
       await expect(selectedCategory()).toBe('settings-category-general');
-      await expect(q('[data-testid="theme-option-system"]')).toHaveAttribute('aria-checked', 'true');
+      await expect(query(document, '[data-testid="theme-option-system"]')).toHaveAttribute('aria-checked', 'true');
       await expect(document.querySelector('[data-testid="mode-cache"]')).toBeNull();
       await expect(document.querySelector('input[name="dotli-backend"]')).toBeNull();
     });
@@ -336,7 +317,7 @@ export const StartsOnGeneral: Story = {
       await showCategory(ctx.userEvent.click, 'advanced');
       await ctx.userEvent.keyboard('{Escape}');
       await waitFor(() => expect(isOpen()).toBe(false));
-      await ctx.userEvent.click(el('mode-button'));
+      await ctx.userEvent.click(byId('mode-button'));
       await waitFor(() => expect(isOpen()).toBe(true));
     });
     await ctx.step('Then it is back on General', async () => {
@@ -479,11 +460,13 @@ export const ThemePickedWithoutSave: Story = {
   play: async ctx => {
     await open(ctx);
     await ctx.step('When I pick Light', async () => {
-      await ctx.userEvent.click(q('[data-testid="theme-option-light"]'));
+      await ctx.userEvent.click(query(document, '[data-testid="theme-option-light"]'));
     });
     await ctx.step('Then it was picked at once, with Save still disabled and the popover open', async () => {
       await expect(settingsAsked.themes).toEqual(['light']);
-      await waitFor(() => expect(q('[data-testid="theme-option-light"]')).toHaveAttribute('aria-checked', 'true'));
+      await waitFor(() =>
+        expect(query(document, '[data-testid="theme-option-light"]')).toHaveAttribute('aria-checked', 'true'),
+      );
       await expect(applyButton()).toBeDisabled();
       await expect(isOpen()).toBe(true);
     });
@@ -497,7 +480,7 @@ export const DebugModeAsks: Story = {
     await open(ctx);
     await ctx.step('When I press Open in debug mode in Advanced', async () => {
       await showCategory(ctx.userEvent.click, 'advanced');
-      await ctx.userEvent.click(q('[data-testid="mode-debug-row"] button'));
+      await ctx.userEvent.click(query(document, '[data-testid="mode-debug-row"] button'));
     });
     await ctx.step('Then the page was asked once, and nothing was applied', async () => {
       await expect(settingsAsked.debugMode).toBe(1);
@@ -516,7 +499,11 @@ export const TransportKeepsFocus: Story = {
       await ctx.userEvent.click(radio('dotli-backend', 'rpc-gateway'));
     });
     await ctx.step('Then it is checked, selected and focused', async () => {
-      const checked = qInput('[role="radiogroup"][aria-label="Network transport"] input:checked', HTMLInputElement);
+      const checked = query(
+        document,
+        '[role="radiogroup"][aria-label="Network transport"] input:checked',
+        HTMLInputElement,
+      );
       await expect(checked.value).toBe('rpc-gateway');
       await expect(checked).toHaveFocus();
       await expect(checked.closest('label')).toHaveAttribute('data-selected');
@@ -538,7 +525,7 @@ export const CloseDropsDraft: Story = {
     await ctx.step('When I close and open again', async () => {
       await ctx.userEvent.keyboard('{Escape}');
       await waitFor(() => expect(isOpen()).toBe(false));
-      await click(el('mode-button'));
+      await click(byId('mode-button'));
       await waitFor(() => expect(isOpen()).toBe(true));
       await waitFor(() => expect(document.querySelector('[data-testid="settings-categories"]')).not.toBeNull());
       await showCategory(click, 'advanced');
@@ -562,9 +549,10 @@ export const ClearAllUsesSaved: Story = {
     await ctx.step('When I change the draft, then press Clear all caches', async () => {
       await showCategory(click, 'advanced');
       await click(toggle('dotNS cache'));
-      await click(q('[data-testid="mode-clear-all-row"] button'));
+      await click(query(document, '[data-testid="mode-clear-all-row"] button'));
     });
-    const clear = (): HTMLButtonElement => qInput('[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
+    const clear = (): HTMLButtonElement =>
+      query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
     await ctx.step('Then the full wipe ran with the saved settings, and the button says so', async () => {
       const saved = { chain: 'rpc-gateway', network: 'paseo-next-v2', cache: DEFAULT_CACHE };
       await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
@@ -588,7 +576,7 @@ export const WidthPicksSheetOrPopover: Story = {
     const { page } = await import('vitest/browser');
     const wide = { width: window.innerWidth, height: window.innerHeight };
     const reopen = async (): Promise<void> => {
-      await userEvent.click(el('mode-button'));
+      await userEvent.click(byId('mode-button'));
       await waitFor(() => expect(isOpen()).toBe(true));
     };
     const close = async (): Promise<void> => {
@@ -598,7 +586,7 @@ export const WidthPicksSheetOrPopover: Story = {
     try {
       await step('Given it opened wide as a popover, then closed', async () => {
         await reopen();
-        await expect(el('mode-popover')).not.toHaveAttribute('aria-modal');
+        await expect(byId('mode-popover')).not.toHaveAttribute('aria-modal');
         await close();
       });
       await step('When the window narrows to a phone and it opens', async () => {
@@ -606,7 +594,7 @@ export const WidthPicksSheetOrPopover: Story = {
         await reopen();
       });
       await step('Then it is a sheet', async () => {
-        await expect(el('mode-popover')).toHaveAttribute('aria-modal', 'true');
+        await expect(byId('mode-popover')).toHaveAttribute('aria-modal', 'true');
       });
       await step('When the window widens while it is open, then it is closed and opened', async () => {
         await page.viewport(wide.width, wide.height);
@@ -614,7 +602,7 @@ export const WidthPicksSheetOrPopover: Story = {
         await reopen();
       });
       await step('Then it is a popover again', async () => {
-        await expect(el('mode-popover')).not.toHaveAttribute('aria-modal');
+        await expect(byId('mode-popover')).not.toHaveAttribute('aria-modal');
       });
     } finally {
       await page.viewport(wide.width, wide.height);

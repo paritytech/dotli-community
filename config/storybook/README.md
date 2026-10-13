@@ -27,3 +27,4 @@ Shared Storybook and browser-test configuration for the UI packages. Internal, w
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `@config/storybook/main`   | `storybookMain({ plugins?, viteConfigPath?, pageFrame? })` returns the Storybook config. `plugins` runs per build. |
 | `@config/storybook/vitest` | `storybookVitestConfig(packageDir)` returns the browser test config for the package's stories.                     |
+| `@config/storybook/play`   | `trustedInput()` loads the trusted user input a play needs, on demand.                                             |

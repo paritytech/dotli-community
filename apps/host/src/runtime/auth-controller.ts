@@ -7,7 +7,7 @@
 
 import { withActiveTld } from '@dotli/config';
 import { captureException } from '@dotli/metrics';
-import { log, type ReadableStore } from '@dotli/shared';
+import { log, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
 import type { AuthCommands } from './auth-commands.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './blocking-modal-queue.js';
 import type { DotliAuthState } from './host-callbacks/AuthState.js';
@@ -368,9 +368,8 @@ export function disableAuthModal(): void {
   pageController?.disableAuthModal();
 }
 
-/** Tests only. */
-export function resetAuthControllerForTests(): void {
+registerStoreStateReset(() => {
   pageController?.dispose();
   pageController = null;
   pageModalBroken = false;
-}
+});

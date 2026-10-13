@@ -36,10 +36,12 @@ export type FrameProduct =
 /** `lost` is a product whose core went down, was refused or turned stale, until its render on a replacement begins. */
 export type ProductFrameStatus = 'idle' | 'connecting' | 'connected' | 'lost' | 'failed';
 
+/** What the frame asks of its iframe host. The page decides where the frame mounts. */
+export type FrameHostOptions = Omit<IframeHostOptions, 'container'>;
+
 export interface ProductFrameDeps {
   core: Pick<PageCore, 'acquire' | 'setProduct'>;
-  createIframeHost: (options: IframeHostOptions) => Promise<IframeHost>;
-  container: HTMLElement;
+  createIframeHost: (options: FrameHostOptions) => Promise<IframeHost>;
   /** Where a reloaded sandbox asks to be rebuilt. */
   channel: SandboxChannel;
   onPermissionsChanged: (listener: (change: PermissionsChange) => void) => () => void;
@@ -66,6 +68,10 @@ export interface ProductFrameView {
   showTitle: (product: TitledProduct) => void;
   /** Takes down the page's own screens over the frame, the loading screen too when `loading`. */
   clearScreens: (options: { loading: boolean }) => void;
+  /** The frame's status on the page, as state that browser tests read. */
+  showStatus: (status: ProductFrameStatus) => void;
+  /** Empties the frame's mount, for a direct iframe, which has no loading screen to keep. */
+  clearMount: () => void;
   /** Only in sandbox checker builds: loads the panel that watches the frame, as a mount that returns its dispose. */
   loadCheckerPanel?: (() => Promise<(iframe: HTMLIFrameElement) => () => void>) | undefined;
 }
@@ -174,11 +180,11 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       m.count(S.PRODUCT_STATUS_LISTENER, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
     },
   });
-  // On the DOM as well, as state that browser tests read. Subscribed before any other listener, so a listener reads
-  // the attribute it is hearing.
-  deps.container.dataset['productFrame'] = status.get();
+  // On the page as well, as state that browser tests read. Published before any other listener subscribes, so a
+  // listener reads the state it is hearing.
+  view.showStatus(status.get());
   status.subscribe(next => {
-    deps.container.dataset['productFrame'] = next;
+    view.showStatus(next);
   });
   const setStatus = status.set;
 
@@ -288,7 +294,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       if (previous === null) {
         // This path has no loading overlay to keep.
         view.clearScreens({ loading: true });
-        deps.container.innerHTML = '';
+        view.clearMount();
       }
       deps.core.setProduct({ label: product.label, productId: product.productId });
     } else {
@@ -441,7 +447,6 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
         allowedOrigin: args.allowedOrigin,
         allow,
         sandbox: args.sandbox,
-        container: deps.container,
         onPort: port => {
           productProvider = createMessagePortProvider(port);
           disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs, responses.forwarded);
@@ -596,6 +601,11 @@ function sandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, locat
   const url = new URL(deepPath ? `${origin}${deepPath}` : origin);
   if (url.origin !== origin) {
     throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
+  }
+  // Only the host writes the sandbox's params. A visitor's link that carried them could purge the sandbox origin or
+  // name a resolution.
+  for (const key of Object.values(SANDBOX_CONTRACT_PARAMS)) {
+    url.searchParams.delete(key);
   }
   url.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, product.cid);
   url.searchParams.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));

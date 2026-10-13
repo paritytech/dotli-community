@@ -5,18 +5,11 @@ import { createSignal, flush } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { byId } from '@dotli/ui/testing';
 import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import { PermissionsPopover } from './PermissionsPopover.js';
 
 const open = openSurface({ trigger: 'permissions-button', surface: 'permissions-popover' });
-
-function el(id: string): HTMLElement {
-  const found = document.getElementById(id);
-  if (found === null) {
-    throw new Error(`No #${id}`);
-  }
-  return found;
-}
 
 const [hasGrants, setHasGrantsSignal] = createSignal(false);
 
@@ -55,7 +48,7 @@ type Story = StoryObj<typeof meta>;
 export const OpensBody: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
-    const button = el('permissions-button');
+    const button = byId('permissions-button');
     await ctx.step('Given the button announces the closed dialog it opens', async () => {
       await expect(button).toHaveAttribute('title', 'Permissions');
       await expect(button).toHaveAttribute('aria-label', 'Permissions');
@@ -65,7 +58,7 @@ export const OpensBody: Story = {
     });
     await open(ctx);
     await ctx.step('Then it is the open dialog named Permissions, showing the body', async () => {
-      const popover = el('permissions-popover');
+      const popover = byId('permissions-popover');
       await expect(button).toHaveAttribute('aria-expanded', 'true');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Permissions');
@@ -78,7 +71,7 @@ export const OpensBody: Story = {
 export const GrantsBadge: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
-    const button = el('permissions-button');
+    const button = byId('permissions-button');
     await step('Given no grant, then no badge', async () => {
       await expect(button).not.toHaveAttribute('data-badge');
     });

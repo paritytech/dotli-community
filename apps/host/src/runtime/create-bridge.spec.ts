@@ -14,9 +14,8 @@ import { createBridge, type Bridge } from './create-bridge.js';
 import type { CoreRuntimeRequest } from './core-runtime.js';
 import type { DotliAuthState } from './host-callbacks/AuthState.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
-import { StubElement } from '../testing/stub-element.js';
 import { makeProvider } from './page-core.fake.js';
-import { fakeProductFrameView } from './product-frame.fake.js';
+import { fakeIframe, fakeProductFrameView } from './product-frame.fake.js';
 
 let channel: StartedSandboxChannel | null = null;
 
@@ -40,7 +39,6 @@ function harness(): {
   watches: () => number;
   requests: CoreRuntimeRequest[];
 } {
-  const container = new StubElement('div', { root: true }).asHtml();
   const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' });
   const requests: CoreRuntimeRequest[] = [];
   let watches = 0;
@@ -61,17 +59,7 @@ function harness(): {
       });
     },
     onStoredSessionChanged: () => () => undefined,
-    createIframeHost: options => {
-      const iframe = new StubElement('iframe').asIframe();
-      options.container.appendChild(iframe);
-      return Promise.resolve({
-        iframe,
-        dispose: () => {
-          iframe.remove();
-        },
-      });
-    },
-    container: () => container,
+    createIframeHost: () => Promise.resolve({ iframe: fakeIframe(), dispose: () => undefined }),
     onPermissionsChanged: () => () => undefined,
     frameView: fakeProductFrameView().view,
     notify: () => undefined,

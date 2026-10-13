@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { withActiveTld } from '@dotli/config';
-import { chooseModalButton, dismissModal, resetModalsForTests, shownModal } from '@dotli/ui/testing';
+import { chooseModalButton, dismissModal, shownModal } from '@dotli/ui/testing';
 import { openModal } from '@dotli/ui';
 import { SignIcon } from './components/icons/SignIcon.js';
 import { createHostPrompts } from './page-prompts.js';
-import { attachProductFrame, resetProductFrameLayout } from './product-frame-layout.js';
+import { attachProductFrame } from './product-frame-layout.js';
 
 afterEach(() => {
-  resetModalsForTests();
-  resetProductFrameLayout();
+  resetAllStoresForTests();
 });
 
 /** The prompts over the modal store, so a spec answers their dialogs in place of the overlays. */

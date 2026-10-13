@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import { dismissToast, pushToast, resetToastsForTests, toastsStore, type ToastInput } from '../../page/state/toasts.js';
+import { dismissToast, pushToast, toastsStore, type ToastInput } from '../../page/state/toasts.js';
 import { BellIcon } from '../icons/BellIcon.js';
 import { ToastCard, type ToastCardProps } from './ToastCard.js';
 import { ToastStack } from './ToastStack.js';
@@ -23,10 +24,10 @@ let pushed: number[] = [];
 const showLabelled =
   (labels: string[], over: Partial<ToastInput> = {}) =>
   () => {
-    resetToastsForTests();
+    resetAllStoresForTests();
     onAction.mockClear();
     pushed = labels.map(label => pushToast(labelled(label, over)));
-    return resetToastsForTests;
+    return resetAllStoresForTests;
   };
 
 const meta = {
@@ -40,17 +41,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const showOne = () => {
-  resetToastsForTests();
+  resetAllStoresForTests();
   pushToast(toast('Your transfer is in a block'));
-  return resetToastsForTests;
+  return resetAllStoresForTests;
 };
 
 const showThree = () => {
-  resetToastsForTests();
+  resetAllStoresForTests();
   pushToast(toast('Account connected'));
   pushToast(toast('Your transfer is in a block'));
   pushToast(toast('Transfer finalized'));
-  return resetToastsForTests;
+  return resetAllStoresForTests;
 };
 
 export const OneToast: Story = {
@@ -273,7 +274,7 @@ export const LeavingToastDoesNotExpand: Story = {
 export const ActionInPileRunsOnce: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    resetToastsForTests();
+    resetAllStoresForTests();
     onAction.mockClear();
     pushToast(labelled('A'));
     pushToast(
@@ -286,7 +287,7 @@ export const ActionInPileRunsOnce: Story = {
         },
       }),
     );
-    return resetToastsForTests;
+    return resetAllStoresForTests;
   },
   play: async ({ canvas, userEvent, step }) => {
     await step("When I press a toast's action in the pile", async () => {
