@@ -1,5 +1,5 @@
 {
-  "extends": "@config/typescript/base.json",
+  "extends": ["@config/typescript/base.json", "@config/typescript/solid.json"],
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },

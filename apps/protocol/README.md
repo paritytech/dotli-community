@@ -23,8 +23,9 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   origins only, never product origins.
 - The SharedWorker runs smoldot and serves each tab port with its own engine scope. The iframe reaches it through a link
   with typed messages.
-- An observer keeps an idle lease on each chain so sync can be watched. Tester knobs come from session storage and never
-  block startup.
+- One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched, and the
+  name resolver, for the iframe and the SharedWorker alike. Each keeps its own transport. Tester knobs come from session
+  storage and never block startup.
 - The worker core may read only the fixed services config, because the runtime network config never reaches a worker
   that serves every tab. Lint enforces it.
 

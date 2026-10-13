@@ -4,6 +4,7 @@
 // The local wallet's root entropy, encrypted at rest under a key this origin can use but never export.
 
 import { pageIdb, type DotliIdb } from './db.js';
+import { idbRequest, idbTransaction } from './idb.js';
 
 const STORE = 'local_wallet';
 const RECORD_ID = 'wallet';
@@ -41,32 +42,15 @@ export class LocalWalletUnreadableError extends Error {
 export function createLocalWalletStore(idb: DotliIdb = pageIdb) {
   async function readRecord(): Promise<LocalWalletRecord | undefined> {
     const db = await idb.connect();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(RECORD_ID);
-      req.onsuccess = () => {
-        resolve(req.result as LocalWalletRecord | undefined);
-      };
-      req.onerror = () => {
-        reject(req.error ?? new Error('local wallet read failed'));
-      };
-    });
+    return (await idbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(RECORD_ID))) as
+      LocalWalletRecord | undefined;
   }
 
   /** Resolves on commit, so a reload right after never loses the write. */
   async function write(change: (store: IDBObjectStore) => void): Promise<void> {
     const db = await idb.connect();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
+    await idbTransaction(db, STORE, 'readwrite', tx => {
       change(tx.objectStore(STORE));
-      tx.oncomplete = () => {
-        resolve();
-      };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('local wallet write failed'));
-      };
-      tx.onabort = () => {
-        reject(tx.error ?? new Error('local wallet write aborted'));
-      };
     });
   }
 
@@ -100,8 +84,7 @@ export function createLocalWalletStore(idb: DotliIdb = pageIdb) {
    */
   async function updateLocalWalletIdentity(identity: LocalWalletIdentity): Promise<void> {
     const db = await idb.connect();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
+    await idbTransaction(db, STORE, 'readwrite', tx => {
       const store = tx.objectStore(STORE);
       const req = store.get(RECORD_ID);
       req.onsuccess = () => {
@@ -109,15 +92,6 @@ export function createLocalWalletStore(idb: DotliIdb = pageIdb) {
         if (record !== undefined) {
           store.put({ ...record, identity });
         }
-      };
-      tx.oncomplete = () => {
-        resolve();
-      };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('local wallet identity update failed'));
-      };
-      tx.onabort = () => {
-        reject(tx.error ?? new Error('local wallet identity update aborted'));
       };
     });
   }

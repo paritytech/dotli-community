@@ -15,5 +15,5 @@ export default defineConfig([
       },
     },
   },
-  ...fixedServicesConfigOnly(['src/protocol-worker.ts']),
+  ...fixedServicesConfigOnly(['src/protocol-worker.ts', 'src/light-client-service.ts']),
 ]);

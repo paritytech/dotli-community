@@ -7,8 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type M
 import { must } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
-import { getActiveServicesConfig, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { getActiveServicesConfig } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { Api } from './api.js';
@@ -99,9 +98,6 @@ function rejectAfter(ms: number, err: Error): Promise<void> {
 }
 
 const RETRY_EVENT = 'Resolve retry after a chain halt';
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('createDotnsResolver', () => {
   let disconnect: Mock<() => void>;

@@ -3,11 +3,12 @@
 
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
-import { DB_NAME, DB_VERSION, openDotliDb, upgradeDotliDb } from './schema.js';
+import { openIdb } from './idb.js';
+import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 
 /** Opens the database on the current schema against `factory`, as the page's first read does. */
 function openCurrent(factory: IDBFactory): Promise<IDBDatabase> {
-  return openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb);
+  return openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb);
 }
 
 /** A connection on the previous schema that ignores `versionchange`, as a frozen older tab would. */

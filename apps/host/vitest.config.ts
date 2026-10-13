@@ -29,9 +29,8 @@ export default defineConfig({
           name: 'host:runtime',
           include: ['src/runtime/**/*.spec.ts'],
           environment: 'node',
-          // The runtime's specs read metrics through a recorder nobody else binds, and each starts on an empty mode
-          // store so a network or backend stored on the machine never reaches one.
-          setupFiles: ['src/testing/metrics-setup.ts', 'src/testing/mode-storage-setup.ts'],
+          // The runtime's specs read metrics through a recorder nobody else binds.
+          setupFiles: ['src/testing/metrics-setup.ts'],
         },
       },
       {
@@ -52,7 +51,7 @@ export default defineConfig({
     ],
   },
   define: {
-    // On, so tests assert the real span tree against a fake Sentry, not a stripped build's no-op handles.
+    // On, so tests assert the span tree against a fake Sentry, not the inert handles of a build without metrics.
     'import.meta.env.VITE_METRICS': '"true"',
     'import.meta.env.VITE_RESOLUTION_SAMPLE_RATE': '"1"',
     // getEnabledNetworks() has no default, so tests supply VITE_NETWORKS like a deployment does.

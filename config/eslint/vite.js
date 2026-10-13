@@ -14,7 +14,7 @@ const solidPlugin = /** @type {import("eslint").ESLint.Plugin} */ (/** @type {un
 
 const tsExtensionImport = {
   regex: '^\\.{1,2}/.*\\.tsx?$',
-  message: 'Import the `.js` path. Only files Node loads directly (vite.config.ts, src/vite.ts) use `.ts`.',
+  message: 'Import the `.js` path. Only files Node loads directly, such as vite.config.ts, use `.ts`.',
 };
 
 const testOnlyMessage = 'Test-only. Import it from specs and tests, never from shipped code.';
@@ -192,7 +192,7 @@ export const config = defineConfig([
     },
   },
   {
-    files: ['**/vite.config.ts', '**/src/vite.ts'],
+    files: ['**/vite.config.ts'],
     rules: {
       'no-restricted-imports': 'off',
     },
@@ -261,7 +261,7 @@ export const config = defineConfig([
 export const metricsPackageConfig = defineConfig([
   {
     files: ['src/**/*.ts'],
-    ignores: ['src/vite.ts', ...testOnlyFiles],
+    ignores: testOnlyFiles,
     rules: {
       'no-restricted-imports': [
         'error',
@@ -368,7 +368,7 @@ export function onlyAllowedScopes(allowed, message) {
  * @param {string[]} [within]
  */
 export function importBans(bans, within) {
-  const directLoads = ['**/vite.config.ts', '**/src/vite.ts'];
+  const directLoads = ['**/vite.config.ts'];
   /** @param {string[]} globs */
   const scoped = globs => (within === undefined ? globs : globs.flatMap(glob => within.map(zone => [glob, zone])));
   return defineConfig([

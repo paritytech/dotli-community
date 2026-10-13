@@ -3,8 +3,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend } from '@dotli/config';
-import { configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
 import { bindCaptureSink, type CaptureContext, type SpanHandle } from '@dotli/metrics';
 import type { ExecutableManifest, ManifestResult, ResolvePhase } from '@dotli/resolver';
 import type { CachedManifests } from '@dotli/storage';
@@ -177,9 +175,6 @@ function harness(options: Options = {}): Harness {
 function events(debug: DotliDebugEvent[]): string[] {
   return debug.map(event => `${event.layer}:${event.event}`);
 }
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('createProductLoader', () => {
   const captured: CaptureContext[] = [];

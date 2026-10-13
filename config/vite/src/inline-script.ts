@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Some scripts must run before the module bundle: before first paint, before the first island hydrates, or while the
-// HTML still parses. They stay real modules, and an import with `?inline-script` gives back the module bundled with
-// everything it imports into one classic script, as text a page or a response can inline.
+// Some scripts are written into documents dotli does not build, such as a product's pages, so they travel as text. They
+// stay real modules, and an import with `?inline-script` gives back the module bundled with everything it imports into
+// one classic script, as text a response can inline.
 
 import { dirname } from 'node:path';
 import { build, type Plugin, type Rolldown } from 'vite';

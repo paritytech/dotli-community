@@ -19,7 +19,6 @@ import {
   createCoreRpcChainProvider,
   isCoreRpcChainSupported,
   loadProvider,
-  requireBrokerLocalProvider,
 } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
@@ -45,7 +44,7 @@ window.addEventListener('vite:preloadError', event => {
 });
 
 import { log, serializeError } from '@dotli/shared';
-import { TIMEOUTS, getActiveServicesConfig, isValidNetwork, setNetworkOverride, type Network } from '@dotli/config';
+import { TIMEOUTS, getActiveServicesConfig, isValidNetwork, setActiveNetwork, type Network } from '@dotli/config';
 
 import { isSharedAuthOriginAllowed, type ProtocolRequestEnvelope } from '@dotli/protocol';
 import { DB_NAME } from '@dotli/storage';
@@ -53,8 +52,8 @@ import { DB_NAME } from '@dotli/storage';
 import type { SWRelayRequest } from './worker-messages.js';
 import { connectSharedWorker } from './shared-worker-link.js';
 import { readSessionTuning } from './session-tuning.js';
-import { observeChains } from './observe-chains.js';
 import { createEngine, type ResponseCallback } from './engine.js';
+import { startLightClientService } from './light-client-service.js';
 import { handleLocalWalletRequest } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
 import { createFrameRouter } from './frame-router.js';
@@ -247,7 +246,7 @@ async function init(): Promise<void> {
     signalError(message);
     return;
   }
-  setNetworkOverride(requestedNetwork.network);
+  setActiveNetwork(requestedNetwork.network);
   m.setDefaults({ network: requestedNetwork.network });
   log.event('Protocol mode', { flow: 'protocol', mode, network: requestedNetwork.network });
 
@@ -353,17 +352,12 @@ async function initDirectMode(): Promise<void> {
       window.location.hostname,
     ),
   );
-  // Before the first `createChainProvider` call, or that connection carries no lifecycle watch.
-  provider.enableSyncReporting([
-    // The chains the load waits on, in that order.
-    'relay',
-    'assethub',
-    'bulletin',
-    // Off the loading path, but the network panel lists its peer count.
-    'people',
-  ]);
-
-  const services = getActiveServicesConfig();
+  const service = startLightClientService({
+    lightClient,
+    resolver: { createDotnsResolver: resolve.createDotnsResolver, enableSyncReporting: provider.enableSyncReporting },
+    services: getActiveServicesConfig(),
+  });
+  window.addEventListener('pagehide', service.stop);
 
   lightClient.subscribe(change => {
     if (change.kind === 'fatal') {
@@ -425,32 +419,17 @@ async function initDirectMode(): Promise<void> {
     });
   }
 
-  // Releasing a smoldot chain makes the light client drop it and re-sync later.
-  const broker = createChainPool({ createTransport: lightClient.createChainProvider, destroyDelay: Infinity });
-  // The relay carries the warp progress but papi never dials it. Bulletin opened lazily by the first
-  // `bitswap_v1_get` has no peers yet and fails it, so it finds peers while the name resolves.
-  const stopWatching = observeChains(broker, [services.relay.genesis, services.bulletin.genesis]);
-  window.addEventListener('pagehide', stopWatching);
-  // The resolver reads through the broker's follows, since a second follow on one smoldot chain shares its one
-  // response queue, so the broker would drop its events and reads would hang.
-  const dotns = resolve.createDotnsResolver({
-    assetHub: () => requireBrokerLocalProvider(broker, services.assethub.genesis, 'Asset Hub'),
-    people: () => requireBrokerLocalProvider(broker, services.people.genesis, 'People'),
-    dotns: services.dotns,
-    source: 'light-client',
-  });
-
   const engine = createEngine({
-    broker,
+    broker: service.broker,
     isChainSupported: lightClient.isChainSupported,
     onWarmup: () => {
       // Legacy-account auth reads People, which would race a cold warp sync. Resolution does not need it.
-      void dotns.waitForPeopleFinalized().catch((err: unknown) => {
+      void service.dotns.waitForPeopleFinalized().catch((err: unknown) => {
         log.warn('[dot.li protocol] People chain warm failed (retried on demand)', err);
       });
       return Promise.resolve();
     },
-    resolver: dotns,
+    resolver: service.dotns,
   });
 
   // The iframe serves its one parent, so one scope holds every connection.

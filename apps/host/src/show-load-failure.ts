@@ -6,9 +6,10 @@
 // with the landing page into extra boot files, and a successful load clears the sighting.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { getCacheSettings, getNetwork, setBackend, writeSettingsToSearch, type Backend } from '@dotli/config';
+import { getSettings, writeSettingsToSearch, type Backend } from '@dotli/config';
 import { log } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
+import { saveSettings } from './settings-actions.js';
 import { RotateCwIcon } from '@dotli/ui/icons';
 import {
   FAILOVER_BTN_LABELS,
@@ -61,9 +62,10 @@ export function reloadAfterFailure(): void {
 }
 
 export function switchBackendAndReload(nextBackend: Backend): void {
-  setBackend(nextBackend);
+  const settings = { ...getSettings(), backend: nextBackend };
+  saveSettings(settings);
   const search = new URLSearchParams(window.location.search);
-  if (writeSettingsToSearch({ network: getNetwork(), chainBackend: nextBackend, cache: getCacheSettings() }, search)) {
+  if (writeSettingsToSearch({ network: settings.network, chainBackend: nextBackend, cache: settings.cache }, search)) {
     const query = search.toString();
     const newUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', newUrl);

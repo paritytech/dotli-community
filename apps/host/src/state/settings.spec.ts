@@ -1,23 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { getSettingsState, initSettingsStore } from './settings.js';
-import {
-  configureModeStorage,
-  getBackend,
-  getCacheSettings,
-  isSharedWorkerAvailable,
-  isVerifiedSession,
-  getEnabledNetworks,
-  getNetwork,
-} from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { getEnabledNetworks, isSharedWorkerAvailable, setSettings } from '@dotli/config';
 
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
-
-// Its own empty mode store, so settings saved on the machine running the tests never reach it.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('settings store', () => {
   afterEach(() => {
@@ -29,18 +17,22 @@ describe('settings store', () => {
     expect(getSettingsState()).toBeNull();
   });
 
-  it('As the settings popover, initSettingsStore snapshots the config getters', () => {
+  it('As the settings popover, initSettingsStore snapshots the settings the page booted with', () => {
+    // Given
+    const cache = { skipCidCache: true, skipArchiveCache: false, skipWorkerCache: false };
+    onTestFinished(setSettings({ network: 'previewnet', backend: 'rpc-gateway', cache }));
+
     // When
     initSettingsStore();
 
     // Then
     expect(getSettingsState()).toEqual({
-      backend: getBackend(),
-      cache: getCacheSettings(),
-      network: getNetwork(),
+      backend: 'rpc-gateway',
+      cache,
+      network: 'previewnet',
       enabledNetworks: getEnabledNetworks(),
       sharedWorkerAvailable: isSharedWorkerAvailable(),
-      verified: isVerifiedSession(getBackend()),
+      verified: false,
     });
   });
 });

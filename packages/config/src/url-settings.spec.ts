@@ -5,13 +5,6 @@ import { describe, it, expect } from 'vitest';
 import { parseSettingsFromSearch, writeSettingsToSearch } from './url-settings.js';
 import { NetworkName } from './network.js';
 
-const WITH_SHARED_WORKER = {
-  SharedWorker: class {
-    readonly port: unknown = null;
-  },
-};
-const WITHOUT_SHARED_WORKER = {};
-
 describe('parseSettingsFromSearch', () => {
   it('As a visitor, I open a URL with no or invalid settings and none of them apply', () => {
     // When
@@ -51,26 +44,12 @@ describe('parseSettingsFromSearch', () => {
     expect(parsed.skipWorkerCache).toBe(true);
   });
 
-  it('As a visitor whose browser has SharedWorker, I open a URL asking for the shared light client and it applies', () => {
+  it('As a visitor, I open a URL asking for the shared light client and it parses as written', () => {
     // When
-    const parsed = parseSettingsFromSearch(
-      new URLSearchParams('chainBackend=smoldot-shared-worker'),
-      WITH_SHARED_WORKER,
-    );
+    const parsed = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
 
     // Then
     expect(parsed.chainBackend).toBe('smoldot-shared-worker');
-  });
-
-  it('As a visitor whose browser lacks SharedWorker, I open a URL asking for the shared light client and it does not apply', () => {
-    // When
-    const parsed = parseSettingsFromSearch(
-      new URLSearchParams('chainBackend=smoldot-shared-worker'),
-      WITHOUT_SHARED_WORKER,
-    );
-
-    // Then
-    expect(parsed.chainBackend).toBeNull();
   });
 });
 

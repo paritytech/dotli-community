@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import { getActiveServicesConfig, SITE_ID, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
@@ -13,9 +12,6 @@ import { PROTOCOL_ERRORS } from './errors.js';
 import { createProtocolFrame } from './frame.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from './messages.js';
 import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameHost } from './testing/frame-host.js';
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('createProtocolFrame', () => {
   beforeEach(() => {

@@ -7,7 +7,7 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { startPage } from './page-start.js';
-import { BASE_DOMAIN, TIMEOUTS, getActiveServicesConfig, setNetworkOverride } from '@dotli/config';
+import { BASE_DOMAIN, TIMEOUTS, getActiveServicesConfig, setActiveNetwork } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
@@ -90,7 +90,7 @@ function configure(params: SandboxParams): void {
   if (params.resolutionId !== null) {
     setResolutionId(params.resolutionId);
   }
-  setNetworkOverride(params.network);
+  setActiveNetwork(params.network);
   m.setDefaults({ chain_backend: params.chainBackend, network: params.network });
   listenForArchiveFailures(appWorker.container);
 }

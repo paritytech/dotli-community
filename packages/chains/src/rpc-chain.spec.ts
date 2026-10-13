@@ -5,8 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { must } from '@dotli/shared/testing';
 import type { JsonRpcProvider } from 'polkadot-api';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
-import { getActiveServicesConfig, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { getActiveServicesConfig } from '@dotli/config';
 import {
   createCoreRpcChainProvider,
   getConnectedAssetHubRpcEndpoint,
@@ -33,9 +32,6 @@ async function connect(
   socket.open();
   return { socket, connection };
 }
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('rpc-chain', () => {
   beforeEach(() => {

@@ -4,6 +4,8 @@
 // smoldot-direct runs smoldot in the protocol iframe, smoldot-shared-worker in a SharedWorker that tabs share.
 // rpc-gateway uses a trusted JSON-RPC node and an IPFS gateway, with no smoldot.
 
+import { activeSettings } from './active-settings.js';
+
 export type Backend = 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
 
 /** Settings panel labels. Here rather than in the topbar because error copy names these controls, and copies drift. */
@@ -34,13 +36,21 @@ export function isSharedWorkerAvailable(scope: { SharedWorker?: unknown } = glob
 const LEGACY_MODE_KEY = 'dotli:mode';
 const LEGACY_CONTENT_BACKEND_KEY = 'dotli:content-backend';
 
+/** An old build's keys, read once and removed when the settings are next stored. */
+export const LEGACY_KEYS: readonly string[] = [LEGACY_MODE_KEY, LEGACY_CONTENT_BACKEND_KEY];
+
 const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
   'smoldot-direct',
   'smoldot-shared-worker',
   'rpc-gateway',
 ]);
 
-/** Sync because readers are not async-friendly. A cross-origin store must hydrate a memory cache at boot. */
+/** A stored backend, or null when the value names none this build knows. */
+export function parseBackend(raw: string | null): Backend | null {
+  return raw !== null && VALID_BACKENDS.has(raw) ? (raw as Backend) : null;
+}
+
+/** A store the settings are read from and written to, such as this origin's localStorage. */
 export interface ModeStorage {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
@@ -73,68 +83,17 @@ export const localStorageAdapter: ModeStorage = {
   },
 };
 
-let storage: ModeStorage = localStorageAdapter;
-
-/**
- * Call once at host boot, before any reader. A later swap does not invalidate values already returned. Returns a
- * function that puts the previous store back.
- */
-export function configureModeStorage(adapter: ModeStorage): () => void {
-  const previous = storage;
-  storage = adapter;
-  return () => {
-    storage = previous;
-  };
-}
-
-/** The store every setting of this package is read from and written to. */
-export function modeStorage(): ModeStorage {
-  return storage;
-}
-
-/** Moves an old build's keys into `BACKEND_KEY` on `target`. */
-export function migrateLegacyOn(target: ModeStorage): void {
-  const migrated = readAndClearLegacy(target);
-  if (migrated !== null) {
-    target.setItem(BACKEND_KEY, migrated);
-  }
-}
-
-/** From the stored choice, an old build's keys or the default. Writes nothing, `persistDefaults` stores it. */
+/** This context's backend, or the default before boot sets the settings. */
 export function getBackend(): Backend {
-  return backendRunnable(isSharedWorkerAvailable());
-}
-
-/** `getBackend` for a browser that has SharedWorker or not. */
-export function backendRunnable(sharedWorkerAvailable: boolean): Backend {
-  const chosen = storedBackend(storage) ?? readLegacy(storage) ?? defaultBackend();
-  return chosen === 'smoldot-shared-worker' && !sharedWorkerAvailable ? 'smoldot-direct' : chosen;
-}
-
-function storedBackend(target: ModeStorage): Backend | null {
-  const stored = target.getItem(BACKEND_KEY);
-  return stored !== null && VALID_BACKENDS.has(stored) ? (stored as Backend) : null;
-}
-
-export function setBackend(chainBackend: Backend): void {
-  storage.setItem(BACKEND_KEY, chainBackend);
+  return activeSettings()?.backend ?? defaultBackend();
 }
 
 export function defaultBackend(): Backend {
   return 'smoldot-direct';
 }
 
-/** Clears the legacy keys on success. The caller decides whether to write the result back. */
-function readAndClearLegacy(target: ModeStorage): Backend | null {
-  const chosen = readLegacy(target);
-  if (chosen !== null) {
-    target.removeItem(LEGACY_MODE_KEY);
-    target.removeItem(LEGACY_CONTENT_BACKEND_KEY);
-  }
-  return chosen;
-}
-
-function readLegacy(target: ModeStorage): Backend | null {
+/** The backend an old build's keys name, or null. */
+export function legacyBackend(target: Pick<ModeStorage, 'getItem'>): Backend | null {
   const chain = target.getItem(BACKEND_KEY);
   const content = target.getItem(LEGACY_CONTENT_BACKEND_KEY);
   const legacyMode = target.getItem(LEGACY_MODE_KEY);
@@ -164,12 +123,11 @@ const DEFAULT_CACHE: CacheSettings = {
   skipWorkerCache: false,
 };
 
-/** A field missing from an older build's stored object falls back to `DEFAULT_CACHE`. */
-export function getCacheSettings(): CacheSettings {
-  const stored = storage.getItem(CACHE_KEY);
-  if (stored !== null) {
+/** A stored cache value. A field missing from an older build's object, or malformed JSON, falls back to the default. */
+export function parseCacheSettings(raw: string | null): CacheSettings {
+  if (raw !== null) {
     try {
-      const parsed = JSON.parse(stored) as Partial<CacheSettings>;
+      const parsed = JSON.parse(raw) as Partial<CacheSettings>;
       return {
         skipCidCache: typeof parsed.skipCidCache === 'boolean' ? parsed.skipCidCache : DEFAULT_CACHE.skipCidCache,
         skipArchiveCache:
@@ -185,6 +143,7 @@ export function getCacheSettings(): CacheSettings {
   return { ...DEFAULT_CACHE };
 }
 
-export function setCacheSettings(settings: CacheSettings): void {
-  storage.setItem(CACHE_KEY, JSON.stringify(settings));
+/** This context's cache switches, or the defaults before boot sets the settings. */
+export function getCacheSettings(): CacheSettings {
+  return { ...(activeSettings()?.cache ?? DEFAULT_CACHE) };
 }

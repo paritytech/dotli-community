@@ -6,6 +6,7 @@
 
 import { createCacheReporter } from './cache-reporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
+import { idbTransaction } from './idb.js';
 import { log } from '@dotli/shared';
 
 const BLOCKS = 'blocks';
@@ -21,20 +22,6 @@ interface BlockMeta {
   cid: string;
   size: number;
   lastUsed: number;
-}
-
-function completion(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => {
-      resolve();
-    };
-    tx.onerror = () => {
-      reject(tx.error ?? new Error('IDB transaction error'));
-    };
-    tx.onabort = () => {
-      reject(tx.error ?? new Error('IDB transaction aborted'));
-    };
-  });
 }
 
 // Module scope is the page, so each action's fault is captured once per page.
@@ -63,6 +50,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
       const tx = db.transaction([BLOCKS, META], 'readwrite');
       const request = tx.objectStore(BLOCKS).get(cid);
       let settled = false;
+      // Not the transaction helper: the read answers as soon as it succeeds, before its touch commits.
       return await new Promise<Uint8Array | null>(resolve => {
         // Read and touch share one transaction and its error handlers. A failure after `settled` is the
         // touch, which the caller never sees.
@@ -111,11 +99,11 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
   async function putCachedBlock(cid: string, bytes: Uint8Array): Promise<void> {
     try {
       const db = await idb.connect();
-      const tx = db.transaction([BLOCKS, META], 'readwrite');
       const entry: BlockEntry = { cid, bytes };
-      tx.objectStore(BLOCKS).put(entry);
-      tx.objectStore(META).put(meta(cid, bytes.byteLength));
-      await completion(tx);
+      await idbTransaction(db, [BLOCKS, META], 'readwrite', tx => {
+        tx.objectStore(BLOCKS).put(entry);
+        tx.objectStore(META).put(meta(cid, bytes.byteLength));
+      });
     } catch (err) {
       report('write', err);
     }
@@ -125,10 +113,10 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
   async function deleteCachedBlock(cid: string): Promise<void> {
     try {
       const db = await idb.connect();
-      const tx = db.transaction([BLOCKS, META], 'readwrite');
-      tx.objectStore(BLOCKS).delete(cid);
-      tx.objectStore(META).delete(cid);
-      await completion(tx);
+      await idbTransaction(db, [BLOCKS, META], 'readwrite', tx => {
+        tx.objectStore(BLOCKS).delete(cid);
+        tx.objectStore(META).delete(cid);
+      });
     } catch (err) {
       report('delete', err);
     }
@@ -138,10 +126,10 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
   async function clearBlockCache(): Promise<boolean> {
     try {
       const db = await idb.connect();
-      const tx = db.transaction([BLOCKS, META], 'readwrite');
-      tx.objectStore(BLOCKS).clear();
-      tx.objectStore(META).clear();
-      await completion(tx);
+      await idbTransaction(db, [BLOCKS, META], 'readwrite', tx => {
+        tx.objectStore(BLOCKS).clear();
+        tx.objectStore(META).clear();
+      });
       return true;
     } catch (err) {
       report('clear', err);
@@ -153,26 +141,26 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
   async function pruneBlockCache(maxBytes: number): Promise<number> {
     try {
       const db = await idb.connect();
-      const tx = db.transaction([BLOCKS, META], 'readwrite');
-      const blocks = tx.objectStore(BLOCKS);
-      const cursorRequest = tx.objectStore(META).index(BY_LAST_USED).openCursor(null, 'prev');
-      let kept = 0;
       let evicted = 0;
-      cursorRequest.onsuccess = () => {
-        const cursor = cursorRequest.result;
-        if (cursor === null) {
-          return;
-        }
-        const entry = cursor.value as BlockMeta;
-        kept += entry.size;
-        if (kept > maxBytes) {
-          blocks.delete(entry.cid);
-          cursor.delete();
-          evicted += 1;
-        }
-        cursor.continue();
-      };
-      await completion(tx);
+      await idbTransaction(db, [BLOCKS, META], 'readwrite', tx => {
+        const blocks = tx.objectStore(BLOCKS);
+        const cursorRequest = tx.objectStore(META).index(BY_LAST_USED).openCursor(null, 'prev');
+        let kept = 0;
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (cursor === null) {
+            return;
+          }
+          const entry = cursor.value as BlockMeta;
+          kept += entry.size;
+          if (kept > maxBytes) {
+            blocks.delete(entry.cid);
+            cursor.delete();
+            evicted += 1;
+          }
+          cursor.continue();
+        };
+      });
       return evicted;
     } catch (err) {
       report('prune', err);

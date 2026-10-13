@@ -17,7 +17,7 @@ export default defineConfig([
   },
   {
     // Node loads this through the app configs directly, so its imports name `.ts` files.
-    files: ['src/app.ts'],
+    files: ['src/app.ts', 'src/service-worker.ts', 'src/spa-fallback.ts'],
     rules: {
       'no-restricted-imports': 'off',
     },

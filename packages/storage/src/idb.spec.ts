@@ -1,0 +1,123 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { IDBFactory } from 'fake-indexeddb';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { idbRequest, idbTransaction, openIdb } from './idb.js';
+
+const STORE = 'items';
+let db: IDBDatabase;
+
+beforeEach(async () => {
+  db = await openIdb(new IDBFactory(), 'test', 1, created => {
+    created.createObjectStore(STORE, { keyPath: 'id' });
+  });
+});
+
+function readItem(id: string): Promise<unknown> {
+  return idbRequest(db.transaction(STORE).objectStore(STORE).get(id));
+}
+
+describe('idbTransaction', () => {
+  it('As a store, I write in a transaction and the write has committed when it resolves', async () => {
+    // Given
+    const item = { id: 'a', value: 1 };
+
+    // When
+    await idbTransaction(db, STORE, 'readwrite', tx => {
+      tx.objectStore(STORE).put(item);
+    });
+
+    // Then
+    expect(await readItem('a')).toEqual(item);
+  });
+
+  it('As a store, I write in a transaction whose request fails part way and get its error with nothing kept', async () => {
+    // Given an item a second add collides with
+    await idbTransaction(db, STORE, 'readwrite', tx => {
+      tx.objectStore(STORE).add({ id: 'a' });
+    });
+
+    // When
+    const failed = idbTransaction(db, STORE, 'readwrite', tx => {
+      tx.objectStore(STORE).put({ id: 'b' });
+      tx.objectStore(STORE).add({ id: 'a' });
+    });
+
+    // Then
+    await expect(failed).rejects.toMatchObject({ name: 'ConstraintError' });
+    expect(await readItem('b')).toBeUndefined();
+  });
+
+  it('As a store, I run a transaction that aborts with requests pending and get its cause, not their AbortError', async () => {
+    // Given an item a second add collides with
+    await idbTransaction(db, STORE, 'readwrite', tx => {
+      tx.objectStore(STORE).add({ id: 'a' });
+    });
+
+    // When the collision aborts the transaction without its error reaching the transaction, as an abort from outside
+    // does, while a later request is still pending
+    const aborted = idbTransaction(db, STORE, 'readwrite', tx => {
+      const store = tx.objectStore(STORE);
+      store.add({ id: 'a' }).onerror = event => {
+        event.stopPropagation();
+      };
+      store.put({ id: 'b' });
+    });
+
+    // Then
+    await expect(aborted).rejects.toMatchObject({ name: 'ConstraintError' });
+    expect(await readItem('b')).toBeUndefined();
+  });
+
+  it('As a store, I abort a transaction on purpose and it rejects', async () => {
+    // When
+    const aborted = idbTransaction(db, STORE, 'readwrite', tx => {
+      tx.abort();
+    });
+
+    // Then
+    await expect(aborted).rejects.toBeInstanceOf(Error);
+  });
+
+  it('As a store, I write in a body that then throws and get its error with nothing committed', async () => {
+    // Given
+    const thrown = new Error('body failed');
+
+    // When
+    const failed = idbTransaction(db, STORE, 'readwrite', tx => {
+      tx.objectStore(STORE).put({ id: 'b' });
+      throw thrown;
+    });
+
+    // Then
+    await expect(failed).rejects.toBe(thrown);
+    expect(await readItem('b')).toBeUndefined();
+  });
+
+  it('As a store, I open a transaction on a closed connection and it rejects rather than throwing', async () => {
+    // Given
+    db.close();
+
+    // When
+    const closed = idbTransaction(db, STORE, 'readonly', () => undefined);
+
+    // Then
+    await expect(closed).rejects.toMatchObject({ name: 'InvalidStateError' });
+  });
+});
+
+describe('idbRequest', () => {
+  it('As a store, I make a request that fails and get its error', async () => {
+    // Given
+    await idbTransaction(db, STORE, 'readwrite', tx => {
+      tx.objectStore(STORE).add({ id: 'a' });
+    });
+
+    // When
+    const request = idbRequest(db.transaction(STORE, 'readwrite').objectStore(STORE).add({ id: 'a' }));
+
+    // Then
+    await expect(request).rejects.toMatchObject({ name: 'ConstraintError' });
+  });
+});

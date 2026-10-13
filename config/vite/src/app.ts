@@ -7,7 +7,7 @@
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
-import type { Plugin, PluginOption } from 'vite';
+import { loadEnv, type Plugin, type PluginOption } from 'vite';
 import wasmPlugin from 'vite-plugin-wasm';
 import { provideSentryRelease, sentryUploadRelease } from './sentry-release.ts';
 
@@ -44,22 +44,30 @@ export function dotliApp(appDir: string): DotliApp {
   provideCommitSha(appDir);
   provideSentryRelease(appDir);
   const appUrl = process.env['VITE_APP_URL'] ?? '';
+  const envDir = resolve(appDir, '../..');
   return {
     base: appUrl === '' ? '/' : new URL(appUrl).pathname,
-    envDir: resolve(appDir, '../..'),
+    envDir,
     wasm,
     sentry: () => {
-      if (process.env['VITE_METRICS'] !== 'true' || (process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
+      if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
         return false;
       }
-      return sentryVitePlugin({
-        org: 'paritytech',
-        project: 'dotli',
-        telemetry: false,
-        authToken: process.env['SENTRY_AUTH_TOKEN'],
-        release: sentryUploadRelease(appDir),
-        sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
-      });
+      const plugins = [
+        sentryVitePlugin({
+          org: 'paritytech',
+          project: 'dotli',
+          telemetry: false,
+          authToken: process.env['SENTRY_AUTH_TOKEN'],
+          release: sentryUploadRelease(appDir),
+          sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+        }),
+      ].flat();
+      // Decided per build, from the same `.env` files and process env the runtime gate reads.
+      return plugins.map(plugin => ({
+        ...plugin,
+        apply: (_config, { mode }) => loadEnv(mode, envDir, 'VITE_')['VITE_METRICS'] === 'true',
+      }));
     },
   };
 }

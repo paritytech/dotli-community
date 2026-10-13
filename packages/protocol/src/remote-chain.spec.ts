@@ -3,8 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
-import { getActiveServicesConfig, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { getActiveServicesConfig } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
@@ -19,9 +18,6 @@ import { createFrameHost, FRAME_CONFIG, type FrameHost } from './testing/frame-h
 const settle = async (): Promise<void> => {
   await vi.advanceTimersByTimeAsync(0);
 };
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('createRemoteChains', () => {
   let fake: FakeFrame;

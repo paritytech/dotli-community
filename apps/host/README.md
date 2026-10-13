@@ -24,6 +24,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - Two Astro pages, the shell and the landing page. Each has its own entry. Both start Sentry before any other module
   runs, then call one page start (the chunk and island failure offers and the desktop offer) and share one startup step:
   settings, the protocol iframe, the bridge and auth.
+- Settings are read once at boot from the link, the store every subdomain shares and this origin's storage, and stored
+  back to both stores. A link that changes a saved choice wipes and reloads, as Save does. A store that cannot be read
+  leaves the page on this origin's settings and the link's.
 - Static markup is Astro. Interactive controls are Solid islands, one module per island, bound to sync stores that
   import no Solid.
 - The building blocks group by domain beside the flows that use them, and take their types from the runtime, so a

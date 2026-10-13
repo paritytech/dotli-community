@@ -7,7 +7,7 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import { setNetworkOverride } from '@dotli/config';
+import { setActiveNetwork } from '@dotli/config';
 import { initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { createLightClient, enableSyncReporting, lightClientDeps, onChainDetail, onChainSync } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
@@ -22,7 +22,7 @@ m.setDefaults({ protocol_mode: 'shared-worker' });
 const network = workerNetwork(self.name);
 if (network.ok) {
   // Before the light client starts, since everything in this worker reads the active network.
-  setNetworkOverride(network.network);
+  setActiveNetwork(network.network);
   m.setDefaults({ network: network.network });
 }
 

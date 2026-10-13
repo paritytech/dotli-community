@@ -20,6 +20,7 @@ import {
 } from '@dotli/protocol';
 import { m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log } from '@dotli/shared';
+import { idbRequest, idbTransaction, openIdb } from '@dotli/storage';
 
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
@@ -427,48 +428,22 @@ async function loadOrCreateCoreSecretKey(keyDb: () => IDBFactory): Promise<Crypt
 }
 
 function openKeyDb(factory: IDBFactory): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = factory.open(KEY_DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(KEY_DB_STORE);
-    };
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-    request.onerror = () => {
-      reject(request.error ?? new Error('indexedDB open failed'));
-    };
+  return openIdb(factory, KEY_DB_NAME, 1, db => {
+    db.createObjectStore(KEY_DB_STORE);
   });
 }
 
-function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
-  return new Promise((resolve, reject) => {
-    const request = db.transaction(KEY_DB_STORE).objectStore(KEY_DB_STORE).get(CORE_SECRET_KEY_ID);
-    request.onsuccess = () => {
-      const value: unknown = request.result;
-      resolve(isCryptoKey(value) ? value : undefined);
-    };
-    request.onerror = () => {
-      reject(request.error ?? new Error('indexedDB get failed'));
-    };
-  });
+async function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
+  const value: unknown = await idbRequest(
+    db.transaction(KEY_DB_STORE).objectStore(KEY_DB_STORE).get(CORE_SECRET_KEY_ID),
+  );
+  return isCryptoKey(value) ? value : undefined;
 }
 
+/** Rejects when another tab added the key first, and on a commit-time abort such as a full quota. */
 function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(KEY_DB_STORE, 'readwrite');
+  return idbTransaction(db, KEY_DB_STORE, 'readwrite', tx => {
     tx.objectStore(KEY_DB_STORE).add(key, CORE_SECRET_KEY_ID);
-    tx.oncomplete = () => {
-      resolve();
-    };
-    tx.onerror = () => {
-      reject(tx.error ?? new Error('indexedDB add failed'));
-    };
-    // A commit-time abort such as QuotaExceededError fires only `abort`, and the key load would otherwise hang every
-    // read and write for the session.
-    tx.onabort = () => {
-      reject(tx.error ?? new Error('indexedDB add aborted'));
-    };
   });
 }
 

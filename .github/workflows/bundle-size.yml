@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
-      # Metrics on, as deployed. Off, the Sentry SDK is swapped for a no-op and the sizes would leave it out.
+      # Metrics on, as deployed. Off, the build drops the Sentry SDK and the sizes would leave it out.
       - name: Build
         env:
           VITE_METRICS: 'true'

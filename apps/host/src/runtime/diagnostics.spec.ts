@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import { configureModeStorage, getActiveServicesConfig, setBackend } from '@dotli/config';
+import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import {
@@ -12,14 +12,10 @@ import {
   type PageDiagnosticsDeps,
 } from './diagnostics.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { setProductLoaded } from './state/product.js';
 
-// Read per test, once the test's own mode store is bound.
-let people: string;
-beforeEach(() => {
-  people = getActiveServicesConfig().people.genesis;
-});
+const people = getActiveServicesConfig().people.genesis;
 const provider: RemoteChainProvider = () => ({ send: vi.fn(), disconnect: vi.fn() });
 
 function clientReading(block: Promise<{ number: number }>): FinalizedBlockClient & { destroy: Mock<() => void> } {
@@ -170,13 +166,9 @@ describe('createPageDiagnostics', () => {
     return { deps, diagnostics: createPageDiagnostics(deps) };
   }
 
-  beforeEach(() => {
-    configureModeStorage(memoryStorage());
-  });
-
   it('As a dotli developer on trusted providers, the AssetHub row names the node the client is connected to', () => {
     // Given
-    setBackend('rpc-gateway');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
     const { diagnostics } = pageDiagnostics('wss://live.example');
 
     // When
@@ -188,7 +180,7 @@ describe('createPageDiagnostics', () => {
 
   it('As a dotli developer on trusted providers before the client connects, the AssetHub row names the first node', () => {
     // Given
-    setBackend('rpc-gateway');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
     const { diagnostics } = pageDiagnostics(null);
 
     // When
@@ -204,7 +196,7 @@ describe('createPageDiagnostics', () => {
 
   it('As a dotli developer, only the site and the node rows are marked as worth copying', () => {
     // Given
-    setBackend('rpc-gateway');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
     const { diagnostics } = pageDiagnostics('wss://live.example');
 
     // When
@@ -221,7 +213,7 @@ describe('createPageDiagnostics', () => {
 
   it('As a dotli developer on the light client, the rows ask no trusted provider for its node', () => {
     // Given
-    setBackend('smoldot-direct');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     const { deps, diagnostics } = pageDiagnostics('wss://live.example');
 
     // When
@@ -235,7 +227,7 @@ describe('createPageDiagnostics', () => {
   it("As a dotli developer, the rows name the loaded product's manifest version and app version", () => {
     // Given
     onTestFinished(resetAllStoresForTests);
-    setBackend('smoldot-direct');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     setProductLoaded('doom', 'doom.dot', { cid: 'bafy', manifestVersion: 1, appVersion: [1, 2, 3, 'beta'] });
     const { diagnostics } = pageDiagnostics('wss://live.example');
 
@@ -249,7 +241,7 @@ describe('createPageDiagnostics', () => {
 
   it("As a dotli developer on the light client, the report lists the rows, the cache, the packages and each chain's finalized height", async () => {
     // Given
-    setBackend('smoldot-direct');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     const { deps, diagnostics } = pageDiagnostics(null, 1234);
     const rows = diagnostics.rows();
     const row = (label: string): string => rows.find(([name]) => name === label)?.[1] ?? '';
@@ -286,7 +278,7 @@ describe('createPageDiagnostics', () => {
 
   it('As a dotli developer on trusted providers, the report names the node the tab shows and asks no chain', async () => {
     // Given
-    setBackend('rpc-gateway');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
     const { deps, diagnostics } = pageDiagnostics('wss://live.example');
 
     // When

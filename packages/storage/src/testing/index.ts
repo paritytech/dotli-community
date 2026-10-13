@@ -5,7 +5,8 @@
 
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { createDbConnection, type DotliIdb } from '../db.js';
-import { DB_NAME, DB_VERSION, openDotliDb, upgradeDotliDb } from '../schema.js';
+import { openIdb } from '../idb.js';
+import { DB_NAME, DB_VERSION, upgradeDotliDb } from '../schema.js';
 
 export interface MemoryIdb extends DotliIdb {
   /** The factory behind `connect`, for a test that opens the database itself. */
@@ -17,7 +18,7 @@ export function memoryIdb(): MemoryIdb {
   const factory = new IDBFactory();
   return {
     factory,
-    connect: createDbConnection(() => openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb)),
+    connect: createDbConnection(() => openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb)),
     keyRange: () => IDBKeyRange,
   };
 }

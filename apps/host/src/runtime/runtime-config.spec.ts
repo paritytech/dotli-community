@@ -1,15 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
-import { getActiveServicesConfig, setNetworkOverride } from '@dotli/config';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 
 describe('labelToProductId', () => {
-  afterEach(() => {
-    setNetworkOverride('paseo-next-v2');
-  });
-
   it("As a dotli integrator, the host maps dotli labels to the active network's TLD", () => {
     // When / Then
     expect(labelToProductId('acme')).toBe('acme.paseo');
@@ -19,7 +15,7 @@ describe('labelToProductId', () => {
   // the host would read an empty record instead of failing loudly.
   it('As a dotli integrator, the host maps the same label to .testnet on previewnet', () => {
     // Given
-    setNetworkOverride('previewnet');
+    onTestFinished(setSettings({ ...getSettings(), network: 'previewnet' }));
 
     // When / Then
     expect(labelToProductId('acme')).toBe('acme.testnet');

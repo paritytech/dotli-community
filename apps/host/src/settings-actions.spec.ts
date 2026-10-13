@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { configureModeStorage, getBackend, getCacheSettings } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import {
   createSettingsActions,
@@ -31,8 +30,9 @@ const prior: ModeDraft = {
 let page: { pathname: string; search: string; hash: string };
 
 /** Fakes that record, in order, what the reset did. */
-function resetDeps(): { deps: SettingsActionsDeps; steps: string[] } {
+function resetDeps(): { deps: SettingsActionsDeps; steps: string[]; saved: ModeDraft[] } {
   const steps: string[] = [];
+  const saved: ModeDraft[] = [];
   const deps: SettingsActionsDeps = {
     clearCidCache: () => {
       steps.push('clear dotNS cache');
@@ -52,6 +52,9 @@ function resetDeps(): { deps: SettingsActionsDeps; steps: string[] } {
     reload: () => {
       steps.push('reload');
     },
+    save: draft => {
+      saved.push(draft);
+    },
     url: {
       read: () => page,
       replace: url => {
@@ -60,7 +63,7 @@ function resetDeps(): { deps: SettingsActionsDeps; steps: string[] } {
       },
     },
   };
-  return { deps, steps };
+  return { deps, steps, saved };
 }
 
 describe('applyAndReset', () => {
@@ -69,7 +72,6 @@ describe('applyAndReset', () => {
   let unbindCaptures: () => void;
 
   beforeEach(() => {
-    configureModeStorage(memoryStorage());
     page = { pathname: '/', search: '', hash: '' };
     metrics = bindRecordingSentry({ onFinished: onTestFinished });
     unbindCaptures = bindCaptureSink(captures);
@@ -82,7 +84,7 @@ describe('applyAndReset', () => {
 
   it('As a user, I turn the archive cache off and the blocks the host kept are cleared before the reload', async () => {
     // Given
-    const { deps, steps } = resetDeps();
+    const { deps, steps, saved } = resetDeps();
     const { applyAndReset } = createSettingsActions(deps);
     const draft: ModeDraft = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
 
@@ -91,7 +93,7 @@ describe('applyAndReset', () => {
 
     // Then the sandbox, which holds nothing across reloads, is not asked to purge
     expect(steps).toEqual(['clear archive cache', 'reload']);
-    expect(getCacheSettings().skipArchiveCache).toBe(true);
+    expect(saved.at(-1)?.cache.skipArchiveCache).toBe(true);
   });
 
   it('As a user, I turn the dotNS cache off and the cached names are cleared before the reload', async () => {
@@ -122,7 +124,7 @@ describe('applyAndReset', () => {
 
   it('As a user, I reset everything and the other origins are asked to purge after the wipe that would drop the request', async () => {
     // Given
-    const { deps, steps } = resetDeps();
+    const { deps, steps, saved } = resetDeps();
     const { applyAndReset } = createSettingsActions(deps);
     const draft: ModeDraft = { ...prior, chain: 'rpc-gateway' };
 
@@ -131,12 +133,12 @@ describe('applyAndReset', () => {
 
     // Then
     expect(steps).toEqual(['wipe origin', 'schedule protocol and sandbox purge', 'reload']);
-    expect(getBackend()).toBe('rpc-gateway');
+    expect(saved.at(-1)?.chain).toBe('rpc-gateway');
   });
 
   it('As a user whose cache fails to clear, Save & Apply counts the failure and still reloads with my new settings', async () => {
     // Given a clear that reported its own failure and resolved false, as the real one does
-    const { deps, steps } = resetDeps();
+    const { deps, steps, saved } = resetDeps();
     deps.clearBlockCache = () => Promise.resolve(false);
     const { applyAndReset } = createSettingsActions(deps);
     const draft: ModeDraft = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
@@ -146,7 +148,7 @@ describe('applyAndReset', () => {
 
     // Then: the reload boots with the new settings, from storage and from the URL alike
     expect(steps).toEqual(['reload']);
-    expect(getCacheSettings().skipArchiveCache).toBe(true);
+    expect(saved.at(-1)?.cache.skipArchiveCache).toBe(true);
     expect(new URLSearchParams(page.search).get('skipArchiveCache')).toBe('1');
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).not.toHaveBeenCalled();
@@ -168,7 +170,7 @@ describe('applyAndReset', () => {
 
   it('As a user whose origin wipe leaves something behind, Clear all counts it and still applies and reloads', async () => {
     // Given a wipe that reported its own failed parts
-    const { deps, steps } = resetDeps();
+    const { deps, steps, saved } = resetDeps();
     deps.wipeOrigin = () => Promise.resolve(['indexeddb']);
     const { applyAndReset } = createSettingsActions(deps);
 
@@ -177,14 +179,14 @@ describe('applyAndReset', () => {
 
     // Then
     expect(steps).toEqual(['schedule protocol and sandbox purge', 'reload']);
-    expect(getBackend()).toBe('rpc-gateway');
+    expect(saved.at(-1)?.chain).toBe('rpc-gateway');
     expect(captures.exception).not.toHaveBeenCalled();
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'wipe' }]);
   });
 
   it('As a user without session storage, Clear all still wipes, applies and reloads, and the purge request is left as a breadcrumb', async () => {
     // Given
-    const { deps, steps } = resetDeps();
+    const { deps, steps, saved } = resetDeps();
     const refused = new Error('Pending reset not scheduled');
     deps.schedulePendingReset = () => {
       throw refused;
@@ -196,7 +198,7 @@ describe('applyAndReset', () => {
 
     // Then
     expect(steps).toEqual(['wipe origin', 'reload']);
-    expect(getBackend()).toBe('rpc-gateway');
+    expect(saved.at(-1)?.chain).toBe('rpc-gateway');
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(1);
     expect(captures.expected).toHaveBeenCalledWith(refused, { flow: 'storage', step: 'settings_apply' });

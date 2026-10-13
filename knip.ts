@@ -23,6 +23,10 @@ export default {
       // Pins one truapi version across the workspaces and is what `link:truapi` swaps for a local build.
       ignoreDependencies: ['@parity/truapi'],
     },
+    'config/storybook': {
+      // Storybook loads these as preview annotations by the paths `storybookMain` gives it.
+      entry: ['src/preview.tsx', 'src/page-frame.tsx'],
+    },
     'apps/host': {
       astro: true,
       playwright: true,
@@ -30,19 +34,13 @@ export default {
       entry: ['src/main.ts', 'src/landing.ts', 'sentry-check.ts'],
     },
     'apps/sandbox': {
-      // The service worker is a separate Vite build named in vite.config.ts. Storybook loads its own Vite config by the
+      // The service worker is the PWA plugin's source, named in vite.config.ts. Storybook loads its own Vite config by the
       // path `.storybook/main.ts` gives it.
       entry: ['src/app-sw.ts', '.storybook/vite.config.ts'],
     },
     'config/typescript': {
       // `solid.json` names it as `jsxImportSource`, and each Solid workspace installs it.
       ignoreDependencies: ['@solidjs/web'],
-    },
-    'packages/metrics': {
-      // The strip-analytics plugin swaps these in by resolved path.
-      entry: ['src/*.noop.ts'],
-      // The app installs the SDK. A metrics-stripped build replaces it with the no-op twin.
-      ignoreDependencies: ['@sentry/browser'],
     },
     'packages/ui': {
       storybook: true,

@@ -60,8 +60,10 @@ import {
   isSandboxOrigin,
   getNetwork,
   getTldSuffix,
+  isSharedWorkerAvailable,
+  localStorageAdapter,
   parseSettingsFromSearch,
-  peekNetwork,
+  resolveSettings,
 } from '@dotli/config';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
 import {
@@ -372,12 +374,15 @@ async function main(): Promise<void> {
       // Behind the compile-time flag, so release bundles drop the localhost proxy.
       localhostProxy: DEBUG ? readLocalhostUrl : undefined,
     }),
-    // The TLD is a guess until settings apply, and the product route sets it again from them.
+    // The TLD is a guess until settings apply, from the link and this origin, and the product route sets it again.
     showProductPill: label => {
-      showProductPill(
-        label,
-        getTldSuffix(peekNetwork(parseSettingsFromSearch(new URLSearchParams(window.location.search)).network)),
-      );
+      const { network } = resolveSettings({
+        local: localStorageAdapter,
+        shared: null,
+        url: parseSettingsFromSearch(new URLSearchParams(window.location.search)),
+        sharedWorkerAvailable: isSharedWorkerAvailable(),
+      });
+      showProductPill(label, getTldSuffix(network));
     },
     showLocalhostPill,
     startShell,

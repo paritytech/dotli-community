@@ -6,7 +6,7 @@
 // Param names and defaults are inlined because they are the public URL contract.
 
 import { defaultNetwork, isValidNetwork, type Network } from './network.js';
-import { defaultBackend, isSharedWorkerAvailable, type Backend, type CacheSettings } from './mode.js';
+import { defaultBackend, parseBackend, type Backend, type CacheSettings } from './mode.js';
 
 const URL_PARAM_NAMES = {
   network: 'network',
@@ -21,12 +21,6 @@ const URL_DEFAULT_CACHE: CacheSettings = {
   skipArchiveCache: false,
   skipWorkerCache: false,
 };
-
-const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
-  'smoldot-direct',
-  'smoldot-shared-worker',
-  'rpc-gateway',
-]);
 
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
@@ -52,17 +46,12 @@ function parseBoolean(raw: string | null): boolean | null {
   return raw === '1';
 }
 
-/** `scope` is the page's global by default, where the shared light client needs SharedWorker. */
-export function parseSettingsFromSearch(
-  search: URLSearchParams,
-  scope: { SharedWorker?: unknown } = globalThis,
-): ParsedUrlSettings {
+/** The link's settings as written. `resolveSettings` applies what this browser can run. */
+export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSettings {
   const rawNetwork = search.get(URL_PARAM_NAMES.network);
-  const rawBackend = search.get(URL_PARAM_NAMES.chainBackend);
-  const backend = rawBackend !== null && VALID_BACKENDS.has(rawBackend) ? (rawBackend as Backend) : null;
   return {
     network: rawNetwork !== null && isValidNetwork(rawNetwork) ? rawNetwork : null,
-    chainBackend: backend === 'smoldot-shared-worker' && !isSharedWorkerAvailable(scope) ? null : backend,
+    chainBackend: parseBackend(search.get(URL_PARAM_NAMES.chainBackend)),
     skipArchiveCache: parseBoolean(search.get(URL_PARAM_NAMES.skipArchiveCache)),
     skipCidCache: parseBoolean(search.get(URL_PARAM_NAMES.skipCidCache)),
     skipWorkerCache: parseBoolean(search.get(URL_PARAM_NAMES.skipWorkerCache)),

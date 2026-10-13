@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The "dotli" database's one schema and its open.
+// The "dotli" database's one schema.
 
 export const DB_NAME = 'dotli';
 export const DB_VERSION = 6;
@@ -60,38 +60,4 @@ export function upgradeDotliDb(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains('local_wallet')) {
     db.createObjectStore('local_wallet', { keyPath: 'id' });
   }
-}
-
-/** Opens the database on `version`, rejecting rather than hanging when an older tab blocks the upgrade. */
-export function openDotliDb(
-  factory: IDBFactory,
-  name: string,
-  version: number,
-  upgrade: (db: IDBDatabase) => void,
-): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = factory.open(name, version);
-    req.onupgradeneeded = () => {
-      upgrade(req.result);
-    };
-    // The caller already got the blocked rejection, so a late success has no owner and must not stay open.
-    let abandoned = false;
-    req.onsuccess = () => {
-      if (abandoned) {
-        req.result.close();
-        return;
-      }
-      resolve(req.result);
-    };
-    req.onerror = () => {
-      // Only the cause keeps the DOMException's message for the report.
-      const cause = req.error;
-      reject(new Error(`Failed to open dotli DB: ${cause?.name ?? 'unknown'}`, cause ? { cause } : undefined));
-    };
-    // A tab on an older schema blocks the upgrade, and blocked fires neither onsuccess nor onerror.
-    req.onblocked = () => {
-      abandoned = true;
-      reject(new Error('Failed to open dotli DB: blocked by another tab'));
-    };
-  });
 }

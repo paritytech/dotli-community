@@ -29,7 +29,7 @@ resolution. See the root [README](../../README.md) for the product as a whole.
   that the shared dialog renders.
 - The error page and the retry screen take the page over at once. The retry screen draws the brand's petal mark.
 - A small helper for product sub-pages is a real module that the service worker inlines as a classic script. The service
-  worker is built as a separate bundle after the page.
+  worker is built by the page's own config, after the page, into one file at the root.
 - The checker is a real module inlined as a classic script, so it runs before any product script. Its reports use the
   violation message of the wire protocol. A normal build drops it, and the page loads the injector lazily.
 
@@ -43,6 +43,6 @@ flowchart LR
 ## Entry points
 
 - The sandbox page. Dev server on port 4322.
-- The service worker, built as its own bundle.
+- The service worker, one file at the root.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test`.
 - `npm run storybook`, `build-storybook`, `test:stories`, `test:vrt`.

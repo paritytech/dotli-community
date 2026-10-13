@@ -4,6 +4,7 @@
 // Local product chat. Records live on the product origin, so the browser isolates each product's rooms.
 
 import { pageIdb, type DotliIdb } from './db.js';
+import { idbRequest, idbTransaction } from './idb.js';
 
 const ROOM_STORE = 'chat_rooms';
 const MESSAGE_STORE = 'chat_messages';
@@ -43,82 +44,43 @@ export interface ChatMessageRecord {
 
 export type NewChatMessage = Omit<ChatMessageRecord, 'seq'>;
 
-function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => {
-      resolve(req.result);
-    };
-    req.onerror = () => {
-      reject(req.error ?? new Error('chat store request failed'));
-    };
-  });
-}
-
 /** Chat rooms, bots and messages over `idb`, the page's own by default. */
 export function createChatRecords(idb: DotliIdb = pageIdb) {
   /** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon. */
   async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
     const db = await idb.connect();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(ROOM_STORE, 'readwrite');
+    let status: 'New' | 'Exists' = 'New';
+    await idbTransaction(db, ROOM_STORE, 'readwrite', tx => {
       const store = tx.objectStore(ROOM_STORE);
-      let status: 'New' | 'Exists' | null = null;
-      const getReq = store.get([room.productId, room.roomId]) as IDBRequest<ChatRoomRecord | undefined>;
-      getReq.onsuccess = () => {
-        const existing = getReq.result;
-        status = existing === undefined ? 'New' : 'Exists';
-        store.put({
-          ...room,
-          createdAt: existing?.createdAt ?? Date.now(),
-        } satisfies ChatRoomRecord);
-      };
-      tx.oncomplete = () => {
-        if (status !== null) {
-          resolve(status);
-        } else {
-          reject(new Error('createRoom tx completed without a result'));
-        }
-      };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('createRoom tx errored'));
+      const existing = store.get([room.productId, room.roomId]) as IDBRequest<ChatRoomRecord | undefined>;
+      existing.onsuccess = () => {
+        status = existing.result === undefined ? 'New' : 'Exists';
+        store.put({ ...room, createdAt: existing.result?.createdAt ?? Date.now() } satisfies ChatRoomRecord);
       };
     });
+    return status;
   }
 
   /** Answers TrUAPI `ChatBotRegistrationStatus`. A re-registration refreshes the name and icon. */
   async function registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
     const db = await idb.connect();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(BOT_STORE, 'readwrite');
+    let status: 'New' | 'Exists' = 'New';
+    await idbTransaction(db, BOT_STORE, 'readwrite', tx => {
       const store = tx.objectStore(BOT_STORE);
-      let status: 'New' | 'Exists' | null = null;
-      const getReq = store.get([bot.productId, bot.botId]) as IDBRequest<ChatBotRecord | undefined>;
-      getReq.onsuccess = () => {
-        const existing = getReq.result;
-        status = existing === undefined ? 'New' : 'Exists';
-        store.put({
-          ...bot,
-          createdAt: existing?.createdAt ?? Date.now(),
-        } satisfies ChatBotRecord);
-      };
-      tx.oncomplete = () => {
-        if (status !== null) {
-          resolve(status);
-        } else {
-          reject(new Error('registerBot tx completed without a result'));
-        }
-      };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('registerBot tx errored'));
+      const existing = store.get([bot.productId, bot.botId]) as IDBRequest<ChatBotRecord | undefined>;
+      existing.onsuccess = () => {
+        status = existing.result === undefined ? 'New' : 'Exists';
+        store.put({ ...bot, createdAt: existing.result?.createdAt ?? Date.now() } satisfies ChatBotRecord);
       };
     });
+    return status;
   }
 
   async function listBots(productId: string): Promise<ChatBotRecord[]> {
     const db = await idb.connect();
     const store = db.transaction(BOT_STORE, 'readonly').objectStore(BOT_STORE);
     const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
-    const bots = await requestAsPromise(store.getAll(range) as IDBRequest<ChatBotRecord[]>);
+    const bots = await idbRequest(store.getAll(range) as IDBRequest<ChatBotRecord[]>);
     return bots.sort((a, b) => a.createdAt - b.createdAt);
   }
 
@@ -126,14 +88,14 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
     const db = await idb.connect();
     const store = db.transaction(ROOM_STORE, 'readonly').objectStore(ROOM_STORE);
     const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
-    const rooms = await requestAsPromise(store.getAll(range) as IDBRequest<ChatRoomRecord[]>);
+    const rooms = await idbRequest(store.getAll(range) as IDBRequest<ChatRoomRecord[]>);
     return rooms.sort((a, b) => a.createdAt - b.createdAt);
   }
 
   async function appendMessage(message: NewChatMessage): Promise<number> {
     const db = await idb.connect();
     const store = db.transaction(MESSAGE_STORE, 'readwrite').objectStore(MESSAGE_STORE);
-    const seq = await requestAsPromise(store.add(message));
+    const seq = await idbRequest(store.add(message));
     return seq as number;
   }
 
@@ -141,7 +103,7 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
     const db = await idb.connect();
     const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
     const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
-    const all = await requestAsPromise(index.getAll(range) as IDBRequest<ChatMessageRecord[]>);
+    const all = await idbRequest(index.getAll(range) as IDBRequest<ChatMessageRecord[]>);
     const latest = new Map<string, number>();
     for (const message of all) {
       if (message.timestamp > (latest.get(message.roomId) ?? 0)) {
@@ -155,7 +117,7 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
   async function listMessages(productId: string, roomId: string, limit = 200): Promise<ChatMessageRecord[]> {
     const db = await idb.connect();
     const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
-    const all = await requestAsPromise(
+    const all = await idbRequest(
       index.getAll(idb.keyRange().only([productId, roomId])) as IDBRequest<ChatMessageRecord[]>,
     );
     return all.length > limit ? all.slice(all.length - limit) : all;

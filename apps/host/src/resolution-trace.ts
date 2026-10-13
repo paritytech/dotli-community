@@ -177,7 +177,7 @@ function browserPage(): TracedPage {
   };
 }
 
-/** Safe when metrics are stripped: every span handle is inert. */
+/** Safe when metrics are off: every span handle is inert. */
 export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedPage = browserPage()): ResolutionTrace {
   // Monotonic deltas from one wall-clock start, so a system clock that steps mid-load cannot reorder the tree.
   const perfStart = opts.startedAt;

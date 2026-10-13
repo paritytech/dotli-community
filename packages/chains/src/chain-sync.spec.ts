@@ -4,8 +4,7 @@
 import { describe, it, expect, beforeEach, onTestFinished } from 'vitest';
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
-import { getActiveServicesConfig, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { getActiveServicesConfig } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
@@ -115,9 +114,6 @@ const READY = { kind: 'ready' } as const;
 const syncing = (at: number, target: number) => ({ kind: 'syncing', at, target }) as const;
 const OK = { kind: 'ok' } as const;
 const stalled = (reason: 'noPeers' | 'noProgress') => ({ kind: 'stalled', reason }) as const;
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('Light client sync reporting works', () => {
   it('As a user waiting for a domain, the shell learns when the first peer arrives and when the chain is ready', async () => {

@@ -1,13 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, it, expect, afterEach } from 'vitest';
-import { NetworkName, setNetworkOverride, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { describe, it, expect, onTestFinished } from 'vitest';
+import { NetworkName, getSettings, setSettings } from '@dotli/config';
 import { dotNsUrl } from './dotns-url.js';
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('parseDotNsDomain', () => {
   it('As a visitor, I type a bare .paseo name and it opens as that product', () => {
@@ -282,13 +278,9 @@ describe('isDotDomain', () => {
 });
 
 describe('dotNS TLD per network', () => {
-  afterEach(() => {
-    setNetworkOverride(NetworkName.PASEO);
-  });
-
   it('As a user on Paseo, I open a .paseo name and reach the product', () => {
     // Given
-    setNetworkOverride(NetworkName.PASEO);
+    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
 
     // When
     const parsed = dotNsUrl.parseDotNsDomain('mytestapp.paseo/some/path');
@@ -302,7 +294,7 @@ describe('dotNS TLD per network', () => {
 
   it('As a user on Paseo, I open a .dot name and get a regular website', () => {
     // Given
-    setNetworkOverride(NetworkName.PASEO);
+    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
 
     // When
     const isProduct = dotNsUrl.isDotDomain('mytestapp.dot');
@@ -313,7 +305,7 @@ describe('dotNS TLD per network', () => {
 
   it('As a user on Paseo, the gateway host paseo.li is not a product', () => {
     // Given
-    setNetworkOverride(NetworkName.PASEO);
+    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
 
     // When
     const parsed = dotNsUrl.parseDotNsDomain('mytestapp.paseo.li');
@@ -324,7 +316,7 @@ describe('dotNS TLD per network', () => {
 
   it('As a user on previewnet, a .testnet name is a product and a .paseo name is not', () => {
     // Given
-    setNetworkOverride(NetworkName.PREVIEWNET);
+    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PREVIEWNET }));
 
     // When
     const test = dotNsUrl.isDotDomain('mytestapp.testnet');

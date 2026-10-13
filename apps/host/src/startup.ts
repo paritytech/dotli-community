@@ -15,16 +15,25 @@ import { offerDesktopApp } from './desktop-offer.js';
 import { reportIslandErrors } from './island-errors.js';
 import { log } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
-import { getBackend, getCacheSettings, getNetwork, persistDefaults, type Backend } from '@dotli/config';
+import {
+  getBackend,
+  isLocalhost,
+  isSharedWorkerAvailable,
+  localStorageAdapter,
+  type Backend,
+  type CacheSettings,
+  type Settings,
+} from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import { loadBridge, loadSharedMode, type BridgeModule } from './lazy.js';
+import { loadBridge, type BridgeModule } from './lazy.js';
 import { createBlockingModalCoordinator } from './runtime/blocking-modal-queue.js';
 import { setProductError } from './runtime/state/product.js';
 import { takePendingReset } from './runtime/pending-reset.js';
+import { readSharedSettings, writeSharedSettings } from './runtime/shared-mode.js';
 import { initAuthController } from './runtime/auth-controller.js';
 import { startSessionState } from './runtime/host-callbacks/session-state.js';
 import { describeError, RELOAD_BTN_LABEL } from './errors.js';
-import { applyUrlSettings, readPersistedSettings } from './url-settings.js';
+import { bootSettings } from './boot-settings.js';
 import { initSettingsStore } from './state/settings.js';
 import { pageSettingsActions } from './settings-actions.js';
 
@@ -75,19 +84,19 @@ export const boot = { step: 'start' };
 
 export type EmitFn = (e: DotliDebugEvent) => void;
 
-/** The frame follows the settings in force now. A pending reset forces a clean chain DB whatever the cache says. */
-function protocolFrameConfig(pendingReset: boolean): ProtocolFrameConfig {
-  const backend = getBackend();
+/** A pending reset forces a clean chain DB whatever the cache says. */
+function protocolFrameConfig(settings: Settings, pendingReset: boolean): ProtocolFrameConfig {
+  const { backend } = settings;
   return {
     mode: backend === 'smoldot-shared-worker' ? 'shared-worker' : backend === 'smoldot-direct' ? 'direct' : 'rpc',
-    network: getNetwork(),
-    skipWorkerCache: pendingReset || getCacheSettings().skipWorkerCache,
+    network: settings.network,
+    skipWorkerCache: pendingReset || settings.cache.skipWorkerCache,
   };
 }
 
 export interface HostStartup {
   chainBackend: Backend;
-  cacheSettings: ReturnType<typeof getCacheSettings>;
+  cacheSettings: CacheSettings;
   bridgeModule: BridgeModule;
 }
 
@@ -110,24 +119,23 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
   const { emitDotliDebugEvent = () => undefined, startShellState } = options;
   // One id for the debug panel's flow and the Sentry trace, so the two line up.
   setResolutionId(bootFlowId);
-  const persisted = readPersistedSettings();
-  persistDefaults();
-  // Before the first await, so the capsule shows going offline at once and no island mounts on a store not yet started.
-  startShellState?.();
-
   // Taken before the shared store's first read boots the frame, so that boot already purges.
   const protocolPendingReset = takePendingReset('protocol');
 
-  // Before any consumer reads the settings. A URL-driven wipe reloads here, so nothing below runs.
+  // Before the first await this sets this origin's settings and the link's and boots the frame on them. A URL-driven
+  // wipe reloads, so nothing below runs.
   boot.step = 'url_settings';
-  await applyUrlSettings(persisted, {
+  const settingsBoot = bootSettings({
     search: window.location.search,
-    configureFrame: () => {
-      configureProtocolFrame(protocolFrameConfig(protocolPendingReset));
+    local: localStorageAdapter,
+    sharedWorkerAvailable: isSharedWorkerAvailable(),
+    preferLocal: isLocalhost,
+    readShared: () => readSharedSettings(),
+    writeShared: shared => {
+      writeSharedSettings(shared);
     },
-    bootstrapSharedMode: async () => {
-      const { bootstrapSharedMode } = await loadSharedMode();
-      await bootstrapSharedMode();
+    configureFrame: settings => {
+      configureProtocolFrame(protocolFrameConfig(settings, protocolPendingReset));
     },
     actions: pageSettingsActions,
     notify: showNotification,
@@ -136,10 +144,14 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
       window.history.replaceState(null, '', `${pathname}${query ? `?${query}` : ''}${hash}`);
     },
   });
+  // After this origin's settings are set and before the first await, so the capsule shows going offline at once and no
+  // island mounts on a store not yet started.
+  startShellState?.();
+  const settings = await settingsBoot;
   initSettingsStore();
 
-  const chainBackend = getBackend();
-  const cacheSettings = getCacheSettings();
+  const chainBackend = settings.backend;
+  const cacheSettings = settings.cache;
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'started',
@@ -153,14 +165,14 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
   });
   log.event('Settings applied', {
     flow: 'boot',
-    network: getNetwork(),
+    network: settings.network,
     backend: chainBackend,
     skip_cid_cache: cacheSettings.skipCidCache,
     skip_archive_cache: cacheSettings.skipArchiveCache,
     skip_worker_cache: cacheSettings.skipWorkerCache,
   });
   m.setDefaults({
-    network: getNetwork(),
+    network: settings.network,
     chain_backend: chainBackend,
     skip_cid_cache: String(cacheSettings.skipCidCache),
     skip_archive_cache: String(cacheSettings.skipArchiveCache),
@@ -169,7 +181,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
 
   // On every backend, so a sandboxed app's `chainConnect` finds a handler waiting.
   {
-    const frameConfig = protocolFrameConfig(protocolPendingReset);
+    const frameConfig = protocolFrameConfig(settings, protocolPendingReset);
     configureProtocolFrame(frameConfig);
     // The first request that needs the frame awaits these again and reports a failure there, so here it is a crumb.
     ensureProtocolFrame().catch((err: unknown) => {

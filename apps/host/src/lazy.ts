@@ -9,7 +9,6 @@ import type * as DebugPanelPartsNamespace from './debug-panel-parts.js';
 import type * as LoadFailureNamespace from './load-failure.js';
 import type * as LocalWalletCoreNamespace from './runtime/local-wallet-core.js';
 import type * as ProductBrandingNamespace from './product-branding.js';
-import type * as SharedModeNamespace from './runtime/shared-mode.js';
 import type * as WorkboxWindowNamespace from 'workbox-window';
 
 export type LoadFailureModule = typeof LoadFailureNamespace;
@@ -42,8 +41,6 @@ export const loadWorkboxWindow = (): Promise<WorkboxWindowModule> => import('wor
 
 export type BridgeModule = typeof BridgeNamespace;
 export const loadBridge = (): Promise<BridgeModule> => import('./runtime/bridge.js');
-export type SharedModeModule = typeof SharedModeNamespace;
-export const loadSharedMode = (): Promise<SharedModeModule> => import('./runtime/shared-mode.js');
 export const loadSigningWorker = (): Promise<{ default: new () => Worker }> =>
   import('./runtime/signing-worker.js?worker');
 export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;

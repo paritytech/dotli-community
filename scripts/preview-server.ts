@@ -5,12 +5,12 @@
 
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join, extname } from 'node:path';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
 import { MODE_SYNC_CORS, MODE_SYNC_PREFIX, handleModeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
-import { securityHeaders, type HeaderPolicy } from './serving-headers.ts';
+import { headerPolicy, responseHeaders, rootPage, routeFor, type HeaderPolicy, type Site } from '@config/vite/serving';
 
 // Node's types have no global `BodyInit`, so take it from `Response` itself.
 type BodyInit = NonNullable<ConstructorParameters<typeof Response>[0]>;
@@ -19,15 +19,17 @@ const RUNTIME_CONFIG_PATH = '/dotli-network.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '5173', 10);
 const ROOT = join(import.meta.dirname, '..');
-const HOST_DIR = join(ROOT, 'apps/host/dist');
-const APP_DIR = join(ROOT, 'apps/sandbox/dist');
-const PROTOCOL_DIR = join(ROOT, 'apps/protocol/dist');
+const DIRS: Record<Site, string> = {
+  host: join(ROOT, 'apps/host/dist'),
+  app: join(ROOT, 'apps/sandbox/dist'),
+  protocol: join(ROOT, 'apps/protocol/dist'),
+};
 
 const REQUIRED_BUILDS = ['Host', 'App (sandbox)'] as const;
 for (const [label, dir] of [
-  ['Host', HOST_DIR],
-  ['App (sandbox)', APP_DIR],
-  ['Protocol', PROTOCOL_DIR],
+  ['Host', DIRS.host],
+  ['App (sandbox)', DIRS.app],
+  ['Protocol', DIRS.protocol],
 ] as const) {
   if (!existsSync(dir)) {
     const isRequired = (REQUIRED_BUILDS as readonly string[]).includes(label);
@@ -39,24 +41,7 @@ for (const [label, dir] of [
   }
 }
 
-const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.wasm': 'application/wasm',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-  '.webp': 'image/webp',
-  '.webm': 'video/webm',
-  '.txt': 'text/plain',
-  '.scale': 'application/octet-stream',
-  '.map': 'application/json',
-};
-
-function serveFile(filePath: string, policy: HeaderPolicy): Response | null {
+function serveFile(filePath: string, pathname: string, policy: HeaderPolicy): Response | null {
   try {
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
       return null;
@@ -64,18 +49,8 @@ function serveFile(filePath: string, policy: HeaderPolicy): Response | null {
   } catch {
     return null;
   }
-  const mime = MIME[extname(filePath)] ?? 'application/octet-stream';
-  const headers: Record<string, string> = {
-    'Content-Type': mime,
-    'Service-Worker-Allowed': '/',
-    // Chrome's Private Network Access blocks loopback iframes across *.localhost subdomains without it, so the
-    // protocol bridge handshake times out.
-    'Access-Control-Allow-Private-Network': 'true',
-    'Cache-Control': 'no-cache',
-    ...securityHeaders(policy),
-  };
   const body = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
-  return new Response(body as BodyInit, { headers });
+  return new Response(body as BodyInit, { headers: responseHeaders(filePath, pathname, policy) });
 }
 
 // The Sentry tunnel sink, the only way a test can observe what the SharedWorker reports. Playwright route
@@ -157,35 +132,28 @@ async function handle(req: Request): Promise<Response> {
     });
   }
 
-  const isProtocol = url.hostname === 'host.localhost';
-  const isApp = url.hostname.includes('.app.');
-  const baseDir = isProtocol ? PROTOCOL_DIR : isApp ? APP_DIR : HOST_DIR;
-  const fallback = 'index.html';
-
-  // As nginx does, the bare host's root is the landing page.
-  const isBare = !isProtocol && !isApp && !url.hostname.endsWith('.localhost');
+  const route = routeFor(url.hostname);
+  const baseDir = DIRS[route.site];
+  const policy = headerPolicy(route, url.pathname);
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/') {
-    pathname = isBare ? '/landing.html' : `/${fallback}`;
+    pathname = `/${rootPage(route)}`;
   }
-
-  // As nginx does. COEP on the host's other documents would block the /localhost:<port> proxy iframe.
-  const isolated = isApp || isProtocol || pathname.startsWith('/__preview');
-  const pagePolicy: HeaderPolicy = isolated ? 'isolated' : 'plain';
-  const policy: HeaderPolicy = !isolated && pathname.startsWith('/assets/') ? 'worker-coep' : pagePolicy;
 
   const exact = join(baseDir, pathname);
-  const res = serveFile(exact, policy);
-  if (res) {
-    return res;
+  const file = serveFile(exact, pathname, policy);
+  if (file) {
+    return file;
   }
-
-  const res2 = serveFile(join(exact, 'index.html'), pagePolicy);
-  if (res2) {
-    return res2;
+  // As nginx does, a missing asset is a 404 rather than the page.
+  if (pathname.startsWith('/assets/')) {
+    return new Response('Not Found', { status: 404 });
   }
-
-  return serveFile(join(baseDir, fallback), pagePolicy) ?? new Response('Not Found', { status: 404 });
+  return (
+    serveFile(join(exact, 'index.html'), pathname, policy) ??
+    serveFile(join(baseDir, 'index.html'), '/index.html', policy) ??
+    new Response('Not Found', { status: 404 })
+  );
 }
 
 // The Request URL takes its hostname from the Host header, which the routing keys on.
@@ -225,6 +193,6 @@ createServer((incoming, outgoing) => {
 }).listen(PORT, '0.0.0.0');
 
 console.log(`Preview server on http://localhost:${String(PORT)}`);
-console.log(`  Host: ${HOST_DIR}`);
-console.log(`  App:  ${APP_DIR}`);
-console.log(`  Protocol: ${PROTOCOL_DIR}`);
+console.log(`  Host: ${DIRS.host}`);
+console.log(`  App:  ${DIRS.app}`);
+console.log(`  Protocol: ${DIRS.protocol}`);

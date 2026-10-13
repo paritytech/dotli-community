@@ -35,9 +35,10 @@ configurable — see the README inside the tarball
 `serve.mjs` is bundled from `scripts/serve.ts` at release time, so it runs on
 node >= 22 without TypeScript support or the rest of this repo. It reproduces the nginx serving rules: hostname
 routing, the same security headers, precompressed siblings, immutable asset
-caching and SPA fallback. **Changing the rules in one means changing the other** —
-nothing enforces it, and a mismatch means the tarball behaves differently from a
-deployed site.
+caching and SPA fallback. **Changing the rules in one means changing the other.**
+A spec holds the header values to nginx's snippets, but routing and caching per
+location are not checked, and a mismatch there means the tarball behaves
+differently from a deployed site.
 
 ## Running the container
 
@@ -228,9 +229,10 @@ correct while the UI names your fork. Genesis checks cannot catch this. Use
 
 **Mode preferences are not shared across subdomains.** `preview-server.ts`
 implements a `/__dotli-mode/<key>` store to work around `localhost` being on the
-Public Suffix List; nginx has no equivalent. `shared-mode.ts` prefers the
-per-origin seed on localhost and only warns, so each subdomain simply keeps its
-own backend and cache settings.
+Public Suffix List; nginx has no equivalent. On localhost the settings
+resolution (`resolveSettings`, with `preferLocal`) prefers the per-origin choice
+and the shared store only reports a read error, so each subdomain simply keeps
+its own backend and cache settings.
 
 **No brotli.** `dotli-precompressed.conf` uses `brotli_static`, which the
 official nginx image is not built with, so the image overwrites that snippet with

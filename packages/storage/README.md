@@ -12,9 +12,12 @@ scheduled notifications.
 
 ## Design
 
-- The schema (name, version, upgrade) and its open live together. The page opens the database on its first read.
+- The schema holds the name, version and upgrade. The page opens the database on its first read.
 - One connection is made from a `DotliIdb` port with `connect` and `keyRange`. Stores take the port as an optional
   argument, so tests pass an in-memory database. The default is `pageIdb`.
+- One small helper turns IndexedDB's callbacks into promises for every store: an open that rejects when an older tab
+  blocks it, a request, and a transaction that resolves once it commits. The host's key store on its own database uses
+  it too.
 - A cache reporter reports a cache's failures once per action. Expected errors (`isExpectedDbError`, such as quota or a
   blocked upgrade) count as outcomes. Others go to Sentry.
 - The block cache keeps bitswap blocks on the host, since the credentialless sandbox loses its storage on reload. It
@@ -29,6 +32,7 @@ scheduled notifications.
 ### `@dotli/storage`
 
 - Schema: `DB_NAME`, `DB_VERSION`, `upgradeDotliDb`, `isExpectedDbError`.
+- IndexedDB helpers: `openIdb`, `idbRequest`, `idbTransaction`.
 - Block cache: `getCachedBlock`, `putCachedBlock`, `deleteCachedBlock`, `pruneBlockCache`, `clearBlockCache`.
 - CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`, `getRecentLabels`, `withRecentLabel`,
   `parseRecentLabels`, `serializeRecentLabels`, `writeRecentLabels`, `RECENT_KEY`.

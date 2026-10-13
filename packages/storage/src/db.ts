@@ -4,7 +4,8 @@
 // The one "dotli" IndexedDB connection, opened on first use.
 
 import { createAsyncTaskPool } from '@dotli/shared';
-import { DB_NAME, DB_VERSION, openDotliDb, upgradeDotliDb } from './schema.js';
+import { openIdb } from './idb.js';
+import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 
 /**
  * A connection closing under unload or another tab's upgrade, or an open blocked by an older tab.
@@ -56,7 +57,7 @@ export function createDbConnection(open: () => Promise<IDBDatabase>): () => Prom
  * The page's one connection. `indexedDB` is read at each open, as a context without it, such as the build, still
  * loads this module.
  */
-const getDb = createDbConnection(() => openDotliDb(indexedDB, DB_NAME, DB_VERSION, upgradeDotliDb));
+const getDb = createDbConnection(() => openIdb(indexedDB, DB_NAME, DB_VERSION, upgradeDotliDb));
 
 /** The IndexedDB a store reads and writes: its connection, and key ranges of the same implementation. */
 export interface DotliIdb {

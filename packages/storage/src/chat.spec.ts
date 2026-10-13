@@ -46,6 +46,18 @@ describe('chat rooms', () => {
     expect(rooms).toHaveLength(1);
     expect(rooms[0]?.name).toBe('A');
   });
+
+  it('As a product, I create a room the browser cannot store and the creation rejects rather than hangs', async () => {
+    // Given an icon structured clone refuses, so the put inside the transaction throws and aborts it
+    const room = { productId: 'abort.dot', roomId: 'main', name: 'Main', icon: (() => '') as unknown as string };
+
+    // When
+    const created = chat.createRoom(room);
+
+    // Then
+    await expect(created).rejects.toBeInstanceOf(Error);
+    expect(await chat.listRooms('abort.dot')).toEqual([]);
+  });
 });
 
 describe('chat messages', () => {

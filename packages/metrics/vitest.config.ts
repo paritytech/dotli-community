@@ -3,13 +3,33 @@
 
 import { defineConfig } from 'vitest/config';
 
+const OFF_SPECS = 'src/**/*.off.spec.ts';
+
 export default defineConfig({
   test: {
     globals: false,
-    projects: [{ extends: true, test: { name: 'metrics:unit', include: ['src/**/*.spec.ts'], environment: 'node' } }],
-  },
-  define: {
-    // On, so a test reads what the real module sends to a bound fake. A build with metrics off ships the no-op twin.
-    'import.meta.env.VITE_METRICS': '"true"',
+    projects: [
+      {
+        extends: true,
+        // On, so a test reads what the module sends to a bound fake.
+        test: {
+          name: 'metrics:unit',
+          env: { VITE_METRICS: 'true' },
+          include: ['src/**/*.spec.ts'],
+          exclude: [OFF_SPECS],
+          environment: 'node',
+        },
+      },
+      {
+        extends: true,
+        // Off, as a build without metrics compiles the module.
+        test: {
+          name: 'metrics:off',
+          env: { VITE_METRICS: 'false' },
+          include: [OFF_SPECS],
+          environment: 'node',
+        },
+      },
+    ],
   },
 });

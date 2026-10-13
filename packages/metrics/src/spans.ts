@@ -217,12 +217,6 @@ export const SETTINGS_APPLY = 'settings.apply';
 export const ORIGIN_WIPE = 'settings.origin_wipe';
 
 /**
- * The shared-mode bootstrap could not run at boot, as when its chunk failed to load or the store could not be reached,
- * so the page continues with its own settings. Tagged `outcome` (error) and `reason` (the error's name).
- */
-export const SHARED_MODE_BOOTSTRAP = 'shared_mode.bootstrap';
-
-/**
  * A purge request that could not be read on boot. Tagged `outcome` and `reason` (the storage error's name), as the
  * boot then goes ahead without the purge.
  */

@@ -7,7 +7,7 @@ import { buildInfo } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { modeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
-import { stripAnalytics } from '@dotli/metrics/vite';
+import { securityHeaders } from '@config/vite/serving';
 
 const app = dotliApp(import.meta.dirname);
 
@@ -16,16 +16,8 @@ const OUT_DIR = 'dist';
 export default defineConfig({
   envDir: app.envDir,
   base: app.base,
-  plugins: [
-    stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
-    app.wasm(),
-    runtimeNetworkConfigScript(),
-    buildInfo('protocol'),
-    modeSync(),
-    app.sentry(),
-  ],
+  plugins: [app.wasm(), runtimeNetworkConfigScript(), buildInfo('protocol'), modeSync(), app.sentry()],
   worker: {
-    plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
     rolldownOptions: rolldownOptions(),
   },
   optimizeDeps: {
@@ -42,12 +34,7 @@ export default defineConfig({
     // Must match DEV_PROTOCOL_PORT in @dotli/config.
     port: 4323,
     strictPort: true,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      // As nginx sends.
-      'Cross-Origin-Resource-Policy': 'cross-origin',
-      'Cross-Origin-Embedder-Policy': 'credentialless',
-      'Cross-Origin-Opener-Policy': 'same-origin',
-    },
+    // As nginx sends.
+    headers: securityHeaders('isolated'),
   },
 });

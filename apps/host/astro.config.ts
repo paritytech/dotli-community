@@ -12,9 +12,9 @@ import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { cssModules } from '@config/vite/css-modules';
 import { dependencyVersions } from '@config/vite/dependency-versions';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
+import { headerPolicy, routeFor, securityHeaders } from '@config/vite/serving';
 import { spaFallback } from '@config/vite/spa-fallback';
 import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
-import { stripAnalytics } from '@dotli/metrics/vite';
 
 const app = dotliApp(import.meta.dirname);
 
@@ -29,16 +29,22 @@ const dependencies = dependencyVersions(resolve(import.meta.dirname, '../..'), [
 const versionOf = (name: string): string => dependencies.find(dep => dep.name === name)?.version ?? 'unknown';
 const scoped = (prefix: string) => dependencies.filter(dep => dep.name.startsWith(prefix));
 
-/** Scoped to /__preview as in nginx, since localhost dev servers ship no CORP/COEP and server-wide COEP breaks them. */
-function previewCoepHeaders(): Plugin {
+/**
+ * The isolated headers on the routes the serving table isolates, the bare host's /__preview. Server-wide, COEP would
+ * break the localhost dev servers, which ship no CORP.
+ */
+function isolatedPageHeaders(): Plugin {
+  const headers = securityHeaders('isolated');
   return {
-    name: 'preview-coep-headers',
+    name: 'isolated-page-headers',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url?.startsWith('/__preview') === true) {
-          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-          res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
-          res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+        const pathname = (req.url ?? '/').split('?')[0] ?? '/';
+        const hostname = (req.headers.host ?? '').split(':')[0] ?? '';
+        if (headerPolicy(routeFor(hostname), pathname) === 'isolated') {
+          for (const [name, value] of Object.entries(headers)) {
+            res.setHeader(name, value);
+          }
         }
         next();
       });
@@ -110,19 +116,18 @@ export default defineConfig({
     // Astro's default is PUBLIC_*.
     envPrefix: 'VITE_',
     plugins: [
-      stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
       app.wasm(),
       // Serves /dotli-network.js under `astro dev`.
       runtimeNetworkConfigScript(),
       buildInfo('host'),
-      previewCoepHeaders(),
-      // After previewCoepHeaders, which needs the `/__preview` path this rewrites to `/`.
+      isolatedPageHeaders(),
+      // After isolatedPageHeaders, which needs the `/__preview` path this rewrites to `/`.
       spaFallback({ landing: '/landing' }),
       app.sentry(),
       truapiSigningWorker(),
     ],
     worker: {
-      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true'), truapiSigningWorker()],
+      plugins: () => [truapiSigningWorker()],
       rolldownOptions: rolldownOptions(),
     },
     define: {

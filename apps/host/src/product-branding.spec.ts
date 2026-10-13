@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import { applyProductBranding as applyOnPage, type ProductBrandingDeps } from './product-branding.js';
 
@@ -43,9 +41,6 @@ function applyProductBranding(
     },
   });
 }
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('applyProductBranding', () => {
   beforeEach(() => {

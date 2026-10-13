@@ -6,8 +6,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { deferred, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
-import { getActiveServicesConfig, getNetwork, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, type m } from '@dotli/metrics';
 import type { ProtocolRequestEnvelope } from '@dotli/protocol';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
@@ -56,6 +55,8 @@ interface FakeLightClient {
   chains: string[];
   /** What the worker built its name resolver on. */
   dotnsDeps: DotnsResolverDeps | null;
+  /** Each sync reporting call, with how many chains were already open when it came. */
+  syncReporting: { chains: readonly string[]; openBefore: number }[];
 }
 
 function fakeLightClient(
@@ -90,6 +91,7 @@ function fakeLightClient(
     disconnects: [],
     chains: [],
     dotnsDeps: null,
+    syncReporting: [],
     lightClient: {
       createChainProvider: genesisHash => {
         light.chains.push(genesisHash);
@@ -109,7 +111,9 @@ function fakeLightClient(
     resolver: undefined as unknown as WorkerResolver,
   };
   light.resolver = {
-    enableSyncReporting: () => undefined,
+    enableSyncReporting: chains => {
+      light.syncReporting.push({ chains, openBefore: light.chains.length });
+    },
     onChainSync: cb => {
       light.sync.forEach(cb);
       light.syncListeners.add(cb);
@@ -319,9 +323,6 @@ const fatalRelay = {
   envelope: { namespace: 'dotli:protocol', kind: 'fatal', message: FATAL },
 };
 
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
-
 describe('protocol SharedWorker', () => {
   beforeEach(() => {
     captures.exception.mockClear();
@@ -479,6 +480,18 @@ describe('protocol SharedWorker', () => {
     // Then it hears the cause, and the worker does not close, since a fresh one would fail the same way
     expect(heard(tab)).toEqual([{ type: 'error', message: 'Unknown protocol network: "nowhere"' }]);
     expect(worker.close).not.toHaveBeenCalled();
+  });
+
+  it('As the shared worker named for a network this build does not know, I open no chain and report no sync', async () => {
+    // Given
+    const light = fakeLightClient();
+
+    // When
+    await bootWorker(light, 'dotli-protocol-nowhere');
+
+    // Then
+    expect(light.chains).toEqual([]);
+    expect(light.syncReporting).toEqual([]);
   });
 
   it('As the shared worker, I serve the network my name carries and leave the config of this context to my entry', async () => {
@@ -661,8 +674,26 @@ describe('protocol SharedWorker', () => {
     must(deps.people, 'people')()(() => undefined);
 
     // Then
-    expect(light.chains).toEqual([services.assethub.genesis, services.people.genesis]);
+    expect(light.chains).toEqual([
+      services.relay.genesis,
+      services.bulletin.genesis,
+      services.assethub.genesis,
+      services.people.genesis,
+    ]);
     expect(deps.dotns).toEqual(services.dotns);
+  });
+
+  it('As a dotli user on the shared light client, the relay and Bulletin sync shows before any product asks for them', async () => {
+    // Given
+    const light = fakeLightClient();
+    const services = getActiveServicesConfig();
+
+    // When
+    await bootWorker(light);
+
+    // Then sync reporting is on before the first chain opens, and the relay and Bulletin open with nothing asking
+    expect(light.syncReporting).toEqual([{ chains: ['relay', 'assethub', 'bulletin', 'people'], openBefore: 0 }]);
+    expect(light.chains).toEqual([services.relay.genesis, services.bulletin.genesis]);
   });
 
   it('As a dotli user on the shared light client, a tab that joins a synced worker hears where the chains stand, and that it started warm', async () => {
@@ -786,8 +817,11 @@ describe('protocol SharedWorker', () => {
       { id: 'r1', ok: true },
       { id: 'r2', ok: false },
     ]);
-    expect(light.disconnects).toHaveLength(1);
-    expect(light.disconnects[0]).not.toHaveBeenCalled();
+    // And neither the observed relay and Bulletin nor the tabs' shared chain is let go
+    expect(light.disconnects).toHaveLength(3);
+    for (const disconnect of light.disconnects) {
+      expect(disconnect).not.toHaveBeenCalled();
+    }
 
     // And the other tab's connection still carries its requests
     staying.receive(
@@ -981,6 +1015,7 @@ describe('protocol SharedWorker', () => {
   it('As a dotli user on the shared light client, a tab that said it was leaving stays refused, and the refusal is no failure', async () => {
     // Given a tab that unloaded
     const light = fakeLightClient();
+    const services = getActiveServicesConfig();
     const worker = await bootWorker(light);
     const tab = worker.connect();
     tab.receive({ type: 'disconnect' });
@@ -995,12 +1030,14 @@ describe('protocol SharedWorker', () => {
     expect(worker.open).not.toHaveBeenCalled();
     expect(worker.logs.filter(line => line.level === 'warn')).toEqual([]);
     expect(logged(worker, 'info', 'Request refused')).toBe(true);
-    expect(light.disconnects).toEqual([]);
+    // Nothing past the two observed chains opened.
+    expect(light.chains).toEqual([services.relay.genesis, services.bulletin.genesis]);
   });
 
   it('As a dotli user on the shared light client, a tab whose port closed stays refused', async () => {
     // Given a tab whose port closed under a response
     const light = fakeLightClient();
+    const services = getActiveServicesConfig();
     const worker = await bootWorker(light);
     const tab = worker.connect();
     failToDeliver(tab, 'InvalidStateError');
@@ -1017,7 +1054,8 @@ describe('protocol SharedWorker', () => {
       ok: false,
       error: PROTOCOL_APP_ERRORS.PORT_CLOSED,
     });
-    expect(light.disconnects).toEqual([]);
+    // Nothing past the two observed chains opened.
+    expect(light.chains).toEqual([services.relay.genesis, services.bulletin.genesis]);
   });
 
   it('As a dotli user with two tabs on one worker, a tab the worker cannot tell it is ready does not keep the other from hearing it', async () => {
@@ -1126,6 +1164,7 @@ describe('protocol SharedWorker', () => {
   it('As a dotli user with a frozen tab, I say I am leaving after the heartbeat let me go and a late request of mine is refused', async () => {
     // Given a tab the heartbeat let go, which then unloads
     const light = fakeLightClient();
+    const services = getActiveServicesConfig();
     const worker = await bootWorker(light);
     const leaving = worker.connect();
     outlastHeartbeat(worker);
@@ -1139,7 +1178,8 @@ describe('protocol SharedWorker', () => {
     expect(envelopes(leaving, 'response')).toMatchObject([
       { id: 'r2', ok: false, error: PROTOCOL_APP_ERRORS.PORT_CLOSED },
     ]);
-    expect(light.disconnects).toEqual([]);
+    // Nothing past the two observed chains opened.
+    expect(light.chains).toEqual([services.relay.genesis, services.bulletin.genesis]);
   });
 
   it('As a dotli user on the shared light client, a worker whose light client died stops its heartbeat', async () => {

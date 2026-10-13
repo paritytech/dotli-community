@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [solid()],
   css: { modules: cssModules() },
   define: {
-    // On, so tests read the real counts from a fake Sentry, not a stripped build's no-ops.
+    // On, so tests read the counts from a fake Sentry. A build without metrics compiles every call out.
     'import.meta.env.VITE_METRICS': '"true"',
   },
   test: {

@@ -4,7 +4,8 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import { createDbConnection, isExpectedDbError } from './db.js';
-import { DB_NAME, DB_VERSION, openDotliDb, upgradeDotliDb } from './schema.js';
+import { openIdb } from './idb.js';
+import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 
 /** A connection on the previous schema that ignores `versionchange`, as a frozen older tab would. */
 function openPreviousSchema(factory: IDBFactory): Promise<IDBDatabase> {
@@ -23,7 +24,7 @@ describe('the dotli database connection', () => {
   it('As a dotli user, I open the database again after an older tab blocked it and get a connection', async () => {
     // Given an older tab that holds the database on the previous schema
     const factory = new IDBFactory();
-    const getDb = createDbConnection(() => openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
+    const getDb = createDbConnection(() => openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
     const olderTab = await openPreviousSchema(factory);
     await expect(getDb()).rejects.toThrow('Failed to open dotli DB: blocked by another tab');
 
@@ -39,7 +40,7 @@ describe('the dotli database connection', () => {
   it('As a dotli user, I leave no stray connection behind after a blocked open succeeds late', async () => {
     // Given a blocked open that succeeded once the older tab closed, and the live handle released
     const factory = new IDBFactory();
-    const getDb = createDbConnection(() => openDotliDb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
+    const getDb = createDbConnection(() => openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
     const olderTab = await openPreviousSchema(factory);
     await expect(getDb()).rejects.toThrow('blocked by another tab');
     olderTab.close();

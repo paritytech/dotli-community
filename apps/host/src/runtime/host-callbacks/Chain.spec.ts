@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { configureModeStorage, getActiveServicesConfig, setBackend, type Backend } from '@dotli/config';
+import { getActiveServicesConfig, getSettings, setSettings, type Backend } from '@dotli/config';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { ChainActivity, ChainPool, LeaseProvider, RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolStatus, RemoteChainProvider } from '@dotli/protocol';
 import { createCoreRpcChainProvider } from '@dotli/chains';
 import { FakeWebSocket } from '@dotli/chains/testing';
-import { memoryStorage, must } from '@dotli/shared/testing';
+import { must } from '@dotli/shared/testing';
 import {
   createChainConnect,
   createHostChainPool,
@@ -24,11 +24,6 @@ import { hexBytes, yielded } from '../../testing/fixtures.js';
 /** Trusted Providers' sockets, over the fake server. */
 const fakeSocketChain: HostChainSources['rpcChain'] = (genesisHash, hooks) =>
   createCoreRpcChainProvider(genesisHash, hooks, FakeWebSocket as unknown as typeof WebSocket);
-
-beforeEach(() => {
-  // The backend is a setting, kept in memory here.
-  configureModeStorage(memoryStorage());
-});
 
 interface Upstream {
   sent: JsonRpcRequest[];
@@ -461,7 +456,7 @@ describe('host chain pool on a light client backend', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    setBackend('smoldot-direct');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     people = getActiveServicesConfig().people.genesis;
     assetHub = getActiveServicesConfig().assethub.genesis;
     remotes = [];
@@ -909,7 +904,7 @@ describe('host chain pool over Trusted Providers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     FakeWebSocket.instances = [];
-    setBackend('rpc-gateway');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
   });
 
   afterEach(() => {
@@ -960,7 +955,7 @@ describe('host chain connection over Trusted Providers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     FakeWebSocket.instances = [];
-    setBackend('rpc-gateway');
+    onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
   });
 
   afterEach(() => {

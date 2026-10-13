@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BASE_DOMAIN, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { describe, expect, it, vi } from 'vitest';
+import { BASE_DOMAIN } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import {
   leaveForLanding,
@@ -31,9 +30,6 @@ function at(url: string): ShellLocation {
 function previewAt(target: string, extra = ''): ShellLocation {
   return at(`http://localhost:5173/__preview?url=${encodeURIComponent(target)}${extra}`);
 }
-
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
-beforeEach(() => configureModeStorage(memoryModeStorage()));
 
 describe('readShellRoute', () => {
   it('As a visitor on a product host, I get that product, whatever the path says', () => {

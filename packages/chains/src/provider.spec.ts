@@ -5,8 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
-import { DEBUG, getActiveServicesConfig, getActiveSupportedGenesisHashes, configureModeStorage } from '@dotli/config';
-import { memoryModeStorage } from '@dotli/config/testing';
+import { DEBUG, getActiveServicesConfig, getActiveSupportedGenesisHashes } from '@dotli/config';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import {
   createLightClient,
@@ -180,13 +179,10 @@ let services: ReturnType<typeof getActiveServicesConfig>;
 let people: string;
 let relay: string;
 
-// Settings come from a memory store, not Node's localStorage, and the previous store is put back after each test.
 beforeEach(() => {
-  const restore = configureModeStorage(memoryModeStorage());
   services = getActiveServicesConfig();
   people = services.people.genesis;
   relay = services.relay.genesis;
-  return restore;
 });
 
 describe('createLightClient', () => {
@@ -495,7 +491,7 @@ describe('createLightClient', () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('As a dotli operator on a metrics-stripped build, I leave no timer running', async () => {
+    it('As a dotli operator on a build without metrics, I leave no timer running', async () => {
       // Given
       client = createLightClient(deps(engine, { gauge: null }));
 

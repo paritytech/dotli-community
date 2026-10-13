@@ -8,18 +8,20 @@ import { captureException, m, reportExpected, spans as S } from '@dotli/metrics'
 import { errorName, log } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import {
-  setCacheSettings,
-  setBackend,
+  localStorageAdapter,
+  sharedSettingsOf,
+  writeLocalSettings,
+  writeSettingsToSearch,
   type Backend,
   type CacheSettings,
-  setNetwork,
   type Network,
-  writeSettingsToSearch,
+  type Settings,
 } from '@dotli/config';
 import { clearCidCache, clearBlockCache } from '@dotli/storage';
 import { isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
 
 import { schedulePendingReset, type PendingResetTarget } from './runtime/pending-reset.js';
+import { writeSharedSettings } from './runtime/shared-mode.js';
 import { THEME_KEY } from './theme-controller.js';
 
 /** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */
@@ -38,6 +40,8 @@ export interface SettingsActionsDeps {
   wipeOrigin: () => Promise<readonly WipeFailure[]>;
   schedulePendingReset: (targets: readonly PendingResetTarget[]) => void;
   reload: () => void;
+  /** Stores the settings on this origin and for the other subdomains, so the reload boots with them. */
+  save: (draft: ModeDraft) => void;
   /** The page URL, which carries the settings into the reload. */
   url: SettingsUrl;
 }
@@ -58,12 +62,6 @@ export interface SettingsActions {
 }
 
 type ApplyStep = 'wipe' | 'cid_cache' | 'block_cache' | 'pending_reset';
-
-function persist(draft: ModeDraft): void {
-  setBackend(draft.chain);
-  setNetwork(draft.network);
-  setCacheSettings(draft.cache);
-}
 
 export function createSettingsActions(deps: SettingsActionsDeps): SettingsActions {
   async function apply(draft: ModeDraft, prior: ModeDraft, forceFullWipe: boolean): Promise<void> {
@@ -88,7 +86,7 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
       if ((await deps.wipeOrigin()).length > 0) {
         fail('wipe');
       }
-      persist(draft);
+      deps.save(draft);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         deps.schedulePendingReset(['protocol', 'sandbox']);
@@ -97,7 +95,7 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
         fail('pending_reset', { err, message: '[dot.li settings] purge request not stored:' });
       }
     } else {
-      persist(draft);
+      deps.save(draft);
       if (draft.cache.skipCidCache && !prior.cache.skipCidCache && !(await deps.clearCidCache())) {
         fail('cid_cache');
       }
@@ -135,6 +133,12 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
   };
 }
 
+/** Stores `settings` on this origin and for the other subdomains, so the next boot reads them. */
+export function saveSettings(settings: Settings): void {
+  writeLocalSettings(settings, localStorageAdapter);
+  writeSharedSettings(sharedSettingsOf(settings));
+}
+
 /** This page's, which reloads it. */
 export const pageSettingsActions: SettingsActions = createSettingsActions({
   clearCidCache,
@@ -143,6 +147,9 @@ export const pageSettingsActions: SettingsActions = createSettingsActions({
   schedulePendingReset,
   reload: () => {
     window.location.reload();
+  },
+  save: draft => {
+    saveSettings({ network: draft.network, backend: draft.chain, cache: draft.cache });
   },
   url: {
     read: () => window.location,

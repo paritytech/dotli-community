@@ -71,54 +71,18 @@ interface SentryLike {
   }) => void;
 }
 
-// Re-probed while null, so a late `initSentry` or `m.bind` still activates the pipeline.
-let _sentry: SentryLike | null = null;
-
-function sentry(): SentryLike | null {
-  if (_sentry !== null) {
-    return _sentry;
-  }
-  try {
-    const hub = (globalThis as Record<string, unknown>)['__SENTRY_HUB__'];
-    if (hub !== undefined && hub !== null) {
-      _sentry = hub as SentryLike;
-    }
-    // eslint-disable-next-line no-restricted-syntax -- globalThis access can throw in restrictive contexts; we retry on next call instead of capturing (a capture would itself run through the metrics pipeline we're trying to probe).
-  } catch {
-    /* probe failure, try again next time */
-  }
-  if (_sentry === null) {
-    warnUnboundOnce();
-  }
-  return _sentry;
-}
-
-// Without it, VITE_METRICS=true with no `m.bind()` silently flat-lines every dashboard.
-// Not gated by DEBUG, so an operator with devtools open notices.
-let _unboundWarned = false;
-function warnUnboundOnce(): void {
-  if (_unboundWarned || !ENABLED) {
-    return;
-  }
-  _unboundWarned = true;
-  // eslint-disable-next-line no-console -- an unbound pipeline cannot report that it is unbound
-  console.warn(
-    '[dot.li metrics] VITE_METRICS=true but Sentry is not bound — every metric will silently no-op until `initSentry()` / `m.bind()` runs. Check your app entry point.',
-  );
-}
+// Bound by `initSentry`, or by a test's recorder.
+let bound: SentryLike | null = null;
 
 /**
- * Bind a live Sentry after `Sentry.init()`. Returns a function that restores the binding before, so unbind in reverse order.
- * Pass the functions, not the namespace: a namespace value keeps every SDK export in the bundle.
+ * Bind a live Sentry after `Sentry.init()`. Returns a function that restores the binding before, so unbind in reverse
+ * order. Pass the functions, not the namespace: a namespace value keeps every SDK export in the bundle.
  */
 function bind(s: SentryLike): () => void {
-  const previous = _sentry;
-  const previousWarned = _unboundWarned;
-  _sentry = s;
-  _unboundWarned = false;
+  const previous = bound;
+  bound = s;
   return () => {
-    _sentry = previous;
-    _unboundWarned = previousWarned;
+    bound = previous;
   };
 }
 
@@ -146,7 +110,7 @@ function span<T>(
   if (!ENABLED) {
     return fn(undefined);
   }
-  const s = sentry();
+  const s = bound;
   if (s === null) {
     return fn(undefined);
   }
@@ -157,14 +121,14 @@ function measure(name: string, value: number, unit: 'millisecond' | 'second' | '
   if (!ENABLED) {
     return;
   }
-  sentry()?.setMeasurement(`dotli.${name}`, value, unit);
+  bound?.setMeasurement(`dotli.${name}`, value, unit);
 }
 
 function count(name: string, attributes?: MetricAttributes): void {
   if (!ENABLED) {
     return;
   }
-  sentry()?.metrics.count(`dotli.${name}`, 1, {
+  bound?.metrics.count(`dotli.${name}`, 1, {
     attributes: mergeAttrs(attributes),
   });
 }
@@ -173,7 +137,7 @@ function distribution(name: string, value: number, unit = 'millisecond', attribu
   if (!ENABLED) {
     return;
   }
-  sentry()?.metrics.distribution(`dotli.${name}`, value, {
+  bound?.metrics.distribution(`dotli.${name}`, value, {
     unit,
     attributes: mergeAttrs(attributes),
   });
@@ -183,7 +147,7 @@ function gauge(name: string, value: number, unit = 'none', attributes?: MetricAt
   if (!ENABLED) {
     return;
   }
-  sentry()?.metrics.gauge(`dotli.${name}`, value, {
+  bound?.metrics.gauge(`dotli.${name}`, value, {
     unit,
     attributes: mergeAttrs(attributes),
   });
@@ -193,7 +157,7 @@ function tag(key: string, value: string): void {
   if (!ENABLED) {
     return;
   }
-  sentry()?.setTag(`dotli.${key}`, value);
+  bound?.setTag(`dotli.${key}`, value);
 }
 
 /**
@@ -205,7 +169,7 @@ function setDefaults(attrs: Record<string, string>): void {
     return;
   }
   defaultAttrs = { ...defaultAttrs, ...attrs };
-  const s = sentry();
+  const s = bound;
   if (s === null) {
     return;
   }
@@ -220,7 +184,7 @@ function clearDefaults(keys?: readonly string[]): void {
     return;
   }
   const targets: string[] = keys === undefined ? Object.keys(defaultAttrs) : [...keys];
-  const s = sentry();
+  const s = bound;
   for (const key of targets) {
     // Sentry has no tag removal, and an empty value drops out of non-empty filters.
     s?.setTag(`dotli.${key}`, '');
@@ -242,7 +206,7 @@ let resolutionId: string | null = null;
 
 /**
  * Correlate one page load across host, protocol iframe and sandbox, each with its own Sentry trace.
- * Stored even when metrics are stripped, because the realms that pass it on read it back from here.
+ * Stored even when metrics are off, because the realms that pass it on read it back from here.
  */
 export function setResolutionId(id: string): void {
   resolutionId = id;
@@ -316,7 +280,7 @@ function open(name: string, opts?: OpenSpanOptions & { parent?: unknown }): Span
   if (!ENABLED) {
     return NOOP_HANDLE;
   }
-  const s = sentry();
+  const s = bound;
   if (s === null) {
     return NOOP_HANDLE;
   }
@@ -337,7 +301,7 @@ function breadcrumb(message: string, data?: Record<string, unknown>): void {
   if (!ENABLED) {
     return;
   }
-  sentry()?.addBreadcrumb({
+  bound?.addBreadcrumb({
     category: 'dotli',
     message,
     level: 'info',

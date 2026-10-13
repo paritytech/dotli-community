@@ -20,14 +20,11 @@ export {
   BACKEND_KEY,
   BACKEND_LABELS,
   CACHE_KEY,
-  configureModeStorage,
   getBackend,
   getCacheSettings,
   isSharedWorkerAvailable,
   isVerifiedSession,
   localStorageAdapter,
-  setBackend,
-  setCacheSettings,
   type Backend,
   type CacheSettings,
   type ModeStorage,
@@ -52,9 +49,6 @@ export {
   getNetwork,
   getTldSuffix,
   isValidNetwork,
-  peekNetwork,
-  setNetwork,
-  setNetworkOverride,
   withActiveTld,
   type ActiveChainRole,
   type ChainRole,
@@ -64,6 +58,17 @@ export {
   type FixedServicesConfig,
   type Network,
 } from './network.js';
-export { persistDefaults } from './persist-defaults.js';
+export { setSettings } from './active-settings.js';
+export {
+  getSettings,
+  hasStoredSettings,
+  resolveSettings,
+  setActiveNetwork,
+  sharedSettingsOf,
+  writeLocalSettings,
+  type Settings,
+  type SettingsSources,
+  type SharedSettings,
+} from './settings.js';
 export { TIMEOUTS } from './timeouts.js';
-export { parseSettingsFromSearch, writeSettingsToSearch } from './url-settings.js';
+export { parseSettingsFromSearch, writeSettingsToSearch, type ParsedUrlSettings } from './url-settings.js';

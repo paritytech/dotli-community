@@ -7,6 +7,7 @@
 import type { Network } from '@dotli/config';
 import { createCacheReporter } from './cache-reporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
+import { idbRequest, idbTransaction } from './idb.js';
 import { m, spans as S } from '@dotli/metrics';
 import { isValidDotLabel } from '@dotli/resolver';
 
@@ -94,26 +95,12 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     const stop = m.timer(S.CACHE_READ_LATENCY);
     try {
       const db = await idb.connect();
-      return await new Promise<CidCacheResult>(resolve => {
-        const tx = db.transaction(STORE, 'readonly');
-        const req = tx.objectStore(STORE).get(label);
-        req.onsuccess = () => {
-          const entry = req.result as CidEntry | undefined;
-          stop();
-          resolve(
-            entry?.manifests === undefined || entry.network !== network
-              ? { kind: 'miss' }
-              : { kind: 'hit', cid: entry.cid, manifests: entry.manifests },
-          );
-        };
-        req.onerror = () => {
-          stop();
-          resolve({
-            kind: 'error',
-            cause: req.error ?? new Error('IDB read error'),
-          });
-        };
-      });
+      const entry = (await idbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(label))) as
+        CidEntry | undefined;
+      stop();
+      return entry?.manifests === undefined || entry.network !== network
+        ? { kind: 'miss' }
+        : { kind: 'hit', cid: entry.cid, manifests: entry.manifests };
     } catch (cause) {
       stop();
       return { kind: 'error', cause };
@@ -158,15 +145,8 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     const stop = m.timer(S.CACHE_WRITE_LATENCY);
     try {
       const db = await idb.connect();
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).clear();
-      await new Promise<void>((resolve, reject) => {
-        tx.oncomplete = () => {
-          resolve();
-        };
-        tx.onerror = () => {
-          reject(tx.error ?? new Error('IDB clear error'));
-        };
+      await idbTransaction(db, STORE, 'readwrite', tx => {
+        tx.objectStore(STORE).clear();
       });
       stop();
       return true;

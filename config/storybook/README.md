@@ -13,6 +13,9 @@ Shared Storybook and browser-test configuration for the UI packages. Internal, w
   a11y and vitest.
 - `storybook-solidjs-vite` adds the Solid plugin, so the config adds none. CSS modules come from the shared Vite
   tooling. `VITE_NETWORKS` is defined for stories.
+- The config adds one shared preview to every Storybook: dark docs, a11y failures as errors, the two viewports and a
+  render that hands a component its args. A page frame sets each story on the dotli page, unless the package turns it
+  off because it draws its own page. A package's own preview adds its stylesheet and what only it needs.
 - Each package calls `storybookVitestConfig(packageDir)` from a Vitest config of its own for stories. It stays apart
   from the package's unit test config, so `npm test` needs no browser.
 - The shared test setup raises the async test timeout for lazy chunks. With `VRT=1` it screenshots each passing story
@@ -20,7 +23,7 @@ Shared Storybook and browser-test configuration for the UI packages. Internal, w
 
 ## Entries
 
-| Entry                      | Use                                                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `@config/storybook/main`   | `storybookMain({ plugins?, viteConfigPath? })` returns the Storybook config. `plugins` runs per build. |
-| `@config/storybook/vitest` | `storybookVitestConfig(packageDir)` returns the browser test config for the package's stories.         |
+| Entry                      | Use                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `@config/storybook/main`   | `storybookMain({ plugins?, viteConfigPath?, pageFrame? })` returns the Storybook config. `plugins` runs per build. |
+| `@config/storybook/vitest` | `storybookVitestConfig(packageDir)` returns the browser test config for the package's stories.                     |

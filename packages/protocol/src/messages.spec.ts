@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, onTestFinished, vi } from 'vitest';
 import {
   CHAIN_ROLES,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
-  configureModeStorage,
   getActiveSupportedGenesisHashes,
-  setNetwork,
+  getSettings,
+  setSettings,
   type ChainRole,
 } from '@dotli/config';
 import {
@@ -269,28 +269,9 @@ describe('getRequestSyncTimeoutMs', () => {
 });
 
 describe('getActiveSupportedGenesisHashes', () => {
-  let restoreStorage: () => void;
-
-  beforeEach(() => {
-    const stored = new Map<string, string>();
-    restoreStorage = configureModeStorage({
-      getItem: key => stored.get(key) ?? null,
-      setItem: (key, value) => {
-        stored.set(key, value);
-      },
-      removeItem: key => {
-        stored.delete(key);
-      },
-    });
-  });
-
-  afterEach(() => {
-    restoreStorage();
-  });
-
   it('As a product on Paseo, I target an unknown genesis hash and it is not supported', () => {
     // Given
-    setNetwork(NetworkName.PASEO);
+    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
 
     // When / Then
     expect(getActiveSupportedGenesisHashes().has('0xdeadbeef')).toBe(false);

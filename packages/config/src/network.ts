@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { modeStorage } from './mode.js';
+import { activeSettings } from './active-settings.js';
 
 export const NetworkName = {
   PASEO: 'paseo-next-v2',
@@ -351,49 +351,14 @@ export function defaultNetwork(): Network {
   }
   return first;
 }
-let networkOverride: Network | null = null;
 
 export function isValidNetwork(value: string): value is Network {
   return VALID_NETWORKS.has(value);
 }
 
-/** Returns a function that puts the previous override back. */
-export function setNetworkOverride(network: Network): () => void {
-  const previous = networkOverride;
-  networkOverride = network;
-  return () => {
-    networkOverride = previous;
-  };
-}
-
-/** The stored choice when this build still offers it. */
-export function storedNetwork(enabled: readonly Network[] = getEnabledNetworks()): Network | null {
-  const stored = modeStorage().getItem(NETWORK_KEY);
-  return stored !== null && isValidNetwork(stored) && enabled.includes(stored) ? stored : null;
-}
-
-/**
- * The network as this page can tell it before settings apply, from the URL's `fromUrl`, then the stored choice, then
- * the default.
- */
-export function peekNetwork(fromUrl: Network | null): Network {
-  if (networkOverride !== null) {
-    return networkOverride;
-  }
-  const enabled = getEnabledNetworks();
-  if (fromUrl !== null && enabled.includes(fromUrl)) {
-    return fromUrl;
-  }
-  return storedNetwork(enabled) ?? defaultNetwork();
-}
-
-/** From this context's override, the stored choice or the default. Writes nothing, `persistDefaults` stores it. */
+/** This context's network, or the default before it is set. */
 export function getNetwork(): Network {
-  return peekNetwork(null);
-}
-
-export function setNetwork(network: Network): void {
-  modeStorage().setItem(NETWORK_KEY, network);
+  return activeSettings()?.network ?? defaultNetwork();
 }
 
 /**

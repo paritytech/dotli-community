@@ -4,6 +4,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
+import { routeFor } from './serving.ts';
 
 /**
  * Routes page loads as nginx does: the bare host's root to `landing`, and any other path that names no public file to
@@ -20,7 +21,7 @@ export function spaFallback({ landing }: { landing: string }): Plugin {
           (req.method === 'GET' || req.method === 'HEAD') && (req.headers.accept ?? '').includes('text/html');
         const hostname = (req.headers.host ?? '').split(':')[0] ?? '';
         const withQuery = (page: string): string => (query === undefined ? page : `${page}?${query}`);
-        if (isPageLoad && path === '/' && !hostname.endsWith('.localhost')) {
+        if (isPageLoad && path === '/' && routeFor(hostname).bare) {
           req.url = withQuery(landing);
         } else if (isPageLoad && path !== '/' && !existsSync(join(server.config.publicDir, decodeURIComponent(path)))) {
           req.url = withQuery('/');

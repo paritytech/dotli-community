@@ -3,4 +3,4 @@
 
 import { storybookMain } from '@config/storybook/main';
 
-export default storybookMain();
+export default storybookMain({ pageFrame: false });

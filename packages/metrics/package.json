@@ -7,7 +7,6 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./vite": "./src/vite.ts",
     "./testing": "./src/testing.ts",
     "./package.json": "./package.json"
   },
@@ -25,10 +24,5 @@
   },
   "peerDependencies": {
     "@sentry/browser": ">=10.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@sentry/browser": {
-      "optional": true
-    }
   }
 }

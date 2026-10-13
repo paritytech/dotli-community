@@ -8,11 +8,11 @@ import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
 import { isValidNetwork, getActiveFixedServicesConfig, type Network } from '@dotli/config';
 import { m, captureException, spans as S, type SpanHandle } from '@dotli/metrics';
-import { createChainPool, requireBrokerLocalProvider } from '@dotli/chains';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '@dotli/protocol';
 import { errorName, log, serializeError } from '@dotli/shared';
 
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
+import { startLightClientService } from './light-client-service.js';
 import { errorResponse } from './error-response.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import type {
@@ -475,19 +475,15 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     swEvent('Pre-sync started');
 
     try {
-      // The broker comes first so the resolver shares its one Asset Hub follow. A separate resolver chain would be
-      // released by the first dApp connection mid-read (`ChainHead disjointed`).
-      const services = getActiveFixedServicesConfig();
-      const broker = createChainPool({ createTransport: lightClient.createChainProvider, destroyDelay: Infinity });
-      // A separate People provider would race the broker on smoldot's one JSON-RPC queue, its events dropped
-      // as "unknown token" and reads hanging.
-      const dotns = resolver.createDotnsResolver({
-        assetHub: () => requireBrokerLocalProvider(broker, services.assethub.genesis, 'Asset Hub'),
-        people: () => requireBrokerLocalProvider(broker, services.people.genesis, 'People'),
-        dotns: services.dotns,
-        source: 'light-client',
+      // Nothing calls `stop`, since the observed chains live as long as the worker, which closes as a whole.
+      const service = startLightClientService({ lightClient, resolver, services: getActiveFixedServicesConfig() });
+      const { dotns } = service;
+      engine = createEngine({
+        broker: service.broker,
+        isChainSupported: lightClient.isChainSupported,
+        resolver: dotns,
+        log: swEvent,
       });
-      engine = createEngine({ broker, isChainSupported: lightClient.isChainSupported, resolver: dotns, log: swEvent });
 
       // The resolver records the `smoldot.presync` timing for this wait.
       await dotns.waitForAssetHubFinalized();
@@ -519,9 +515,6 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       }
     }
   }
-
-  // Before pre-sync opens the first connection, which would otherwise carry no lifecycle watch.
-  resolver.enableSyncReporting(['relay', 'assethub', 'bulletin', 'people']);
 
   // A fatal lets every tab reject in-flight requests at once instead of timing out, and a port that connects before the
   // close lands still gets the cause like a failed pre-sync. No chain opens before pre-sync, so no change came earlier.

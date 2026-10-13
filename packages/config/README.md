@@ -13,11 +13,11 @@ timeouts.
 
 - The base domain and site id come from the hostname, and `DEBUG` from the build environment. A base domain is never
   defaulted silently, since the cross-origin allowlist is keyed on it.
-- The network table holds per-network service config. The active network comes from stored settings and may be
-  overridden at runtime with `setNetworkOverride`.
-- Backend (`smoldot-direct`, `smoldot-shared-worker`, `rpc-gateway`) and cache switches live in a mode store. Storage is
-  reached through a `ModeStorage` set with `configureModeStorage`, so logic runs without a page. Defaults are seeded
-  once at boot, before the shared mode store hydrates.
+- The network table holds per-network service config. The active network is part of the settings, which the protocol
+  frame and the sandbox set from their URL.
+- Backend (`smoldot-direct`, `smoldot-shared-worker`, `rpc-gateway`) and cache switches are settings beside the network.
+  One pure function resolves them from the link, the cross-subdomain store and this origin's storage. A page sets its
+  settings once at boot and the getters return them. A change reloads the page, so nothing sets them after.
 - A chain is named by its role (`relay`, `assethub`, `bulletin`, `people`) everywhere: the network table, sync events,
   the light client's database outcomes and the UI. A genesis hash maps to its role from the fixed config, so a worker
   that never sees the runtime network config may read it.
@@ -30,11 +30,12 @@ timeouts.
 
 - Environment: `BASE_DOMAIN`, `SITE_ID`, `DEBUG`, `DEV_PROTOCOL_PORT`, `DEV_SANDBOX_PORT`, `isLocalhost`,
   `isSandboxOrigin`, `BLOCK_CACHE_MAX_BYTES`, the `SCHEDULED_NOTIFICATIONS_*` limits, `TIMEOUTS`.
-- Networks: `NetworkName`, `getNetwork`, `setNetwork`, `setNetworkOverride`, `getEnabledNetworks`,
-  `getActiveServicesConfig`, `getActiveFixedServicesConfig`, `getActiveTldSuffix`, `withActiveTld`, the chain role
-  helpers (`CHAIN_ROLES`, `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway and genesis hash readers.
-- Settings: `getBackend`, `setBackend`, `getCacheSettings`, `setCacheSettings`, `configureModeStorage`,
-  `isSharedWorkerAvailable`, `isVerifiedSession`, `persistDefaults`, `parseSettingsFromSearch`, `writeSettingsToSearch`.
+- Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `getActiveServicesConfig`,
+  `getActiveFixedServicesConfig`, `getActiveTldSuffix`, `withActiveTld`, the chain role helpers (`CHAIN_ROLES`,
+  `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway and genesis hash readers.
+- Settings: `getSettings`, `setSettings`, `getBackend`, `getCacheSettings`, `isSharedWorkerAvailable`,
+  `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`, `setActiveNetwork`,
+  `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `Settings`, `SharedSettings`.
 
 ### `@dotli/config/testing`
 

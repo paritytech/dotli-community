@@ -1,13 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Apart from `metrics.ts` so callers of `m` alone get a bundle without `@sentry/browser`.
+// The one module that imports the SDK. Its calls sit behind the compile-time metrics flag.
 
 import * as Sentry from '@sentry/browser';
 import { bindLogSink, log, type LogLevel, serializeError, fullErrorChain } from '@dotli/shared';
 
 import { bindCaptureSink, type CaptureSink } from './capture.js';
 import { m, sentrySpanOf } from './metrics.js';
+
+// Compile-time, so a build without metrics drops every SDK call with these branches.
+const ENABLED = import.meta.env.VITE_METRICS === 'true';
 
 /** All surfaces report to one Sentry project, and this `source` tag tells them apart. */
 export type SentrySource = 'host' | 'protocol' | 'worker' | 'sandbox';
@@ -95,6 +98,9 @@ function sentryRelease(): string | undefined {
 
 /** Initialize Sentry and bind it to `m`. Safe without a DSN, where a non-development build warns once. */
 export function initSentry(source: SentrySource): void {
+  if (!ENABLED) {
+    return;
+  }
   const dsn = import.meta.env.VITE_SENTRY_DSN;
   const env = sentryEnvironment();
   const extraIntegrations =
@@ -184,7 +190,7 @@ export function initSentry(source: SentrySource): void {
  * `event.error` is null (resource-load failures, CORS-tainted scripts).
  */
 export function installGlobalErrorHandlers(source: SentrySource): void {
-  if (typeof self === 'undefined') {
+  if (!ENABLED || typeof self === 'undefined') {
     return;
   }
 
