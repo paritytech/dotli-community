@@ -26,7 +26,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "astro": "^7.3.6",
+    "astro": "^7.3.8",
     "vite-plugin-pwa": "^2.0.0"
   }
 }
