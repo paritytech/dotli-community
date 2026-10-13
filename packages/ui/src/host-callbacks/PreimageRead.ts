@@ -215,7 +215,8 @@ async function readTorrent(request: RemotePreimageReadTorrentRequest): Promise<R
   if (servedBy !== undefined) {
     report.servedBy = servedBy;
   }
-  const response: RemotePreimageReadTorrentResponse = { file: result.file, report };
+  const files = (result.files ?? []).map(file => ({ index: file.index, path: file.path, size: BigInt(file.size) }));
+  const response: RemotePreimageReadTorrentResponse = { file: result.file, report, files };
   if (result.value !== undefined) {
     // The page keeps the file under its preimage key too, as after a read.
     rememberPreimage(toHex(blake2b(result.value, { dkLen: 32 })), result.value);

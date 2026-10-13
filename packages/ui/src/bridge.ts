@@ -656,7 +656,8 @@ export async function renderIframe(
   const host = await createHost({
     iframeUrl: iframeUrl.href,
     allowedOrigin: iframeUrl.origin,
-    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock',
+    // allow-downloads: a product can save a file, after a click of the user.
+    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads',
     label,
     productId: options.productId,
     container: app,
@@ -783,7 +784,8 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
   const host = await createHost({
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
-    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',
+    // allow-downloads: a product can save a file, after a click of the user.
+    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-downloads',
     label,
     container: app,
     debugFlowId: bridgeFlowId,

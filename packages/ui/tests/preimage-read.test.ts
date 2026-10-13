@@ -217,6 +217,12 @@ describe('Preimage.read host adapter', () => {
         value: { id: `0x${NODE.id}`, name: 'A', region: 'eu-west', origin: { tag: 'Source' }, rank: 0, home: true },
       },
     });
+    // And the list of the files of the torrent, so the product can read the other files
+    expect(answer.files.map(entry => [entry.index, entry.path.split('/').pop(), entry.size])).toEqual([
+      [0, expect.any(String), 100_001n],
+      [1, expect.any(String), 300_007n],
+      [2, 'f2.bin', 50_003n],
+    ]);
     // And a torrent is not on Bulletin
     await expect(
       adapter.readTorrent({ magnet: `magnet:?xt=urn:btih:${infoHash}`, route: { tag: 'Bulletin' } }),

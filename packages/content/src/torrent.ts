@@ -218,7 +218,7 @@ export async function verifySpan(
   infoHash: string,
   file: number,
   span: Uint8Array,
-): Promise<{ value: Uint8Array; name: string }> {
+): Promise<{ value: Uint8Array; name: string; files: TorrentListedFile[] }> {
   if (toHex(await sha1(info)) !== infoHash) {
     throw new Error(`the info dict is not the one of ${infoHash}`);
   }
@@ -238,5 +238,17 @@ export async function verifySpan(
     }
   }
   const name = parsed.files.length > 1 ? `${parsed.name}/${parsed.files[file]?.path ?? ''}` : parsed.name;
-  return { value: span.slice(range.fileStart, range.fileEnd), name };
+  return { value: span.slice(range.fileStart, range.fileEnd), name, files: listFiles(parsed) };
+}
+
+/** A file of a torrent for a product: its index in the torrent, its path and its size. */
+export interface TorrentListedFile {
+  index: number;
+  path: string;
+  size: number;
+}
+
+/** The files of a torrent that a product can read. Padding files (BEP 47) are not in the list. */
+export function listFiles(info: TorrentInfo): TorrentListedFile[] {
+  return info.files.flatMap((file, index) => (file.padding ? [] : [{ index, path: file.path, size: file.length }]));
 }

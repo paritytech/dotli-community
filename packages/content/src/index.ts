@@ -31,6 +31,16 @@ export { CONTENT_ERRORS } from './errors.js';
 export { type FetchResult } from './fetch.js';
 export { fetchFromIpfs } from './ipfs.js';
 export { hashToCid } from './preimage.js';
-export { parseInfo, parseMagnet, spanOf, torrentId, verifySpan, type MagnetRef, type TorrentInfo } from './torrent.js';
+export {
+  listFiles,
+  parseInfo,
+  parseMagnet,
+  spanOf,
+  torrentId,
+  verifySpan,
+  type MagnetRef,
+  type TorrentInfo,
+  type TorrentListedFile,
+} from './torrent.js';
 export { assertBlockMatchesCid } from './verify.js';
 export { loadFetch } from './lazy.js';

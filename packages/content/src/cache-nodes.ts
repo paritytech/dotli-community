@@ -16,7 +16,7 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { getPublicKey, secretFromSeed, sign } from '@scure/sr25519';
 import { log } from '@dotli/shared';
 
-import { parseMagnet, torrentId, verifySpan } from './torrent.js';
+import { parseMagnet, type TorrentListedFile, torrentId, verifySpan } from './torrent.js';
 
 /** One provider of the provider set that a browser can call. */
 export interface CacheProvider {
@@ -66,6 +66,8 @@ export interface CacheTorrentRead extends CacheRead {
   contentId: string;
   /** While the provider still downloads the file: what it did so far. There is no value then; read again later. */
   progress?: CacheTorrentProgress;
+  /** The files of the torrent, after a read that the host checked. */
+  files?: TorrentListedFile[];
 }
 
 /** The step of a torrent download at a provider. */
@@ -518,7 +520,7 @@ export class CacheNodes {
         continue;
       }
       const span = new Uint8Array(await response.arrayBuffer());
-      let checked: { value: Uint8Array; name: string };
+      let checked: { value: Uint8Array; name: string; files: TorrentListedFile[] };
       try {
         const info = await this.fetch(`${provider.api}/torrent/${ref.infoHash}`, {
           signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
@@ -552,7 +554,15 @@ export class CacheNodes {
       if (trace !== null && trace !== '') {
         served.trace = trace;
       }
-      return { value: checked.value, name: checked.name, served, attempts, file: selected, contentId };
+      return {
+        value: checked.value,
+        name: checked.name,
+        files: checked.files,
+        served,
+        attempts,
+        file: selected,
+        contentId,
+      };
     }
     this.saveQuality();
     return { attempts, file: selected, contentId };
