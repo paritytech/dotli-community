@@ -14,7 +14,7 @@ interface TouchFixture {
   buttons: Set<number>;
   aim: { x: number; y: number };
   emissions: string[];
-  pointer: (control: Control, type: PointerPhase, id: number, x?: number, y?: number) => void;
+  pointer: (control: Control, type: PointerPhase, id: number, x?: number, y?: number, pointerType?: string) => void;
   holdAll: () => void;
   expectReleased: () => void;
 }
@@ -54,6 +54,16 @@ function frame(elapsed: number): void {
       callback(now);
     }
   }
+}
+
+function touchTermination(type: 'touchend' | 'touchcancel', remaining = 0): TouchEvent {
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: Array.from({ length: remaining }, (_, identifier) => new Touch({ identifier, target: document.body })),
+  });
+  Object.defineProperty(event, 'timeStamp', { value: now });
+  return event;
 }
 
 function fixture(): TouchFixture {
@@ -120,7 +130,7 @@ function fixture(): TouchFixture {
       },
     });
   }
-  function pointer(control: Control, type: PointerPhase, id: number, x = 100, y = 100): void {
+  function pointer(control: Control, type: PointerPhase, id: number, x = 100, y = 100, pointerType = 'touch'): void {
     const target = targets.get(control);
     if (!target) {
       throw new Error(`Missing touch control: ${control}`);
@@ -133,22 +143,22 @@ function fixture(): TouchFixture {
     if (type === 'lostpointercapture') {
       held.delete(id);
     }
-    target.dispatchEvent(
-      new PointerEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        pointerId: id,
-        pointerType: 'touch',
-        button: 0,
-        buttons: type === 'pointerup' || type === 'pointercancel' ? 0 : 1,
-        clientX: x,
-        clientY: y,
-      }),
-    );
+    const event = new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: id,
+      pointerType,
+      button: 0,
+      buttons: type === 'pointerup' || type === 'pointercancel' ? 0 : 1,
+      clientX: x,
+      clientY: y,
+    });
+    Object.defineProperty(event, 'timeStamp', { value: now });
+    target.dispatchEvent(event);
     // Browsers implicitly release capture after pointerup, even if the handler
     // already released it. That notification must not cancel other contacts.
     if (type === 'pointerup' && captured) {
-      pointer(control, 'lostpointercapture', id, x, y);
+      pointer(control, 'lostpointercapture', id, x, y, pointerType);
     }
   }
   function holdAll(): void {
@@ -257,6 +267,118 @@ describe('PolkaVM touch controls', () => {
     state.pointer('run', 'pointerup', 4);
     frame(20);
     expect(state.emissions).toEqual(released);
+  });
+
+  it('releases document-targeted capture loss without cancelling other controls', () => {
+    const state = fixture();
+    state.controls.setEnabled(true);
+    state.holdAll();
+    // A detached capture target receives no loss event: browsers retarget it
+    // to Document instead. The held guest state still needs the release.
+    const lose = (pointerId: number): void => {
+      document.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true, pointerId }));
+    };
+    lose(3);
+    expect(state.buttons).toEqual(new Set());
+    expect(state.keys).toEqual(new Set(['KeyW', 'KeyD', 'ShiftLeft']));
+    const aiming = state.aim.x;
+    frame(20);
+    expect(state.aim.x).toBeGreaterThan(aiming);
+    lose(1);
+    expect(state.keys).toEqual(new Set(['ShiftLeft']));
+    lose(2);
+    lose(4);
+    state.expectReleased();
+    state.holdAll();
+    state.controls.reset();
+    state.expectReleased();
+  });
+
+  it('releases stationary contacts too when the detached overlay loses a moving pointer', () => {
+    const state = fixture();
+    state.controls.setEnabled(true);
+    state.holdAll();
+    const root = document.querySelector<HTMLElement>('[data-polkavm-touch-controls]');
+    const parent = root?.parentElement;
+    if (root === null || parent === null || parent === undefined) {
+      throw new Error('Touch overlay is not mounted');
+    }
+    root.remove();
+    // The moving stick has active capture; a stationary button may still have
+    // only pending capture and receive no corresponding loss notification.
+    document.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true, pointerId: 2 }));
+    state.expectReleased();
+    parent.append(root);
+    state.holdAll();
+    state.controls.reset();
+    state.expectReleased();
+  });
+
+  it.each(['touchend', 'touchcancel'] as const)(
+    '%s recovers stranded owners when the final PointerEvents were not delivered',
+    cause => {
+      const state = fixture();
+      state.controls.setEnabled(true);
+      state.holdAll();
+      for (let index = 0; index < 120; index++) {
+        state.pointer('move', 'pointermove', 1, 160, 40);
+        state.pointer('look', 'pointermove', 2, 160, 100);
+        frame(16);
+      }
+      // The native touch stream is authoritative when every contact has ended,
+      // even if pointerup/cancel/lostcapture never reached the overlay.
+      document.body.dispatchEvent(touchTermination(cause));
+      state.expectReleased();
+      state.pointer('move', 'pointermove', 1, 40, 160);
+      state.pointer('look', 'pointermove', 2, 160, 100);
+      state.expectReleased();
+      state.holdAll();
+      state.pointer('move', 'pointerup', 1);
+      state.pointer('look', 'pointerup', 2);
+      state.pointer('fire', 'pointerup', 3);
+      state.pointer('run', 'pointerup', 4);
+      state.expectReleased();
+    },
+  );
+
+  it('keeps live touches and mouse/pen holders independent of touch termination', () => {
+    const state = fixture();
+    state.controls.setEnabled(true);
+    state.pointer('fire', 'pointerdown', 10, 100, 100, 'mouse');
+    state.pointer('run', 'pointerdown', 11, 100, 100, 'pen');
+    state.holdAll();
+    state.pointer('fire', 'pointercancel', 3);
+    document.body.dispatchEvent(touchTermination('touchcancel', 3));
+    expect(state.keys).toEqual(new Set(['ShiftLeft', 'KeyW', 'KeyD']));
+    expect(state.buttons).toEqual(new Set([1]));
+    const aiming = state.aim.x;
+    frame(20);
+    expect(state.aim.x).toBeGreaterThan(aiming);
+    document.body.dispatchEvent(touchTermination('touchend'));
+    expect(state.keys).toEqual(new Set(['ShiftLeft']));
+    expect(state.buttons).toEqual(new Set([1]));
+    const stopped = state.aim.x;
+    frame(20);
+    expect(state.aim.x).toBe(stopped);
+    state.pointer('fire', 'pointerup', 10, 100, 100, 'mouse');
+    state.pointer('run', 'pointerup', 11, 100, 100, 'pen');
+    state.expectReleased();
+  });
+
+  it('does not let an older touch termination release a newly started contact', () => {
+    const state = fixture();
+    state.controls.setEnabled(true);
+    const previousStream = touchTermination('touchcancel');
+    frame(20);
+    state.holdAll();
+    document.body.dispatchEvent(previousStream);
+    expect(state.keys).toEqual(new Set(['KeyW', 'KeyD', 'ShiftLeft']));
+    expect(state.buttons).toEqual(new Set([1]));
+    const aiming = state.aim.x;
+    frame(20);
+    expect(state.aim.x).toBeGreaterThan(aiming);
+    document.body.dispatchEvent(touchTermination('touchend'));
+    state.expectReleased();
   });
 
   it('releases on resize and backgrounding, without resuming stale contacts', () => {

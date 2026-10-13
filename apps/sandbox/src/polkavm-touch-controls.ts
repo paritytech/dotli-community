@@ -161,6 +161,7 @@ export function installPolkaVmTouchControls(
   root.append(style);
   const byElement = new Map<Element, TouchControl>();
   const pointers = new Map<number, TouchControl>();
+  const touchPointers = new Map<number, number>();
   const movementKeys = new Set<string>();
   let enabled = false;
   let playing = true;
@@ -366,6 +367,7 @@ export function installPolkaVmTouchControls(
     }
     // Remove ownership before releasing capture: the resulting lost event is normal.
     pointers.delete(pointerId);
+    touchPointers.delete(pointerId);
     control.pointers.delete(pointerId);
     if (control.pointers.size === 0) {
       active(control, false);
@@ -437,6 +439,9 @@ export function installPolkaVmTouchControls(
       return;
     }
     pointers.set(event.pointerId, control);
+    if (event.pointerType === 'touch') {
+      touchPointers.set(event.pointerId, event.timeStamp);
+    }
     const first = control.pointers.size === 0;
     control.pointers.add(event.pointerId);
     active(control, true);
@@ -486,7 +491,27 @@ export function installPolkaVmTouchControls(
       return;
     }
     consume(event);
-    release(event.pointerId);
+    if (root.isConnected) {
+      release(event.pointerId);
+    } else {
+      // A detached overlay has lost every control, including stationary contacts
+      // whose pending capture may never produce its own loss notification.
+      reset();
+    }
+  }
+
+  function touchesEnded(event: TouchEvent): void {
+    if (event.touches.length !== 0) {
+      return;
+    }
+    // A browser gesture can end the touch stream without delivering its final
+    // PointerEvents. No live touches means no touch control may retain an owner.
+    // Mouse/pen holders and surviving contacts are independent of this boundary.
+    for (const [pointerId, started] of touchPointers) {
+      if (started <= event.timeStamp) {
+        release(pointerId);
+      }
+    }
   }
 
   function visibilityChange(): void {
@@ -501,7 +526,6 @@ export function installPolkaVmTouchControls(
   root.addEventListener('pointermove', pointerMove, options);
   root.addEventListener('pointerup', consume, options);
   root.addEventListener('pointercancel', consume, options);
-  root.addEventListener('lostpointercapture', pointerCancel, options);
   for (const event of [
     'mousedown',
     'mouseup',
@@ -511,6 +535,7 @@ export function installPolkaVmTouchControls(
     'touchstart',
     'touchmove',
     'touchend',
+    'touchcancel',
   ]) {
     root.addEventListener(event, consume, { ...options, passive: false });
   }
@@ -522,6 +547,19 @@ export function installPolkaVmTouchControls(
     ...options,
     capture: true,
   });
+  // When a capture target is detached, the browser sends loss to the document,
+  // not the old control. Observe the whole path, as for up/cancel.
+  window.addEventListener('lostpointercapture', pointerCancel, {
+    ...options,
+    capture: true,
+  });
+  for (const event of ['touchend', 'touchcancel'] as const) {
+    window.addEventListener(event, touchesEnded, {
+      ...options,
+      capture: true,
+      passive: true,
+    });
+  }
   window.addEventListener('blur', reset, options);
   window.addEventListener('pagehide', reset, options);
   window.addEventListener('resize', reset, options);
