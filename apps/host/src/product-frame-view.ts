@@ -1,11 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The runtime's product frame view answered with the page's frame layout, screens and loading screen, for the host to
-// hand to the bridge.
+// The runtime's product frame view answered with the page's frame layout, screens and loading screen.
 
-import type { ProductFrameView } from '@dotli/host-runtime';
+import { clearScreen } from '@dotli/ui';
+import type { ProductFrameView } from './runtime/product-frame.js';
 import { loadViolationPanelMount } from './lazy.js';
+import { hideLoading } from './loading-controller.js';
 import { attachProductFrame } from './product-frame-layout.js';
 import { showProductTitle } from './product-title.js';
 
@@ -46,3 +47,10 @@ export function createProductFrameView(page: FramePage): ProductFrameView {
           },
   };
 }
+
+/** The page's frame view, over its body, screens and loading screen. */
+export const productFrameView: ProductFrameView = createProductFrameView({
+  body: () => document.body,
+  clearScreen,
+  hideLoading,
+});

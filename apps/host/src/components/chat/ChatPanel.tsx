@@ -16,7 +16,8 @@ import {
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ChevronLeftIcon, CloseIcon, SendIcon } from '@dotli/ui/icons';
-import { ContactRow, ResizeHandle } from '@dotli/ui-entities';
+import { ContactRow } from './ContactRow.js';
+import { ResizeHandle } from './ResizeHandle.js';
 import { MessageRow } from './MessageRow.js';
 import type { ChatConversation } from './chat.js';
 import { contactEntries, type ContactEntry } from './contacts.js';

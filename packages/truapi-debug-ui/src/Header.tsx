@@ -3,8 +3,9 @@
 
 import { createSignal, flush, onCleanup, Show, useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { DockPosition, PanelSection } from '@dotli/truapi-debug';
-import { exportFilename } from '@dotli/truapi-debug';
+import type { DockPosition } from './model/dock-storage.js';
+import type { PanelSection } from './model/section-storage.js';
+import { exportFilename } from './model/export.js';
 import { PanelEffectsContext } from './effects.js';
 import { copyText } from './shared/copy.js';
 import { Button } from './shared/Button.js';

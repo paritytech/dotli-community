@@ -7,10 +7,11 @@
 import { getActiveTldSuffix, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, dur, elapsed, log, serializeError } from '@dotli/shared';
+import type { SmoldotDbChain } from '@dotli/protocol';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { ShieldState } from './state/url-pill.js';
-import type { ProductFrame } from '@dotli/host-runtime';
+import type { ProductFrame } from './runtime/product-frame.js';
 import { describeError } from './errors.js';
 import { reportLazyMiss } from './lazy-miss.js';
 import type { Attempt } from './journey.js';
@@ -53,7 +54,7 @@ export interface ProductLoaderDeps {
   startProgress: (load: { label: string; trace: ResolutionTrace }) => LoadProgress;
   /** Called once, for the first outcome the sandbox reports. */
   onContentDone: (callback: (outcome: ContentOutcome, failedStep: string | undefined) => void) => void;
-  smoldotDbOutcome: (chain: 'relay' | 'hub' | 'bulletin') => string;
+  smoldotDbOutcome: (chain: SmoldotDbChain) => string;
   /** Whether the product's worker manifest asks for chat, read alongside the name and cached for the next load. */
   readChat: (label: string, read: () => Promise<boolean>) => Promise<boolean>;
   scheduleNotifications: (options: { label: string }) => void;
@@ -143,7 +144,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     const inapplicable = cidCache === 'hit' || backend === 'rpc-gateway';
     return {
       smoldotdb_relay_cache: inapplicable ? 'n/a' : deps.smoldotDbOutcome('relay'),
-      smoldotdb_hub_cache: inapplicable ? 'n/a' : deps.smoldotDbOutcome('hub'),
+      smoldotdb_hub_cache: inapplicable ? 'n/a' : deps.smoldotDbOutcome('assethub'),
       smoldotdb_bulletin_cache: inapplicable ? 'n/a' : deps.smoldotDbOutcome('bulletin'),
     };
   };

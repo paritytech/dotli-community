@@ -5,7 +5,7 @@
 // dismissal lasts for this page only, so a blocked store never stops the page from starting.
 
 import { DesktopIcon } from '@dotli/ui/icons';
-import type { ShowNotification } from '@dotli/ui-widgets';
+import type { ShowNotification } from '@dotli/ui';
 
 const DISMISSED_KEY = 'desktop-banner-dismissed';
 const PUBLIC_DOWNLOAD_URL = 'https://polkadot.com/get-started/polkadot-for-desktop';

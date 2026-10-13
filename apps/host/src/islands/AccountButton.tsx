@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { authStore, loggedInStore, logout, startLogin, walletModeStore } from '@dotli/host-runtime';
+import { authStore, loggedInStore } from '../runtime/state/auth.js';
+import { logout, startLogin } from '../runtime/auth-controller.js';
+import { walletModeStore } from '../runtime/state/wallet-mode.js';
 import { useStore } from '@dotli/ui';
 import { AccountItem } from '../components/topbar/items.js';
 import { authModalStore, setAuthModalTrigger } from '../state/auth-modal.js';

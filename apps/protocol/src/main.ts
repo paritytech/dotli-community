@@ -357,7 +357,7 @@ async function initDirectMode(): Promise<void> {
   provider.enableSyncReporting([
     // The chains the load waits on, in that order.
     'relay',
-    'asset-hub',
+    'assethub',
     'bulletin',
     // Off the loading path, but the network panel lists its peer count.
     'people',

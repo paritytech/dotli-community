@@ -9,7 +9,7 @@ import type {
   ResolutionModel,
   ResolutionRow,
   ResolutionSummary,
-} from '@dotli/truapi-debug';
+} from '../model/resolution-view.js';
 
 type FactTone = 'ok' | 'warn' | 'bad' | 'running' | 'dim';
 

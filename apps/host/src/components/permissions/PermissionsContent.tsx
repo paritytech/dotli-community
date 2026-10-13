@@ -17,8 +17,8 @@ import {
   usePopover,
   Well,
 } from '@dotli/ui';
-import { type PermissionName, PermissionRow, type PermissionStatus } from '@dotli/ui-entities';
-import type { PermissionGroup } from '@dotli/host-runtime';
+import type { EnforceablePermissionName, PermissionGroup, PermissionStatus } from '../../runtime/permissions.js';
+import { PermissionRow } from './PermissionRow.js';
 import type { MenuPermission, PermissionsNotice } from './permissions.js';
 import s from './PermissionsContent.module.css';
 
@@ -44,7 +44,7 @@ export interface PermissionsContentProps {
   /** The panel opened. Another tab of the same app may have changed them since the last read. */
   onOpen: () => void;
   /** A segment other than the current status was pressed. */
-  onChoose: (name: PermissionName, status: PermissionStatus) => void;
+  onChoose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
   /** Reset all to Ask, announced as one change. Settles once the reset is done. */
   onReset: () => Promise<void>;
 }

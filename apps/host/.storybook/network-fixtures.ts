@@ -5,8 +5,8 @@
 
 import { createSignal, onCleanup } from 'solid-js';
 import type { Backend } from '@dotli/config';
-import type { NetworkHealth } from '@dotli/ui-entities';
-import type { ChainBar } from '@dotli/ui-entities';
+import type { NetworkHealth } from '../src/components/chains/network-health.js';
+import type { ChainBar } from '../src/components/chains/chain.js';
 import type { ChainView, NetworkView, TransferView } from '../src/components/chains/chains.js';
 import type { LiveVerdict } from '../src/network-verdict.js';
 import type { NetworkItemProps } from '../src/components/topbar/items.js';

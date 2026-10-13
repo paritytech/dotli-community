@@ -27,7 +27,7 @@ import {
   Well,
   watchPhoneViewport,
 } from '@dotli/ui';
-import type { AuthModalState, AuthModalView } from '@dotli/host-runtime';
+import type { AuthModalState, AuthModalView } from '../../state/auth-modal.js';
 import { isMobileDevice } from '../../device.js';
 import { drawQrCode, type DrawQr } from './qr-code.js';
 import { presentQr } from './qr-drawer.js';

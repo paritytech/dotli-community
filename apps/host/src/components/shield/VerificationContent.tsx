@@ -3,7 +3,8 @@
 
 import { Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { TrustedShieldIcon, VerifiedShieldIcon } from '@dotli/ui-entities';
+import { TrustedShieldIcon } from '../icons/TrustedShieldIcon.js';
+import { VerifiedShieldIcon } from '../icons/VerifiedShieldIcon.js';
 import type { ShieldState } from '../../state/url-pill.js';
 import s from './VerificationContent.module.css';
 

@@ -4,12 +4,12 @@
 import { createSignal, Show } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
-import type { ChatMessage } from '@dotli/ui-entities';
+import type { ChatMessageRecord } from '../../runtime/chat/store.js';
 import { MessageRow } from './MessageRow.js';
 
 const NOW = 1_700_000_000_000;
 
-function record(content: unknown): ChatMessage {
+function record(content: unknown): ChatMessageRecord {
   return {
     seq: 1,
     productId: 'app.dot',

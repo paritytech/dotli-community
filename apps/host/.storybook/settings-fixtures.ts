@@ -7,7 +7,7 @@
 import { createSignal, flush } from 'solid-js';
 import { fn } from 'storybook/test';
 import type { CacheSettings } from '@dotli/config';
-import type { ThemeChoice } from '@dotli/ui-entities';
+import type { ThemePref } from '../src/runtime/state/theme.js';
 import type { ApplySettings, SavedSettings } from '../src/components/settings/settings.js';
 import type { SettingsItemProps } from '../src/components/topbar/items.js';
 
@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: SavedSettings = {
 };
 
 const [settings, setSettings] = createSignal<SavedSettings | null>(DEFAULT_SETTINGS);
-const [theme, setThemeSignal] = createSignal<ThemeChoice>('system');
+const [theme, setThemeSignal] = createSignal<ThemePref>('system');
 const [debugMode, setDebugModeSignal] = createSignal(false);
 const [open, setOpenSignal] = createSignal(false);
 
@@ -32,7 +32,7 @@ const [open, setOpenSignal] = createSignal(false);
 export const settingsAsked = {
   /** Stands in for the page's apply, which would wipe storage and reload. */
   apply: fn<ApplySettings>(),
-  themes: [] as ThemeChoice[],
+  themes: [] as ThemePref[],
   debugMode: 0,
 };
 
@@ -63,7 +63,7 @@ export function givenSettings(next: SavedSettings | null): void {
   flush();
 }
 
-function setTheme(next: ThemeChoice): void {
+function setTheme(next: ThemePref): void {
   setThemeSignal(next);
   flush();
 }

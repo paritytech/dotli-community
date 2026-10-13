@@ -6,8 +6,7 @@
 import { getActiveTldSuffix } from '@dotli/config';
 import type { SandboxChannel } from '@dotli/sandbox-wire';
 import type { ReadableStore } from '@dotli/shared';
-import { prefersReducedMotion } from '@dotli/ui';
-import { pageContentStore, type PageContent } from '@dotli/ui-widgets';
+import { pageContentStore, prefersReducedMotion, type PageContent } from '@dotli/ui';
 import { getLoadingState, updateLoading, type StepPart } from './state/loading.js';
 
 /** A loading step owning the `[base, target]` band of the bar, crossed in about `expectedMs`. */

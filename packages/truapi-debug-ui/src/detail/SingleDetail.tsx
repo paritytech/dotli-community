@@ -3,17 +3,9 @@
 
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import {
-  chainDetail,
-  eventCountLabel,
-  formatTime,
-  siblingPills,
-  summariseSystemEvent,
-  type EventSeq,
-  type StoredEvent,
-  type StoredSystemEvent,
-  type StoredTruapiEvent,
-} from '@dotli/truapi-debug';
+import { chainDetail, eventCountLabel, formatTime, siblingPills } from '../model/detail-format.js';
+import { summariseSystemEvent } from '../model/system-summary.js';
+import type { EventSeq, StoredEvent, StoredSystemEvent, StoredTruapiEvent } from '../model/event-store.js';
 import { Explanation } from './Explanation.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
 import { IdValue } from '../shared/IdBadge.js';

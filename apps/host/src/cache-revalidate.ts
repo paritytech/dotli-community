@@ -7,7 +7,7 @@
 import { captureException, m, spans as S } from '@dotli/metrics';
 import type { CachedManifests } from '@dotli/storage';
 import { log } from '@dotli/shared';
-import type { ShowNotification } from '@dotli/ui-widgets';
+import type { ShowNotification } from '@dotli/ui';
 import type { revalidateCachedProduct } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
 

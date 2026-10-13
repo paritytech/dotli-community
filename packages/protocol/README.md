@@ -23,8 +23,11 @@ flowchart LR
   and is the only listener for its messages. It rebuilds itself when lost. Boot is deduped with a task pool.
 - The wire contract holds the envelope guards. Events pass an origin and source check, then a payload check.
 - The rpc layer sends requests and matches answers, with a timeout per method.
-- The client builds the page's one instance from `createProtocolClient`. Its facades cover resolution, remote chains,
-  the shared store and telemetry.
+- The client factory builds the frame, the rpc layer and the parts over them (resolution, remote chains, the shared
+  store and telemetry) and returns them as one object. Its type is what the factory returns, so each request is declared
+  once. The page's instance is built on first use, and each public function passes through to it.
+- Each request method has an answer type, so the rpc layer hands callers typed results. The only cast is where an answer
+  arrives over `postMessage`.
 - A remote chain connection answers a request its chain halted under with the chain pool's halt marker, and tells its
   consumer whether the chain or the whole frame stopped.
 - Shared store keys are named in one place, and only allowed origins may use them.
@@ -35,8 +38,7 @@ flowchart LR
 
 ### `@dotli/protocol`
 
-- Client: `createProtocolClient`, `ProtocolClient`, `ProtocolClientDeps`, `configureProtocolFrame`,
-  `ensureProtocolFrame`, `warmupProtocol`, `getProtocolOrigin`, `getProtocolStatus`.
+- Client: `configureProtocolFrame`, `ensureProtocolFrame`, `warmupProtocol`, `getProtocolOrigin`, `getProtocolStatus`.
 - Resolution: `resolveDotNameRemote`, `resolveRootManifestRemote`, `resolveExecutableManifestRemote`.
 - Remote chains: `createRemoteChainProvider`, `isRemoteChainSupported`, `isRemoteChainConnectable`,
   `RemoteChainProvider`.

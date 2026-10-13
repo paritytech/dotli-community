@@ -3,7 +3,8 @@
 
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { formatPayloadDetail, type ChainDetail } from '@dotli/truapi-debug';
+import { formatPayloadDetail } from '../model/format.js';
+import type { ChainDetail } from '../model/detail-format.js';
 import { Callout } from '../shared/Callout.js';
 import { Code } from '../shared/Code.js';
 import { CodeBlock } from '../shared/CodeBlock.js';

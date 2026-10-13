@@ -19,7 +19,7 @@ import {
 import { clearCidCache, clearBlockCache } from '@dotli/storage';
 import { isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
 
-import { schedulePendingReset, type PendingResetTarget } from '@dotli/host-runtime';
+import { schedulePendingReset, type PendingResetTarget } from './runtime/pending-reset.js';
 import { THEME_KEY } from './theme-controller.js';
 
 /** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */

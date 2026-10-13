@@ -8,6 +8,9 @@ import solid from '@solidjs/vite-plugin';
 // shell's DOM bindings run under happy-dom. The Playwright suites have their own configs.
 export default defineConfig({
   plugins: [solid()],
+  // `npm run link:truapi` points @parity/truapi-provider outside the workspace, and Vite's strict file serving would
+  // refuse its `?url` wasm import.
+  server: { fs: { strict: false } },
   test: {
     globals: false,
     projects: [
@@ -16,8 +19,19 @@ export default defineConfig({
         test: {
           name: 'host:unit',
           include: ['src/**/*.spec.{ts,tsx}'],
-          exclude: ['src/islands/**'],
+          exclude: ['src/islands/**', 'src/runtime/**'],
           environment: 'node',
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'host:runtime',
+          include: ['src/runtime/**/*.spec.ts'],
+          environment: 'node',
+          // The runtime's specs read metrics through a recorder nobody else binds, and each starts on an empty mode
+          // store so a network or backend stored on the machine never reaches one.
+          setupFiles: ['src/testing/metrics-setup.ts', 'src/testing/mode-storage-setup.ts'],
         },
       },
       {

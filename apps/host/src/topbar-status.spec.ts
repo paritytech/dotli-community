@@ -3,14 +3,11 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
-import {
-  createChatConnections,
-  createChatStore,
-  labelToProductId,
-  setAuthState,
-  setProductLoaded,
-} from '@dotli/host-runtime';
-import { memoryChatRepo } from '@dotli/host-runtime/testing';
+import { createChatConnections, createChatStore } from './runtime/chat/store.js';
+import { labelToProductId } from './runtime/runtime-config.js';
+import { setAuthState } from './runtime/state/auth.js';
+import { setProductLoaded } from './runtime/state/product.js';
+import { memoryChatRepo } from './runtime/chat/store.fake.js';
 import { initChatPanelState, resetChatPanelStateForTests } from './state/chat-panel.js';
 import {
   actionRoom,

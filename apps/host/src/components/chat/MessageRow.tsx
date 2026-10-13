@@ -3,7 +3,8 @@
 
 import { untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { type ChatMessage, MessageBubble } from '@dotli/ui-entities';
+import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import { MessageBubble } from './MessageBubble.js';
 import type { ChatMessageActions } from './chat.js';
 import { CustomMessage } from './CustomMessage.js';
 
@@ -13,7 +14,7 @@ import { CustomMessage } from './CustomMessage.js';
  */
 export function MessageRow(props: {
   chat: ChatMessageActions;
-  record: ChatMessage;
+  record: ChatMessageRecord;
   now: number;
   onActionError: () => void;
 }): JSX.Element {

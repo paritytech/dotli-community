@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { clearScreen } from '@dotli/ui-widgets';
+import { clearScreen } from '@dotli/ui';
 import { byTestId } from '@dotli/ui/testing';
 import { showRetryScreen } from '../src/retry-screen.js';
 

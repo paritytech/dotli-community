@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { LoadingPhase } from './loading-controller.js';
-import { chainRoleForKey } from './chain-roles.js';
 import {
   startLoadProgress,
   type ChainDetailFacts,
@@ -130,7 +129,6 @@ function setup(backend: Backend): {
     emit: event => {
       debug.push(event);
     },
-    chainRole: chainRoleForKey,
     product: product.store,
   });
   return { progress, chainSync, chainDetail, netBytes, content, loading, monitor, trace, debug, product };
@@ -208,14 +206,14 @@ describe('startLoadProgress', () => {
 
     // When
     chainSync.send({ chain: 'relay', syncKind: 'connecting' });
-    chainDetail.send({ chain: 'asset-hub', dbCache: 'hit' });
+    chainDetail.send({ chain: 'assethub', dbCache: 'hit' });
     netBytes.send({ received: 2048 });
     content.send({ bytesFetched: 10, totalBytes: 100 });
     vi.advanceTimersByTime(10_000);
 
     // Then
     expect(trace.chainSync).toHaveBeenCalledWith({ chain: 'relay', syncKind: 'connecting' });
-    expect(trace.chainDetail).toHaveBeenCalledWith({ chain: 'asset-hub', dbCache: 'hit' });
+    expect(trace.chainDetail).toHaveBeenCalledWith({ chain: 'assethub', dbCache: 'hit' });
     expect(trace.bytes).toHaveBeenCalledWith(2048);
     expect(trace.content).toHaveBeenCalledWith(10, 100);
     expect(debug.map(event => event.event)).toEqual(['dbcache']);
@@ -249,8 +247,8 @@ describe('startLoadProgress', () => {
     // When
     chainSync.send({ chain: 'relay', syncKind: 'warpSyncProgress', at: 50, target: 100 });
     chainSync.send({ chain: 'relay', syncKind: 'warpSyncFinished' });
-    chainSync.send({ chain: 'asset-hub', syncKind: 'firstPeer' });
-    chainSync.send({ chain: 'asset-hub', syncKind: 'bootstrapComplete' });
+    chainSync.send({ chain: 'assethub', syncKind: 'firstPeer' });
+    chainSync.send({ chain: 'assethub', syncKind: 'bootstrapComplete' });
     chainSync.send({ chain: 'bulletin', syncKind: 'peers', peers: 3 });
 
     // Then

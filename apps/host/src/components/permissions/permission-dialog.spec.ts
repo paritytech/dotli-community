@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { ALL_PERMISSIONS } from '../../runtime/permissions.js';
 import { permissionRequestDialog, type PermissionRequest } from './permission-dialog.js';
 
 const CAMERA: PermissionRequest = { app: 'myapp.dot', permission: 'Camera', allowOnce: false, reloads: true };
@@ -48,5 +49,19 @@ describe('permission request dialog', () => {
     expect(view.notice).toBeUndefined();
     expect(view.dismissOnBackdrop).toBe(true);
     expect(view.dismissResult).toBe('dismissed');
+  });
+
+  it('As a dotli user, every permission the menu lists asks with its own icon and says what it allows', () => {
+    // Given
+    const names = ALL_PERMISSIONS.map(permission => permission.name);
+
+    // When
+    const dialogs = names.map(permission =>
+      permissionRequestDialog({ app: 'app.dot', permission, allowOnce: false, reloads: false }),
+    );
+
+    // Then
+    expect(dialogs.every(dialog => typeof dialog.icon === 'function')).toBe(true);
+    expect(new Set(dialogs.map(dialog => dialog.fields[1]?.value)).size).toBe(names.length);
   });
 });

@@ -4,7 +4,7 @@
 // Updates are prompted, not auto-applied, unless one was already waiting at page load, when nothing is in use yet.
 
 import { captureException, recordExpected } from '@dotli/metrics';
-import { showNotification, type ShowNotification } from '@dotli/ui-widgets';
+import { showNotification, type ShowNotification } from '@dotli/ui';
 import { markContinuation } from './continuation.js';
 import { parseDotLabel } from './dot-label.js';
 import { loadWorkboxWindow } from './lazy.js';

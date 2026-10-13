@@ -5,12 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createStatusCell } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
-import {
-  createSharedStore,
-  type SharedAuthStorageChange,
-  type SharedStore,
-  type SharedStoreStatus,
-} from './shared-store.js';
+import { createSharedStore, type SharedAuthStorageChange, type SharedStoreStatus } from './shared-store.js';
 import { createFakeFrame } from './frame.fake.js';
 
 describe('createSharedStore', () => {
@@ -47,7 +42,7 @@ describe('createSharedStore', () => {
     // Given a frame status listener registered before the shared store, which reads the store on each change
     const fake = createFakeFrame();
     fake.setStatus('idle');
-    let store: SharedStore | null = null;
+    let store: ReturnType<typeof createSharedStore> | null = null;
     const read: (SharedStoreStatus | undefined)[] = [];
     fake.frame.subscribeStatus(() => {
       read.push(store?.getSharedStoreStatus());

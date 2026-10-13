@@ -8,7 +8,7 @@ import '@dotli/ui/styles.css';
 import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
-import { listenForChunkFailures, showError, showNotification } from '@dotli/ui-widgets';
+import { listenForChunkFailures, showError, showNotification } from '@dotli/ui';
 import { configureProtocolFrame, ensureProtocolFrame, warmupProtocol, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktop-offer.js';
@@ -17,20 +17,14 @@ import { log } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import { getBackend, getCacheSettings, getNetwork, persistDefaults, type Backend } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import {
-  loadBridge,
-  loadSharedMode,
-  type BridgeModule,
-  createBlockingModalCoordinator,
-  setProductError,
-  takePendingReset,
-  initAuthController,
-  startSessionState,
-} from '@dotli/host-runtime';
+import { loadBridge, loadSharedMode, type BridgeModule } from './lazy.js';
+import { createBlockingModalCoordinator } from './runtime/blocking-modal-queue.js';
+import { setProductError } from './runtime/state/product.js';
+import { takePendingReset } from './runtime/pending-reset.js';
+import { initAuthController } from './runtime/auth-controller.js';
+import { startSessionState } from './runtime/host-callbacks/session-state.js';
 import { describeError, RELOAD_BTN_LABEL } from './errors.js';
 import { applyUrlSettings, readPersistedSettings } from './url-settings.js';
-import { loadBridgePorts } from './lazy.js';
-import { resetAuthModal, updateAuthModal } from './state/auth-modal.js';
 import { initSettingsStore } from './state/settings.js';
 import { pageSettingsActions } from './settings-actions.js';
 
@@ -194,20 +188,13 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
   }
 
   const blockingModalCoordinator = createBlockingModalCoordinator({ report: reportBlockingModals });
-  // The ports load beside the bridge, so the bridge's dialogs never join the boot chunk.
-  const bridgeReady = Promise.all([loadBridge(), loadBridgePorts()]).then(([bridge, ports]) => {
-    bridge.initBridge({
-      coordinator: blockingModalCoordinator,
-      prompts: ports.hostPrompts,
-      notifications: ports.scheduledNotifications,
-      frameView: ports.productFrameView,
-      chainActivity: ports.chainActivity,
-    });
+  // The bridge chunk brings the dialogs it asks with, so they never join the boot chunk.
+  const bridgeReady = loadBridge().then(bridge => {
+    bridge.initBridge(blockingModalCoordinator);
     return bridge;
   });
   initAuthController({
     coordinator: blockingModalCoordinator,
-    modal: { update: updateAuthModal, reset: resetAuthModal },
     commands: async () => (await bridgeReady).authCommands,
   });
 

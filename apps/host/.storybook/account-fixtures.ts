@@ -5,7 +5,7 @@
 // page's session does.
 
 import { createSignal, flush } from 'solid-js';
-import type { AccountSession } from '@dotli/ui-entities';
+import type { AccountSession } from '../src/components/account/account.js';
 import type { Account } from '../src/components/account/account.js';
 
 interface AccountShape {

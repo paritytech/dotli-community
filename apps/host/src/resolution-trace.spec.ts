@@ -297,7 +297,7 @@ describe('A resolution reports how it ended', () => {
   it('As a maintainer, a chain that never finished cannot hold the trace open', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
-    trace.chainSync({ chain: 'asset-hub', syncKind: 'connecting' });
+    trace.chainSync({ chain: 'assethub', syncKind: 'connecting' });
 
     // When
     trace.finish('abandoned');

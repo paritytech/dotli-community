@@ -290,8 +290,8 @@ In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, an
 the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab
 clears it. Use `?debug=off` to silence it explicitly within the same session.
 
-See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources,
-views, filters, correlation keys, and how to add a new instrumentation hook.
+See [packages/truapi-debug-ui/DEBUG_PANEL.md](packages/truapi-debug-ui/DEBUG_PANEL.md) for the full reference — event
+sources, views, filters, correlation keys, and how to add a new instrumentation hook.
 
 ## Sandbox API Checker
 

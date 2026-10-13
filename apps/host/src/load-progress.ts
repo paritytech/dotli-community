@@ -6,7 +6,7 @@
 // logger itself.
 
 import type { Backend, ChainRole } from '@dotli/config';
-import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/chains';
+import type { ChainPeer, ChainSyncKind } from '@dotli/chains';
 import type { ResolvePhase } from '@dotli/resolver';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { LoadingPhase } from './loading-controller.js';
@@ -31,7 +31,7 @@ const CHAIN_BYTES_DEBUG_MAX = 300;
 const SPEED_WINDOW_MS = 3_000;
 
 export interface ChainDetailFacts {
-  chain: ChainKey;
+  chain: ChainRole;
   dbCache?: CacheResult;
   peers?: ChainPeer[];
 }
@@ -88,7 +88,6 @@ export interface LoadProgressDeps {
   monitor: NetworkMonitor;
   trace: LoadTrace;
   emit: (event: DotliDebugEvent) => void;
-  chainRole: (chain: ChainKey) => ChainRole;
   /** Closes the chain byte stream in the debug panel once the product is on screen. */
   product: { get: () => { status: string }; subscribe: (listener: () => void) => () => void };
 }
@@ -164,7 +163,7 @@ export function startLoadProgress(deps: LoadProgressDeps): LoadProgress {
         event: 'dbcache',
         flowId: deps.flowId,
         timestamp: Date.now(),
-        payload: { chain: deps.chainRole(event.chain), dbCache: event.dbCache },
+        payload: { chain: event.chain, dbCache: event.dbCache },
       });
     }
   });
@@ -198,7 +197,7 @@ export function startLoadProgress(deps: LoadProgressDeps): LoadProgress {
 }
 
 function followDirectChains(deps: LoadProgressDeps): void {
-  const { loading, monitor, trace, emit, flowId, chainRole } = deps;
+  const { loading, monitor, trace, emit, flowId } = deps;
   // Per chain, since one figure would blank to zero at every handover. Every lifecycle event re-arms that chain's
   // stall timer, so a chain warns only when it sits in one state past the threshold.
   const livePeers = new Map<CriticalChain, number>();
@@ -286,7 +285,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
   const trackPhase = createChainPhaseTracker();
 
   deps.events.onChainSync(event => {
-    const role = chainRole(event.chain);
+    const role = event.chain;
     const phase = trackPhase(role, event.syncKind);
     if (event.syncKind === 'peers' && event.peers !== undefined) {
       // Independent of the phase, since the relay usually finds its peers after its last transition.
@@ -374,12 +373,12 @@ function followDirectChains(deps: LoadProgressDeps): void {
         return;
       }
       case 'firstPeer':
-        if (event.chain === 'asset-hub') {
+        if (event.chain === 'assethub') {
           loading.advancePhase(1);
         }
         return;
       case 'bootstrapComplete':
-        if (event.chain === 'asset-hub') {
+        if (event.chain === 'assethub') {
           loading.advancePhase(2);
         }
         return;

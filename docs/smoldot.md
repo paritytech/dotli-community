@@ -19,7 +19,7 @@ client for Rust-core `chain.connect` requests.
 | Origin | Purpose | Triggered by |
 |---|---|---|
 | Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/host-runtime/src/host-callbacks/Chain.ts` |
+| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `apps/host/src/runtime/host-callbacks/Chain.ts` |
 
 Both origins construct smoldot through the singletons in
 `packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests

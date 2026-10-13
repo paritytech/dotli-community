@@ -9,7 +9,7 @@ import { captureException, recordExpected } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 
 import { handOverArchive } from './archive-handoff.js';
-import { showNotification } from '@dotli/ui-widgets';
+import { showNotification } from '@dotli/ui';
 import { SANDBOX_ERRORS } from './errors.js';
 
 const contentLog = log.child({ flow: 'content' });

@@ -7,8 +7,7 @@ import { createNanoEvents } from 'nanoevents';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 
-import type { DotliDebugEvent } from './dotli-debug-types.js';
-import type { TruapiDebugMessageEvent } from './event-store.js';
+import type { DotliDebugEvent, TruapiDebugMessageEvent } from './dotli-debug-types.js';
 
 export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 

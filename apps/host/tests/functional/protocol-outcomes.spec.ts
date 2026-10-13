@@ -70,7 +70,7 @@ for (const [label, backend] of [
 
     // Then
     const relay = await waitForEnvelope(page, 'smoldot-db', 15_000, { chain: 'relay' });
-    const hub = await waitForEnvelope(page, 'smoldot-db', 15_000, { chain: 'hub' });
+    const hub = await waitForEnvelope(page, 'smoldot-db', 15_000, { chain: 'assethub' });
     expect([relay['outcome'], hub['outcome']]).toEqual(['miss', 'miss']);
   });
 }

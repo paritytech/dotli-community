@@ -73,6 +73,7 @@ function assertStr(value: unknown, name: string): asserts value is string {
   }
 }
 
+// The frame's answers are not typed against ProtocolResponseMap, so the specs are what keep the two in step.
 function ok(respond: ResponseCallback, id: string, result: unknown): void {
   respond({ namespace: 'dotli:protocol', kind: 'response', id, ok: true, result });
 }

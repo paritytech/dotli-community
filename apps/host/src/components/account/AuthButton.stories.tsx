@@ -18,7 +18,7 @@ import {
   storyModalOpen,
   unreachable,
 } from '../../../.storybook/account-fixtures.js';
-import type { AccountSession } from '@dotli/ui-entities';
+import type { AccountSession } from './account.js';
 import { AuthButton } from './AuthButton.js';
 
 const open = openSurface({ trigger: 'auth-button', surface: 'user-popover' });

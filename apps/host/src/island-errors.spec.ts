@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
-import type { ShowNotification } from '@dotli/ui-widgets';
+import type { ShowNotification } from '@dotli/ui';
 import { reportIslandErrors } from './island-errors.js';
 
 type Notice = Parameters<ShowNotification>[0];

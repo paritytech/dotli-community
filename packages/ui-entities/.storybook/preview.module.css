@@ -1,9 +1,0 @@
-/* Copyright 2026 Parity Technologies (UK) Ltd. */
-/* SPDX-License-Identifier: AGPL-3.0-only */
-
-/* Replaces Storybook's padded layout so every story, also in docs blocks, sits on the app page. */
-.root {
-  box-sizing: border-box;
-  padding: var(--sp-4);
-  background: var(--bg-page);
-}

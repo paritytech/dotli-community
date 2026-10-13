@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { permissionIcon } from '@dotli/ui-entities';
+import { permissionIcon } from './permission-icons.js';
 import { preimageSubmitDialog } from './preimage-dialog.js';
 
 describe('preimage submit dialog', () => {

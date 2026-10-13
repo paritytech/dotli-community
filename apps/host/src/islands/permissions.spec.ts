@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
-import type { PermissionStatus } from '@dotli/ui-entities';
+import type { PermissionStatus } from '../runtime/permissions.js';
 import type { MenuPermission } from '../components/permissions/permissions.js';
 import { type ReadPermissions, type ShownProduct, usePermissionsPanel } from './permissions.js';
 

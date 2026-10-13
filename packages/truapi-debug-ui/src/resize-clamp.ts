@@ -3,7 +3,7 @@
 
 // The bounds a drag of the panel's edge or its body splitter keeps to, apart from the drag wiring in Resizers.tsx.
 
-import type { DockPosition } from '@dotli/truapi-debug';
+import type { DockPosition } from './model/dock-storage.js';
 
 /** Room for the filter chips and tabs. */
 const MIN_PRIMARY_PX = 220;

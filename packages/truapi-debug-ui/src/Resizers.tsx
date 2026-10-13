@@ -6,7 +6,7 @@
 
 import { onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { DockPosition } from '@dotli/truapi-debug';
+import type { DockPosition } from './model/dock-storage.js';
 import { clampPanelSize, clampSplit } from './resize-clamp.js';
 import { Resizer } from './shared/Resizer.js';
 import s from './Resizers.module.css';

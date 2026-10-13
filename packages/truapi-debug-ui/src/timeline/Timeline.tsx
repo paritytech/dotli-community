@@ -5,7 +5,8 @@
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { EventSeq, TimelineLane } from '@dotli/truapi-debug';
+import type { EventSeq } from '../model/event-store.js';
+import type { TimelineLane } from '../model/timeline.js';
 import s from './Timeline.module.css';
 
 export type TimelineSelect = (seq: EventSeq, el: Element) => void;

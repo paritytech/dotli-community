@@ -23,7 +23,7 @@ import {
   storyModal,
 } from '../../../.storybook/auth-modal-fixtures.js';
 import { AuthButton } from './AuthButton.js';
-import type { AuthModalState } from '@dotli/host-runtime';
+import type { AuthModalState } from '../../state/auth-modal.js';
 import { AuthModal } from './AuthModal.js';
 import type { DrawQr } from './qr-code.js';
 

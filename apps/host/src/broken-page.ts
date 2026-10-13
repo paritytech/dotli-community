@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { RotateCwIcon } from '@dotli/ui/icons';
-import { showError } from '@dotli/ui-widgets';
+import { showError } from '@dotli/ui';
 
 /** For a page of the host's own, such as the landing page, that cannot show. */
 export function showBrokenPage(): void {

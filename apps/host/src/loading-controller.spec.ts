@@ -7,7 +7,7 @@ import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-
 import { createLoadingController, type LoadingController, type LoadingPhase } from './loading-controller.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
-import type { PageContent } from '@dotli/ui-widgets';
+import type { PageContent } from '@dotli/ui';
 import * as store from './state/loading.js';
 import type { StepPart } from './state/loading.js';
 

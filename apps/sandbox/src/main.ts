@@ -14,7 +14,7 @@ import { m, setResolutionId } from '@dotli/metrics';
 import { endpointHost } from '@dotli/shared';
 
 import { createDecryptIfNeeded } from './decrypt-prompt.js';
-import { showError } from '@dotli/ui-widgets';
+import { showError } from '@dotli/ui';
 import { showRetryScreen } from './retry-screen.js';
 import { loadPasswordDialog, loadSandboxChecker } from './lazy.js';
 import { createPasswordPrompt } from './password-prompt.js';

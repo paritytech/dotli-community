@@ -8,7 +8,7 @@ import { parseRecentLabels, serializeRecentLabels } from '@dotli/storage';
 import { createLazyRecentLabels, createRecentLabels, landingRecentLabels, type RecentMirror } from './recent-labels.js';
 import { memoryStorage } from '@dotli/shared/testing';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { memorySharedChannel, type MemorySharedChannel } from '@dotli/host-runtime/testing';
+import { memorySharedChannel, type MemorySharedChannel } from './runtime/shared-mode.fake.js';
 
 // The list is written on `<label>.<root>` and read on the bare root, so the shared cross-subdomain store is
 // authoritative and localStorage only a mirror. The channel stands in for that store, a memory Storage for the mirror.

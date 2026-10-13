@@ -5,7 +5,8 @@
 
 import { untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { type ChatStore, chatStore } from '@dotli/host-runtime';
+import type { ChatStore } from '../runtime/chat/store.js';
+import { chatStore } from '../runtime/chat/chat-store.js';
 import { ChatDock as Dock } from '../components/chat/ChatDock.js';
 import { useChatDock } from './chat.js';
 

@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainKey, ChainPeer, ChainSyncKind, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import type { ResolvePhase } from '@dotli/resolver';
+import type { ChainPeer, ChainSyncKind, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
+import type { ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
 // Leaf import: the `config` barrel reads `self.location` at module load.
-import { TIMEOUTS } from '@dotli/config';
+import { CHAIN_ROLES, TIMEOUTS, type ChainRole } from '@dotli/config';
 
 /** Wire shape of the local wallet's cached identity. */
 export interface LocalWalletIdentity {
@@ -43,6 +43,28 @@ export interface ProtocolRequestMap {
 }
 
 export type ProtocolRequestMethod = keyof ProtocolRequestMap;
+
+/** What the frame answers each request with. A request it fails rejects instead. */
+export interface ProtocolResponseMap {
+  warmup: true;
+  resolveDotName: string | null;
+  resolveOwner: string | null;
+  resolveExecutableManifest: ManifestResult<ExecutableManifest>;
+  resolveRootManifest: ManifestResult<RootManifest>;
+  authStorageRead: string | null;
+  authStorageWrite: true;
+  authStorageClear: true;
+  modeStorageRead: string | null;
+  modeStorageWrite: true;
+  modeStorageClear: true;
+  localWalletRead: LocalWalletReadResult;
+  localWalletSave: true;
+  localWalletIdentity: true;
+  localWalletForget: true;
+  chainConnect: true;
+  chainSend: true;
+  chainDisconnect: true;
+}
 
 export interface ProtocolRequestEnvelope<M extends ProtocolRequestMethod = ProtocolRequestMethod> {
   namespace: 'dotli:protocol';
@@ -153,7 +175,7 @@ export interface ProtocolInitFailedEnvelope {
 export interface ProtocolChainSyncEnvelope {
   namespace: 'dotli:protocol';
   kind: 'chain-sync';
-  chain: ChainKey;
+  chain: ChainRole;
   syncKind: ChainSyncKind;
   reason?: string;
   peers?: number;
@@ -169,7 +191,7 @@ export interface ProtocolChainSyncEnvelope {
 export interface ProtocolChainDetailEnvelope {
   namespace: 'dotli:protocol';
   kind: 'chain-detail';
-  chain: ChainKey;
+  chain: ChainRole;
   dbCache?: 'hit' | 'miss';
   peers?: ChainPeer[];
 }
@@ -224,16 +246,9 @@ const VALID_KINDS = new Set([
   'auth-storage-changed',
 ]);
 
-// postMessage data is untrusted, so chain and kind are checked at runtime. The lists are copied because
-// importing them would pull smoldot into every protocol bundle. As `Record<T, true>`, a value missing
-// here fails typecheck instead of being dropped silently.
-export const ENVELOPE_CHAIN_KEYS = Object.keys({
-  relay: true,
-  'asset-hub': true,
-  bulletin: true,
-  people: true,
-} satisfies Record<ChainKey, true>) as ChainKey[];
-
+// postMessage data is untrusted, so the kind is checked at runtime. The list is copied because importing it would pull
+// smoldot into every protocol bundle. As `Record<T, true>`, a value missing here fails typecheck instead of being
+// dropped silently.
 export const ENVELOPE_SYNC_KINDS = Object.keys({
   firstPeer: true,
   bootstrapComplete: true,
@@ -252,8 +267,12 @@ const ENVELOPE_RESOLVE_PHASES = Object.keys({
   'resolving-content': true,
 } satisfies Record<ResolvePhase, true>) as ResolvePhase[];
 
-const CHAIN_KEY_VALUES = new Set<string>(ENVELOPE_CHAIN_KEYS);
 const RESOLVE_PHASE_VALUES = new Set<unknown>(ENVELOPE_RESOLVE_PHASES);
+
+/** The chain role an envelope names. Null for a name that is not a role. */
+export function envelopeChainRole(chain: string): ChainRole | null {
+  return CHAIN_ROLES.find(role => role === chain) ?? null;
+}
 
 // Wider than the union on purpose, since the sender's declared type is a claim and a narrowed check would compile away.
 const CACHE_RESULT_VALUES = new Set<string>(['hit', 'miss']);
@@ -261,7 +280,7 @@ const SYNC_KIND_VALUES = new Set<string>(ENVELOPE_SYNC_KINDS);
 
 /** Whether a `chain-sync` envelope is safe for the loading UI, where a bad height would render as NaN. */
 export function isChainSyncPayloadValid(msg: ProtocolChainSyncEnvelope): boolean {
-  if (!CHAIN_KEY_VALUES.has(msg.chain) || !SYNC_KIND_VALUES.has(msg.syncKind)) {
+  if (envelopeChainRole(msg.chain) === null || !SYNC_KIND_VALUES.has(msg.syncKind)) {
     return false;
   }
   if (
@@ -289,7 +308,7 @@ const MAX_PEERS = 50;
 
 /** Whether a `chain-detail` envelope carries values worth recording. */
 export function isChainDetailPayloadValid(msg: ProtocolChainDetailEnvelope): boolean {
-  if (!CHAIN_KEY_VALUES.has(msg.chain)) {
+  if (envelopeChainRole(msg.chain) === null) {
     return false;
   }
   if (msg.dbCache !== undefined && !CACHE_RESULT_VALUES.has(msg.dbCache)) {

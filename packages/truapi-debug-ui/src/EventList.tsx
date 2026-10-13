@@ -6,20 +6,17 @@
 
 import { createEffect, createSignal, flush, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { formatLatency } from './model/detail-format.js';
 import {
-  formatLatency,
   correlationKeyOf,
   type EventSeq,
   type EventStore,
   type StoredEvent,
   type StoredSystemEvent,
   type StoredTruapiEvent,
-  OpenCallTracker,
-  pendingKeyOf,
-  SLOW_AFTER_MS,
-  systemRowData,
-  truapiRowData,
-} from '@dotli/truapi-debug';
+} from './model/event-store.js';
+import { OpenCallTracker, pendingKeyOf, SLOW_AFTER_MS } from './model/pending.js';
+import { systemRowData, truapiRowData } from './model/row-format.js';
 
 import type { KeyedSignals } from './keyed-signals.js';
 import { DirectionArrow } from './shared/DirectionArrow.js';

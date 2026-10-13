@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { GlobeIcon } from '@dotli/ui/icons';
 import { IconButton, Popover, StatusDot } from '@dotli/ui';
 import type { MoreRow } from '@dotli/ui';
-import { healthWord, type NetworkHealth } from '@dotli/ui-entities';
+import { healthWord, type NetworkHealth } from './network-health.js';
 import s from './ChainsPopover.module.css';
 
 export interface ChainsPopoverProps {

@@ -9,7 +9,8 @@ import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
 import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
 import { createSyncStore, shallowEqual, type SyncStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
-import { chatUnreadLabel, type ChatMessage } from '@dotli/ui-entities';
+import { chatUnreadLabel } from '../src/components/chat/unread.js';
+import type { ChatMessageRecord } from '../src/runtime/chat/store.js';
 import type { ChatRenderSink } from '../src/components/chat/chat.js';
 import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../src/components/chat/chat.js';
 import type { ChatButtonProps } from '../src/components/chat/ChatButton.js';
@@ -50,7 +51,7 @@ const INITIAL: StageState = {
 interface FeedState {
   contacts: ChatContacts | null;
   contactsFailed: boolean;
-  messages: readonly ChatMessage[] | null;
+  messages: readonly ChatMessageRecord[] | null;
   messagesFailed: boolean;
 }
 
@@ -81,7 +82,7 @@ export interface ChatStage {
   update(patch: Partial<StageState>): void;
   rooms: ChatRoom[];
   bots: ChatBot[];
-  messages: ChatMessage[];
+  messages: ChatMessageRecord[];
   /** While set, the room list cannot be read. */
   contactsFail: boolean;
   /** While set, the shown conversation cannot be read. */
@@ -144,7 +145,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     const contacts = stage.contactsFail
       ? last.contacts
       : { rooms: [...stage.rooms], bots: [...stage.bots], lastMessageTimes };
-    let messages: readonly ChatMessage[] | null = null;
+    let messages: readonly ChatMessageRecord[] | null = null;
     if (shownRoom !== null) {
       messages = stage.messagesFail ? last.messages : stage.messages.filter(m => m.roomId === shownRoom);
     }
@@ -161,8 +162,12 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     setTimeout(read, 0);
   };
 
-  const append = (roomId: string, author: ChatMessage['author'], content: ChatMessageContent): ChatMessage => {
-    const message: ChatMessage = {
+  const append = (
+    roomId: string,
+    author: ChatMessageRecord['author'],
+    content: ChatMessageContent,
+  ): ChatMessageRecord => {
+    const message: ChatMessageRecord = {
       seq: stage.messages.length + 1,
       productId: PRODUCT,
       roomId,

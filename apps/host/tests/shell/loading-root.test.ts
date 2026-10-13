@@ -4,8 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { prefersReducedMotion } from '@dotli/ui';
-import { clearScreen, pageContentStore, showErrorPage } from '@dotli/ui-widgets';
+import { clearScreen, pageContentStore, prefersReducedMotion, showErrorPage } from '@dotli/ui';
 import { showNoContentError } from '../../src/no-content-page.js';
 import { createLoadingController, type LoadingController, type LoadingPhase } from '../../src/loading-controller.js';
 import { getLoadingState } from '../../src/state/loading.js';

@@ -2,16 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { memoryChatRepo, recordingConnection } from '@dotli/host-runtime/testing';
-import {
-  createChatConnections,
-  createChatStore,
-  type ChatStore,
-  labelToProductId,
-  setProductError,
-  setProductLoaded,
-  setAuthState,
-} from '@dotli/host-runtime';
+import { memoryChatRepo, recordingConnection } from '../runtime/chat/store.fake.js';
+import { createChatConnections, createChatStore, type ChatStore } from '../runtime/chat/store.js';
+import { labelToProductId } from '../runtime/runtime-config.js';
+import { setProductError, setProductLoaded } from '../runtime/state/product.js';
+import { setAuthState } from '../runtime/state/auth.js';
 import { reportBlockingModals, setTopbarVisible } from './topbar.js';
 import {
   backToChatRooms,

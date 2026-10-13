@@ -6,7 +6,7 @@
 
 import { createEffect, createSignal, flush, onCleanup, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ResolutionModel, ResolutionRecorder } from '@dotli/truapi-debug';
+import type { ResolutionModel, ResolutionRecorder } from './model/resolution-view.js';
 import { wireHoverTooltips } from './shared/hover-tooltip.js';
 import { Chart } from './resolution/Chart.js';
 import { EmptyState } from './shared/EmptyState.js';

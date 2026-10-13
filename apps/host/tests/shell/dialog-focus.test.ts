@@ -6,13 +6,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createComponent } from 'solid-js';
 import { render } from '@solidjs/web';
-import { Overlays } from '@dotli/ui-widgets';
-import type { ReviewDialog } from '@dotli/host-runtime';
+import { Overlays } from '@dotli/ui';
+import type { ModalView } from '@dotli/ui';
 import { appears, resetModalsForTests } from '@dotli/ui/testing';
-import { createHostPrompts } from '../../src/host-prompts.js';
+import { createHostPrompts } from '../../src/page-prompts.js';
 import { attachProductFrame, resetProductFrameLayout } from '../../src/product-frame-layout.js';
 
-const REVIEW: ReviewDialog<'no' | 'yes' | 'dismissed'> = {
+const REVIEW: ModalView<'no' | 'yes' | 'dismissed'> = {
   title: 'Question',
   fields: [],
   buttons: [

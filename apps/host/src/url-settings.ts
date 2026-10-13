@@ -21,7 +21,7 @@ import {
 } from '@dotli/config';
 import { reportExpected, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
-import type { ShowNotification } from '@dotli/ui-widgets';
+import type { ShowNotification } from '@dotli/ui';
 import type { SettingsActions } from './settings-actions.js';
 
 const bootLog = log.child({ flow: 'boot' });

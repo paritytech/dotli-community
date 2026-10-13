@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { ShowNotification } from '@dotli/ui-widgets';
+import type { ShowNotification } from '@dotli/ui';
 import { memoryStorage } from '@dotli/shared/testing';
 import { offerDesktopApp } from './desktop-offer.js';
 

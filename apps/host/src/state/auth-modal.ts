@@ -2,7 +2,32 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
-import type { AuthModalState } from '@dotli/host-runtime';
+
+/** `error` carries the raw failure `message` and the user-facing copy derived from it. */
+export type AuthModalView =
+  | { kind: 'spinner' }
+  | { kind: 'pairing'; payload: string }
+  | { kind: 'authenticating' }
+  | {
+      kind: 'error';
+      message: string;
+      retry: boolean;
+      title: string;
+      subtitle: string;
+      /** Raw reason for bug reports, absent when the copy hides it. */
+      detail?: string | undefined;
+    };
+
+/**
+ * `open` is true only while the modal holds the blocking-modal lease. `productLabel` has the TLD
+ * applied, and is null for host-global login.
+ */
+export interface AuthModalState {
+  open: boolean;
+  productLabel: string | null;
+  reason: string | null;
+  view: AuthModalView;
+}
 
 const INITIAL: AuthModalState = {
   open: false,
@@ -24,7 +49,7 @@ const authModal = createSyncStore<AuthModalState>('auth_modal', INITIAL, {
 
 export const authModalStore: ReadableStore<AuthModalState> = authModal;
 
-// Written only by the runtime's auth controller, through the `AuthModalPort` startup passes it.
+// Written only by the auth controller.
 
 export function updateAuthModal(patch: Partial<AuthModalState>): void {
   authModal.set({ ...authModal.get(), ...patch });

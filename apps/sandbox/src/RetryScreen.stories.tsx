@@ -3,7 +3,7 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
-import { showError } from '@dotli/ui-widgets';
+import { showError } from '@dotli/ui';
 import { showRetryScreen } from './retry-screen.js';
 
 // The screens mount their own root, so each play shows one in the story's `#app` as the sandbox page does.

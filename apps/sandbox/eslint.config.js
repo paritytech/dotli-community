@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config, importBans } from '@config/eslint/vite';
+import { config } from '@config/eslint/vite';
 
 export default defineConfig([
   { ignores: ['storybook-static/**'] },
@@ -16,10 +16,4 @@ export default defineConfig([
       },
     },
   },
-  ...importBans([
-    {
-      group: ['@dotli/ui-entities', '@dotli/ui-entities/*'],
-      message: 'The sandbox mounts no entity view. Its dialogs are ModalView data that ui renders.',
-    },
-  ]),
 ]);

@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The landing page's islands mounted in their slots: the page's document listener, the corner button, and what
-// leaving takes with it. The controls are story plays beside NavForm and RecentList in ui-entities, and the static
+// leaving takes with it. The controls are story plays beside NavForm and RecentList, and the static
 // markup is Astro's, which the functional smoke test covers.
 
 import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { memorySharedChannel, type MemorySharedChannel } from '@dotli/host-runtime/testing';
-import { setAuthState } from '@dotli/host-runtime';
+import { memorySharedChannel, type MemorySharedChannel } from '../../src/runtime/shared-mode.fake.js';
+import { setAuthState } from '../../src/runtime/state/auth.js';
 import { createRecentLabels, type RecentLabels } from '../../src/recent-labels.js';
 import { mountLandingPage } from '../helpers/landing.js';
 import { appears, byId, query } from '@dotli/ui/testing';

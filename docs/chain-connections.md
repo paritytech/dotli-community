@@ -35,7 +35,7 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
 
 ```mermaid
 flowchart LR
-  subgraph Host["Host page (apps/host, packages/host-runtime)"]
+  subgraph Host["Host page (apps/host)"]
     Core["TrUAPI core<br/>(products' chain calls)"]
     RpcResolve["Gateway resolver<br/>(createDotnsResolver, rpc-gateway)"]
     Panel["Network panel<br/>(network-monitor)"]
@@ -190,7 +190,7 @@ protocol iframe or the SharedWorker only. It does not reconnect underneath its
 users: when its stream ends, it halts.
 
 The host pool's transport on the smoldot backends (`createFrameChainTransport`
-in `packages/host-runtime/src/host-callbacks/frame-transport.ts`) wraps one remote
+in `apps/host/src/runtime/host-callbacks/frame-transport.ts`) wraps one remote
 connection. It reports `connecting`, then `connected` as soon as the
 connection exists: the remote provider has no finer signal, and queues sends
 until the iframe accepts the connection. When the remote connection halts, it
@@ -369,7 +369,7 @@ connection limit) halts the connection with `'frame'`, and the status stays
 `ready`. So the next request takes a new lease at once, with no backoff.
 
 After `'chain'` a TrUAPI core connection takes its lease only through a chain
-gate per genesis hash (`packages/host-runtime/src/host-callbacks/redial-gate.ts`). A gate
+gate per genesis hash (`apps/host/src/runtime/host-callbacks/redial-gate.ts`). A gate
 is shared by every core connection to that chain, so concurrent connections
 dial once per window:
 
@@ -413,10 +413,10 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | smoldot transport | `packages/chains/src/provider.ts` |
 | Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/resolve.ts` |
 | Host error page classification | `apps/host/src/errors.ts` |
-| Host pool, TrUAPI chain connections, `hostChainProvider` | `packages/host-runtime/src/host-callbacks/Chain.ts` |
-| Host pool's transport on the smoldot backends | `packages/host-runtime/src/host-callbacks/frame-transport.ts` |
-| Host pool's chain gates | `packages/host-runtime/src/host-callbacks/redial-gate.ts` |
-| Settings probe | `packages/host-runtime/src/diagnostics.ts` (`queryFinalizedBlock`) |
+| Host pool, TrUAPI chain connections, `hostChainProvider` | `apps/host/src/runtime/host-callbacks/Chain.ts` |
+| Host pool's transport on the smoldot backends | `apps/host/src/runtime/host-callbacks/frame-transport.ts` |
+| Host pool's chain gates | `apps/host/src/runtime/host-callbacks/redial-gate.ts` |
+| Settings probe | `apps/host/src/runtime/diagnostics.ts` (`queryFinalizedBlock`) |
 | Network panel | `apps/host/src/state/network-monitor.ts`, `ChainPool.watch` in `packages/chains/src/chain-pool.ts`, `packages/chains/src/header-number.ts` |
 | Bitswap | `packages/bitswap/src/client.ts`, `packages/bitswap/src/relay.ts` |
 | Protocol engine, a scope per tab | `apps/protocol/src/engine.ts` |

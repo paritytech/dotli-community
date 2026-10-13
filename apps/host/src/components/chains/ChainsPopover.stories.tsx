@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
-import type { NetworkHealth } from '@dotli/ui-entities';
+import type { NetworkHealth } from './network-health.js';
 import { ChainsPopover } from './ChainsPopover.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });

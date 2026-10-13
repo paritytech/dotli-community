@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { setProductError } from '@dotli/host-runtime';
+import { setProductError } from './runtime/state/product.js';
 import { getTopbarState, setTopbarPresent } from './state/topbar.js';
 import { registerTopbarSurface } from './state/topbar-surfaces.js';
 import { createTopbarAutoHide, type TopbarAutoHide } from './topbar-autohide.js';

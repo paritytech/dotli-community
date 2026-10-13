@@ -3,14 +3,15 @@
 
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
+  CHAIN_ROLES,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
   configureModeStorage,
   getActiveSupportedGenesisHashes,
   setNetwork,
+  type ChainRole,
 } from '@dotli/config';
 import {
-  ENVELOPE_CHAIN_KEYS,
   ENVELOPE_SYNC_KINDS,
   isChainSyncPayloadValid,
   isProgressPayloadValid,
@@ -25,6 +26,7 @@ import {
   type ProtocolReadyEnvelope,
   type ProtocolChainSyncEnvelope,
   type ProtocolSmoldotDbEnvelope,
+  envelopeChainRole,
 } from './messages.js';
 
 describe('isProtocolEnvelope', () => {
@@ -124,7 +126,7 @@ describe('isProtocolEnvelope', () => {
     const envelope: ProtocolSmoldotDbEnvelope = {
       namespace: 'dotli:protocol',
       kind: 'smoldot-db',
-      chain: 'hub',
+      chain: 'assethub',
       outcome: 'hit',
     };
 
@@ -318,7 +320,7 @@ describe('chain-sync envelope validation works', () => {
   // Drift guard: the validator keeps its own copy of the resolver's vocabulary, and a gap drops kinds silently.
   it('As a user, every sync milestone the resolver can emit reaches the shell', () => {
     // Given / When / Then
-    for (const chain of ENVELOPE_CHAIN_KEYS) {
+    for (const chain of CHAIN_ROLES) {
       for (const syncKind of ENVELOPE_SYNC_KINDS) {
         expect(
           isChainSyncPayloadValid(
@@ -338,7 +340,7 @@ describe('chain-sync envelope validation works', () => {
     expect(
       isChainSyncPayloadValid(
         envelope({
-          chain: 'not-a-chain' as (typeof ENVELOPE_CHAIN_KEYS)[number],
+          chain: 'not-a-chain' as ChainRole,
         }),
       ),
     ).toBe(false);
@@ -358,5 +360,16 @@ describe('chain-sync envelope validation works', () => {
     }
     expect(isChainSyncPayloadValid(envelope({ syncKind: 'warpSyncProgress', at: Number.NaN, target: 10 }))).toBe(false);
     expect(isChainSyncPayloadValid(envelope({ syncKind: 'warpSyncFinished', finalized: -5 }))).toBe(false);
+  });
+
+  it('As a protocol listener, I read chain roles by name and anything else as none', () => {
+    // Given
+    const names = ['relay', 'people', 'assethub', 'nope', 'constructor', '__proto__'];
+
+    // When
+    const roles = names.map(envelopeChainRole);
+
+    // Then
+    expect(roles).toEqual(['relay', 'people', 'assethub', null, null, null]);
   });
 });

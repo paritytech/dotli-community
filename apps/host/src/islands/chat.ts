@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, onCleanup } from 'solid-js';
-import { type ChatStore, productStore } from '@dotli/host-runtime';
+import type { ChatStore } from '../runtime/chat/store.js';
+import { productStore } from '../runtime/state/product.js';
 import { useStore } from '@dotli/ui';
 import { setChatWidth } from '../product-frame-layout.js';
 import type { ChatConversation, ChatFeed } from '../components/chat/chat.js';

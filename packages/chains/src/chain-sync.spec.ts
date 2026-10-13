@@ -39,7 +39,7 @@ interface Pipe {
   deliver(raw: string): boolean;
 }
 
-function openPipe(chain: 'relay' | 'asset-hub', from: ChainSyncReporter = reporter): Pipe | null {
+function openPipe(chain: 'relay' | 'assethub', from: ChainSyncReporter = reporter): Pipe | null {
   const sent: string[] = [];
   const forwarded: string[] = [];
   const queued: (Lifecycle | undefined)[] = [];
@@ -97,7 +97,7 @@ function openPipe(chain: 'relay' | 'asset-hub', from: ChainSyncReporter = report
 }
 
 /** Open a pipe that the test has already opted into reporting. */
-function requirePipe(chain: 'relay' | 'asset-hub', from: ChainSyncReporter = reporter): Pipe {
+function requirePipe(chain: 'relay' | 'assethub', from: ChainSyncReporter = reporter): Pipe {
   const pipe = openPipe(chain, from);
   if (pipe === null) {
     throw new Error(`${chain} was not opted into sync reporting`);
@@ -181,8 +181,8 @@ describe('Light client sync reporting works', () => {
 
   it('As a user on a chain that never warped, the shell reports no warp milestones at all', async () => {
     // Given
-    reporter.enableSyncReporting(['asset-hub']);
-    const pipe = requirePipe('asset-hub');
+    reporter.enableSyncReporting(['assethub']);
+    const pipe = requirePipe('assethub');
     const seen: unknown[] = [];
     reporter.onChainSync(event => seen.push(event));
 
@@ -191,11 +191,11 @@ describe('Light client sync reporting works', () => {
 
     // Then
     expect(seen).toEqual([
-      { chain: 'asset-hub', kind: 'peers', peers: 0, isSyncing: true },
-      { chain: 'asset-hub', kind: 'connecting' },
-      { chain: 'asset-hub', kind: 'firstPeer' },
-      { chain: 'asset-hub', kind: 'peers', peers: 1, isSyncing: false },
-      { chain: 'asset-hub', kind: 'bootstrapComplete' },
+      { chain: 'assethub', kind: 'peers', peers: 0, isSyncing: true },
+      { chain: 'assethub', kind: 'connecting' },
+      { chain: 'assethub', kind: 'firstPeer' },
+      { chain: 'assethub', kind: 'peers', peers: 1, isSyncing: false },
+      { chain: 'assethub', kind: 'bootstrapComplete' },
     ]);
   });
 
@@ -380,7 +380,7 @@ describe('Light client sync reporting works', () => {
 describe('Light client sync reporting is opt-in', () => {
   it('As a user, chains my loading screen never shows are not watched', () => {
     // Given
-    reporter.enableSyncReporting(['asset-hub']);
+    reporter.enableSyncReporting(['assethub']);
 
     // When
     const pipe = openPipe('relay');

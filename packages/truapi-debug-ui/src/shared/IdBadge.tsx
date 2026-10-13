@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { ridColor } from '@dotli/truapi-debug';
+import { ridColor } from '../model/row-format.js';
 import s from './IdBadge.module.css';
 
 /** An id's first characters, tinted by a hash of it, so everything of one request or flow shares a colour. */

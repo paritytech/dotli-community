@@ -43,12 +43,19 @@ Tools:
 
 What a package owns and exposes is in its `README.md`. What it may import is in its `eslint.config.js`.
 
-- A view or screen used by one app lives in that app. A screen or overlay both apps show lives in `@dotli/ui-widgets`.
-- A component that owns an interaction with the product (a subscription, an action and its error copy) is a flow and
-  lives in the app. An entity reports the user's intent through a callback.
+- A view, screen or flow used by one app lives in that app. The host's domain building blocks (account, chat,
+  permission, settings and chain views, and their icons) sit in its `src/components/<domain>/` beside the flows that
+  compose them.
+- Primitives, icons, the brand marks, the tokens, and the screens and overlays both apps show live in `@dotli/ui`. Its
+  entries are the index, `./icons`, `./brand`, `./styles.css` and `./testing`.
+- A component that owns an interaction with the product (a subscription, an action and its error copy) is a flow. A
+  building block takes props, reads no store and reports the user's intent through a callback.
 - Import a component where it is used and let the bundler split chunks. What a visit may never open (a panel's content,
   the debug panel) loads through `lazy()` or a loader in `src/lazy.ts`. The startup size budgets in CI guard what a page
   loads first, not import rules.
+- The host's side of TrUAPI and the session lives in the host app, in `src/runtime/`.
+- The debug panel is its own lazily loaded package with its own UI kit. It reads the host through its port and the debug
+  bus.
 
 ## Code style
 

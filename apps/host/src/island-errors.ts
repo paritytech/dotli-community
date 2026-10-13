@@ -5,7 +5,7 @@
 // island, so it would reach the console alone. A failure inside a hydrated island is its own boundary's.
 
 import { captureException } from '@dotli/metrics';
-import { offerReload, type ShowNotification } from '@dotli/ui-widgets';
+import { offerReload, type ShowNotification } from '@dotli/ui';
 
 export interface IslandErrorDeps {
   /** Where Astro dispatches `astro:hydration-error`. */

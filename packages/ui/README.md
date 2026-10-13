@@ -1,8 +1,8 @@
 # `@dotli/ui`
 
-The base of the UI stack: the page's toast and modal stores and its helpers, primitives, floating layers, the action
-group, the toast view, the icons, design tokens and the brand marks. It has no domain and no data source, so every other
-UI package builds on it.
+The UI of dotli that more than one app shows: primitives, floating layers, the action group, the toast and dialog stores
+and views, the error page and the page's notifications, the icons, design tokens and the brand marks. It has no domain
+and no data source.
 
 ## Responsibility
 
@@ -13,10 +13,12 @@ UI package builds on it.
 - The action group: a row of actions that moves what does not fit into a More menu.
 - The toast view, which renders the toast store.
 - Mounting a view inside an error boundary, and the overlay container.
+- The screens and overlays both apps show: the error page and its frame, the notifier (a toast, and a system
+  notification for a hidden tab), the prompt dialog every app asks through and the outlet that shows the modal queue,
+  and the reload offer for a page chunk that fails to load.
 - The generic icons, those with no domain.
 - Design tokens, global styles and the logo.
-- Not owned: domain views, shared screens and overlay mounting. Failures it recovers from go to the metrics package's
-  capture, which tests rebind.
+- Not owned: domain views. Failures it recovers from go to the metrics package's capture, which tests rebind.
 
 ## Design
 
@@ -30,7 +32,17 @@ UI package builds on it.
   raises their status as its badge. Items join through `ActionsContext` and say how they read as a row. The group waits
   out a container's resize animation and measures once it ends.
 - `ToastStack` only renders the toast store, which decides how a toast settles. A toast or dialog carries its icon as a
-  component, which the views draw. The dialog that renders the modal queue lives with the shared widgets.
+  component, which the views draw.
+- Text goes into the error page and the notifier as text, so nothing a visitor typed is parsed as markup. An action
+  carries its icon as a component.
+- `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
+  screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first. `clearScreen`
+  takes it down and keeps what the page put beside it, such as the product frame. `pageContentStore` says `screen` while
+  one is shown, so what the screen covered can end itself. A view that throws is reported.
+- Toasts and dialogs are queued on the stores and show once the app has mounted `Overlays`, in a container it marks
+  `data-overlays` so that a full-page screen keeps it.
+- The notifier always shows a toast, led by the caller's icon component or else its tone's. While the tab is hidden it
+  also fires a system notification, when the browser has one.
 - Every icon is a Solid component that draws an `<svg>` in `currentColor`, one module per icon. It keeps the size,
   stroke and geometry it was drawn at, and takes a `size` for another size, a `class` and a test id.
 - `mountRoot` renders a view inside an error boundary. A view that throws is reported once under the root's name and the
@@ -49,14 +61,19 @@ UI package builds on it.
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar`, `ActionEntry` and `MoreRow`.
 - Stores: the modal store (`openModal`, `settleModal`, `modalsStore` and the types `ModalView`, `ModalOptions`,
-  `ModalOutcome`, `ModalEntry`, `ModalButton`, `ModalButtonVariant`) and the toast store (`pushToast`, `clearToasts`,
-  `toastsStore`, `dismissToast`, `removeToast`, `dismissAllToasts`, `setToastsExpanded` and the types `ToastInput`,
-  `ToastEntry`).
+  `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`, `ModalButtonVariant`) and the toast store (`pushToast`,
+  `clearToasts`, `toastsStore`, `dismissToast`, `removeToast`, `dismissAllToasts`, `setToastsExpanded` and the types
+  `ToastInput`, `ToastEntry`).
 - Page helpers: `focusables`, `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`, `watchPhoneViewport`,
   `prefersReducedMotion` and the type `StatusTone`.
 - Helpers: `useStore`, `startDrag`, `focusLostOrInside`, `focusTrigger`.
 - Roots: `mountRoot`, `ensureOverlayRoot`.
 - Overlay view: `ToastStack`, which the page's overlays render.
+- Screens and overlays: `showErrorPage` and `showError` with the types `ErrorAction`, `ErrorPageContent`, `ErrorText`
+  and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, `showScreen`, `clearScreen`,
+  `pageContentStore` and the type `PageContent`, `Overlays`, `showNotification` with the types `NotificationParams` and
+  `ShowNotification`, and `listenForChunkFailures` with `ChunkFailureDeps` (a failure is counted as `chunk.preload`) and
+  `offerReload`.
 
 ### `@dotli/ui/testing`
 

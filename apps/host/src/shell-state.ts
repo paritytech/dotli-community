@@ -6,7 +6,7 @@
 
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { errorName, log, registerStoreStateReset } from '@dotli/shared';
-import { startProductPermissions } from '@dotli/host-runtime';
+import { startProductPermissions } from './runtime/state/product-permissions.js';
 import { setTopbarPresent } from './state/topbar.js';
 import { initChatPanelState } from './state/chat-panel.js';
 import { startNetworkStore } from './state/network.js';

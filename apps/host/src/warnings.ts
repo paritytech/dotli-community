@@ -3,19 +3,19 @@
 
 // A warning is not an error: the load is still running and may finish, so each line says what is happening.
 
-import type { ChainKey } from '@dotli/chains';
+import type { ChainRole } from '@dotli/config';
 import { formatRate } from '@dotli/shared';
 
 /** How long a chain may sit in one lifecycle state before it owes an explanation. */
 export const STALL_WARNING_MS = 3_000;
 
 /** The chains the load waits on. A stall elsewhere is not the visitor's problem. */
-export const CRITICAL_CHAINS = ['relay', 'asset-hub', 'bulletin'] as const satisfies readonly ChainKey[];
+export const CRITICAL_CHAINS = ['relay', 'assethub', 'bulletin'] as const satisfies readonly ChainRole[];
 
 export type CriticalChain = (typeof CRITICAL_CHAINS)[number];
 
-export function isCriticalChain(chain: ChainKey): chain is CriticalChain {
-  return (CRITICAL_CHAINS as readonly ChainKey[]).includes(chain);
+export function isCriticalChain(chain: ChainRole): chain is CriticalChain {
+  return (CRITICAL_CHAINS as readonly ChainRole[]).includes(chain);
 }
 
 export interface StallFacts {
@@ -30,7 +30,7 @@ export interface StallFacts {
 
 const CHAIN_WORDS: Record<CriticalChain, string> = {
   relay: 'Polkadot',
-  'asset-hub': 'the name registry',
+  assethub: 'the name registry',
   bulletin: 'the app files',
 };
 

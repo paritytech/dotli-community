@@ -5,7 +5,8 @@ import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { InfoIcon, LogOutIcon } from '@dotli/ui/icons';
 import { Button, Callout, Chip, Surface, usePopover } from '@dotli/ui';
-import { AccountAvatar, sessionDisplayName, sessionUsername } from '@dotli/ui-entities';
+import { AccountAvatar } from './AccountAvatar.js';
+import { sessionDisplayName, sessionUsername } from './account-names.js';
 import type { Account } from './account.js';
 import s from './AccountContent.module.css';
 

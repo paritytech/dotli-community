@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Queue for `notification.push` with `scheduledAt`, shared by the product's same-origin tabs.
-// The scheduler in `@dotli/host-runtime` coordinates which tab fires.
+// The host's scheduler coordinates which tab fires.
 
 import { pageIdb, type DotliIdb } from './db.js';
 import { SCHEDULED_NOTIFICATIONS_MAX_AGE_MS, SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP } from '@dotli/config';

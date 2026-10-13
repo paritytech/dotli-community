@@ -6,7 +6,7 @@
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ResolutionModel, ResolutionRow } from '@dotli/truapi-debug';
+import type { ResolutionModel, ResolutionRow } from '../model/resolution-view.js';
 import { axisTicks, blockView, rowMeta } from './format.js';
 import s from './Chart.module.css';
 

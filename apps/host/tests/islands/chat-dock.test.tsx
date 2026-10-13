@@ -9,15 +9,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { memoryStorage, resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
-import {
-  createChatConnections,
-  createChatStore,
-  type ChatStore,
-  labelToProductId,
-  setAuthState,
-  setProductLoaded,
-} from '@dotli/host-runtime';
-import { memoryChatRepo } from '@dotli/host-runtime/testing';
+import { createChatConnections, createChatStore, type ChatStore } from '../../src/runtime/chat/store.js';
+import { labelToProductId } from '../../src/runtime/runtime-config.js';
+import { setAuthState } from '../../src/runtime/state/auth.js';
+import { setProductLoaded } from '../../src/runtime/state/product.js';
+import { memoryChatRepo } from '../../src/runtime/chat/store.fake.js';
 import { setTopbarVisible } from '../../src/state/topbar.js';
 import { ChatDock } from '../../src/islands/ChatDock.js';
 import {

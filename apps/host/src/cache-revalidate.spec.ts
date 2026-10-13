@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import type { CachedManifests } from '@dotli/storage';
-import type { ShowNotification } from '@dotli/ui-widgets';
+import type { ShowNotification } from '@dotli/ui';
 import { revalidateCachedCopy, type CacheRevalidationDeps } from './cache-revalidate.js';
 import { revalidateCachedProduct } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';

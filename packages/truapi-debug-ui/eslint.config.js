@@ -25,6 +25,7 @@ export default defineConfig([
       [
         '@dotli/truapi-debug-ui',
         '@dotli/truapi-debug',
+        '@dotli/config',
         '@dotli/shared',
         '@dotli/metrics',
         '@dotli/content',
@@ -32,7 +33,7 @@ export default defineConfig([
         '@config/vite',
         '@config/storybook',
       ],
-      'The debug panel shares nothing with the ui packages, the runtime or the data packages. It reads the host through its port.',
+      'The debug panel shares nothing with the ui packages, the runtime or the data packages. It reads the host through its port and the network config.',
     ),
   ]),
 ]);

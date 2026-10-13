@@ -3,8 +3,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { useStore } from '@dotli/ui';
-import { pageContentStore } from '@dotli/ui-widgets';
+import { pageContentStore, useStore } from '@dotli/ui';
 import { showBrokenPage } from '../broken-page.js';
 import { IslandBoundary } from './IslandBoundary.js';
 

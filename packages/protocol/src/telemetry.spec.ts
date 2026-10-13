@@ -31,8 +31,13 @@ describe('createFrameTelemetry', () => {
 
     // When
     fake.send({ namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'relay', outcome: 'hit' });
-    fake.send({ namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'hub', outcome: 'bogus' as SmoldotDbOutcome });
-    const beforeRebuild = [telemetry.getSmoldotDbOutcome('relay'), telemetry.getSmoldotDbOutcome('hub')];
+    fake.send({
+      namespace: 'dotli:protocol',
+      kind: 'smoldot-db',
+      chain: 'assethub',
+      outcome: 'bogus' as SmoldotDbOutcome,
+    });
+    const beforeRebuild = [telemetry.getSmoldotDbOutcome('relay'), telemetry.getSmoldotDbOutcome('assethub')];
     fake.setStatus('booting');
 
     // Then

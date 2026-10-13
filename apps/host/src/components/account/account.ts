@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Accessor } from 'solid-js';
-import type { AccountSession } from '@dotli/ui-entities';
+import type { TruapiSessionUiState } from '../../runtime/host-callbacks/session-state.js';
+
+/** A signed-in session as the account views show it. */
+export type AccountSession = Omit<TruapiSessionUiState, 'connected'>;
 
 /** The signed-in account as the account views read it. */
 export interface Account {

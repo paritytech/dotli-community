@@ -8,7 +8,7 @@ import { log } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { Component } from 'solid-js';
 import { SlidersIcon, type IconProps } from '@dotli/ui/icons';
-import type { ShowErrorPage } from '@dotli/ui-widgets';
+import type { ShowErrorPage } from '@dotli/ui';
 import type { ErrorDescription } from './errors.js';
 
 export interface LoadFailure {

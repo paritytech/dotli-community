@@ -34,6 +34,7 @@
     "storybook-solidjs-vite": "^10.7.2"
   },
   "dependencies": {
+    "@dotli/config": "*",
     "@dotli/content": "*",
     "@dotli/metrics": "*",
     "@dotli/shared": "*",

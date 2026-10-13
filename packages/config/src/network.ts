@@ -432,8 +432,7 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
 }
 
 /**
- * The four chains, named by what they do for the visitor, so a popover row, its status and block history share a key.
- * Config cannot import the resolver, so its `ChainKey` stays out of here.
+ * The four chains, named by what they do for the visitor. Every package names a chain by its role.
  */
 export const CHAIN_ROLES = ['relay', 'assethub', 'bulletin', 'people'] as const;
 export type ChainRole = (typeof CHAIN_ROLES)[number];
@@ -470,10 +469,13 @@ export function getActiveChainRoles(): ActiveChainRole[] {
   });
 }
 
-/** Which role a genesis hash belongs to, or null when it is not ours. */
+/**
+ * Which role a genesis hash belongs to, or null when it is not ours. No override changes a genesis, so a worker may
+ * read it.
+ */
 export function chainRoleForGenesis(genesisHash: string): ChainRole | null {
   const key = genesisHash.toLowerCase();
-  const cfg = getActiveServicesConfig();
+  const cfg = getActiveFixedServicesConfig();
   return CHAIN_ROLES.find(role => cfg[role].genesis.toLowerCase() === key) ?? null;
 }
 

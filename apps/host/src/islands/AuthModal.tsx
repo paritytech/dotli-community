@@ -4,7 +4,7 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { closeAuthModal, disableAuthModal, retryLogin } from '@dotli/host-runtime';
+import { closeAuthModal, disableAuthModal, retryLogin } from '../runtime/auth-controller.js';
 import { LayerTracker, ModalFocusFallback, useStore } from '@dotli/ui';
 import { currentProductFrame } from '../product-frame-layout.js';
 import { AuthModal as Modal } from '../components/account/AuthModal.js';

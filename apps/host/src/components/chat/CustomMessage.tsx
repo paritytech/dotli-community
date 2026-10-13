@@ -8,7 +8,7 @@ import { createSignal, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { HexString, RenderContext, RendererNode } from '@parity/truapi';
 import { bytesToHex } from '@parity/truapi/scale';
-import { CustomNode } from '@dotli/ui-entities';
+import { CustomNode } from './CustomNode.js';
 import type { ChatMessageActions } from './chat.js';
 import { visibilityWatcher, type WatchVisibility } from './visibility.js';
 import s from './CustomMessage.module.css';

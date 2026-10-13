@@ -4,7 +4,7 @@
 import { createSignal, onSettled } from 'solid-js';
 import type { ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
-import type { ThemeChoice } from '@dotli/ui-entities';
+import type { ThemePref } from '../runtime/state/theme.js';
 import type { ApplySettings, SavedSettings } from '../components/settings/settings.js';
 import type { SettingsItemProps } from '../components/topbar/items.js';
 
@@ -12,8 +12,8 @@ import type { SettingsItemProps } from '../components/topbar/items.js';
 export interface SettingsBinding {
   /** Null until boot has read them. */
   settings: ReadableStore<SavedSettings | null>;
-  theme: ReadableStore<{ pref: ThemeChoice }>;
-  selectTheme: (theme: ThemeChoice) => void;
+  theme: ReadableStore<{ pref: ThemePref }>;
+  selectTheme: (theme: ThemePref) => void;
   apply: ApplySettings;
   /** How the page's Open settings reaches the panel. Returns the unregister. */
   registerOpener: (open: () => void) => () => void;

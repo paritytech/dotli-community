@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { PROTOCOL_ERRORS } from './errors.js';
-import type { ProtocolEnvelope } from './messages.js';
+import type { LocalWalletReadResult, ProtocolEnvelope } from './messages.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
 
@@ -28,6 +28,19 @@ function failure(request: Promise<unknown>): Promise<Error> {
 }
 
 describe('createFrameRpc', () => {
+  it('As a dotli integrator, a request resolves with the type its method answers, so no caller casts', () => {
+    // Given
+    const rpc = createFrameRpc(createFakeFrame().frame);
+
+    // When
+    const resolveName = () => rpc.request('resolveDotName', { label: 'doom' });
+    const readWallet = () => rpc.request('localWalletRead', { siteId: 'dot.li' });
+
+    // Then
+    expectTypeOf(resolveName).returns.resolves.toEqualTypeOf<string | null>();
+    expectTypeOf(readWallet).returns.resolves.toEqualTypeOf<LocalWalletReadResult>();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     metrics = bindRecordingSentry({ onFinished: onTestFinished });

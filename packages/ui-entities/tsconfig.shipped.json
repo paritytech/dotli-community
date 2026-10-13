@@ -1,8 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
-  },
-  "include": ["src"],
-  "exclude": ["src/**/*.stories.tsx", "src/**/*.spec.ts", "src/**/*.spec.tsx", "src/**/*.fake.ts"]
-}

@@ -46,7 +46,7 @@ const reportFailure: (action: CacheAction, err: unknown) => void = createCacheRe
 export const RECENT_KEY = 'dotli_recent';
 const MAX_RECENT = 8;
 
-/** Drops anything that isn't a usable label. Also used by the cross-subdomain store in `@dotli/host-runtime`. */
+/** Drops anything that isn't a usable label. Also used by the host's cross-subdomain store. */
 export function parseRecentLabels(raw: string | null): string[] {
   if (raw === null || raw === '') {
     return [];

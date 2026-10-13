@@ -3,7 +3,7 @@
 
 import { formatSize } from '@dotli/shared';
 import type { ModalView } from '@dotli/ui';
-import { permissionIcon } from '@dotli/ui-entities';
+import { permissionIcon } from './permission-icons.js';
 
 /** `allow` lets the app submit the preimage. */
 export type PreimageDecision = 'cancel' | 'allow';

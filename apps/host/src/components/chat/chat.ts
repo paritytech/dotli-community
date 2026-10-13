@@ -11,7 +11,7 @@ import type {
   ProductRendererRenderRequest,
   RendererNode,
 } from '@parity/truapi';
-import type { ChatMessage } from '@dotli/ui-entities';
+import type { ChatMessageRecord } from '../../runtime/chat/store.js';
 
 /** Where a custom message's renderer streams its trees. */
 export interface ChatRenderSink {
@@ -60,7 +60,7 @@ export interface ChatFeed {
   /** The last room list read failed. The rooms read before it stay. */
   contactsFailed: Accessor<boolean>;
   /** Null until the shown room's first read lands. */
-  messages: Accessor<readonly ChatMessage[] | null>;
+  messages: Accessor<readonly ChatMessageRecord[] | null>;
   messagesFailed: Accessor<boolean>;
   /** Calls `listener` as the feed changes, before the panel renders the change. Returns the stop. */
   onChange: (listener: () => void) => () => void;

@@ -24,8 +24,7 @@
   --danger: var(--chrome-err-text);
   --neutral-solid: #8c8f98;
 
-  /* Global because ui-entities' chat/custom-styles.ts writes them into a product's custom chat message inline
-     styles. */
+  /* Global because an app writes them into a product's custom chat message inline styles. */
   --chat-fg-primary: #f4f4f5;
   --chat-fg-secondary: #a9abb3;
   --chat-fg-tertiary: #83868e;

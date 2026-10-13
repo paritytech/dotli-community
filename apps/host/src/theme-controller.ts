@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { setTheme, type ThemePref } from '@dotli/host-runtime';
+import { setTheme, type ThemePref } from './runtime/state/theme.js';
 
 /** The stored choice's key, also cleared by a settings reset. */
 export const THEME_KEY = 'dotli-theme';

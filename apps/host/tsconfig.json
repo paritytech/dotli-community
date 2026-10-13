@@ -1,5 +1,9 @@
 {
   "extends": ["@config/typescript/base.json", "@config/typescript/solid.json", "astro/tsconfigs/strict"],
+  "compilerOptions": {
+    // The runtime's unit specs run under Node, so they may use ES2024 APIs such as Promise.withResolvers.
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
   "include": [
     ".astro/types.d.ts",
     "src",

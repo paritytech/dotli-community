@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import type { ThemeChoice } from '@dotli/ui-entities';
+import type { ThemePref } from '../runtime/state/theme.js';
 import type { SavedSettings } from '../components/settings/settings.js';
 import { openSettings, registerSettingsOpener } from '../settings-intent.js';
 import { type SettingsBinding, useSettingsPanel } from './settings.js';
@@ -26,7 +26,7 @@ afterEach(() => {
 /** The page's settings and theme, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount(registerOpener: SettingsBinding['registerOpener'] = registerSettingsOpener) {
   const settings = createSyncStore<SavedSettings | null>('settings-test-settings', null);
-  const theme = createSyncStore<{ pref: ThemeChoice }>('settings-test-theme', { pref: 'system' });
+  const theme = createSyncStore<{ pref: ThemePref }>('settings-test-theme', { pref: 'system' });
   const { panel, dispose } = createRoot(d => ({
     panel: useSettingsPanel({
       settings,

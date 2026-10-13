@@ -5,17 +5,11 @@
 // messages are not kept here, the open panel follows them in the chat store's view.
 
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
-import {
-  chatStore,
-  type ChatChange,
-  type ChatStore,
-  type ChatView,
-  labelToProductId,
-  getProductState,
-  productStore,
-  getLoggedIn,
-  loggedInStore,
-} from '@dotli/host-runtime';
+import { chatStore } from '../runtime/chat/chat-store.js';
+import type { ChatChange, ChatStore, ChatView } from '../runtime/chat/store.js';
+import { labelToProductId } from '../runtime/runtime-config.js';
+import { getProductState, productStore } from '../runtime/state/product.js';
+import { getLoggedIn, loggedInStore } from '../runtime/state/auth.js';
 import { getTopbarState, topbarStore } from './topbar.js';
 
 const PANEL_WIDTH_KEY = 'dotli:chat-panel-width';

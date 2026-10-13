@@ -4,7 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import type { PermissionStatus } from '@dotli/ui-entities';
+import type { PermissionStatus } from '../../runtime/permissions.js';
 import { expectPhone, openSurface, reachable } from '../../../.storybook/topbar-frame.js';
 import { GroupFrame, moreRow, openMore } from '../../../.storybook/frames.js';
 import {

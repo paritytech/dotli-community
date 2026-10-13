@@ -4,16 +4,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
 import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
-import {
-  createChatConnections,
-  createChatStore,
-  type ChatStore,
-  labelToProductId,
-  setAuthState,
-  setProductError,
-  setProductLoaded,
-} from '@dotli/host-runtime';
-import { memoryChatRepo, recordingConnection } from '@dotli/host-runtime/testing';
+import { createChatConnections, createChatStore, type ChatStore } from '../runtime/chat/store.js';
+import { labelToProductId } from '../runtime/runtime-config.js';
+import { setAuthState } from '../runtime/state/auth.js';
+import { setProductError, setProductLoaded } from '../runtime/state/product.js';
+import { memoryChatRepo, recordingConnection } from '../runtime/chat/store.fake.js';
 import {
   chatPanelStore,
   initChatPanelState,

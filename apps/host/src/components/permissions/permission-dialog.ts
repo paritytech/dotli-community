@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ModalView } from '@dotli/ui';
-import { permissionIcon, type PermissionName } from '@dotli/ui-entities';
+import { permissionIcon } from './permission-icons.js';
+import type { EnforceablePermissionName } from '../../runtime/permissions.js';
 
-const PERMISSION_DESCRIPTIONS: Record<PermissionName, string> = {
+const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
   Notifications: 'Show in-app and system notifications',
   Camera: 'Access your camera for photo and video capture',
   Microphone: 'Access your microphone for audio input',
@@ -25,7 +26,7 @@ export type PermissionDecision = 'granted' | 'granted-once' | 'denied' | 'dismis
 export interface PermissionRequest {
   /** The app's name as the user reads it. */
   app: string;
-  permission: PermissionName;
+  permission: EnforceablePermissionName;
   /** Offers a one-time grant beside the lasting one. */
   allowOnce: boolean;
   /** Granting rebuilds the app's frame, so the dialog says the app reloads. */

@@ -5,18 +5,15 @@
 
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { chainDetail, eventCountLabel, groupDuration, memberDelta } from '../model/detail-format.js';
 import {
-  chainDetail,
   correlationKeyOf,
-  eventCountLabel,
-  groupDuration,
-  memberDelta,
-  summariseSystemEvent,
-  tagKind,
   type StoredEvent,
   type StoredSystemEvent,
   type StoredTruapiEvent,
-} from '@dotli/truapi-debug';
+} from '../model/event-store.js';
+import { summariseSystemEvent } from '../model/system-summary.js';
+import { tagKind } from '../model/row-format.js';
 import { Explanation } from './Explanation.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
 import { IdValue } from '../shared/IdBadge.js';

@@ -53,14 +53,6 @@ jobs:
         working-directory: packages/truapi-debug-ui
         run: npm run build-storybook
 
-      - name: Build the domain views' Storybook
-        working-directory: packages/ui-entities
-        run: npm run build-storybook
-
-      - name: Build the page widgets' Storybook
-        working-directory: packages/ui-widgets
-        run: npm run build-storybook
-
       - name: Build the host chrome's Storybook
         working-directory: apps/host
         run: npm run build-storybook

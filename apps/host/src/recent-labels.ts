@@ -15,7 +15,7 @@ import {
 import { reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { isValidDotLabel } from '@dotli/resolver';
-import { getSharedChannel, type SharedChannel } from '@dotli/host-runtime';
+import { getSharedChannel, type SharedChannel } from './runtime/shared-mode.js';
 
 /** The recently visited names, over one shared store. */
 export interface RecentLabels {

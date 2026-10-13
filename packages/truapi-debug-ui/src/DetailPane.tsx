@@ -6,7 +6,7 @@
 
 import { createMemo, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { correlationKeyOf, type EventSeq, type EventStore, type StoredEvent } from '@dotli/truapi-debug';
+import { correlationKeyOf, type EventSeq, type EventStore, type StoredEvent } from './model/event-store.js';
 import { GroupDetail } from './detail/GroupDetail.js';
 import { SingleDetail } from './detail/SingleDetail.js';
 import type { PanelView } from './ViewTabs.js';

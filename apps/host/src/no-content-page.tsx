@@ -5,7 +5,7 @@
 // nothing a visitor typed is parsed as markup.
 
 import { getActiveTldSuffix } from '@dotli/config';
-import { showScreen } from '@dotli/ui-widgets';
+import { showScreen } from '@dotli/ui';
 import { NoContentPage } from './components/no-content/NoContentPage.js';
 
 export function showNoContentError(label: string): void {

@@ -4,7 +4,7 @@
 import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
-import { HISTORY_SLOTS } from '@dotli/ui-entities';
+import { HISTORY_SLOTS } from './chain-strip.js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';

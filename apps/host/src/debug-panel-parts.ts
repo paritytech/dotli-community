@@ -9,14 +9,12 @@ import { readArchiveFiles } from '@dotli/content';
 import { setDockInset } from './product-frame-layout.js';
 import { getTopbarState } from './state/topbar.js';
 import { closeDebugMode } from './settings-actions.js';
-import {
-  authStore,
-  pageDiagnostics,
-  phraseToEntropy,
-  productStore,
-  walletModeStore,
-  walletSwitch,
-} from '@dotli/host-runtime';
+import { authStore } from './runtime/state/auth.js';
+import { pageDiagnostics } from './runtime/diagnostics.js';
+import { phraseToEntropy } from './runtime/recovery-phrase.js';
+import { productStore } from './runtime/state/product.js';
+import { walletModeStore } from './runtime/state/wallet-mode.js';
+import { walletSwitch } from './runtime/wallet-switch.js';
 import type { DebugPanelParts } from './debug-panel.js';
 
 export const debugPanelParts: DebugPanelParts = {

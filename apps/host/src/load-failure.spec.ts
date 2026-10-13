@@ -6,7 +6,7 @@ import type { Backend } from '@dotli/config';
 import { configureModeStorage } from '@dotli/config';
 import { memoryModeStorage } from '@dotli/config/testing';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import type { ErrorPageContent } from '@dotli/ui-widgets';
+import type { ErrorPageContent } from '@dotli/ui';
 import {
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,

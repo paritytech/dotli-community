@@ -4,7 +4,7 @@
 // The network as the chains views read it. Callers pass wider values, which fit structurally.
 
 import type { ChainRole } from '@dotli/config';
-import type { ChainSummary } from '@dotli/ui-entities';
+import type { ChainSummary } from './chain.js';
 import type { LiveVerdict } from '../../network-verdict.js';
 
 export interface ChainView extends ChainSummary {

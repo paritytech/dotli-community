@@ -10,19 +10,16 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
 import { byId } from '@dotli/ui/testing';
-import {
-  type AuthCommands,
-  createBlockingModalCoordinator,
-  initAuthController,
-  setAuthState,
-  startLogin,
-} from '@dotli/host-runtime';
-import { resetAuthControllerForTests } from '@dotli/host-runtime/testing';
+import type { AuthCommands } from '../../src/runtime/auth-commands.js';
+import { createBlockingModalCoordinator } from '../../src/runtime/blocking-modal-queue.js';
+import { initAuthController, startLogin } from '../../src/runtime/auth-controller.js';
+import { setAuthState } from '../../src/runtime/state/auth.js';
+import { resetAuthControllerForTests } from '../../src/runtime/auth-controller.js';
 import { getTopbarState, reportBlockingModals, setTopbarVisible } from '../../src/state/topbar.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
 import { createProductFrameView } from '../../src/product-frame-view.js';
 import { anyTopbarSurfaceOpen } from '../../src/state/topbar-surfaces.js';
-import { authModalStore, resetAuthModal, setAuthModalTrigger, updateAuthModal } from '../../src/state/auth-modal.js';
+import { authModalStore, setAuthModalTrigger } from '../../src/state/auth-modal.js';
 
 /** What the controller asked of the bridge chunk's commands. */
 const asked = { logins: 0, cancels: 0 };
@@ -49,7 +46,6 @@ async function untilModal(open: boolean): Promise<void> {
 function mountIsland(): void {
   initAuthController({
     coordinator: createBlockingModalCoordinator({ report: reportBlockingModals }),
-    modal: { update: updateAuthModal, reset: resetAuthModal },
     commands: () => Promise.resolve(commands),
   });
   setAuthState({ tag: 'Disconnected' });

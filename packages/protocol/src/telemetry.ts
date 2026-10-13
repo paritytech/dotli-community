@@ -6,6 +6,7 @@
 import type { ProtocolFrame } from './frame.js';
 import { addListener, broadcast } from './listeners.js';
 import {
+  envelopeChainRole,
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
   type ProtocolChainDetailEnvelope,
@@ -15,18 +16,7 @@ import {
   type SmoldotDbOutcome,
 } from './messages.js';
 
-export interface FrameTelemetry {
-  /** Whether a chain began from existing smoldot state, so telemetry keeps cold syncs and warm resumes apart. */
-  getSmoldotDbOutcome(chain: SmoldotDbChain): SmoldotDbOutcome | 'unknown';
-  /** Events arrive only after the origin- and source-gated listener validates them. */
-  onProtocolChainSync(listener: (event: ProtocolChainSyncEnvelope) => void): () => void;
-  onProtocolChainDetail(listener: (event: ProtocolChainDetailEnvelope) => void): () => void;
-  onProtocolNetBytes(listener: (event: ProtocolNetBytesEnvelope) => void): () => void;
-}
-
-export function createFrameTelemetry(
-  frame: Pick<ProtocolFrame, 'subscribeStatus' | 'onEnvelope' | 'onLost'>,
-): FrameTelemetry {
+export function createFrameTelemetry(frame: Pick<ProtocolFrame, 'subscribeStatus' | 'onEnvelope' | 'onLost'>) {
   const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
   const chainDetailListeners = new Set<(event: ProtocolChainDetailEnvelope) => void>();
   const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
@@ -49,12 +39,14 @@ export function createFrameTelemetry(
 
   frame.onEnvelope(msg => {
     if (msg.kind === 'chain-sync') {
-      if (isChainSyncPayloadValid(msg)) {
-        broadcast(chainSyncListeners, msg, 'Chain sync');
+      const chain = envelopeChainRole(msg.chain);
+      if (chain !== null && isChainSyncPayloadValid(msg)) {
+        broadcast(chainSyncListeners, { ...msg, chain }, 'Chain sync');
       }
     } else if (msg.kind === 'chain-detail') {
-      if (isChainDetailPayloadValid(msg)) {
-        broadcast(chainDetailListeners, msg, 'Chain detail');
+      const chain = envelopeChainRole(msg.chain);
+      if (chain !== null && isChainDetailPayloadValid(msg)) {
+        broadcast(chainDetailListeners, { ...msg, chain }, 'Chain detail');
       }
     } else if (msg.kind === 'net-bytes') {
       // Cumulative, so a total below the last one is spoofed or corrupt
@@ -66,10 +58,11 @@ export function createFrameTelemetry(
     } else if (msg.kind === 'smoldot-db') {
       // These become Sentry tags and the envelope check covers only namespace and kind, so a buggy
       // frame could otherwise write unbounded tag values.
-      const chain: string = msg.chain;
+      const chain = envelopeChainRole(msg.chain);
       const outcome: string = msg.outcome;
       if (
-        (chain === 'relay' || chain === 'hub' || chain === 'bulletin') &&
+        chain !== null &&
+        chain !== 'people' &&
         (outcome === 'hit' || outcome === 'miss' || outcome === 'unavailable')
       ) {
         smoldotDbOutcomes.set(chain, outcome);
@@ -78,9 +71,15 @@ export function createFrameTelemetry(
   });
 
   return {
-    getSmoldotDbOutcome: chain => smoldotDbOutcomes.get(chain) ?? 'unknown',
-    onProtocolChainSync: listener => addListener(chainSyncListeners, listener),
-    onProtocolChainDetail: listener => addListener(chainDetailListeners, listener),
-    onProtocolNetBytes: listener => addListener(netBytesListeners, listener),
+    /** Whether a chain began from existing smoldot state, so telemetry keeps cold syncs and warm resumes apart. */
+    getSmoldotDbOutcome: (chain: SmoldotDbChain): SmoldotDbOutcome | 'unknown' =>
+      smoldotDbOutcomes.get(chain) ?? 'unknown',
+    /** Events arrive only after the origin- and source-gated listener validates them. */
+    onProtocolChainSync: (listener: (event: ProtocolChainSyncEnvelope) => void) =>
+      addListener(chainSyncListeners, listener),
+    onProtocolChainDetail: (listener: (event: ProtocolChainDetailEnvelope) => void) =>
+      addListener(chainDetailListeners, listener),
+    onProtocolNetBytes: (listener: (event: ProtocolNetBytesEnvelope) => void) =>
+      addListener(netBytesListeners, listener),
   };
 }

@@ -14,6 +14,7 @@ import {
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
+  type ProtocolResponseMap,
 } from './messages.js';
 import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
 
@@ -53,7 +54,7 @@ export interface FrameRpc {
     method: M,
     payload: ProtocolRequestMap[M],
     onProgress?: (phase: ResolvePhase) => void,
-  ): Promise<unknown>;
+  ): Promise<ProtocolResponseMap[M]>;
 }
 
 export function createFrameRpc(frame: RpcFrame): FrameRpc {
@@ -142,7 +143,7 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
         });
       }
 
-      return new Promise((resolve, reject) => {
+      return new Promise<ProtocolResponseMap[typeof method]>((resolve, reject) => {
         const timer =
           timeoutMs === null
             ? null
@@ -164,7 +165,8 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
               clearTimeout(timer);
             }
             settled('ok');
-            resolve(value);
+            // The one place an answer gets its type: it crossed postMessage untyped, so the map is only as right as the specs.
+            resolve(value as ProtocolResponseMap[typeof method]);
           },
           reject: (reason?: unknown) => {
             if (timer !== null) {

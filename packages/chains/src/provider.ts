@@ -6,19 +6,13 @@
 
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcProvider } from 'polkadot-api';
-import { DEBUG, getActiveFixedServicesConfig, getActiveSupportedGenesisHashes } from '@dotli/config';
+import { DEBUG, chainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import { createSmoldotDb, type SmoldotDb } from './smoldot-db.js';
-import {
-  attachChainSync,
-  chainKeyForGenesis,
-  reportDbCache,
-  type ChainLifecycleWatch,
-  type ChainSyncTap,
-} from './chain-sync.js';
+import { attachChainSync, reportDbCache, type ChainLifecycleWatch, type ChainSyncTap } from './chain-sync.js';
 import type { ChainTransportHooks } from './transport-hooks.js';
 
 // Reached through `loadProvider` too, so a caller that loads the light client lazily keeps sync reporting off its boot path.
@@ -59,8 +53,8 @@ export interface LightClientDeps {
 }
 
 // Observed at the store, since the crate reads it for the relay it dials internally. "unavailable" keeps an
-// outage apart from cold starts. People is left out, as nothing the page waits on depends on it.
-export type SmoldotDbChain = 'relay' | 'hub' | 'bulletin';
+// outage apart from cold starts.
+export type SmoldotDbChain = Exclude<ChainRole, 'people'>;
 export type SmoldotDbOutcome = 'hit' | 'miss' | 'unavailable';
 
 export interface LightClientStatus {
@@ -128,21 +122,6 @@ export const startTruapiProvider: StartEngine = async ({ logLevel, store, debug 
   return builder.build();
 };
 
-function chainRole(genesisHash: string): SmoldotDbChain | null {
-  const services = getActiveFixedServicesConfig();
-  const key = genesisHash.toLowerCase();
-  if (key === services.relay.genesis.toLowerCase()) {
-    return 'relay';
-  }
-  if (key === services.assethub.genesis.toLowerCase()) {
-    return 'hub';
-  }
-  if (key === services.bulletin.genesis.toLowerCase()) {
-    return 'bulletin';
-  }
-  return null;
-}
-
 async function resumeFromStore(engine: LightClientEngine, key: string): Promise<void> {
   try {
     const warm = await engine.loadDatabase(key);
@@ -190,9 +169,10 @@ export function createLightClient(deps: LightClientDeps): LightClient {
   }
 
   function markDb(genesisHash: string, outcome: SmoldotDbOutcome): void {
-    const chain = chainRole(genesisHash);
-    // First read wins, since only the chain's first add consumes the store.
-    if (chain === null || dbOutcomes.has(chain)) {
+    const chain = chainRoleForGenesis(genesisHash);
+    // First read wins, since only the chain's first add consumes the store. People is left out, as nothing the page
+    // waits on depends on it.
+    if (chain === null || chain === 'people' || dbOutcomes.has(chain)) {
       return;
     }
     dbOutcomes.set(chain, outcome);
@@ -296,7 +276,7 @@ export function createLightClient(deps: LightClientDeps): LightClient {
           }
           queued.length = 0;
           // After the flush, so the sync request cannot jump ahead of a caller's.
-          const chain = chainKeyForGenesis(key);
+          const chain = chainRoleForGenesis(key);
           state.sync =
             chain === null
               ? null

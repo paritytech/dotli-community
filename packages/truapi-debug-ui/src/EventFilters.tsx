@@ -5,7 +5,7 @@
 
 import { createMemo } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { compileQuery, type DirectionFilter, type FilterState } from '@dotli/truapi-debug';
+import { compileQuery, type DirectionFilter, type FilterState } from './model/filters.js';
 import { FilterBar, FilterChips, FilterCheck, FilterGroup, FilterInput, type FilterChip } from './shared/Filters.js';
 import s from './EventFilters.module.css';
 

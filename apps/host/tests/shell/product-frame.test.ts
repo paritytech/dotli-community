@@ -7,14 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
-import type { FrameProduct, ProductFrame } from '@dotli/host-runtime';
-import {
-  answerConnection,
-  createFakePageCore,
-  createProductFrame,
-  type FakePageCore,
-} from '@dotli/host-runtime/testing';
-import { clearScreen, showErrorPage } from '@dotli/ui-widgets';
+import type { FrameProduct, ProductFrame } from '../../src/runtime/product-frame.js';
+import { answerConnection, createFakePageCore, type FakePageCore } from '../../src/runtime/page-core.fake.js';
+import { createProductFrame } from '../../src/runtime/product-frame.js';
+import { clearScreen, showErrorPage } from '@dotli/ui';
 import { createProductFrameView } from '../../src/product-frame-view.js';
 import { nth } from '@dotli/shared/testing';
 

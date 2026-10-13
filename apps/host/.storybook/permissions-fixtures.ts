@@ -6,7 +6,7 @@
 
 import { createSignal, flush } from 'solid-js';
 import { fn } from 'storybook/test';
-import type { PermissionName, PermissionStatus } from '@dotli/ui-entities';
+import type { EnforceablePermissionName, PermissionStatus } from '../src/runtime/permissions.js';
 import type { MenuPermission, PermissionsNotice } from '../src/components/permissions/permissions.js';
 import type { PermissionsItemProps } from '../src/components/topbar/items.js';
 
@@ -34,7 +34,7 @@ const [hasGrants, setHasGrants] = createSignal(false);
 /** What the panel asked of the page. */
 export const permissionsAsked = {
   opens: 0,
-  choices: fn<(name: PermissionName, status: PermissionStatus) => void>(),
+  choices: fn<(name: EnforceablePermissionName, status: PermissionStatus) => void>(),
   resets: 0,
 };
 
@@ -72,7 +72,7 @@ export const storyPermissions: PermissionsItemProps = {
 };
 
 /** A loaded app on `app.dot` whose statuses read as `granted` says, Ask for the rest. */
-export function givenApp(granted: Partial<Record<PermissionName, PermissionStatus>> = {}): void {
+export function givenApp(granted: Partial<Record<EnforceablePermissionName, PermissionStatus>> = {}): void {
   setHost('app.dot');
   setNotice(undefined);
   write(STORY_PERMISSIONS.map(({ name }) => granted[name] ?? 'ask'));

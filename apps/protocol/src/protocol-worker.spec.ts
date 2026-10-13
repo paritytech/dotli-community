@@ -669,8 +669,8 @@ describe('protocol SharedWorker', () => {
     // Given a synced worker whose own first start found Asset Hub cold on disk
     const worker = await bootWorker(
       fakeLightClient({
-        sync: [{ chain: 'asset-hub', kind: 'bootstrapComplete' }],
-        detail: [{ chain: 'asset-hub', dbCache: 'miss' }],
+        sync: [{ chain: 'assethub', kind: 'bootstrapComplete' }],
+        detail: [{ chain: 'assethub', dbCache: 'miss' }],
       }),
     );
 
@@ -679,10 +679,10 @@ describe('protocol SharedWorker', () => {
 
     // Then it hears the chain is up, and pays no sync cost for it
     expect(envelopes(later, 'chain-sync')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-sync', chain: 'asset-hub', syncKind: 'bootstrapComplete' },
+      { namespace: 'dotli:protocol', kind: 'chain-sync', chain: 'assethub', syncKind: 'bootstrapComplete' },
     ]);
     expect(envelopes(later, 'chain-detail')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-detail', chain: 'asset-hub', dbCache: 'hit' },
+      { namespace: 'dotli:protocol', kind: 'chain-detail', chain: 'assethub', dbCache: 'hit' },
     ]);
   });
 
@@ -885,13 +885,13 @@ describe('protocol SharedWorker', () => {
     outlastHeartbeat(worker);
 
     // When the light client reads Asset Hub's database while the tab is gone, and the tab talks again
-    light.readDb('hub', 'miss');
+    light.readDb('assethub', 'miss');
     tab.receive({ type: 'pong' });
 
     // Then the tab heard each database once, the one it missed with its real outcome
     expect(envelopes(tab, 'smoldot-db')).toEqual([
       { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'relay', outcome: 'hit' },
-      { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'hub', outcome: 'miss' },
+      { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'assethub', outcome: 'miss' },
     ]);
   });
 
@@ -939,8 +939,8 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(light);
     const tab = worker.connect();
     outlastHeartbeat(worker);
-    light.readDb('hub', 'miss');
-    light.detail.push({ chain: 'asset-hub', dbCache: 'miss' });
+    light.readDb('assethub', 'miss');
+    light.detail.push({ chain: 'assethub', dbCache: 'miss' });
     presync.resolve(undefined);
     await settled();
 
@@ -949,10 +949,10 @@ describe('protocol SharedWorker', () => {
 
     // Then it hears the miss it waited through, in the database outcome and the chain detail alike
     expect(envelopes(tab, 'smoldot-db')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'hub', outcome: 'miss' },
+      { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'assethub', outcome: 'miss' },
     ]);
     expect(envelopes(tab, 'chain-detail')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-detail', chain: 'asset-hub', dbCache: 'miss' },
+      { namespace: 'dotli:protocol', kind: 'chain-detail', chain: 'assethub', dbCache: 'miss' },
     ]);
   });
 
@@ -1041,7 +1041,7 @@ describe('protocol SharedWorker', () => {
     // Given a tab whose first chain-sync replay fails to deliver while pre-sync runs
     const presync = deferred<undefined>();
     const worker = await bootWorker(
-      fakeLightClient({ presync: () => presync.promise, sync: [{ chain: 'asset-hub', kind: 'bootstrapComplete' }] }),
+      fakeLightClient({ presync: () => presync.promise, sync: [{ chain: 'assethub', kind: 'bootstrapComplete' }] }),
     );
     const tab = fakePort();
     failToDeliver(tab, 'DataCloneError');

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { productStore } from '@dotli/host-runtime';
+import { productStore } from '../runtime/state/product.js';
 import { NetworkItem } from '../components/topbar/items.js';
 import { networkStore } from '../state/network.js';
 import { networkHealthStore } from '../state/network-health.js';

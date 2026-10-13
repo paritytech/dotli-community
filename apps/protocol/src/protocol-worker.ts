@@ -521,7 +521,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   }
 
   // Before pre-sync opens the first connection, which would otherwise carry no lifecycle watch.
-  resolver.enableSyncReporting(['relay', 'asset-hub', 'bulletin', 'people']);
+  resolver.enableSyncReporting(['relay', 'assethub', 'bulletin', 'people']);
 
   // A fatal lets every tab reject in-flight requests at once instead of timing out, and a port that connects before the
   // close lands still gets the cause like a failed pre-sync. No chain opens before pre-sync, so no change came earlier.

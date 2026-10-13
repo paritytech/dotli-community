@@ -4,7 +4,8 @@
 // Collects the protocol iframe's and the sandbox's reports into one Sentry trace per page load. Built live, since a
 // load that never finishes is the one worth looking at.
 
-import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/chains';
+import type { ChainPeer, ChainSyncKind } from '@dotli/chains';
+import type { ChainRole } from '@dotli/config';
 import { m, type SpanHandle, type SpanValue } from '@dotli/metrics';
 import { peekContinuation, type Continuation } from './continuation.js';
 import { getLoadingState } from './state/loading.js';
@@ -118,7 +119,7 @@ function newChainState(): ChainState {
 }
 
 export interface ChainSyncFacts {
-  chain: ChainKey;
+  chain: ChainRole;
   syncKind: ChainSyncKind;
   peers?: number;
   reason?: string;
@@ -129,7 +130,7 @@ export interface ChainSyncFacts {
 export interface ResolutionTrace {
   chainSync: (event: ChainSyncFacts) => void;
   /** A telemetry-only fact about one chain. */
-  chainDetail: (event: { chain: ChainKey; dbCache?: CacheResult; peers?: ChainPeer[] }) => void;
+  chainDetail: (event: { chain: ChainRole; dbCache?: CacheResult; peers?: ChainPeer[] }) => void;
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
   content: (fetched: number, total: number | null) => void;
@@ -200,8 +201,8 @@ export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedP
     },
   });
 
-  const chains = new Map<ChainKey, ChainState>();
-  const chainOf = (key: ChainKey): ChainState => {
+  const chains = new Map<ChainRole, ChainState>();
+  const chainOf = (key: ChainRole): ChainState => {
     let state = chains.get(key);
     if (state === undefined) {
       state = newChainState();
@@ -237,7 +238,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedP
   let contentSpan: SpanHandle | null = null;
   let finished = false;
 
-  const enterPhase = (key: ChainKey, state: ChainState, phase: Phase): void => {
+  const enterPhase = (key: ChainRole, state: ChainState, phase: Phase): void => {
     if (state.phase === phase) {
       return;
     }
@@ -424,7 +425,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedP
   return trace;
 }
 
-function chainAttributes(key: ChainKey, state: ChainState): Record<string, SpanValue> {
+function chainAttributes(key: ChainRole, state: ChainState): Record<string, SpanValue> {
   const attrs: Record<string, SpanValue> = {
     chain: key,
     peers_max: state.peersMax,
@@ -473,7 +474,7 @@ function chainAttributes(key: ChainKey, state: ChainState): Record<string, SpanV
 }
 
 /** Flattened for the root, so an unsampled load still has them. */
-function chainSummary(chains: ReadonlyMap<ChainKey, ChainState>): Record<string, SpanValue> {
+function chainSummary(chains: ReadonlyMap<ChainRole, ChainState>): Record<string, SpanValue> {
   const out: Record<string, SpanValue> = {};
   for (const [key, state] of chains) {
     if (state.readyMs !== null) {

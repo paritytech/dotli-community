@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
+import { ALL_PERMISSIONS } from '../runtime/permissions.js';
 import {
-  ALL_PERMISSIONS,
   chooseProductPermission,
   productPermissionsStore,
-  productStore,
   refreshProductPermissions,
   resetProductPermissions,
-} from '@dotli/host-runtime';
+} from '../runtime/state/product-permissions.js';
+import { productStore } from '../runtime/state/product.js';
 import { PermissionsItem } from '../components/topbar/items.js';
 import { usePermissionsPanel } from './permissions.js';
 

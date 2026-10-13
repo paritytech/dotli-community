@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
-import type { ErrorPageContent } from '@dotli/ui-widgets';
+import type { ErrorPageContent } from '@dotli/ui';
 import { OPEN_SETTINGS_BTN_LABEL, RELOAD_BTN_LABEL, type ErrorDescription } from './errors.js';
 import type { LoadFailureModule } from './lazy.js';
 import { createSessionErrorSightings, showLoadFailure } from './show-load-failure.js';

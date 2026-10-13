@@ -284,9 +284,12 @@ export const metricsPackageConfig = defineConfig([
  * reads no overridable field, directly or through a helper.
  */
 const fixedConfigSurface = [
+  'CHAIN_ROLES',
+  'ChainRole',
   'DEBUG',
   'FixedServicesConfig',
   'Network',
+  'chainRoleForGenesis',
   'getActiveFixedServicesConfig',
   'getActiveSupportedGenesisHashes',
   'isValidNetwork',

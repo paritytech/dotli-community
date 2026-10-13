@@ -3,7 +3,7 @@
 
 import type { ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
-import type { PermissionName, PermissionStatus } from '@dotli/ui-entities';
+import type { EnforceablePermissionName, PermissionStatus } from '../runtime/permissions.js';
 import type { MenuPermission, PermissionsNotice } from '../components/permissions/permissions.js';
 import type { PermissionsItemProps } from '../components/topbar/items.js';
 
@@ -25,7 +25,7 @@ export interface PermissionsBinding {
   product: ReadableStore<ShownProduct>;
   state: ReadableStore<ReadPermissions>;
   refresh: () => Promise<void>;
-  choose: (label: string, name: PermissionName, status: PermissionStatus) => Promise<void>;
+  choose: (label: string, name: EnforceablePermissionName, status: PermissionStatus) => Promise<void>;
   /** Every decided permission of `label` back to Ask. */
   reset: (label: string) => Promise<void>;
 }

@@ -9,22 +9,6 @@ import { captureException, m, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 import { chainRoleForGenesis, type ChainRole } from '@dotli/config';
 
-export const CHAIN_KEYS = ['relay', 'asset-hub', 'bulletin', 'people'] as const;
-export type ChainKey = (typeof CHAIN_KEYS)[number];
-
-const CHAIN_KEY_BY_ROLE: Record<ChainRole, ChainKey> = {
-  relay: 'relay',
-  assethub: 'asset-hub',
-  bulletin: 'bulletin',
-  people: 'people',
-};
-
-/** A custom relay reports as `relay`, since the provider's one catalog cannot tell them apart. */
-export function chainKeyForGenesis(genesisHash: string): ChainKey | null {
-  const role = chainRoleForGenesis(genesisHash);
-  return role === null ? null : CHAIN_KEY_BY_ROLE[role];
-}
-
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
 export const CHAIN_SYNC_KINDS = [
   'firstPeer',
@@ -39,7 +23,7 @@ export const CHAIN_SYNC_KINDS = [
 export type ChainSyncKind = (typeof CHAIN_SYNC_KINDS)[number];
 
 export interface ChainSyncEvent {
-  chain: ChainKey;
+  chain: ChainRole;
   kind: ChainSyncKind;
   /** On `stalled` and `recovered`. */
   reason?: string;
@@ -64,7 +48,7 @@ export interface ChainPeer {
 
 /** Telemetry-only facts, kept out of `ChainSyncEvent` so UI subscribers need not filter them. */
 export interface ChainDetail {
-  chain: ChainKey;
+  chain: ChainRole;
   dbCache?: 'hit' | 'miss';
   /** Peers held when the chain reported ready. */
   peers?: ChainPeer[];
@@ -122,14 +106,14 @@ export interface ChainSyncReporter {
   /** Replays the latest event per chain and kind, so a listener attaching mid-sync knows where each chain stands. */
   onChainSync: (cb: SyncCallback) => () => void;
   /** The context owning the light client opts its chains in. */
-  enableSyncReporting: (chains: readonly ChainKey[]) => void;
+  enableSyncReporting: (chains: readonly ChainRole[]) => void;
   reportDbCache: (genesisHash: string, warm: boolean) => void;
   /**
    * The tap must see every response, in order, before polkadot-api does.
    * Returns `null` for a chain nobody asked to report, so it costs neither a watch nor a per-response check.
    */
   attachChainSync: (
-    chain: ChainKey,
+    chain: ChainRole,
     send: (message: string) => void,
     watchLifecycle: () => ChainLifecycleWatch,
   ) => ChainSyncTap | null;
@@ -159,7 +143,8 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
   }
 
   function reportDbCache(genesisHash: string, warm: boolean): void {
-    const chain = chainKeyForGenesis(genesisHash);
+    // A custom relay reports as `relay`, since the provider's one catalog cannot tell them apart.
+    const chain = chainRoleForGenesis(genesisHash);
     if (chain === null) {
       return;
     }
@@ -204,16 +189,16 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
   }
 
   // Opt-in per chain, since each costs a lifecycle watch.
-  const reportingChains = new Set<ChainKey>();
+  const reportingChains = new Set<ChainRole>();
 
-  function enableSyncReporting(chains: readonly ChainKey[]): void {
+  function enableSyncReporting(chains: readonly ChainRole[]): void {
     for (const chain of chains) {
       reportingChains.add(chain);
     }
   }
 
   function attachChainSync(
-    chain: ChainKey,
+    chain: ChainRole,
     send: (message: string) => void,
     watchLifecycle: () => ChainLifecycleWatch,
   ): ChainSyncTap | null {

@@ -53,6 +53,7 @@ export {
   type ModalButton,
   type ModalButtonVariant,
   type ModalEntry,
+  type ModalField,
   type ModalOptions,
   type ModalOutcome,
   type ModalView,
@@ -75,3 +76,12 @@ export { preloadWhenIdle, type IdleScheduler } from './page/idle.js';
 export { isPhoneViewport, watchPhoneViewport } from './page/phone-viewport.js';
 export { prefersReducedMotion } from './page/reduced-motion.js';
 export type { StatusTone } from './page/status-tone.js';
+
+// The screens and overlays both apps show.
+export type { ErrorAction, ErrorPageContent, ErrorText } from './widgets/error-page/error-page.js';
+export { showError, showErrorPage, type ShowErrorPage } from './widgets/error-page/show-error-page.js';
+export { ErrorDetail, ErrorFrame, type ErrorFrameProps } from './widgets/error-page/ErrorFrame.js';
+export { clearScreen, pageContentStore, showScreen, type PageContent } from './widgets/page-screen.js';
+export { listenForChunkFailures, offerReload, type ChunkFailureDeps } from './widgets/chunk-failures.js';
+export { showNotification, type NotificationParams, type ShowNotification } from './widgets/notification.js';
+export { Overlays } from './widgets/overlays/Overlays.js';

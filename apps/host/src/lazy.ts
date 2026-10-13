@@ -3,15 +3,14 @@
 
 // Lazy entry points, each its own chunk, so the product page boot leaves them out.
 
-import type * as BridgePortsNamespace from './bridge-ports.js';
+import type * as BridgeNamespace from './runtime/bridge.js';
 import type * as CacheRevalidateNamespace from './cache-revalidate.js';
 import type * as DebugPanelPartsNamespace from './debug-panel-parts.js';
 import type * as LoadFailureNamespace from './load-failure.js';
+import type * as LocalWalletCoreNamespace from './runtime/local-wallet-core.js';
 import type * as ProductBrandingNamespace from './product-branding.js';
+import type * as SharedModeNamespace from './runtime/shared-mode.js';
 import type * as WorkboxWindowNamespace from 'workbox-window';
-
-export type BridgePortsModule = typeof BridgePortsNamespace;
-export const loadBridgePorts = (): Promise<BridgePortsModule> => import('./bridge-ports.js');
 
 export type LoadFailureModule = typeof LoadFailureNamespace;
 export const loadFailureScreens = (): Promise<LoadFailureModule> => import('./load-failure.js');
@@ -40,3 +39,12 @@ export const loadViolationPanelMount = () => import('./components/sandbox-checke
 
 export type WorkboxWindowModule = typeof WorkboxWindowNamespace;
 export const loadWorkboxWindow = (): Promise<WorkboxWindowModule> => import('workbox-window');
+
+export type BridgeModule = typeof BridgeNamespace;
+export const loadBridge = (): Promise<BridgeModule> => import('./runtime/bridge.js');
+export type SharedModeModule = typeof SharedModeNamespace;
+export const loadSharedMode = (): Promise<SharedModeModule> => import('./runtime/shared-mode.js');
+export const loadSigningWorker = (): Promise<{ default: new () => Worker }> =>
+  import('./runtime/signing-worker.js?worker');
+export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;
+export const loadLocalWalletCore = (): Promise<LocalWalletCoreModule> => import('./runtime/local-wallet-core.js');

@@ -18,6 +18,9 @@ timeouts.
 - Backend (`smoldot-direct`, `smoldot-shared-worker`, `rpc-gateway`) and cache switches live in a mode store. Storage is
   reached through a `ModeStorage` set with `configureModeStorage`, so logic runs without a page. Defaults are seeded
   once at boot, before the shared mode store hydrates.
+- A chain is named by its role (`relay`, `assethub`, `bulletin`, `people`) everywhere: the network table, sync events,
+  the light client's database outcomes and the UI. A genesis hash maps to its role from the fixed config, so a worker
+  that never sees the runtime network config may read it.
 - Settings travel between origins as URL params. Default values are stripped, so a clean URL means every axis is at its
   default.
 

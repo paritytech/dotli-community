@@ -4,7 +4,8 @@
 import { createSignal, lazy, onSettled, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { preloadWhenIdle, Tooltip } from '@dotli/ui';
-import { TrustedShieldIcon, VerifiedShieldIcon } from '@dotli/ui-entities';
+import { TrustedShieldIcon } from '../icons/TrustedShieldIcon.js';
+import { VerifiedShieldIcon } from '../icons/VerifiedShieldIcon.js';
 import type { ShieldState } from '../../state/url-pill.js';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verification-shield.js';
 import { loadVerificationContent } from '../../lazy.js';

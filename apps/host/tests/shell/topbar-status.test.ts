@@ -8,14 +8,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSyncStore } from '@dotli/shared';
 import { memoryStorage, resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
-import {
-  createChatConnections,
-  createChatStore,
-  labelToProductId,
-  setAuthState,
-  setProductLoaded,
-} from '@dotli/host-runtime';
-import { memoryChatRepo } from '@dotli/host-runtime/testing';
+import { createChatConnections, createChatStore } from '../../src/runtime/chat/store.js';
+import { labelToProductId } from '../../src/runtime/runtime-config.js';
+import { setAuthState } from '../../src/runtime/state/auth.js';
+import { setProductLoaded } from '../../src/runtime/state/product.js';
+import { memoryChatRepo } from '../../src/runtime/chat/store.fake.js';
 import type { NetworkHealth } from '../../src/network-verdict.js';
 import { initChatPanelState, resetChatPanelStateForTests } from '../../src/state/chat-panel.js';
 import { bindTopbarStatus, topbarActionRoom } from '../../src/topbar-status.js';

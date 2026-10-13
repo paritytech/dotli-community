@@ -88,11 +88,7 @@ export interface RemoteChainsDeps {
   rpc: FrameRpc;
 }
 
-export interface RemoteChains {
-  createRemoteChainProvider(genesisHash: string): RemoteChainProvider | null;
-}
-
-export function createRemoteChains({ frame, rpc }: RemoteChainsDeps): RemoteChains {
+export function createRemoteChains({ frame, rpc }: RemoteChainsDeps) {
   const chainConnections = new Map<string, RemoteChainConnection>();
 
   frame.onEnvelope(msg => {
@@ -145,6 +141,7 @@ export function createRemoteChains({ frame, rpc }: RemoteChainsDeps): RemoteChai
     });
   }
 
+  /** Null when the frame cannot connect this chain. */
   function createRemoteChainProvider(genesisHash: string): RemoteChainProvider | null {
     if (!isRemoteChainConnectable(genesisHash)) {
       return null;

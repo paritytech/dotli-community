@@ -7,6 +7,9 @@ product's archive, the wallet switch and diagnostics. It loads only in debug mod
 
 - The panel views and their state: event list and filters, detail pane, timeline, resolution chart, archive, wallet,
   diagnostics.
+- The models behind the views: the event store and the correlation of a call with its answer, filters, rows and detail
+  formatting, timeline lanes, resolution blocks, pending-call tracking, export, chain names and payload decoding, and
+  the stored dock position and section. They are plain modules with Node specs beside them.
 - Its own components, icons and tokens, with nothing shared with the ui packages. Each icon is a Solid component that
   draws an `<svg>` in `currentColor`.
 - Not owned: event capture and the bus, and the host's stores and layers. The host gives them through `DebugPanelHost`.
@@ -23,6 +26,8 @@ flowchart LR
 - Setup installs the panel. A second call before disposing does nothing. Dispose also gives the product iframe its full
   size back through `host.reportDockInset`.
 - The feed subscribes to the bus at once, so the buffered boot replay is in the store before the panel mounts.
+- The models take their inputs as parameters and import no Solid, so the specs run under Node. Keys are stable, so a
+  view updates a box in place as traffic streams in.
 - `DebugPanelHost` is the port: readable stores for product, auth and wallet mode, wallet switching, diagnostics, the
   archive loader (the host picks gateway or blocks), content insets, a dock inset callback, and leaving debug mode,
   which the host does on Hide. The panel imports no host module.

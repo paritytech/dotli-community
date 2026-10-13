@@ -3,7 +3,7 @@
 
 // The screen the sandbox shows while it reloads a product whose connection dropped.
 
-import { showScreen } from '@dotli/ui-widgets';
+import { showScreen } from '@dotli/ui';
 import { RetryScreen } from './RetryScreen.js';
 
 export function showRetryScreen(): void {

@@ -5,7 +5,9 @@ import { createSignal, lazy, onSettled, Show, untrack, type Accessor } from 'sol
 import type { JSX } from '@solidjs/web';
 import { Button, Popover } from '@dotli/ui';
 import type { MoreRow } from '@dotli/ui';
-import { AccountAvatar, sessionDisplayName, sessionInitials, UserIcon } from '@dotli/ui-entities';
+import { AccountAvatar } from './AccountAvatar.js';
+import { sessionDisplayName, sessionInitials } from './account-names.js';
+import { UserIcon } from '../icons/UserIcon.js';
 import type { Account } from './account.js';
 import s from './AuthButton.module.css';
 import { loadAccountContent } from '../../lazy.js';

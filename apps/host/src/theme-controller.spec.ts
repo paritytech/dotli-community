@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getThemeState, themeStore } from '@dotli/host-runtime';
+import { getThemeState, themeStore } from './runtime/state/theme.js';
 import { createThemeController, type ThemeController } from './theme-controller.js';
 import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { FakeColorScheme } from './testing/color-scheme.js';

@@ -7,7 +7,7 @@
 import './boot.js';
 import { startPwa } from './pwa.js';
 import { boot, createBootFlowId, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
-import { showErrorPage, showNotification } from '@dotli/ui-widgets';
+import { showErrorPage, showNotification } from '@dotli/ui';
 import { showNoContentError } from './no-content-page.js';
 import {
   initPhases,
@@ -24,14 +24,11 @@ import {
 } from './loading-controller.js';
 import { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbar-autohide.js';
-import {
-  schedulePendingReset,
-  productStore,
-  setProductError,
-  loggedInStore,
-  loadBridge,
-  type ProductFrame,
-} from '@dotli/host-runtime';
+import { schedulePendingReset } from './runtime/pending-reset.js';
+import { productStore, setProductError } from './runtime/state/product.js';
+import { loggedInStore } from './runtime/state/auth.js';
+import { loadBridge } from './lazy.js';
+import type { ProductFrame } from './runtime/product-frame.js';
 import { bitswapGet, createSandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
 import { reportExpected, spans as S } from '@dotli/metrics';
@@ -78,7 +75,6 @@ import { loadResolve } from '@dotli/resolver';
 import { startResolutionTrace } from './resolution-trace.js';
 import { beginAttempt, endJourney } from './journey.js';
 import { startLoadProgress } from './load-progress.js';
-import { chainRoleForKey } from './chain-roles.js';
 import { startShellState } from './shell-state.js';
 import { openSettings } from './settings-intent.js';
 import { createProductLoader } from './product-loader.js';
@@ -306,7 +302,6 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
         monitor: { recordChainPhase, recordPeerCount, recordTransfer },
         trace,
         emit,
-        chainRole: chainRoleForKey,
         product: productStore,
       }),
     onContentDone: onSandboxDone,

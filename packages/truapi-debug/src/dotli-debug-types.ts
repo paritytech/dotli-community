@@ -445,3 +445,12 @@ export type ChainEvent =
         received: number;
       };
     };
+
+/** A TrUAPI frame as the bus carries it, before the panel's store gives it a sequence number. */
+export interface TruapiDebugMessageEvent {
+  kind: 'truapi';
+  direction: 'incoming' | 'outgoing';
+  productId?: string;
+  requestId: string;
+  payload: { tag: string; value: unknown };
+}

@@ -3,7 +3,8 @@
 
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { EventSeq, StoredEvent, TimelineLane } from '@dotli/truapi-debug';
+import type { EventSeq, StoredEvent } from './model/event-store.js';
+import type { TimelineLane } from './model/timeline.js';
 import { wireHoverTooltips } from './shared/hover-tooltip.js';
 import { Pane } from './shared/Pane.js';
 import { Timeline } from './timeline/Timeline.js';

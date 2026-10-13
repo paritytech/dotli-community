@@ -5,7 +5,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { GlobeIcon } from '@dotli/ui/icons';
-import { ErrorDetail, ErrorFrame } from '@dotli/ui-widgets';
+import { ErrorDetail, ErrorFrame } from '@dotli/ui';
 import s from './NoContentPage.module.css';
 
 const TITLE = "This app can't be reached";
