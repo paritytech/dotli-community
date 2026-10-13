@@ -99,7 +99,12 @@ function askToRecover(fakes: Harness, host = 0): void {
   );
 }
 
-const subdomainProduct = (label: string, cid = 'cid'): FrameProduct => ({ mode: 'subdomain', label, cid });
+const subdomainProduct = (label: string, cid = 'cid'): FrameProduct => ({
+  mode: 'subdomain',
+  label,
+  cid,
+  chat: Promise.resolve(false),
+});
 
 describe('product frame rebuilds on the page', () => {
   it('As a dApp user, an error page shown over a live product is cleared when its sandbox asks to be rebuilt', async () => {

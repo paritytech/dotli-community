@@ -47,11 +47,8 @@ export interface ChainPoolWatcher {
 export interface ChainPoolOptions {
   /** Build a chain's transport, or `null` when this context cannot reach it. */
   createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
-  /**
-   * How long a chain outlives its last lease, in ms. `Infinity` keeps it. A
-   * function is asked for the chain's genesis hash when its countdown starts.
-   */
-  destroyDelay?: number | ((genesisHash: string) => number);
+  /** How long a chain outlives its last lease, in ms. `Infinity` keeps it. */
+  destroyDelay?: number;
 }
 
 export interface ChainPool extends ChainBrokerManager {
@@ -65,10 +62,6 @@ export interface ChainPool extends ChainBrokerManager {
   getLocalProvider(genesisHash: string, holder?: string): LeaseProvider | null;
   status(genesisHash: string): ConnectionStatus;
   onStatusChanged(genesisHash: string, callback: (status: ConnectionStatus) => void): () => void;
-  /** Drops every pausable transport's socket. Leases and refcounts stay. */
-  pauseAll(): void;
-  /** Tracked statement subscriptions are replayed. */
-  resumeAll(): void;
   /**
    * Reports each chain's leases, status, follow and best blocks. The chains held now are replayed first. A chain
    * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept.
@@ -105,29 +98,14 @@ function stringsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-interface Pausable {
-  pause: () => void;
-  resume: () => void;
-}
-
-type PausableProvider = JsonRpcProvider & Pausable;
-
-/** Duck-typed because the ws provider package exports no pausability check. */
-function isPausable(transport: JsonRpcProvider): transport is PausableProvider {
-  const candidate = transport as Partial<PausableProvider>;
-  return typeof candidate.pause === 'function' && typeof candidate.resume === 'function';
-}
-
 export function createChainPool(options: ChainPoolOptions): ChainPool {
-  const destroyDelayOption = options.destroyDelay ?? DEFAULT_DESTROY_DELAY_MS;
+  const destroyDelay = options.destroyDelay ?? DEFAULT_DESTROY_DELAY_MS;
   const entries = new Map<string, Entry>();
   // Outlives the entries, so a chain that halts and is rebuilt keeps its warning count.
   const warners = new Map<string, BrokerWarner>();
   const statuses = new Map<string, ConnectionStatus>();
   const listeners = new Map<string, Set<(status: ConnectionStatus) => void>>();
   let sessionCounter = 0;
-  // Survives every entry: a chain first leased while paused comes up paused.
-  let paused = false;
   const watchers = new Set<ChainPoolWatcher>();
 
   function activityOf(entry: Entry): ChainActivity {
@@ -346,12 +324,6 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     if (transport === null) {
       return null;
     }
-    // Paused before the broker first calls the transport, so its socket does
-    // not open until the resume.
-    const builtPaused = paused && isPausable(transport);
-    if (builtPaused) {
-      transport.pause();
-    }
     const guard = createWatchGuard(transport);
     const warn = warners.get(key) ?? createBrokerWarner();
     warners.set(key, warn);
@@ -370,7 +342,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     log.debug(`${POOL_TAG} ${shortKey(key)} opening`);
     entry = created;
     entries.set(key, created);
-    setStatus(key, builtPaused ? 'disconnected' : 'connecting');
+    setStatus(key, 'connecting');
     report(created);
     return created;
   }
@@ -389,7 +361,6 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     if (entry.leases > 0 || !entry.live || entry.destroyTimer !== null) {
       return;
     }
-    const destroyDelay = typeof destroyDelayOption === 'function' ? destroyDelayOption(entry.key) : destroyDelayOption;
     if (destroyDelay <= 0) {
       destroy(entry, null);
       return;
@@ -507,18 +478,6 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       };
     },
 
-    pauseAll() {
-      if (paused) {
-        return;
-      }
-      paused = true;
-      for (const entry of entries.values()) {
-        if (isPausable(entry.transport)) {
-          entry.transport.pause();
-        }
-      }
-    },
-
     watch(watcher) {
       watchers.add(watcher);
       for (const entry of [...entries.values()]) {
@@ -537,18 +496,6 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           }
         }
       };
-    },
-
-    resumeAll() {
-      if (!paused) {
-        return;
-      }
-      paused = false;
-      for (const entry of entries.values()) {
-        if (isPausable(entry.transport)) {
-          entry.transport.resume();
-        }
-      }
     },
   };
 }

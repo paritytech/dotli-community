@@ -8,6 +8,8 @@ resolution. See the root [README](../../README.md) for the product as a whole.
 - Read the host's URL contract, fetch and verify the product's content by CID, and write its page into the window.
 - Serve the product's files to its page through a service worker.
 - Ask for a password when content is encrypted, and show a retry screen when a load fails.
+- In a checker build, inject a script first in the product's page that reports each browser API the product reaches
+  around the host.
 - Not name resolution or the chain connection: the host and the protocol app do that. Block requests go to the host,
   which proxies them to the protocol iframe.
 
@@ -30,6 +32,8 @@ resolution. See the root [README](../../README.md) for the product as a whole.
   the screen shows its words as text alone, with no icon or mark.
 - A small helper for product sub-pages is a real module that the service worker inlines as a classic script. The service
   worker is built as a separate bundle after the page.
+- The checker is a real module inlined as a classic script, so it runs before any product script. Its reports use the
+  violation message of the wire protocol. A normal build drops it, and the page loads the injector lazily.
 
 ```mermaid
 flowchart LR

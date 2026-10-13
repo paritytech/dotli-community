@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { injectSandboxChecker } from './sandbox-checker.js';
+import { injectSandboxChecker } from './inject-checker.js';
 
 describe('injectSandboxChecker', () => {
   it("As a product developer, the checker runs before any of my page's scripts", () => {

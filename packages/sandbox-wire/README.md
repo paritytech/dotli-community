@@ -6,7 +6,8 @@ post to each other, and the host's one listener for that traffic.
 ## Responsibility
 
 - Owns the param contract: the param names, the schema version and the sandbox's validation of what the host passes.
-- Owns the message shapes in both directions and the parsers each side runs on what it receives.
+- Owns the message shapes in both directions, the checker build's violation report among them, and the parsers each side
+  runs on what it receives.
 - Owns the host's channel, which listens for sandbox messages once and hands typed messages to its consumers.
 - Does not own what the messages carry out: the block relay, the product frame, the loading screen or the sandbox run.
 
@@ -36,8 +37,9 @@ flowchart LR
 ### `@dotli/sandbox-wire`
 
 - Param contract: `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`.
-- Messages: `parseHostToSandboxMessage`, `parseSandboxToHostMessage`, `postToHost`, `SandboxToHostMessage`,
-  `HostToSandboxMessage`, `LoadingStatusMessage`, `SandboxDebugEvent`, `SandboxDebugEventMessage`,
-  `SandboxRecoverMessage`, `BitswapGetMessage`, `BitswapAbortMessage`, `BitswapResultMessage`.
+- Messages: `parseHostToSandboxMessage`, `parseSandboxToHostMessage`, `postToHost`, `parseApiViolationMessage`,
+  `ApiViolationMessage`, `SandboxToHostMessage`, `HostToSandboxMessage`, `LoadingStatusMessage`, `SandboxDebugEvent`,
+  `SandboxDebugEventMessage`, `SandboxRecoverMessage`, `BitswapGetMessage`, `BitswapAbortMessage`,
+  `BitswapResultMessage`.
 - Channel: `startSandboxChannel`, `SandboxChannel`, `StartedSandboxChannel`, `SandboxChannelOptions`, `SandboxSender`,
   `SandboxMessageType`, `SandboxMessageOf`.

@@ -5,7 +5,7 @@
 // does is in the Panel stories beside it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadDotliDebugBus, type DotliDebugBus } from '@dotli/truapi-debug';
+import { createDotliDebugBus, type DotliDebugBus } from '@dotli/truapi-debug';
 import { fakeDebugPanelHost } from '../src/host.fake.js';
 import { setupTruapiDebugPanel } from '../src/mount.js';
 import { PANEL_ID } from '../src/Panel.js';
@@ -13,12 +13,12 @@ import { PANEL_ID } from '../src/Panel.js';
 let bus: DotliDebugBus;
 let disposers: (() => void)[] = [];
 
-beforeEach(async () => {
+beforeEach(() => {
   // A fixed start keeps the 16 ms animation-frame grid aligned, so frame timings are reproducible.
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
   document.body.replaceChildren();
   localStorage.clear();
-  bus = (await loadDotliDebugBus()).createDotliDebugBus();
+  bus = createDotliDebugBus();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableBuffering();
 });

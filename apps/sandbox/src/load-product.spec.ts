@@ -27,7 +27,7 @@ function params(overrides: Partial<SandboxParams> = {}): SandboxParams {
   };
 }
 
-type FetchArchive = Awaited<ReturnType<LoadProductDeps['loadFetch']>>['fetchArchive'];
+type FetchArchive = LoadProductDeps['fetchArchive'];
 
 interface Harness {
   deps: LoadProductDeps;
@@ -64,13 +64,10 @@ function harness(fetched: FetchResult | Error, overrides: Partial<LoadProductDep
       workers.push(options);
       return Promise.resolve();
     },
-    loadFetch: () =>
-      Promise.resolve({
-        fetchArchive: (_cid, _onStatus, options) => {
-          fetches.push(options);
-          return fetched instanceof Error ? Promise.reject(fetched) : Promise.resolve(fetched);
-        },
-      }),
+    fetchArchive: (_cid, _onStatus, options) => {
+      fetches.push(options);
+      return fetched instanceof Error ? Promise.reject(fetched) : Promise.resolve(fetched);
+    },
     loadBlockSource: () => Promise.resolve(BLOCK_SOURCE),
     decrypt: () => Promise.resolve(null),
     storeArchive: files => {
@@ -233,18 +230,6 @@ describe('loadProduct', () => {
 
     // Then the failure names the fetch
     expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: unreachable });
-  });
-
-  it('As an operator, I see a fetch chunk that cannot load fail at the chunk load step', async () => {
-    // Given a fetch chunk the browser cannot import
-    const missing = new TypeError('Failed to fetch dynamically imported module');
-    const page = harness({ type: 'single', content: enc('') }, { loadFetch: () => Promise.reject(missing) });
-
-    // When the first attempt loads it
-    const outcome = await loadProduct({ params: params(), attempt: 1 }, page.deps);
-
-    // Then the failure names the chunk load
-    expect(outcome).toEqual({ outcome: 'failed', step: 'chunk_load', error: missing });
   });
 
   it.each<[string, (broken: Error) => Partial<LoadProductDeps>, FetchResult]>([

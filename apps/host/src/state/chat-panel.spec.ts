@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { memoryChatRepo, recordingConnection } from '@dotli/host-runtime/testing';
 import {
-  setChatCapability,
   createChatConnections,
   createChatStore,
   type ChatStore,
@@ -38,8 +37,7 @@ let chat: ChatStore;
 let connections: ReturnType<typeof createChatConnections>;
 
 function showProduct(label: string): void {
-  setProductLoaded(label, labelToProductId(label));
-  setChatCapability(label, true);
+  setProductLoaded(label, labelToProductId(label), { chat: true });
   setAuthState({ tag: 'Connected', session: { connected: true } });
 }
 
@@ -62,14 +60,14 @@ afterEach(() => {
 
 describe('chat panel state', () => {
   it('As a user, the chat button shows only for a chat-capable product while I am logged in', () => {
-    // Given: a label no other case answers for, as the capability keeps its last answer for the file.
+    // Given a product that declares no chat
     setProductLoaded('first-app', labelToProductId('first-app'));
 
     // Then
     expect(chatButtonVisible()).toBe(false);
 
-    // When
-    setChatCapability('first-app', true);
+    // When it loads again declaring chat
+    setProductLoaded('first-app', labelToProductId('first-app'), { chat: true });
 
     // Then
     expect(chatButtonVisible()).toBe(false);
@@ -81,27 +79,16 @@ describe('chat panel state', () => {
     expect(chatButtonVisible()).toBe(true);
   });
 
-  it('As a user, I ignore the chat answer for another product', () => {
+  it('As a user, the chat button goes away when my product fails to load', () => {
     // Given
     showProduct('app');
 
     // When
-    setChatCapability('other', false);
+    setProductError();
 
     // Then
-    expect(chatButtonVisible()).toBe(true);
-  });
-
-  it('As a user, the chat button shows when the capability for my product settled before it loaded', () => {
-    // Given
-    setChatCapability('early-app', true);
-    setAuthState({ tag: 'Connected', session: { connected: true } });
-
-    // When
-    setProductLoaded('early-app', labelToProductId('early-app'));
-
-    // Then
-    expect(chatButtonVisible()).toBe(true);
+    expect(chatButtonVisible()).toBe(false);
+    expect(chatPanelStore.get().available).toBe(false);
   });
 
   it('As a user, the panel closes when the button goes away (logout or product error)', () => {
@@ -189,7 +176,7 @@ describe('chat panel state', () => {
     openChatRoom('a');
 
     // When
-    setProductLoaded('app', labelToProductId('app'));
+    setProductLoaded('app', labelToProductId('app'), { chat: true });
 
     // Then
     expect(chatPanelStore.get().activeRoomId).toBe('a');
@@ -247,10 +234,9 @@ describe('chat panel state', () => {
     expect(chatPanelStore.get().width).toBe(560);
   });
 
-  it('As the chat panel, a width drag past the clamp, a cleared composer error, an unchanged topbar and a repeated chat answer notify nobody', () => {
+  it('As the chat panel, a width drag past the clamp, a cleared composer error and an unchanged topbar notify nobody', () => {
     // Given
-    setProductLoaded('app', 'app.dot');
-    setChatCapability('app', true);
+    setProductLoaded('app', 'app.dot', { chat: true });
     setChatPanelWidth(10_000);
     let notified = 0;
     const stop = chatPanelStore.subscribe(() => {
@@ -263,7 +249,6 @@ describe('chat panel state', () => {
     setChatComposerError(null);
     setTopbarVisible(true);
     reportBlockingModals({ waiting: 0, active: true });
-    setChatCapability('app', true);
 
     // Then
     expect(notified).toBe(0);

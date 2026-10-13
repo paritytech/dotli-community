@@ -53,16 +53,9 @@ export interface DotnsResolverDeps {
 }
 
 /** Where the Asset Hub client stands. A stopped follow takes it back to `idle`, and the next read builds it again. */
-export type DotnsResolverStatus = 'idle' | 'connecting' | 'syncing' | 'ready' | 'failed';
-
-export interface DotnsResolverStatusStore {
-  get: () => DotnsResolverStatus;
-  /** Tells the listener of every later change. Returns the unsubscribe. */
-  subscribe: (listener: (status: DotnsResolverStatus) => void) => () => void;
-}
+type DotnsResolverStatus = 'idle' | 'connecting' | 'syncing' | 'ready' | 'failed';
 
 export interface DotnsResolver {
-  readonly status: DotnsResolverStatusStore;
   resolveDotName: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveOwner: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveExecutableManifest: (
@@ -150,25 +143,23 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
       return;
     }
     status = next;
-    // A listener's throw must not fail the shared build, nor leave the status behind a client already kept.
+    // A callback's throw must not fail the shared build, nor leave the status behind a client already kept.
     for (const listener of [...listeners]) {
       try {
         listener(next);
       } catch (err) {
-        captureException(err, { flow: 'resolve', step: 'status_listener', tags: { status: next } });
-        log.error('[dot.li resolve] A resolver status listener threw', err);
+        captureException(err, { flow: 'resolve', step: 'phase_callback', tags: { status: next } });
+        log.error('[dot.li resolve] A resolver phase callback threw', err);
       }
     }
   }
-  const statusStore: DotnsResolverStatusStore = {
-    get: () => status,
-    subscribe: listener => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
+  /** Hears each later status. Returns the unsubscribe. */
+  function onStatus(listener: (status: DotnsResolverStatus) => void): () => void {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }
 
   let hub: ChainClient | null = null;
   let people: ChainClient | null = null;
@@ -241,7 +232,7 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     if (onPhase === undefined) {
       return () => undefined;
     }
-    return statusStore.subscribe(next => {
+    return onStatus(next => {
       const phase = PHASES[next];
       if (phase !== undefined) {
         onPhase(phase);
@@ -354,7 +345,6 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
   }
 
   return {
-    status: statusStore,
     resolveDotName: (label, opts = {}) => read(opts, (api, attempt) => readDotName(api, label, attempt)),
     resolveOwner: (label, opts = {}) => read(opts, api => readOwner(api, label)),
     resolveExecutableManifest: (label, kind, opts = {}) =>

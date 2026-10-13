@@ -4,7 +4,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import {
-  setChatCapability,
   createChatConnections,
   createChatStore,
   labelToProductId,
@@ -76,8 +75,7 @@ describe('pageNeedsAction', () => {
     const local = memoryStorage();
     stopChatState = initChatPanelState(chat, () => local);
     const product = labelToProductId('chatty');
-    setProductLoaded('chatty', product);
-    setChatCapability('chatty', true);
+    setProductLoaded('chatty', product, { chat: true });
     setAuthState({ tag: 'Connected', session: { connected: true } });
     expect(pageNeedsAction()).toBe(false);
 

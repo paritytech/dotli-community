@@ -53,9 +53,6 @@ export default defineConfig({
     plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
     rolldownOptions: rolldownOptions(),
   },
-  define: {
-    __BUILD_TARGET__: JSON.stringify('protocol'),
-  },
   optimizeDeps: {
     exclude: ['@polkadot-api/wasm-executor'],
   },

@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
-import { loadDotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
+import { enableDotliDebugBuffering, onDotliDebugEvent, type DotliDebugBusEvent } from '@dotli/truapi-debug';
 import { wrapCoreProviderForDebug } from './core-connection.js';
 import type { CoreConnection } from './page-core.js';
 import { loginResponseFrame, makeProvider, type FakeCoreProvider } from './page-core.fake.js';
@@ -16,11 +16,10 @@ afterEach(() => {
 });
 
 /** The debug panel open, as the host enables the bus before the panel subscribes. */
-async function openDebugPanel(): Promise<DotliDebugBusEvent[]> {
-  const bus = await loadDotliDebugBus();
-  bus.enableDotliDebugBuffering();
+function openDebugPanel(): DotliDebugBusEvent[] {
+  enableDotliDebugBuffering();
   const events: DotliDebugBusEvent[] = [];
-  stopListening = bus.onDotliDebugEvent(event => {
+  stopListening = onDotliDebugEvent(event => {
     events.push(event);
   });
   return events;
@@ -35,9 +34,9 @@ function connectionOver(provider: FakeCoreProvider): { connection: CoreConnectio
 }
 
 describe('core connection debug tap', () => {
-  it('As a dotli developer with the debug panel open, I see each frame between the product and its core with its direction', async () => {
+  it('As a dotli developer with the debug panel open, I see each frame between the product and its core with its direction', () => {
     // Given a wrapped connection whose product side listens
-    const events = await openDebugPanel();
+    const events = openDebugPanel();
     const core = makeProvider();
     const wrapped = wrapCoreProviderForDebug(connectionOver(core).connection);
     const toProduct: Uint8Array[] = [];
@@ -70,9 +69,9 @@ describe('core connection debug tap', () => {
     ]);
   });
 
-  it('As a dotli developer, I dispose a wrapped connection and the panel sees no frame after it', async () => {
+  it('As a dotli developer, I dispose a wrapped connection and the panel sees no frame after it', () => {
     // Given a wrapped connection with the debug panel open
-    const events = await openDebugPanel();
+    const events = openDebugPanel();
     const core = makeProvider();
     const { connection, close } = connectionOver(core);
     const wrapped = wrapCoreProviderForDebug(connection);

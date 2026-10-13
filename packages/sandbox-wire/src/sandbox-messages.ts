@@ -73,6 +73,17 @@ export type SandboxToHostMessage =
 
 export type HostToSandboxMessage = BitswapResultMessage;
 
+/**
+ * A checker build's report that the product reached a browser API it should reach through the host. The product's page
+ * posts it from the sandbox origin, never through `postToHost`, so the host reads it with its own parser.
+ */
+export interface ApiViolationMessage {
+  type: 'DOTLI_API_VIOLATION';
+  api: string;
+  details?: Record<string, unknown>;
+  timestamp?: number;
+}
+
 function asRecord(data: unknown): Record<string, unknown> | null {
   return typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : null;
 }
@@ -131,6 +142,22 @@ export function parseSandboxToHostMessage(data: unknown): SandboxToHostMessage |
     default:
       return null;
   }
+}
+
+/** A checker build's violation report, or null for anything else. The source check is the caller's. */
+export function parseApiViolationMessage(data: unknown): ApiViolationMessage | null {
+  const record = asRecord(data);
+  if (record?.['type'] !== 'DOTLI_API_VIOLATION') {
+    return null;
+  }
+  const details = asRecord(record['details']);
+  const timestamp = record['timestamp'];
+  return {
+    type: 'DOTLI_API_VIOLATION',
+    api: String(record['api']),
+    ...(details !== null ? { details } : {}),
+    ...(typeof timestamp === 'number' ? { timestamp } : {}),
+  };
 }
 
 /** What the sandbox accepts from its host, or null. A success without bytes is malformed, so it reads as a failure. */

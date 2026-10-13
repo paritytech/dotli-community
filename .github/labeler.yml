@@ -80,12 +80,6 @@ github-actions:
           - 'packages/ui-core/**'
           - '!packages/ui-core/package.json'
 
-'pkg: sandbox-checker':
-  - changed-files:
-      - all-globs-to-any-file:
-          - 'packages/sandbox-checker/**'
-          - '!packages/sandbox-checker/package.json'
-
 'pkg: eslint':
   - changed-files:
       - all-globs-to-any-file:

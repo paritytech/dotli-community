@@ -6,7 +6,7 @@ import type { Backend } from '@dotli/config';
 import { configureModeStorage } from '@dotli/config';
 import { memoryModeStorage } from '@dotli/config/testing';
 import { bindCaptureSink, type CaptureContext, type SpanHandle } from '@dotli/metrics';
-import type { ResolvePhase } from '@dotli/resolver';
+import type { ExecutableManifest, ManifestResult, ResolvePhase } from '@dotli/resolver';
 import type { CachedManifests } from '@dotli/storage';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -22,6 +22,12 @@ import type { ResolutionTrace } from './resolution-trace.js';
 
 const NO_MANIFESTS = { root: { kind: 'empty' as const }, app: { kind: 'empty' as const } };
 const NO_CACHED_MANIFESTS: CachedManifests = { root: null, app: null };
+
+function workerManifest(
+  value: { kind: 'app' } | { kind: 'worker'; entrypoint: string; includes: { chat?: boolean } },
+): ManifestResult<ExecutableManifest> {
+  return { kind: 'ok', value: { $v: 1, appVersion: [1, 0, 0], ...value }, raw: '' };
+}
 
 interface Harness {
   loader: ProductLoader;
@@ -42,6 +48,8 @@ interface Options {
   published?: Record<string, string>;
   cached?: { cid: string; manifests: CachedManifests };
   skipCidCache?: boolean;
+  /** What the worker manifest read answers. An empty manifest without it. */
+  workerManifest?: ManifestResult<ExecutableManifest>;
   resolveError?: Error;
   /** Settles the failure screen, which shows at once without it. */
   presentFailure?: () => Promise<void>;
@@ -85,7 +93,7 @@ function harness(options: Options = {}): Harness {
         : Promise.resolve(published[`app.${label}`] ?? published[label] ?? null);
     }),
     readManifests: vi.fn(() => Promise.resolve(NO_MANIFESTS)),
-    readWorkerManifest: vi.fn(() => Promise.resolve({ kind: 'empty' as const })),
+    readWorkerManifest: vi.fn(() => Promise.resolve(options.workerManifest ?? { kind: 'empty' as const })),
   };
   const deps: ProductLoaderDeps = {
     backend,
@@ -123,7 +131,7 @@ function harness(options: Options = {}): Harness {
       contentCallbacks.push(callback);
     },
     smoldotDbOutcome: () => 'hit',
-    primeChat: vi.fn(),
+    readChat: (_label, read) => read(),
     scheduleNotifications: vi.fn(),
     revalidate: vi.fn(() => Promise.resolve()),
     brand: vi.fn(() => Promise.resolve()),
@@ -215,7 +223,12 @@ describe('createProductLoader', () => {
 
     // Then
     expect(order).toEqual(['setPageProduct', 'render']);
-    expect(deps.frame.render).toHaveBeenCalledWith({ mode: 'subdomain', label: 'doom', cid: 'bafy-app' });
+    expect(deps.frame.render).toHaveBeenCalledWith({
+      mode: 'subdomain',
+      label: 'doom',
+      cid: 'bafy-app',
+      chat: expect.any(Promise) as unknown,
+    });
     expect(deps.page.settleShield).toHaveBeenCalledWith('verified');
     expect(progress.resolvePhase).toHaveBeenCalledWith('asset-hub-syncing');
     expect(progress.nameResolved).toHaveBeenCalledTimes(1);
@@ -243,6 +256,36 @@ describe('createProductLoader', () => {
     });
   });
 
+  it('As a visitor opening a product whose worker manifest includes chat, I get it rendered with chat on', async () => {
+    // Given
+    const { loader, deps } = harness({
+      published: { doom: 'bafy-base' },
+      workerManifest: workerManifest({ kind: 'worker', entrypoint: 'index.js', includes: { chat: true } }),
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    const rendered = vi.mocked(deps.frame.render).mock.calls[0]?.[0];
+    await expect(rendered?.chat).resolves.toBe(true);
+  });
+
+  it.each([
+    ['an app manifest', workerManifest({ kind: 'app' })],
+    ['an empty manifest', { kind: 'empty' } as const],
+  ])('As a visitor opening a product with %s, I get it rendered with chat off', async (_name, manifest) => {
+    // Given
+    const { loader, deps } = harness({ published: { doom: 'bafy-base' }, workerManifest: manifest });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    const rendered = vi.mocked(deps.frame.render).mock.calls[0]?.[0];
+    await expect(rendered?.chat).resolves.toBe(false);
+  });
+
   it('As a visitor returning to a cached app, I see it without a name read, and it is checked once the page is idle', async () => {
     // Given
     const { loader, deps, runIdle, debug } = harness({
@@ -255,7 +298,12 @@ describe('createProductLoader', () => {
 
     // Then
     expect(deps.names.resolveProduct).not.toHaveBeenCalled();
-    expect(deps.frame.render).toHaveBeenCalledWith({ mode: 'subdomain', label: 'doom', cid: 'bafy-cached' });
+    expect(deps.frame.render).toHaveBeenCalledWith({
+      mode: 'subdomain',
+      label: 'doom',
+      cid: 'bafy-cached',
+      chat: expect.any(Promise) as unknown,
+    });
     expect(deps.revalidate).toHaveBeenCalledWith('doom', 'bafy-cached', true);
     expect(debug.at(-1)?.payload).toMatchObject({ label: 'doom', path: 'fast' });
   });
@@ -465,7 +513,12 @@ describe('createProductLoader', () => {
     // Then
     expect(deps.cidCache.get).not.toHaveBeenCalled();
     expect(cacheWrites).toEqual([]);
-    expect(deps.frame.render).toHaveBeenCalledWith({ mode: 'subdomain', label: 'doom', cid: 'bafy-base' });
+    expect(deps.frame.render).toHaveBeenCalledWith({
+      mode: 'subdomain',
+      label: 'doom',
+      cid: 'bafy-base',
+      chat: expect.any(Promise) as unknown,
+    });
   });
 
   it('As a visitor, a second load of the same name waits for the first and loads nothing more', async () => {

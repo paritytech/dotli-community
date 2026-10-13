@@ -10,11 +10,7 @@ import type { JsonRpcProvider } from 'polkadot-api';
 import { getWsProvider, WsEvent } from '@polkadot-api/ws-provider';
 import { getActiveCoreGatewayChains, getActiveServicesConfig } from '@dotli/config';
 import type { ChainService } from '@dotli/config';
-import { createPauseController } from './pause-controller.js';
 import type { ChainTransportHooks, ConnectionStatus } from './transport-hooks.js';
-
-/** A reconnect re-sends every confirmed subscription and maps the new ids back to the ones consumers saw. */
-export type RpcChainProvider = JsonRpcProvider & { pause: () => void; resume: () => void };
 
 const STATUS_BY_WS_EVENT: Record<WsEvent, ConnectionStatus> = {
   [WsEvent.CONNECTING]: 'connecting',
@@ -77,12 +73,15 @@ export function isCoreRpcChainSupported(genesisHash: string): boolean {
   return coreGatewayChain(genesisHash) !== null;
 }
 
-/** `WebSocketBase` is the socket class the provider's sockets extend, the page's own unless given. */
+/**
+ * `WebSocketBase` is the socket class the provider's sockets extend, the page's own unless given. A reconnect re-sends
+ * every confirmed subscription and maps the new ids back to the ones consumers saw.
+ */
 export function createCoreRpcChainProvider(
   genesisHash: string,
   hooks?: Pick<ChainTransportHooks, 'onStatus'>,
   WebSocketBase: typeof WebSocket = globalThis.WebSocket,
-): RpcChainProvider | null {
+): JsonRpcProvider | null {
   return createGatewayProvider(coreGatewayChain(genesisHash), hooks, WebSocketBase);
 }
 
@@ -102,12 +101,11 @@ function createGatewayProvider(
   chain: ChainService | null,
   hooks: Pick<ChainTransportHooks, 'onStatus'> | undefined,
   WebSocketBase: typeof WebSocket,
-): RpcChainProvider | null {
+): JsonRpcProvider | null {
   if (chain === null) {
     return null;
   }
   let replay: () => void = () => undefined;
-  const pauseController = createPauseController();
   const { WebSocketClass, closeLatest } = closingWebSocketClass(WebSocketBase);
   const owner = {};
   const genesisKey = chain.genesis.toLowerCase();
@@ -120,8 +118,7 @@ function createGatewayProvider(
   const socket = getWsProvider([...chain.rpcs], {
     heartbeatTimeout: HEARTBEAT_TIMEOUT_MS,
     websocketClass: WebSocketClass,
-    // Below the pause controller, so the compatibility probe starts over with each socket.
-    middleware: inner => pauseController.middleware(withOwnMessages(compatibilityMiddleware(inner))),
+    middleware: inner => withOwnMessages(compatibilityMiddleware(inner)),
     onStatusChanged: event => {
       // Only CONNECTING and CONNECTED carry the endpoint.
       if ('uri' in event) {
@@ -158,5 +155,5 @@ function createGatewayProvider(
       },
     };
   };
-  return Object.assign(provider, { pause: pauseController.pause, resume: pauseController.resume });
+  return provider;
 }

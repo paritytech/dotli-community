@@ -27,14 +27,15 @@ flowchart LR
 - Decryption handles content in the layout external tooling writes, with ChaCha20-Poly1305.
 - Error names are kept apart from the code that throws them. Callers branch on `error.name`, since errors are rebuilt
   across `postMessage`.
-- The entry is pure re-exports so the bundler drops unused ones. Fetch and verify pull the DAG and hash code, so the
-  host's eager path loads them through lazy loaders.
+- The entry is pure re-exports so the bundler drops unused ones. Verification pulls the hash code, so the host's eager
+  path loads it through a lazy loader.
 
 ## Public API
 
 ### `@dotli/content`
 
-- Fetch and archive: `fetchFromIpfs`, `packArchive`, `parseIpfsResponse`, `ArchiveFiles`, `FetchResult`.
+- Fetch and archive: `fetchArchive`, `readArchiveFiles`, `fetchFromIpfs`, `packArchive`, `parseIpfsResponse`,
+  `ArchiveFiles`, `FetchResult`.
 - Verification: `assertBlockMatchesCid`, `CONTENT_ERRORS`.
 - Encryption and CIDs: `isEncrypted`, `decryptContent`, `hashToCid`.
-- Lazy loaders: `loadFetch` and `loadVerify` load the fetch and verify modules on first use.
+- Lazy loader: `loadVerify` loads the verify module on first use.

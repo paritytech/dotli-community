@@ -11,3 +11,6 @@ export type PasswordDialogModule = Awaited<ReturnType<typeof loadPasswordDialog>
 /** Only a retry after a failed load shows it. */
 export const loadRetryScreen = () => import('./RetryScreen.js');
 export type RetryScreenModule = Awaited<ReturnType<typeof loadRetryScreen>>;
+
+/** Only a checker build injects it. */
+export const loadSandboxChecker = () => import('./inject-checker.js');

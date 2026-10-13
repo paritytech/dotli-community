@@ -5,7 +5,7 @@
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
-import { formatAppVersion, getActiveAppManifest, getActiveRootManifest } from './active-manifest.js';
+import { formatAppVersion } from './manifest-facts.js';
 import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
 import { getConnectedAssetHubRpcEndpoint } from '@dotli/chains';
 import {
@@ -172,13 +172,12 @@ function buildBaseDiagnosticsRows(page: DiagnosticsPage = browserPage()): Diagno
     rows.push(copyableRow('Bulletin Node', cfg.bulletin.rpcs[0] ?? 'n/a'));
   }
 
-  const root = getActiveRootManifest();
-  if (root !== null) {
-    rows.push(['Manifest', `v${String(root.schemaVersion)}`]);
+  const product = getProductState();
+  if (product.status === 'loaded' && product.manifestVersion !== undefined) {
+    rows.push(['Manifest', `v${String(product.manifestVersion)}`]);
   }
-  const app = getActiveAppManifest();
-  if (app !== null) {
-    rows.push(['App version', formatAppVersion(app.appVersion)]);
+  if (product.status === 'loaded' && product.appVersion !== undefined) {
+    rows.push(['App version', formatAppVersion(product.appVersion)]);
   }
 
   rows.push(['Browser', summarizeUserAgent(page.userAgent)]);

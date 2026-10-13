@@ -1,13 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export {
-  formatAppVersion,
-  getActiveAppManifest,
-  getActiveRootManifest,
-  setActiveAppManifest,
-  setActiveRootManifest,
-} from './active-manifest.js';
+export type { AppVersion, ManifestFacts } from './manifest-facts.js';
 export type { AuthCommands } from './auth-commands.js';
 export {
   type AuthController,
@@ -26,12 +20,6 @@ export {
   type BlockingModalCounts,
   createBlockingModalCoordinator,
 } from './blocking-modal-queue.js';
-export {
-  chatCapabilityFor,
-  primeChatCapability,
-  setChatCapability,
-  subscribeChatCapability,
-} from './chat-capability.js';
 export { chatStore } from './chat/chat-store.js';
 export {
   type ChatBotRecord,
@@ -82,7 +70,13 @@ export { dotliVersion, labelToProductId } from './runtime-config.js';
 export { createPageScheduledNotifications, type ScheduledNotifications } from './scheduled-notifications.js';
 export { getSharedChannel, type SharedChannel } from './shared-mode.js';
 export { authStore, getLoggedIn, loggedInStore, setAuthState } from './state/auth.js';
-export { getProductState, productStore, setProductError, setProductLoaded } from './state/product.js';
+export {
+  getProductState,
+  productStore,
+  setProductError,
+  setProductLoaded,
+  type ProductDetails,
+} from './state/product.js';
 export {
   chooseProductPermission,
   onPermissionsChanged,

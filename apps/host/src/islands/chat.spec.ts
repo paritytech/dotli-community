@@ -5,8 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
 import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import {
-  setActiveRootManifest,
-  setChatCapability,
   createChatConnections,
   createChatStore,
   type ChatStore,
@@ -38,8 +36,7 @@ beforeEach(() => {
   chat = createChatStore({ repo: memoryChatRepo(), connections });
   local = memoryStorage();
   stopState = initChatPanelState(chat, () => local);
-  setProductLoaded(LABEL, PRODUCT);
-  setChatCapability(LABEL, true);
+  setProductLoaded(LABEL, PRODUCT, { chat: true });
   setAuthState({ tag: 'Connected', session: { connected: true } });
 });
 
@@ -47,7 +44,6 @@ afterEach(() => {
   stopState();
   resetAllStoresForTests();
   resetChatPanelStateForTests();
-  setActiveRootManifest(null);
 });
 
 /** The dock's props, read from the page's chat state under a fresh owner, with the room it keeps for the panel. */
@@ -104,12 +100,8 @@ describe('useChatDock', () => {
     expect(dock.conversation.productName()).toBe(LABEL);
 
     // When
-    setActiveRootManifest({
-      schemaVersion: 1,
-      displayName: 'Chatty',
-      description: 'A product with chat',
-      icon: { cid: 'bafkreichatty', format: 'png' },
-    });
+    setProductLoaded(LABEL, PRODUCT, { chat: true, displayName: 'Chatty' });
+    flush();
 
     // Then
     expect(dock.conversation.productName()).toBe('Chatty');

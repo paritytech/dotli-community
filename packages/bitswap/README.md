@@ -35,6 +35,6 @@ flowchart LR
 
 ### `@dotli/bitswap`
 
-- Client: `createBitswapClient`, `BitswapClient`, `BitswapClientDeps`, `bitswapGet`.
+- Client: `bitswapGet`.
 - Relay: `createSandboxBlockRelay`, `SandboxBlockRelay`, `SandboxBlockRelayDeps`, `BlockCache`, `BlockOrigin`,
   `ContentProgress`.

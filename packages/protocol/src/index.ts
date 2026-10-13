@@ -45,7 +45,6 @@ export {
   resolveExecutableManifestRemote,
   resolveRootManifestRemote,
   type SharedStoreStatus,
-  subscribeProtocolStatus,
   subscribeSharedAuthStorage,
   subscribeSharedStoreStatus,
   type RemoteChainProvider,

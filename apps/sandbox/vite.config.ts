@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { sentryVitePlugin } from '@sentry/vite-plugin';
-import { defineConfig, build as viteBuild, type Plugin, type PluginOption } from 'vite';
+import { defineConfig, build as viteBuild, type Plugin, type PluginOption, type ResolvedConfig } from 'vite';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import solid from '@solidjs/vite-plugin';
@@ -59,15 +59,22 @@ function sentry(): PluginOption {
 }
 
 function buildServiceWorker(): Plugin {
+  // The page's resolved env settings, so the worker sees the same `.env` flags in the same mode.
+  let env: Pick<ResolvedConfig, 'envDir' | 'mode'> = { envDir: false, mode: 'production' };
   return {
     name: 'build-service-worker',
     apply: 'build',
+    configResolved(config) {
+      env = { envDir: config.envDir, mode: config.mode };
+    },
     async closeBundle() {
       // eslint-disable-next-line no-console -- build progress for the terminal.
       console.log(`\nBuilding Service Worker (app-sw) @ ${process.env['VITE_COMMIT_SHA'] ?? 'dev'}...`);
       // Takes VITE_COMMIT_SHA from the process environment, as the page does.
       await viteBuild({
         configFile: false,
+        envDir: env.envDir,
+        mode: env.mode,
         plugins: [inlineScript(), wasm()],
         build: {
           ...appBuildOptions({ codeSplitting: false }),
@@ -84,42 +91,6 @@ function buildServiceWorker(): Plugin {
       });
       // eslint-disable-next-line no-console -- build progress for the terminal.
       console.log(`Service Worker built -> ${OUT_DIR}/app-sw.js\n`);
-    },
-  };
-}
-
-/** The fetch and render chunks start downloading during HTML parse, not when the entry imports them. */
-function preloadCriticalAssets(): Plugin {
-  let resolvedBase = '/';
-  return {
-    name: 'preload-critical-assets',
-    configResolved(config) {
-      resolvedBase = config.base;
-    },
-    transformIndexHtml: {
-      order: 'post',
-      handler(_html, ctx) {
-        if (!ctx.bundle) {
-          return [];
-        }
-
-        const bundleKeys = Object.keys(ctx.bundle);
-        const findChunk = (pattern: RegExp): string | undefined => bundleKeys.find(name => pattern.test(name));
-
-        const fetchChunk = findChunk(/^assets\/fetch-.*\.js$/);
-        const renderChunk = findChunk(/^assets\/render-.*\.js$/);
-
-        const chunks = [fetchChunk, renderChunk].filter((c): c is string => c !== undefined);
-        if (chunks.length === 0) {
-          return [];
-        }
-
-        return chunks.map(c => ({
-          tag: 'link',
-          attrs: { rel: 'modulepreload', href: `${resolvedBase}${c}` },
-          injectTo: 'head' as const,
-        }));
-      },
     },
   };
 }
@@ -143,7 +114,6 @@ export default defineConfig({
       image: '/icon-512.png',
       imageAlt: 'Polkadot logo',
     }),
-    preloadCriticalAssets(),
     buildServiceWorker(),
     sentry(),
   ],
@@ -151,10 +121,6 @@ export default defineConfig({
     plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
     rolldownOptions: rolldownOptions(),
   },
-  define: {
-    __BUILD_TARGET__: JSON.stringify('app'),
-  },
-  optimizeDeps: {},
   build: {
     ...appBuildOptions(),
     target: 'esnext',

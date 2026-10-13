@@ -6,7 +6,6 @@
 
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
 import {
-  subscribeChatCapability,
   chatStore,
   type ChatChange,
   type ChatStore,
@@ -55,7 +54,7 @@ const INITIAL: ChatPanelState = {
   topbarVisible: true,
 };
 
-// A drag past the clamp and repeated availability or topbar events rebuild an equal state.
+// A drag past the clamp and repeated product or topbar events rebuild an equal state.
 const panel = createSyncStore<ChatPanelState>('chat_panel', INITIAL, {
   equals: shallowEqual,
 });
@@ -196,29 +195,10 @@ export function initChatPanelState(
   storage: WidthStorage = pageWidthStorage,
 ): () => void {
   widthStorage = storage;
-  // The label is noted before subscribing, as an answer that already settled calls back at once and re-enters here
-  // through the panel's own subscription.
-  let capabilityLabel: string | null = null;
-  let stopCapability = (): void => undefined;
-  const followCapability = (): void => {
-    const { label } = panel.get();
-    if (label === capabilityLabel) {
-      return;
-    }
-    stopCapability();
-    stopCapability = () => undefined;
-    capabilityLabel = label;
-    if (label !== null) {
-      stopCapability = subscribeChatCapability(label, available => {
-        update({ available });
-      });
-    }
-  };
-
   const followProduct = (): void => {
     const product = getProductState();
     if (product.status === 'error') {
-      update({ label: null, runtimeProductId: null });
+      update({ label: null, runtimeProductId: null, available: false });
       return;
     }
     if (product.status !== 'loaded') {
@@ -236,7 +216,7 @@ export function initChatPanelState(
             unreadByRoom: {},
             composerError: null,
           };
-    commit({ ...base, runtimeProductId: productId });
+    commit({ ...base, runtimeProductId: productId, available: product.chat === true });
   };
 
   const onChatChange = (change: ChatChange): void => {
@@ -263,19 +243,16 @@ export function initChatPanelState(
   };
   follow();
   followProduct();
-  followCapability();
   const unsubscribe = [
     loggedInStore.subscribe(follow),
     topbarStore.subscribe(follow),
     productStore.subscribe(followProduct),
-    panel.subscribe(followCapability),
     chat.subscribe(onChatChange),
   ];
   return () => {
     for (const stop of unsubscribe) {
       stop();
     }
-    stopCapability();
   };
 }
 

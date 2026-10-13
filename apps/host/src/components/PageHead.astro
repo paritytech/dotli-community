@@ -5,7 +5,6 @@
 // The head tags the shell and the landing page share.
 import { socialMetaAttributes } from '@config/vite/social-meta';
 import islandErrors from '../head/island-errors.js?inline-script';
-import theme from '../head/theme.js?inline-script';
 
 const TITLE = 'Polkadot - The decentralized web, in your browser';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
@@ -35,5 +34,3 @@ const socialMeta = socialMetaAttributes({
   <meta {...attrs} />
 ))}
 <link rel="manifest" href={`${base}manifest.webmanifest`} />
-{/* Blocking, so the stored theme applies before first paint. */}
-<script is:inline set:html={theme} />

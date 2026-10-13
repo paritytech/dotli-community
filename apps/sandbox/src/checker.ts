@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Runs first in a product page of a checker build. It reports each use of an API a product should reach only through
-// the host, and lets the call run. The product's HTML inlines it bundled, so it imports nothing.
+// the host, and lets the call run. The product's HTML inlines it bundled, so it imports only types.
+
+import type { ApiViolationMessage } from '@dotli/sandbox-wire';
 
 /** The product page, as much of it as the checker wraps. */
 export type CheckedPage = Window & typeof globalThis;
@@ -17,7 +19,13 @@ const WALLET_GLOBALS = ['injectedWeb3', 'polkadot', 'ethereum'] as const;
 export function reportToParent(page: Pick<Window, 'parent'>): ReportViolation {
   return (api, details) => {
     try {
-      page.parent.postMessage({ type: 'DOTLI_API_VIOLATION', api, details: details ?? {}, timestamp: Date.now() }, '*');
+      const message: ApiViolationMessage = {
+        type: 'DOTLI_API_VIOLATION',
+        api,
+        details: details ?? {},
+        timestamp: Date.now(),
+      };
+      page.parent.postMessage(message, '*');
       // eslint-disable-next-line no-restricted-syntax -- a product page has no reporter of its own, and a failed report must not fail the product's call.
     } catch {
       // Not reported.

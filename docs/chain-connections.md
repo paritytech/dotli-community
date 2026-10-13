@@ -409,7 +409,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Watch guard | `packages/chains/src/watch-guard.ts` |
 | Halted-chain marker, `ChainHaltError`, `haltReasonOf` | `packages/chains/src/chain-halted.ts` |
 | Protocol client (remote connections, halt reasons) | `packages/protocol/src/client.ts` |
-| RPC transport | `packages/chains/src/rpc-chain.ts`, `packages/chains/src/pause-controller.ts` |
+| RPC transport | `packages/chains/src/rpc-chain.ts` |
 | smoldot transport | `packages/chains/src/provider.ts` |
 | Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/resolve.ts` |
 | Host error page classification | `apps/host/src/errors.ts` |

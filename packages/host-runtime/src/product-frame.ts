@@ -12,7 +12,6 @@ import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } 
 import { captureException, getResolutionId, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createStatusCell, errorName, log } from '@dotli/shared';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
-import { chatCapabilityFor } from './chat-capability.js';
 import { chatConnections } from './chat/chat-store.js';
 import { wrapCoreProviderForDebug } from './core-connection.js';
 import { ERRORS } from './errors.js';
@@ -24,11 +23,15 @@ import { labelToProductId } from './runtime-config.js';
 import { setProductLoaded } from './state/product.js';
 import type { PermissionsChange } from './state/product-permissions.js';
 import type { HostNotice } from './host-prompts.js';
+import type { ManifestFacts } from './manifest-facts.js';
 
-/** A product the host loads from a URL it was given, or from its content id on the app subdomain. */
+/**
+ * A product the host loads from a URL it was given, or from its content id on the app subdomain. `chat` says whether it
+ * declares chat, which picks its connection's execution kind, so the frame awaits it before it connects the product.
+ */
 export type FrameProduct =
-  | { mode: 'iframe'; label: string; url: string; productId?: string | undefined }
-  | { mode: 'subdomain'; label: string; cid: string };
+  | { mode: 'iframe'; label: string; url: string; productId?: string | undefined; chat: Promise<boolean> }
+  | ({ mode: 'subdomain'; label: string; cid: string; chat: Promise<boolean> } & ManifestFacts);
 
 /** `lost` is a product whose core went down, was refused or turned stale, until its render on a replacement begins. */
 export type ProductFrameStatus = 'idle' | 'connecting' | 'connected' | 'lost' | 'failed';
@@ -51,6 +54,8 @@ export interface ProductFrameDeps {
 export interface TitledProduct {
   mode: 'subdomain' | 'iframe';
   label: string;
+  /** The name its root manifest publishes. */
+  displayName?: string;
 }
 
 /** What the page shows around the frame. The app draws it, since the runtime never renders. */
@@ -92,6 +97,8 @@ export interface ProductFrame {
 
 interface MountedHost {
   iframe: HTMLIFrameElement;
+  /** Whether the product declares chat, as its connection was opened. */
+  chat: boolean;
   /** Runs `run` once the product's pending permission answer has reached it. */
   afterPermissionResponse: (run: () => void) => void;
   dispose: () => void;
@@ -117,6 +124,22 @@ type RerenderReason = 'replacement' | 'permission' | 'recover';
 
 /** The core under a render went down before the product's connection was open, so its replacement is worth a try. */
 class CoreWentDownError extends Error {}
+
+/** The tab's view of a product: a local or preview URL has no root manifest to name it. */
+function titledProduct(product: FrameProduct): TitledProduct {
+  return product.mode === 'subdomain' && product.displayName !== undefined
+    ? { mode: product.mode, label: product.label, displayName: product.displayName }
+    : { mode: product.mode, label: product.label };
+}
+
+/** The facts a product carries, without the keys it lacks. */
+function manifestFactsOf({ displayName, manifestVersion, appVersion }: ManifestFacts): ManifestFacts {
+  return {
+    ...(displayName !== undefined ? { displayName } : {}),
+    ...(manifestVersion !== undefined ? { manifestVersion } : {}),
+    ...(appVersion !== undefined ? { appVersion } : {}),
+  };
+}
 
 export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
   const page = deps.page ?? browserPage;
@@ -294,6 +317,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       allowedOrigin: iframeUrl.origin,
       sandbox: product.mode === 'iframe' ? IFRAME_SANDBOX : SUBDOMAIN_SANDBOX,
       label: product.label,
+      chat: product.chat,
       debugFlowId: bridgeFlowId,
       // A core that goes down closes the product's connection with it, and one refused or turned stale (another tab
       // logged in with another wallet) no longer serves it, so the product is shown again on the replacement. A frame
@@ -347,12 +371,16 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     }
 
     stopSetup();
-    view.showTitle({ mode: product.mode, label: product.label });
+    view.showTitle(titledProduct(product));
     // The runtime productId, so chat data is keyed like storage when the debug path overrides it.
     if (product.mode === 'iframe') {
-      setProductLoaded(product.label, product.productId ?? labelToProductId(product.label));
+      setProductLoaded(product.label, product.productId ?? labelToProductId(product.label), { chat: host.chat });
     } else {
-      setProductLoaded(product.label, labelToProductId(product.label), product.cid);
+      setProductLoaded(product.label, labelToProductId(product.label), {
+        cid: product.cid,
+        chat: host.chat,
+        ...manifestFactsOf(product),
+      });
     }
     emitDotliDebugEvent({
       layer: 'render',
@@ -373,10 +401,11 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     allowedOrigin: string;
     sandbox: string;
     label: string;
+    chat: Promise<boolean>;
     debugFlowId: string;
     onCoreDown: () => void;
   }): Promise<MountedHost> {
-    const { lease, connection, chatCapable } = await attaches.call(() => attach(args.label), {
+    const { lease, connection, chatCapable } = await attaches.call(() => attach(args.chat), {
       pool: args.debugFlowId,
     });
     const unsubscribeDown = lease.subscribeDown(args.onCoreDown);
@@ -420,6 +449,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       });
       return {
         iframe: host.iframe,
+        chat: chatCapable,
         afterPermissionResponse: responses.afterResponse,
         dispose() {
           lifetime.abort();
@@ -436,7 +466,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
 
   /** A lease on the page core with the product's connection open on it. */
   async function attach(
-    label: string,
+    chat: Promise<boolean>,
   ): Promise<{ lease: CoreLease; connection: CoreConnection; chatCapable: boolean }> {
     const lease = await deps.core.acquire();
     // Written by the core's down report, which can arrive during either wait below.
@@ -446,7 +476,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     });
     try {
       // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
-      const chatCapable = await chatCapabilityFor(label);
+      const chatCapable = await chat;
       log.event('chat capability resolved', { flow: 'chat', capable: chatCapable });
       const connection = await lease.connect(chatCapable ? 'Worker' : 'App');
       log.event('product connected to wallet core', { flow: 'wallet', kind: chatCapable ? 'Worker' : 'App' });

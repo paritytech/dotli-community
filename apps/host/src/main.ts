@@ -6,7 +6,7 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { startPwa } from './pwa.js';
-import { boot, createBootFlowId, reportBootFailure, startHost, T0, type HostStartup } from './startup.js';
+import { boot, createBootFlowId, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
 import { showErrorPage } from './error-page.js';
 import { showNotification } from './overlays.js';
 import { showNoContentError } from './no-content-page.js';
@@ -32,8 +32,6 @@ import {
   loggedInStore,
   loadBridge,
   type ProductFrame,
-  primeChatCapability,
-  setChatCapability,
 } from '@dotli/host-runtime';
 import { bitswapGet, createSandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
@@ -70,7 +68,12 @@ import {
   peekNetwork,
 } from '@dotli/config';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
-import { loadDotliDebugBus, resolveDebugMode } from '@dotli/truapi-debug';
+import {
+  emitDotliDebugEvent,
+  enableDotliDebugBuffering,
+  resolveDebugMode,
+  watchDotliDebugEvents,
+} from '@dotli/truapi-debug';
 import { loadTruapiDebugMount } from '@dotli/truapi-debug-ui';
 import { loadResolve } from '@dotli/resolver';
 import { startResolutionTrace } from './resolution-trace.js';
@@ -80,6 +83,7 @@ import { chainRoleForKey } from './chain-roles.js';
 import { startShellState } from './shell-state.js';
 import { openSettings } from './settings-intent.js';
 import { createProductLoader } from './product-loader.js';
+import { readChatCapability } from './chat-capability.js';
 import { startSandboxContent } from './sandbox-content.js';
 import { startShieldAutoHide } from './shield-autohide.js';
 import type { CacheRevalidationDeps } from './cache-revalidate.js';
@@ -130,9 +134,7 @@ async function loadRpcResolver(): Promise<RpcResolver> {
 async function startShell(): Promise<Shell> {
   log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
 
-  // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays a stub and every emit returns early.
-  boot.step = 'debug_bus';
-  const { emitDotliDebugEvent, enableDotliDebugBuffering, watchDotliDebugEvents } = await loadDotliDebugBus();
+  // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays off and every emit returns early.
   const debugMode = resolveDebugMode(window, DEBUG);
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
@@ -181,8 +183,13 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
 
   // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
   // unconditionally for product testing.
-  setChatCapability(target.host, true);
-  await shell.productFrame.render({ mode: 'iframe', label: target.host, url: target.url, productId: target.productId });
+  await shell.productFrame.render({
+    mode: 'iframe',
+    label: target.host,
+    url: target.url,
+    productId: target.productId,
+    chat: Promise.resolve(true),
+  });
   setProductContentShown(true);
   if (proxied) {
     // No dotNS name to verify, so the shield is settled as soon as the product shows.
@@ -305,7 +312,7 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
       }),
     onContentDone: onSandboxDone,
     smoldotDbOutcome: getSmoldotDbOutcome,
-    primeChat: primeChatCapability,
+    readChat: readChatCapability,
     scheduleNotifications: options => {
       pageNotifications().init(options);
     },
@@ -363,6 +370,7 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  startPage();
   await runShell({
     route: readShellRoute(window.location, {
       localhost: isLocalhost,

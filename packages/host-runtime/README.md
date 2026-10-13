@@ -9,8 +9,6 @@ and owns the login, wallet and permission state the host app reads.
   notifications).
 - Login and logout through the pairing host (Polkadot App) or a local wallet, and the wallet mode and switch.
 - The stores the runtime writes, which import no Solid: auth, product, product permissions, theme, wallet mode, chat.
-- The loaded product's manifest values and whether it declares chat, which the app sets once it reads them and the
-  runtime reads for the frame and the diagnostics.
 - Not the views. Prompts, modals, notifications and the frame view come from the app through ports. Product content and
   chain data come from the data packages.
 
@@ -31,9 +29,9 @@ and owns the login, wallet and permission state the host app reads.
   shared state.
 - State lives in sync stores that import no Solid. State flows up to the app, intent flows down through ports and
   commands.
-- The active manifest and the chat capability are module state the app writes and the runtime reads, so surfaces outside
-  the resolver skip a second network read. The chat capability is cached per label in injectable storage, so a warm load
-  picks the bridge's execution kind without a dotNS read.
+- The product the app renders carries what the runtime needs to know of it: whether it declares chat, as a promise the
+  frame awaits before it connects the product, and the name and versions its manifests publish. The frame names the tab
+  from them and records them in the product store for the chat panel and the diagnostics.
 - The signing worker and the local wallet core load on demand through lazy loaders.
 - Failures are reported with `captureException`, a log line and an outcome metric. A core that goes stale is rebuilt
   without being asked.
@@ -54,11 +52,10 @@ and owns the login, wallet and permission state the host app reads.
   `isDevicePermission`, `startProductPermissions`, `chooseProductPermission`, `refreshProductPermissions`,
   `resetProductPermissions`, `onPermissionsChanged`, `productPermissionsStore`.
 - Stores: `authStore`, `loggedInStore`, `getLoggedIn`, `setAuthState`, `productStore`, `getProductState`,
-  `setProductLoaded`, `setProductError`, `themeStore`, `getThemeState`, `setTheme`.
+  `setProductLoaded`, `setProductError`, `ProductDetails`, `ManifestFacts`, `AppVersion`, `themeStore`, `getThemeState`,
+  `setTheme`.
 - Chat: `chatStore`, `createChatStore`, `createChatConnections`, `ChatRepo`, `ChatStore`, `ChatView` and the record
   types.
-- Active product: `setActiveRootManifest`, `getActiveRootManifest`, `setActiveAppManifest`, `getActiveAppManifest`,
-  `formatAppVersion`, `primeChatCapability`, `setChatCapability`, `subscribeChatCapability`, `chatCapabilityFor`.
 - Notifications: `createPageScheduledNotifications`, `ScheduledNotifications`, `NotificationScheduler`.
 - Shared store: `getSharedChannel`, `SharedChannel`.
 - Misc: `pageDiagnostics`, `dotliVersion`, `labelToProductId`.

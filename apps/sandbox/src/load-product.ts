@@ -5,7 +5,7 @@
 // write its page into this window. It never throws, so the caller learns which step failed.
 
 import { m, spans as S } from '@dotli/metrics';
-import { CONTENT_ERRORS, type ArchiveFiles, type FetchResult, type loadFetch } from '@dotli/content';
+import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
 import { createAsyncTaskPool, log } from '@dotli/shared';
 
@@ -38,7 +38,7 @@ export type LoadOutcome =
   /** The frame is going away, which is not a failure. */
   | { outcome: 'torn_down' };
 
-type FetchArchive = Awaited<ReturnType<typeof loadFetch>>['fetchArchive'];
+type FetchArchive = typeof fetchArchive;
 
 /** Reads one block through the host's relay. */
 export type BlockSource = (cid: string) => Promise<Uint8Array>;
@@ -64,7 +64,7 @@ export interface LoadProductDeps {
   purge: () => Promise<void>;
   /** Settles once a service worker controls the page, or the page goes on without one. */
   registerWorker: (options: { waitForFreshController: boolean }) => Promise<void>;
-  loadFetch: () => Promise<{ fetchArchive: FetchArchive }>;
+  fetchArchive: FetchArchive;
   /** The block source the host relays, loaded only on a light client backend. */
   loadBlockSource: () => Promise<BlockSource>;
   /** The files of encrypted content once its password is given, or null when it is not encrypted. */
@@ -119,10 +119,8 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     step = 'sw_register';
     const stopSw = m.timer(S.APP_SW_REGISTER);
     const swReady = deps.registerWorker({ waitForFreshController: freshStart }).then(stopSw);
-    const fetchChunk = deps.loadFetch();
     const blockSource = isGateway ? null : deps.loadBlockSource();
     // Awaited after the worker is ready, so an early failure must not also reach the global rejection handler.
-    void fetchChunk.catch(() => undefined);
     void blockSource?.catch(() => undefined);
 
     // The worker must control the page before the archive is handed to it.
@@ -136,18 +134,16 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     if (blockSource === null) {
       contentLog.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.sinceStart() });
       deps.showStatus('Fetching via IPFS gateway...');
-      step = 'chunk_load';
-      const { fetchArchive } = await fetchChunk;
       step = 'content_fetch';
-      result = await fetchArchive(cid, deps.showStatus, { useGateway: true });
+      result = await deps.fetchArchive(cid, deps.showStatus, { useGateway: true });
     } else {
       // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
       contentLog.event(`Fetching ${cid} via bitswap`, { chainBackend, ms: deps.sinceStart() });
       deps.showStatus('Fetching via bitswap...');
       step = 'chunk_load';
-      const [{ fetchArchive }, bitswapBlockSource] = await Promise.all([fetchChunk, blockSource]);
+      const bitswapBlockSource = await blockSource;
       step = 'content_fetch';
-      result = await fetchArchive(cid, deps.showStatus, { bitswapBlockSource });
+      result = await deps.fetchArchive(cid, deps.showStatus, { bitswapBlockSource });
     }
     contentLog.event(`Content fetched via ${isGateway ? 'gateway' : 'bitswap'}`, {
       type: result.type,

@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { must } from '@dotli/shared/testing';
+import type { JsonRpcProvider } from 'polkadot-api';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, configureModeStorage } from '@dotli/config';
 import { memoryModeStorage } from '@dotli/config/testing';
@@ -11,7 +12,6 @@ import {
   getConnectedAssetHubRpcEndpoint,
   getConnectedRpcEndpoint,
   isCoreRpcChainSupported,
-  type RpcChainProvider,
 } from './rpc-chain.js';
 import { FakeWebSocket } from './testing/fake-websocket.js';
 
@@ -19,11 +19,11 @@ const FakeWebSocketClass = FakeWebSocket as unknown as typeof WebSocket;
 
 /** Open a connection on `provider` and its first socket. */
 async function connect(
-  provider: RpcChainProvider,
+  provider: JsonRpcProvider,
   received: JsonRpcMessage[] = [],
 ): Promise<{
   socket: FakeWebSocket;
-  connection: ReturnType<RpcChainProvider>;
+  connection: ReturnType<JsonRpcProvider>;
 }> {
   const connection = provider(message => {
     received.push(message);
@@ -57,8 +57,6 @@ describe('rpc-chain', () => {
 
     // Then
     expect(people.rpcs).toContain(socket.url);
-    expect(typeof provider.pause).toBe('function');
-    expect(typeof provider.resume).toBe('function');
   });
 
   it('As a product on Trusted Providers, I ask for an unknown chain and get no provider', () => {
@@ -144,7 +142,7 @@ describe('rpc-chain', () => {
     connection.disconnect();
   });
 
-  it('As a dotli user on Trusted Providers, diagnostics show no node once the chain connection is closed or paused', async () => {
+  it('As a dotli user on Trusted Providers, diagnostics show no node once the chain connection is closed', async () => {
     // Given
     const { genesis } = getActiveServicesConfig().assethub;
     const provider = must(createCoreRpcChainProvider(genesis, undefined, FakeWebSocketClass), 'provider');
@@ -155,15 +153,6 @@ describe('rpc-chain', () => {
     connection.disconnect();
 
     // Then
-    expect(getConnectedRpcEndpoint(genesis)).toBeNull();
-
-    // When
-    await connect(provider);
-    const dialed = getConnectedRpcEndpoint(genesis);
-    provider.pause();
-
-    // Then
-    expect(dialed).not.toBeNull();
     expect(getConnectedRpcEndpoint(genesis)).toBeNull();
   });
 
@@ -229,22 +218,6 @@ describe('rpc-chain', () => {
     // Then
     expect(first.readyState).toBe(FakeWebSocket.CLOSED);
     expect(FakeWebSocket.instances).toHaveLength(1);
-  });
-
-  it('As a dotli user on Trusted Providers, a heartbeat-killed socket is closed at once when the provider is paused', async () => {
-    // Given
-    const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, undefined, FakeWebSocketClass),
-      'provider',
-    );
-    const { socket: first } = await connect(provider);
-
-    // When
-    await vi.advanceTimersByTimeAsync(120_000);
-    provider.pause();
-
-    // Then
-    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
   });
 
   it('As a dotli user on Trusted Providers, a statement subscription is re-established under its first id after a reconnect', async () => {

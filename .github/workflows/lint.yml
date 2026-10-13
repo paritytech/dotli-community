@@ -31,3 +31,6 @@ jobs:
 
       - name: Type check
         run: npx turbo run typecheck typecheck:root
+
+      - name: Unused files, exports and dependencies
+        run: npm run knip

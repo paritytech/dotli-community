@@ -16,7 +16,7 @@ import { reportLazyMiss } from './lazy-miss.js';
 import type { Attempt } from './journey.js';
 import type { LoadFailure } from './load-failure.js';
 import type { LoadProgress } from './load-progress.js';
-import { assertLaunchable, fromCache, toCache, type ProductManifests } from './manifest-gate.js';
+import { assertLaunchable, fromCache, manifestFacts, toCache, type ProductManifests } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
 import type { CidCacheResult, ResolutionTrace, ResolutionTraceOptions } from './resolution-trace.js';
 
@@ -54,8 +54,8 @@ export interface ProductLoaderDeps {
   /** Called once, for the first outcome the sandbox reports. */
   onContentDone: (callback: (outcome: ContentOutcome, failedStep: string | undefined) => void) => void;
   smoldotDbOutcome: (chain: 'relay' | 'hub' | 'bulletin') => string;
-  /** Whether the product's worker manifest asks for chat, read alongside the name. */
-  primeChat: (label: string, read: () => Promise<boolean>) => void;
+  /** Whether the product's worker manifest asks for chat, read alongside the name and cached for the next load. */
+  readChat: (label: string, read: () => Promise<boolean>) => Promise<boolean>;
   scheduleNotifications: (options: { label: string }) => void;
   /** Rejects only when the check's code could not be fetched. */
   revalidate: (label: string, servedCid: string, onScreen: boolean) => Promise<void>;
@@ -110,8 +110,8 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
 
   deps.scheduleNotifications({ label });
 
-  // In parallel with the CID. The bridge awaits it before creating the product's core, whose execution kind it decides.
-  deps.primeChat(label, async () => {
+  // In parallel with the CID. The frame awaits it before it connects the product, whose execution kind it picks.
+  const chat = deps.readChat(label, async () => {
     const result = await names.readWorkerManifest(label);
     return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
   });
@@ -167,11 +167,11 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
       trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
     });
   };
-  const render = async (cid: string): Promise<void> => {
+  const render = async (cid: string, manifests: ProductManifests): Promise<void> => {
     progress.contentFetch();
     enterStep('render_handoff');
     settleOnContent();
-    await deps.frame.render({ mode: 'subdomain', label, cid });
+    await deps.frame.render({ mode: 'subdomain', label, cid, chat, ...manifestFacts(manifests) });
   };
   const rendered = (manifests: ProductManifests): void => {
     deps.forgetFailure();
@@ -231,7 +231,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
       }
       await m.span(S.E2E_FAST, async () => {
         deps.page.settleShield(shieldState);
-        await render(cached.cid);
+        await render(cached.cid, cachedManifests);
       });
       rendered(cachedManifests);
       performance.mark('dotli:main:end');
@@ -332,7 +332,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     }
 
     deps.page.settleShield(shieldState);
-    await render(cid);
+    await render(cid, manifests);
     rendered(manifests);
 
     m.distribution(S.E2E_SLOW, performance.now() - coldStartMs, 'millisecond', {

@@ -12,7 +12,7 @@ import { memoryModeStorage } from '@dotli/config/testing';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { Api } from './api.js';
-import { createDotnsResolver, type ChainClient, type DotnsResolver, type DotnsResolverStatus } from './resolve.js';
+import { createDotnsResolver, type ChainClient, type DotnsResolver } from './resolve.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 
 interface Logged {
@@ -381,61 +381,42 @@ describe('createDotnsResolver', () => {
     await expect(owner).resolves.toBeNull();
     await expect(presync).resolves.toEqual(new Error('no peers'));
     expect(opened).toHaveLength(2);
-    expect(dotns.status.get()).toBe('ready');
   });
 
-  it('As the protocol worker, I see the client become ready even when a status listener throws, and the throw is reported', async () => {
-    // Given a listener that throws on every change, and one after it
+  it('As the host waiting on a name, I get my answer even when my phase callback throws, and each throw is reported', async () => {
+    // Given a phase callback that throws on every phase
     const captured: { err: unknown; step: string }[] = [];
     const unbind = bindCaptureSink({
       exception: (err, ctx) => captured.push({ err, step: ctx.step }),
       expected: () => undefined,
     });
     const { dotns } = resolver();
-    const seen: DotnsResolverStatus[] = [];
-    dotns.status.subscribe(() => {
-      throw new Error('listener broke');
-    });
-    dotns.status.subscribe(status => seen.push(status));
 
     // When
-    await dotns.waitForAssetHubFinalized();
+    const owner = await dotns.resolveOwner('alice', {
+      onPhase: () => {
+        throw new Error('callback broke');
+      },
+    });
     unbind();
 
     // Then
-    expect(dotns.status.get()).toBe('ready');
-    expect(seen).toEqual(['connecting', 'syncing', 'ready']);
-    expect(captured.map(entry => entry.step)).toEqual(['status_listener', 'status_listener', 'status_listener']);
+    expect(owner).toBeNull();
+    expect(captured.map(entry => entry.step)).toEqual(['phase_callback', 'phase_callback', 'phase_callback']);
     expect(logged.filter(line => line.level === 'error')).toHaveLength(3);
   });
 
-  it("As the protocol worker, I watch the resolver's client go from idle through syncing to ready, and back to idle when its follow stops", async () => {
-    // Given
-    const { dotns, opened } = resolver();
-    const seen: DotnsResolverStatus[] = [dotns.status.get()];
-    dotns.status.subscribe(status => seen.push(status));
-
-    // When
-    await dotns.waitForAssetHubFinalized();
-    must(opened[0], 'client').stop();
-
-    // Then
-    expect(seen).toEqual(['idle', 'connecting', 'syncing', 'ready', 'idle']);
-  });
-
-  it('As the protocol worker, I see the resolver failed when Asset Hub never syncs, and the next read tries again', async () => {
+  it('As the protocol worker, I see the presync fail when Asset Hub never syncs, and the next read tries again', async () => {
     // Given
     const { dotns } = resolver([{ whenReady: () => Promise.reject(new Error('no peers')) }]);
 
     // When
     const presync = await dotns.waitForAssetHubFinalized().catch((err: unknown) => err);
-    const failed = dotns.status.get();
-    await dotns.resolveOwner('alice');
+    const owner = await dotns.resolveOwner('alice');
 
     // Then
     expect(presync).toEqual(new Error('no peers'));
-    expect(failed).toBe('failed');
-    expect(dotns.status.get()).toBe('ready');
+    expect(owner).toBeNull();
     expect(assetHub).toHaveBeenCalledTimes(2);
   });
 

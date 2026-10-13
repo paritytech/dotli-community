@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadDotliDebugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
+import {
+  emitDotliDebugEvent,
+  enableDotliDebugBuffering,
+  watchDotliDebugEvents,
+  type DotliDebugEvent,
+} from '@dotli/truapi-debug';
 
 import { startMainThreadMonitor } from './main-thread-monitor.js';
 
-let bus: Awaited<ReturnType<typeof loadDotliDebugBus>>;
-
 /** What the bridge emits on its first message to the product. */
 function bridgeFirstOutbound(): void {
-  bus.emitDotliDebugEvent({
+  emitDotliDebugEvent({
     layer: 'bridge',
     event: 'first_outbound',
     flowId: 'bridge-flow',
@@ -26,7 +29,7 @@ function startMonitor(): DotliDebugEvent[] {
     emit: event => {
       emitted.push(event);
     },
-    watch: bus.watchDotliDebugEvents,
+    watch: watchDotliDebugEvents,
   });
   return emitted;
 }
@@ -35,11 +38,10 @@ function stops(emitted: DotliDebugEvent[]): unknown[] {
   return emitted.filter(event => event.event === 'monitor_stopped').map(event => event.payload);
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.useFakeTimers();
-  // As the host loads the bus and turns it on once debug mode is on.
-  bus = await loadDotliDebugBus();
-  bus.enableDotliDebugBuffering();
+  // As the host turns the bus on once debug mode is on.
+  enableDotliDebugBuffering();
 });
 
 afterEach(() => {

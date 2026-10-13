@@ -15,9 +15,7 @@
       "outputs": ["dist/**"],
       "env": ["SENTRY_AUTH_TOKEN"]
     },
-    "test": {
-      "dependsOn": ["build"]
-    },
+    "test": {},
     "lint": {
       "outputs": []
     },

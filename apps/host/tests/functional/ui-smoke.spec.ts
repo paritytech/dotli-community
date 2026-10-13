@@ -9,7 +9,7 @@ import { PORT } from '../env.js';
 import { seedBackend } from './fixtures/settings.js';
 import { productPage, rawBlock } from './helpers/blocks.js';
 import { fakeProtocol } from './helpers/fake-protocol.js';
-import { waitForRenderedSandbox } from './helpers/frames.js';
+import { isSandboxUrl, waitForRenderedSandbox } from './helpers/frames.js';
 import { test } from './helpers/shared-mode-reset.js';
 
 const LANDING_URL = `http://localhost:${PORT}/`;
@@ -483,6 +483,29 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(popover).not.toHaveAttribute('data-open');
+  });
+
+  test('As a user on a product, the shell and its sandbox come with the framing headers production sends', async ({
+    page,
+  }) => {
+    // Given
+    const block = await rawBlock(productPage('headers'));
+    await seedBackend(page, 'smoldot-direct');
+    await fakeProtocol(page, { resolve: { kind: 'cid', cid: block.cid }, blocks: { [block.cid]: block.hex } });
+    const shellDocument = page.waitForResponse(response => response.url() === PRODUCT_URL);
+    const sandboxDocument = page.waitForResponse(
+      response => response.request().resourceType() === 'document' && isSandboxUrl(response.url()),
+    );
+
+    // When
+    await page.goto(PRODUCT_URL);
+    await waitForRenderedSandbox(page, 15_000);
+
+    // Then
+    expect((await shellDocument).headers()['x-frame-options']).toBe('SAMEORIGIN');
+    const sandbox = (await sandboxDocument).headers();
+    expect(sandbox['content-security-policy']).toBe('frame-ancestors http://localhost:* http://*.localhost:*');
+    expect(sandbox['cross-origin-embedder-policy']).toBe('credentialless');
   });
 
   test('As a user on a light client, I hover the shield while my product downloads and read that it was verified', async ({

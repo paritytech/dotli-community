@@ -17,7 +17,9 @@ export { isDebugModeOn, leaveDebugMode, resolveDebugMode, type DebugMode, type D
 export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
 export { readStoredSection, writeStoredSection, type PanelSection } from './section-storage.js';
 export {
+  createDotliDebugBus,
   emitDotliDebugEvent,
+  enableDotliDebugBuffering,
   hasDotliDebugListeners,
   onDotliDebugEvent,
   watchDotliDebugEvents,
@@ -52,4 +54,3 @@ export {
 export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData } from './row-format.js';
 export { summariseSystemEvent } from './system-summary.js';
 export { buildTimeline, type TimelineLane } from './timeline.js';
-export { loadDotliDebugBus } from './lazy.js';

@@ -133,26 +133,6 @@ describe('createChainPool', () => {
     expect(must(built[0], 'transport').disconnect).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, a destroyDelay function sets the delay per chain', async () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({
-      createTransport,
-      destroyDelay: genesisHash => (genesisHash === '0xaa' ? Infinity : 1_000),
-    });
-    const kept = lease(pool, '0xaa');
-    const closing = lease(pool, '0xbb');
-
-    // When
-    kept.disconnect();
-    closing.disconnect();
-    await vi.advanceTimersByTimeAsync(5_000);
-
-    // Then
-    expect(must(built[0], 'kept transport').disconnect).not.toHaveBeenCalled();
-    expect(must(built[1], 'closing transport').disconnect).toHaveBeenCalledTimes(1);
-  });
-
   it('As a dotli integrator, a throwing status listener neither stops the others nor reaches the transport', () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -424,29 +404,6 @@ describe('createChainPool', () => {
   });
 });
 
-/** A transport factory whose transports can be paused, recording what happens in order. */
-function createPausableTransports(): {
-  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
-  events: string[];
-} {
-  const events: string[] = [];
-  const createTransport = (genesisHash: string): JsonRpcProvider => {
-    const transport: JsonRpcProvider = (): JsonRpcConnection => {
-      events.push(`open ${genesisHash}`);
-      return { send: () => undefined, disconnect: () => undefined };
-    };
-    return Object.assign(transport, {
-      pause: () => {
-        events.push(`pause ${genesisHash}`);
-      },
-      resume: () => {
-        events.push(`resume ${genesisHash}`);
-      },
-    });
-  };
-  return { createTransport, events };
-}
-
 describe('createChainPool warnings', () => {
   /** Collects the warnings logged while `run` runs, then puts back the sink bound before. */
   function warningsDuring(run: () => void): string[] {
@@ -490,76 +447,6 @@ describe('createChainPool warnings', () => {
 
     // Then the rebuilt broker continues the count instead of logging its first few again
     expect(warnings).toEqual(['[dot.li broker] response_unknown_id: 10 so far']);
-  });
-});
-
-describe('createChainPool pausing', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('As a dotli integrator, pausing reaches every pausable transport once and skips the others', () => {
-    // Given
-    const pausable = createPausableTransports();
-    const plain = createTransports();
-    const pool = createChainPool({
-      createTransport: (genesisHash, hooks) =>
-        genesisHash === '0xaa'
-          ? pausable.createTransport(genesisHash, hooks)
-          : plain.createTransport(genesisHash, hooks),
-    });
-    lease(pool, '0xaa');
-    lease(pool, '0xbb');
-
-    // When
-    pool.pauseAll();
-    pool.pauseAll();
-    pool.resumeAll();
-    pool.resumeAll();
-
-    // Then
-    expect(pausable.events).toEqual(['open 0xaa', 'pause 0xaa', 'resume 0xaa']);
-  });
-
-  it('As a dotli integrator, a chain first leased while paused is paused before it opens', () => {
-    // Given
-    const { createTransport, events } = createPausableTransports();
-    const pool = createChainPool({ createTransport });
-    pool.pauseAll();
-
-    // When
-    lease(pool, '0xaa');
-
-    // Then
-    expect(events).toEqual(['pause 0xaa', 'open 0xaa']);
-    expect(pool.status('0xaa')).toBe('disconnected');
-
-    // When
-    pool.resumeAll();
-
-    // Then
-    expect(events).toEqual(['pause 0xaa', 'open 0xaa', 'resume 0xaa']);
-  });
-
-  it('As a dotli integrator, a chain that closes while paused is left alone by the resume', async () => {
-    // Given
-    const { createTransport, events } = createPausableTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
-    const connection = lease(pool, '0xaa');
-    pool.pauseAll();
-    connection.disconnect();
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    // When
-    pool.resumeAll();
-
-    // Then
-    expect(pool.status('0xaa')).toBe('disconnected');
-    expect(events).toEqual(['open 0xaa', 'pause 0xaa']);
   });
 });
 

@@ -7,7 +7,7 @@
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expect, fn, waitFor } from 'storybook/test';
-import { loadDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
+import { createDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
 import { fakeDebugPanelHost, type FakeDebugPanelHost } from '../src/host.fake.js';
 import type { KeyedSignals } from '../src/keyed-signals.js';
 import { setupTruapiDebugPanel } from '../src/mount.js';
@@ -112,11 +112,11 @@ export interface DebugPanelParameters {
  * The stories' `beforeEach`: a buffering bus as the host's entry leaves it, the panel's stored choices cleared, and
  * the panel mounted as the `debugPanel` parameter says. Returns the cleanup.
  */
-export async function debugPanelBeforeEach(context: { parameters: Record<string, unknown> }): Promise<() => void> {
+export function debugPanelBeforeEach(context: { parameters: Record<string, unknown> }): () => void {
   const options = (context.parameters['debugPanel'] ?? {}) as DebugPanelParameters;
   localStorage.removeItem('truapi-debug:section');
   localStorage.removeItem('truapi-debug:dock');
-  const bus = (await loadDotliDebugBus()).createDotliDebugBus();
+  const bus = createDotliDebugBus();
   bus.enableBuffering();
   const calls: WorkCalls = { matches: 0, formatPending: 0, rowSelection: 0, buildTimeline: 0, buildResolution: 0 };
   const keyedMaps: KeyedSignals<unknown, unknown>[] = [];

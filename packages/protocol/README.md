@@ -36,7 +36,7 @@ flowchart LR
 ### `@dotli/protocol`
 
 - Client: `createProtocolClient`, `ProtocolClient`, `ProtocolClientDeps`, `configureProtocolFrame`,
-  `ensureProtocolFrame`, `warmupProtocol`, `getProtocolOrigin`, `getProtocolStatus`, `subscribeProtocolStatus`.
+  `ensureProtocolFrame`, `warmupProtocol`, `getProtocolOrigin`, `getProtocolStatus`.
 - Resolution: `resolveDotNameRemote`, `resolveRootManifestRemote`, `resolveExecutableManifestRemote`.
 - Remote chains: `createRemoteChainProvider`, `isRemoteChainSupported`, `isRemoteChainConnectable`,
   `RemoteChainProvider`.

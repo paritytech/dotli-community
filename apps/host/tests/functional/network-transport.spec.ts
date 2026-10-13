@@ -63,8 +63,8 @@ for (const [label, backend, expected] of [
     context,
     request,
   }) => {
-    // Without a metrics build the gauge is a no-op and reads zero.
-    test.skip(process.env['VITE_METRICS'] !== 'true', 'needs a VITE_METRICS=true build');
+    // Without a metrics build the gauge is a no-op and reads zero, so a run without the flag fails here, not unseen.
+    expect(process.env['VITE_METRICS'], 'needs a VITE_METRICS=true build and run').toBe('true');
     test.setTimeout(TIMEOUT_MS * 4);
 
     // Given

@@ -19,8 +19,6 @@ export {
   type ChainClient,
   type DotnsResolver,
   type DotnsResolverDeps,
-  type DotnsResolverStatus,
-  type DotnsResolverStatusStore,
   type ResolveOptions,
 } from './resolve.js';
 export { loadResolve } from './lazy.js';

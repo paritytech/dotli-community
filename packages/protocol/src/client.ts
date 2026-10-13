@@ -98,10 +98,6 @@ export function getProtocolStatus(): ProtocolStatus {
   return getProtocolClient().getProtocolStatus();
 }
 
-export function subscribeProtocolStatus(listener: (status: ProtocolStatus) => void): () => void {
-  return getProtocolClient().subscribeProtocolStatus(listener);
-}
-
 export function configureProtocolFrame(config: ProtocolFrameConfig): void {
   getProtocolClient().configureProtocolFrame(config);
 }

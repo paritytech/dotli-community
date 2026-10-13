@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSyncStore } from '@dotli/shared';
 import { memoryStorage, resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
 import {
-  setChatCapability,
   createChatConnections,
   createChatStore,
   labelToProductId,
@@ -68,8 +67,7 @@ describe('bindTopbarStatus', () => {
     const local = memoryStorage();
     const stopChat = initChatPanelState(chat, () => local);
     const product = labelToProductId('chatty');
-    setProductLoaded('chatty', product);
-    setChatCapability('chatty', true);
+    setProductLoaded('chatty', product, { chat: true });
     setAuthState({ tag: 'Connected', session: { connected: true } });
     const unbind = bindTopbarStatus(bar, createSyncStore<NetworkHealth>('test_health', 'ok'));
     expect(bar.hasAttribute('data-action')).toBe(false);

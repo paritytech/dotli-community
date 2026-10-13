@@ -3,6 +3,6 @@
 
 // Inline at the top of the product's HTML, so it wraps the APIs before any product script runs.
 
-import { installSandboxChecker, reportToParent } from './checker.js';
+import { installSandboxChecker, reportToParent } from '../checker.js';
 
 installSandboxChecker(window, reportToParent(window));

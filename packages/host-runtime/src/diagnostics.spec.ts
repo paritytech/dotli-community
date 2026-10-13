@@ -12,7 +12,8 @@ import {
   type PageDiagnosticsDeps,
 } from './diagnostics.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { memoryStorage } from '@dotli/shared/testing';
+import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { setProductLoaded } from './state/product.js';
 
 // Read per test, once the test's own mode store is bound.
 let people: string;
@@ -229,6 +230,21 @@ describe('createPageDiagnostics', () => {
     // Then
     expect(rows.map(([label]) => label)).not.toContain('AssetHub node');
     expect(deps.connectedAssetHubNode).not.toHaveBeenCalled();
+  });
+
+  it("As a dotli developer, the rows name the loaded product's manifest version and app version", () => {
+    // Given
+    onTestFinished(resetAllStoresForTests);
+    setBackend('smoldot-direct');
+    setProductLoaded('doom', 'doom.dot', { cid: 'bafy', manifestVersion: 1, appVersion: [1, 2, 3, 'beta'] });
+    const { diagnostics } = pageDiagnostics('wss://live.example');
+
+    // When
+    const rows = diagnostics.rows();
+
+    // Then
+    expect(rows).toContainEqual(['Manifest', 'v1']);
+    expect(rows).toContainEqual(['App version', '1.2.3-beta']);
   });
 
   it("As a dotli developer on the light client, the report lists the rows, the cache, the packages and each chain's finalized height", async () => {

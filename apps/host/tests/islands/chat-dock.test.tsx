@@ -10,7 +10,6 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { memoryStorage, resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
 import {
-  setChatCapability,
   createChatConnections,
   createChatStore,
   type ChatStore,
@@ -49,8 +48,7 @@ beforeEach(() => {
   chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
   const local = memoryStorage();
   stopState = initChatPanelState(chat, () => local);
-  setProductLoaded(LABEL, PRODUCT);
-  setChatCapability(LABEL, true);
+  setProductLoaded(LABEL, PRODUCT, { chat: true });
   setAuthState({ tag: 'Connected', session: { connected: true } });
 });
 

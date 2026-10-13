@@ -5,7 +5,7 @@
 // recovery phrase check stay out of the boot chunk.
 
 import { getBackend } from '@dotli/config';
-import { loadFetch } from '@dotli/content';
+import { readArchiveFiles } from '@dotli/content';
 import { setDockInset } from './product-frame-layout.js';
 import { getTopbarState } from './state/topbar.js';
 import { closeDebugMode } from './settings-actions.js';
@@ -26,7 +26,7 @@ export const debugPanelParts: DebugPanelParts = {
   walletSwitch,
   phraseToEntropy,
   diagnostics: pageDiagnostics,
-  readArchive: async (cid, transport) => (await loadFetch()).readArchiveFiles(cid, transport),
+  readArchive: readArchiveFiles,
   viaGateway: () => getBackend() === 'rpc-gateway',
   topbarPresent: () => getTopbarState().present,
   setDockInset,

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, onCleanup } from 'solid-js';
-import { getActiveRootManifest, type ChatStore, productStore } from '@dotli/host-runtime';
+import { type ChatStore, productStore } from '@dotli/host-runtime';
 import { useStore } from '@dotli/ui';
 import { setChatWidth } from '../product-frame-layout.js';
 import type { ChatConversation, ChatFeed } from '../components/chat/chat.js';
@@ -55,9 +55,10 @@ function openFeed(chat: ChatStore): ChatFeed {
 function useChatConversation(chat: ChatStore): ChatConversation {
   // Slices, so a width drag, a topbar toggle or the composer-focus flag never re-runs the rows.
   const label = useStore(chatPanelStore, state => state.label);
+  const displayName = useStore(productStore, state => (state.status === 'loaded' ? state.displayName : undefined));
   return {
     loggedIn: useStore(chatPanelStore, state => state.loggedIn),
-    productName: () => getActiveRootManifest()?.displayName ?? label(),
+    productName: () => displayName() ?? label(),
     activeRoomId: useStore(chatPanelStore, state => state.activeRoomId),
     unreadByRoom: useStore(chatPanelStore, state => state.unreadByRoom),
     composerError: useStore(chatPanelStore, state => state.composerError),

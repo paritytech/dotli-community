@@ -17,7 +17,7 @@ describe('product store', () => {
 
   it('As the debug panel, I read a product loaded from a CID with its label, product id and CID', () => {
     // When
-    setProductLoaded('myapp', 'myapp.dot', 'bafyroot');
+    setProductLoaded('myapp', 'myapp.dot', { cid: 'bafyroot' });
 
     // Then
     expect(productStore.get()).toEqual({

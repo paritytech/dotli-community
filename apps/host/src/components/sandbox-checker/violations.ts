@@ -3,6 +3,8 @@
 
 // The violation panel's rules, apart from its DOM. Violation fields come from the product.
 
+import { parseApiViolationMessage } from '@dotli/sandbox-wire';
+
 export interface ParsedViolation {
   api: string;
   details: string;
@@ -15,28 +17,16 @@ const MAX_VIEWPORT_SHARE = 0.8;
 export const MAX_ENTRIES = 500;
 
 function parseViolation(raw: unknown, now: () => number): ParsedViolation | null {
-  if (typeof raw !== 'object' || raw === null) {
+  const message = parseApiViolationMessage(raw);
+  if (message === null) {
     return null;
   }
-  const data = raw as {
-    type?: unknown;
-    api?: unknown;
-    details?: unknown;
-    timestamp?: unknown;
-  };
-  if (data.type !== 'DOTLI_API_VIOLATION') {
-    return null;
-  }
-  const details =
-    typeof data.details === 'object' && data.details !== null
-      ? Object.entries(data.details as Record<string, unknown>)
-          .map(([k, v]) => `${k}=${String(v)}`)
-          .join(' ')
-      : '';
   return {
-    api: String(data.api),
-    details,
-    timestamp: typeof data.timestamp === 'number' ? data.timestamp : now(),
+    api: message.api,
+    details: Object.entries(message.details ?? {})
+      .map(([k, v]) => `${k}=${String(v)}`)
+      .join(' '),
+    timestamp: message.timestamp ?? now(),
   };
 }
 

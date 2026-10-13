@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { createBitswapClient, type BitswapClient, type BitswapClientDeps } from './client.js';
 export { bitswapGet } from './page-client.js';
 export {
   createSandboxBlockRelay,

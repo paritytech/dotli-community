@@ -11,13 +11,7 @@ export default defineConfig({
   test: {
     globals: false,
     setupFiles: ['src/testing/metrics-setup.ts'],
-    projects: [
-      { extends: true, test: { name: 'chains:unit', include: ['src/**/*.spec.ts'], environment: 'node' } },
-      {
-        extends: true,
-        test: { name: 'chains:functional', include: ['tests/**/*.test.ts'], environment: 'happy-dom' },
-      },
-    ],
+    projects: [{ extends: true, test: { name: 'chains:unit', include: ['src/**/*.spec.ts'], environment: 'node' } }],
   },
   define: {
     'import.meta.env.DEV': 'false',

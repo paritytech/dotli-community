@@ -97,19 +97,19 @@ export const restrictedSyntax = [
     // A genuinely safe swallow takes an eslint-disable with a one-line reason, so it gets reviewed.
     selector: 'CatchClause > BlockStatement[body.length=0]',
     message:
-      'Silent catch {} is forbidden. Either rethrow with `{ cause: err }`, or call captureException + log.error and emit an outcome metric (see docs/DETERMINISM_AUDIT §3.1).',
+      'Silent catch {} is forbidden. Either rethrow with `{ cause: err }`, or call captureException + log.error and emit an outcome metric.',
   },
   {
     selector:
       "NewExpression[callee.name='Error'] BinaryExpression[operator='+'] MemberExpression[property.name='message']",
     message:
-      "Do not wrap errors by concatenating `err.message`. Use `new Error('msg', { cause: err })` so `.cause` survives (see docs/DETERMINISM_AUDIT §3.1).",
+      "Do not wrap errors by concatenating `err.message`. Use `new Error('msg', { cause: err })` so `.cause` survives.",
   },
   {
     selector:
       'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[id.name=/_(FAILURE|TIMEOUT|RETRY|RETRIES)$/]',
     message:
-      'Parallel _FAILURE / _TIMEOUT / _RETRY metric constants are forbidden. Use one name + `{ outcome, reason }` (see docs/DETERMINISM_AUDIT §3.4).',
+      'Parallel _FAILURE / _TIMEOUT / _RETRY metric constants are forbidden. Use one name + `{ outcome, reason }`.',
   },
 ];
 

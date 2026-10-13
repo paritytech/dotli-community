@@ -6,7 +6,7 @@
 
 /// <reference lib="webworker" />
 
-import { injectSandboxChecker } from '@dotli/sandbox-checker';
+import { injectSandboxChecker } from './inject-checker.js';
 import { getMimeType } from './mime.js';
 import stripAppPrefixScript from './head/strip-app-prefix.js?inline-script';
 

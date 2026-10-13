@@ -11,6 +11,7 @@ import {
   type ManifestResult,
   type RootManifest,
 } from '@dotli/resolver';
+import type { ManifestFacts } from '@dotli/host-runtime';
 import type { CachedManifests } from '@dotli/storage';
 
 export interface ProductManifests {
@@ -26,6 +27,14 @@ export function fromCache(cached: CachedManifests): ProductManifests {
 export function toCache(manifests: ProductManifests): CachedManifests {
   const text = (result: ManifestResult<unknown>): string | null => ('raw' in result ? result.raw : null);
   return { root: text(manifests.root), app: text(manifests.app) };
+}
+
+/** What the manifests publish that the page shows, without the keys they lack. */
+export function manifestFacts({ root, app }: ProductManifests): ManifestFacts {
+  return {
+    ...(root.kind === 'ok' ? { displayName: root.value.displayName, manifestVersion: root.value.$v } : {}),
+    ...(app.kind === 'ok' && app.value.kind === 'app' ? { appVersion: app.value.appVersion } : {}),
+  };
 }
 
 export type ManifestRejection = 'unsupported-version' | 'invalid' | 'missing-root';

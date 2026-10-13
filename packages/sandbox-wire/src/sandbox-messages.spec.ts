@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  parseApiViolationMessage,
   parseHostToSandboxMessage,
   parseSandboxToHostMessage,
   postToHost,
@@ -129,5 +130,34 @@ describe('sandbox messages', () => {
 
     // Then
     expect(posted).toEqual([[{ type: 'dotli:sandbox-recover' }, '*']]);
+  });
+});
+
+describe('parseApiViolationMessage', () => {
+  it('As the host of a checker build, I read a violation as the product page posts it', () => {
+    // Given what a deployed checker posts
+    const posted = { type: 'DOTLI_API_VIOLATION', api: 'fetch', details: { url: 'https://x.example' }, timestamp: 7 };
+
+    // When
+    const parsed = parseApiViolationMessage(posted);
+
+    // Then
+    expect(parsed).toEqual(posted);
+  });
+
+  it('As the host of a checker build, I read a violation without details or a time as one without them', () => {
+    // When
+    const parsed = parseApiViolationMessage({ type: 'DOTLI_API_VIOLATION', api: 'fetch', details: 'odd' });
+
+    // Then
+    expect(parsed).toEqual({ type: 'DOTLI_API_VIOLATION', api: 'fetch' });
+  });
+
+  it('As the host of a checker build, I drop anything that is not a violation', () => {
+    // When
+    const parsed = [{ type: 'dotli:loading-status' }, 'DOTLI_API_VIOLATION', null, 42].map(parseApiViolationMessage);
+
+    // Then
+    expect(parsed).toEqual([null, null, null, null]);
   });
 });

@@ -1,19 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the shell and the landing page both run before they part: settings, the protocol iframe, the bridge and the
-// auth controller.
-
-// Safari before 18.4 lacks requestIdleCallback.
-if (typeof globalThis.requestIdleCallback !== 'function') {
-  globalThis.requestIdleCallback = (cb: IdleRequestCallback): number =>
-    setTimeout(() => {
-      cb({ didTimeout: false, timeRemaining: () => 50 });
-    }, 1) as unknown as number;
-}
+// What the shell and the landing page both run before they part: the page's own start, then settings, the protocol
+// iframe, the bridge and the auth controller.
 
 import '@dotli/ui/styles.css';
-import { DesktopIcon, RotateCwIcon } from '@dotli/ui/icons';
+import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
 import { listenForChunkFailures } from '@dotli/ui-widgets';
@@ -22,6 +14,7 @@ import { prefetchOverlays, showNotification } from './overlays.js';
 import { reportChunkFailure } from './ui-reporter.js';
 import { configureProtocolFrame, ensureProtocolFrame, warmupProtocol, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
+import { offerDesktopApp } from './desktop-offer.js';
 import { log } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import { getBackend, getCacheSettings, getNetwork, persistDefaults, type Backend } from '@dotli/config';
@@ -45,48 +38,50 @@ import { pageSettingsActions } from './settings-actions.js';
 
 export const T0 = performance.now();
 
-listenForChunkFailures({
-  target: window,
-  notify: showNotification,
-  reload: () => {
-    markContinuation('app_update');
-    window.location.reload();
-  },
-  report: reportChunkFailure,
-});
+/** What a page load starts first: the chunk failure offer, the overlays, the desktop offer and the wasm timings. */
+export function startPage(): void {
+  // Safari before 18.4 lacks requestIdleCallback.
+  if (typeof globalThis.requestIdleCallback !== 'function') {
+    globalThis.requestIdleCallback = (cb: IdleRequestCallback): number =>
+      setTimeout(() => {
+        cb({ didTimeout: false, timeRemaining: () => 50 });
+      }, 1) as unknown as number;
+  }
 
-// In memory before a deploy could make later chunk loads fail.
-prefetchOverlays();
+  listenForChunkFailures({
+    target: window,
+    notify: showNotification,
+    reload: () => {
+      markContinuation('app_update');
+      window.location.reload();
+    },
+    report: reportChunkFailure,
+  });
 
-if (!isMobileDevice()) {
-  const dismissed = localStorage.getItem('desktop-banner-dismissed');
-  if (dismissed === null) {
-    showNotification({
-      label: 'Get Polkadot Desktop',
-      text: 'Full experience with native performance',
-      deeplink: import.meta.env.VITE_DESKTOP_DOWNLOAD_URL ?? 'https://polkadot.com/get-started/polkadot-for-desktop',
-      icon: DesktopIcon,
-      dismissMs: 0,
-      browserNotification: false,
-      onDismiss: () => {
-        localStorage.setItem('desktop-banner-dismissed', '1');
-      },
+  // In memory before a deploy could make later chunk loads fail.
+  prefetchOverlays();
+
+  if (!isMobileDevice()) {
+    offerDesktopApp({
+      storage: () => localStorage,
+      notify: showNotification,
+      downloadUrl: import.meta.env.VITE_DESKTOP_DOWNLOAD_URL,
     });
   }
-}
 
-if (m.enabled && typeof PerformanceObserver !== 'undefined') {
-  const wasmObserver = new PerformanceObserver(list => {
-    for (const entry of list.getEntries()) {
-      if (entry.name.endsWith('.wasm')) {
-        const name = entry.name.split('/').pop() ?? 'unknown';
-        m.distribution(S.WASM_LOAD, entry.duration, 'millisecond', {
-          module: name,
-        });
+  if (m.enabled && typeof PerformanceObserver !== 'undefined') {
+    const wasmObserver = new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        if (entry.name.endsWith('.wasm')) {
+          const name = entry.name.split('/').pop() ?? 'unknown';
+          m.distribution(S.WASM_LOAD, entry.duration, 'millisecond', {
+            module: name,
+          });
+        }
       }
-    }
-  });
-  wasmObserver.observe({ type: 'resource', buffered: true });
+    });
+    wasmObserver.observe({ type: 'resource', buffered: true });
+  }
 }
 
 /** Boot runs before the resolution trace exists, so this says where a boot failure happened. */

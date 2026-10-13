@@ -8,15 +8,14 @@
 import './boot.js';
 import { BASE_DOMAIN, TIMEOUTS, getActiveServicesConfig, setNetworkOverride } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire';
-import { decryptContent, isEncrypted, loadFetch, parseIpfsResponse } from '@dotli/content';
+import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
-import { loadSandboxChecker } from '@dotli/sandbox-checker';
 import { endpointHost } from '@dotli/shared';
 
 import { createDecryptIfNeeded } from './decrypt-prompt.js';
 import { showError } from './error-page.js';
 import { showRetryScreen } from './retry-screen.js';
-import { loadPasswordDialog } from './lazy.js';
+import { loadPasswordDialog, loadSandboxChecker } from './lazy.js';
 import { createPasswordPrompt } from './password-prompt.js';
 import { showPasswordPrompt } from './show-password-prompt.js';
 import {
@@ -111,7 +110,7 @@ void runSandbox(
             pathname: window.location.pathname,
           }),
         registerWorker: options => registerAppServiceWorker(appWorker, options),
-        loadFetch,
+        fetchArchive,
         loadBlockSource,
         decrypt: decryptIfNeeded,
         storeArchive: files => storeArchiveInSW(appWorker.container, files),

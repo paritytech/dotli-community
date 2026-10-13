@@ -11,6 +11,7 @@ import { createServer, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
+import { securityHeaders, type HeaderPolicy } from './serving-headers.ts';
 
 const PORT = Number(process.env['PORT'] ?? '5173');
 const HOST = process.env['HOST'] ?? '127.0.0.1';
@@ -47,41 +48,12 @@ function routeFor(hostHeader: string): { dir: string; iframeable: boolean; root:
   return { dir: join(DIST, 'host'), iframeable: false, root: bare ? 'landing.html' : 'index.html', bare };
 }
 
-/**
- * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a host asset, whose worker script must
- * carry COEP itself or the isolated /__preview page cannot start it.
- */
-type HeaderPolicy = 'isolated' | 'worker-coep' | 'plain';
-
 /** The apex's /__preview is isolated like the sandboxes, and its other documents stay plain. */
 function headerPolicy(route: { iframeable: boolean; bare: boolean }, pathname: string): HeaderPolicy {
   if (route.iframeable || (route.bare && pathname === '/__preview')) {
     return 'isolated';
   }
   return pathname.startsWith('/assets/') ? 'worker-coep' : 'plain';
-}
-
-/** Split as nginx/snippets/dotli-headers-*.conf does. */
-function securityHeaders(policy: HeaderPolicy): Record<string, string> {
-  const shared = {
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-  if (policy !== 'isolated') {
-    const plain = { ...shared, 'X-Frame-Options': 'SAMEORIGIN' };
-    return policy === 'worker-coep' ? { ...plain, 'Cross-Origin-Embedder-Policy': 'credentialless' } : plain;
-  }
-  return {
-    ...shared,
-    // Ports matter: CSP host-sources without one mean the scheme's default.
-    'Content-Security-Policy': 'frame-ancestors http://localhost:* http://*.localhost:*',
-    'Cross-Origin-Resource-Policy': 'cross-origin',
-    'Cross-Origin-Embedder-Policy': 'credentialless',
-    'Cross-Origin-Opener-Policy': 'same-origin',
-  };
 }
 
 /** Matches dotli-assets-*.conf and dotli-sw-*.conf. */

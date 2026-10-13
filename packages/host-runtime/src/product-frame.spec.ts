@@ -21,6 +21,8 @@ import {
   type ProductFrameStatus,
 } from './product-frame.js';
 import { StubElement } from './testing/stub-element.js';
+import { getProductState } from './state/product.js';
+import type { ManifestFacts } from './manifest-facts.js';
 import type { PermissionsChange } from './state/product-permissions.js';
 import {
   answerConnection,
@@ -232,8 +234,14 @@ const iframeProduct = (label: string, url = `https://${label}.example/app`): Fra
   mode: 'iframe',
   label,
   url,
+  chat: Promise.resolve(false),
 });
-const subdomainProduct = (label: string, cid = 'cid'): FrameProduct => ({ mode: 'subdomain', label, cid });
+const subdomainProduct = (label: string, cid = 'cid', chat = false): FrameProduct => ({
+  mode: 'subdomain',
+  label,
+  cid,
+  chat: Promise.resolve(chat),
+});
 
 describe('product frame renders', () => {
   it('As a dotli integrator, the frame disposes a host that connects after a newer render has started', async () => {
@@ -383,6 +391,42 @@ describe('product frame renders', () => {
     const [first, second] = fakes.hosts.map(host => new URL(host.options.iframeUrl).searchParams);
     expect(first?.get('fullReset')).toBe('1');
     expect(second?.has('fullReset')).toBe(false);
+  });
+
+  it('As a product that declares chat, I am connected as a Worker and recorded as chat-capable, and one that does not as an App', async () => {
+    // Given
+    const fakes = harness();
+
+    // When
+    await settle(fakes, subdomainProduct('chatty', 'cid', true), 0);
+
+    // Then
+    expect(nth(fakes.runtimes, 0).createProvider).toHaveBeenLastCalledWith(
+      expect.objectContaining({ executionKind: 'Worker' }),
+    );
+    expect(getProductState()).toMatchObject({ status: 'loaded', label: 'chatty', chat: true });
+
+    // When
+    await settle(fakes, subdomainProduct('quiet'), 1);
+
+    // Then
+    expect(fakes.runtimes.at(-1)?.createProvider).toHaveBeenLastCalledWith(
+      expect.objectContaining({ executionKind: 'App' }),
+    );
+    expect(getProductState()).toMatchObject({ status: 'loaded', label: 'quiet', chat: false });
+  });
+
+  it('As a dApp user, the tab names my product by its published name from the first render, and the page knows its versions', async () => {
+    // Given
+    const fakes = harness();
+    const facts: ManifestFacts = { displayName: 'DOOM', manifestVersion: 1, appVersion: [1, 2, 3] };
+
+    // When
+    await settle(fakes, { mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), ...facts }, 0);
+
+    // Then
+    expect(frameView.titles).toEqual([{ mode: 'subdomain', label: 'doom', displayName: 'DOOM' }]);
+    expect(getProductState()).toMatchObject({ status: 'loaded', label: 'doom', ...facts });
   });
 });
 

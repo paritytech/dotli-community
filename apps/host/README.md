@@ -17,7 +17,8 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 ## Design
 
 - Two Astro pages, the shell and the landing page. Each has its own entry. Both start Sentry before any other module
-  runs, then share one startup step: settings, the protocol iframe, the bridge and auth.
+  runs, then call one page start (the chunk failure offer, the overlays and the desktop offer) and share one startup
+  step: settings, the protocol iframe, the bridge and auth.
 - Static markup is Astro. Interactive controls are Solid islands, one module per island, bound to sync stores that
   import no Solid.
 - Boot modules never import views. They take UI only from the UI core, which imports no Solid, and the icons entry,
@@ -34,8 +35,11 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   `chainActivity` port, and the load progress reports phases, peers and transfer.
 - The recently visited names live in the store every subdomain shares, reached through the runtime's shared channel,
   with a per-origin mirror for when that store is unreachable.
-- A few small scripts run in the page head before anything loads: theme pre-paint, an island error queue and the early
-  database open. They are real modules inlined as classic scripts at build time.
+- Whether a product declares chat is read from its worker manifest alongside its name and travels on the product the
+  frame renders. The last answer is cached per label, so a warm load picks the connection's execution kind without
+  waiting on a dotNS read.
+- Two small scripts run in the page head before anything loads: an island error queue and the early database open. They
+  are real modules inlined as classic scripts at build time.
 - The Astro config adds a CSS split per page, the PWA service worker, the signing worker, the dev SPA fallback and a
   Sentry release upload, all from the shared Vite tooling.
 
@@ -53,5 +57,6 @@ flowchart LR
 - The shell page. Dev server on port 4321.
 - The landing page, served for the bare host.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
-- `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites.
+- `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
+  local functional run needs `VITE_METRICS=true` in both the build and the run.
 - `npm run storybook`, `build-storybook`, `test:stories`, `test:vrt`: component stories and their visual checks.

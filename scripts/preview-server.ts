@@ -10,6 +10,7 @@ import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
 import { MODE_SYNC_CORS, MODE_SYNC_PREFIX, handleModeSync } from '@config/vite/mode-sync';
 import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
+import { securityHeaders, type HeaderPolicy } from './serving-headers.ts';
 
 // Node's types have no global `BodyInit`, so take it from `Response` itself.
 type BodyInit = NonNullable<ConstructorParameters<typeof Response>[0]>;
@@ -55,12 +56,6 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 };
 
-/**
- * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a host asset, whose worker script must
- * carry COEP itself or the isolated /__preview page cannot start it.
- */
-type HeaderPolicy = 'isolated' | 'worker-coep' | 'plain';
-
 function serveFile(filePath: string, policy: HeaderPolicy): Response | null {
   try {
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
@@ -73,19 +68,12 @@ function serveFile(filePath: string, policy: HeaderPolicy): Response | null {
   const headers: Record<string, string> = {
     'Content-Type': mime,
     'Service-Worker-Allowed': '/',
-    'Access-Control-Allow-Origin': '*',
     // Chrome's Private Network Access blocks loopback iframes across *.localhost subdomains without it, so the
     // protocol bridge handshake times out.
     'Access-Control-Allow-Private-Network': 'true',
     'Cache-Control': 'no-cache',
+    ...securityHeaders(policy),
   };
-  if (policy === 'isolated') {
-    headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
-    headers['Cross-Origin-Opener-Policy'] = 'same-origin';
-  }
-  if (policy !== 'plain') {
-    headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
-  }
   const body = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
   return new Response(body as BodyInit, { headers });
 }

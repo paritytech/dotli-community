@@ -13,9 +13,11 @@ export {
   type StartedSandboxChannel,
 } from './sandbox-channel.js';
 export {
+  parseApiViolationMessage,
   parseHostToSandboxMessage,
   parseSandboxToHostMessage,
   postToHost,
+  type ApiViolationMessage,
   type BitswapAbortMessage,
   type BitswapGetMessage,
   type BitswapResultMessage,

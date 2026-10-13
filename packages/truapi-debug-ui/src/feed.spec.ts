@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { loadDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
+import { createDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
 import { createPanelFeed } from './feed.js';
 
 /** A bus buffering for a panel that has not loaded yet, as the host's entry leaves it. */
-async function bufferingBus(): Promise<DotliDebugBus> {
-  const bus = (await loadDotliDebugBus()).createDotliDebugBus();
+function bufferingBus(): DotliDebugBus {
+  const bus = createDotliDebugBus();
   bus.enableBuffering();
   return bus;
 }
@@ -27,9 +27,9 @@ function truapi(bus: DotliDebugBus, tag: string, requestId: string): void {
 }
 
 describe('debug panel feed', () => {
-  it('As a dotli developer, buffered boot events are in the store as soon as the feed starts, before any frame', async () => {
+  it('As a dotli developer, buffered boot events are in the store as soon as the feed starts, before any frame', () => {
     // Given the bus is buffering and nothing listens yet
-    const bus = await bufferingBus();
+    const bus = bufferingBus();
     system(bus, 'boot', 'started', 'flow-early');
     truapi(bus, 'early_request', 'early-1');
 
@@ -44,9 +44,9 @@ describe('debug panel feed', () => {
     expect(feed.resolution.events().map(ev => ev.event)).toEqual(['started']);
   });
 
-  it('As a dotli developer, system events emitted while paused do not reach the Resolution view', async () => {
+  it('As a dotli developer, system events emitted while paused do not reach the Resolution view', () => {
     // Given
-    const bus = await bufferingBus();
+    const bus = bufferingBus();
     const feed = createPanelFeed({ bus, capacity: 2000 });
     feed.store.setPaused(true);
 
@@ -60,9 +60,9 @@ describe('debug panel feed', () => {
     expect(feed.store.list()).toEqual([]);
   });
 
-  it('As a dotli developer, a feed that stopped takes no more events', async () => {
+  it('As a dotli developer, a feed that stopped takes no more events', () => {
     // Given
-    const bus = await bufferingBus();
+    const bus = bufferingBus();
     const feed = createPanelFeed({ bus, capacity: 2000 });
 
     // When

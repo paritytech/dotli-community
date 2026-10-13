@@ -33,7 +33,7 @@ every caller checks a name against.
 ### `@dotli/resolver`
 
 - Resolving: `createDotnsResolver`, `DotnsResolver`, `DotnsResolverDeps`, `ResolveOptions`, `ResolvePhase`,
-  `DotnsResolverStatus`, `DotnsResolverStatusStore`, `ChainClient`.
+  `ChainClient`.
 - Manifests: `toRootManifestResult`, `toExecutableManifestResult`, `RootManifest`, `ExecutableManifest`,
   `ManifestResult`.
 - Naming rules: `dotNsUrl`, `validateDotLabel`, `isValidDotLabel`, `DotLabelResult`, `isExecutableKind`.

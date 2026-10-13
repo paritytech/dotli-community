@@ -311,7 +311,6 @@ export default defineConfig({
       rolldownOptions: rolldownOptions(),
     },
     define: {
-      __BUILD_TARGET__: JSON.stringify('host'),
       // A missing package falls back to "unknown" rather than failing the build.
       __DOTLI_VERSION__: JSON.stringify(readReleaseVersion(import.meta.dirname)),
       __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),

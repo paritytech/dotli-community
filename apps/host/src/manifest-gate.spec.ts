@@ -14,6 +14,7 @@ import {
   assertLaunchable,
   fromCache,
   ManifestRejectedError,
+  manifestFacts,
   revalidateCachedProduct,
   toCache,
   type ProductManifests,
@@ -164,5 +165,23 @@ describe('cache revalidation', () => {
     // Then
     expect(decision).toEqual({ kind: 'evict', reason: 'cleared' });
     expect(read).not.toHaveBeenCalled();
+  });
+});
+
+describe('manifestFacts', () => {
+  it("As a visitor, the page takes the product's name and versions from its manifests", () => {
+    // When
+    const facts = manifestFacts({ root: ROOT, app: APP });
+
+    // Then
+    expect(facts).toEqual({ displayName: 'DOOM', manifestVersion: 1, appVersion: [0, 1, 9] });
+  });
+
+  it('As a visitor on a product with no manifests, the page has no facts to show', () => {
+    // When
+    const facts = manifestFacts({ root: EMPTY, app: EMPTY });
+
+    // Then
+    expect(facts).toEqual({});
   });
 });

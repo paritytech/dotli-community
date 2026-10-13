@@ -1,13 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Imports no Solid because it runs on the boot path. The page's head script (theme-paint.ts) resolves the same key the
-// same way before paint, so initTheme() must never apply a different theme. It keeps its own copy because sharing a
-// module with the head script regroups the boot chunks and grows the product page's boot.
+// Imports no Solid because it runs on the boot path.
 
 import { setTheme, type ThemePref } from '@dotli/host-runtime';
 
-/** Also read by the head script in theme-paint.ts. */
+/** The stored choice's key, also cleared by a settings reset. */
 export const THEME_KEY = 'dotli-theme';
 
 /** The page parts the theme reads and writes. */
@@ -16,7 +14,7 @@ export interface ThemeControllerDeps {
   storage: () => Pick<Storage, 'getItem' | 'setItem'>;
   /** Whether the OS prefers a light scheme, and its changes. */
   colorScheme: () => Pick<MediaQueryList, 'matches' | 'addEventListener' | 'removeEventListener'>;
-  /** Carries `data-theme` and `data-theme-pref` for the stylesheet. */
+  /** Carries `data-theme` and `data-theme-pref`, the page state the functional tests read. */
   root: () => Pick<Element, 'setAttribute'>;
 }
 
@@ -33,7 +31,7 @@ export function createThemeController({ storage, colorScheme, root }: ThemeContr
       if (stored === 'light' || stored === 'dark' || stored === 'system') {
         return stored;
       }
-      // eslint-disable-next-line no-restricted-syntax -- storage the browser blocks (SecurityError) means no stored choice: follow the OS, as the head script does.
+      // eslint-disable-next-line no-restricted-syntax -- storage the browser blocks (SecurityError) means no stored choice: follow the OS.
     } catch {
       // Falls back to "system".
     }

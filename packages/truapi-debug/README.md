@@ -14,7 +14,7 @@ results and shapes them into rows, timelines and exports. The panel that draws t
 
 - The debug bus is the single channel. It creates no emitter until buffering is enabled, so sessions that never open
   debug mode pay nothing, and `emit` does nothing before then. Boot events are held until the first listener attaches,
-  then replayed once. A throwing receiver is reported and the others still get the event. The bus is a lazy chunk.
+  then replayed once. A throwing receiver is reported and the others still get the event.
 - The event store keeps events unmodified. Each gets a stable sequence number, and a correlation key pairs a request
   with its response.
 - A tracker follows open calls and marks the slow ones. A resolution recorder notes how a `.dot` name was resolved and
@@ -30,7 +30,7 @@ results and shapes them into rows, timelines and exports. The panel that draws t
 ### `@dotli/truapi-debug`
 
 - Bus: `emitDotliDebugEvent`, `onDotliDebugEvent`, `watchDotliDebugEvents`, `hasDotliDebugListeners`,
-  `loadDotliDebugBus`, `DotliDebugEvent`.
+  `enableDotliDebugBuffering`, `createDotliDebugBus`, `DotliDebugBus`, `DotliDebugBusEvent`, `DotliDebugEvent`.
 - Store: `EventStore`, `correlationKeyOf`, `firstNewIndex`, `StoredEvent`.
 - Debug mode: `resolveDebugMode`, `isDebugModeOn`, `leaveDebugMode`, `readStoredDock`, `writeStoredDock`,
   `readStoredSection`, `writeStoredSection`.

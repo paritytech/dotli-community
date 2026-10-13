@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import checkerScript from './checker-script.js?inline-script';
+import checkerScript from './head/checker.js?inline-script';
 
 /** Puts the checker first in the product's `<head>`, or before everything when it has none. */
 export function injectSandboxChecker(html: string): string {
