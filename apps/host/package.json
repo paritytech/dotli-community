@@ -31,11 +31,11 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@solidjs/testing-library": "1.0.0-beta.3",
-    "@solidjs/vite-plugin": "3.0.0-next.47",
+    "@solidjs/vite-plugin": "3.0.0-next.49",
     "jsqr": "^1.4.0",
-    "playwright": "^1.63.0",
+    "playwright": "^1.64.0",
     "simple-statistics": "^7.12.1",
     "vite-plugin-pwa": "^2.0.0",
     "vite-plugin-wasm": "^3.6.0",
@@ -52,8 +52,8 @@
     "@dotli/storage": "*",
     "@dotli/truapi-debug": "*",
     "@dotli/ui": "*",
-    "@sentry/browser": "^11.4.0",
+    "@sentry/browser": "^11.6.0",
     "@sentry/vite-plugin": "^5.4.1",
-    "astro": "^7.3.6"
+    "astro": "^7.3.8"
   }
 }
