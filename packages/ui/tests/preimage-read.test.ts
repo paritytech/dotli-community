@@ -179,6 +179,9 @@ describe('Preimage.read host adapter', () => {
       if (url === 'http://set/providers') {
         return Promise.resolve(Response.json([NODE]));
       }
+      if (url === 'http://cache-node/prefetch') {
+        return Promise.resolve(Response.json({ state: 'done', downloaded: 0, peers: 0, elapsed_ms: 0 }));
+      }
       if (url === 'http://cache-node/acquire') {
         return Promise.resolve(
           new Response(all.slice(span.start, span.end), { headers: { 'x-cache-origin': 'source' } }),
@@ -218,5 +221,48 @@ describe('Preimage.read host adapter', () => {
     await expect(
       adapter.readTorrent({ magnet: `magnet:?xt=urn:btih:${infoHash}`, route: { tag: 'Bulletin' } }),
     ).rejects.toThrow('not on Bulletin');
+  });
+
+  it('As a product, I get the progress of a torrent file that a cache node still downloads', async () => {
+    // Given a cache node that downloads the file
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json([NODE]));
+      }
+      if (url === 'http://cache-node/prefetch') {
+        return Promise.resolve(
+          Response.json({
+            state: 'downloading',
+            name: 'b.bin',
+            size: 300_007,
+            downloaded: 2_000,
+            peers: 3,
+            elapsed_ms: 1_500,
+          }),
+        );
+      }
+      return Promise.resolve(Response.json('Charged'));
+    });
+
+    // When the product reads the magnet link
+    const answer = await createPreimageReadAdapter().readTorrent({
+      magnet: `magnet:?xt=urn:btih:${'cd'.repeat(20)}&so=1`,
+      route: { tag: 'Cache' },
+    });
+
+    // Then the answer has no value yet, and the progress of the node
+    expect({ value: answer.value, name: answer.name, progress: answer.progress }).toEqual({
+      value: undefined,
+      name: 'b.bin',
+      progress: {
+        provider: `0x${NODE.id}`,
+        state: 'Downloading',
+        size: 300_007n,
+        downloaded: 2_000n,
+        peers: 3,
+        elapsedMs: 1_500n,
+      },
+    });
   });
 });

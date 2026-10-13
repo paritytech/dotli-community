@@ -64,6 +64,33 @@ export interface CacheTorrentRead extends CacheRead {
   file: number;
   name?: string;
   contentId: string;
+  /** While the provider still downloads the file: what it did so far. There is no value then; read again later. */
+  progress?: CacheTorrentProgress;
+}
+
+/** The step of a torrent download at a provider. */
+export type CacheTorrentState = 'starting' | 'metadata' | 'downloading' | 'importing';
+
+/** What a provider did so far for a torrent file that it still downloads (`POST /prefetch`, `GET /progress`). */
+export interface CacheTorrentProgress {
+  provider: CacheProvider;
+  state: CacheTorrentState;
+  name?: string;
+  size?: number;
+  downloaded: number;
+  peers: number;
+  elapsedMs: number;
+}
+
+/** The progress answer of a cache node. */
+interface NodeProgress {
+  state: string;
+  error?: string;
+  name?: string;
+  size?: number;
+  downloaded: number;
+  peers: number;
+  elapsed_ms: number;
 }
 
 /** What the host measured of one provider. */
@@ -80,7 +107,7 @@ const FAILURE_COOLDOWN_MS = 30_000;
 const PRIOR_MS = 50;
 const EXPLORE_EVERY = 4;
 const NODE_TIMEOUT_MS = 15_000;
-// A torrent read can wait for the swarm: the metadata, peers and pieces.
+// The read of a torrent file that a provider has: it can hold a large span.
 const TORRENT_TIMEOUT_MS = 600_000;
 const PROVIDERS_TTL_MS = 60_000;
 const QUALITY_KEY = 'dotli:cache-quality';
@@ -271,6 +298,9 @@ export class CacheNodes {
   private known: { providers: CacheProvider[]; at: number } | null = null;
   private reads = 0;
   private transfers = 0;
+  // The provider that downloads each torrent file for this page, by content id. Each read asks it first, so the
+  // progress is that of one download.
+  private readonly torrentProviders = new Map<string, string>();
 
   constructor(options: CacheNodesOptions) {
     this.options = options;
@@ -404,11 +434,73 @@ export class CacheNodes {
     if (options.only !== undefined) {
       ordered = ordered.filter(provider => provider.id === options.only);
     }
+    const downloading = this.torrentProviders.get(contentId);
+    const index = ordered.findIndex(provider => provider.id === downloading);
+    if (index > 0) {
+      ordered.unshift(...ordered.splice(index, 1));
+    }
     const reference = { source: magnet, cid: null, size: null, file: selected };
     const attempts: CacheAttempt[] = [];
     for (const [rank, provider] of ordered.entries()) {
       const started = Date.now();
       const measured = this.measure(provider.id);
+      // 1. The provider starts the download in the background, or says how far it is. A read waits only for a
+      // provider that has the file.
+      let progress: NodeProgress;
+      try {
+        const prefetch = await this.ask(
+          provider,
+          contentId,
+          this.transferId(),
+          reference,
+          NODE_TIMEOUT_MS,
+          '/prefetch',
+        );
+        if (!prefetch.ok) {
+          const reason = `${String(prefetch.status)}: ${(await prefetch.text().catch(() => '')).slice(0, 300)}`;
+          attempts.push({
+            provider,
+            outcome: prefetch.status === 402 ? 'refused' : 'failed',
+            reason,
+            ms: Date.now() - started,
+          });
+          continue;
+        }
+        progress = (await prefetch.json()) as NodeProgress;
+      } catch (error) {
+        measured.failures += 1;
+        measured.failedAt = Date.now();
+        attempts.push({ provider, outcome: 'failed', reason: String(error), ms: Date.now() - started });
+        continue;
+      }
+      if (progress.state === 'failed') {
+        this.torrentProviders.delete(contentId);
+        attempts.push({ provider, outcome: 'failed', reason: progress.error ?? 'failed', ms: Date.now() - started });
+        continue;
+      }
+      if (progress.state !== 'done') {
+        this.torrentProviders.set(contentId, provider.id);
+        const state: CacheTorrentState = ['metadata', 'downloading', 'importing'].includes(progress.state)
+          ? (progress.state as CacheTorrentState)
+          : 'starting';
+        const running: CacheTorrentProgress = {
+          provider,
+          state,
+          downloaded: progress.downloaded,
+          peers: progress.peers,
+          elapsedMs: progress.elapsed_ms,
+        };
+        if (progress.name !== undefined) {
+          running.name = progress.name;
+        }
+        if (progress.size !== undefined) {
+          running.size = progress.size;
+        }
+        return { attempts, file: selected, contentId, progress: running };
+      }
+      this.torrentProviders.delete(contentId);
+
+      // 2. The provider has the file: read it.
       const transfer = this.transferId();
       let response: Response;
       try {
@@ -489,6 +581,7 @@ export class CacheNodes {
     transfer: string,
     reference: object = { source: `bulletin:${content}`, cid: null, size: null },
     timeoutMs = NODE_TIMEOUT_MS,
+    path = '/acquire',
   ): Promise<Response> {
     const request = {
       transfer,
@@ -499,7 +592,7 @@ export class CacheNodes {
     };
     const message = readMessage({ ...request, issuedAt: request.issued_at });
     const body = { reference, read: { request, signature: toHex(sign(this.payer.secret, message)) } };
-    return this.fetch(`${provider.api}/acquire`, {
+    return this.fetch(`${provider.api}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),

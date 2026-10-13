@@ -190,6 +190,9 @@ describe('torrent reads through cache nodes', () => {
       switch (url) {
         case 'http://set/providers':
           return Response.json([liar, holder]);
+        case 'http://node-1/prefetch':
+        case 'http://node-2/prefetch':
+          return Response.json({ state: 'done', downloaded: 0, peers: 0, elapsed_ms: 0 });
         case 'http://node-1/acquire':
           return new Response(bad, { status: 200 });
         case 'http://node-2/acquire':
@@ -244,6 +247,60 @@ describe('torrent reads through cache nodes', () => {
       content: `bt:${infoHash}:1`,
       file: 1,
       receipts: ['http://node-2/receipt'],
+    });
+  });
+
+  it('As a user agent, I show the progress of a torrent file that a node still downloads, and ask that node again', async () => {
+    // Given two nodes, and the first one in quality order starts the download and reports its progress
+    const [first, second] = [provider(1), provider(2)];
+    const requests: string[] = [];
+    let downloaded = 1_000;
+    const fakeFetch = ((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push(url);
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json([first, second]));
+      }
+      if (url.endsWith('/prefetch')) {
+        downloaded *= 2;
+        return Promise.resolve(
+          Response.json({ state: 'downloading', name: 'b.bin', size: 300_007, downloaded, peers: 3, elapsed_ms: 1500 }),
+        );
+      }
+      return Promise.resolve(Response.json('Charged'));
+    }) as typeof fetch;
+    const quality = new Map<string, CacheQuality>([
+      [first.id, { latencyMs: 1, successes: 1, failures: 0 }],
+      [second.id, { latencyMs: 2, successes: 1, failures: 0 }],
+    ]);
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: fakeFetch,
+      storage: { getItem: () => JSON.stringify(Object.fromEntries(quality)), setItem: () => undefined },
+    });
+    const magnet = `magnet:?xt=urn:btih:${'ab'.repeat(20)}&so=1`;
+
+    // When the host reads the magnet link two times
+    const once = await cache.readTorrent(magnet);
+    const twice = await cache.readTorrent(magnet);
+
+    // Then each answer has no value and the progress of the first node, and no read went to a node
+    expect({
+      value: [once.value, twice.value],
+      progress: [once.progress, twice.progress].map(
+        p => p && { api: p.provider.api, state: p.state, downloaded: p.downloaded },
+      ),
+      name: twice.progress?.name,
+      reads: requests.filter(url => url.endsWith('/acquire')).length,
+    }).toEqual({
+      value: [undefined, undefined],
+      progress: [
+        { api: 'http://node-1', state: 'downloading', downloaded: 2_000 },
+        { api: 'http://node-1', state: 'downloading', downloaded: 4_000 },
+      ],
+      name: 'b.bin',
+      reads: 0,
     });
   });
 });

@@ -22,7 +22,9 @@ export {
   type CacheQuality,
   type CacheRead,
   type CacheServed,
+  type CacheTorrentProgress,
   type CacheTorrentRead,
+  type CacheTorrentState,
 } from './cache-nodes.js';
 export { decryptContent, isEncrypted } from './decrypt.js';
 export { CONTENT_ERRORS } from './errors.js';

@@ -10,7 +10,8 @@
 // `Preimage.readTorrent`: one file of a BitTorrent torrent, from a magnet link, through cache nodes only (a torrent is
 // not on Bulletin). A node gets the file from the swarm, its store or a peer, and sends its span; the host checks the
 // pieces against the torrent before it pays. The core sets the preimage key of the file, and the nodes also keep the
-// file under that key, so the product can read it again with `Preimage.read`.
+// file under that key, so the product can read it again with `Preimage.read`. A node downloads in the background: until it
+// has the file, the answer has no value and the progress of the download, and the product reads again.
 
 import type { PreimageReadHost } from '@parity/truapi-host';
 import type {
@@ -223,8 +224,33 @@ async function readTorrent(request: RemotePreimageReadTorrentRequest): Promise<R
   if (result.name !== undefined) {
     response.name = result.name;
   }
+  const progress = result.progress;
+  if (progress !== undefined) {
+    // The provider still downloads the file: the product reads again later, and shows how far it is.
+    const running: NonNullable<RemotePreimageReadTorrentResponse['progress']> = {
+      provider: prefixed(progress.provider.id),
+      state: TORRENT_STATES[progress.state],
+      downloaded: BigInt(progress.downloaded),
+      peers: progress.peers,
+      elapsedMs: BigInt(progress.elapsedMs),
+    };
+    if (progress.size !== undefined) {
+      running.size = BigInt(progress.size);
+    }
+    response.progress = running;
+    if (progress.name !== undefined) {
+      response.name = progress.name;
+    }
+  }
   return response;
 }
+
+const TORRENT_STATES = {
+  starting: 'Starting',
+  metadata: 'Metadata',
+  downloading: 'Downloading',
+  importing: 'Importing',
+} as const;
 
 export function createPreimageReadAdapter(): Required<PreimageReadHost> {
   return { readPreimage: read, readTorrent };
