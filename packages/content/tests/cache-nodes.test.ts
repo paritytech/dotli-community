@@ -303,4 +303,72 @@ describe('torrent reads through cache nodes', () => {
       reads: 0,
     });
   });
+
+  it('As a user agent, I show the bytes that came while a large torrent file comes from a node, and then give the file', async () => {
+    // Given a node that has file 1, and sends the first 64 KiB of its span, then the rest only later
+    const { info, infoHash, all } = await threeFileTorrent();
+    const span = spanOf(parseInfo(info), 1);
+    const good = all.slice(span.start, span.end);
+    let rest: () => void = () => undefined;
+    const later = new Promise<void>(resolve => {
+      rest = resolve;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(good.slice(0, 65_536));
+        await later;
+        controller.enqueue(good.slice(65_536));
+        controller.close();
+      },
+    });
+    const node = provider(1);
+    const requests: string[] = [];
+    const fakeFetch = ((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push(url);
+      switch (url) {
+        case 'http://set/providers':
+          return Promise.resolve(Response.json([node]));
+        case 'http://node-1/prefetch':
+          return Promise.resolve(Response.json({ state: 'done', downloaded: 0, peers: 0, elapsed_ms: 0 }));
+        case 'http://node-1/acquire':
+          return Promise.resolve(new Response(body, { headers: { 'content-length': String(good.length) } }));
+        case `http://node-1/torrent/${infoHash}`:
+          return Promise.resolve(new Response(info));
+        default:
+          return Promise.resolve(Response.json('Charged'));
+      }
+    }) as typeof fetch;
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: fakeFetch,
+    });
+    const magnet = `magnet:?xt=urn:btih:${infoHash}&so=1`;
+
+    // When the host reads the magnet link while the bytes come, and again after they came
+    const first = await cache.readTorrent(magnet);
+    rest();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const second = await cache.readTorrent(magnet);
+
+    // Then the first answer is the progress of the transfer, and the second one is the checked file, from one read
+    expect({
+      first: first.progress && {
+        state: first.progress.state,
+        downloaded: first.progress.downloaded,
+        size: first.progress.size,
+      },
+      firstValue: first.value,
+      second: second.value?.length,
+      served: second.served?.provider.api,
+      reads: requests.filter(url => url.endsWith('/acquire')).length,
+    }).toEqual({
+      first: { state: 'receiving', downloaded: 65_536, size: good.length },
+      firstValue: undefined,
+      second: 300_007,
+      served: 'http://node-1',
+      reads: 1,
+    });
+  });
 });

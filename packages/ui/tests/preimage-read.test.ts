@@ -271,4 +271,51 @@ describe('Preimage.read host adapter', () => {
       },
     });
   });
+
+  it('As a product, I read a torrent file in parts, and the host reads it from the node once', async () => {
+    // Given a cache node that has file 1 of a torrent
+    const { info, infoHash, all } = await threeFileTorrent();
+    const span = spanOf(parseInfo(info), 1);
+    const reads: string[] = [];
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      reads.push(url);
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json([NODE]));
+      }
+      if (url === 'http://cache-node/prefetch') {
+        return Promise.resolve(Response.json({ state: 'done', downloaded: 0, peers: 0, elapsed_ms: 0 }));
+      }
+      if (url === 'http://cache-node/acquire') {
+        return Promise.resolve(new Response(all.slice(span.start, span.end)));
+      }
+      if (url === `http://cache-node/torrent/${infoHash}`) {
+        return Promise.resolve(new Response(info));
+      }
+      return Promise.resolve(Response.json('Charged'));
+    });
+    const adapter = createPreimageReadAdapter();
+    const magnet = `magnet:?xt=urn:btih:${infoHash}&so=1`;
+    const file = all.slice(100_001, 400_008);
+
+    // When the product reads two parts of the file
+    const first = await adapter.readTorrent({ magnet, route: { tag: 'Cache' }, range: { offset: 0n, length: 1000 } });
+    const second = await adapter.readTorrent({
+      magnet,
+      route: { tag: 'Cache' },
+      range: { offset: 300_000n, length: 1000 },
+    });
+
+    // Then each part has its bytes, the key and the size of the whole file, and only one read went to the node
+    const key = `0x${Buffer.from(blake2b(file, { dkLen: 32 })).toString('hex')}`;
+    expect({
+      first: [first.value, first.key, first.size],
+      second: [second.value, second.key, second.size],
+      reads: reads.filter(url => url.endsWith('/acquire')).length,
+    }).toEqual({
+      first: [`0x${Buffer.from(file.slice(0, 1000)).toString('hex')}`, key, 300_007n],
+      second: [`0x${Buffer.from(file.slice(300_000)).toString('hex')}`, key, 300_007n],
+      reads: 1,
+    });
+  });
 });

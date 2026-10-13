@@ -71,7 +71,7 @@ export interface CacheTorrentRead extends CacheRead {
 }
 
 /** The step of a torrent download at a provider. */
-export type CacheTorrentState = 'starting' | 'metadata' | 'downloading' | 'importing';
+export type CacheTorrentState = 'starting' | 'metadata' | 'downloading' | 'importing' | 'receiving';
 
 /** What a provider did so far for a torrent file that it still downloads (`POST /prefetch`, `GET /progress`). */
 export interface CacheTorrentProgress {
@@ -109,8 +109,55 @@ const FAILURE_COOLDOWN_MS = 30_000;
 const PRIOR_MS = 50;
 const EXPLORE_EVERY = 4;
 const NODE_TIMEOUT_MS = 15_000;
-// The read of a torrent file that a provider has: it can hold a large span.
-const TORRENT_TIMEOUT_MS = 600_000;
+// The read of a torrent file that a provider has: it can hold a large span, so the job that receives it can take long.
+const TORRENT_TIMEOUT_MS = 3_600_000;
+// How long one call waits for the job that receives a torrent file. A small file comes in this time.
+const RECEIVE_WAIT_MS = 3_000;
+
+// A job that receives a torrent file from a provider and checks it.
+interface TorrentJob {
+  provider: CacheProvider;
+  started: number;
+  received: number;
+  size?: number;
+  done: Promise<void>;
+  result?: TorrentJobResult;
+}
+
+// The end of a receive job: its attempt, and the checked file when the provider served it.
+type TorrentJobResult =
+  | { attempt: CacheAttempt; value?: undefined }
+  | { attempt: CacheAttempt; value: Uint8Array; name: string; files: TorrentListedFile[]; served: CacheServed };
+
+// Read the body of a response, and count its bytes in the job.
+async function readBody(response: Response, job: TorrentJob): Promise<Uint8Array> {
+  const length = Number(response.headers.get('content-length'));
+  if (Number.isFinite(length) && length > 0) {
+    job.size = length;
+  }
+  const reader = response.body?.getReader();
+  if (reader === undefined) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    job.received = bytes.length;
+    return bytes;
+  }
+  const chunks: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    chunks.push(value);
+    job.received += value.length;
+  }
+  const bytes = new Uint8Array(job.received);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return bytes;
+}
 const PROVIDERS_TTL_MS = 60_000;
 const QUALITY_KEY = 'dotli:cache-quality';
 const READ_PREFIX = 'cache-read/1';
@@ -303,6 +350,8 @@ export class CacheNodes {
   // The provider that downloads each torrent file for this page, by content id. Each read asks it first, so the
   // progress is that of one download.
   private readonly torrentProviders = new Map<string, string>();
+  // The jobs that receive a torrent file from a provider, by content id.
+  private readonly receiving = new Map<string, TorrentJob>();
 
   constructor(options: CacheNodesOptions) {
     this.options = options;
@@ -443,6 +492,15 @@ export class CacheNodes {
     }
     const reference = { source: magnet, cid: null, size: null, file: selected };
     const attempts: CacheAttempt[] = [];
+    // A job receives the file now: wait for it. When it failed, the read asks the providers again.
+    const running = this.receiving.get(contentId);
+    if (running !== undefined) {
+      const answer = await this.awaitTorrent(running, attempts, selected, contentId);
+      if (answer !== undefined) {
+        return answer;
+      }
+      ordered = ordered.filter(provider => provider.id !== running.provider.id);
+    }
     for (const [rank, provider] of ordered.entries()) {
       const started = Date.now();
       const measured = this.measure(provider.id);
@@ -502,67 +560,14 @@ export class CacheNodes {
       }
       this.torrentProviders.delete(contentId);
 
-      // 2. The provider has the file: read it.
-      const transfer = this.transferId();
-      let response: Response;
-      try {
-        response = await this.ask(provider, contentId, transfer, reference, TORRENT_TIMEOUT_MS);
-      } catch (error) {
-        measured.failures += 1;
-        measured.failedAt = Date.now();
-        attempts.push({ provider, outcome: 'failed', reason: String(error), ms: Date.now() - started });
-        continue;
+      // 2. The provider has the file. The host receives it and checks it in the background, because a large file takes
+      // longer than one call can wait.
+      const job = this.receiveTorrent(provider, rank, homes, contentId, reference, ref.infoHash, selected);
+      this.receiving.set(contentId, job);
+      const answer = await this.awaitTorrent(job, attempts, selected, contentId);
+      if (answer !== undefined) {
+        return answer;
       }
-      if (!response.ok) {
-        const reason = `${String(response.status)}: ${(await response.text().catch(() => '')).slice(0, 300)}`;
-        const outcome: CacheOutcome = response.status === 404 ? 'miss' : response.status === 402 ? 'refused' : 'failed';
-        attempts.push({ provider, outcome, reason, ms: Date.now() - started });
-        continue;
-      }
-      const span = new Uint8Array(await response.arrayBuffer());
-      let checked: { value: Uint8Array; name: string; files: TorrentListedFile[] };
-      try {
-        const info = await this.fetch(`${provider.api}/torrent/${ref.infoHash}`, {
-          signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
-        });
-        if (!info.ok) {
-          throw new Error(`no info dict: ${String(info.status)}`);
-        }
-        checked = await verifySpan(new Uint8Array(await info.arrayBuffer()), ref.infoHash, selected, span);
-      } catch (error) {
-        measured.failures += 1;
-        measured.failedAt = Date.now();
-        attempts.push({ provider, outcome: 'bad-bytes', reason: String(error), ms: Date.now() - started });
-        continue;
-      }
-      measured.successes += 1;
-      delete measured.failedAt;
-      this.saveQuality();
-      attempts.push({ provider, outcome: 'served', ms: Date.now() - started });
-      this.pay(provider, contentId, transfer);
-      const elapsed = Number(response.headers.get('x-cache-elapsed-ms'));
-      const served: CacheServed = {
-        provider,
-        origin: parseOrigin(response.headers.get('x-cache-origin')),
-        rank,
-        home: homes.includes(provider.id),
-      };
-      if (Number.isFinite(elapsed) && response.headers.has('x-cache-elapsed-ms')) {
-        served.providerMs = elapsed;
-      }
-      const trace = response.headers.get('x-cache-trace');
-      if (trace !== null && trace !== '') {
-        served.trace = trace;
-      }
-      return {
-        value: checked.value,
-        name: checked.name,
-        files: checked.files,
-        served,
-        attempts,
-        file: selected,
-        contentId,
-      };
     }
     this.saveQuality();
     return { attempts, file: selected, contentId };
@@ -581,6 +586,124 @@ export class CacheNodes {
   private transferId(): string {
     this.transfers += 1;
     return `dotli-${String(Date.now())}-${String(this.transfers)}-${toHex(crypto.getRandomValues(new Uint8Array(4)))}`;
+  }
+
+  // Receive a torrent file from a provider that has it, check it against the torrent and pay for it. The job counts
+  // the bytes that came, for the progress.
+  private receiveTorrent(
+    provider: CacheProvider,
+    rank: number,
+    homes: string[],
+    contentId: string,
+    reference: object,
+    infoHash: string,
+    selected: number,
+  ): TorrentJob {
+    const job: TorrentJob = { provider, started: Date.now(), received: 0, done: Promise.resolve() };
+    const run = async (): Promise<TorrentJobResult> => {
+      const started = job.started;
+      const measured = this.measure(provider.id);
+      const transfer = this.transferId();
+      let response: Response;
+      let span: Uint8Array;
+      try {
+        response = await this.ask(provider, contentId, transfer, reference, TORRENT_TIMEOUT_MS);
+        if (!response.ok) {
+          const reason = `${String(response.status)}: ${(await response.text().catch(() => '')).slice(0, 300)}`;
+          const outcome: CacheOutcome =
+            response.status === 404 ? 'miss' : response.status === 402 ? 'refused' : 'failed';
+          return { attempt: { provider, outcome, reason, ms: Date.now() - started } };
+        }
+        span = await readBody(response, job);
+      } catch (error) {
+        measured.failures += 1;
+        measured.failedAt = Date.now();
+        return { attempt: { provider, outcome: 'failed', reason: String(error), ms: Date.now() - started } };
+      }
+      let checked: { value: Uint8Array; name: string; files: TorrentListedFile[] };
+      try {
+        const info = await this.fetch(`${provider.api}/torrent/${infoHash}`, {
+          signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+        });
+        if (!info.ok) {
+          throw new Error(`no info dict: ${String(info.status)}`);
+        }
+        checked = await verifySpan(new Uint8Array(await info.arrayBuffer()), infoHash, selected, span);
+      } catch (error) {
+        measured.failures += 1;
+        measured.failedAt = Date.now();
+        return { attempt: { provider, outcome: 'bad-bytes', reason: String(error), ms: Date.now() - started } };
+      }
+      measured.successes += 1;
+      delete measured.failedAt;
+      this.saveQuality();
+      const attempt: CacheAttempt = { provider, outcome: 'served', ms: Date.now() - started };
+      this.pay(provider, contentId, transfer);
+      const elapsed = Number(response.headers.get('x-cache-elapsed-ms'));
+      const served: CacheServed = {
+        provider,
+        origin: parseOrigin(response.headers.get('x-cache-origin')),
+        rank,
+        home: homes.includes(provider.id),
+      };
+      if (Number.isFinite(elapsed) && response.headers.has('x-cache-elapsed-ms')) {
+        served.providerMs = elapsed;
+      }
+      const trace = response.headers.get('x-cache-trace');
+      if (trace !== null && trace !== '') {
+        served.trace = trace;
+      }
+      return { attempt, value: checked.value, name: checked.name, files: checked.files, served };
+    };
+    job.done = run().then(
+      result => {
+        job.result = result;
+      },
+      (error: unknown) => {
+        job.result = { attempt: { provider, outcome: 'failed', reason: String(error), ms: Date.now() - job.started } };
+      },
+    );
+    return job;
+  }
+
+  // Wait a short time for a receive job. A small file comes in that time. Gives the read when the job is done, a
+  // progress while it runs, or nothing when it failed: the attempt then goes into `attempts`.
+  private async awaitTorrent(
+    job: TorrentJob,
+    attempts: CacheAttempt[],
+    file: number,
+    contentId: string,
+  ): Promise<CacheTorrentRead | undefined> {
+    await Promise.race([job.done, new Promise(resolve => setTimeout(resolve, RECEIVE_WAIT_MS))]);
+    const result = job.result;
+    if (result === undefined) {
+      const progress: CacheTorrentProgress = {
+        provider: job.provider,
+        state: 'receiving',
+        downloaded: job.received,
+        peers: 0,
+        elapsedMs: Date.now() - job.started,
+      };
+      if (job.size !== undefined) {
+        progress.size = job.size;
+      }
+      return { attempts, file, contentId, progress };
+    }
+    this.receiving.delete(contentId);
+    attempts.push(result.attempt);
+    this.saveQuality();
+    if (result.value === undefined) {
+      return undefined;
+    }
+    return {
+      value: result.value,
+      name: result.name,
+      files: result.files,
+      served: result.served,
+      attempts,
+      file,
+      contentId,
+    };
   }
 
   // Ask one provider for content `content` with a read request that the payer signs. The default reference is the

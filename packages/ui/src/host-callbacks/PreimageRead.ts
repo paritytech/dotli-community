@@ -26,7 +26,15 @@ import type {
 } from '@parity/truapi';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { getBackend } from '@dotli/config';
-import { bitswapGet, fetchFromIpfs, hashToCid, type CacheOrigin as NodeOrigin, type CacheRead } from '@dotli/content';
+import {
+  bitswapGet,
+  fetchFromIpfs,
+  hashToCid,
+  parseMagnet,
+  torrentId,
+  type CacheOrigin as NodeOrigin,
+  type CacheRead,
+} from '@dotli/content';
 import { serializeError, toHex } from '@dotli/shared';
 
 import { getCacheNodes, reportCacheRead } from './cache-nodes.js';
@@ -194,11 +202,72 @@ async function read(
   );
 }
 
+// The largest file that the host answers whole. TrUAPI carries a value as one hex string, and a JavaScript string has a
+// size limit, so a larger file goes in parts.
+const WHOLE_LIMIT = 32 * 1024 * 1024;
+// The largest part in one answer.
+const PART_LIMIT = 8 * 1024 * 1024;
+// The checked torrent files that the page keeps for the reads of their parts, by content id. The newest ones stay.
+const KEPT_TORRENTS = 4;
+
+interface KeptTorrent {
+  value: Uint8Array;
+  key: HexString;
+  file: number;
+  name?: string;
+  files: RemotePreimageReadTorrentResponse['files'];
+  report: RemotePreimageReadTorrentResponse['report'];
+}
+
+const keptTorrents = new Map<string, KeptTorrent>();
+
+function keepTorrent(contentId: string, kept: KeptTorrent): void {
+  keptTorrents.delete(contentId);
+  keptTorrents.set(contentId, kept);
+  for (const old of keptTorrents.keys()) {
+    if (keptTorrents.size <= KEPT_TORRENTS) {
+      break;
+    }
+    keptTorrents.delete(old);
+  }
+}
+
+// The answer for a part of a checked file.
+function partOf(
+  kept: KeptTorrent,
+  range: NonNullable<RemotePreimageReadTorrentRequest['range']>,
+  started: number,
+): RemotePreimageReadTorrentResponse {
+  const offset = Number(range.offset);
+  const end = Math.min(kept.value.length, offset + Math.min(range.length, PART_LIMIT));
+  const response: RemotePreimageReadTorrentResponse = {
+    value: hex(kept.value.subarray(offset, Math.max(offset, end))),
+    key: kept.key,
+    size: BigInt(kept.value.length),
+    file: kept.file,
+    report: { ...kept.report, hostMs: Date.now() - started },
+    files: kept.files,
+  };
+  if (kept.name !== undefined) {
+    response.name = kept.name;
+  }
+  return response;
+}
+
 async function readTorrent(request: RemotePreimageReadTorrentRequest): Promise<RemotePreimageReadTorrentResponse> {
   const started = Date.now();
   const route = request.route;
   if (route.tag === 'Bulletin') {
     throw new Error('a torrent is not on Bulletin: use the route Auto, Cache or a cache provider');
+  }
+  // A part of a file that the page checked before comes from memory.
+  const range = request.range;
+  if (range !== undefined) {
+    const magnet = parseMagnet(request.magnet);
+    const kept = keptTorrents.get(torrentId(magnet.infoHash, request.file ?? magnet.file ?? 0));
+    if (kept !== undefined) {
+      return partOf(kept, range, started);
+    }
   }
   const cache = getCacheNodes();
   if (cache === null) {
@@ -217,13 +286,29 @@ async function readTorrent(request: RemotePreimageReadTorrentRequest): Promise<R
   }
   const files = (result.files ?? []).map(file => ({ index: file.index, path: file.path, size: BigInt(file.size) }));
   const response: RemotePreimageReadTorrentResponse = { file: result.file, report, files };
-  if (result.value !== undefined) {
-    // The page keeps the file under its preimage key too, as after a read.
-    rememberPreimage(toHex(blake2b(result.value, { dkLen: 32 })), result.value);
-    response.value = hex(result.value);
-  }
   if (result.name !== undefined) {
     response.name = result.name;
+  }
+  if (result.value !== undefined) {
+    // The page keeps the file under its preimage key too, as after a read.
+    const key = toHex(blake2b(result.value, { dkLen: 32 }));
+    rememberPreimage(key, result.value);
+    if (range === undefined && result.value.length <= WHOLE_LIMIT) {
+      response.value = hex(result.value);
+    } else {
+      // A part, or a large file: the page keeps the file, and the product reads it in parts. The answer for a large
+      // file without a range has no value, but the key and the size.
+      const kept: KeptTorrent = { value: result.value, key, file: result.file, files, report };
+      if (result.name !== undefined) {
+        kept.name = result.name;
+      }
+      keepTorrent(result.contentId, kept);
+      if (range !== undefined) {
+        return partOf(kept, range, started);
+      }
+      response.key = key;
+      response.size = BigInt(result.value.length);
+    }
   }
   const progress = result.progress;
   if (progress !== undefined) {
@@ -251,6 +336,7 @@ const TORRENT_STATES = {
   metadata: 'Metadata',
   downloading: 'Downloading',
   importing: 'Importing',
+  receiving: 'Receiving',
 } as const;
 
 export function createPreimageReadAdapter(): Required<PreimageReadHost> {
