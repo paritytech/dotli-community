@@ -22,11 +22,13 @@ export {
   type CacheQuality,
   type CacheRead,
   type CacheServed,
+  type CacheTorrentRead,
 } from './cache-nodes.js';
 export { decryptContent, isEncrypted } from './decrypt.js';
 export { CONTENT_ERRORS } from './errors.js';
 export { type FetchResult } from './fetch.js';
 export { fetchFromIpfs } from './ipfs.js';
 export { hashToCid } from './preimage.js';
+export { parseInfo, parseMagnet, spanOf, torrentId, verifySpan, type MagnetRef, type TorrentInfo } from './torrent.js';
 export { assertBlockMatchesCid } from './verify.js';
 export { loadFetch } from './lazy.js';

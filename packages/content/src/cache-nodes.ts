@@ -16,6 +16,8 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { getPublicKey, secretFromSeed, sign } from '@scure/sr25519';
 import { log } from '@dotli/shared';
 
+import { parseMagnet, torrentId, verifySpan } from './torrent.js';
+
 /** One provider of the provider set that a browser can call. */
 export interface CacheProvider {
   /** The endpoint id: 64 hex digits, no 0x. */
@@ -57,6 +59,13 @@ export interface CacheRead {
   attempts: CacheAttempt[];
 }
 
+/** The result of one torrent read: a `CacheRead`, and the file, its name and its content id at the cache nodes. */
+export interface CacheTorrentRead extends CacheRead {
+  file: number;
+  name?: string;
+  contentId: string;
+}
+
 /** What the host measured of one provider. */
 export interface CacheQuality {
   latencyMs?: number;
@@ -71,6 +80,8 @@ const FAILURE_COOLDOWN_MS = 30_000;
 const PRIOR_MS = 50;
 const EXPLORE_EVERY = 4;
 const NODE_TIMEOUT_MS = 15_000;
+// A torrent read can wait for the swarm: the metadata, peers and pieces.
+const TORRENT_TIMEOUT_MS = 600_000;
 const PROVIDERS_TTL_MS = 60_000;
 const QUALITY_KEY = 'dotli:cache-quality';
 const READ_PREFIX = 'cache-read/1';
@@ -374,6 +385,87 @@ export class CacheNodes {
     return { attempts };
   }
 
+  /**
+   * Read one file of the torrent of `magnet` through the providers in quality order, or through the provider `only`.
+   * The file is `file`, else `so=` of the link, else file 0. A provider sends the span of the file. The host checks the
+   * info dict of the provider against the infohash and each piece against the info dict, and only then pays. A torrent
+   * read does not change the latency that the host measured, because the time of the swarm is not the provider's.
+   */
+  async readTorrent(magnet: string, file?: number, options: { only?: string } = {}): Promise<CacheTorrentRead> {
+    const ref = parseMagnet(magnet);
+    const selected = file ?? ref.file ?? 0;
+    const contentId = torrentId(ref.infoHash, selected);
+    const all = await this.providers();
+    const homes = homeNodes(
+      contentId,
+      all.map(provider => provider.id),
+    );
+    let ordered = orderProviders(all, homes, this.quality, false, Date.now());
+    if (options.only !== undefined) {
+      ordered = ordered.filter(provider => provider.id === options.only);
+    }
+    const reference = { source: magnet, cid: null, size: null, file: selected };
+    const attempts: CacheAttempt[] = [];
+    for (const [rank, provider] of ordered.entries()) {
+      const started = Date.now();
+      const measured = this.measure(provider.id);
+      const transfer = this.transferId();
+      let response: Response;
+      try {
+        response = await this.ask(provider, contentId, transfer, reference, TORRENT_TIMEOUT_MS);
+      } catch (error) {
+        measured.failures += 1;
+        measured.failedAt = Date.now();
+        attempts.push({ provider, outcome: 'failed', reason: String(error), ms: Date.now() - started });
+        continue;
+      }
+      if (!response.ok) {
+        const reason = `${String(response.status)}: ${(await response.text().catch(() => '')).slice(0, 300)}`;
+        const outcome: CacheOutcome = response.status === 404 ? 'miss' : response.status === 402 ? 'refused' : 'failed';
+        attempts.push({ provider, outcome, reason, ms: Date.now() - started });
+        continue;
+      }
+      const span = new Uint8Array(await response.arrayBuffer());
+      let checked: { value: Uint8Array; name: string };
+      try {
+        const info = await this.fetch(`${provider.api}/torrent/${ref.infoHash}`, {
+          signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+        });
+        if (!info.ok) {
+          throw new Error(`no info dict: ${String(info.status)}`);
+        }
+        checked = await verifySpan(new Uint8Array(await info.arrayBuffer()), ref.infoHash, selected, span);
+      } catch (error) {
+        measured.failures += 1;
+        measured.failedAt = Date.now();
+        attempts.push({ provider, outcome: 'bad-bytes', reason: String(error), ms: Date.now() - started });
+        continue;
+      }
+      measured.successes += 1;
+      delete measured.failedAt;
+      this.saveQuality();
+      attempts.push({ provider, outcome: 'served', ms: Date.now() - started });
+      this.pay(provider, contentId, transfer);
+      const elapsed = Number(response.headers.get('x-cache-elapsed-ms'));
+      const served: CacheServed = {
+        provider,
+        origin: parseOrigin(response.headers.get('x-cache-origin')),
+        rank,
+        home: homes.includes(provider.id),
+      };
+      if (Number.isFinite(elapsed) && response.headers.has('x-cache-elapsed-ms')) {
+        served.providerMs = elapsed;
+      }
+      const trace = response.headers.get('x-cache-trace');
+      if (trace !== null && trace !== '') {
+        served.trace = trace;
+      }
+      return { value: checked.value, name: checked.name, served, attempts, file: selected, contentId };
+    }
+    this.saveQuality();
+    return { attempts, file: selected, contentId };
+  }
+
   private measure(id: string): CacheQuality {
     let measured = this.quality.get(id);
     if (!measured) {
@@ -389,24 +481,29 @@ export class CacheNodes {
     return `dotli-${String(Date.now())}-${String(this.transfers)}-${toHex(crypto.getRandomValues(new Uint8Array(4)))}`;
   }
 
-  private ask(provider: CacheProvider, cid: string, transfer: string): Promise<Response> {
+  // Ask one provider for content `content` with a read request that the payer signs. The default reference is the
+  // Bulletin preimage of the CID `content`.
+  private ask(
+    provider: CacheProvider,
+    content: string,
+    transfer: string,
+    reference: object = { source: `bulletin:${content}`, cid: null, size: null },
+    timeoutMs = NODE_TIMEOUT_MS,
+  ): Promise<Response> {
     const request = {
       transfer,
       payer: this.payer.id,
       provider: provider.id,
-      content: cid,
+      content,
       issued_at: Math.floor(Date.now() / 1000),
     };
     const message = readMessage({ ...request, issuedAt: request.issued_at });
-    const body = {
-      reference: { source: `bulletin:${cid}`, cid: null, size: null },
-      read: { request, signature: toHex(sign(this.payer.secret, message)) },
-    };
+    const body = { reference, read: { request, signature: toHex(sign(this.payer.secret, message)) } };
     return this.fetch(`${provider.api}/acquire`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   }
 

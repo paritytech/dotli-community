@@ -6,6 +6,11 @@
 // routes. `Auto` is the host's normal order: cache nodes when the setting is on, then Bulletin. The other routes are
 // Bulletin only, cache nodes only, and one cache node. With `skipHostCaches` the page's own preimage cache does not
 // answer, so the read measures the network.
+//
+// `Preimage.readTorrent`: one file of a BitTorrent torrent, from a magnet link, through cache nodes only (a torrent is
+// not on Bulletin). A node gets the file from the swarm, its store or a peer, and sends its span; the host checks the
+// pieces against the torrent before it pays. The core sets the preimage key of the file, and the nodes also keep the
+// file under that key, so the product can read it again with `Preimage.read`.
 
 import type { PreimageReadHost } from '@parity/truapi-host';
 import type {
@@ -15,6 +20,8 @@ import type {
   PreimageReadRoute,
   PreimageReadSource,
   RemotePreimageReadResponse,
+  RemotePreimageReadTorrentRequest,
+  RemotePreimageReadTorrentResponse,
 } from '@parity/truapi';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { getBackend } from '@dotli/config';
@@ -186,6 +193,39 @@ async function read(
   );
 }
 
+async function readTorrent(request: RemotePreimageReadTorrentRequest): Promise<RemotePreimageReadTorrentResponse> {
+  const started = Date.now();
+  const route = request.route;
+  if (route.tag === 'Bulletin') {
+    throw new Error('a torrent is not on Bulletin: use the route Auto, Cache or a cache provider');
+  }
+  const cache = getCacheNodes();
+  if (cache === null) {
+    throw new Error('no cache providers: turn on Settings, Experimental, Cache nodes');
+  }
+  const only = route.tag === 'CacheProvider' ? route.value.id.replace(/^0x/, '').toLowerCase() : undefined;
+  if (only !== undefined && !(await cache.providers()).some(provider => provider.id === only)) {
+    throw new Error(`the cache provider 0x${only} is not in the provider set`);
+  }
+  const result = await cache.readTorrent(request.magnet, request.file, only === undefined ? {} : { only });
+  reportCacheRead(result.contentId, result.contentId, result, Date.now() - started);
+  const { attempts, servedBy } = cacheReport(result);
+  const report: RemotePreimageReadTorrentResponse['report'] = { attempts, hostMs: Date.now() - started };
+  if (servedBy !== undefined) {
+    report.servedBy = servedBy;
+  }
+  const response: RemotePreimageReadTorrentResponse = { file: result.file, report };
+  if (result.value !== undefined) {
+    // The page keeps the file under its preimage key too, as after a read.
+    rememberPreimage(toHex(blake2b(result.value, { dkLen: 32 })), result.value);
+    response.value = hex(result.value);
+  }
+  if (result.name !== undefined) {
+    response.name = result.name;
+  }
+  return response;
+}
+
 export function createPreimageReadAdapter(): Required<PreimageReadHost> {
-  return { readPreimage: read };
+  return { readPreimage: read, readTorrent };
 }

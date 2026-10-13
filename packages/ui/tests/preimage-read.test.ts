@@ -4,6 +4,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { createPreimageReadAdapter } from '../src/host-callbacks/PreimageRead.js';
+import { parseInfo, spanOf } from '../../content/src/torrent.js';
+import { threeFileTorrent } from '../../content/tests/torrent-fixture.js';
 
 const mocks = vi.hoisted(() => ({
   fetchFromIpfs: vi.fn(() => Promise.resolve({ data: new Uint8Array() })),
@@ -166,5 +168,55 @@ describe('Preimage.read host adapter', () => {
 
     // Then
     await expect(read).rejects.toThrow('is not in the provider set');
+  });
+
+  it('As a product with a magnet link, I get the file of the torrent through a cache node, checked piece by piece', async () => {
+    // Given a cache node that fetches file 2 of a torrent from the swarm
+    const { info, infoHash, all } = await threeFileTorrent();
+    const span = spanOf(parseInfo(info), 2);
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json([NODE]));
+      }
+      if (url === 'http://cache-node/acquire') {
+        return Promise.resolve(
+          new Response(all.slice(span.start, span.end), { headers: { 'x-cache-origin': 'source' } }),
+        );
+      }
+      if (url === `http://cache-node/torrent/${infoHash}`) {
+        return Promise.resolve(new Response(info));
+      }
+      return Promise.resolve(Response.json('Charged'));
+    });
+    const adapter = createPreimageReadAdapter();
+
+    // When the product reads the magnet link through the cache
+    const answer = await adapter.readTorrent({
+      magnet: `magnet:?xt=urn:btih:${infoHash}`,
+      file: 2,
+      route: { tag: 'Cache' },
+    });
+
+    // Then it gets the file, its name and index, and a report of the node that fetched it from the swarm
+    const file = all.slice(400_008);
+    expect({
+      value: answer.value,
+      name: answer.name,
+      file: answer.file,
+      servedBy: answer.report.servedBy,
+    }).toEqual({
+      value: `0x${Buffer.from(file).toString('hex')}`,
+      name: 'dir/f2.bin',
+      file: 2,
+      servedBy: {
+        tag: 'CacheProvider',
+        value: { id: `0x${NODE.id}`, name: 'A', region: 'eu-west', origin: { tag: 'Source' }, rank: 0, home: true },
+      },
+    });
+    // And a torrent is not on Bulletin
+    await expect(
+      adapter.readTorrent({ magnet: `magnet:?xt=urn:btih:${infoHash}`, route: { tag: 'Bulletin' } }),
+    ).rejects.toThrow('not on Bulletin');
   });
 });

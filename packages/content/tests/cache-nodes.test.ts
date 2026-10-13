@@ -17,6 +17,8 @@ import {
   type CacheProvider,
   type CacheQuality,
 } from '../src/cache-nodes.js';
+import { parseInfo, spanOf } from '../src/torrent.js';
+import { threeFileTorrent } from './torrent-fixture.js';
 
 const toHex = (bytes: Uint8Array): string => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
 const fromHex = (hex: string): Uint8Array => Uint8Array.from(hex.match(/../g) ?? [], pair => parseInt(pair, 16));
@@ -170,6 +172,78 @@ describe('CacheNodes.read', () => {
       },
       receipts: ['http://node-3/receipt'],
       signed: true,
+    });
+  });
+});
+
+describe('torrent reads through cache nodes', () => {
+  it('As a user agent, I read a torrent file from a magnet link, check its pieces, and pay only the node that sent good bytes', async () => {
+    // Given a torrent of three files, a node that sends a span with one changed byte, and a node that sends the right span
+    const { info, infoHash, all } = await threeFileTorrent();
+    const span = spanOf(parseInfo(info), 1);
+    const good = all.slice(span.start, span.end);
+    const bad = good.slice();
+    bad[10] = (bad[10] ?? 0) ^ 1;
+    const [liar, holder] = [provider(1), provider(2)];
+    const requests: { url: string; body: unknown }[] = [];
+    const answer = (url: string): Response => {
+      switch (url) {
+        case 'http://set/providers':
+          return Response.json([liar, holder]);
+        case 'http://node-1/acquire':
+          return new Response(bad, { status: 200 });
+        case 'http://node-2/acquire':
+          return new Response(good, { status: 200, headers: { 'x-cache-origin': 'source' } });
+        case `http://node-1/torrent/${infoHash}`:
+        case `http://node-2/torrent/${infoHash}`:
+          return new Response(info, { status: 200 });
+        default:
+          return Response.json('Charged');
+      }
+    };
+    const fakeFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push({ url, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
+      return Promise.resolve(answer(url));
+    }) as typeof fetch;
+    const quality = new Map<string, CacheQuality>([
+      [liar.id, { latencyMs: 1, successes: 1, failures: 0 }],
+      [holder.id, { latencyMs: 2, successes: 1, failures: 0 }],
+    ]);
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: fakeFetch,
+      storage: { getItem: () => JSON.stringify(Object.fromEntries(quality)), setItem: () => undefined },
+    });
+
+    // When the host reads file 1 of the magnet link
+    const read = await cache.readTorrent(`magnet:?xt=urn:btih:${infoHash}&so=1`);
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Then the second node served the file, the read requests named the torrent id, and only the second node got a receipt
+    const acquire = requests.find(r => r.url === 'http://node-2/acquire')?.body as {
+      reference: { source: string; file: number };
+      read: { request: { content: string } };
+    };
+    expect({
+      value: read.value?.length,
+      same: read.value?.every((byte, i) => byte === all[100_001 + i]),
+      name: read.name,
+      contentId: read.contentId,
+      outcomes: read.attempts.map(a => `${a.provider.api}:${a.outcome}`),
+      content: acquire.read.request.content,
+      file: acquire.reference.file,
+      receipts: requests.filter(r => r.url.endsWith('/receipt')).map(r => r.url),
+    }).toEqual({
+      value: 300_007,
+      same: true,
+      name: 'dir/f1.bin',
+      contentId: `bt:${infoHash}:1`,
+      outcomes: ['http://node-1:bad-bytes', 'http://node-2:served'],
+      content: `bt:${infoHash}:1`,
+      file: 1,
+      receipts: ['http://node-2/receipt'],
     });
   });
 });
