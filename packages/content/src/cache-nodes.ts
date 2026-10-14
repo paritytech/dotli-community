@@ -50,6 +50,42 @@ export interface CacheServed {
   providerMs?: number;
   /** The provider's trace of its steps (`x-cache-trace`), as JSON text. */
   trace?: string;
+  /** The price of the read in the provider's ledger (`x-cache-price`), which the receipt pays. */
+  price?: number;
+}
+
+/**
+ * The account of the payer in the ledger of a provider (`GET /account/<payer>`): what is left of the free allowance
+ * today and the part of it for retention, the paid credits, the daily allowance, and the prices.
+ */
+export interface CacheAccount {
+  payer: string;
+  provider: CacheProvider;
+  allowance: number;
+  allowanceRetention: number;
+  paid: number;
+  allowancePerDay: number;
+  retentionAllowancePerDay: number;
+  readPrice: number;
+  retentionPrice: number;
+}
+
+/** The facts of a served read from the headers of the provider's answer. */
+function servedFrom(response: Response, provider: CacheProvider, rank: number, home: boolean): CacheServed {
+  const served: CacheServed = { provider, origin: parseOrigin(response.headers.get('x-cache-origin')), rank, home };
+  const elapsed = Number(response.headers.get('x-cache-elapsed-ms'));
+  if (Number.isFinite(elapsed) && response.headers.has('x-cache-elapsed-ms')) {
+    served.providerMs = elapsed;
+  }
+  const trace = response.headers.get('x-cache-trace');
+  if (trace !== null && trace !== '') {
+    served.trace = trace;
+  }
+  const price = Number(response.headers.get('x-cache-price'));
+  if (Number.isFinite(price) && response.headers.has('x-cache-price')) {
+    served.price = price;
+  }
+  return served;
 }
 
 /** The result of one read: the value when a provider had it, and every attempt. */
@@ -446,21 +482,7 @@ export class CacheNodes {
       this.saveQuality();
       attempts.push({ provider, outcome: 'served', ms: latency });
       this.pay(provider, cid, transfer);
-      const elapsed = Number(response.headers.get('x-cache-elapsed-ms'));
-      const served: CacheServed = {
-        provider,
-        origin: parseOrigin(response.headers.get('x-cache-origin')),
-        rank,
-        home: homes.includes(provider.id),
-      };
-      if (Number.isFinite(elapsed) && response.headers.has('x-cache-elapsed-ms')) {
-        served.providerMs = elapsed;
-      }
-      const trace = response.headers.get('x-cache-trace');
-      if (trace !== null && trace !== '') {
-        served.trace = trace;
-      }
-      return { value, served, attempts };
+      return { value, served: servedFrom(response, provider, rank, homes.includes(provider.id)), attempts };
     }
     this.saveQuality();
     return { attempts };
@@ -639,20 +661,7 @@ export class CacheNodes {
       this.saveQuality();
       const attempt: CacheAttempt = { provider, outcome: 'served', ms: Date.now() - started };
       this.pay(provider, contentId, transfer);
-      const elapsed = Number(response.headers.get('x-cache-elapsed-ms'));
-      const served: CacheServed = {
-        provider,
-        origin: parseOrigin(response.headers.get('x-cache-origin')),
-        rank,
-        home: homes.includes(provider.id),
-      };
-      if (Number.isFinite(elapsed) && response.headers.has('x-cache-elapsed-ms')) {
-        served.providerMs = elapsed;
-      }
-      const trace = response.headers.get('x-cache-trace');
-      if (trace !== null && trace !== '') {
-        served.trace = trace;
-      }
+      const served = servedFrom(response, provider, rank, homes.includes(provider.id));
       return { attempt, value: checked.value, name: checked.name, files: checked.files, served };
     };
     job.done = run().then(
@@ -703,6 +712,41 @@ export class CacheNodes {
       attempts,
       file,
       contentId,
+    };
+  }
+
+  /**
+   * The account of the payer at the provider `only`, or at the first provider in quality order. The provider gives the
+   * quote of its ledger. A ledger without allowances gives only `balance`, which is then all paid.
+   */
+  async account(options: { only?: string } = {}): Promise<CacheAccount> {
+    const ordered = orderProviders(await this.providers(), [], this.quality, false, Date.now());
+    const provider = options.only === undefined ? ordered[0] : ordered.find(candidate => candidate.id === options.only);
+    if (provider === undefined) {
+      throw new Error(
+        options.only === undefined
+          ? 'no cache providers'
+          : `the cache provider ${options.only} is not in the provider set`,
+      );
+    }
+    const response = await this.fetch(`${provider.api}/account/${this.payer.id}`, {
+      signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new Error(`${String(response.status)}: ${(await response.text().catch(() => '')).slice(0, 200)}`);
+    }
+    const quote = (await response.json()) as Record<string, unknown>;
+    const count = (name: string): number => (typeof quote[name] === 'number' ? quote[name] : 0);
+    return {
+      payer: this.payer.id,
+      provider,
+      allowance: count('allowance'),
+      allowanceRetention: count('allowance_retention'),
+      paid: typeof quote['paid'] === 'number' ? quote['paid'] : count('balance'),
+      allowancePerDay: count('allowance_per_day'),
+      retentionAllowancePerDay: count('retention_allowance_per_day'),
+      readPrice: count('price'),
+      retentionPrice: count('retention_price'),
     };
   }
 

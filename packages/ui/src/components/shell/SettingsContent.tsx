@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo, createSignal, For, Show, untrack } from 'solid-js';
+import { createMemo, createSignal, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
   BACKEND_LABELS,
@@ -11,6 +11,7 @@ import {
   type Network,
 } from '@dotli/config';
 
+import { getCacheNodes } from '../../host-callbacks/cache-nodes.js';
 import { applyAndReset, dotliVersion, isTruapiDebugEnabled, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
 import { Button } from '../primitives/Button.js';
@@ -48,6 +49,29 @@ const CATEGORIES: readonly SegmentOption<Category>[] = [
 ];
 
 const SEED_PATTERN = /^(0x)?[0-9a-fA-F]{64}$/;
+
+/**
+ * The account of the cache payer in the ledger of the first cache node, as one line: the free allowance left today,
+ * the paid credits and the prices. Empty when the cache nodes are off.
+ */
+async function cacheAccountText(): Promise<string> {
+  const nodes = getCacheNodes();
+  if (nodes === null) {
+    return '';
+  }
+  try {
+    const account = await nodes.account();
+    const node = account.provider.name ?? account.provider.api;
+    return (
+      `Payer ${account.payer.slice(0, 8)}… at node ${node}: allowance ${String(account.allowance)} of ` +
+      `${String(account.allowancePerDay)} left today (${String(account.allowanceRetention)} for retention), ` +
+      `${String(account.paid)} paid. A read costs ${String(account.readPrice)}; retention ` +
+      `${String(account.retentionPrice)} for each MiB-hour.`
+    );
+  } catch (error) {
+    return `The ledger of the cache nodes did not answer: ${String(error)}`;
+  }
+}
 
 /** A provider set URL must be http(s); a payer seed is empty (the test payer) or 32 bytes of hex. */
 function cacheNodesValid(settings: CacheNodeSettings): boolean {
@@ -128,6 +152,10 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
   const [cacheNodes, setCacheNodes] = createSignal<CacheNodeSettings>(persisted.cacheNodes);
+  const [cacheAccount, setCacheAccount] = createSignal('');
+  onSettled(() => {
+    void cacheAccountText().then(setCacheAccount);
+  });
   const [category, setCategory] = createSignal<Category>('general');
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
@@ -339,6 +367,11 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             <Show when={!cacheNodesValid(cacheNodes())}>
               <p class={s['error']} role="alert" data-testid="mode-cache-nodes-error">
                 The provider set needs an http(s) URL, and a seed is 64 hex digits.
+              </p>
+            </Show>
+            <Show when={cacheAccount() !== ''}>
+              <p class={s['note']} data-testid="mode-cache-nodes-account">
+                {cacheAccount()}
               </p>
             </Show>
           </Stack>

@@ -12,6 +12,9 @@
 // pieces against the torrent before it pays. The core sets the preimage key of the file, and the nodes also keep the
 // file under that key, so the product can read it again with `Preimage.read`. A node downloads in the background: until it
 // has the file, the answer has no value and the progress of the download, and the product reads again.
+//
+// `Preimage.cacheAccount`: the account of the payer of the cache nodes in the ledger of a node, so a product can show
+// the free allowance, the paid credits and the prices.
 
 import type { PreimageReadHost } from '@parity/truapi-host';
 import type {
@@ -20,6 +23,8 @@ import type {
   PreimageReadOutcome,
   PreimageReadRoute,
   PreimageReadSource,
+  RemotePreimageCacheAccountRequest,
+  RemotePreimageCacheAccountResponse,
   RemotePreimageReadResponse,
   RemotePreimageReadTorrentRequest,
   RemotePreimageReadTorrentResponse,
@@ -107,6 +112,9 @@ function cacheReport(read: CacheRead): { attempts: PreimageReadAttempt[]; served
   }
   if (served.trace !== undefined) {
     value.trace = served.trace;
+  }
+  if (served.price !== undefined) {
+    value.price = BigInt(served.price);
   }
   return { attempts, servedBy: { tag: 'CacheProvider', value } };
 }
@@ -339,6 +347,27 @@ const TORRENT_STATES = {
   receiving: 'Receiving',
 } as const;
 
+/** `Preimage.cacheAccount`: the account of the payer of the cache nodes, from the ledger of a provider. */
+async function cacheAccount(request: RemotePreimageCacheAccountRequest): Promise<RemotePreimageCacheAccountResponse> {
+  const cache = getCacheNodes();
+  if (cache === null) {
+    throw new Error('no cache providers: turn on Settings, Experimental, Cache nodes');
+  }
+  const only = request.provider?.replace(/^0x/, '').toLowerCase();
+  const account = await cache.account(only === undefined ? {} : { only });
+  return {
+    payer: prefixed(account.payer),
+    provider: prefixed(account.provider.id),
+    allowance: BigInt(account.allowance),
+    allowanceRetention: BigInt(account.allowanceRetention),
+    paid: BigInt(account.paid),
+    allowancePerDay: BigInt(account.allowancePerDay),
+    retentionAllowancePerDay: BigInt(account.retentionAllowancePerDay),
+    readPrice: BigInt(account.readPrice),
+    retentionPrice: BigInt(account.retentionPrice),
+  };
+}
+
 export function createPreimageReadAdapter(): Required<PreimageReadHost> {
-  return { readPreimage: read, readTorrent };
+  return { readPreimage: read, readTorrent, cacheAccount };
 }

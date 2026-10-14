@@ -14,6 +14,7 @@ export {
   receiptMessage,
   rendezvousScore,
   testPayerSeed,
+  type CacheAccount,
   type CacheAttempt,
   type CacheNodesOptions,
   type CacheOrigin,

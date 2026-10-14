@@ -112,6 +112,7 @@ describe('CacheNodes.read', () => {
               'x-cache-origin': `peer:${SEVENS}`,
               'x-cache-elapsed-ms': '12',
               'x-cache-trace': '{"steps":[]}',
+              'x-cache-price': '10',
             },
           });
         default:
@@ -157,6 +158,7 @@ describe('CacheNodes.read', () => {
         rank: read.served.rank,
         providerMs: read.served.providerMs,
         trace: read.served.trace,
+        price: read.served.price,
       },
       receipts: requests.filter(r => r.url.endsWith('/receipt')).map(r => r.url),
       signed: verify(message, fromHex(body.signature), fromHex(cache.payer.id)),
@@ -169,9 +171,75 @@ describe('CacheNodes.read', () => {
         rank: 2,
         providerMs: 12,
         trace: '{"steps":[]}',
+        price: 10,
       },
       receipts: ['http://node-3/receipt'],
       signed: true,
+    });
+  });
+});
+
+describe('CacheNodes.account', () => {
+  it('As a user agent, I give the account of the payer from the ledger of the first node, also from a ledger without allowances', async () => {
+    // Given two nodes: the first in quality order has a ledger with allowances, the other an older ledger
+    const [first, older] = [provider(1), provider(2)];
+    const asked: string[] = [];
+    const fakeFetch = ((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      asked.push(url);
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json([older, first]));
+      }
+      return Promise.resolve(
+        url.startsWith('http://node-1/')
+          ? Response.json({
+              balance: 580,
+              price: 10,
+              retention_price: 1,
+              allowance: 480,
+              allowance_retention: 48,
+              paid: 100,
+              allowance_per_day: 500,
+              retention_allowance_per_day: 48,
+              day: 20740,
+            })
+          : Response.json({ balance: 940, price: 10, retention_price: 1 }),
+      );
+    }) as typeof fetch;
+    const quality = new Map<string, CacheQuality>([
+      [first.id, { latencyMs: 1, successes: 1, failures: 0 }],
+      [older.id, { latencyMs: 9, successes: 1, failures: 0 }],
+    ]);
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: fakeFetch,
+      storage: { getItem: () => JSON.stringify(Object.fromEntries(quality)), setItem: () => undefined },
+    });
+
+    // When the host asks for the account, then for the account at the older node
+    const account = await cache.account();
+    const atOlder = await cache.account({ only: older.id });
+
+    // Then the first node answers with both tiers, and an older ledger gives its balance as paid credits
+    expect({
+      asked: asked.filter(url => url.includes('/account/')),
+      first: { ...account, provider: account.provider.api },
+      older: { paid: atOlder.paid, allowance: atOlder.allowance, readPrice: atOlder.readPrice },
+    }).toEqual({
+      asked: [`http://node-1/account/${cache.payer.id}`, `http://node-2/account/${cache.payer.id}`],
+      first: {
+        payer: cache.payer.id,
+        provider: 'http://node-1',
+        allowance: 480,
+        allowanceRetention: 48,
+        paid: 100,
+        allowancePerDay: 500,
+        retentionAllowancePerDay: 48,
+        readPrice: 10,
+        retentionPrice: 1,
+      },
+      older: { paid: 940, allowance: 0, readPrice: 10 },
     });
   });
 });
