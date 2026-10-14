@@ -14,7 +14,7 @@ import { isProtocolEnvelope, type ProtocolEnvelope } from './messages.js';
 /**
  * Where the protocol frame stands. `idle` before anything asked for it. `booting` while it loads. `listening` once it
  * answers shared store requests, which in SharedWorker mode is long before its light client is `ready`. `failed`
- * while it is down, until the frame's own rebuild listens again.
+ * while it is down, until a rebuild boots, either the frame's own after a backoff or one a caller asked for.
  */
 export type ProtocolStatus = 'idle' | 'booting' | 'listening' | 'ready' | 'failed';
 
@@ -100,16 +100,20 @@ export interface ProtocolFrame {
    */
   configure(config: ProtocolFrameConfig): void;
   /**
-   * Resolves once the frame has reached `wanted`, booting one if none was asked for yet, once it is configured.
-   * Rejects at once with why while the frame is down, or when the boot it waits on fails, so no caller is left to its
-   * own timeout.
+   * Resolves once the frame has reached `wanted`, booting one if none was asked for yet, once it is configured. A call
+   * while the frame is down boots one at once instead of waiting out the rebuild backoff, and calls that find a boot
+   * under way join it. Rejects with why when the boot it waits on fails, or when a config change drops the frame, so
+   * no caller is left to its own timeout.
    */
   whenUp(wanted: 'listening' | 'ready'): Promise<void>;
   /** Posts to the frame there is now, or throws when there is none. */
   post(message: unknown): void;
   /** Hears every message the current frame sends, after its origin and sender are checked. */
   onEnvelope(listener: (envelope: ProtocolEnvelope) => void): () => void;
-  /** Hears why each frame was dropped, after the status changed, so a listener that asks again finds it down. */
+  /**
+   * Hears why each frame was dropped, after the status changed, so a listener that asks again finds it down and boots a
+   * new frame at once.
+   */
   onLost(listener: (error: Error) => void): () => void;
   /**
    * How many frames were dropped so far. Counted before the status changes, so work a status listener starts on the
@@ -412,14 +416,20 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
           }
         },
         () => {
-          // Only a config change rejects the endless retries, and it has already dropped the frame.
+          // Only an abort rejects the endless retries. A config change has already dropped the frame, and a caller that
+          // cut the backoff short has already started the keeper that replaces this one.
         },
       );
   }
 
-  /** Boots a frame unless one is already asked for. */
+  /** Boots a frame unless one is already asked for. A caller waiting on a frame that is down cuts its backoff short. */
   function askForFrame(config: ProtocolFrameConfig): void {
-    if (status.get() === 'idle') {
+    const now = status.get();
+    if (now === 'idle') {
+      keep(0, config);
+    } else if (now === 'failed') {
+      // The pool frees an aborted run's slot at once, so the boot below is the only keeper.
+      keeper?.abort(new Error(PROTOCOL_ERRORS.FRAME_RESET));
       keep(0, config);
     }
   }
@@ -432,12 +442,15 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     if (frameConfig === null) {
       return untilConfigured().then(() => whenUp(wanted));
     }
+    // Taken before the boot, since a frame that cannot be built fails in the same turn it is asked for. A loss from
+    // before this call is what the boot answers, so it does not fail the wait.
+    const since = losses;
     askForFrame(frameConfig);
     return untilStatus(next => {
       if (next === 'ready' || (wanted === 'listening' && next === 'listening')) {
         return true;
       }
-      return next === 'failed' || next === 'idle' ? downReason : false;
+      return next === 'idle' || (next === 'failed' && losses > since) ? downReason : false;
     });
   }
 

@@ -60,8 +60,14 @@ function joinPath(base: string, name: string): string {
   return base ? `${base}/${name}` : name;
 }
 
-/** Per walk, so one site cannot saturate the smoldot bitswap queue. */
+/** Per node, so one big file or directory cannot saturate the smoldot bitswap queue. */
 const MAX_PARALLEL_BLOCK_FETCHES = 8;
+
+/** Runs `work` over `items` with at most `MAX_PARALLEL_BLOCK_FETCHES` at once, in their order. */
+function eachBounded<T, R>(items: readonly T[], work: (item: T) => Promise<R>): Promise<R[]> {
+  const pool = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
+  return Promise.all(items.map(item => pool.call(() => work(item))));
+}
 
 /**
  * Walk a UnixFS DAG into a flat map of path to bytes. Missing blocks and unknown codecs throw.
@@ -69,12 +75,9 @@ const MAX_PARALLEL_BLOCK_FETCHES = 8;
  */
 export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
-  // Bounds the fetches alone. A slot held across the recursion would wait on its own children.
-  const fetches = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
-  const fetchBlock = (cid: CID): Promise<Uint8Array> => fetches.call(() => blockSource(cid));
 
   async function getChunkData(cid: CID): Promise<Uint8Array> {
-    const bytes = await fetchBlock(cid);
+    const bytes = await blockSource(cid);
 
     if (cid.code === RAW) {
       return bytes;
@@ -89,7 +92,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
   }
 
   async function processNode(cid: CID, path: string): Promise<void> {
-    const bytes = await fetchBlock(cid);
+    const bytes = await blockSource(cid);
     const isRoot = path === '';
 
     // A CAR at the root is a whole site packed as one block. Deeper CAR-shaped blocks stay content.
@@ -118,7 +121,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
       const entries = node.Links.filter(
         (link): link is typeof link & { Name: string } => link.Name !== undefined && link.Name !== '',
       );
-      await Promise.all(entries.map(link => processNode(link.Hash, joinPath(path, link.Name))));
+      await eachBounded(entries, link => processNode(link.Hash, joinPath(path, link.Name)));
       return;
     }
 
@@ -127,7 +130,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
       if (node.Links.length === 0) {
         content = uf?.data ?? new Uint8Array(0);
       } else {
-        content = concatBytes(...(await Promise.all(node.Links.map(link => getChunkData(link.Hash)))));
+        content = concatBytes(...(await eachBounded(node.Links, link => getChunkData(link.Hash))));
       }
 
       // A CAR at the root, uploaded as a chunked file.

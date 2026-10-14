@@ -6,6 +6,7 @@
 import { isResponse } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { CHAIN_HALTED_ERROR_DATA } from '@dotli/chains';
+import { TIMEOUTS } from '@dotli/config';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import { createAsyncTaskPool, fromHex, log, named, serializeError } from '@dotli/shared';
 
@@ -20,7 +21,6 @@ const ERR_FAIL_BACKOFF = -32812;
 const ABORT_ERROR_NAME = 'AbortError';
 
 const PER_CALL_TIMEOUT_MS = 60_000;
-const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
 
@@ -251,7 +251,7 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
       if (remaining <= 0) {
         throw named(
           new Error(
-            `bitswap_v1_get(${cid}): timed out after ${String(TOTAL_BUDGET_MS)}ms (${String(attempts.made - 1)} attempts made)`,
+            `bitswap_v1_get(${cid}): timed out after ${String(TIMEOUTS.BITSWAP_TOTAL_BUDGET)}ms (${String(attempts.made - 1)} attempts made)`,
           ),
           BITSWAP_ERRORS.TIMEOUT,
         );
@@ -268,7 +268,7 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
   return {
     get(cid, signal) {
       // Taken at the call, so a caller queued behind another fetch of the CID spends its own budget while it waits.
-      const deadline = Date.now() + TOTAL_BUDGET_MS;
+      const deadline = Date.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET;
       const entry = shared.get(cid) ?? { holders: 0, bytes: null };
       shared.set(cid, entry);
       entry.holders += 1;

@@ -18,16 +18,36 @@ const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox12
 
 const decodeVecU8 = Hex().dec;
 
+const INACCESSIBLE_RETRY_WINDOW_MS = 30_000;
+
+// Failures past a read's window, which end its retries.
+const pastWindow = new WeakSet();
+
 /**
  * A light client answers `operationInaccessible` just after syncing, before any peer served the proof. The raw client
- * does not retry it as papi's observable client does. About 30 s of retries lets a read no peer serves fail.
+ * does not retry it as papi's observable client does. A read retries for 30 s from its first attempt, so a read no
+ * peer serves fails however long each attempt takes.
  */
 const inaccessibleReads = createAsyncTaskPool({
   poolSize: Infinity,
-  retryCount: 40,
+  retryCount: Number.POSITIVE_INFINITY,
   retryDelay: 750,
-  retryIf: error => error instanceof OperationInaccessibleError,
+  retryIf: error => error instanceof OperationInaccessibleError && !pastWindow.has(error),
 });
+
+function readWithRetry<T>(read: () => Promise<T>, now: () => number): Promise<T> {
+  const started = now();
+  return inaccessibleReads.call(async () => {
+    try {
+      return await read();
+    } catch (error) {
+      if (error instanceof OperationInaccessibleError && now() - started >= INACCESSIBLE_RETRY_WINDOW_MS) {
+        pastWindow.add(error);
+      }
+      throw error;
+    }
+  });
+}
 
 /** The chainHead follow stopped, so the caller must redial. Distinct from a `null` unset slot. */
 export class ApiStoppedError extends Error {
@@ -57,7 +77,10 @@ export interface Api {
 }
 
 /** Opens its own `chainHead` follow without runtime. The caller owns the client. */
-export function createRawApi(client: SubstrateClient): Api {
+export function createRawApi(
+  client: SubstrateClient,
+  { now = () => performance.now() }: { now?: () => number } = {},
+): Api {
   let bestHashRef: string | null = null;
   let stopped = false;
   const stops = createListenerSet<undefined>({ onListenerError: reportListener('resolve', 'resolver.stop') });
@@ -171,8 +194,9 @@ export function createRawApi(client: SubstrateClient): Api {
     // `AccountInfoOf` uses the Identity hasher.
     const addr = fromHex(contractAddress);
     const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, addr]);
-    const accountInfoHex = await inaccessibleReads.call(() =>
-      withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null)),
+    const accountInfoHex = await readWithRetry(
+      () => withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null)),
+      now,
     );
     if (accountInfoHex === null) {
       return null;
@@ -210,8 +234,9 @@ export function createRawApi(client: SubstrateClient): Api {
       return null;
     }
     const childKey = Blake2256(fromHex(slotKey));
-    const valueHex = await inaccessibleReads.call(() =>
-      withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie))),
+    const valueHex = await readWithRetry(
+      () => withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie))),
+      now,
     );
     return valueHex === null ? null : fromHex(valueHex);
   }

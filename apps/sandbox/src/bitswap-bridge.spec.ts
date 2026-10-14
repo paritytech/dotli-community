@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { TIMEOUTS } from '@dotli/config';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createBitswapBridge, hostOriginRule, type BitswapBridge } from './bitswap-bridge.js';
 
@@ -66,6 +67,10 @@ function requestId(posted: unknown[]): string {
   }
   return request.id;
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('sandbox bitswap bridge', () => {
   it("As a sandbox user, a block result posted by any window but my host is ignored and my fetch waits for the host's answer", async () => {
@@ -170,6 +175,22 @@ describe('sandbox bitswap bridge', () => {
     });
   });
 
+  it("As a sandbox whose host never answers a block, my request fails after the relay's budget and the host is told to stop", async () => {
+    // Given a block request the host never answers
+    vi.useFakeTimers();
+    const sandbox = harness();
+    const pending = sandbox.bridge.requestBlock('bafyT');
+    const settled = expect(pending).rejects.toMatchObject({ name: 'BitswapBridgeTimeoutError' });
+    const id = requestId(sandbox.posted);
+
+    // When the relay's whole budget and the delivery grace pass
+    vi.advanceTimersByTime(TIMEOUTS.BITSWAP_TOTAL_BUDGET + TIMEOUTS.RESPONSE_DELIVERY_GRACE);
+
+    // Then the request failed by name and the host was told to drop that fetch
+    await settled;
+    expect(abortMessages(sandbox.posted)[0]?.ids).toEqual([id]);
+  });
+
   it('As an operator, a teardown with nothing in flight stays silent', async () => {
     // Given no outstanding requests
     const sandbox = harness();
@@ -188,6 +209,7 @@ describe('hostOriginRule', () => {
     ['https://doom.dot.li', true],
     ['https://dot.li', true],
     ['http://doom.localhost:4321', true],
+    ['http://127.0.0.1:4321', true],
     ['https://doom.app.dot.li', false],
     ['http://doom.app.localhost:5174', false],
     ['http://doom.dot.li', false],

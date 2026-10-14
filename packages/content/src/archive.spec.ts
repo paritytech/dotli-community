@@ -211,26 +211,32 @@ function putNode(blocks: Blocks, name: string, unixfs: UnixFS, links: dagPb.PBLi
   return { Name: name, Hash: cid, Tsize: bytes.length };
 }
 
-/** Three directories of eight raw-leaf files each, beside one file split into ten chunks. */
-function nestedSite(): { root: CID; blocks: Blocks } {
-  const blocks: Blocks = new Map();
-  const dirs = ['a', 'b', 'c'].map(dir =>
-    putNode(
-      blocks,
-      dir,
-      new UnixFS({ type: 'directory' }),
-      Array.from({ length: 8 }, (_, i) => putRaw(blocks, `${String(i)}.js`, enc(`${dir}${String(i)}`))),
-    ),
-  );
-  const chunks = Array.from({ length: 10 }, (_, i) => enc(`chunk-${String(i)};`));
-  const big = putNode(
+/** A file split into `count` raw chunks. */
+function putChunkedFile(blocks: Blocks, name: string, count: number): dagPb.PBLink {
+  const chunks = Array.from({ length: count }, (_, i) => enc(`${name}-${String(i)};`));
+  return putNode(
     blocks,
-    'big.bin',
+    name,
     new UnixFS({ type: 'file', blockSizes: chunks.map(chunk => BigInt(chunk.length)) }),
     chunks.map(chunk => putRaw(blocks, '', chunk)),
   );
-  const root = putNode(blocks, '', new UnixFS({ type: 'directory' }), [...dirs, big]);
-  return { root: root.Hash, blocks };
+}
+
+/** A directory chain `depth` deep, each level holding eight files and the next level, so nine entries. */
+function deepSite(depth: number): { root: CID; blocks: Blocks; paths: string[] } {
+  const blocks: Blocks = new Map();
+  const paths: string[] = [];
+  const level = (path: string, left: number): dagPb.PBLink => {
+    const links = Array.from({ length: 8 }, (_, i) => {
+      paths.push(`${path}${String(i)}.js`);
+      return putRaw(blocks, `${String(i)}.js`, enc(`${path}${String(i)}`));
+    });
+    if (left > 1) {
+      links.push(level(`${path}d/`, left - 1));
+    }
+    return putNode(blocks, 'd', new UnixFS({ type: 'directory' }), links);
+  };
+  return { root: level('', depth).Hash, blocks, paths };
 }
 
 interface HeldSource {
@@ -305,18 +311,52 @@ async function drive<T>(walk: Promise<T>, held: HeldSource, discovery: readonly 
 }
 
 describe('walkUnixFsDag', () => {
-  it('As a dotli user, I load a site of nested directories and at most eight block fetches run at once', async () => {
-    // Given: a site whose subdirectories and chunked file each have more blocks than the budget.
-    const { root, blocks } = nestedSite();
+  it('As a visitor loading a site of several chunked files, its chunks download with up to 8 per file at once', async () => {
+    // Given
+    const blocks: Blocks = new Map();
+    const files = ['a.bin', 'b.bin', 'c.bin'].map(name => putChunkedFile(blocks, name, 8));
+    const root = putNode(blocks, '', new UnixFS({ type: 'directory' }), files);
     const held = heldSource(blocks);
 
-    // When the root and its four entries are released, then the 34 leaves in waves of the budget
-    const files = await drive(walkUnixFsDag(root, held.source), held, [1, 4], 8);
+    // When the root and the file nodes are released and every chunk fetch is held
+    const walk = walkUnixFsDag(root.Hash, held.source);
+    for (const size of [1, 3]) {
+      await Promise.race([held.untilHeld(size), walk]);
+      held.releaseAll();
+    }
+    await Promise.race([held.untilHeld(24), walk]);
+
+    // Then
+    expect(held.maxInFlight()).toBe(24);
+    held.releaseAll();
+    expect(Object.keys(await walk)).toHaveLength(3);
+  });
+
+  it('As a visitor loading one big file, at most 8 of its chunks download at once', async () => {
+    // Given
+    const blocks: Blocks = new Map();
+    const big = putChunkedFile(blocks, 'big.bin', 20);
+    const held = heldSource(blocks);
+
+    // When
+    const files = await drive(walkUnixFsDag(big.Hash, held.source), held, [1], 8);
 
     // Then
     expect(held.maxInFlight()).toBe(8);
-    expect(Object.keys(files)).toHaveLength(25);
-    expect(text(files['b/7.js'])).toBe('b7');
-    expect(text(files['big.bin'])).toBe(Array.from({ length: 10 }, (_, i) => `chunk-${String(i)};`).join(''));
+    expect(text(files['index.html'])).toBe(Array.from({ length: 20 }, (_, i) => `big.bin-${String(i)};`).join(''));
+  });
+
+  it('As a visitor loading a deep tree, the walk finishes', async () => {
+    // Given
+    const { root, blocks, paths } = deepSite(4);
+
+    // When
+    const files = await walkUnixFsDag(root, cid => {
+      const bytes = blocks.get(cid.toString());
+      return bytes === undefined ? Promise.reject(new Error('missing block')) : Promise.resolve(bytes);
+    });
+
+    // Then
+    expect(Object.keys(files).sort()).toEqual(paths.sort());
   });
 });

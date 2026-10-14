@@ -53,7 +53,7 @@ describe('createRemoteChains', () => {
     return connects.map(connect => (connect.payload as { connectionId: string }).connectionId);
   }
 
-  it('As a dotli integrator, a connection made while the frame is down halts at once as a dead frame and posts nothing', async () => {
+  it('As a product, I connect while the frame is down, the connection waits for the boot it asked for, and halts as a dead frame if that boot fails', async () => {
     // Given
     fake.lose(new Error('Fatal: boom'));
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
@@ -61,9 +61,15 @@ describe('createRemoteChains', () => {
     // When
     people(() => undefined, onHalt);
     await settle();
+    const statusWhileWaiting = fake.frame.getStatus();
+    const haltsWhileWaiting = onHalt.mock.calls.length;
+    fake.lose(new Error('Init failed: again'));
+    await settle();
 
     // Then
-    expect(onHalt).toHaveBeenCalledWith('frame');
+    expect(statusWhileWaiting).toBe('booting');
+    expect(haltsWhileWaiting).toBe(0);
+    expect(onHalt.mock.calls).toEqual([['frame']]);
     expect(fake.posted).toEqual([]);
   });
 

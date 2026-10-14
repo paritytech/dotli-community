@@ -20,9 +20,10 @@ flowchart LR
 ```
 
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
-  and is the only listener for its messages. It rebuilds itself when lost. Boot is deduped with a task pool. It is
-  configured with the backend, and names it in its URL in the frame's own words, which a host page of an earlier release
-  still sends.
+  and is the only listener for its messages. It rebuilds itself when lost, after a backoff that grows while rebuilds
+  keep failing, and a request while it is down boots one at once. Boot is deduped with a task pool. It is configured
+  with the backend, and names it in its URL in the frame's own words, which a host page of an earlier release still
+  sends.
 - The wire contract holds the envelope guards. Events pass an origin and source check, then a payload check.
 - The rpc layer sends requests and matches answers, with a timeout per method.
 - The client factory builds the frame, the rpc layer and the parts over them (resolution, remote chains, the shared

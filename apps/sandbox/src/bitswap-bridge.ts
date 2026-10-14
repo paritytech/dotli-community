@@ -4,7 +4,8 @@
 // Asks the host parent, which proxies each block request to the protocol iframe's smoldot.
 
 import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from '@dotli/sandbox-wire';
-import { log } from '@dotli/shared';
+import { TIMEOUTS } from '@dotli/config';
+import { log, randomId, withTimeout } from '@dotli/shared';
 
 export interface BitswapBridgeDeps {
   /** The sandbox's own window, where the host's answers and `pagehide` arrive. */
@@ -29,6 +30,9 @@ export function hostOriginRule(baseDomain: string): (origin: string) => boolean 
       return false;
     }
     const { hostname, protocol } = url;
+    if (hostname === '127.0.0.1') {
+      return true;
+    }
     if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
       return hostname !== 'app.localhost' && !hostname.endsWith('.app.localhost');
     }
@@ -54,11 +58,16 @@ function hostError(reply: Extract<BitswapResultMessage, { ok: false }>): Error {
   return err;
 }
 
+/** Names a wait the host never answered, so Sentry groups it apart from the host's own failures. */
+class BitswapBridgeTimeoutError extends Error {
+  override name = 'BitswapBridgeTimeoutError';
+}
+
 export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
   const { parent, isHostOrigin } = deps;
   let nextId = 1;
   // The host reads this document's abort after the document is gone, so the abort names its frame instead.
-  const frame = crypto.randomUUID();
+  const frame = randomId();
   const pending = new Map<string, { resolve: (bytes: Uint8Array) => void; reject: (err: Error) => void }>();
 
   // Nothing else tells the host this frame went, and a fetch with no providers retries for tens of seconds.
@@ -99,7 +108,7 @@ export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
   return {
     requestBlock: cid => {
       const id = `bitswap-${String(nextId++)}-${String(Date.now())}`;
-      return new Promise<Uint8Array>((resolve, reject) => {
+      const reply = new Promise<Uint8Array>((resolve, reject) => {
         pending.set(id, { resolve, reject });
         try {
           postToHost(parent, { type: 'dotli:bitswap-get', id, cid, frame });
@@ -108,6 +117,12 @@ export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
           log.error('[dot.li sandbox] bitswap bridge postMessage failed:', err);
           reject(err instanceof Error ? err : new Error(String(err)));
         }
+      });
+      // The host's relay gives up at its own budget, so a reply that never comes is dropped, not awaited forever.
+      return withTimeout(reply, TIMEOUTS.BITSWAP_TOTAL_BUDGET + TIMEOUTS.RESPONSE_DELIVERY_GRACE, () => {
+        pending.delete(id);
+        postToHost(parent, { type: 'dotli:bitswap-abort', ids: [id], frame });
+        return new BitswapBridgeTimeoutError(`bitswap-bridge: no reply for ${cid} from the host`);
       });
     },
   };

@@ -381,6 +381,19 @@ describe('createDotnsResolver', () => {
     expect(assetHub).toHaveBeenCalledTimes(2);
   });
 
+  it('As a second product resolving after Asset Hub synced, I hear asset-hub-ready before my name resolves', async () => {
+    // Given
+    const { dotns } = resolver();
+    await dotns.resolveDotName('alice');
+    const phases: string[] = [];
+
+    // When
+    await dotns.resolveDotName('alice', { onPhase: phase => phases.push(phase) });
+
+    // Then
+    expect(phases).toEqual(['asset-hub-ready', 'resolving-content']);
+  });
+
   it("As the host waiting on a name, I hear the client's phases while it is built, then the content read", async () => {
     // Given
     const { dotns } = resolver();
@@ -396,6 +409,7 @@ describe('createDotnsResolver', () => {
       'asset-hub-syncing',
       'asset-hub-ready',
       'resolving-content',
+      'asset-hub-ready',
       'resolving-content',
     ]);
   });

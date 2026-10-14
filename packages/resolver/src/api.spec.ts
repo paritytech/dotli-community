@@ -218,6 +218,30 @@ describe('createRawApi', () => {
       await settled;
     });
 
+    it('As the resolver, I read a slot no peer serves, and the read fails after about 30 s even when each attempt is slow', async () => {
+      // Given
+      const { client, follow } = fakeClient();
+      let clock = 0;
+      const api = createRawApi(client, {
+        now: () => {
+          const reading = clock;
+          clock += 10_000;
+          return reading;
+        },
+      });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      follow.storage.mockImplementation(() => Promise.reject(new OperationInaccessibleError()));
+
+      // When
+      const read = api.resolveTrieId('0x0000000000000000000000000000000000000001', '0x0a');
+      const settled = expect(read).rejects.toBeInstanceOf(OperationInaccessibleError);
+      await vi.runAllTimersAsync();
+
+      // Then
+      await settled;
+      expect(follow.storage.mock.calls.length).toBeLessThanOrEqual(4);
+    });
+
     it('As a dotli user on a light client, a read waiting to retry stops when the chain follow stops', async () => {
       // Given
       const { client, follow } = fakeClient();

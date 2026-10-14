@@ -217,12 +217,15 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     if (onPhase === undefined) {
       return () => undefined;
     }
-    return status.subscribe(next => {
+    const tell = (next: DotnsResolverStatus): void => {
       const phase = PHASES[next];
       if (phase !== undefined) {
         onPhase(phase);
       }
-    });
+    };
+    // A caller that arrives after a phase was reached hears it too.
+    tell(status.get());
+    return status.subscribe(tell);
   }
 
   /** The caller's budget, never past the cap, so a wait queued behind failing builds still ends at the cap. */

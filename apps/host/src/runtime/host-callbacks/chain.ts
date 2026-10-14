@@ -14,12 +14,7 @@ import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getActiveServicesConfig, getBackend, type Backend } from '@dotli/config';
-import {
-  protocolClient,
-  isRemoteChainConnectable,
-  type ProtocolStatus,
-  type RemoteChainProvider,
-} from '@dotli/protocol';
+import { protocolClient, isRemoteChainConnectable, type RemoteChainProvider } from '@dotli/protocol';
 import {
   chainHaltedError,
   createChainPool,
@@ -79,13 +74,6 @@ export function createHostChainPool({
         : createFrameChainTransport(genesisHash, hooks, remoteChain),
   });
 }
-
-/** The protocol frame's status, read when a lease that died with the frame would be taken again. */
-export interface FrameStatusSource {
-  getProtocolStatus(): ProtocolStatus;
-}
-
-const protocolFrame: FrameStatusSource = { getProtocolStatus: () => protocolClient().getProtocolStatus() };
 
 const hostChainPool = createHostChainPool();
 
@@ -155,7 +143,7 @@ function chainGate(pool: ChainPool, genesisHash: string): RedialGate {
 }
 
 /** Takes one lease at once and another on the first send after a halt. */
-function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSource): PlatformJsonRpcConnection {
+function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConnection {
   const first = pool.getLocalProvider(genesisHash, 'truapi-core');
   if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
@@ -198,11 +186,10 @@ function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSo
     }
   };
   const reopen = (): JsonRpcConnection | null => {
-    // A frame that is down rebuilds itself, and a lease taken while it boots waits for it.
+    // A lease taken while the frame is down boots it at once and waits for that boot, and the frame boots at most once
+    // per loss, so a frame halt always dials.
     const mayDial =
-      haltedBy === 'frame'
-        ? frame.getProtocolStatus() !== 'failed'
-        : pool.status(genesisHash) !== 'disconnected' || chainGate(pool, genesisHash).tryDial();
+      haltedBy === 'frame' || pool.status(genesisHash) !== 'disconnected' || chainGate(pool, genesisHash).tryDial();
     if (!mayDial) {
       // Answered at once, as the product's own retry is.
       return null;
@@ -280,7 +267,6 @@ function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSo
 
 export function createChainConnect(
   pool: ChainPool = hostChainPool,
-  frame: FrameStatusSource = protocolFrame,
   sources: Partial<Pick<HostChainSources, 'backend' | 'isRemoteChainConnectable' | 'isRpcChainSupported'>> = {},
 ): ChainProvider['connect'] {
   const {
@@ -298,6 +284,6 @@ export function createChainConnect(
       log.warn(`[dot.li truapi-chain] ${backend} backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported ${backend} chain: ${genesisHash}`);
     }
-    return Promise.resolve(toConnection(genesisHash, pool, frame));
+    return Promise.resolve(toConnection(genesisHash, pool));
   };
 }

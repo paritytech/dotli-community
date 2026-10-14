@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A protocol frame without an iframe, for the layers above it. The test says when it is up, what it sends and when it
-// is lost. A `whenUp` on an idle frame asks for one, so it starts booting. A `whenUp` waits for the status the test
-// sets, and fails when the frame is then lost or goes idle.
+// is lost. A `whenUp` on an idle or failed frame asks for one, so it starts booting. A `whenUp` waits for the status
+// the test sets, and fails when the frame is then lost or goes idle.
 
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from './messages.js';
@@ -21,8 +21,8 @@ export interface FakeFrame {
 }
 
 /**
- * Up and ready unless the test moves it. A `whenUp` on an idle frame starts it booting, as the frame does. A `whenUp`
- * waits for the status the test sets, and fails when the frame is then lost or goes idle.
+ * Up and ready unless the test moves it. A `whenUp` on an idle or failed frame starts it booting, as the frame does. A
+ * `whenUp` waits for the status the test sets, and fails when the frame is then lost or goes idle.
  */
 export function createFakeFrame(): FakeFrame {
   let status: ProtocolStatus = 'ready';
@@ -52,7 +52,7 @@ export function createFakeFrame(): FakeFrame {
       subscribeStatus: subscribe(statusListeners),
       configure: () => undefined,
       whenUp(wanted) {
-        if (status === 'idle') {
+        if (status === 'idle' || status === 'failed') {
           setStatus('booting');
         }
         return new Promise<void>((resolve, reject) => {

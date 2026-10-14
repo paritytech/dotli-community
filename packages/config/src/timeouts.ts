@@ -14,4 +14,6 @@ export const TIMEOUTS = {
    * Held back from a caller's deadline so the typed resolver error crosses postMessage before the caller's timer fires.
    */
   RESPONSE_DELIVERY_GRACE: 1_000,
+  /** Whole budget of one block fetch in the bitswap client. A waiter on the relay reserves the grace on top. */
+  BITSWAP_TOTAL_BUDGET: 180_000,
 } as const;
