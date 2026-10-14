@@ -33,6 +33,14 @@ export {
   type CacheTorrentRead,
   type CacheTorrentState,
 } from './cache-nodes.js';
+export {
+  decodeRegistryList,
+  REGISTRY_PROTOCOL,
+  registryCallResult,
+  registryListCall,
+  registryProviders,
+  type RegistryRecord,
+} from './cache-registry.js';
 export { decryptContent, isEncrypted } from './decrypt.js';
 export { CONTENT_ERRORS } from './errors.js';
 export { type FetchResult } from './fetch.js';

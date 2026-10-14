@@ -188,6 +188,7 @@ describe('getCacheNodeSettings', () => {
 
   it('As a user of a demo deployment, I read through its cache nodes until I change the setting', () => {
     // Given a build that names a provider set
+    vi.stubEnv('VITE_CACHE_REGISTRY', '');
     vi.stubEnv('VITE_CACHE_PROVIDERS_URL', 'https://cache.example/providers');
 
     // When the user has no setting yet, and then turns the setting off
@@ -197,16 +198,35 @@ describe('getCacheNodeSettings', () => {
 
     // Then the build's provider set is on by default, and the stored choice wins over it
     expect({ first, changed }).toEqual({
-      first: { enabled: true, providersUrl: 'https://cache.example/providers', payerSeed: '' },
-      changed: { enabled: false, providersUrl: 'https://cache.example/providers', payerSeed: '' },
+      first: { enabled: true, registry: '', providersUrl: 'https://cache.example/providers', payerSeed: '' },
+      changed: { enabled: false, registry: '', providersUrl: 'https://cache.example/providers', payerSeed: '' },
+    });
+  });
+
+  it('As a user who saved the cache-node setting before the registry, I read through the registry of the build', () => {
+    // Given a build that names a provider registry, and a setting saved by a build without the registry field
+    vi.stubEnv('VITE_CACHE_REGISTRY', '0x5FbDB2315678afecb367f032d93F642f64180aa3');
+    vi.stubEnv('VITE_CACHE_PROVIDERS_URL', '');
+    storage.setItem(
+      CACHE_NODES_KEY,
+      JSON.stringify({ enabled: true, providersUrl: 'https://old/providers', payerSeed: '' }),
+    );
+
+    // When / Then: the stored fields stay, and the registry of the build fills the missing field
+    expect(getCacheNodeSettings()).toEqual({
+      enabled: true,
+      registry: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+      providersUrl: 'https://old/providers',
+      payerSeed: '',
     });
   });
 
   it('As a user of a build without a provider set, cache nodes stay off', () => {
-    // Given a build without VITE_CACHE_PROVIDERS_URL
+    // Given a build without VITE_CACHE_REGISTRY or VITE_CACHE_PROVIDERS_URL
+    vi.stubEnv('VITE_CACHE_REGISTRY', '');
     vi.stubEnv('VITE_CACHE_PROVIDERS_URL', '');
 
     // When / Then
-    expect(getCacheNodeSettings()).toEqual({ enabled: false, providersUrl: '', payerSeed: '' });
+    expect(getCacheNodeSettings()).toEqual({ enabled: false, registry: '', providersUrl: '', payerSeed: '' });
   });
 });

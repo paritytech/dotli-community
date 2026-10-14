@@ -12,7 +12,12 @@ const mocks = vi.hoisted(() => ({
   fetchFromIpfs: vi.fn(() => Promise.resolve({ data: new Uint8Array() })),
   bitswapGet: vi.fn(() => Promise.resolve(new Uint8Array())),
   getBackend: vi.fn(() => 'rpc-gateway'),
-  getCacheNodeSettings: vi.fn(() => ({ enabled: true, providersUrl: 'http://set/providers', payerSeed: '' })),
+  getCacheNodeSettings: vi.fn(() => ({
+    enabled: true,
+    registry: '',
+    providersUrl: 'http://set/providers',
+    payerSeed: '',
+  })),
 }));
 
 vi.mock('../src/preimage-modal.js', () => ({ showPreimageRetainModal: mocks.showPreimageRetainModal }));

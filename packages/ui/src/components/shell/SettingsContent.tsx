@@ -12,6 +12,7 @@ import {
 } from '@dotli/config';
 
 import { getCacheNodes } from '../../host-callbacks/cache-nodes.js';
+import { registryState } from '../../host-callbacks/cache-registry.js';
 import { applyAndReset, dotliVersion, isTruapiDebugEnabled, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
 import { Button } from '../primitives/Button.js';
@@ -73,10 +74,28 @@ async function cacheAccountText(): Promise<string> {
   }
 }
 
-/** A provider set URL must be http(s); a payer seed is empty (the test payer) or 32 bytes of hex. */
+/**
+ * A registry is an address (0x and 40 hex digits); without one, the provider set URL must be http(s). A payer seed is
+ * empty (the test payer) or 32 bytes of hex.
+ */
 function cacheNodesValid(settings: CacheNodeSettings): boolean {
   const seedValid = settings.payerSeed === '' || SEED_PATTERN.test(settings.payerSeed);
-  return !settings.enabled || (/^https?:\/\/\S+$/.test(settings.providersUrl) && seedValid);
+  const sourceValid =
+    settings.registry === ''
+      ? /^https?:\/\/\S+$/.test(settings.providersUrl)
+      : /^0x[0-9a-fA-F]{40}$/.test(settings.registry);
+  return !settings.enabled || (sourceValid && seedValid);
+}
+
+/** The state of the last registry read, as one line. Empty before the first read. */
+function registryText(contract: string): string {
+  const state = registryState();
+  if (state?.contract !== contract) {
+    return '';
+  }
+  const block = state.block === undefined ? '' : ` at block ${String(state.block)}`;
+  const providers = `${String(state.providers.length)} providers${block}`;
+  return state.error === undefined ? providers : `${providers}. The last read failed: ${state.error}`;
 }
 
 type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
@@ -169,6 +188,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         network() !== persisted.network ||
         CACHES.some(([key]) => draft[key] !== persisted.cache[key]) ||
         nodes.enabled !== persisted.cacheNodes.enabled ||
+        nodes.registry !== persisted.cacheNodes.registry ||
         nodes.providersUrl !== persisted.cacheNodes.providersUrl ||
         nodes.payerSeed !== persisted.cacheNodes.payerSeed)
     );
@@ -334,6 +354,26 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               </Row>
             </Well>
             <label class={s['field']}>
+              <span>Provider registry on Asset Hub (it replaces the URL below)</span>
+              <input
+                type="text"
+                class={s['input']}
+                data-testid="mode-cache-nodes-registry"
+                placeholder="0x… contract address"
+                value={cacheNodes().registry}
+                spellcheck={false}
+                onInput={event => {
+                  const registry = event.currentTarget.value.trim();
+                  setCacheNodes(c => ({ ...c, registry }));
+                }}
+              />
+            </label>
+            <Show when={registryText(cacheNodes().registry) !== ''}>
+              <p class={s['note']} data-testid="mode-cache-nodes-registry-state">
+                {registryText(cacheNodes().registry)}
+              </p>
+            </Show>
+            <label class={s['field']}>
               <span>Provider set URL</span>
               <input
                 type="url"
@@ -366,7 +406,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             </label>
             <Show when={!cacheNodesValid(cacheNodes())}>
               <p class={s['error']} role="alert" data-testid="mode-cache-nodes-error">
-                The provider set needs an http(s) URL, and a seed is 64 hex digits.
+                The registry is a contract address (0x and 40 hex digits), or the provider set needs an http(s) URL. A
+                seed is 64 hex digits.
               </p>
             </Show>
             <Show when={cacheAccount() !== ''}>

@@ -57,7 +57,7 @@ const DEFAULT_CACHE = {
   skipWorkerCache: false,
 };
 
-const DEFAULT_CACHE_NODES: CacheNodeSettings = { enabled: false, providersUrl: '', payerSeed: '' };
+const DEFAULT_CACHE_NODES: CacheNodeSettings = { enabled: false, registry: '', providersUrl: '', payerSeed: '' };
 
 let cleanups: (() => void)[] = [];
 
@@ -333,11 +333,12 @@ function expectAdvanced(sections: Element[], at: number, settings: Settings): nu
 
 function expectExperimental(sections: Element[], at: number): number {
   const nodes = nth(sections, at);
-  expect(tags(nodes)).toEqual(['DIV', 'DIV', 'LABEL', 'LABEL']);
+  expect(tags(nodes)).toEqual(['DIV', 'DIV', 'LABEL', 'LABEL', 'LABEL']);
   expectHeader(nodes.children[0], 'Cache nodes');
   const well = nth(nodes.children, 1);
   expect(well.getAttribute('data-testid')).toBe('mode-cache-nodes');
   expectCacheRow(well.children[0], 'Read preimages through cache nodes', DEFAULT_CACHE_NODES.enabled);
+  expect(byTestId('mode-cache-nodes-registry')).toBeInstanceOf(HTMLInputElement);
   expect(byTestId('mode-cache-nodes-url')).toBeInstanceOf(HTMLInputElement);
   expect(byTestId('mode-cache-nodes-seed')).toBeInstanceOf(HTMLInputElement);
   return at + 1;
@@ -774,7 +775,7 @@ describe('The settings popover island', () => {
     // Then Save and apply stays off, and the panel says why
     expect([applyButton().disabled, byTestId('mode-cache-nodes-error').textContent]).toEqual([
       true,
-      'The provider set needs an http(s) URL, and a seed is 64 hex digits.',
+      'The registry is a contract address (0x and 40 hex digits), or the provider set needs an http(s) URL. A seed is 64 hex digits.',
     ]);
 
     // When the URL is a provider set
@@ -789,7 +790,51 @@ describe('The settings popover island', () => {
         chain: 'smoldot-direct',
         network: 'paseo-next-v2',
         cache: DEFAULT_CACHE,
-        cacheNodes: { enabled: true, providersUrl: 'http://localhost:18081/providers', payerSeed: '' },
+        cacheNodes: { enabled: true, registry: '', providersUrl: 'http://localhost:18081/providers', payerSeed: '' },
+      },
+      { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, cacheNodes: DEFAULT_CACHE_NODES },
+    );
+  });
+
+  it('As a dotli user, I turn cache nodes on with the provider registry on Asset Hub, and Save and apply applies it', async () => {
+    // Given
+    await renderPopover();
+    await openPopover();
+    await showCategory('experimental');
+    const type = (testId: string, value: string): void => {
+      const input = byTestId(testId) as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    // When the registry is not a contract address
+    toggle('Read preimages through cache nodes').click();
+    type('mode-cache-nodes-registry', '0x1234');
+    await settle();
+
+    // Then Save and apply stays off, although no URL is needed with a registry
+    expect([applyButton().disabled, byTestId('mode-cache-nodes-error').textContent.startsWith('The registry')]).toEqual(
+      [true, true],
+    );
+
+    // When the registry is an address
+    type('mode-cache-nodes-registry', '0x5FbDB2315678afecb367f032d93F642f64180aa3');
+    await settle();
+    applyButton().click();
+    await settle();
+
+    // Then the draft carries the registry, and no provider set URL
+    expect(actions.applyAndReset).toHaveBeenCalledWith(
+      {
+        chain: 'smoldot-direct',
+        network: 'paseo-next-v2',
+        cache: DEFAULT_CACHE,
+        cacheNodes: {
+          enabled: true,
+          registry: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+          providersUrl: '',
+          payerSeed: '',
+        },
       },
       { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE, cacheNodes: DEFAULT_CACHE_NODES },
     );

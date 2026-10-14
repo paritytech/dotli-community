@@ -12,6 +12,7 @@ export {
   type ChainSyncKind,
 } from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
+export { finalizedRuntimeCall, type RuntimeCallResult } from './runtime-call.js';
 // From the schema module, not `./manifest.js`, which would drag the chain-storage code onto the eager path.
 export {
   toExecutableManifestResult,

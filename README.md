@@ -155,8 +155,15 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 
 **Settings → Experimental → Cache nodes** makes preimage reads ask cache nodes before Bulletin. Cache nodes are a
 prototype (`paritytech/cache`): Metanode servers that keep verified copies of Bulletin preimages near their users. The
-setting takes a provider set URL, such as a cache node's `GET /providers`, and an optional payer seed for development.
-Empty means the public test payer `dotli`.
+setting takes the address of the provider registry contract on Asset Hub, or a provider set URL such as a cache node's
+`GET /providers`, and an optional payer seed for development. Empty means the public test payer `dotli`.
+
+- **Registry.** Operators register their cache nodes in a contract on Asset Hub (`contracts/` in the cache repository).
+  The host page reads `list()` with a dry run of `ReviveApi_call` at the newest finalized block, through its own Asset
+  Hub connection (`finalizedRuntimeCall` of `@dotli/resolver`, over `hostAssetHubProvider`), and uses the active records
+  with protocol 1 and an `https://` API URL, as the cache nodes do. The last set stays in localStorage
+  (`dotli:cache-registry`): a page that has it answers at once and reads the chain again in the background. The settings
+  show the block and the last error. With a registry, the provider set URL is not used.
 
 - **Order.** For each read, the host orders the nodes as the CLI host does (`packages/content/src/cache-nodes.ts`).
   Nodes that failed in the last 30 s go last. The others go by measured latency, with the content's three home nodes at
@@ -169,8 +176,9 @@ Empty means the public test payer `dotli`.
   or one cache node. `packages/ui/src/host-callbacks/PreimageRead.ts` serves it. It needs the `@parity/truapi-host` of
   host-rust-core `lc/cache-prototype` (`npm run link:truapi`).
 - **Locally.** `scripts/demo-local.sh` in the cache repository runs three cache nodes for `http://localhost:5173`.
-- **A demo deployment.** A build with `VITE_CACHE_PROVIDERS_URL=<provider set URL>` turns the setting on with that
-  provider set for every user who has not changed it. paseo.page uses it.
+- **A demo deployment.** A build with `VITE_CACHE_REGISTRY=<contract address>` or
+  `VITE_CACHE_PROVIDERS_URL=<provider set URL>` turns the setting on with that source for every user who has not changed
+  it. The registry wins over the URL. paseo.page uses the URL until the registry is on Paseo.
 
 ### Product chat
 

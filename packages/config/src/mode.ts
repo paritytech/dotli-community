@@ -28,6 +28,11 @@ export interface CacheSettings {
  */
 export interface CacheNodeSettings {
   enabled: boolean;
+  /**
+   * The provider registry contract on Asset Hub (0x and 40 hex digits), where operators register cache nodes. When it is
+   * set, it gives the provider set, and `providersUrl` is not used.
+   */
+  registry: string;
   /** The provider set: a cache node's `GET /providers`, or a JSON file of the same shape. */
   providersUrl: string;
   /** The payer's 32-byte sr25519 seed as hex. Empty: the public test payer `dotli`. For development only. */
@@ -193,12 +198,14 @@ export function setCacheSettings(settings: CacheSettings): void {
 }
 
 /**
- * Off, unless the build names a provider set in `VITE_CACHE_PROVIDERS_URL`. A demo deployment does that, so its users
- * read through its cache nodes without a visit to the settings. A stored setting always wins.
+ * Off, unless the build names a provider registry in `VITE_CACHE_REGISTRY` or a provider set in
+ * `VITE_CACHE_PROVIDERS_URL`. A demo deployment does that, so its users read through its cache nodes without a visit to
+ * the settings. A stored setting always wins, field by field.
  */
 function defaultCacheNodes(): CacheNodeSettings {
+  const registry = import.meta.env.VITE_CACHE_REGISTRY ?? '';
   const providersUrl = import.meta.env.VITE_CACHE_PROVIDERS_URL ?? '';
-  return { enabled: providersUrl !== '', providersUrl, payerSeed: '' };
+  return { enabled: registry !== '' || providersUrl !== '', registry, providersUrl, payerSeed: '' };
 }
 
 /** A field that is not there or that has the wrong type gets the default value. */
@@ -210,6 +217,7 @@ export function getCacheNodeSettings(): CacheNodeSettings {
       const parsed = JSON.parse(stored) as Partial<CacheNodeSettings>;
       return {
         enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : DEFAULT_CACHE_NODES.enabled,
+        registry: typeof parsed.registry === 'string' ? parsed.registry : DEFAULT_CACHE_NODES.registry,
         providersUrl: typeof parsed.providersUrl === 'string' ? parsed.providersUrl : DEFAULT_CACHE_NODES.providersUrl,
         payerSeed: typeof parsed.payerSeed === 'string' ? parsed.payerSeed : DEFAULT_CACHE_NODES.payerSeed,
       };

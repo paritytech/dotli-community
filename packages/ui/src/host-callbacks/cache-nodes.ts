@@ -6,24 +6,40 @@
 
 import { getCacheNodeSettings } from '@dotli/config';
 import { CacheNodes, testPayerSeed, type CacheRead } from '@dotli/content';
+
+import { registryLoader } from './cache-registry.js';
+
+// The Asset Hub connection of the host page. A dynamic import keeps the chain pool out of the modules that only read.
+async function assetHub(): Promise<JsonRpcProvider> {
+  return (await import('./Chain.js')).hostAssetHubProvider();
+}
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { fromHex, log } from '@dotli/shared';
+import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 
 const SEED_PATTERN = /^(0x)?[0-9a-fA-F]{64}$/;
 
 let current: { settings: string; nodes: CacheNodes } | null = null;
 
-/** The cache nodes of the setting, or null when the setting is off or has no provider set URL. */
+/**
+ * The cache nodes of the setting, or null when the setting is off or has no source of providers. The provider registry
+ * on Asset Hub is the source when the setting names one, else the provider set URL.
+ */
 export function getCacheNodes(): CacheNodes | null {
   const settings = getCacheNodeSettings();
-  if (!settings.enabled || settings.providersUrl === '') {
+  if (!settings.enabled || (settings.registry === '' && settings.providersUrl === '')) {
     return null;
   }
   const key = JSON.stringify(settings);
   if (current?.settings !== key) {
-    const seed = SEED_PATTERN.test(settings.payerSeed) ? fromHex(settings.payerSeed) : testPayerSeed('dotli');
-    current = { settings: key, nodes: new CacheNodes({ providersUrl: settings.providersUrl, payerSeed: seed }) };
-    log.debug(`[cache] reading through cache nodes of ${settings.providersUrl}, payer ${current.nodes.payer.id}`);
+    const payerSeed = SEED_PATTERN.test(settings.payerSeed) ? fromHex(settings.payerSeed) : testPayerSeed('dotli');
+    const source =
+      settings.registry !== ''
+        ? { loadProviders: registryLoader(settings.registry, assetHub) }
+        : { providersUrl: settings.providersUrl };
+    current = { settings: key, nodes: new CacheNodes({ ...source, payerSeed }) };
+    const from = settings.registry !== '' ? `the registry ${settings.registry}` : settings.providersUrl;
+    log.debug(`[cache] reading through cache nodes of ${from}, payer ${current.nodes.payer.id}`);
   }
   return current.nodes;
 }

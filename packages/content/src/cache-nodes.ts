@@ -437,8 +437,13 @@ export function parseProviders(json: unknown): CacheProvider[] {
 }
 
 export interface CacheNodesOptions {
-  /** Where the provider set is: a node's `GET /providers`, or a static JSON file of the same shape. */
-  providersUrl: string;
+  /**
+   * Where the provider set is: a node's `GET /providers`, or a static JSON file of the same shape. `loadProviders`
+   * replaces it, for example with a read of the provider registry on Asset Hub.
+   */
+  providersUrl?: string;
+  /** Read the provider set. A rejection keeps the last set. */
+  loadProviders?: () => Promise<CacheProvider[]>;
   payerSeed: Uint8Array;
   /** For tests. */
   fetch?: typeof fetch;
@@ -473,9 +478,14 @@ export class CacheNodes {
       return this.known.providers;
     }
     try {
-      const response = await this.fetch(this.options.providersUrl, { signal: AbortSignal.timeout(NODE_TIMEOUT_MS) });
-      if (response.ok) {
-        this.known = { providers: parseProviders(await response.json()), at: now };
+      const { loadProviders, providersUrl } = this.options;
+      if (loadProviders !== undefined) {
+        this.known = { providers: await loadProviders(), at: now };
+      } else if (providersUrl !== undefined) {
+        const response = await this.fetch(providersUrl, { signal: AbortSignal.timeout(NODE_TIMEOUT_MS) });
+        if (response.ok) {
+          this.known = { providers: parseProviders(await response.json()), at: now };
+        }
       }
     } catch (err) {
       // Keep the last provider set. A read without providers goes to Bulletin.
