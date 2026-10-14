@@ -8,12 +8,14 @@ import { parseInfo, spanOf } from '../../content/src/torrent.js';
 import { threeFileTorrent } from '../../content/tests/torrent-fixture.js';
 
 const mocks = vi.hoisted(() => ({
+  showPreimageRetainModal: vi.fn((_review: unknown) => Promise.resolve(true)),
   fetchFromIpfs: vi.fn(() => Promise.resolve({ data: new Uint8Array() })),
   bitswapGet: vi.fn(() => Promise.resolve(new Uint8Array())),
   getBackend: vi.fn(() => 'rpc-gateway'),
   getCacheNodeSettings: vi.fn(() => ({ enabled: true, providersUrl: 'http://set/providers', payerSeed: '' })),
 }));
 
+vi.mock('../src/preimage-modal.js', () => ({ showPreimageRetainModal: mocks.showPreimageRetainModal }));
 vi.mock('../../content/src/ipfs.js', () => ({ fetchFromIpfs: mocks.fetchFromIpfs }));
 vi.mock('../../content/src/bitswap.js', () => ({ bitswapGet: mocks.bitswapGet }));
 vi.mock('../../config/src/mode.js', () => ({
@@ -317,5 +319,115 @@ describe('Preimage.read host adapter', () => {
       second: [`0x${Buffer.from(file.slice(300_000)).toString('hex')}`, key, 300_007n],
       reads: 1,
     });
+  });
+});
+
+describe('Preimage.retain host adapter', () => {
+  // A modal scope that shows each modal at once.
+  const scope = {
+    enqueue: <T>(task: (signal: AbortSignal) => Promise<T>) => task(new AbortController().signal),
+    dispose: () => undefined,
+  };
+  const request = { key: `0x${'ab'.repeat(32)}` as const, periodSecs: 3600n, size: 3_000_000n, provider: undefined };
+
+  /** One cache node with a ledger account; `pin` is its answer to a pin. The bodies of the pins go to the list. */
+  function stubNode(pin: () => Response): unknown[] {
+    const pins: unknown[] = [];
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json([NODE]));
+      }
+      if (url.startsWith('http://cache-node/account/')) {
+        return Promise.resolve(
+          Response.json({
+            balance: 580,
+            price: 10,
+            retention_price: 1,
+            allowance: 480,
+            allowance_retention: 48,
+            paid: 100,
+          }),
+        );
+      }
+      pins.push(JSON.parse(init?.body as string));
+      return Promise.resolve(pin());
+    });
+    return pins;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.showPreimageRetainModal.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('As a person, I see the size, the period, the node and the price, and after I accept the node keeps the file', async () => {
+    // Given a node that keeps the file and its 2 chunks for 3 credits
+    const pins = stubNode(() =>
+      Response.json({
+        node: 'A',
+        id: 'x',
+        size: 3_000_000,
+        origin: 'source',
+        failed_peers: [],
+        until: 99,
+        charged: 3,
+        chunks: 2,
+      }),
+    );
+
+    // When the product asks to keep a 3 MB file for an hour
+    const kept = await createPreimageReadAdapter('cache-demo.paseo', scope).retainPreimage(request);
+
+    // Then the modal showed the price from the free allowance, one pin went out, and the answer names the node
+    expect({ review: mocks.showPreimageRetainModal.mock.calls[0]?.[0], pins: pins.length, kept }).toEqual({
+      review: {
+        label: 'cache-demo.paseo',
+        size: 3_000_000,
+        periodSecs: 3600,
+        node: 'A, eu-west',
+        price: 3,
+        funds: { free: 48, paid: 100 },
+      },
+      pins: 1,
+      kept: {
+        until: 99n,
+        provider: `0x${NODE.id}`,
+        name: 'A',
+        region: 'eu-west',
+        size: 3_000_000n,
+        chunks: 2,
+        charged: 3n,
+      },
+    });
+  });
+
+  it('As a person who declines, nothing is paid, and the product learns that I declined', async () => {
+    // Given
+    const pins = stubNode(() => Response.json({}));
+    mocks.showPreimageRetainModal.mockResolvedValue(false);
+
+    // When
+    const kept = createPreimageReadAdapter('cache-demo.paseo', scope).retainPreimage(request);
+
+    // Then
+    await expect(kept).rejects.toThrow(/^Declined/);
+    expect(pins).toEqual([]);
+  });
+
+  it('As a product, I learn that the payer cannot pay, or that the period is too long, from the start of the error', async () => {
+    // Given a node that refuses the payer, then the period
+    stubNode(() => new Response('refused: payer ab has 0 credits', { status: 402 }));
+    const adapter = createPreimageReadAdapter('cache-demo.paseo', scope);
+    await expect(adapter.retainPreimage(request)).rejects.toThrow(/^NotAvailable/);
+    stubNode(
+      () =>
+        new Response("rejected: a pin ends 1 to 1209600 seconds after the node's clock 5, not at 9", { status: 400 }),
+    );
+    await expect(adapter.retainPreimage(request)).rejects.toThrow(/^PeriodTooLong: .*at most 1209600 s/);
   });
 });

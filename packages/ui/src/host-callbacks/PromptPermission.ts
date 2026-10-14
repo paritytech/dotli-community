@@ -25,6 +25,7 @@ function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePer
   switch (tag) {
     case 'ChainSubmit':
     case 'PreimageSubmit':
+    case 'PreimageRetain':
     case 'StatementSubmit':
       return tag;
     case 'Remote':

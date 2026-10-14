@@ -133,7 +133,10 @@ const GROUPS: readonly { label: string; names: readonly string[] }[] = [
     label: 'Device',
     names: ['Notifications', 'Camera', 'Microphone', 'Location', 'Bluetooth', 'NFC', 'Clipboard', 'Biometrics'],
   },
-  { label: 'Account and chain', names: ['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'] },
+  {
+    label: 'Account and chain',
+    names: ['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'PreimageRetain', 'StatementSubmit'],
+  },
 ];
 
 function row(name: string): HTMLElement {

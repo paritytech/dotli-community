@@ -7,12 +7,16 @@ import { describe, it, expect } from 'vitest';
 
 import {
   CacheNodes,
+  homeNodes,
   orderProviders,
   parseOrigin,
   payerFromSeed,
+  pinError,
   readMessage,
   receiptMessage,
   rendezvousScore,
+  retentionMessage,
+  retentionPrice,
   testPayerSeed,
   type CacheProvider,
   type CacheQuality,
@@ -41,11 +45,13 @@ describe('cache node messages', () => {
       score: toHex(rendezvousScore(CID, SEVENS)),
       read: toHex(readMessage({ ...fields, issuedAt: 1_791_500_000 })),
       receipt: toHex(receiptMessage(fields)),
+      retention: toHex(retentionMessage({ ...fields, size: 1 << 20, from: 1000, until: 4600 })),
     }).toEqual({
       payer: '189dac29296d31814dc8c56cf3d36a0543372bba7538fa322a4aebfebc39e056',
       score: '1b90bef8509cc25b45d94885d8a1eca44bd751212310efc75c9e2628a663b98f',
       read: `63616368652d726561642f31${shared}e01ec86a00000000`,
       receipt: `63616368652d726563656970742f32${shared}${'00'.repeat(25)}`,
+      retention: `63616368652d726563656970742f32${shared}010000100000000000e803000000000000f811000000000000`,
     });
   });
 
@@ -437,6 +443,103 @@ describe('torrent reads through cache nodes', () => {
       second: 300_007,
       served: 'http://node-1',
       reads: 1,
+    });
+  });
+});
+
+describe('retention on cache nodes', () => {
+  it('As a user agent, I calculate the price of retention as the ledger does: each started MiB and hour', () => {
+    expect([
+      retentionPrice(165, 3600, 1),
+      retentionPrice(165, 3601, 1),
+      retentionPrice(5 * 1024 * 1024, 3600, 1),
+      retentionPrice(5 * 1024 * 1024 + 1, 7 * 24 * 3600, 2),
+    ]).toEqual([1, 2, 5, 2016]);
+  });
+
+  it('As a user agent, I give a product a reason that it can act on when a node does not keep content', () => {
+    const errors = [
+      pinError(402, 'refused: payer ab has 0 credits'),
+      pinError(404, 'not found'),
+      pinError(400, "rejected: a pin ends 1 to 1209600 seconds after the node's clock 5, not at 9999999"),
+      pinError(500, 'boom'),
+    ];
+    expect(errors.map(error => [error.kind, error.maxSecs])).toEqual([
+      ['not-available', undefined],
+      ['not-found', undefined],
+      ['period-too-long', 1209600],
+      ['failed', undefined],
+    ]);
+  });
+
+  it('As a user agent, I pay a home node of the content in advance to keep it, with an authorization for the size and the window', async () => {
+    // Given three nodes, and a chunked file of 2.5 MiB whose manifest is CID
+    const nodes = [provider(1), provider(2), provider(3), provider(4)];
+    const pins: { url: string; body: Record<string, unknown> }[] = [];
+    const fakeFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === 'http://set/providers') {
+        return Promise.resolve(Response.json(nodes));
+      }
+      pins.push({ url, body: JSON.parse(init?.body as string) as Record<string, unknown> });
+      return Promise.resolve(
+        Response.json({
+          node: 'A',
+          id: CID,
+          size: 2_621_440,
+          origin: 'source',
+          failed_peers: [],
+          until: 9,
+          charged: 3,
+          chunks: 3,
+        }),
+      );
+    }) as typeof fetch;
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: fakeFetch,
+      storage: null,
+    });
+
+    // When the host picks the node and keeps the file for an hour
+    const chosen = await cache.retentionProvider(CID);
+    const kept = await cache.retain(chosen, CID, 2_621_440, 3600);
+
+    // Then the node is a home node of the content, the pin goes to it, and the payer signed the size and the window
+    const pin = pins[0];
+    const authorization = pin?.body['authorization'] as { receipt: Record<string, unknown>; signature: string };
+    const receipt = authorization.receipt;
+    const message = retentionMessage({
+      transfer: String(receipt['transfer']),
+      payer: cache.payer.id,
+      provider: chosen.id,
+      content: CID,
+      size: 2_621_440,
+      from: Number(receipt['from']),
+      until: Number(receipt['until']),
+    });
+    expect({
+      home: homeNodes(
+        CID,
+        nodes.map(node => node.id),
+      ).includes(chosen.id),
+      url: pin?.url,
+      reference: pin?.body['reference'],
+      service: receipt['service'],
+      size: receipt['size'],
+      window: Number(receipt['until']) - Number(receipt['from']),
+      signed: verify(message, fromHex(authorization.signature), fromHex(cache.payer.id)),
+      kept: { ...kept, provider: kept.provider.api },
+    }).toEqual({
+      home: true,
+      url: `${chosen.api}/pin`,
+      reference: { source: `bulletin:${CID}`, cid: null, size: 2_621_440 },
+      service: 'Retention',
+      size: 2_621_440,
+      window: 3600,
+      signed: true,
+      kept: { provider: chosen.api, until: 9, size: 2_621_440, chunks: 3, charged: 3 },
     });
   });
 });

@@ -5,6 +5,7 @@
 
 export const ERRORS = {
   PREIMAGE_SUBMIT_DENIED: 'User denied preimage submit',
+  PREIMAGE_RETAIN_DECLINED: 'Declined: the person did not keep the preimage',
   DECRYPTION_CANCELLED: 'User cancelled decryption',
   /** @deprecated Nothing produces this. Kept because a product may still match on the text. */
   ALIAS_PERMISSION_DENIED: 'User denied alias permission',

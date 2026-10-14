@@ -15,6 +15,11 @@
 //
 // `Preimage.cacheAccount`: the account of the payer of the cache nodes in the ledger of a node, so a product can show
 // the free allowance, the paid credits and the prices.
+//
+// `Preimage.retain`: the host pays a cache node in advance to keep a preimage for a period. It picks a home node of the
+// key (or the node of the request), shows the size, the period, the node and the price, and the person accepts or
+// declines. The callback can only throw an error, which the product gets as `Unknown` with the text. So the text starts
+// with the name of the error: `Declined`, `NotFound`, `NotAvailable`, `PeriodTooLong` (with the limit) or `Failed`.
 
 import type { PreimageReadHost } from '@parity/truapi-host';
 import type {
@@ -28,20 +33,28 @@ import type {
   RemotePreimageReadResponse,
   RemotePreimageReadTorrentRequest,
   RemotePreimageReadTorrentResponse,
+  RemotePreimageRetainRequest,
+  RemotePreimageRetainResponse,
 } from '@parity/truapi';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { getBackend } from '@dotli/config';
 import {
   bitswapGet,
+  CacheRetainError,
   fetchFromIpfs,
   hashToCid,
   parseMagnet,
+  retentionPrice,
   torrentId,
+  type CacheAccount,
   type CacheOrigin as NodeOrigin,
   type CacheRead,
 } from '@dotli/content';
-import { serializeError, toHex } from '@dotli/shared';
+import { fromHex, log, serializeError, toHex } from '@dotli/shared';
 
+import { createBlockingModalScope, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { ERRORS } from '../errors.js';
+import { showPreimageRetainModal, type PreimageRetainReview } from '../preimage-modal.js';
 import { getCacheNodes, reportCacheRead } from './cache-nodes.js';
 import { cachedPreimage, rememberPreimage } from './Preimage.js';
 
@@ -368,6 +381,84 @@ async function cacheAccount(request: RemotePreimageCacheAccountRequest): Promise
   };
 }
 
-export function createPreimageReadAdapter(): Required<PreimageReadHost> {
-  return { readPreimage: read, readTorrent, cacheAccount };
+const RETAIN_ERRORS = {
+  'not-found': 'NotFound',
+  'period-too-long': 'PeriodTooLong',
+  'not-available': 'NotAvailable',
+  failed: 'Failed',
+} as const;
+
+/** `Preimage.retain`: keep a preimage on a cache node for a period, after the person accepts the price. */
+async function retain(
+  label: string,
+  modalScope: BlockingModalScope,
+  request: RemotePreimageRetainRequest,
+): Promise<RemotePreimageRetainResponse> {
+  const cache = getCacheNodes();
+  if (cache === null) {
+    throw new Error('Failed: no cache providers. Turn on Settings, Experimental, Cache nodes');
+  }
+  const keyHex = request.key.toLowerCase() as HexString;
+  const cid = hashToCid(keyHex).toString();
+  let size = request.size === undefined ? undefined : Number(request.size);
+  if (size === undefined) {
+    // The host reads the value once to learn its size: from its own cache, the cache nodes or Bulletin.
+    const answer = await read(fromHex(keyHex), { tag: 'Auto' }, false);
+    if (answer.value === undefined) {
+      throw new Error('NotFound: no source has the preimage yet');
+    }
+    size = (answer.value.length - 2) / 2;
+  }
+  const periodSecs = Number(request.periodSecs);
+  try {
+    const provider = await cache.retentionProvider(cid, request.provider?.replace(/^0x/, '').toLowerCase());
+    const account: CacheAccount | undefined = await cache.account({ only: provider.id }).catch(() => undefined);
+    const review: PreimageRetainReview = {
+      label,
+      size,
+      periodSecs,
+      node: [provider.name ?? `${provider.id.slice(0, 8)}…`, provider.region].filter(Boolean).join(', '),
+    };
+    if (account !== undefined) {
+      review.price = retentionPrice(size, periodSecs, account.retentionPrice);
+      review.funds = { free: Math.min(account.allowance, account.allowanceRetention), paid: account.paid };
+    }
+    const accepted = await modalScope.enqueue(signal => showPreimageRetainModal(review, signal));
+    if (!accepted) {
+      throw new Error(ERRORS.PREIMAGE_RETAIN_DECLINED);
+    }
+    const kept = await cache.retain(provider, cid, size, periodSecs);
+    log.debug(`[cache] ${provider.api} keeps ${cid} until ${String(kept.until)} for ${String(kept.charged)}`);
+    const response: RemotePreimageRetainResponse = {
+      until: BigInt(kept.until),
+      provider: prefixed(provider.id),
+      size: BigInt(kept.size),
+      chunks: kept.chunks,
+      charged: BigInt(kept.charged),
+    };
+    if (provider.name !== undefined) {
+      response.name = provider.name;
+    }
+    if (provider.region !== undefined) {
+      response.region = provider.region;
+    }
+    return response;
+  } catch (err) {
+    if (err instanceof CacheRetainError) {
+      throw new Error(`${RETAIN_ERRORS[err.kind]}: ${err.message}`, { cause: err });
+    }
+    throw err;
+  }
+}
+
+export function createPreimageReadAdapter(
+  label = '',
+  modalScope: BlockingModalScope = createBlockingModalScope(),
+): Required<PreimageReadHost> {
+  return {
+    readPreimage: read,
+    readTorrent,
+    cacheAccount,
+    retainPreimage: request => retain(label, modalScope, request),
+  };
 }

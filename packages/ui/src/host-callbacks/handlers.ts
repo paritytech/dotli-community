@@ -70,7 +70,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     theme: { subscribeTheme: createThemeSubscribe() },
     locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),
-    preimageRead: createPreimageReadAdapter(),
+    preimageRead: createPreimageReadAdapter(label, blockingModalScope),
     chain: { connect: createChainConnect() },
     // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),

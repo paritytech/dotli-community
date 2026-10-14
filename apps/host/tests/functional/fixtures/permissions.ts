@@ -24,6 +24,7 @@ const DOTLI_PERMISSIONS = [
   'Biometrics',
   'ChainSubmit',
   'PreimageSubmit',
+  'PreimageRetain',
   'StatementSubmit',
 ] as const;
 

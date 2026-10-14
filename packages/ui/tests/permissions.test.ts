@@ -495,7 +495,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     expect(names).not.toContain('TransactionSubmit');
   });
 
-  it('As a user, the menu lists the eight device permissions, then the four app permissions', () => {
+  it('As a user, the menu lists the eight device permissions, then the five app permissions', () => {
     // Then
     expect(ALL_PERMISSIONS.filter(({ group }) => group === 'device').map(({ name }) => name)).toEqual([
       'Notifications',
@@ -511,6 +511,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
       'IdentityDisclosure',
       'ChainSubmit',
       'PreimageSubmit',
+      'PreimageRetain',
       'StatementSubmit',
     ]);
     expect(ALL_PERMISSIONS.map(({ group }) => group)).toEqual([

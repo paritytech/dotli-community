@@ -14,7 +14,7 @@ import type {
 export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
-  DevicePermissionName | 'ChainSubmit' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
+  DevicePermissionName | 'ChainSubmit' | 'IdentityDisclosure' | 'PreimageSubmit' | 'PreimageRetain' | 'StatementSubmit';
 
 export type AutoGrantDevicePermission = 'OpenUrl';
 
@@ -70,6 +70,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: 'IdentityDisclosure', label: 'Identity disclosure', group: 'app' },
   { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
   { name: 'PreimageSubmit', label: 'Submit preimages', group: 'app' },
+  { name: 'PreimageRetain', label: 'Keep files on cache nodes', group: 'app' },
   { name: 'StatementSubmit', label: 'Submit statements', group: 'app' },
 ];
 
@@ -112,7 +113,12 @@ function providerFor(label: string): PermissionAuthorizationProvider | null {
 }
 
 function authorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
-  if (permission === 'ChainSubmit' || permission === 'PreimageSubmit' || permission === 'StatementSubmit') {
+  if (
+    permission === 'ChainSubmit' ||
+    permission === 'PreimageSubmit' ||
+    permission === 'PreimageRetain' ||
+    permission === 'StatementSubmit'
+  ) {
     return {
       tag: 'Remote',
       value: { permission: { tag: permission } },

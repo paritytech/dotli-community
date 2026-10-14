@@ -11,6 +11,9 @@
 // measured: an average with more weight on recent reads, and 50 ms before the first read. The home nodes of the content
 // count at half their latency. They are the 3 providers with the highest blake2b-256(CID || endpoint id), the rank that
 // the cache nodes use too. Every fourth read tries an unmeasured provider first.
+//
+// Retention: the payer pays a provider in advance to keep content until a time. It signs a retention authorization
+// for the size and the window, and the provider fetches the content, checks it against its CID, keeps it and charges.
 
 import { blake2b } from '@noble/hashes/blake2.js';
 import { getPublicKey, secretFromSeed, sign } from '@scure/sr25519';
@@ -68,6 +71,58 @@ export interface CacheAccount {
   retentionAllowancePerDay: number;
   readPrice: number;
   retentionPrice: number;
+}
+
+/** What a provider keeps after a pin: the end, the size that the retention paid for, the chunks and the charge. */
+export interface CacheRetention {
+  provider: CacheProvider;
+  /** Unix seconds. */
+  until: number;
+  size: number;
+  /** The chunks of a chunked file that the provider keeps with its manifest. */
+  chunks: number;
+  charged: number;
+}
+
+/** Why a provider did not keep content. */
+export type CacheRetainFailure = 'not-found' | 'period-too-long' | 'not-available' | 'failed';
+
+/** A pin that a provider refused, with the reason in a kind that a product can act on. */
+export class CacheRetainError extends Error {
+  readonly kind: CacheRetainFailure;
+  /** The longest period that the provider accepts, for `period-too-long`. */
+  readonly maxSecs: number | undefined;
+
+  constructor(kind: CacheRetainFailure, message: string, maxSecs?: number) {
+    super(message);
+    this.name = 'CacheRetainError';
+    this.kind = kind;
+    this.maxSecs = maxSecs;
+  }
+}
+
+/** The error of a pin from the status and the text of the node. */
+export function pinError(status: number, text: string): CacheRetainError {
+  if (status === 402) {
+    return new CacheRetainError('not-available', `the payer cannot pay: ${text}`);
+  }
+  if (status === 404) {
+    return new CacheRetainError('not-found', `no source has the content yet: ${text}`);
+  }
+  const limit = /a pin ends 1 to (\d+) seconds/.exec(text);
+  if (limit?.[1] !== undefined) {
+    const maxSecs = Number(limit[1]);
+    return new CacheRetainError('period-too-long', `the period is too long: at most ${String(maxSecs)} s`, maxSecs);
+  }
+  return new CacheRetainError('failed', `${String(status)}: ${text}`);
+}
+
+const MIB = 1024 * 1024;
+const HOUR_SECS = 3600;
+
+/** The price of retention as the ledger calculates it: `price` for each started MiB of `size` and started hour. */
+export function retentionPrice(size: number, secs: number, price: number): number {
+  return price * Math.max(1, Math.ceil(size / MIB)) * Math.ceil(secs / HOUR_SECS);
 }
 
 /** The facts of a served read from the headers of the provider's answer. */
@@ -147,6 +202,8 @@ const EXPLORE_EVERY = 4;
 const NODE_TIMEOUT_MS = 15_000;
 // The read of a torrent file that a provider has: it can hold a large span, so the job that receives it can take long.
 const TORRENT_TIMEOUT_MS = 3_600_000;
+// The longest wait for a pin: the node fetches the content first, for a chunked file each chunk.
+const PIN_TIMEOUT_MS = 300_000;
 // How long one call waits for the job that receives a torrent file. A small file comes in this time.
 const RECEIVE_WAIT_MS = 3_000;
 
@@ -266,6 +323,20 @@ export function readMessage(fields: SignedFields & { issuedAt: number }): Uint8A
 /** The bytes that a payer signs for one delivery: the shared fields, service 0, and size, from and until, all 0. */
 export function receiptMessage(fields: SignedFields): Uint8Array {
   return concat(signedFields(RECEIPT_PREFIX, fields), Uint8Array.of(0), u64(0), u64(0), u64(0));
+}
+
+/**
+ * The bytes that a payer signs to pay in advance for retention: the layout of a receipt, with service 1, the size that
+ * the retention pays for, and the window `from` to `until` (Unix seconds).
+ */
+export function retentionMessage(fields: SignedFields & { size: number; from: number; until: number }): Uint8Array {
+  return concat(
+    signedFields(RECEIPT_PREFIX, fields),
+    Uint8Array.of(1),
+    u64(fields.size),
+    u64(fields.from),
+    u64(fields.until),
+  );
 }
 
 /** A payer from a 32-byte seed. The function expands the seed as Substrate expands an sr25519 mini secret key. */
@@ -748,6 +819,55 @@ export class CacheNodes {
       readPrice: count('price'),
       retentionPrice: count('retention_price'),
     };
+  }
+
+  /**
+   * The provider to keep `contentId`: the provider `only`, else the first in quality order, with the home nodes of the
+   * content first. A pin on a home node serves the reads of other hosts too, as they ask the home nodes first.
+   */
+  async retentionProvider(contentId: string, only?: string): Promise<CacheProvider> {
+    const all = await this.providers();
+    const homes = homeNodes(
+      contentId,
+      all.map(provider => provider.id),
+    );
+    const ordered = orderProviders(all, homes, this.quality, false, Date.now());
+    const provider = only === undefined ? ordered[0] : ordered.find(candidate => candidate.id === only);
+    if (provider === undefined) {
+      throw new CacheRetainError(
+        'failed',
+        only === undefined ? 'no cache providers' : `the cache provider ${only} is not in the provider set`,
+      );
+    }
+    return provider;
+  }
+
+  /**
+   * Pay `provider` in advance to keep the Bulletin preimage `cid` of `size` bytes for `periodSecs` from now. For a
+   * chunked file, `cid` is the manifest and `size` the size of the manifest and all its chunks. The provider then keeps
+   * the chunks too. A retention that a previous one covers costs 0.
+   */
+  async retain(provider: CacheProvider, cid: string, size: number, periodSecs: number): Promise<CacheRetention> {
+    const from = Math.floor(Date.now() / 1000);
+    const until = from + periodSecs;
+    const fields = { transfer: this.transferId(), payer: this.payer.id, provider: provider.id, content: cid };
+    const signature = toHex(sign(this.payer.secret, retentionMessage({ ...fields, size, from, until })));
+    const body = {
+      reference: { source: `bulletin:${cid}`, cid: null, size },
+      authorization: { receipt: { ...fields, service: 'Retention', size, from, until }, signature },
+    };
+    const response = await this.fetch(`${provider.api}/pin`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(PIN_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw pinError(response.status, (await response.text().catch(() => '')).slice(0, 300));
+    }
+    const reply = (await response.json()) as Record<string, unknown>;
+    const count = (name: string): number => (typeof reply[name] === 'number' ? reply[name] : 0);
+    return { provider, until: count('until'), size: count('size'), chunks: count('chunks'), charged: count('charged') };
   }
 
   // Ask one provider for content `content` with a read request that the payer signs. The default reference is the
