@@ -25,12 +25,12 @@
     "@config/storybook": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@solidjs/vite-plugin": "3.0.0-next.47",
-    "@storybook/addon-a11y": "^10.6.1",
-    "@storybook/addon-docs": "^10.6.1",
-    "@storybook/addon-vitest": "^10.6.1",
+    "@solidjs/vite-plugin": "3.0.0-next.50",
+    "@storybook/addon-a11y": "^10.6.2",
+    "@storybook/addon-docs": "^10.6.2",
+    "@storybook/addon-vitest": "^10.6.2",
     "fake-indexeddb": "^6.2.5",
-    "storybook": "^10.6.1",
+    "storybook": "^10.6.2",
     "storybook-solidjs-vite": "^10.7.2"
   },
   "dependencies": {
@@ -40,7 +40,7 @@
     "@dotli/sandbox-wire": "*",
     "@dotli/shared": "*",
     "@dotli/ui": "*",
-    "@solidjs/web": "2.0.0-rc.13",
-    "solid-js": "2.0.0-rc.13"
+    "@solidjs/web": "2.0.0-rc.15",
+    "solid-js": "2.0.0-rc.15"
   }
 }

@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { HostChatActionSubscribeItem, HostRendererActionSubscribeItem } from '@parity/truapi';
-import type { ChatBotRecord, ChatConnection, ChatMessageRecord, ChatRepo, ChatRoomRecord } from './store.js';
+import type {
+  ChatBotRecord,
+  ChatConnection,
+  ChatMessageRecord,
+  ChatRepo,
+  ChatRoomFooter,
+  ChatRoomRecord,
+} from './store.js';
 
 /** A chat repo in memory, keeping IndexedDB's orders: rooms and bots by creation, messages by insertion. */
 export function memoryChatRepo(): ChatRepo & {
@@ -23,6 +30,13 @@ export function memoryChatRepo(): ChatRepo & {
       }
       repo.rooms.push({ ...room, createdAt: (clock += 1) });
       return Promise.resolve('New');
+    },
+    setRoomFooter: (productId: string, roomId: string, footer: ChatRoomFooter): Promise<boolean> => {
+      const existing = repo.rooms.find(r => r.productId === productId && r.roomId === roomId);
+      if (existing !== undefined) {
+        existing.footer = footer;
+      }
+      return Promise.resolve(existing !== undefined);
     },
     registerBot: (bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'> => {
       const existing = repo.bots.find(b => b.productId === bot.productId && b.botId === bot.botId);

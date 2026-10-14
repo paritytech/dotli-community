@@ -11,6 +11,9 @@ const MESSAGE_STORE = 'chat_messages';
 const BOT_STORE = 'chat_bots';
 const BY_ROOM = 'byRoom';
 
+/** What a room shows below its messages. Matches TrUAPI `ChatRoomFooter`. */
+export type ChatRoomFooter = 'TextInput' | 'Empty';
+
 export interface ChatRoomRecord {
   productId: string;
   roomId: string;
@@ -18,6 +21,8 @@ export interface ChatRoomRecord {
   /** URL or base64 image, as supplied by the product. */
   icon: string;
   createdAt: number;
+  /** Unset until the product sets one, and an unset room shows the text input. */
+  footer?: ChatRoomFooter;
 }
 
 export interface ChatBotRecord {
@@ -46,7 +51,7 @@ export type NewChatMessage = Omit<ChatMessageRecord, 'seq'>;
 
 /** Chat rooms, bots and messages over `idb`, the page's own by default. */
 export function createChatRecords(idb: DotliIdb = pageIdb) {
-  /** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon. */
+  /** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon and keeps the footer. */
   async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
     const db = await idb.connect();
     let status: 'New' | 'Exists' = 'New';
@@ -55,10 +60,31 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
       const existing = store.get([room.productId, room.roomId]) as IDBRequest<ChatRoomRecord | undefined>;
       existing.onsuccess = () => {
         status = existing.result === undefined ? 'New' : 'Exists';
-        store.put({ ...room, createdAt: existing.result?.createdAt ?? Date.now() } satisfies ChatRoomRecord);
+        store.put({
+          ...existing.result,
+          ...room,
+          createdAt: existing.result?.createdAt ?? Date.now(),
+        } satisfies ChatRoomRecord);
       };
     });
     return status;
+  }
+
+  /** Resolves false, writing nothing, when the product has no room with this id. */
+  async function setRoomFooter(productId: string, roomId: string, footer: ChatRoomFooter): Promise<boolean> {
+    const db = await idb.connect();
+    let found = false;
+    await idbTransaction(db, ROOM_STORE, 'readwrite', tx => {
+      const store = tx.objectStore(ROOM_STORE);
+      const existing = store.get([productId, roomId]) as IDBRequest<ChatRoomRecord | undefined>;
+      existing.onsuccess = () => {
+        if (existing.result !== undefined) {
+          found = true;
+          store.put({ ...existing.result, footer } satisfies ChatRoomRecord);
+        }
+      };
+    });
+    return found;
   }
 
   /** Answers TrUAPI `ChatBotRegistrationStatus`. A re-registration refreshes the name and icon. */
@@ -123,13 +149,23 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
     return all.length > limit ? all.slice(all.length - limit) : all;
   }
 
-  return { createRoom, registerBot, listBots, listRooms, appendMessage, latestMessageTimestamps, listMessages };
+  return {
+    createRoom,
+    setRoomFooter,
+    registerBot,
+    listBots,
+    listRooms,
+    appendMessage,
+    latestMessageTimestamps,
+    listMessages,
+  };
 }
 
 export type ChatRecords = ReturnType<typeof createChatRecords>;
 
 export const {
   createRoom,
+  setRoomFooter,
   registerBot,
   listBots,
   listRooms,

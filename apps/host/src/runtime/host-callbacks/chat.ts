@@ -22,6 +22,10 @@ export function createChatPlatform(chat: ChatStore = chatStore): Required<ChatPl
       return { status };
     },
 
+    async setChatRoomFooter(product, request) {
+      await chat.setRoomFooter(product.productId, request.roomId, request.footer);
+    },
+
     async registerChatBot(product, request) {
       const status = await chat.registerBot(product.productId, {
         botId: request.botId,

@@ -22,8 +22,14 @@ export function storybookVitestConfig(packageDir: string): ViteUserConfig {
     define: { 'import.meta.env.VITE_VRT': JSON.stringify(vrt ? '1' : '0') },
     test: {
       name: 'storybook',
-      // A story that shows the page's host would differ run to run, so screenshot runs pin the port.
-      ...(vrt ? { api: { port: 63315, strictPort: true } } : {}),
+      api: {
+        // The Storybook plugin turns these off unless they are set. A tap goes through the DevTools protocol, which
+        // needs both, and the server listens on localhost only.
+        allowWrite: true,
+        allowExec: true,
+        // A story that shows the page's host would differ run to run, so screenshot runs pin the port.
+        ...(vrt ? { port: 63315, strictPort: true } : {}),
+      },
       setupFiles: [join(import.meta.dirname, 'vitest.setup.ts')],
       browser: {
         enabled: true,

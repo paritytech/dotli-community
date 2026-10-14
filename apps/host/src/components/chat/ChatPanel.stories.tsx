@@ -330,6 +330,22 @@ export const SendingBringsMeToMine: Story = {
   },
 };
 
+export const EmptyFooterHasNoComposer: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    stage.seed(2, [textOf('Read only')]);
+    stage.rooms = stage.rooms.map(room => (room.roomId === 'r0' ? { ...room, footer: 'Empty' } : room));
+  },
+  play: async ({ canvasElement, step }) => {
+    await step('Given a room whose app chose an empty footer', async () => {
+      await openRoom(canvasElement, 'Room 0', 1);
+    });
+    await step('Then its conversation shows no message box', async () => {
+      await expect(within(canvasElement).getByPlaceholderText('Message')).not.toBeVisible();
+    });
+  },
+};
+
 export const DragEdgeResizes: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {

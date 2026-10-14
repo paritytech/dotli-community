@@ -14,10 +14,13 @@ Shared Storybook and browser-test configuration for the UI packages. Internal, w
 - `storybook-solidjs-vite` adds the Solid plugin, so the config adds none. CSS modules come from the shared Vite
   tooling. `VITE_NETWORKS` is defined for stories.
 - The config adds one shared preview to every Storybook: dark docs, a11y failures as errors, the two viewports and a
-  render that hands a component its args. A page frame sets each story on the dotli page, unless the package turns it
-  off because it draws its own page. A package's own preview adds its stylesheet and what only it needs.
+  render that hands a component its args. Its canvas render commits a story's args before the story renders, since the
+  framework writes them and renders in one go and the first effects would read an empty store. A page frame sets each
+  story on the dotli page, unless the package turns it off because it draws its own page. A package's own preview adds
+  its stylesheet and what only it needs.
 - Each package calls `storybookVitestConfig(packageDir)` from a Vitest config of its own for stories. It stays apart
-  from the package's unit test config, so `npm test` needs no browser.
+  from the package's unit test config, so `npm test` needs no browser. It allows the test server's write and exec calls,
+  which the Storybook plugin turns off unless set, since a tap goes through the DevTools protocol.
 - The shared test setup raises the async test timeout for lazy chunks. With `VRT=1` it screenshots each passing story
   into a machine-local folder, which is never committed.
 

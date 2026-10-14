@@ -34,8 +34,8 @@ scheduled notifications.
 - CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`.
 - Local wallet: `createLocalWalletStore`, `saveLocalWallet`, `loadLocalWallet`, `forgetLocalWallet`,
   `updateLocalWalletIdentity`, `LocalWalletUnreadableError`.
-- Chat: `createRoom`, `listRooms`, `appendMessage`, `listMessages`, `latestMessageTimestamps`, `registerBot`,
-  `listBots`.
+- Chat: `createRoom`, `setRoomFooter`, `listRooms`, `appendMessage`, `listMessages`, `latestMessageTimestamps`,
+  `registerBot`, `listBots`, and the `ChatRoomFooter` type.
 - Scheduled notifications: `schedule`, `cancel`, `listAll`, `removeById`, `removeStale`, `allocateId`.
 
 ### `@dotli/storage/testing`

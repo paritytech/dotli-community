@@ -11,6 +11,7 @@ import {
   listMessages,
   listRooms,
   registerBot,
+  setRoomFooter,
 } from '@dotli/storage';
 import { createChatConnections, createChatStore } from './store.js';
 
@@ -19,6 +20,7 @@ export const chatConnections = createChatConnections();
 export const chatStore = createChatStore({
   repo: {
     createRoom,
+    setRoomFooter,
     registerBot,
     appendMessage,
     listRooms,

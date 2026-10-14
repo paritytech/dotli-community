@@ -10,8 +10,10 @@ export {
   listMessages,
   listRooms,
   registerBot,
+  setRoomFooter,
   type ChatBotRecord,
   type ChatMessageRecord,
+  type ChatRoomFooter,
   type ChatRoomRecord,
 } from './chat.js';
 export { isExpectedDbError } from './db.js';

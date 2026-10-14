@@ -23,4 +23,23 @@ describe('contacts', () => {
       ['bot', 'bot'],
     ]);
   });
+
+  it('As a user, a room shows the footer its product set, and a room or bot without one takes text', () => {
+    // When
+    const entries = contactEntries(
+      [
+        { roomId: 'quiet', name: 'Quiet', icon: '', createdAt: 2, footer: 'Empty' },
+        { roomId: 'plain', name: 'Plain', icon: '', createdAt: 1 },
+      ],
+      [{ botId: 'bot', name: 'Bot', icon: '', createdAt: 0 }],
+      new Map(),
+    );
+
+    // Then
+    expect(entries.map(e => [e.id, e.footer])).toEqual([
+      ['quiet', 'Empty'],
+      ['plain', 'TextInput'],
+      ['bot', 'TextInput'],
+    ]);
+  });
 });

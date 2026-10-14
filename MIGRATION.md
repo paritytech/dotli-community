@@ -50,8 +50,8 @@ channels, or statement-store request routing that belongs inside the Rust core.
 `apps/host/package.json` depends on the published TrUAPI packages:
 
 ```jsonc
-"@parity/truapi": "0.24.0",
-"@parity/truapi-host": "0.24.0"
+"@parity/truapi": "0.25.0",
+"@parity/truapi-host": "0.25.0"
 ```
 
 Standalone dotli installs and CI exercise these npm artifacts. TrUAPI's development and E2E Make targets run

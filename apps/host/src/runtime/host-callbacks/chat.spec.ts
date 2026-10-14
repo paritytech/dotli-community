@@ -35,6 +35,33 @@ describe('chat platform', () => {
     await stream.return?.();
   });
 
+  it('As a product, I set the footer of my room and it is stored on the room', async () => {
+    // Given
+    const repo = memoryChatRepo();
+    const platform = createChatPlatform(createChatStore({ repo, connections: createChatConnections() }));
+    await platform.createChatRoom(PRODUCT, room('main'));
+
+    // When
+    await platform.setChatRoomFooter(PRODUCT, { roomId: 'main', footer: 'Empty' });
+
+    // Then
+    expect(repo.rooms).toMatchObject([{ productId: PRODUCT.productId, roomId: 'main', footer: 'Empty' }]);
+  });
+
+  it("As a product, I set the footer of another product's room and the call fails", async () => {
+    // Given
+    const repo = memoryChatRepo();
+    const platform = createChatPlatform(createChatStore({ repo, connections: createChatConnections() }));
+    await platform.createChatRoom(OTHER, room('main'));
+
+    // When
+    const set = platform.setChatRoomFooter(PRODUCT, { roomId: 'main', footer: 'Empty' });
+
+    // Then
+    await expect(set).rejects.toThrow('No chat room main');
+    expect(repo.rooms[0]?.footer).toBeUndefined();
+  });
+
   it('As a product, when my rooms change during a read, my stream ends on the newest list after one more read', async () => {
     // Given: a repo whose room reads wait for the test.
     const repo = memoryChatRepo();

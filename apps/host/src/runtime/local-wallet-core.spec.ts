@@ -62,20 +62,12 @@ class FakeSigningWorker {
 interface FakeRuntime {
   activateLocalSession: ReturnType<typeof vi.fn<(secret: Uint8Array, name?: string) => Promise<void>>>;
   dispose: ReturnType<typeof vi.fn<() => void>>;
-  getPermissionAuthorizationStatus: WorkerPairingHostRuntime['getPermissionAuthorizationStatus'];
-  getPermissionAuthorizationStatuses: WorkerPairingHostRuntime['getPermissionAuthorizationStatuses'];
-  setPermissionAuthorizationStatus: WorkerPairingHostRuntime['setPermissionAuthorizationStatus'];
 }
 
 function fakeRuntime(activate: () => Promise<void> = () => Promise.resolve()): FakeRuntime {
-  const missing = (): Promise<never> =>
-    Promise.reject(new TypeError('runtime.permissionAuthorizationStatuses is not a function'));
   return {
     activateLocalSession: vi.fn(activate),
     dispose: vi.fn(),
-    getPermissionAuthorizationStatus: missing,
-    getPermissionAuthorizationStatuses: missing,
-    setPermissionAuthorizationStatus: missing,
   };
 }
 
@@ -146,19 +138,6 @@ describe('local wallet core', () => {
     expect(wallet).toBe(WALLET);
     await expect(identityAccountId).resolves.toBe(IDENTITY_ACCOUNT);
     expect(states).toEqual([connected]);
-  });
-
-  it('As a local wallet user, I open a product and its permissions are answered without the signing worker', async () => {
-    // Given
-    const boot = createLocalWalletCoreBoot(deps());
-
-    // When
-    const runtime = await boot(fakeCreate([]), recordingCallbacks([]), HOST_CONFIG, WALLET, () => true);
-
-    // Then
-    await expect(
-      runtime.getPermissionAuthorizationStatuses('app.dot', [{ tag: 'IdentityDisclosure' }]),
-    ).resolves.toEqual(['NotDetermined']);
   });
 
   it('As a local wallet user whose username changed, I am activated again with the new name', async () => {

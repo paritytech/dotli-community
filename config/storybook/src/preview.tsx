@@ -3,8 +3,9 @@
 
 // The preview every Storybook shares. A package's own preview adds its stylesheet and anything only it needs.
 
-import { merge } from 'solid-js';
+import { flush, merge } from 'solid-js';
 import type { Preview } from 'storybook-solidjs-vite';
+import { renderToCanvas as solidRenderToCanvas } from 'storybook-solidjs-vite/renderer/solid-next';
 import { themes } from 'storybook/theming';
 
 const preview: Preview = {
@@ -32,6 +33,12 @@ const preview: Preview = {
     }
     const props = merge(args, {});
     return <Component {...props} />;
+  },
+  // The renderer writes a story's args into its store and renders before Solid commits the write, so the story's
+  // first effects would read an empty store. Committing it first gives them the args.
+  renderToCanvas: (context, canvasElement) => {
+    flush();
+    return solidRenderToCanvas(context, canvasElement);
   },
 };
 

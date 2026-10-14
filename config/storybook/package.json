@@ -19,12 +19,12 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@solidjs/web": "2.0.0-rc.13",
-    "@storybook/addon-vitest": "^10.6.1",
-    "@vitest/browser-playwright": "^5.0.3",
-    "playwright": "^1.63.0",
-    "solid-js": "2.0.0-rc.13",
-    "storybook": "^10.6.1",
+    "@solidjs/web": "2.0.0-rc.15",
+    "@storybook/addon-vitest": "^10.6.2",
+    "@vitest/browser-playwright": "^5.0.4",
+    "playwright": "^1.64.0",
+    "solid-js": "2.0.0-rc.15",
+    "storybook": "^10.6.2",
     "storybook-solidjs-vite": "^10.7.2",
     "vite-plugin-solid": "3.0.0-next.27"
   }

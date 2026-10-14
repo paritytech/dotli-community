@@ -34,6 +34,31 @@ describe('chat rooms', () => {
     expect(await chat.createRoom(room)).toBe('Exists');
   });
 
+  it('As a product, I set a room footer and it outlives a re-creation of the room', async () => {
+    // Given
+    const room = { productId: 'footer.dot', roomId: 'main', name: 'Main', icon: '' };
+    await chat.createRoom(room);
+
+    // When
+    const found = await chat.setRoomFooter('footer.dot', 'main', 'Empty');
+    await chat.createRoom({ ...room, name: 'Renamed' });
+
+    // Then
+    expect(found).toBe(true);
+    expect(await chat.listRooms('footer.dot')).toEqual([
+      expect.objectContaining({ roomId: 'main', name: 'Renamed', footer: 'Empty' }),
+    ]);
+  });
+
+  it('As a product, I set a footer on a room I never created and nothing is stored', async () => {
+    // When
+    const found = await chat.setRoomFooter('footer.dot', 'missing', 'Empty');
+
+    // Then
+    expect(found).toBe(false);
+    expect(await chat.listRooms('footer.dot')).toEqual([]);
+  });
+
   it('As a host, rooms are scoped per product', async () => {
     // Given
     await chat.createRoom({ productId: 'a.dot', roomId: 'r', name: 'A', icon: '' });

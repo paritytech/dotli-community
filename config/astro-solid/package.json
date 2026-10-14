@@ -19,17 +19,17 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@solidjs/web": "2.0.0-rc.13",
-    "astro": "^7.3.6",
-    "solid-js": "2.0.0-rc.13"
+    "@solidjs/web": "2.0.0-rc.15",
+    "astro": "^7.3.8",
+    "solid-js": "2.0.0-rc.15"
   },
   "dependencies": {
-    "@solidjs/vite-plugin": "3.0.0-next.47",
+    "@solidjs/vite-plugin": "3.0.0-next.50",
     "vitefu": "^1.1.3"
   },
   "peerDependencies": {
-    "@solidjs/web": "2.0.0-rc.13",
+    "@solidjs/web": "2.0.0-rc.15",
     "astro": "^7.3.5",
-    "solid-js": "2.0.0-rc.13"
+    "solid-js": "2.0.0-rc.15"
   }
 }

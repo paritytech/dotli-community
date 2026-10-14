@@ -174,6 +174,9 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
     return v === 'conversation' ? chat.composerError() : null;
   };
 
+  // The product chose what its room shows below the messages.
+  const composing = (): boolean => view() === 'conversation' && activeContact()?.footer !== 'Empty';
+
   const submit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
     const roomId = chat.activeRoomId();
@@ -303,7 +306,7 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
       <form
         class={s['composer']}
         id="chat-panel-composer"
-        hidden={view() !== 'conversation'}
+        hidden={!composing()}
         onSubmit={event => {
           void submit(event);
         }}
@@ -315,7 +318,7 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
           placeholder="Message"
           autocomplete="off"
           maxlength="4000"
-          disabled={view() !== 'conversation'}
+          disabled={!composing()}
           ref={el => {
             inputEl = el;
           }}

@@ -20,14 +20,22 @@ import {
   shallowEqual,
   type ReadableStore,
 } from '@dotli/shared';
-import { isExpectedDbError, type ChatBotRecord, type ChatMessageRecord, type ChatRoomRecord } from '@dotli/storage';
+import {
+  isExpectedDbError,
+  type ChatBotRecord,
+  type ChatMessageRecord,
+  type ChatRoomFooter,
+  type ChatRoomRecord,
+} from '@dotli/storage';
 
-export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
+export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
 
 /** Where chat data lives. IndexedDB in the page. */
 export interface ChatRepo {
-  /** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon. */
+  /** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon and keeps the footer. */
   createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'>;
+  /** False when the product has no room with this id. */
+  setRoomFooter(productId: string, roomId: string, footer: ChatRoomFooter): Promise<boolean>;
   registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'>;
   appendMessage(message: Omit<ChatMessageRecord, 'seq'>): Promise<number>;
   /** In creation order. */
@@ -111,6 +119,8 @@ export interface ChatStore {
   subscribe(listener: (change: ChatChange) => void): () => void;
   /** A repeat for an existing room refreshes its name and icon, so it always notifies. */
   createRoom(productId: string, room: { roomId: string; name: string; icon: string }): Promise<'New' | 'Exists'>;
+  /** Rejects for a room the product never created. */
+  setRoomFooter(productId: string, roomId: string, footer: ChatRoomFooter): Promise<void>;
   /** Persisted with its rooms, so a re-registration after reload resolves to `Exists` and refreshes name and icon. */
   registerBot(productId: string, bot: { botId: string; name: string; icon: string }): Promise<'New' | 'Exists'>;
   postProductMessage(productId: string, roomId: string, content: ChatMessageContent): Promise<string>;
@@ -306,6 +316,13 @@ export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore
       const status = await repo.createRoom({ productId, ...room });
       notify({ kind: 'rooms', productId });
       return status;
+    },
+
+    async setRoomFooter(productId, roomId, footer) {
+      if (!(await repo.setRoomFooter(productId, roomId, footer))) {
+        throw new Error(`No chat room ${roomId}`);
+      }
+      notify({ kind: 'rooms', productId });
     },
 
     async registerBot(productId, bot) {

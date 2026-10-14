@@ -37,20 +37,20 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/vite": "*",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
-    "happy-dom": "^20.14.5",
+    "happy-dom": "^21.0.1",
     "husky": "^9.1.7",
     "knip": "^6.41.0",
     "lint-staged": "^17.6.0",
-    "prettier": "3.9.9",
-    "prettier-plugin-astro": "1.1.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-astro": "1.1.1",
     "terser": "^5.51.2",
-    "turbo": "^2.11.7",
+    "turbo": "^2.11.8",
     "typescript": "~6.0.3",
-    "vite": "^8.3.3",
-    "vitest": "^5.0.3"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
   },
   "packageManager": "npm@12.2.0",
   "workspaces": [
@@ -59,7 +59,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "0.24.0"
+    "@parity/truapi": "0.25.0"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2"

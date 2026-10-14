@@ -11,7 +11,7 @@ import type {
   ProductRendererRenderRequest,
   RendererNode,
 } from '@parity/truapi';
-import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import type { ChatMessageRecord, ChatRoomFooter } from '../../runtime/chat/store.js';
 
 /** Where a custom message's renderer streams its trees. */
 export interface ChatRenderSink {
@@ -37,6 +37,8 @@ export interface ChatRoom {
   /** URL or base64 image, as supplied by the product. */
   icon: string;
   createdAt: number;
+  /** Unset shows the text input. */
+  footer?: ChatRoomFooter | undefined;
 }
 
 export interface ChatBot {
