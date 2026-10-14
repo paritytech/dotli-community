@@ -5,7 +5,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { LayerTracker, ModalFocusFallback } from '@dotli/ui';
-import { currentProductFrame } from '../product-frame-layout.js';
+import { productFrameFocus } from '../product-frame-layout.js';
 import { TopbarActions as Actions } from '../components/topbar/TopbarActions.js';
 import { registerTopbarSurface } from '../state/topbar-surfaces.js';
 import { topbarActionRoom, topbarMorph } from '../topbar-status.js';
@@ -21,7 +21,7 @@ import { SettingsButton } from './SettingsButton.js';
 export function TopbarProviders(props: { children: JSX.Element }): JSX.Element {
   return (
     <LayerTracker value={registerTopbarSurface}>
-      <ModalFocusFallback value={() => currentProductFrame() ?? undefined}>{props.children}</ModalFocusFallback>
+      <ModalFocusFallback value={productFrameFocus}>{props.children}</ModalFocusFallback>
     </LayerTracker>
   );
 }

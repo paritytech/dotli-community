@@ -10,7 +10,8 @@ product's archive, the wallet switch and diagnostics. It loads only in debug mod
 - The models behind the views: the event store and the correlation of a call with its answer, filters, rows and detail
   formatting, timeline lanes, resolution blocks, pending-call tracking, export, chain names and payload decoding, and
   the stored dock position and section. They are plain modules with Node specs beside them.
-- Its own components, icons and tokens, with nothing shared with the ui packages. Each icon is a Solid component that
+- Its own components, icons and tokens. Of the ui package it takes only the Solid glue that reads a store and mounts a
+  root, so a store read and a broken root behave as everywhere else on the page. Each icon is a Solid component that
   draws an `<svg>` in `currentColor`.
 - Not owned: event capture and the bus, and the host's stores and layers. The host gives them through `DebugPanelHost`.
 
@@ -33,7 +34,8 @@ flowchart LR
   which the host does on Hide. The panel imports no host module.
 - The root renders inside an error boundary. A throwing view is reported once and the root is disposed, so timers stop.
 - Effects (clipboard, download), the bus, the view and the repeated computations are options of the mount with page
-  defaults. A caller replaces them to count work or fake the page.
+  defaults. A caller replaces them to count work or fake the page. The views read the computations from a context the
+  mount fills.
 - The panel imports no chain library. It reads keys and chains through its port, and lint enforces it.
 
 ## Public API
@@ -42,7 +44,8 @@ flowchart LR
 
 - `loadTruapiDebugMount`, `TruapiDebugMountModule`: the lazy loader of the panel mount, whose `setupTruapiDebugPanel`
   installs the panel and returns a dispose.
-- `DebugPanelHost`: the port the host implements.
+- `DebugPanelHost`: the port the host implements, with the diagnostics types it carries (`DiagnosticsSource`,
+  `DiagnosticsRow`, `PackageVersion`).
 
 ### `@dotli/truapi-debug-ui/testing`
 

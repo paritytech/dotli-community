@@ -4,4 +4,4 @@
 // The TrUAPI debug panel. It reads the host through the port given to its mount.
 
 export { loadTruapiDebugMount, type TruapiDebugMountModule } from './lazy.js';
-export type { DebugPanelHost } from './host.js';
+export type { DebugPanelHost, DiagnosticsRow, DiagnosticsSource, PackageVersion } from './host.js';

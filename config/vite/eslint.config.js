@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@config/eslint/vite';
+import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
@@ -15,6 +15,7 @@ export default defineConfig([
       },
     },
   },
+  ...importBans([onlyAllowedScopes(['@config/eslint'], 'Tooling imports only tooling.')]),
   {
     // Node loads this through the app configs directly, so its imports name `.ts` files.
     files: ['src/app.ts', 'src/service-worker.ts', 'src/spa-fallback.ts'],

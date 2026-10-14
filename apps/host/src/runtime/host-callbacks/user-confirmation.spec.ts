@@ -4,7 +4,7 @@
 import type { UserConfirmation } from '@parity/truapi-host';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
-import { createUserConfirmationAdapters as createAdapters } from './UserConfirmation.js';
+import { createUserConfirmationAdapters as createAdapters } from './user-confirmation.js';
 import type { ModalButton, ModalButtonVariant, ModalView } from '@dotli/ui';
 import { SignIcon } from '../../components/icons/SignIcon.js';
 import { createFakePrompts } from '../host-prompts.fake.js';

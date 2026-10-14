@@ -6,9 +6,9 @@
 
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcProvider } from 'polkadot-api';
-import { DEBUG, chainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log } from '@dotli/shared';
+import { DEBUG, chainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
+import { m, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createListenerSet, log } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import { createSmoldotDb, type SmoldotDb } from './smoldot-db.js';
@@ -86,11 +86,11 @@ const HEARTBEAT_KEY = 'dotli:smoldot-heartbeat-ms';
 /**
  * The light client a context starts, tuned by its session where it has one (`null` in the SharedWorker). A test raises
  * the log level, or slows the heartbeat so only the startup report lands and the count does not follow wall-clock.
+ * `local` on a localhost page, where the light client logs at info.
  */
-export function lightClientDeps(session: Pick<Storage, 'getItem'> | null, hostname: string): LightClientDeps {
+export function lightClientDeps(session: Pick<Storage, 'getItem'> | null, local: boolean): LightClientDeps {
   const level = session?.getItem(LOG_LEVEL_KEY) ?? '';
   const heartbeatMs = Number(session?.getItem(HEARTBEAT_KEY) ?? '');
-  const local = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1';
   return {
     db: createSmoldotDb(),
     logLevel: level !== '' ? level : local ? 'info' : 'off',
@@ -138,24 +138,15 @@ async function resumeFromStore(engine: LightClientEngine, key: string): Promise<
 
 export function createLightClient(deps: LightClientDeps): LightClient {
   const start = deps.start ?? startTruapiProvider;
-  const listeners = new Set<(change: LightClientChange) => void>();
+  const listeners = createListenerSet<LightClientChange>({
+    onListenerError: reportListener('protocol', 'light_client'),
+  });
   const dbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
   let fatal: string | null = null;
   let engine: LightClientEngine | null = null;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   // Every chain's first open waits on one start. A failed start is tried again by the next open.
   const starts = createAsyncTaskPool({ poolSize: 1 });
-
-  function emit(change: LightClientChange): void {
-    for (const listener of listeners) {
-      try {
-        listener(change);
-        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the broadcast to all others.
-      } catch {
-        /* listener threw, do not let one listener break the broadcast */
-      }
-    }
-  }
 
   function markFatal(message: string): void {
     if (fatal !== null) {
@@ -165,7 +156,7 @@ export function createLightClient(deps: LightClientDeps): LightClient {
     // A dead light client must not be counted as live.
     clearInterval(heartbeat);
     log.error(`[dot.li provider] ${message}`);
-    emit({ kind: 'fatal', message });
+    listeners.emit({ kind: 'fatal', message });
   }
 
   function markDb(genesisHash: string, outcome: SmoldotDbOutcome): void {
@@ -176,7 +167,7 @@ export function createLightClient(deps: LightClientDeps): LightClient {
       return;
     }
     dbOutcomes.set(chain, outcome);
-    emit({ kind: 'db', chain, outcome });
+    listeners.emit({ kind: 'db', chain, outcome });
   }
 
   // The relay's blob is only read here, never through `loadDatabase`. A failure must reject, not read as empty.
@@ -317,7 +308,7 @@ export function createLightClient(deps: LightClientDeps): LightClient {
             fail(new Error(`chain ${key} stopped responding`));
           } catch (error) {
             // Nothing awaits this loop to hear it.
-            log.warn(`[dot.li provider] halt listener for chain ${key} threw`, error);
+            reportListener('protocol', 'light_client.halt')(error);
           }
         }
       })();
@@ -349,11 +340,6 @@ export function createLightClient(deps: LightClientDeps): LightClient {
     createChainProvider,
     isChainSupported,
     status: () => ({ fatal, db: new Map(dbOutcomes) }),
-    subscribe: listener => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: listeners.subscribe,
   };
 }

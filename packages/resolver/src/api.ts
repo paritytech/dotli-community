@@ -8,7 +8,9 @@
 import type { SubstrateClient } from '@polkadot-api/substrate-client';
 import { OperationInaccessibleError, StopError } from '@polkadot-api/substrate-client';
 import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
-import { fromHex, toHex, mergeUint8 } from '@polkadot-api/utils';
+import { mergeUint8 } from '@polkadot-api/utils';
+import { reportListener } from '@dotli/metrics';
+import { createAsyncTaskPool, createListenerSet, fromHex, toHex } from '@dotli/shared';
 
 const enc = new TextEncoder();
 
@@ -17,25 +19,15 @@ const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox12
 const decodeVecU8 = Hex().dec;
 
 /**
- * A light client answers `operationInaccessible` just after syncing, before any peer served the proof.
- * The raw client does not retry it as papi's observable client does. The window lets a read no peer serves fail.
+ * A light client answers `operationInaccessible` just after syncing, before any peer served the proof. The raw client
+ * does not retry it as papi's observable client does. About 30 s of retries lets a read no peer serves fail.
  */
-const INACCESSIBLE_RETRY_DELAY_MS = 750;
-const INACCESSIBLE_RETRY_WINDOW_MS = 30_000;
-
-async function withInaccessibleRetry<T>(fn: () => Promise<T>): Promise<T> {
-  const started = performance.now();
-  for (;;) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (!(err instanceof OperationInaccessibleError) || performance.now() - started >= INACCESSIBLE_RETRY_WINDOW_MS) {
-        throw err;
-      }
-    }
-    await new Promise(resolve => setTimeout(resolve, INACCESSIBLE_RETRY_DELAY_MS));
-  }
-}
+const inaccessibleReads = createAsyncTaskPool({
+  poolSize: Infinity,
+  retryCount: 40,
+  retryDelay: 750,
+  retryIf: error => error instanceof OperationInaccessibleError,
+});
 
 /** The chainHead follow stopped, so the caller must redial. Distinct from a `null` unset slot. */
 export class ApiStoppedError extends Error {
@@ -68,7 +60,7 @@ export interface Api {
 export function createRawApi(client: SubstrateClient): Api {
   let bestHashRef: string | null = null;
   let stopped = false;
-  const stopCbs = new Set<() => void>();
+  const stops = createListenerSet<undefined>({ onListenerError: reportListener('resolve', 'resolver.stop') });
   let resolveReady: (() => void) | null = null;
   let rejectReady: ((err: unknown) => void) | null = null;
   const ready = new Promise<void>((res, rej) => {
@@ -87,14 +79,7 @@ export function createRawApi(client: SubstrateClient): Api {
       rejectReady = null;
       resolveReady = null;
     }
-    for (const cb of stopCbs) {
-      try {
-        cb();
-        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the others.
-      } catch {
-        /* ignore */
-      }
-    }
+    stops.emit(undefined);
   }
 
   // A server may stop a follow that lets pins pile up. Reads only target descendants of the newest finalized
@@ -186,7 +171,7 @@ export function createRawApi(client: SubstrateClient): Api {
     // `AccountInfoOf` uses the Identity hasher.
     const addr = fromHex(contractAddress);
     const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, addr]);
-    const accountInfoHex = await withInaccessibleRetry(() =>
+    const accountInfoHex = await inaccessibleReads.call(() =>
       withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null)),
     );
     if (accountInfoHex === null) {
@@ -225,7 +210,7 @@ export function createRawApi(client: SubstrateClient): Api {
       return null;
     }
     const childKey = Blake2256(fromHex(slotKey));
-    const valueHex = await withInaccessibleRetry(() =>
+    const valueHex = await inaccessibleReads.call(() =>
       withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie))),
     );
     return valueHex === null ? null : fromHex(valueHex);
@@ -244,20 +229,12 @@ export function createRawApi(client: SubstrateClient): Api {
     },
     onStop(cb) {
       if (stopped) {
-        try {
-          cb();
-          // eslint-disable-next-line no-restricted-syntax -- defensive: one buggy late subscriber must not break the registration.
-        } catch {
-          /* ignore */
-        }
+        stops.deliver(cb, undefined);
         return () => {
           /* already stopped */
         };
       }
-      stopCbs.add(cb);
-      return () => {
-        stopCbs.delete(cb);
-      };
+      return stops.subscribe(cb);
     },
     destroy() {
       try {

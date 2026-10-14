@@ -41,7 +41,8 @@ Tools:
 
 ## Packages
 
-What a package owns and exposes is in its `README.md`. What it may import is in its `eslint.config.js`.
+What a package owns and exposes is in its `README.md`. What it may import is in its `eslint.config.js`. The host is the
+top layer and may import every package, so its config lists none.
 
 - A view, screen or flow used by one app lives in that app. The host's domain building blocks (account, chat,
   permission, settings and chain views, and their icons) sit in its `src/components/<domain>/` beside the flows that

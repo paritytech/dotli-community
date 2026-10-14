@@ -45,7 +45,7 @@ function browserHealthPage(): HealthPage {
 }
 
 /** Calling it again returns the same stop. Judged on the page's monitor unless given another. */
-export function initNetworkHealth(
+export function startNetworkHealth(
   monitor: Pick<NetworkMonitor, 'subscribe' | 'getChainClocks'> = networkMonitor,
   page: HealthPage = browserHealthPage(),
 ): () => void {

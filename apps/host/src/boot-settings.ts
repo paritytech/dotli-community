@@ -11,10 +11,10 @@ import {
   sharedSettingsOf,
   writeLocalSettings,
   writeSettingsToSearch,
-  type ModeStorage,
   type Settings,
   type SharedSettings,
 } from '@dotli/config';
+import type { SafeStorage } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 import type { ModeDraft, SettingsActions } from './settings-actions.js';
 
@@ -22,7 +22,7 @@ export interface SettingsBootDeps {
   /** The page's query string. */
   search: string;
   /** This origin's storage, which never throws. */
-  local: ModeStorage;
+  local: SafeStorage;
   sharedWorkerAvailable: boolean;
   /** On localhost, where each origin is its own site and parallel test workers must stay apart. */
   preferLocal: boolean;

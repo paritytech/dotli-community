@@ -92,18 +92,4 @@ export function isSandboxOrigin(origin: string): boolean {
 
 export const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
 
-/** Content block cache cap. After each load the least recently used blocks are dropped until it fits. */
-export const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
-
-/** Drop scheduled notifications older than this many ms past `scheduledAt`. */
-export const SCHEDULED_NOTIFICATIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-/** Pending scheduled notifications per product before `schedule` returns ScheduleLimitReached. */
-export const SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP = 20;
-
-export const SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS = 1_000;
-
-/** Hidden tabs fire only records older than `now - offset`, giving a visible tab first crack at the lock. */
-export const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
-
 export { TIMEOUTS } from './timeouts.js';

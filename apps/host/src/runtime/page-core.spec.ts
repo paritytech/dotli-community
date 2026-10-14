@@ -8,7 +8,7 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime, CoreRuntimeRequest } from './core-runtime.js';
-import { createPageCore, type CoreStatus, type PageCore } from './page-core.js';
+import { createPageCore, type PageCore } from './page-core.js';
 import { labelToProductId } from './runtime-config.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
@@ -86,13 +86,14 @@ interface Harness {
   /** Every runtime a boot attempt produced, in order. */
   runtimes: FakeRuntime[];
   requests: CoreRuntimeRequest[];
-  statuses: CoreStatus[];
+  /** How each boot attempt settled, in order, recorded before the page core handles it. */
+  outcomes: ('ok' | 'error')[];
   storeListeners: Set<() => void>;
   /** Queues how the next boot attempts end. An attempt with nothing queued boots at once. */
   nextBoots: Boot[];
   /** Every stale check the page core made, in order. */
   staleChecks: Promise<boolean>[];
-  /** Notified at each status, boot request, store listener change and call on a fake runtime or connection. */
+  /** Notified at each boot request and outcome, store listener change and call on a fake runtime or connection. */
   changes: Changes;
 }
 
@@ -110,6 +111,7 @@ function harness(options: HarnessOptions = {}): Harness {
   const nextBoots: Boot[] = [];
   const storeListeners = new Set<() => void>();
   const staleChecks: Promise<boolean>[] = [];
+  const outcomes: ('ok' | 'error')[] = [];
   const changes = createChanges();
   const bootNow: Boot = () => {
     const runtime = fakeRuntime(changes);
@@ -132,7 +134,18 @@ function harness(options: HarnessOptions = {}): Harness {
     bootRuntime: request => {
       requests.push(request);
       changes.notify();
-      return (nextBoots.shift() ?? bootNow)(request);
+      const attempt = (nextBoots.shift() ?? bootNow)(request);
+      attempt.then(
+        () => {
+          outcomes.push('ok');
+          changes.notify();
+        },
+        () => {
+          outcomes.push('error');
+          changes.notify();
+        },
+      );
+      return attempt;
     },
     onStoredSessionChanged: listener => {
       storeListeners.add(listener);
@@ -145,12 +158,7 @@ function harness(options: HarnessOptions = {}): Harness {
     coordinator: createBlockingModalCoordinator(),
     redials: createAsyncTaskPool({ poolSize: 1, retryCount: 2 }),
   });
-  const statuses: CoreStatus[] = [];
-  core.subscribeCoreStatus(status => {
-    statuses.push(status);
-    changes.notify();
-  });
-  return { core, runtimes, requests, statuses, storeListeners, nextBoots, staleChecks, changes };
+  return { core, runtimes, requests, outcomes, storeListeners, nextBoots, staleChecks, changes };
 }
 
 function failingBoot(): Boot {
@@ -192,21 +200,21 @@ function reportingHarness(
 }
 
 describe('page core', () => {
-  it('As a dApp user, I open a product and the page core reports booting then ready', async () => {
+  it('As a dApp user, I open a product and the page core boots one core for it', async () => {
     // Given
-    const { core, statuses } = harness();
+    const { core, requests, outcomes } = harness();
 
     // When
     await core.acquire();
 
     // Then
-    expect(statuses).toEqual(['booting', 'ready']);
-    expect(core.getCoreStatus()).toBe('ready');
+    expect(requests).toHaveLength(1);
+    expect(outcomes).toEqual(['ok']);
   });
 
   it('As a dApp user, I use one core from two parts of the page and it goes with the last lease', async () => {
     // Given
-    const { core, runtimes, requests, statuses, changes } = harness();
+    const { core, runtimes, requests, outcomes, changes } = harness();
     const first = await core.acquire();
     const second = await core.acquire();
 
@@ -218,7 +226,7 @@ describe('page core', () => {
     // Then
     await changes.until(() => nthRuntime(runtimes, 0).dispose.mock.calls.length === 1);
     expect(requests).toHaveLength(1);
-    expect(statuses).toEqual(['booting', 'ready', 'idle']);
+    expect(outcomes).toEqual(['ok']);
   });
 
   it('As a dApp user, I close a connection and the core stays ready without being dialed again', async () => {
@@ -231,13 +239,13 @@ describe('page core', () => {
     connection.close();
 
     // Then
-    expect(core.getCoreStatus()).toBe('ready');
+    expect(requests[0]?.inService()).toBe(true);
     expect(requests).toHaveLength(1);
   });
 
-  it('As a dApp user whose core fails to boot, my request fails and the core reports faulted', async () => {
+  it('As a dApp user whose core fails to boot, my request fails and one boot is attempted', async () => {
     // Given
-    const { core, requests, statuses, nextBoots } = harness();
+    const { core, requests, outcomes, nextBoots } = harness();
     nextBoots.push(failingBoot());
 
     // When
@@ -246,12 +254,12 @@ describe('page core', () => {
     // Then
     await expect(lease).rejects.toThrow('worker failed to start');
     expect(requests).toHaveLength(1);
-    expect(statuses).toEqual(['booting', 'faulted']);
+    expect(outcomes).toEqual(['error']);
   });
 
   it('As a dApp user whose core failed to boot, my next request dials a new core', async () => {
     // Given
-    const { core, requests, nextBoots } = harness();
+    const { core, requests, outcomes, nextBoots } = harness();
     nextBoots.push(failingBoot());
     await expect(core.acquire()).rejects.toThrow();
 
@@ -260,12 +268,12 @@ describe('page core', () => {
 
     // Then
     expect(requests).toHaveLength(2);
-    expect(core.getCoreStatus()).toBe('ready');
+    expect(outcomes).toEqual(['error', 'ok']);
   });
 
   it('As a dApp user whose core goes down under my product, I get a new core dialed without asking', async () => {
     // Given
-    const { core, runtimes, requests, statuses, changes } = harness();
+    const { core, runtimes, requests, outcomes, changes } = harness();
     const lease = await core.acquire();
     await lease.connect();
 
@@ -273,8 +281,8 @@ describe('page core', () => {
     nthRuntime(runtimes, 0).providers[0]?.goDown();
 
     // Then
-    await changes.until(() => core.getCoreStatus() === 'ready');
-    expect(statuses).toEqual(['booting', 'ready', 'faulted', 'booting', 'ready']);
+    await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
+    expect(outcomes).toEqual(['ok', 'ok']);
     expect(requests).toHaveLength(2);
     const next = await core.acquire();
     expect(next.runtime).toBe(nthRuntime(runtimes, 1).runtime);
@@ -283,7 +291,7 @@ describe('page core', () => {
 
   it('As a dApp user whose core refuses a connection, I see my request fail and a new core dialed', async () => {
     // Given
-    const { core, runtimes, requests, changes } = harness();
+    const { core, runtimes, requests, outcomes, changes } = harness();
     const lease = await core.acquire();
     nthRuntime(runtimes, 0).createProvider.mockRejectedValueOnce(new Error('runtime disposed'));
 
@@ -292,13 +300,13 @@ describe('page core', () => {
 
     // Then
     await expect(connection).rejects.toThrow('runtime disposed');
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
     expect(requests).toHaveLength(2);
   });
 
   it('As a dApp user whose core goes down under two connections, I get one new core dialed', async () => {
     // Given
-    const { core, runtimes, requests, changes } = harness();
+    const { core, runtimes, requests, outcomes, changes } = harness();
     const lease = await core.acquire();
     await lease.connect();
     await lease.connect();
@@ -309,7 +317,7 @@ describe('page core', () => {
     }
 
     // Then
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
     expect(requests).toHaveLength(2);
   });
 
@@ -331,6 +339,28 @@ describe('page core', () => {
 
     // Then
     expect(heard).toEqual([2]);
+  });
+
+  it('As a holder of a core lease, I still hear my core go down when a holder before me throws, and the throw is reported', async () => {
+    // Given two holders of one core, the first throwing
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const { core, runtimes } = harness();
+    const lease = await core.acquire();
+    await lease.connect();
+    lease.subscribeDown(() => {
+      throw new TypeError('listener broke');
+    });
+    const heard = vi.fn();
+    lease.subscribeDown(heard);
+
+    // When the core goes down
+    nthRuntime(runtimes, 0).providers[0]?.goDown();
+
+    // Then the second holder heard it and the throw was counted under its owner
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(sentry.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'page_core.down' },
+    ]);
   });
 
   it('As a holder of a lease whose core already went down, I hear it as I subscribe', async () => {
@@ -385,7 +415,7 @@ describe('page core', () => {
 
   it('As a holder of the last core lease, I release it and nothing reports the core going down after', async () => {
     // Given a connection on a core whose last lease subscribed to its going down
-    const { core, runtimes, requests, statuses } = harness();
+    const { core, runtimes, requests, outcomes } = harness();
     const lease = await core.acquire();
     await lease.connect();
     const heard = vi.fn();
@@ -395,19 +425,19 @@ describe('page core', () => {
     lease.release();
     nthRuntime(runtimes, 0).providers[0]?.goDown();
 
-    // Then nobody hears it, no core is dialed again and the page reports no core
+    // Then nobody hears it, no core is dialed again and the runtime is disposed once
     expect(heard).not.toHaveBeenCalled();
     expect(lease.subscribeDown(heard)).toBeTypeOf('function');
     expect(heard).not.toHaveBeenCalled();
     expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
     expect(requests).toHaveLength(1);
     expect(requests[0]?.isLive()).toBe(false);
-    expect(statuses).toEqual(['booting', 'ready', 'idle']);
+    expect(outcomes).toEqual(['ok']);
   });
 
   it('As a dApp user who asks for the core while it redials, I get the new core once it is up', async () => {
     // Given
-    const { core, runtimes, nextBoots, changes } = harness();
+    const { core, runtimes, requests, outcomes, nextBoots, changes } = harness();
     const lease = await core.acquire();
     await lease.connect();
     const redial = heldBoot(changes);
@@ -416,17 +446,17 @@ describe('page core', () => {
 
     // When
     const next = core.acquire();
-    const statusWhileWaiting = core.getCoreStatus();
+    const bootingWhileWaiting = outcomes.length < requests.length;
     const redialed = redial.resolve();
 
     // Then
-    expect(statusWhileWaiting).toBe('booting');
+    expect(bootingWhileWaiting).toBe(true);
     await expect(next).resolves.toMatchObject({ runtime: redialed.runtime });
   });
 
   it('As a dApp user whose first redial fails, I see the page try again and the core come back ready', async () => {
     // Given
-    const { core, runtimes, requests, nextBoots, changes } = harness();
+    const { core, runtimes, requests, outcomes, nextBoots, changes } = harness();
     const lease = await core.acquire();
     await lease.connect();
     nextBoots.push(failingBoot());
@@ -435,26 +465,27 @@ describe('page core', () => {
     nthRuntime(runtimes, 0).providers[0]?.goDown();
 
     // Then
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    await changes.until(() => outcomes.length === 3 && outcomes.at(-1) === 'ok');
     expect(requests).toHaveLength(3);
   });
 
-  it('As a dApp user whose redials all fail, I see the core reported faulted and my next request dial afresh', async () => {
+  it('As a dApp user whose redials all fail, my next request dials afresh', async () => {
     // Given
-    const { core, runtimes, requests, nextBoots, changes } = harness();
+    const { core, runtimes, requests, outcomes, nextBoots, counted, changes } = reportingHarness();
     const lease = await core.acquire();
     await lease.connect();
     nextBoots.push(failingBoot(), failingBoot(), failingBoot());
 
     // When
     nthRuntime(runtimes, 0).providers[0]?.goDown();
-    await changes.until(() => requests.length === 4);
-    await changes.until(() => core.getCoreStatus() === 'faulted');
+    await changes.until(() => outcomes.length === 4 && outcomes.at(-1) === 'error');
+    // The page core takes the core out of service as it reports the redial that gave up, after the boot settled.
+    await changes.until(() => counted('wallet.core_redial').length === 1);
     await core.acquire();
 
     // Then
     expect(requests).toHaveLength(5);
-    expect(core.getCoreStatus()).toBe('ready');
+    expect(outcomes.at(-1)).toBe('ok');
   });
 
   it('As a user who opened another product before the old core went down, I get a redial for the product on screen', async () => {
@@ -489,7 +520,8 @@ describe('page core', () => {
     await changes.until(() => late.dispose.mock.calls.length === 1);
     expect(requests[1]?.isLive()).toBe(false);
     expect(requests[2]?.product.label).toBe('other');
-    expect(core.getCoreStatus()).toBe('ready');
+    expect((await core.acquire()).runtime).toBe(nthRuntime(runtimes, 1).runtime);
+    expect(requests).toHaveLength(3);
   });
 
   it('As a user, I open another product while the old core redials and the redial goes as soon as the page names it', async () => {
@@ -506,7 +538,6 @@ describe('page core', () => {
 
     // Then
     expect(requests[1]?.isLive()).toBe(false);
-    expect(core.getCoreStatus()).toBe('idle');
     const late = redial.resolve();
     await changes.until(() => late.dispose.mock.calls.length === 1);
   });
@@ -525,14 +556,14 @@ describe('page core', () => {
     const replacement = redial.resolve();
 
     // Then
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    expect((await core.acquire()).runtime).toBe(replacement.runtime);
     expect(requests[1]?.isLive()).toBe(true);
     expect(replacement.dispose).not.toHaveBeenCalled();
   });
 
   it('As a dApp user whose core refuses one connection and closes another, I get one new core dialed', async () => {
     // Given
-    const { core, runtimes, requests, changes } = harness();
+    const { core, runtimes, requests, outcomes, changes } = harness();
     const lease = await core.acquire();
     await lease.connect();
     nthRuntime(runtimes, 0).createProvider.mockRejectedValueOnce(new Error('runtime disposed'));
@@ -542,7 +573,7 @@ describe('page core', () => {
     nthRuntime(runtimes, 0).providers[0]?.goDown();
 
     // Then
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
     expect(requests).toHaveLength(2);
   });
 
@@ -654,21 +685,22 @@ describe('page core', () => {
 describe('page core redial reports', () => {
   it('As an operator, I see a redial that brought the core back counted as ok with what made the core go down', async () => {
     // Given
-    const { core, runtimes, counted, changes } = reportingHarness();
+    const { core, runtimes, outcomes, counted, changes } = reportingHarness();
     const lease = await core.acquire();
     await lease.connect();
 
     // When
     nthRuntime(runtimes, 0).providers[0]?.goDown();
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    await changes.until(() => counted('wallet.core_redial').length === 1);
 
     // Then
+    expect(outcomes).toEqual(['ok', 'ok']);
     expect(counted('wallet.core_redial')).toEqual([{ outcome: 'ok', reason: 'closed' }]);
   });
 
   it('As an operator, I see a redial that gave up captured and counted as an error', async () => {
     // Given
-    const { core, runtimes, nextBoots, counted, captures, changes } = reportingHarness();
+    const { core, runtimes, outcomes, nextBoots, counted, captures, changes } = reportingHarness();
     const lease = await core.acquire();
     const failure = new Error('worker failed to start');
     nextBoots.push(
@@ -680,9 +712,10 @@ describe('page core redial reports', () => {
 
     // When
     await expect(lease.connect()).rejects.toThrow('runtime disposed');
-    await changes.until(() => core.getCoreStatus() === 'faulted');
+    await changes.until(() => counted('wallet.core_redial').length === 1);
 
     // Then
+    expect(outcomes).toEqual(['ok', 'error', 'error', 'error']);
     expect(captures.exception).toHaveBeenCalledWith(failure, {
       flow: 'wallet',
       step: 'core_redial',
@@ -785,7 +818,6 @@ describe('page core after a failed wallet read', () => {
 
     // Then
     await changes.until(() => requests.length === 2);
-    await changes.until(() => core.getCoreStatus() === 'ready');
     expect(pairing.notifySessionStoreChanged).toHaveBeenCalled();
     const next = await core.acquire();
     expect(next.runtime).toBe(nthRuntime(runtimes, 1).runtime);
@@ -804,16 +836,15 @@ describe('page core after a failed wallet read', () => {
     // Then
     expect(lease.runtime).toBe(nthRuntime(runtimes, 0).runtime);
     await changes.until(() => requests.length === 2);
-    await changes.until(() => core.getCoreStatus() === 'ready');
-    expect(storeListeners.size).toBe(1);
     const next = await core.acquire();
     expect(next.runtime).toBe(nthRuntime(runtimes, 1).runtime);
+    expect(storeListeners.size).toBe(1);
   });
 
   it('As a local wallet user whose store came back, I get one local core for two store events', async () => {
     // Given
     let walletFound = false;
-    const { core, requests, storeListeners, staleChecks, statuses, changes } = harness({
+    const { core, requests, storeListeners, staleChecks, outcomes, changes } = harness({
       walletFound: () => walletFound,
     });
     await core.acquire();
@@ -827,14 +858,14 @@ describe('page core after a failed wallet read', () => {
     await Promise.all(staleChecks);
 
     // Then
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
     expect(requests).toHaveLength(2);
-    expect(statuses).toEqual(['booting', 'ready', 'faulted', 'booting', 'ready']);
+    expect(outcomes).toEqual(['ok', 'ok']);
   });
 
   it('As a Polkadot App user, I see a stored session change and keep my core', async () => {
     // Given
-    const { core, requests, storeListeners, statuses, staleChecks } = harness({ walletFound: () => false });
+    const { core, requests, storeListeners, outcomes, staleChecks } = harness({ walletFound: () => false });
     const lease = await core.acquire();
 
     // When
@@ -848,14 +879,14 @@ describe('page core after a failed wallet read', () => {
     expect(staleChecks).toHaveLength(2);
     expect(next.runtime).toBe(lease.runtime);
     expect(requests).toHaveLength(1);
-    expect(statuses).toEqual(['booting', 'ready']);
+    expect(outcomes).toEqual(['ok']);
   });
 });
 
 describe('page core retirement', () => {
   it('As a dApp user whose core went down, I keep it under my product while it stops speaking for my session', async () => {
     // Given
-    const { core, runtimes, requests, changes } = harness();
+    const { core, runtimes, requests, outcomes, changes } = harness();
     const lease = await core.acquire();
     await lease.connect();
 
@@ -865,7 +896,7 @@ describe('page core retirement', () => {
     // Then
     expect(requests[0]?.isLive()).toBe(true);
     expect(requests[0]?.inService()).toBe(false);
-    await changes.until(() => core.getCoreStatus() === 'ready');
+    await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
     expect(requests[1]?.inService()).toBe(true);
   });
 
@@ -891,7 +922,7 @@ describe('page core retirement', () => {
 
   it('As a user, I open another product while a login still holds the old core and it speaks for my session until it goes down', async () => {
     // Given a core a product change replaced while its lease is still held
-    const { core, runtimes, requests } = harness();
+    const { core, runtimes, requests, outcomes } = harness();
     core.setProduct({ label: 'first' });
     const kept = await core.acquire();
     await kept.connect();
@@ -907,6 +938,6 @@ describe('page core retirement', () => {
     expect(requests[0]?.inService()).toBe(false);
     expect(requests[1]?.inService()).toBe(true);
     expect(requests).toHaveLength(2);
-    expect(core.getCoreStatus()).toBe('ready');
+    expect(outcomes).toEqual(['ok', 'ok']);
   });
 });

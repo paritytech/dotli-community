@@ -6,8 +6,8 @@
 
 import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log, type AsyncTaskPool, createSyncStore } from '@dotli/shared';
+import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createListenerSet, log, type AsyncTaskPool, type ListenerSet } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './core-runtime.js';
 import { labelToProductId } from './runtime-config.js';
@@ -40,12 +40,6 @@ export interface CoreLease {
 }
 
 /**
- * `faulted` is reported when a core goes down or turns stale, and again when its replacement could not boot. A redial
- * in between reports `booting`.
- */
-export type CoreStatus = 'idle' | 'booting' | 'ready' | 'faulted';
-
-/**
  * What took a core out of service, a closed set so the metric's `reason` tag stays bounded. `stale` is a pairing core
  * booted before the local wallet could be read.
  */
@@ -66,9 +60,6 @@ export interface PageCore {
   /** A request made while the core redials waits for the replacement. */
   acquire(): Promise<CoreLease>;
   cancelPairing(): void;
-  getCoreStatus(): CoreStatus;
-  /** Called on each change only. */
-  subscribeCoreStatus(listener: (status: CoreStatus) => void): () => void;
 }
 
 interface Core {
@@ -76,7 +67,7 @@ interface Core {
   runtime: Promise<BootedCoreRuntime>;
   leases: number;
   faulted: boolean;
-  downListeners: Set<() => void>;
+  downListeners: ListenerSet<undefined>;
   dispose(): void;
 }
 
@@ -100,7 +91,6 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       retryCount: REDIAL_RETRIES,
       retryDelay: retry => REDIAL_FIRST_DELAY_MS * 2 ** retry,
     });
-  const status = createSyncStore<CoreStatus>('pageCoreStatus', 'idle');
   let pageProduct = LANDING_PRODUCT;
   let current: Core | null = null;
   // Also holds cores a product change or fault replaced while they still had leases.
@@ -143,7 +133,7 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       return booted;
     };
     const booting = redial === undefined ? attempt() : redials.call(attempt, { signal: dropped.signal });
-    // Settled here first, so whoever awaits the runtime sees the status and the fault already recorded.
+    // Settled here first, so whoever awaits the runtime sees the fault already recorded.
     const runtime = booting.then(
       booted => {
         // The pool can resolve a boot that was dropped in the same turn. Its runtime is already disposed.
@@ -180,9 +170,6 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
             }
           });
         }
-        if (current === core) {
-          status.set('ready');
-        }
         if (redial !== undefined) {
           m.count(S.WALLET_CORE_REDIAL, { outcome: 'ok', reason: redial });
         }
@@ -196,9 +183,6 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           throw error;
         }
         core.faulted = true;
-        if (current === core) {
-          status.set('faulted');
-        }
         if (redial === undefined) {
           // The caller that asked for this core gets the error and reports it.
           log.warn('[dot.li page-core] wallet core failed to boot:', error);
@@ -219,16 +203,13 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       runtime,
       leases: 0,
       faulted: false,
-      downListeners: new Set(),
+      downListeners: createListenerSet<undefined>({ onListenerError: reportListener('wallet', 'page_core.down') }),
       dispose() {
         if (!cores.delete(core)) {
           return;
         }
         if (current === core) {
           current = null;
-          if (!core.faulted) {
-            status.set('idle');
-          }
         }
         log.event('wallet core disposed', { flow: 'wallet', faulted: core.faulted });
         dropped.abort(new Error('The page core was disposed'));
@@ -243,7 +224,6 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
     if (previous !== null && previous.leases === 0) {
       previous.dispose();
     }
-    status.set('booting');
     return core;
   }
 
@@ -254,15 +234,11 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
     }
     core.faulted = true;
     if (current === core) {
-      status.set('faulted');
       // The page's product, which a product change may have moved on from the core that went down.
       dial(pageProduct, reason);
     }
-    const listeners = [...core.downListeners];
-    core.downListeners.clear();
-    for (const listener of listeners) {
-      listener();
-    }
+    // Once only, as the guard above holds, and a holder that subscribes after this hears it at once instead.
+    core.downListeners.emit(undefined);
   }
 
   async function connect(
@@ -315,16 +291,16 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       core.leases++;
       let released = false;
       // A core outliving a lease must not call back a holder that let it go.
-      const leaseListeners = new Set<() => void>();
+      const leaseUnsubscribes = new Set<() => void>();
       const release = (): void => {
         if (released) {
           return;
         }
         released = true;
-        for (const listener of leaseListeners) {
-          core.downListeners.delete(listener);
+        for (const unsubscribe of leaseUnsubscribes) {
+          unsubscribe();
         }
-        leaseListeners.clear();
+        leaseUnsubscribes.clear();
         core.leases--;
         if (core.leases === 0) {
           core.dispose();
@@ -349,11 +325,11 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
             listener();
             return () => undefined;
           }
-          leaseListeners.add(listener);
-          core.downListeners.add(listener);
+          const unsubscribe = core.downListeners.subscribe(listener);
+          leaseUnsubscribes.add(unsubscribe);
           return () => {
-            leaseListeners.delete(listener);
-            core.downListeners.delete(listener);
+            leaseUnsubscribes.delete(unsubscribe);
+            unsubscribe();
           };
         },
         release,
@@ -374,14 +350,6 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           },
         );
       }
-    },
-
-    getCoreStatus: status.get,
-
-    subscribeCoreStatus(listener) {
-      return status.subscribe(() => {
-        listener(status.get());
-      });
     },
   };
 }

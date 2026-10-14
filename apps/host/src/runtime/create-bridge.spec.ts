@@ -12,7 +12,7 @@ import {
 } from './blocking-modal-queue.js';
 import { createBridge, type Bridge } from './create-bridge.js';
 import type { CoreRuntimeRequest } from './core-runtime.js';
-import type { DotliAuthState } from './host-callbacks/AuthState.js';
+import type { DotliAuthState } from './session/auth-state.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { makeProvider } from './page-core.fake.js';
 import { fakeIframe, fakeProductFrameView } from './product-frame.fake.js';
@@ -107,7 +107,6 @@ describe('bridge', () => {
 
     // Then
     expect(second).toBe(first);
-    expect(first.getStatus()).toBe('idle');
   });
 
   it('As the network panel, the host chains report to me from the first initBridge, and a repeat keeps that core and attaches no second watch', async () => {

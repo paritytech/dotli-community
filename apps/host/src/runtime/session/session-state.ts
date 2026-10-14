@@ -10,7 +10,7 @@ import { createAsyncTaskPool, errorName, log } from '@dotli/shared';
 import { getAuthState, setAuthState } from '../state/auth.js';
 import { getWalletMode } from '../state/wallet-mode.js';
 import { readWalletBoot, type LocalWalletBoot } from '../wallet-boot.js';
-import type { DotliAuthState } from './AuthState.js';
+import type { DotliAuthState } from './auth-state.js';
 import { coreStorage, type StoredSession } from './core-storage.js';
 
 export interface TruapiSessionUiState {

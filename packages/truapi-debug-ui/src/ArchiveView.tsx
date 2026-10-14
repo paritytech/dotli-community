@@ -3,10 +3,9 @@
 
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ReadableStore } from '@dotli/shared';
-import { useStore } from './use-store.js';
+import { formatSize, type ReadableStore } from '@dotli/shared';
+import { useStore } from '@dotli/ui';
 import {
-  formatBytes,
   imageType,
   preview,
   summaryLabel,
@@ -164,7 +163,7 @@ export function ArchiveView(props: {
                         value={file.path}
                         selected={selectedPath() === file.path}
                         title={file.path}
-                        meta={formatBytes(file.bytes.length)}
+                        meta={formatSize(file.bytes.length)}
                         onSelect={() => {
                           setSelectedPath(file.path);
                         }}
@@ -189,7 +188,7 @@ export function ArchiveView(props: {
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>
                     <EmptyState testId="td-archive-empty">
-                      Binary, {formatBytes(selected()?.bytes.length ?? 0)}
+                      Binary, {formatSize(selected()?.bytes.length ?? 0)}
                     </EmptyState>
                   </Match>
                   <Match when={shownText()}>

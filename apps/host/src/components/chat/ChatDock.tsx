@@ -1,10 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { type Accessor, createEffect, createSignal, Errored, lazy, Loading, onSettled, Show, untrack } from 'solid-js';
+import { type Accessor, createEffect, createSignal, lazy, Loading, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { captureException } from '@dotli/metrics';
-import { preloadWhenIdle } from '@dotli/ui';
+import { preloadWhenIdle, RootBoundary } from '@dotli/ui';
 import type { ChatConversation } from './chat.js';
 import { type ChatPanelModule, loadChatPanel } from '../../lazy.js';
 import s from './ChatDock.module.css';
@@ -76,8 +75,13 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
       style={{ width: `${String(props.width())}px` }}
     >
       <Show when={opened()}>
-        <Errored
-          fallback={(err, reset) => <Broken error={err()} reset={reset} open={props.open} onClose={props.onClose} />}
+        {/* A broken panel closes and unmounts, so the next open renders it afresh. */}
+        <RootBoundary
+          root="chat"
+          onBroken={() => {
+            setOpened(false);
+            props.onClose();
+          }}
         >
           <Loading>
             <ChatPanel
@@ -89,34 +93,8 @@ export function ChatDock(props: ChatDockProps): JSX.Element {
               conversation={props.conversation}
             />
           </Loading>
-        </Errored>
+        </RootBoundary>
       </Show>
     </aside>
   );
-}
-
-/** Reports a broken panel and closes it, so the next open renders it afresh. */
-function Broken(props: {
-  error: unknown;
-  reset: () => void;
-  open: Accessor<boolean>;
-  onClose: () => void;
-}): JSX.Element {
-  createEffect(
-    () => props.error,
-    error => {
-      captureException(error, { flow: 'ui', step: 'root_render', tags: { root: 'chat' } });
-      props.onClose();
-    },
-  );
-  createEffect(
-    () => props.open(),
-    isOpen => {
-      if (isOpen) {
-        props.reset();
-      }
-    },
-    { defer: true },
-  );
-  return null;
 }

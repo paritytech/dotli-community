@@ -3,7 +3,7 @@
 
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { idbRequest, idbTransaction, openIdb } from './idb.js';
+import { deleteIdb, idbRequest, idbTransaction, openIdb } from './idb.js';
 
 const STORE = 'items';
 let db: IDBDatabase;
@@ -119,5 +119,36 @@ describe('idbRequest', () => {
 
     // Then
     await expect(request).rejects.toMatchObject({ name: 'ConstraintError' });
+  });
+});
+
+describe('deleteIdb', () => {
+  it('As a purge, I delete a database and it is gone once the delete resolves', async () => {
+    // Given
+    const factory = new IDBFactory();
+    const opened = await openIdb(factory, 'gone', 1, created => {
+      created.createObjectStore(STORE);
+    });
+    opened.close();
+
+    // When
+    await deleteIdb(factory, 'gone');
+
+    // Then
+    expect((await factory.databases()).map(info => info.name)).not.toContain('gone');
+  });
+
+  it('As a purge, I delete a database another connection holds open and the delete rejects rather than hangs', async () => {
+    // Given
+    const factory = new IDBFactory();
+    await openIdb(factory, 'held', 1, created => {
+      created.createObjectStore(STORE);
+    });
+
+    // When
+    const deleted = deleteIdb(factory, 'held');
+
+    // Then
+    await expect(deleted).rejects.toThrow('Failed to delete held DB: blocked by another connection');
   });
 });

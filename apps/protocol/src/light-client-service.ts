@@ -7,7 +7,7 @@
 
 import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
-import type { ChainRole, FixedServicesConfig } from '@dotli/config';
+import type { ChainRole, FixedServicesConfig } from '@dotli/config/fixed';
 import { createChainPool, requireBrokerLocalProvider, type ChainPool } from '@dotli/chains';
 import type { DotnsResolver } from '@dotli/resolver';
 import { observeChains } from './observe-chains.js';

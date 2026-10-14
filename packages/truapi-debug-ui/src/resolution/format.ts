@@ -3,6 +3,7 @@
 
 // Plain values, so a redraw writes only the ones that changed.
 
+import { formatRate, formatSize } from '@dotli/shared';
 import type {
   CacheResult,
   ResolutionBlock,
@@ -66,7 +67,7 @@ export function summaryFacts(model: ResolutionModel): Fact[] {
     },
     {
       key: 'downloaded during connection',
-      value: { text: s.totalBytes === null ? '—' : formatBytes(s.totalBytes) },
+      value: { text: s.totalBytes === null ? '—' : formatSize(s.totalBytes) },
       hint: 'Every byte the light client pulled off the network, counted from boot until the app frame was attached.',
     },
     {
@@ -76,12 +77,12 @@ export function summaryFacts(model: ResolutionModel): Fact[] {
     },
     {
       key: 'average speed',
-      value: { text: formatRate(s.avgBytesPerSecond) },
+      value: { text: s.avgBytesPerSecond === null ? '—' : formatRate(s.avgBytesPerSecond) },
       hint: 'The bytes downloaded during connection divided by the time they took to arrive. The wait before any data moved is included, so it reads lower than the real link speed.',
     },
     {
       key: 'peak speed',
-      value: { text: formatRate(s.peakBytesPerSecond) },
+      value: { text: s.peakBytesPerSecond === null ? '—' : formatRate(s.peakBytesPerSecond) },
       hint: 'The best rate seen between two byte samples, taken about a second apart. That makes it a one-second average, not a true peak.',
     },
     {
@@ -127,9 +128,9 @@ function appSizeText(s: ResolutionSummary): string {
   }
   const files = s.appFileCount;
   if (files === null) {
-    return formatBytes(s.appBytes);
+    return formatSize(s.appBytes);
   }
-  return `${formatBytes(s.appBytes)} in ${String(files)} file${files === 1 ? '' : 's'}`;
+  return `${formatSize(s.appBytes)} in ${String(files)} file${files === 1 ? '' : 's'}`;
 }
 
 function cacheValue(result: CacheResult): FactValue {
@@ -211,21 +212,4 @@ function formatMs(ms: number): string {
     return `${String(Math.round(ms))}ms`;
   }
   return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${String(Math.round(bytes))} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function formatRate(bytesPerSecond: number | null): string {
-  if (bytesPerSecond === null) {
-    return '—';
-  }
-  return `${formatBytes(bytesPerSecond)}/s`;
 }

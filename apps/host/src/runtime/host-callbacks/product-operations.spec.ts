@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
-import { createProductOperations } from './ProductOperations.js';
+import { createProductOperations } from './product-operations.js';
 
 // Operations belong to Worker executions.
 const PRODUCT: ProductContext = {

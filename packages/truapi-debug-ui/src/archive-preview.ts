@@ -4,6 +4,7 @@
 // What the Archive tab shows for a product's files, apart from the view so it is tested without a DOM.
 
 import { isEncrypted, type ArchiveFiles } from '@dotli/content';
+import { formatSize } from '@dotli/shared';
 
 export interface ArchiveFile {
   path: string;
@@ -57,16 +58,6 @@ export function preview(file: ArchiveFile): Preview {
   return text === null ? { kind: 'binary' } : { kind: 'text', text };
 }
 
-export function formatBytes(size: number): string {
-  if (size < 1024) {
-    return `${String(size)} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function toFiles(files: ArchiveFiles): LoadedArchive {
   const list = Object.entries(files)
     .map(([path, bytes]) => ({ path, bytes }))
@@ -76,5 +67,5 @@ export function toFiles(files: ArchiveFiles): LoadedArchive {
 
 export function summaryLabel(archive: LoadedArchive): string {
   const count = archive.files.length;
-  return `${String(count)} ${count === 1 ? 'file' : 'files'} · ${formatBytes(archive.total)}`;
+  return `${String(count)} ${count === 1 ? 'file' : 'files'} · ${formatSize(archive.total)}`;
 }

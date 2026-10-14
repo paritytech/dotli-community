@@ -13,7 +13,7 @@ import {
   chatButtonVisible,
   chatPanelStore,
   currentChatProductId,
-  initChatPanelState,
+  startChatPanelState,
   markChatRoomSeen,
   markFollowedRoomSeen,
   openChatRoom,
@@ -43,7 +43,7 @@ beforeEach(() => {
   local = memoryStorage();
   connections = createChatConnections();
   chat = createChatStore({ repo: memoryChatRepo(), connections });
-  remove = initChatPanelState(chat, () => local);
+  remove = startChatPanelState(chat, local);
 });
 
 afterEach(() => {
@@ -181,7 +181,7 @@ describe('chat panel state', () => {
     setProductLoaded('early', 'early.dot');
 
     // When
-    remove = initChatPanelState(undefined, () => local);
+    remove = startChatPanelState(undefined, local);
 
     // Then
     expect(currentChatProductId()).toBe('early.dot');
@@ -281,7 +281,7 @@ describe('chat panel state', () => {
     setTopbarVisible(false);
 
     // When
-    remove = initChatPanelState(chat, () => local);
+    remove = startChatPanelState(chat, local);
 
     // Then
     expect(chatPanelStore.get()).toMatchObject({
@@ -308,7 +308,7 @@ describe('chat panel state, rooms seen', () => {
     };
     remove();
     chat = createChatStore({ repo, connections });
-    remove = initChatPanelState(chat, () => local);
+    remove = startChatPanelState(chat, local);
     return {
       /** Lets the waiting read land, once it has started. */
       release: async () => {

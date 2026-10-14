@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The computations the panel repeats as traffic arrives. Handed in rather than imported, so a caller can count the
+// The computations the panel repeats as traffic arrives. Read from a context the mount fills, so a caller can count the
 // panel's work per frame, click and tick.
 
+import { createContext, useContext } from 'solid-js';
 import { buildResolution } from './model/resolution-view.js';
 import { buildTimeline } from './model/timeline.js';
 import { formatPending } from './model/pending.js';
@@ -28,3 +29,10 @@ export const panelWork: PanelWork = {
   buildResolution,
   createKeyedSignals,
 };
+
+/** The work the panel's views run. The page's by default, and a mount may give its own to count it. */
+export const PanelWorkContext = createContext<PanelWork>(panelWork);
+
+export function usePanelWork(): PanelWork {
+  return useContext(PanelWorkContext);
+}

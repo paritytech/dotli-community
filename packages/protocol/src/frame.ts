@@ -5,10 +5,10 @@
 // the only listener for its messages.
 
 import type { Network } from '@dotli/config';
-import { captureException, getResolutionId, m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createStatusCell, errorName, log } from '@dotli/shared';
+import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createStatusCell, log, withTimeout } from '@dotli/shared';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
-import { addListener, broadcast } from './listeners.js';
+import { protocolListeners } from './listeners.js';
 import { isProtocolEnvelope, type ProtocolEnvelope } from './messages.js';
 
 /**
@@ -135,14 +135,10 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   const timeouts: ProtocolFrameTimeouts = { ...DEFAULT_FRAME_TIMEOUTS, ...deps.timeouts };
 
   const status = createStatusCell<ProtocolStatus>('idle', {
-    onListenerError: (error, next) => {
-      captureException(error, { flow: 'protocol', step: 'frame_status_listener', tags: { status: next } });
-      log.error('[dot.li protocol] Protocol status listener threw:', error);
-      m.count(S.PROTOCOL_STATUS_LISTENER, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
-    },
+    onListenerError: reportListener('protocol', 'protocol.status'),
   });
-  const envelopeListeners = new Set<(envelope: ProtocolEnvelope) => void>();
-  const lostListeners = new Set<(error: Error) => void>();
+  const envelopeListeners = protocolListeners<ProtocolEnvelope>('envelope');
+  const lostListeners = protocolListeners<Error>('frame_lost');
   // Why the frame is down, for a caller that asks before it is back.
   let downReason: Error = new Error(PROTOCOL_ERRORS.FRAME_RESET);
   // The frame being booted or kept, and nothing while the frame is down.
@@ -177,7 +173,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       lost.iframe.remove();
     }
     setStatus(next);
-    broadcast(lostListeners, error, 'Frame lost');
+    lostListeners.emit(error);
   }
 
   function onMessage(event: MessageEvent): void {
@@ -216,7 +212,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       // a deploy it loads fresh chunks. An init failure a rebuild repeats is retried ever more slowly.
       loseFrame(err, 'failed');
     }
-    broadcast(envelopeListeners, msg, 'Protocol message');
+    envelopeListeners.emit(msg);
   }
 
   /**
@@ -417,15 +413,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   }
 
   function untilConfigured(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED));
-      }, timeouts.configureMs);
-      void configured.then(() => {
-        clearTimeout(timer);
-        resolve();
-      });
-    });
+    return withTimeout(configured, timeouts.configureMs, () => new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED));
   }
 
   function whenUp(wanted: 'listening' | 'ready'): Promise<void> {
@@ -479,8 +467,8 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       }
       frameWindow.postMessage(message, origin);
     },
-    onEnvelope: listener => addListener(envelopeListeners, listener),
-    onLost: listener => addListener(lostListeners, listener),
+    onEnvelope: envelopeListeners.subscribe,
+    onLost: lostListeners.subscribe,
     losses: () => losses,
   };
 }

@@ -6,8 +6,8 @@ scheduled notifications.
 ## Responsibility
 
 - Owns the "dotli" database schema and its single connection.
-- Owns the stores on it: block cache, label to CID cache with recent labels, chat rooms and messages, the local wallet
-  and the scheduled notification queue.
+- Owns the stores on it: block cache, label to CID cache, chat rooms and messages, the local wallet and the scheduled
+  notification queue.
 - Does not own what to cache or when. Its callers decide that.
 
 ## Design
@@ -15,9 +15,7 @@ scheduled notifications.
 - The schema holds the name, version and upgrade. The page opens the database on its first read.
 - One connection is made from a `DotliIdb` port with `connect` and `keyRange`. Stores take the port as an optional
   argument, so tests pass an in-memory database. The default is `pageIdb`.
-- One small helper turns IndexedDB's callbacks into promises for every store: an open that rejects when an older tab
-  blocks it, a request, and a transaction that resolves once it commits. The host's key store on its own database uses
-  it too.
+- The stores use the shared IndexedDB helper, so a blocked upgrade or an aborted commit rejects instead of hanging.
 - A cache reporter reports a cache's failures once per action. Expected errors (`isExpectedDbError`, such as quota or a
   blocked upgrade) count as outcomes. Others go to Sentry.
 - The block cache keeps bitswap blocks on the host, since the credentialless sandbox loses its storage on reload. It
@@ -31,11 +29,9 @@ scheduled notifications.
 
 ### `@dotli/storage`
 
-- Schema: `DB_NAME`, `DB_VERSION`, `upgradeDotliDb`, `isExpectedDbError`.
-- IndexedDB helpers: `openIdb`, `idbRequest`, `idbTransaction`.
+- Schema: `DB_NAME`, `isExpectedDbError`.
 - Block cache: `getCachedBlock`, `putCachedBlock`, `deleteCachedBlock`, `pruneBlockCache`, `clearBlockCache`.
-- CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`, `getRecentLabels`, `withRecentLabel`,
-  `parseRecentLabels`, `serializeRecentLabels`, `writeRecentLabels`, `RECENT_KEY`.
+- CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`.
 - Local wallet: `createLocalWalletStore`, `saveLocalWallet`, `loadLocalWallet`, `forgetLocalWallet`,
   `updateLocalWalletIdentity`, `LocalWalletUnreadableError`.
 - Chat: `createRoom`, `listRooms`, `appendMessage`, `listMessages`, `latestMessageTimestamps`, `registerBot`,

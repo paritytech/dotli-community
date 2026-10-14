@@ -6,7 +6,7 @@
 
 import { validateSandboxParams } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, gatewayUnreachable, log } from '@dotli/shared';
+import { createAsyncTaskPool, gatewayUnreachable, log, named } from '@dotli/shared';
 
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './load-product.js';
 
@@ -85,8 +85,7 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
 
   /** Reported, since a URL this sandbox cannot use is the host's fault, never the visitor's. */
   const failContract = (step: ContractStep, title: string, reason: string): void => {
-    const err = new Error(`${title}: ${reason}`);
-    err.name = 'SandboxContractError';
+    const err = named(new Error(`${title}: ${reason}`), 'SandboxContractError');
     captureException(err, { flow: 'content', step, tags: { surface: 'sandbox_main' } });
     fail(step, title, reason);
   };

@@ -4,10 +4,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThemeState, themeStore } from './runtime/state/theme.js';
 import { createThemeController, type ThemeController } from './theme-controller.js';
+import { safeStorage, type SafeStorage } from '@dotli/shared';
 import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { FakeColorScheme } from './testing/color-scheme.js';
 
-let local: Pick<Storage, 'getItem' | 'setItem'>;
+let local: Pick<SafeStorage, 'getItem' | 'setItem'>;
 let os: FakeColorScheme;
 /** The attributes the controller set on the root element. */
 let root: Map<string, string>;
@@ -28,7 +29,7 @@ function stubColorScheme(initial: 'light' | 'dark'): FakeColorScheme {
 /** A controller over this test's storage, OS scheme and root, with the theme store it publishes to. */
 function loadController(): ThemeController & { getThemeState: typeof getThemeState; themeStore: typeof themeStore } {
   const controller = createThemeController({
-    storage: () => local,
+    storage: local,
     colorScheme: () => os,
     root: () => ({
       setAttribute: (name: string, value: string) => {
@@ -40,21 +41,20 @@ function loadController(): ThemeController & { getThemeState: typeof getThemeSta
 }
 
 /** A localStorage whose every access throws, as when the browser blocks it. */
-function blockedStorage(): Pick<Storage, 'getItem' | 'setItem'> {
-  const blocked = (): never => {
+function blockedStorage(): SafeStorage {
+  return safeStorage(() => {
     throw new DOMException('The operation is insecure.', 'SecurityError');
-  };
-  return { getItem: blocked, setItem: blocked };
+  });
 }
 
 describe('theme controller', () => {
   it('As a dotli user, a fresh profile defaults to the System option', () => {
     // Given
     stubColorScheme('light');
-    const { initTheme, getThemeState: state } = loadController();
+    const { startTheme, getThemeState: state } = loadController();
 
     // When
-    initTheme();
+    startTheme();
 
     // Then
     expect(local.getItem('dotli-theme')).toBeNull();
@@ -67,10 +67,10 @@ describe('theme controller', () => {
     // Given
     stubColorScheme('dark');
     local.setItem('dotli-theme', 'light');
-    const { initTheme, getThemeState: state } = loadController();
+    const { startTheme, getThemeState: state } = loadController();
 
     // When
-    initTheme();
+    startTheme();
 
     // Then
     expect(root.get('data-theme-pref')).toBe('light');
@@ -82,10 +82,10 @@ describe('theme controller', () => {
     // Given
     stubColorScheme('dark');
     local.setItem('dotli-theme', 'sepia');
-    const { initTheme } = loadController();
+    const { startTheme } = loadController();
 
     // When
-    initTheme();
+    startTheme();
 
     // Then
     expect(root.get('data-theme-pref')).toBe('system');
@@ -96,10 +96,10 @@ describe('theme controller', () => {
     // Given
     const os = stubColorScheme('light');
     local = blockedStorage();
-    const { initTheme, getThemeState: state } = loadController();
+    const { startTheme, getThemeState: state } = loadController();
 
     // When
-    initTheme();
+    startTheme();
 
     // Then
     expect(root.get('data-theme-pref')).toBe('system');
@@ -117,8 +117,8 @@ describe('theme controller', () => {
     // Given
     stubColorScheme('light');
     local = blockedStorage();
-    const { initTheme, selectThemePref, getThemeState: state } = loadController();
-    initTheme();
+    const { startTheme, selectThemePref, getThemeState: state } = loadController();
+    startTheme();
 
     // When
     selectThemePref('dark');
@@ -129,15 +129,15 @@ describe('theme controller', () => {
     expect(state()).toEqual({ pref: 'dark', resolved: 'dark' });
   });
 
-  it('As the TrUAPI theme bridge, I hear initTheme publish the OS theme through the store', () => {
+  it('As the TrUAPI theme bridge, I hear startTheme publish the OS theme through the store', () => {
     // Given: a light OS, as the store starts dark.
     stubColorScheme('light');
-    const { initTheme, themeStore } = loadController();
+    const { startTheme, themeStore } = loadController();
     const onThemeChanged = vi.fn();
     const stop = themeStore.subscribe(onThemeChanged);
 
     // When
-    initTheme();
+    startTheme();
     stop();
 
     // Then
@@ -148,8 +148,8 @@ describe('theme controller', () => {
     // Given
     stubColorScheme('light');
     local.setItem('dotli-theme', 'light');
-    const { initTheme, selectThemePref, getThemeState: state, themeStore } = loadController();
-    initTheme();
+    const { startTheme, selectThemePref, getThemeState: state, themeStore } = loadController();
+    startTheme();
     const onThemeChanged = vi.fn();
     const stop = themeStore.subscribe(onThemeChanged);
 
@@ -169,8 +169,8 @@ describe('theme controller', () => {
     // Given
     stubColorScheme('light');
     local.setItem('dotli-theme', 'dark');
-    const { initTheme, selectThemePref } = loadController();
-    initTheme();
+    const { startTheme, selectThemePref } = loadController();
+    startTheme();
 
     // When
     selectThemePref('system');
@@ -185,12 +185,12 @@ describe('theme controller', () => {
     // Given
     const os = stubColorScheme('dark');
     local.setItem('dotli-theme', 'system');
-    const { initTheme, themeStore } = loadController();
+    const { startTheme, themeStore } = loadController();
     let changes = 0;
     const stop = themeStore.subscribe(() => {
       changes += 1;
     });
-    initTheme();
+    startTheme();
     const changesAfterInit = changes;
 
     // When
@@ -206,8 +206,8 @@ describe('theme controller', () => {
     // Given
     const os = stubColorScheme('light');
     local.setItem('dotli-theme', 'dark');
-    const { initTheme } = loadController();
-    initTheme();
+    const { startTheme } = loadController();
+    startTheme();
 
     // When
     os.set('dark');
@@ -222,8 +222,8 @@ describe('theme controller', () => {
     // Given
     const os = stubColorScheme('dark');
     local.setItem('dotli-theme', 'light');
-    const { initTheme, selectThemePref } = loadController();
-    initTheme();
+    const { startTheme, selectThemePref } = loadController();
+    startTheme();
     selectThemePref('system');
 
     // When
@@ -233,7 +233,7 @@ describe('theme controller', () => {
     expect(root.get('data-theme')).toBe('light');
   });
 
-  it('As the prerendered shell, the store keeps its default until initTheme runs', () => {
+  it('As the prerendered shell, the store keeps its default until startTheme runs', () => {
     // Given
     stubColorScheme('light');
     local.setItem('dotli-theme', 'light');
@@ -250,8 +250,8 @@ describe('theme controller', () => {
     // Given a System theme that followed the OS, then stopped
     const os = stubColorScheme('dark');
     local.setItem('dotli-theme', 'system');
-    const { initTheme, getThemeState: state } = loadController();
-    const stop = initTheme();
+    const { startTheme, getThemeState: state } = loadController();
+    const stop = startTheme();
     stop();
 
     // When

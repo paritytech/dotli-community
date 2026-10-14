@@ -18,7 +18,7 @@ import {
   type FrameStatusSource,
   type HostChainSources,
   watchHostChains,
-} from './Chain.js';
+} from './chain.js';
 import { hexBytes, yielded } from '../../testing/fixtures.js';
 
 /** Trusted Providers' sockets, over the fake server. */

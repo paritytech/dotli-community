@@ -6,13 +6,14 @@
 
 import { DesktopIcon } from '@dotli/ui/icons';
 import type { ShowNotification } from '@dotli/ui';
+import type { SafeStorage } from '@dotli/shared';
 
 const DISMISSED_KEY = 'desktop-banner-dismissed';
 const PUBLIC_DOWNLOAD_URL = 'https://polkadot.com/get-started/polkadot-for-desktop';
 
 export interface DesktopOfferDeps {
-  /** Reached on every call, as the page's localStorage throws where the browser blocks it. */
-  storage: () => Pick<Storage, 'getItem' | 'setItem'>;
+  /** This origin's localStorage, which never throws. */
+  storage: Pick<SafeStorage, 'getItem' | 'setItem'>;
   notify: ShowNotification;
   /** The public download page when the build names none. */
   downloadUrl?: string | undefined;
@@ -31,21 +32,11 @@ export function offerDesktopApp({ storage, notify, downloadUrl = PUBLIC_DOWNLOAD
     dismissMs: 0,
     browserNotification: false,
     onDismiss: () => {
-      try {
-        storage().setItem(DISMISSED_KEY, '1');
-        // eslint-disable-next-line no-restricted-syntax -- storage the browser blocks (SecurityError) keeps the dismissal for this page only.
-      } catch {
-        // Not persisted.
-      }
+      storage.setItem(DISMISSED_KEY, '1');
     },
   });
 }
 
 function wasDismissed(storage: DesktopOfferDeps['storage']): boolean {
-  try {
-    return storage().getItem(DISMISSED_KEY) !== null;
-  } catch {
-    // Storage the browser blocks (SecurityError) holds no dismissal.
-    return false;
-  }
+  return storage.getItem(DISMISSED_KEY) !== null;
 }

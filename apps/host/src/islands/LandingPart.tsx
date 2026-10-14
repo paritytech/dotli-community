@@ -3,9 +3,8 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { pageContentStore, useStore } from '@dotli/ui';
+import { pageContentStore, RootBoundary, useStore } from '@dotli/ui';
 import { showBrokenPage } from '../broken-page.js';
-import { IslandBoundary } from './IslandBoundary.js';
 
 /**
  * Wraps each landing island. The page is nothing but these, so one failing breaks the whole page. A full-page screen
@@ -15,9 +14,9 @@ export function LandingPart(props: { children: JSX.Element }): JSX.Element {
   const shown = useStore(pageContentStore, content => content === 'page');
   return (
     <Show when={shown()}>
-      <IslandBoundary root="page" onBroken={showBrokenPage}>
+      <RootBoundary root="page" onBroken={showBrokenPage}>
         {props.children}
-      </IslandBoundary>
+      </RootBoundary>
     </Show>
   );
 }

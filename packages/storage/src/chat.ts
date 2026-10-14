@@ -4,7 +4,7 @@
 // Local product chat. Records live on the product origin, so the browser isolates each product's rooms.
 
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbRequest, idbTransaction } from './idb.js';
+import { idbRequest, idbTransaction } from '@dotli/shared';
 
 const ROOM_STORE = 'chat_rooms';
 const MESSAGE_STORE = 'chat_messages';

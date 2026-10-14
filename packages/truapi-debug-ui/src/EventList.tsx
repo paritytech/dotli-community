@@ -27,7 +27,7 @@ import { LayerBadge } from './shared/LayerBadge.js';
 import { Latency } from './shared/Latency.js';
 import { MethodTag } from './shared/MethodTag.js';
 import { Timestamp } from './shared/Timestamp.js';
-import type { PanelWork } from './work.js';
+import { usePanelWork, type PanelWork } from './work.js';
 import s from './EventList.module.css';
 
 /** Pending badges tick on a clock, since a stalled host is exactly one that emits no events. */
@@ -55,7 +55,6 @@ export function EventList(props: {
   allEvents: readonly StoredEvent[];
   refreshedAt: number;
   store: EventStore;
-  work: Pick<PanelWork, 'createKeyedSignals' | 'formatPending' | 'rowSelection'>;
   selection: Selection | null;
   active: boolean;
   collapsed: boolean;
@@ -63,7 +62,7 @@ export function EventList(props: {
   listRef: (el: HTMLDivElement) => void;
 }): JSX.Element {
   let list: HTMLDivElement | undefined;
-  const work = untrack(() => props.work);
+  const work = usePanelWork();
 
   // Written in effect functions, never in a compute.
   const selectedSeq = work.createKeyedSignals<EventSeq, true>();

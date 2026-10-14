@@ -15,7 +15,6 @@ export {
 export {
   parseApiViolationMessage,
   parseHostToSandboxMessage,
-  parseSandboxToHostMessage,
   postToHost,
   type ApiViolationMessage,
   type BitswapAbortMessage,

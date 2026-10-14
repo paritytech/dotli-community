@@ -115,6 +115,11 @@ export function currentProductFrame(): HTMLIFrameElement | null {
   return frame?.isConnected === true ? frame : null;
 }
 
+/** Where a dialog hands focus back when the element it came from is gone, for `ModalFocusFallback`. */
+export function productFrameFocus(): HTMLIFrameElement | undefined {
+  return currentProductFrame() ?? undefined;
+}
+
 export function setTopbarLayout(layout: TopbarLayout): void {
   state.topbarOffset = layout.offset;
   write();

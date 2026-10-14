@@ -3,13 +3,14 @@
 
 // Faked at papi's `SubstrateClient.chainHead`, which hands the test the follow's event callback.
 
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import {
   OperationInaccessibleError,
   StopError,
   type FollowEventWithoutRuntime,
   type SubstrateClient,
 } from '@polkadot-api/substrate-client';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { readMappingAddress, readMappingBytes } from './access-raw-storage.js';
 import { ApiStoppedError, createRawApi } from './api.js';
 
@@ -234,6 +235,53 @@ describe('createRawApi', () => {
       // Then
       await settled;
       expect(follow.storage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the end of the chain follow', () => {
+    it('As a resolver whose stop listener throws, I am reported and the next stop listener still hears the stop', () => {
+      // Given
+      const captured = recordCaptures({ onFinished: onTestFinished });
+      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+      const { client, follow } = fakeClient();
+      const api = createRawApi(client);
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      api.onStop(() => {
+        throw new TypeError('listener broke');
+      });
+      let heard = 0;
+      api.onStop(() => {
+        heard += 1;
+      });
+
+      // When
+      follow.stop();
+
+      // Then
+      expect(heard).toBe(1);
+      expect(captured).toEqual([{ step: 'listener', tags: { owner: 'resolver.stop' } }]);
+      expect(metrics.counted('listener.delivery')).toEqual([
+        { outcome: 'error', reason: 'TypeError', owner: 'resolver.stop' },
+      ]);
+    });
+
+    it('As a stop listener that subscribes after the follow stopped and throws, I am reported and my registration returns', () => {
+      // Given
+      const captured = recordCaptures({ onFinished: onTestFinished });
+      const { client, follow } = fakeClient();
+      const api = createRawApi(client);
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      follow.stop();
+
+      // When
+      const subscribe = (): (() => void) =>
+        api.onStop(() => {
+          throw new TypeError('late listener broke');
+        });
+
+      // Then
+      expect(subscribe).not.toThrow();
+      expect(captured).toEqual([{ step: 'listener', tags: { owner: 'resolver.stop' } }]);
     });
   });
 });

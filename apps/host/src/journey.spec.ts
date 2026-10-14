@@ -13,7 +13,10 @@ let navigation: NavigationTimingType;
 let continuation: Continuation | null;
 
 const tab: JourneyDeps = {
-  session: () => session,
+  // The tab's storage is replaced for each test.
+  get session() {
+    return session;
+  },
   navigationType: () => navigation,
   // Read once, as the page reads the reason its last reload left.
   takeContinuation: () => {

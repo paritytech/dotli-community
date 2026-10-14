@@ -17,7 +17,6 @@ import {
   type CacheSettings,
   getBackend,
   getCacheSettings,
-  type ModeStorage,
 } from './mode.js';
 import {
   NETWORK_KEY,
@@ -44,7 +43,7 @@ export interface SharedSettings {
 
 export interface SettingsSources {
   /** This origin's storage. */
-  local: Pick<ModeStorage, 'getItem'>;
+  local: Pick<Storage, 'getItem'>;
   /** Null when the cross-subdomain store could not be read, or has not been yet. */
   shared: SharedSettings | null;
   /** The link's settings. */
@@ -96,7 +95,7 @@ function chooseNetwork(fromUrl: Network | null, stored: string | null): Network 
 }
 
 /** Stores `settings` on this origin, where an old build's keys give way to them. */
-export function writeLocalSettings(settings: Settings, local: Pick<ModeStorage, 'setItem' | 'removeItem'>): void {
+export function writeLocalSettings(settings: Settings, local: Pick<Storage, 'setItem' | 'removeItem'>): void {
   local.setItem(NETWORK_KEY, settings.network);
   local.setItem(BACKEND_KEY, settings.backend);
   local.setItem(CACHE_KEY, JSON.stringify(settings.cache));
@@ -111,7 +110,7 @@ export function sharedSettingsOf(settings: Settings): SharedSettings {
 }
 
 /** Whether this origin holds a choice from an earlier visit. Read it before the boot stores this visit's. */
-export function hasStoredSettings(local: Pick<ModeStorage, 'getItem'>): boolean {
+export function hasStoredSettings(local: Pick<Storage, 'getItem'>): boolean {
   return [NETWORK_KEY, BACKEND_KEY, CACHE_KEY].some(key => local.getItem(key) !== null);
 }
 

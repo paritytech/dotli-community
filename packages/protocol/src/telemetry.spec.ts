@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { SmoldotDbOutcome } from './messages.js';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
@@ -43,5 +44,28 @@ describe('createFrameTelemetry', () => {
     // Then
     expect(beforeRebuild).toEqual(['hit', 'unknown']);
     expect(telemetry.getSmoldotDbOutcome('relay')).toBe('unknown');
+  });
+
+  it('As the network panel, a net bytes listener that throws is reported and the next one still hears the total', () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const fake = createFakeFrame();
+    const telemetry = createFrameTelemetry(fake.frame);
+    telemetry.onProtocolNetBytes(() => {
+      throw new TypeError('panel broke');
+    });
+    const totals: number[] = [];
+    telemetry.onProtocolNetBytes(event => totals.push(event.received));
+
+    // When
+    fake.send({ namespace: 'dotli:protocol', kind: 'net-bytes', received: 100 });
+
+    // Then
+    expect(totals).toEqual([100]);
+    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'protocol.net_bytes' } }]);
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'protocol.net_bytes' },
+    ]);
   });
 });

@@ -8,7 +8,6 @@ import { chooseModalButton, dismissModal, shownModal } from '@dotli/ui/testing';
 import { openModal } from '@dotli/ui';
 import { SignIcon } from './components/icons/SignIcon.js';
 import { createHostPrompts } from './page-prompts.js';
-import { attachProductFrame } from './product-frame-layout.js';
 
 afterEach(() => {
   resetAllStoresForTests();
@@ -197,45 +196,5 @@ describe('preimage submit', () => {
     // Then
     await expect(decision).rejects.toMatchObject({ name: 'AbortError' });
     expect(() => shownModal()).toThrow();
-  });
-});
-
-describe('dialog focus', () => {
-  it('As a dApp user, each dialog the product raises hands focus back to the product frame', async () => {
-    // Given: a product frame on the page.
-    const frame = { isConnected: true } as HTMLIFrameElement;
-    attachProductFrame(frame, () => undefined);
-
-    // When
-    const permission = prompts.askPermission('myapp', 'Camera', live(), { allowOnce: false });
-
-    // Then
-    expect(shownModal().focusFallback?.()).toBe(frame);
-    chooseModalButton('Deny');
-    await permission;
-
-    // When
-    const preimage = prompts.confirmPreimage(1024, live());
-
-    // Then
-    expect(shownModal().focusFallback?.()).toBe(frame);
-    chooseModalButton('Cancel');
-    await preimage;
-
-    // When
-    const review = prompts.confirmReview(
-      {
-        title: 'Sign Message',
-        fields: [],
-        buttons: [{ label: 'Sign', variant: 'primary', result: 'accepted' }],
-        dismissOnBackdrop: false,
-      },
-      live(),
-    );
-
-    // Then
-    expect(shownModal().focusFallback?.()).toBe(frame);
-    chooseModalButton('Sign');
-    await review;
   });
 });

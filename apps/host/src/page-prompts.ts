@@ -10,10 +10,6 @@ import { isDevicePermission } from './runtime/permissions.js';
 import { openModal, showNotification } from '@dotli/ui';
 import { permissionRequestDialog } from './components/permissions/permission-dialog.js';
 import { preimageSubmitDialog } from './components/permissions/preimage-dialog.js';
-import { currentProductFrame } from './product-frame-layout.js';
-
-// The product raised these dialogs, so each returns focus to its frame when the element it came from is gone.
-const FROM_PRODUCT = { focusFallback: () => currentProductFrame() ?? undefined };
 
 export interface HostPromptsDeps {
   /** Where the dialogs queue. The page's overlays by default. */
@@ -34,11 +30,10 @@ export function createHostPrompts({
         allowOnce,
         reloads: isDevicePermission(permission),
       });
-      return (await present(dialog, signal, FROM_PRODUCT)).result;
+      return (await present(dialog, signal)).result;
     },
-    confirmPreimage: async (size, signal) =>
-      (await present(preimageSubmitDialog(size), signal, FROM_PRODUCT)).result === 'allow',
-    confirmReview: async (dialog, signal) => (await present(dialog, signal, FROM_PRODUCT)).result,
+    confirmPreimage: async (size, signal) => (await present(preimageSubmitDialog(size), signal)).result === 'allow',
+    confirmReview: async (dialog, signal) => (await present(dialog, signal)).result,
     notify,
   };
 }

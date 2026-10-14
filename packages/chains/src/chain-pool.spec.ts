@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { must } from '@dotli/shared/testing';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -133,8 +134,20 @@ describe('createChainPool', () => {
     expect(must(built[0], 'transport').disconnect).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, a throwing status listener neither stops the others nor reaches the transport', () => {
+  it('As a dotli integrator, a throwing status listener is reported, and neither stops the others nor reaches the transport', () => {
     // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const errors: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'error') {
+            errors.push(message);
+          }
+        },
+      }),
+    );
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
     lease(pool, '0xaa');
@@ -154,6 +167,11 @@ describe('createChainPool', () => {
     // Then
     expect(report).not.toThrow();
     expect(seen).toEqual(['connected']);
+    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'chain_pool.status' } }]);
+    expect(errors).toHaveLength(captured.length);
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'chain_pool.status' },
+    ]);
   });
 
   it('As a dotli integrator, a provider nobody calls does not keep its chain', async () => {
@@ -560,8 +578,20 @@ describe('createChainPool watch', () => {
     expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1 });
   });
 
-  it('As a dotli integrator, a throwing watcher keeps neither the others nor the pool from the change', () => {
+  it('As a dotli integrator, a throwing watcher is reported, and keeps neither the others nor the pool from the change', () => {
     // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const errors: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'error') {
+            errors.push(message);
+          }
+        },
+      }),
+    );
     const pool = createChainPool({ createTransport: createTransports().createTransport });
     pool.watch({
       onActivity: () => {
@@ -578,6 +608,10 @@ describe('createChainPool watch', () => {
     // Then
     expect(seen.activity.at(-1)).toMatchObject({ consumers: 1 });
     expect(connection).toBeDefined();
+    expect(captured).not.toHaveLength(0);
+    expect(captured.every(capture => capture.tags?.['owner'] === 'chain_pool.watch')).toBe(true);
+    expect(errors).toHaveLength(captured.length);
+    expect(metrics.counted('listener.delivery')).toHaveLength(captured.length);
   });
 
   const isFollow = (message: JsonRpcRequest): boolean => message.method === 'chainHead_v1_follow';

@@ -8,21 +8,22 @@
 import { createClient, DisjointError, RpcError } from '@polkadot-api/substrate-client';
 import type { JsonRpcProvider } from 'polkadot-api';
 import { TIMEOUTS, type DotnsContracts } from '@dotli/config';
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log } from '@dotli/shared';
+import { m, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createStatusCell, log, toHex, withTimeout } from '@dotli/shared';
 
-import { namehash, toHex, decodeIpfsContenthashResult } from './abi.js';
+import { namehash, decodeIpfsContenthashResult } from './abi.js';
 import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
 import type { PhaseCallback, ResolvePhase } from './access-raw-storage.js';
 import { createRawApi, type Api } from './api.js';
 import { ContenthashDecodeError, NetworkSyncTimeoutError, UnsupportedContenthashCodecError } from './errors.js';
 import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
-import { raceSyncTimeout } from './sync-deadline.js';
 
 export type { PhaseCallback, ResolvePhase } from './access-raw-storage.js';
 
 const PEOPLE_CHAIN = 'People Paseo';
+/** Upper bound on the background People-chain warm for legacy-account auth. */
+const PEOPLE_FINALIZED_SYNC_MS = 180_000;
 
 export interface ResolveOptions {
   onPhase?: PhaseCallback | undefined;
@@ -136,30 +137,10 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     retryIf: isChainHalt,
   });
 
-  let status: DotnsResolverStatus = 'idle';
-  const listeners = new Set<(status: DotnsResolverStatus) => void>();
-  function setStatus(next: DotnsResolverStatus): void {
-    if (next === status) {
-      return;
-    }
-    status = next;
-    // A callback's throw must not fail the shared build, nor leave the status behind a client already kept.
-    for (const listener of [...listeners]) {
-      try {
-        listener(next);
-      } catch (err) {
-        captureException(err, { flow: 'resolve', step: 'phase_callback', tags: { status: next } });
-        log.error('[dot.li resolve] A resolver phase callback threw', err);
-      }
-    }
-  }
-  /** Hears each later status. Returns the unsubscribe. */
-  function onStatus(listener: (status: DotnsResolverStatus) => void): () => void {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  }
+  // A callback's throw must not fail the shared build, nor leave the status behind a client already kept.
+  const status = createStatusCell<DotnsResolverStatus>('idle', {
+    onListenerError: reportListener('resolve', 'resolver.status'),
+  });
 
   let hub: ChainClient | null = null;
   let people: ChainClient | null = null;
@@ -168,16 +149,20 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     const initStart = performance.now();
     let outcome: 'ok' | 'error' | 'timeout' = 'error';
     try {
-      setStatus('connecting');
+      status.set('connecting');
       const client = open(deps.assetHub());
-      setStatus('syncing');
+      status.set('syncing');
       const syncStart = performance.now();
       let syncMs: number;
       // Kept only once ready, and torn down on failure, so no orphaned client keeps a subscription alive.
-      // The wait is bounded, since an unreachable peer set leaves `whenReady()` pending forever.
       try {
+        // `api.whenReady()` never settles without reachable peers, so the wait is bounded and its error names the cause.
         await span(S.SMOLDOT_FINALIZED_BLOCK, () =>
-          raceSyncTimeout(client.api.whenReady(), hubChain, TIMEOUTS.HUB_FINALIZED_SYNC),
+          withTimeout(
+            client.api.whenReady(),
+            TIMEOUTS.HUB_FINALIZED_SYNC,
+            () => new NetworkSyncTimeoutError(hubChain, TIMEOUTS.HUB_FINALIZED_SYNC),
+          ),
         );
         syncMs = performance.now() - syncStart;
         if (timed) {
@@ -195,7 +180,7 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
         if (hub === client) {
           hub = null;
           client.destroy();
-          setStatus('idle');
+          status.set('idle');
         }
       });
 
@@ -207,13 +192,13 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
         sync_ms: Math.round(syncMs),
         total_ms: Math.round(performance.now() - initStart),
       });
-      setStatus('ready');
+      status.set('ready');
       return client.api;
     } catch (err) {
       if (err instanceof NetworkSyncTimeoutError) {
         outcome = 'timeout';
       }
-      setStatus('failed');
+      status.set('failed');
       throw err;
     } finally {
       // Recorded here alone, since the SharedWorker presync and direct mode both come through here.
@@ -232,7 +217,7 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     if (onPhase === undefined) {
       return () => undefined;
     }
-    return onStatus(next => {
+    return status.subscribe(next => {
       const phase = PHASES[next];
       if (phase !== undefined) {
         onPhase(phase);
@@ -257,7 +242,8 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
       { pool: 'asset-hub' },
     );
     // The shared client keeps the full budget, so a short caller cannot cut short a longer one.
-    return raceSyncTimeout(ready, hubChain, budgetOf(opts))
+    const budget = budgetOf(opts);
+    return withTimeout(ready, budget, () => new NetworkSyncTimeoutError(hubChain, budget))
       .catch((err: unknown) => {
         // A caller that gave up while queued must not start a build nobody waits for.
         gaveUp.abort(err);
@@ -328,7 +314,11 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     const initStart = performance.now();
     const client = open(connect());
     try {
-      await raceSyncTimeout(client.api.whenReady(), PEOPLE_CHAIN, TIMEOUTS.PEOPLE_FINALIZED_SYNC);
+      await withTimeout(
+        client.api.whenReady(),
+        PEOPLE_FINALIZED_SYNC_MS,
+        () => new NetworkSyncTimeoutError(PEOPLE_CHAIN, PEOPLE_FINALIZED_SYNC_MS),
+      );
     } catch (err) {
       client.destroy();
       throw err;

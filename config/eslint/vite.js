@@ -254,52 +254,15 @@ export const config = defineConfig([
 ]);
 
 /**
- * What a file that never sees the runtime network config may import from `@dotli/config`: readers of the fields no
- * override can change, and values that do not depend on the network config at all. A new name joins only once it
- * reads no overridable field, directly or through a helper.
+ * For `importBans` in a zone of files that run where the runtime network config never arrives, such as the protocol
+ * worker, which serves every tab. They import `@dotli/config/fixed`, never the bare entry, whose overridable readers
+ * would miss the overrides.
  */
-const fixedConfigSurface = [
-  'CHAIN_ROLES',
-  'ChainRole',
-  'DEBUG',
-  'FixedServicesConfig',
-  'Network',
-  'chainRoleForGenesis',
-  'getActiveFixedServicesConfig',
-  'getActiveSupportedGenesisHashes',
-  'isValidNetwork',
-];
-
-/**
- * For files that run where the runtime network config never arrives, such as the protocol worker, which serves every
- * tab. They import only the fixed config surface, so no reader that applies the overrides reaches them. The files
- * match relative to the package's own config, so the package spreads this after `config`.
- *
- * @param {string[]} files
- */
-export function fixedServicesConfigOnly(files) {
-  return defineConfig([
-    {
-      files,
-      rules: {
-        'no-restricted-imports': [
-          'error',
-          {
-            paths: [
-              {
-                name: '@dotli/config',
-                allowImportNames: fixedConfigSurface,
-                message:
-                  'Import only the fixed config surface (fixedConfigSurface in @config/eslint/vite). The runtime config never reaches this file, so a reader of the overridable fields would miss its overrides.',
-              },
-            ],
-            patterns: shippedImportPatterns,
-          },
-        ],
-      },
-    },
-  ]);
-}
+export const fixedConfigOnly = {
+  regex: '^@dotli/config$',
+  message:
+    'Import @dotli/config/fixed. The runtime config never reaches this file, so a reader of the overridable fields would miss its overrides.',
+};
 
 /**
  * A `no-restricted-syntax` entry that refuses `import()` of a module whose name matches `pattern`, which

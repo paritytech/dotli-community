@@ -4,7 +4,7 @@
 // Whether the product declares `includes.chat` in its worker manifest. The product frame picks the connection's
 // execution kind from it, so the last answer is cached per label to keep warm loads off a dotNS read.
 
-import { log } from '@dotli/shared';
+import { log, pageLocalStorage, type SafeStorage } from '@dotli/shared';
 
 const CACHE_PREFIX = 'dotli:chat-capable:';
 
@@ -16,24 +16,15 @@ export interface CapabilityCache {
   set: (label: string, chat: boolean) => void;
 }
 
-/** A cache in `storage`, reached on each use since the page's localStorage can throw on access. */
-export function storageCapabilityCache(storage: () => Pick<Storage, 'getItem' | 'setItem'>): CapabilityCache {
+/** A cache in `storage`. */
+export function storageCapabilityCache(storage: Pick<SafeStorage, 'getItem' | 'setItem'>): CapabilityCache {
   return {
     get: label => {
-      try {
-        const raw = storage().getItem(`${CACHE_PREFIX}${label}`);
-        return raw === null ? null : raw === '1';
-      } catch {
-        return null;
-      }
+      const raw = storage.getItem(`${CACHE_PREFIX}${label}`);
+      return raw === null ? null : raw === '1';
     },
     set: (label, value) => {
-      try {
-        storage().setItem(`${CACHE_PREFIX}${label}`, value ? '1' : '0');
-        // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable in private mode, which only loses the warm-start shortcut.
-      } catch {
-        /* capability still resolves for this load */
-      }
+      storage.setItem(`${CACHE_PREFIX}${label}`, value ? '1' : '0');
     },
   };
 }
@@ -46,7 +37,7 @@ export function storageCapabilityCache(storage: () => Pick<Storage, 'getItem' | 
 export function readChatCapability(
   label: string,
   read: () => Promise<boolean>,
-  cache: CapabilityCache = storageCapabilityCache(() => localStorage),
+  cache: CapabilityCache = storageCapabilityCache(pageLocalStorage),
 ): Promise<boolean> {
   const cached = cache.get(label);
   const fresh = read().then(

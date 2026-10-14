@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@config/eslint/vite';
+import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
@@ -15,4 +15,19 @@ export default defineConfig([
       },
     },
   },
+  ...importBans([
+    onlyAllowedScopes(
+      [
+        '@dotli/chains',
+        '@dotli/config',
+        '@dotli/metrics',
+        '@dotli/protocol',
+        '@dotli/sandbox-wire',
+        '@dotli/shared',
+        '@config/eslint',
+        '@config/vite',
+      ],
+      'bitswap moves content blocks between the sandbox and the light client, below the apps.',
+    ),
+  ]),
 ]);

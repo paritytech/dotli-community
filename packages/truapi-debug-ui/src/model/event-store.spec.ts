@@ -4,7 +4,8 @@
 // `EventStore.version()` tells a Solid adapter when `list()` needs re-reading, without diffing it. Its per-frame
 // bookkeeping must follow the ring buffer exactly, at a cost proportional to what changed, not to what is retained.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
 import type { DotliDebugEvent, TruapiDebugMessageEvent } from '@dotli/truapi-debug';
 import { EventStore, firstNewIndex, type StoredEvent } from './event-store.js';
@@ -143,6 +144,32 @@ describe('EventStore.version()', () => {
     // Then
     expect(store.version()).toBe(afterPause);
     expect(store.list()).toHaveLength(0);
+  });
+});
+
+describe('EventStore.subscribe()', () => {
+  it('As the debug panel, a view that throws on a change is reported and the next view still hears it', () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const store = new EventStore({ capacity: 10 });
+    store.subscribe(() => {
+      throw new TypeError('view broke');
+    });
+    let heard = 0;
+    store.subscribe(() => {
+      heard += 1;
+    });
+
+    // When
+    store.clear();
+
+    // Then
+    expect(heard).toBe(1);
+    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'debug_panel.event_store' } }]);
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'debug_panel.event_store' },
+    ]);
   });
 });
 

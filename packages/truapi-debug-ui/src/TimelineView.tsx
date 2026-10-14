@@ -8,14 +8,13 @@ import type { TimelineLane } from './model/timeline.js';
 import { wireHoverTooltips } from './shared/hover-tooltip.js';
 import { Pane } from './shared/Pane.js';
 import { Timeline } from './timeline/Timeline.js';
-import type { PanelWork } from './work.js';
+import { usePanelWork } from './work.js';
 
 export function TimelineView(props: {
   active: boolean;
   /** A new array redraws the timeline while active. */
   events: readonly StoredEvent[];
   selectedSeq: EventSeq | null;
-  work: Pick<PanelWork, 'buildTimeline'>;
   tooltip: () => HTMLElement | undefined;
   panel: () => HTMLElement | undefined;
   onSelect: (seq: EventSeq) => void;
@@ -25,7 +24,7 @@ export function TimelineView(props: {
     ownedWrite: true,
   });
 
-  const { buildTimeline } = untrack(() => props.work);
+  const { buildTimeline } = usePanelWork();
   createEffect(
     () => (props.active ? props.events : null),
     events => {

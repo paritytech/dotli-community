@@ -22,10 +22,10 @@
   "dependencies": {
     "@dotli/chains": "*",
     "@dotli/config": "*",
+    "@dotli/metrics": "*",
     "@dotli/protocol": "*",
     "@dotli/sandbox-wire": "*",
     "@dotli/shared": "*",
-    "@noble/hashes": "^2.4.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0"
   }
 }

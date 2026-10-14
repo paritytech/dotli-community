@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { bindCaptureSink } from '@dotli/metrics';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } from '../permissions.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
@@ -276,6 +277,32 @@ describe('product permissions store', () => {
     expect(changes).toEqual([
       { label: LABEL, permissions: ['Notifications'], device: false, fromPrompt: false },
       { label: LABEL, permissions: ['Camera'], device: true, fromPrompt: false },
+    ]);
+  });
+
+  it('As a user, my choice still reaches the other listeners when one throws, and the failure is reported', async () => {
+    // Given a listener that throws ahead of one that records
+    fakeCore();
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    cleanups.push(
+      onPermissionsChanged(() => {
+        throw new TypeError('listener broke');
+      }),
+    );
+    const changes = recordChanges();
+    await loaded();
+
+    // When
+    await chooseProductPermission(LABEL, 'Notifications', 'granted');
+
+    // Then
+    expect(changes).toHaveLength(1);
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.any(TypeError),
+      expect.objectContaining({ step: 'listener', tags: { owner: 'product_permissions.change' } }),
+    );
+    expect(sentry.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'product_permissions.change' },
     ]);
   });
 

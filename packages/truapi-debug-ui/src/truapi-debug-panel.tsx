@@ -5,13 +5,12 @@
 
 import { flush } from 'solid-js';
 import { onDotliDebugEvent, type DotliDebugBus } from '@dotli/truapi-debug';
-
-import { mountRoot } from './mount-root.js';
+import { mountRoot } from '@dotli/ui';
 import { Panel, PANEL_ID } from './Panel.js';
 import { pageEffects, type PanelEffects } from './effects.js';
 import { createPanelFeed } from './feed.js';
 import type { DebugPanelHost } from './host.js';
-import { panelWork, type PanelWork } from './work.js';
+import { PanelWorkContext, panelWork, type PanelWork } from './work.js';
 
 const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
@@ -58,18 +57,19 @@ export function setupTruapiDebugPanel(options: SetupOptions): () => void {
     ROOT,
     container,
     () => (
-      <View
-        store={store}
-        resolution={resolution}
-        startCollapsed={options.startCollapsed ?? false}
-        loadArchive={options.host.archive}
-        host={options.host}
-        work={options.work ?? panelWork}
-        effects={options.effects ?? pageEffects}
-      />
+      <PanelWorkContext value={options.work ?? panelWork}>
+        <View
+          store={store}
+          resolution={resolution}
+          startCollapsed={options.startCollapsed ?? false}
+          loadArchive={options.host.archive}
+          host={options.host}
+          effects={options.effects ?? pageEffects}
+        />
+      </PanelWorkContext>
     ),
     // A render error, even a late one, tears the panel down rather than leave it frozen with timers running.
-    unsubscribe,
+    { removeContainer: true, onBroken: unsubscribe },
   );
   // Callers expect the panel, its layout and the iframe fit in place on return.
   flush();

@@ -4,18 +4,37 @@
 // Labels are recorded on `<label>.<BASE_DOMAIN>` but shown on the landing origin, so the list lives in the
 // cross-subdomain shared store. `localStorage` is a mirror for when that store is unreachable.
 
-import {
-  RECENT_KEY,
-  getRecentLabels,
-  parseRecentLabels,
-  serializeRecentLabels,
-  withRecentLabel,
-  writeRecentLabels,
-} from '@dotli/storage';
 import { reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool } from '@dotli/shared';
+import { createAsyncTaskPool, pageLocalStorage } from '@dotli/shared';
 import { isValidDotLabel } from '@dotli/resolver';
 import { getSharedChannel, type SharedChannel } from './runtime/shared-mode.js';
+
+const RECENT_KEY = 'dotli_recent';
+const MAX_RECENT = 8;
+
+/** Drops anything that isn't a usable label, from the shared store or the mirror alike. */
+export function parseRecentLabels(raw: string | null): string[] {
+  if (raw === null || raw === '') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((l): l is string => typeof l === 'string' && isValidDotLabel(l)).slice(0, MAX_RECENT);
+  } catch {
+    return [];
+  }
+}
+
+export function serializeRecentLabels(labels: string[]): string {
+  return JSON.stringify(labels.slice(0, MAX_RECENT));
+}
+
+function withRecentLabel(labels: string[], label: string): string[] {
+  return [label, ...labels.filter(l => l !== label)].slice(0, MAX_RECENT);
+}
 
 /** The recently visited names, over one shared store. */
 export interface RecentLabels {
@@ -40,7 +59,12 @@ export interface RecentMirror {
   write: (labels: string[]) => void;
 }
 
-const localMirror: RecentMirror = { read: getRecentLabels, write: writeRecentLabels };
+const localMirror: RecentMirror = {
+  read: () => parseRecentLabels(pageLocalStorage.getItem(RECENT_KEY)),
+  write: labels => {
+    pageLocalStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));
+  },
+};
 
 export function createRecentLabels(channel: SharedChannel, mirror: RecentMirror = localMirror): RecentLabels {
   // Each update reads, changes and writes the whole list, so two at once would drop one of them.

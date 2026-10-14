@@ -6,6 +6,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
+import { reportListener } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { chainHaltedError } from './chain-halted.js';
 
@@ -227,6 +228,9 @@ export function createBrokerWarner(): BrokerWarner {
   };
 }
 
+// A session's handler that throws on the halt is a defect in its owner, reported while the other sessions still hear it.
+const reportHaltListener = reportListener('protocol', 'chain_halt');
+
 export class ChainBroker {
   private readonly provider: JsonRpcProvider;
   private readonly onEmpty: () => void;
@@ -306,18 +310,18 @@ export class ChainBroker {
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
     for (const session of sessions) {
+      // A throwing message handler must not keep its session from hearing the halt.
       try {
         this.answerHaltedSession(session);
-        // eslint-disable-next-line no-restricted-syntax -- a throwing message handler must not keep its session from hearing the halt.
-      } catch {
-        /* the session still hears the halt */
+      } catch (thrown) {
+        reportHaltListener(thrown);
       }
       session.connected = false;
+      // One session's handler must not keep the others from hearing the halt.
       try {
         session.onHalt?.(error);
-        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one session's handler must not keep the others from hearing the halt.
-      } catch {
-        /* the other sessions still hear the halt */
+      } catch (thrown) {
+        reportHaltListener(thrown);
       }
     }
     this.disconnectUpstream();

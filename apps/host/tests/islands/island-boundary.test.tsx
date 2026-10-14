@@ -4,9 +4,9 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { render, type JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
+import { RootBoundary } from '@dotli/ui';
 import { settle } from '@dotli/ui/testing';
 import { reportIslandErrors } from '../../src/island-errors.js';
-import { IslandBoundary } from '../../src/islands/IslandBoundary.js';
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -31,9 +31,9 @@ describe('island boundary', () => {
     onTestFinished(
       render(
         () => (
-          <IslandBoundary root="island:Test" onBroken={onBroken}>
+          <RootBoundary root="island:Test" onBroken={onBroken}>
             <Failing />
-          </IslandBoundary>
+          </RootBoundary>
         ),
         host,
       ),

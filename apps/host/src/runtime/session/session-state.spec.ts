@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
 import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
-import { createAuthStateChanged, type DotliAuthState } from './AuthState.js';
+import { createAuthStateChanged, type DotliAuthState } from './auth-state.js';
 import { createCoreStorage, type HostCoreStorage } from './core-storage.js';
 import { createSessionState, type PairingPresentation, type SessionState } from './session-state.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';

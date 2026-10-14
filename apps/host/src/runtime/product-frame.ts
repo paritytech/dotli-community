@@ -10,7 +10,7 @@ import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createStatusCell, errorName, log } from '@dotli/shared';
+import { createAsyncTaskPool, log, randomId } from '@dotli/shared';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/chat-store.js';
 import { wrapCoreProviderForDebug } from './core-connection.js';
@@ -96,9 +96,6 @@ export interface ProductFrame {
    * superseded it, and rejects when it could not be shown.
    */
   render(product: FrameProduct): Promise<void>;
-  getStatus(): ProductFrameStatus;
-  /** Called on each change only, in order. */
-  subscribeStatus(listener: (status: ProductFrameStatus) => void): () => void;
 }
 
 interface MountedHost {
@@ -173,20 +170,15 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
   let coreDeaths = 0;
   let replacedAt: number | null = null;
 
-  const status = createStatusCell<ProductFrameStatus>('idle', {
-    onListenerError: (error, next) => {
-      captureException(error, { flow: 'ui', step: 'product_frame_status_listener', tags: { status: next } });
-      log.error('[dot.li] product frame status listener failed:', error);
-      m.count(S.PRODUCT_STATUS_LISTENER, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
-    },
-  });
-  // On the page as well, as state that browser tests read. Published before any other listener subscribes, so a
-  // listener reads the state it is hearing.
-  view.showStatus(status.get());
-  status.subscribe(next => {
-    view.showStatus(next);
-  });
-  const setStatus = status.set;
+  // On the page as state that browser tests read, and read here to tell what the frame is doing.
+  let status: ProductFrameStatus = 'idle';
+  view.showStatus(status);
+  const setStatus = (next: ProductFrameStatus): void => {
+    if (next !== status) {
+      status = next;
+      view.showStatus(next);
+    }
+  };
 
   async function render(product: FrameProduct): Promise<void> {
     // A render asked from above starts afresh, so the cores that died before it no longer count.
@@ -204,7 +196,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     return renders
       .call(() => mount(product, controller.signal), { signal: controller.signal })
       .then(
-        () => !controller.signal.aborted && status.get() === 'connected',
+        () => !controller.signal.aborted && status === 'connected',
         (error: unknown) => {
           // The newer render owns the frame now.
           if (controller.signal.aborted) {
@@ -256,7 +248,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     replacements
       .call(async () => {
         // A render since the death already answered it.
-        if (mounted !== lost || status.get() !== 'lost') {
+        if (mounted !== lost || status !== 'lost') {
           return;
         }
         replacedAt = Date.now();
@@ -277,8 +269,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     // Written by the core's down report, which can arrive during any wait below.
     const heard = { coreDown: false };
     let shown: MountedHost | null = null;
-    const renderFlowId = newFlowId('render');
-    const bridgeFlowId = newFlowId('bridge');
+    const renderFlowId = randomId();
+    const bridgeFlowId = randomId();
     const productId = product.mode === 'iframe' ? (product.productId ?? product.label) : product.label;
     const stopSetup = m.timer(S.BRIDGE_SETUP);
     // Keep the product on screen while its replacement connects, which can take seconds.
@@ -332,7 +324,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       // budget, so this never loops.
       onCoreDown: () => {
         heard.coreDown = true;
-        if (shown !== null && shown === mounted && status.get() === 'connected') {
+        if (shown !== null && shown === mounted && status === 'connected') {
           renderOnReplacement();
         }
       },
@@ -513,7 +505,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       return;
     }
     const host = mounted;
-    if (change.fromPrompt && host !== null && status.get() !== 'connecting') {
+    if (change.fromPrompt && host !== null && status !== 'connecting') {
       host.afterPermissionResponse(() => {
         void rerender('permission');
       });
@@ -567,8 +559,6 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
 
   return {
     render,
-    getStatus: status.get,
-    subscribeStatus: status.subscribe,
   };
 }
 
@@ -718,11 +708,4 @@ function registerProductChat({ provider, productId }: CoreConnection): () => voi
       return provider.render(request, sink);
     },
   });
-}
-
-function newFlowId(prefix: string): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${prefix}-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 }

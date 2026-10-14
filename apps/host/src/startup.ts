@@ -13,13 +13,12 @@ import { configureProtocolFrame, ensureProtocolFrame, warmupProtocol, type Proto
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktop-offer.js';
 import { pageStandIns, reportIslandErrors } from './island-errors.js';
-import { log } from '@dotli/shared';
+import { log, pageLocalStorage } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import {
   getBackend,
   isLocalhost,
   isSharedWorkerAvailable,
-  localStorageAdapter,
   type Backend,
   type CacheSettings,
   type Settings,
@@ -66,7 +65,7 @@ export function startPage(): void {
 
   if (!isMobileDevice()) {
     offerDesktopApp({
-      storage: () => localStorage,
+      storage: pageLocalStorage,
       notify: showNotification,
       downloadUrl: import.meta.env.VITE_DESKTOP_DOWNLOAD_URL,
     });
@@ -108,12 +107,6 @@ export interface HostStartup {
   bridgeModule: BridgeModule;
 }
 
-export function createBootFlowId(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
-}
-
 /** What only the shell has. The landing page renders neither, so it passes neither. */
 export interface StartHostOptions {
   /** Feeds the shell's debug panel. */
@@ -135,7 +128,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
   boot.step = 'url_settings';
   const settingsBoot = bootSettings({
     search: window.location.search,
-    local: localStorageAdapter,
+    local: pageLocalStorage,
     sharedWorkerAvailable: isSharedWorkerAvailable(),
     preferLocal: isLocalhost,
     readShared: () => readSharedSettings(),

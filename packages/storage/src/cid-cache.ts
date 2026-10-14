@@ -7,9 +7,8 @@
 import type { Network } from '@dotli/config';
 import { createCacheReporter } from './cache-reporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbRequest, idbTransaction } from './idb.js';
+import { idbRequest, idbTransaction } from '@dotli/shared';
 import { m, spans as S } from '@dotli/metrics';
-import { isValidDotLabel } from '@dotli/resolver';
 
 const STORE = 'cids';
 
@@ -43,51 +42,6 @@ const reportFailure: (action: CacheAction, err: unknown) => void = createCacheRe
   'cid_cache',
   '[dot.li cid-cache]',
 );
-
-export const RECENT_KEY = 'dotli_recent';
-const MAX_RECENT = 8;
-
-/** Drops anything that isn't a usable label. Also used by the host's cross-subdomain store. */
-export function parseRecentLabels(raw: string | null): string[] {
-  if (raw === null || raw === '') {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown[];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter((l): l is string => typeof l === 'string' && isValidDotLabel(l)).slice(0, MAX_RECENT);
-  } catch {
-    return [];
-  }
-}
-
-export function serializeRecentLabels(labels: string[]): string {
-  return JSON.stringify(labels.slice(0, MAX_RECENT));
-}
-
-export function withRecentLabel(labels: string[], label: string): string[] {
-  return [label, ...labels.filter(l => l !== label)].slice(0, MAX_RECENT);
-}
-
-/** This origin's copy, in `storage` or the page's localStorage. The shared store is authoritative. */
-export function getRecentLabels(storage?: Pick<Storage, 'getItem'>): string[] {
-  try {
-    return parseRecentLabels((storage ?? localStorage).getItem(RECENT_KEY));
-  } catch {
-    return [];
-  }
-}
-
-export function writeRecentLabels(labels: string[], storage?: Pick<Storage, 'setItem'>): void {
-  try {
-    (storage ?? localStorage).setItem(RECENT_KEY, serializeRecentLabels(labels));
-    // eslint-disable-next-line no-restricted-syntax -- the recent list is UI-only, so a full or missing localStorage is not worth a metric.
-  } catch {
-    /* the recent list is UI decoration */
-  }
-}
 
 /** The label to CID cache over `idb`, the page's own by default. */
 export function createCidCache(idb: DotliIdb = pageIdb) {

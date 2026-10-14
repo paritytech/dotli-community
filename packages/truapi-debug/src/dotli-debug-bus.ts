@@ -1,11 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The bus stays null until `enableDotliDebugBuffering()`, so sessions that never open debug mode pay nothing.
+// The bus is off until `enableDotliDebugBuffering()`, so sessions that never open debug mode pay nothing.
 
-import { createNanoEvents } from 'nanoevents';
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet } from '@dotli/shared';
 
 import type { DotliDebugEvent, TruapiDebugMessageEvent } from './dotli-debug-types.js';
 
@@ -30,46 +29,30 @@ function noopUnsubscribe(): void {
 // subscriber attaches, replayed to it once, and then buffering stops for the session.
 const BUFFER_MAX = 512;
 
-/** A throwing receiver is a defect in its subscriber, so it is reported, and the other receivers still get the event. */
-function deliver(
-  delivery: 'replay' | 'watch',
-  receiver: (event: DotliDebugBusEvent) => void,
-  event: DotliDebugBusEvent,
-): void {
-  try {
-    receiver(event);
-  } catch (err: unknown) {
-    captureException(err, { flow: 'ui', step: 'debug_bus_listener', tags: { delivery } });
-    log.error(`[dot.li debug-bus] A debug bus ${delivery} receiver threw`, err);
-    m.count(S.DEBUG_BUS_LISTENER, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
-  }
-}
-
 /** Builds an independent bus. The page keeps one, and a test builds its own. */
 export function createDotliDebugBus(): DotliDebugBus {
-  let bus: ReturnType<typeof createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>> | null = null;
-  let listenerCount = 0;
+  let enabled = false;
   let bufferingEnabled = false;
   let bufferedEvents: DotliDebugBusEvent[] = [];
-
+  const listeners = createListenerSet<DotliDebugBusEvent>({ onListenerError: reportListener('ui', 'debug_bus.live') });
   // Watchers see live events only. They are not listeners, so they neither take the boot replay from the panel nor turn
   // on the emit sites gated by `hasListeners`.
-  const watchers = new Set<(event: DotliDebugBusEvent) => void>();
+  const watchers = createListenerSet<DotliDebugBusEvent>({ onListenerError: reportListener('ui', 'debug_bus.watch') });
+  // Never subscribed: it delivers the boot replay to the first panel under its own owner.
+  const replays = createListenerSet<DotliDebugBusEvent>({ onListenerError: reportListener('ui', 'debug_bus.replay') });
 
   return {
     enableBuffering() {
-      bus ??= createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>();
+      enabled = true;
       bufferingEnabled = true;
     },
     emit(event) {
-      if (bus === null) {
+      if (!enabled) {
         return;
       }
-      for (const watcher of [...watchers]) {
-        deliver('watch', watcher, event);
-      }
-      if (listenerCount > 0) {
-        bus.emit('event', event);
+      watchers.emit(event);
+      if (listeners.size > 0) {
+        listeners.emit(event);
         return;
       }
       if (bufferingEnabled) {
@@ -79,42 +62,23 @@ export function createDotliDebugBus(): DotliDebugBus {
         }
       }
     },
-    hasListeners() {
-      if (bus === null) {
-        return false;
-      }
-      return listenerCount > 0;
-    },
-    watch(callback) {
-      watchers.add(callback);
-      return () => {
-        watchers.delete(callback);
-      };
-    },
+    hasListeners: () => enabled && listeners.size > 0,
+    watch: watchers.subscribe,
     on(callback) {
-      if (bus === null) {
+      if (!enabled) {
         return noopUnsubscribe;
       }
-      const wasCold = listenerCount === 0;
-      listenerCount++;
-      const unsub = bus.on('event', callback);
+      const wasCold = listeners.size === 0;
+      const unsubscribe = listeners.subscribe(callback);
       if (wasCold && bufferedEvents.length > 0) {
         const replay = bufferedEvents;
         bufferedEvents = [];
         bufferingEnabled = false;
-        for (const e of replay) {
-          deliver('replay', callback, e);
+        for (const event of replay) {
+          replays.deliver(callback, event);
         }
       }
-      let disposed = false;
-      return () => {
-        if (disposed) {
-          return;
-        }
-        disposed = true;
-        listenerCount = Math.max(0, listenerCount - 1);
-        unsub();
-      };
+      return unsubscribe;
     },
   };
 }

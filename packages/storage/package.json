@@ -23,7 +23,6 @@
   "dependencies": {
     "@dotli/config": "*",
     "@dotli/metrics": "*",
-    "@dotli/resolver": "*",
     "@dotli/shared": "*"
   }
 }

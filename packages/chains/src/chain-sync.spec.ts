@@ -489,13 +489,13 @@ describe('A throwing chain sync listener is reported', () => {
       { chain: 'relay', kind: 'connecting' },
     ]);
     expect(reports.captured).toEqual([
-      { step: 'chain_sync_listener', tags: { stream: 'sync' } },
-      { step: 'chain_sync_listener', tags: { stream: 'sync' } },
+      { step: 'listener', tags: { owner: 'chain_sync.sync' } },
+      { step: 'listener', tags: { owner: 'chain_sync.sync' } },
     ]);
     expect(reports.errors).toHaveLength(2);
-    expect(reports.metrics.counted('chain_sync.listener')).toEqual([
-      { outcome: 'error', reason: 'TypeError' },
-      { outcome: 'error', reason: 'TypeError' },
+    expect(reports.metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'chain_sync.sync' },
+      { outcome: 'error', reason: 'TypeError', owner: 'chain_sync.sync' },
     ]);
   });
 
@@ -513,9 +513,29 @@ describe('A throwing chain sync listener is reported', () => {
 
     // Then the later listener got it and the throw was reported
     expect(seen).toEqual([{ chain: 'bulletin', dbCache: 'hit' }]);
-    expect(reports.captured).toEqual([{ step: 'chain_sync_listener', tags: { stream: 'detail' } }]);
+    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'chain_sync.detail' } }]);
     expect(reports.errors).toHaveLength(1);
-    expect(reports.metrics.counted('chain_sync.listener')).toEqual([{ outcome: 'error', reason: 'RangeError' }]);
+    expect(reports.metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'RangeError', owner: 'chain_sync.detail' },
+    ]);
+  });
+
+  it('As a listener that subscribes while a fact is delivered, I hear that fact once, as the replay', () => {
+    // Given a listener that subscribes a second one when it hears the first fact
+    const seen: unknown[] = [];
+    let attached = false;
+    reporter.onChainDetail(() => {
+      if (!attached) {
+        attached = true;
+        reporter.onChainDetail(detail => seen.push(detail));
+      }
+    });
+
+    // When the database cache result arrives
+    reporter.reportDbCache(getActiveServicesConfig().bulletin.genesis, true);
+
+    // Then the late listener heard it once
+    expect(seen).toEqual([{ chain: 'bulletin', dbCache: 'hit' }]);
   });
 
   it('As a late subscriber that throws during the replay, I am reported, the rest of the replay still runs and I stay subscribed', async () => {
@@ -542,14 +562,14 @@ describe('A throwing chain sync listener is reported', () => {
     // Then each replayed and live call reached them and each throw was reported
     expect(syncCalls).toEqual(['peers', 'connecting', 'firstPeer', 'peers', 'bootstrapComplete']);
     expect(detailCalls).toEqual([{ chain: 'bulletin', dbCache: 'miss' }]);
-    expect(reports.captured.map(({ tags }) => tags?.['stream'])).toEqual([
-      'sync',
-      'sync',
-      'detail',
-      'sync',
-      'sync',
-      'sync',
+    expect(reports.captured.map(({ tags }) => tags?.['owner'])).toEqual([
+      'chain_sync.sync',
+      'chain_sync.sync',
+      'chain_sync.detail',
+      'chain_sync.sync',
+      'chain_sync.sync',
+      'chain_sync.sync',
     ]);
-    expect(reports.metrics.counted('chain_sync.listener')).toHaveLength(6);
+    expect(reports.metrics.counted('listener.delivery')).toHaveLength(6);
   });
 });

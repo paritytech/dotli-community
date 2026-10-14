@@ -6,6 +6,7 @@
 
 import { errorName, log } from '@dotli/shared';
 import { m, type MetricOutcome, type SpanHandle } from './metrics.js';
+import * as S from './spans.js';
 
 /** The user flow an event belongs to, so failures can be read and counted per flow from tags alone. */
 export type Flow =
@@ -95,4 +96,16 @@ export function reportExpected(
   }
   recordExpected(err, { flow, step });
   m.count(metric, { outcome, reason: reason ?? errorName(err) ?? 'unknown' });
+}
+
+/**
+ * For a listener set's `onListenerError`: a throwing listener is a defect in its subscriber, so it is captured, logged
+ * and counted under `owner`, while the set's other listeners still hear the value.
+ */
+export function reportListener(flow: Flow, owner: string): (error: unknown) => void {
+  return error => {
+    captureException(error, { flow, step: 'listener', tags: { owner } });
+    log.error(`[dot.li] A ${owner} listener threw`, error);
+    m.count(S.LISTENER_DELIVERY, { outcome: 'error', reason: errorName(error) ?? 'unknown', owner });
+  };
 }

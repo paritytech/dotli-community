@@ -19,7 +19,7 @@ import { ChatDock } from '../../src/islands/ChatDock.js';
 import {
   chatPanelStore,
   getChatPanelElement,
-  initChatPanelState,
+  startChatPanelState,
   setChatPanelOpen,
 } from '../../src/state/chat-panel.js';
 import { appears, byId, byTestId } from '@dotli/ui/testing';
@@ -42,7 +42,7 @@ function mountIsland(): void {
 beforeEach(() => {
   chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
   const local = memoryStorage();
-  stopState = initChatPanelState(chat, () => local);
+  stopState = startChatPanelState(chat, local);
   setProductLoaded(LABEL, PRODUCT, { chat: true });
   setAuthState({ tag: 'Connected', session: { connected: true } });
 });

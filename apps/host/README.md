@@ -38,6 +38,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   boot. It brings the TrUAPI host, the session state and the TrUAPI codecs, so none of them is in the boot chunk. One
   runtime boots per page core, a signing host on the local wallet when there is one, else the pairing host. A core that
   goes stale is rebuilt without being asked. The signing worker and the local wallet core load on demand.
+- The session layer (the auth state type, the session state the boot starts and the core's shared-store adapter) sits
+  apart from the TrUAPI host callbacks. State the runtime reads or writes (auth, product, permissions, theme, wallet
+  mode) lives with the runtime, and the page chrome's own state (topbar, URL pill, chat panel, network) lives with the
+  page.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time.
 - The toasts and dialogs are one idle island on each page. What boot queues before it hydrates shows once it does.

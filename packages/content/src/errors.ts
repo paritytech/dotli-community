@@ -8,9 +8,3 @@ export const CONTENT_ERRORS = {
   /** Fetched bytes are not the content the CID names, or cannot be checked. */
   VERIFICATION: 'ContentVerificationError',
 } as const;
-
-/** `err` with its `name` set, so it reaches Sentry as its own exception type. */
-export function named<E extends Error>(err: E, name: string): E {
-  err.name = name;
-  return err;
-}

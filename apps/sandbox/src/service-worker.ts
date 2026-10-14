@@ -3,7 +3,7 @@
 
 // The sandbox's service worker, which serves an archive's files to the product's page.
 
-import { TIMEOUTS } from '@dotli/config';
+import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { packArchive, type ArchiveFiles } from '@dotli/content';
 import { captureException, recordExpected } from '@dotli/metrics';
 import { log } from '@dotli/shared';
@@ -117,7 +117,7 @@ export async function registerAppServiceWorker(
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE));
-      }, TIMEOUTS.SW_READY);
+      }, SANDBOX_TIMEOUTS.SW_READY);
       container.addEventListener('controllerchange', () => {
         clearTimeout(timeout);
         resolve();

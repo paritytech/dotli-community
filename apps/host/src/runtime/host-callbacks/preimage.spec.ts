@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { blake2b } from '@noble/hashes/blake2.js';
 import type { Backend } from '@dotli/config';
-import { createBlockFetch, createPreimageAdapters, type PreimageBlock, type PreimageFetch } from './Preimage.js';
+import { createBlockFetch, createPreimageAdapters, type PreimageBlock, type PreimageFetch } from './preimage.js';
 import { yielded } from '../../testing/fixtures.js';
 
 /** A fetch that misses until a test answers it. */

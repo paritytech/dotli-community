@@ -26,6 +26,7 @@ import type {
   RawPayload,
   RingLocationJunction,
 } from '@parity/truapi';
+import { toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import type { BlockingModalScope } from '../blocking-modal-queue.js';
 import type { ModalButton, ModalField, ModalView } from '@dotli/ui';
@@ -86,10 +87,6 @@ function showConfirmationModal(
     },
     signal,
   );
-}
-
-function formatBytes(value: Uint8Array): string {
-  return `0x${Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function confirmationDisplay(label: string, review: ModalReview): { fields: ConfirmationField[] } {
@@ -235,7 +232,7 @@ function createRingContextFields(review: AccountAliasReview | CreateProofReview)
 }
 
 function createProofFields(review: CreateProofReview): ConfirmationField[] {
-  return [...createRingContextFields(review), { label: 'Message', value: formatBytes(review.message), mono: true }];
+  return [...createRingContextFields(review), { label: 'Message', value: toHex(review.message), mono: true }];
 }
 
 function createStatementSignFields(label: string, review: StatementStoreProductSignReview): ConfirmationField[] {
@@ -245,7 +242,7 @@ function createStatementSignFields(label: string, review: StatementStoreProductS
       { label: 'Signer', value: formatProductAccount(review.account) },
       {
         label: 'Statement',
-        value: truncateHex(formatBytes(review.payload.subarray(0, 41))),
+        value: truncateHex(toHex(review.payload.subarray(0, 41))),
         mono: true,
       },
     ],

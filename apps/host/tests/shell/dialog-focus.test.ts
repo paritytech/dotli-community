@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createComponent } from 'solid-js';
 import { render } from '@solidjs/web';
-import { Overlays } from '@dotli/ui';
 import type { ModalView } from '@dotli/ui';
 import { appears } from '@dotli/ui/testing';
+import { Overlays } from '../../src/islands/Overlays.js';
 import { createHostPrompts } from '../../src/page-prompts.js';
 import { attachProductFrame } from '../../src/product-frame-layout.js';
 

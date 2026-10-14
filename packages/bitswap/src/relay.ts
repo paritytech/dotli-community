@@ -5,7 +5,8 @@
 // origin loses its storage on every reload, so the host fetches and keeps the blocks.
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
-import { errorName, log, serializeError } from '@dotli/shared';
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet, errorName, log, serializeError } from '@dotli/shared';
 
 import { readDagTotal } from './dag-total.js';
 
@@ -68,8 +69,13 @@ type FrameKey = MessageEventSource | string;
 
 export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlockRelay {
   const { channel, blocks, cache, now = () => performance.now() } = deps;
-  const progressListeners = new Set<(progress: ContentProgress) => void>();
-  const servedListeners = new Set<(from: BlockOrigin) => void>();
+  // A listener's throw must not fail a block the sandbox already got, nor keep the next listener from hearing it.
+  const progressListeners = createListenerSet<ContentProgress>({
+    onListenerError: reportListener('content', 'bitswap_relay.progress'),
+  });
+  const servedListeners = createListenerSet<BlockOrigin>({
+    onListenerError: reportListener('content', 'bitswap_relay.served'),
+  });
   let bytesFetched = 0;
   let totalBytes: number | null = null;
   let firstBlockAt: number | null = null;
@@ -94,12 +100,8 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     bytesFetched += bytes.length;
     const elapsed = now() - firstBlockAt;
     const progress = { bytesFetched, totalBytes, bytesPerSecond: elapsed > 0 ? (bytesFetched / elapsed) * 1000 : 0 };
-    for (const listener of [...progressListeners]) {
-      listener(progress);
-    }
-    for (const listener of [...servedListeners]) {
-      listener(from);
-    }
+    progressListeners.emit(progress);
+    servedListeners.emit(from);
   }
 
   async function check(cid: string, bytes: Uint8Array): Promise<Verdict> {
@@ -222,18 +224,8 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
   });
 
   return {
-    onProgress(listener) {
-      progressListeners.add(listener);
-      return () => {
-        progressListeners.delete(listener);
-      };
-    },
-    onServed(listener) {
-      servedListeners.add(listener);
-      return () => {
-        servedListeners.delete(listener);
-      };
-    },
+    onProgress: progressListeners.subscribe,
+    onServed: servedListeners.subscribe,
     stop() {
       stopAborts();
       stopGets();

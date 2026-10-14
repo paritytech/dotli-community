@@ -15,21 +15,8 @@ export {
   type ChatRoomRecord,
 } from './chat.js';
 export { isExpectedDbError } from './db.js';
-export { idbRequest, idbTransaction, openIdb } from './idb.js';
-export { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
-export {
-  RECENT_KEY,
-  clearCidCache,
-  evictCachedCid,
-  getCachedCid,
-  getRecentLabels,
-  parseRecentLabels,
-  serializeRecentLabels,
-  setCachedCid,
-  withRecentLabel,
-  writeRecentLabels,
-  type CachedManifests,
-} from './cid-cache.js';
+export { DB_NAME } from './schema.js';
+export { clearCidCache, evictCachedCid, getCachedCid, setCachedCid, type CachedManifests } from './cid-cache.js';
 export {
   createLocalWalletStore,
   forgetLocalWallet,

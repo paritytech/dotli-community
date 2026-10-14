@@ -3,6 +3,8 @@
 
 // Events are never mutated after insertion.
 
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet } from '@dotli/shared';
 import type { DotliDebugEvent, TruapiDebugMessageEvent } from '@dotli/truapi-debug';
 
 /** Monotonic, assigned at insertion. */
@@ -53,7 +55,10 @@ export class EventStore {
   private readonly anchors = new WeakMap<StoredEvent, StoredEvent>();
   /** Kept so `productIds()` needs no scan. */
   private readonly productCounts = new Map<string | undefined, number>();
-  private readonly listeners = new Set<Listener>();
+  // A view that throws on a change is a defect in the panel, reported while the other views still hear the change.
+  private readonly listeners = createListenerSet<undefined>({
+    onListenerError: reportListener('ui', 'debug_panel.event_store'),
+  });
 
   constructor(config: EventStoreConfig) {
     this.capacity = config.capacity;
@@ -201,8 +206,7 @@ export class EventStore {
   }
 
   subscribe(l: Listener): () => void {
-    this.listeners.add(l);
-    return () => this.listeners.delete(l);
+    return this.listeners.subscribe(l);
   }
 
   /** Bumped on every notify, so a consumer can snapshot `list()` by comparing versions instead of diffing. */
@@ -212,14 +216,7 @@ export class EventStore {
 
   private notify(): void {
     this.versionCount++;
-    for (const l of this.listeners) {
-      try {
-        l();
-        // eslint-disable-next-line no-restricted-syntax -- UI listener errors must not break event ingestion; they're purely rendering.
-      } catch {
-        /* swallow */
-      }
-    }
+    this.listeners.emit(undefined);
   }
 }
 

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// IndexedDB's callbacks as promises, for every store on dotli's databases.
+// IndexedDB's callbacks as promises, for every store dotli keeps in a browser database.
 
 /** Opens `name` at `version`, rejecting rather than hanging when an older tab blocks the upgrade. */
 export function openIdb(
@@ -84,5 +84,24 @@ export function idbTransaction(
       // Requests the body issued before it threw must not commit.
       tx.abort();
     }
+  });
+}
+
+/** Deletes `name`, rejecting rather than hanging when an open connection blocks the delete. */
+export function deleteIdb(factory: Pick<IDBFactory, 'deleteDatabase'>, name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = factory.deleteDatabase(name);
+    req.onsuccess = () => {
+      resolve();
+    };
+    req.onerror = () => {
+      // Only the cause keeps the DOMException's message for the report.
+      const cause = req.error;
+      reject(new Error(`Failed to delete ${name} DB: ${cause?.name ?? 'unknown'}`, cause ? { cause } : undefined));
+    };
+    // Blocked fires neither onsuccess nor onerror until the other connection closes.
+    req.onblocked = () => {
+      reject(new Error(`Failed to delete ${name} DB: blocked by another connection`));
+    };
   });
 }

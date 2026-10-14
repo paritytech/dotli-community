@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { DotliAuthState } from '../host-callbacks/AuthState.js';
+import type { DotliAuthState } from '../session/auth-state.js';
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
 
 // Every login step must reach the auth controller, including a repeated LoginFailed, so no set is dropped as equal.

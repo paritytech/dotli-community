@@ -29,6 +29,7 @@ export type MetricAttributes = {
   env?: string;
   outcome?: MetricOutcome;
   reason?: string;
+  owner?: string;
 } & Record<string, string>;
 
 interface MetricOptions {

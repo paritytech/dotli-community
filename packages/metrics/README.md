@@ -21,7 +21,7 @@ compile time.
   set of integrations, so the bundle carries only those. It binds the capture and log sinks and sets the `source` tag
   (`host`, `protocol`, `worker`, `sandbox`).
 - `spans` lists every metric name without the `dotli.` prefix.
-- The testing entry records counts, distributions, gauges and tags. It needs no test runner.
+- The testing entry records counts, distributions, gauges, tags and captured exceptions. It needs no test runner.
 - Lint holds this package to its own rules.
 
 ## Public API
@@ -32,12 +32,14 @@ compile time.
 - `spans`: the metric names, imported as `spans as S`.
 - `captureException`, `reportExpected`, `recordExpected`, `bindCaptureSink`, `CaptureContext`, `CaptureSink`,
   `ExpectedReport`, `Flow`.
+- `reportListener`: the one report of a throwing listener, counted as `listener.delivery` with its `owner`.
 - `initSentry`, `installGlobalErrorHandlers`.
 - `getResolutionId`, `setResolutionId`: the id that ties a resolution's events together.
 
 ### `@dotli/metrics/testing`
 
-- `bindRecordingSentry`: a recording Sentry that tests bind and restore. Never imported by shipped code.
+- `bindRecordingSentry`: a recording Sentry that tests bind and restore, and `recordCaptures`, which records each
+  captured exception's step and tags. Never imported by shipped code.
 
 ### `@dotli/metrics/testing/setup`
 

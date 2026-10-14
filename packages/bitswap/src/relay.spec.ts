@@ -1,10 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { SandboxChannel, SandboxMessageOf, SandboxMessageType, SandboxSender } from '@dotli/sandbox-wire';
 import { bindLogSink } from '@dotli/shared';
-import { createSandboxBlockRelay, type BlockCache, type ContentProgress, type SandboxBlockRelayDeps } from './relay.js';
+import {
+  createSandboxBlockRelay,
+  type BlockCache,
+  type BlockOrigin,
+  type ContentProgress,
+  type SandboxBlockRelayDeps,
+} from './relay.js';
 
 const SANDBOX_ORIGIN = 'https://a.app.dot.li';
 const BLOCK = new Uint8Array([0xab, 0xcd]);
@@ -598,5 +605,41 @@ describe('createSandboxBlockRelay progress', () => {
 
     // Then
     expect(progress).toEqual([30]);
+  });
+
+  it('As a user, I get my block even when a progress or served listener throws, and the other listeners still hear it', async () => {
+    // Given a throwing listener ahead of a working one on each of the two feeds
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const { channel, send } = fakeChannel();
+    const relay = createSandboxBlockRelay({
+      channel,
+      blocks: fakeNetwork().blocks,
+      cache: null,
+      verify: matchesBlock,
+    });
+    relay.onProgress(() => {
+      throw new TypeError('progress broke');
+    });
+    relay.onServed(() => {
+      throw new RangeError('served broke');
+    });
+    const progress: number[] = [];
+    const served: BlockOrigin[] = [];
+    relay.onProgress(({ bytesFetched }) => progress.push(bytesFetched));
+    relay.onServed(from => served.push(from));
+    const frame = fakeFrame();
+
+    // When a block is served
+    send(frame, get('req-1'));
+    await until(frame.replies);
+
+    // Then the sandbox got the bytes, the working listeners heard it and each throw was counted under its owner
+    expect(frame.replies).toEqual([{ type: 'dotli:bitswap-result', id: 'req-1', ok: true, bytes: BLOCK }]);
+    expect(progress).toEqual([BLOCK.length]);
+    expect(served).toEqual(['network']);
+    expect(sentry.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'bitswap_relay.progress' },
+      { outcome: 'error', reason: 'RangeError', owner: 'bitswap_relay.served' },
+    ]);
   });
 });

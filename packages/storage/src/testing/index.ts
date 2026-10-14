@@ -5,7 +5,7 @@
 
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { createDbConnection, type DotliIdb } from '../db.js';
-import { openIdb } from '../idb.js';
+import { openIdb } from '@dotli/shared';
 import { DB_NAME, DB_VERSION, upgradeDotliDb } from '../schema.js';
 
 export interface MemoryIdb extends DotliIdb {

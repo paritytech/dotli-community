@@ -18,7 +18,7 @@ import {
 } from './provider.js';
 import type { SmoldotDb } from './smoldot-db.js';
 import type { ChainTransportHooks } from './transport-hooks.js';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 
 const waiting = new Set<() => void>();
 
@@ -248,8 +248,10 @@ describe('createLightClient', () => {
     expect(chainHooks.onStatus).toHaveBeenLastCalledWith('disconnected');
   });
 
-  it('As a dotli integrator, I see a halt listener that throws on the end of the stream called once', async () => {
+  it('As a dotli integrator, I see a halt listener that throws on the end of the stream called once and reported', async () => {
     // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const chainHooks = hooks();
     chainHooks.onHalt.mockImplementation(() => {
       throw new Error('listener failed');
@@ -261,8 +263,12 @@ describe('createLightClient', () => {
     engine.connections[0]?.end();
 
     // Then
-    await until(() => logs.some(line => line.message.startsWith(`[dot.li provider] halt listener for chain`)));
+    await until(() => captured.length > 0);
     expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
+    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'light_client.halt' } }]);
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'light_client.halt' },
+    ]);
   });
 
   it('As a dotli integrator, I close a light-client connection and it does not halt', async () => {
@@ -398,6 +404,30 @@ describe('createLightClient', () => {
     expect(client.status().fatal).toBe(message);
   });
 
+  it('As a dotli integrator, a light client listener that throws on the fatal change is reported and the next still hears it', async () => {
+    // Given a start that fails, a listener that throws and one after it
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    client.subscribe(() => {
+      throw new TypeError('listener broke');
+    });
+    const changes: LightClientChange[] = [];
+    client.subscribe(change => changes.push(change));
+    engine.start.mockRejectedValue(new Error('wasm fetch failed'));
+    const first = hooks();
+
+    // When
+    open(first);
+
+    // Then
+    await first.halted();
+    expect(changes).toEqual([{ kind: 'fatal', message: `chain ${people} connection failed: wasm fetch failed` }]);
+    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'light_client' } }]);
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'light_client' },
+    ]);
+  });
+
   describe('stored databases', () => {
     function storeWith(load: SmoldotDb['load']): SmoldotDb {
       return { load, save: () => Promise.resolve() };
@@ -512,7 +542,7 @@ describe('lightClientDeps', () => {
 
   it('As a developer on localhost, I see the light client log at info', () => {
     // When
-    const { logLevel } = lightClientDeps(null, 'host.localhost');
+    const { logLevel } = lightClientDeps(null, true);
 
     // Then
     expect(logLevel).toBe('info');
@@ -520,7 +550,7 @@ describe('lightClientDeps', () => {
 
   it('As a visitor in production, I see the light client log nothing', () => {
     // When
-    const { logLevel } = lightClientDeps(null, 'dot.li');
+    const { logLevel } = lightClientDeps(null, false);
 
     // Then
     expect(logLevel).toBe('off');
@@ -528,7 +558,7 @@ describe('lightClientDeps', () => {
 
   it('As a tester, I set a log level in my session and it wins over the default', () => {
     // When
-    const { logLevel } = lightClientDeps(session({ 'dotli:truapi-provider-log': 'debug' }), 'dot.li');
+    const { logLevel } = lightClientDeps(session({ 'dotli:truapi-provider-log': 'debug' }), false);
 
     // Then
     expect(logLevel).toBe('debug');
@@ -536,8 +566,8 @@ describe('lightClientDeps', () => {
 
   it('As a tester, I set a heartbeat interval in my session and it slows the heartbeat, and a bad one is ignored', () => {
     // When
-    const slowed = lightClientDeps(session({ 'dotli:smoldot-heartbeat-ms': '3600000' }), 'dot.li');
-    const bad = lightClientDeps(session({ 'dotli:smoldot-heartbeat-ms': 'soon' }), 'dot.li');
+    const slowed = lightClientDeps(session({ 'dotli:smoldot-heartbeat-ms': '3600000' }), false);
+    const bad = lightClientDeps(session({ 'dotli:smoldot-heartbeat-ms': 'soon' }), false);
 
     // Then
     expect(slowed.heartbeatMs).toBe(3_600_000);
@@ -547,7 +577,7 @@ describe('lightClientDeps', () => {
   it('As a dotli operator on a build with metrics, my gauge reports the running light client', () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const { gauge } = lightClientDeps(null, 'dot.li');
+    const { gauge } = lightClientDeps(null, false);
 
     // When
     gauge?.(1);
@@ -558,7 +588,7 @@ describe('lightClientDeps', () => {
 
   it("As a developer on a debug build, I get the debug console's log level hook", () => {
     // When
-    const { debug } = lightClientDeps(null, 'dot.li');
+    const { debug } = lightClientDeps(null, false);
 
     // Then
     expect(DEBUG).toBe(true);

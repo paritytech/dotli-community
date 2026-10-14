@@ -132,6 +132,38 @@ function brokenIndexedDb(): IDBFactory {
   } as unknown as IDBFactory;
 }
 
+/** An IndexedDB that opens, then aborts every write at commit, as a full quota does. Only `abort` fires. */
+function quotaAbortingIndexedDb(): IDBFactory {
+  const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+  const tx = {
+    error: null as DOMException | null,
+    oncomplete: null as (() => void) | null,
+    onerror: null as (() => void) | null,
+    onabort: null as (() => void) | null,
+    objectStore: () => ({ put: () => ({}) }),
+    abort: () => undefined,
+  };
+  const db = {
+    transaction: () => {
+      setTimeout(() => {
+        tx.error = quota;
+        tx.onabort?.();
+      }, 0);
+      return tx;
+    },
+    close: () => undefined,
+  };
+  return {
+    open: () => {
+      const request = { result: db, onsuccess: null as (() => void) | null };
+      setTimeout(() => {
+        request.onsuccess?.();
+      }, 0);
+      return request;
+    },
+  } as unknown as IDBFactory;
+}
+
 /** `undefined` means the worker let the request through to the network. */
 async function request(scope: WorkerScope, path: string): Promise<Response | undefined> {
   let answer: Response | Promise<Response> | undefined;
@@ -243,6 +275,25 @@ describe('app service worker', () => {
     const replies = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
 
     // Then the page can still serve now, and hears why a restart would not
+    expect(replies).toEqual([
+      { type: 'ARCHIVE_READY' },
+      {
+        type: 'ARCHIVE_FAILURE',
+        stage: 'persist',
+        name: 'QuotaExceededError',
+        message: 'The quota has been exceeded.',
+      },
+    ]);
+  });
+
+  it('As an operator, an archive write the browser aborts at commit is reported to the page instead of holding the worker', async () => {
+    // Given an origin whose storage aborts the write at commit
+    const scope = startWorker({ ...origin, indexedDB: quotaAbortingIndexedDb() });
+
+    // When the page hands over its archive
+    const replies = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
+
+    // Then
     expect(replies).toEqual([
       { type: 'ARCHIVE_READY' },
       {

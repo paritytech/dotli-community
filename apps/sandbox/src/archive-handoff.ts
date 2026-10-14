@@ -3,7 +3,7 @@
 
 // Hands the packed archive to the controlling service worker and waits for its answer to this handoff only.
 
-import { TIMEOUTS } from '@dotli/config';
+import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import type { packArchive } from '@dotli/content';
 
 import { SANDBOX_ERRORS } from './errors.js';
@@ -24,7 +24,7 @@ export function handOverArchive(
   worker: ArchiveWorker,
   { packed, index }: PackedArchive,
   legacyReplies: EventTarget | null,
-  timeoutMs: number = TIMEOUTS.SW_ARCHIVE_ACK,
+  timeoutMs: number = SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK,
 ): Promise<void> {
   const channel = new MessageChannel();
   return new Promise<void>((resolve, reject) => {

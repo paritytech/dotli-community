@@ -4,7 +4,7 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import { createDbConnection, isExpectedDbError } from './db.js';
-import { openIdb } from './idb.js';
+import { openIdb } from '@dotli/shared';
 import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 
 /** A connection on the previous schema that ignores `versionchange`, as a frozen older tab would. */

@@ -12,7 +12,7 @@ describe('stored panel dock', () => {
     const storage = memoryStorage({ 'truapi-debug:dock': 'right' });
 
     // When
-    const dock = readStoredDock(() => storage);
+    const dock = readStoredDock(storage);
 
     // Then
     expect(dock).toBe('right');
@@ -23,11 +23,11 @@ describe('stored panel dock', () => {
     const storage = memoryStorage();
 
     // When
-    writeStoredDock('bottom', () => storage);
+    writeStoredDock('bottom', storage);
 
     // Then
     expect(storage.getItem('truapi-debug:dock')).toBe('bottom');
-    expect(readStoredDock(() => storage)).toBe('bottom');
+    expect(readStoredDock(storage)).toBe('bottom');
   });
 
   it('As a dotli developer whose storage is blocked, the panel docks at the bottom', () => {
@@ -35,9 +35,9 @@ describe('stored panel dock', () => {
     const storage = blockedStorage();
 
     // When
-    writeStoredDock('right', () => storage);
+    writeStoredDock('right', storage);
 
     // Then
-    expect(readStoredDock(() => storage)).toBe('bottom');
+    expect(readStoredDock(storage)).toBe('bottom');
   });
 });

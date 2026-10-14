@@ -53,13 +53,7 @@ export interface ModalOutcome<R extends string> {
   value?: string;
 }
 
-/** How the page shows one dialog. */
-export interface ModalOptions {
-  /** Where focus goes back when the element the dialog came from left the page. */
-  focusFallback?: (() => HTMLElement | undefined) | undefined;
-}
-
-export interface ModalEntry extends ModalOptions {
+export interface ModalEntry {
   id: number;
   view: ModalView<string>;
 }
@@ -93,11 +87,7 @@ function take(id: number): Pending | undefined {
 }
 
 /** Rejects with an AbortError when `signal` fires. */
-export function openModal<R extends string>(
-  view: ModalView<R>,
-  signal?: AbortSignal,
-  options: ModalOptions = {},
-): Promise<ModalOutcome<R>> {
+export function openModal<R extends string>(view: ModalView<R>, signal?: AbortSignal): Promise<ModalOutcome<R>> {
   if (signal?.aborted === true) {
     return Promise.reject(toAbortError(signal.reason, MODAL_ABORTED));
   }
@@ -115,7 +105,7 @@ export function openModal<R extends string>(
         signal?.removeEventListener('abort', onAbort);
       },
     });
-    modals.set([...modals.get(), { id, view, focusFallback: options.focusFallback }]);
+    modals.set([...modals.get(), { id, view }]);
   });
 }
 

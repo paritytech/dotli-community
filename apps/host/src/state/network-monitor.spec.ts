@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { getActiveChainRoles } from '@dotli/config';
 import type { ChainActivity } from '@dotli/chains';
 import { classifyGap, createNetworkMonitor, type ChainStatus, type NetworkMonitor } from './network-monitor.js';
@@ -619,5 +620,28 @@ describe('The network monitor judges how each chain is used', () => {
 
     // Then
     expect(chainByKey(EXTRA)).toMatchObject({ state: 'live', alarm: true });
+  });
+
+  it('As the network panel, a renderer that throws is reported and the next one still hears the change', () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    monitor.subscribe(() => {
+      throw new TypeError('renderer broke');
+    });
+    let heard = 0;
+    monitor.subscribe(() => {
+      heard += 1;
+    });
+
+    // When
+    monitor.recordTransfer({ bytesPerSecond: 10 });
+
+    // Then
+    expect(heard).toBe(1);
+    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'network_monitor' } }]);
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'network_monitor' },
+    ]);
   });
 });

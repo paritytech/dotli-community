@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { createNotificationAdapters, type NotificationScheduler } from './PushNotification.js';
+import { createNotificationAdapters, type NotificationScheduler } from './push-notification.js';
 import type { NotificationParams } from '@dotli/ui';
 
 /** A scheduler that answers each schedule with id 7, fired at once, and each cancel as done. */

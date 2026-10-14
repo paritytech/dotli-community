@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { createThemeSubscribe } from './Theme.js';
+import { createThemeSubscribe } from './theme.js';
 import { createSyncStore, shallowEqual } from '@dotli/shared';
 import type { ThemeState } from '../state/theme.js';
 import { yielded } from '../../testing/fixtures.js';

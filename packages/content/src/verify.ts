@@ -7,9 +7,9 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { equals as bytesEqual } from 'multiformats/bytes';
 import { CID } from 'multiformats/cid';
-import { log } from '@dotli/shared';
+import { log, named } from '@dotli/shared';
 import type { BlockSource } from './archive.js';
-import { CONTENT_ERRORS, named } from './errors.js';
+import { CONTENT_ERRORS } from './errors.js';
 
 // IPFS defaults to sha2-256. The Bulletin chain and preimages use blake2b-256.
 const SHA2_256 = 0x12;

@@ -3,7 +3,7 @@
 
 // The host page's protocol client: the frame and the facades built on it, and the page's one instance.
 
-import { BASE_DOMAIN, DEV_PROTOCOL_PORT } from '@dotli/config';
+import { BASE_DOMAIN, DEV_PROTOCOL_PORT, isLocalhost } from '@dotli/config';
 import { createProtocolFrame, type ProtocolFrameConfig, type ProtocolFrameDeps, type ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createRemoteChains } from './remote-chain.js';
@@ -19,8 +19,7 @@ export type { ProtocolFrameConfig, ProtocolFrameMode, ProtocolStatus } from './f
 export type { SharedStoreStatus } from './shared-store.js';
 
 export function getProtocolOrigin(): string {
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+  if (isLocalhost) {
     if (import.meta.env.DEV) {
       return `http://host.localhost:${DEV_PROTOCOL_PORT}`;
     }

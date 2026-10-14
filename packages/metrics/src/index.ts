@@ -6,6 +6,7 @@ export {
   captureException,
   recordExpected,
   reportExpected,
+  reportListener,
   type CaptureContext,
   type CaptureSink,
   type ExpectedReport,

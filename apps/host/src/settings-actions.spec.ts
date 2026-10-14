@@ -279,8 +279,8 @@ describe('full reset', () => {
       indexedDb: () => Promise.resolve(),
       cacheStorage: () => Promise.resolve(),
       serviceWorkers: () => Promise.resolve(),
-      local: () => local,
-      session: () => session,
+      local,
+      session,
       ...overrides,
     };
   }

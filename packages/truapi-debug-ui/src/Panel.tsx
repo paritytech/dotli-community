@@ -38,7 +38,7 @@ import { ResolutionView } from './ResolutionView.js';
 import { ViewTabs, type PanelView } from './ViewTabs.js';
 import { TimelineView } from './TimelineView.js';
 import { WalletView } from './WalletView.js';
-import type { PanelWork } from './work.js';
+import { usePanelWork, type PanelWork } from './work.js';
 import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
@@ -150,13 +150,12 @@ export function Panel(props: {
   startCollapsed: boolean;
   loadArchive: ArchiveLoader;
   host: DebugPanelHost;
-  work: PanelWork;
   /** What the panel asks of the browser: the clipboard and a download. */
   effects: PanelEffects;
 }): JSX.Element {
   const store = untrack(() => props.store);
   const recorder = untrack(() => props.resolution);
-  const work = untrack(() => props.work);
+  const work = usePanelWork();
   const host = untrack(() => props.host);
   const { matches } = work;
 
@@ -497,7 +496,6 @@ export function Panel(props: {
               allEvents={snapshot().events}
               refreshedAt={snapshot().takenAt}
               store={store}
-              work={work}
               selection={selection()}
               active={listShown()}
               collapsed={collapsed()}
@@ -510,7 +508,6 @@ export function Panel(props: {
               active={events() && view() === 'timeline'}
               events={visible()}
               selectedSeq={selection()?.seq ?? null}
-              work={work}
               tooltip={() => tooltipEl}
               panel={() => panelEl}
               onSelect={select}
@@ -520,7 +517,6 @@ export function Panel(props: {
               collapsed={collapsed()}
               refresh={resolutionVersion()}
               recorder={recorder}
-              work={work}
               tooltip={() => tooltipEl}
               panel={() => panelEl}
             />

@@ -3,7 +3,7 @@
 
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
-import { openIdb } from './idb.js';
+import { openIdb } from '@dotli/shared';
 import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 
 /** Opens the database on the current schema against `factory`, as the page's first read does. */

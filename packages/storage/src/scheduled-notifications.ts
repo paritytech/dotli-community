@@ -5,8 +5,13 @@
 // The host's scheduler coordinates which tab fires.
 
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbTransaction } from './idb.js';
-import { SCHEDULED_NOTIFICATIONS_MAX_AGE_MS, SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP } from '@dotli/config';
+import { idbTransaction } from '@dotli/shared';
+
+/** Drop scheduled notifications older than this many ms past `scheduledAt`. */
+const SCHEDULED_NOTIFICATIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Pending scheduled notifications per product before `schedule` returns ScheduleLimitReached. */
+const SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP = 20;
 
 const RECORD_STORE = 'scheduled_notifications';
 const COUNTER_STORE = 'notification_counters';

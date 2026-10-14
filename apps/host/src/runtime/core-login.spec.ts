@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import type { AuthCommands } from './auth-commands.js';
 import { createCoreAuthCommands, requestCoreLogin } from './core-login.js';
-import type { DotliAuthState } from './host-callbacks/AuthState.js';
+import type { DotliAuthState } from './session/auth-state.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 import type { WalletMode } from './state/wallet-mode.js';
 import type { WalletSwitchOutcome } from './wallet-switch.js';

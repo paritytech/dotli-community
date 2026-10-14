@@ -4,7 +4,7 @@
 // Ported from polkadot-desktop's `createAsyncTaskPool`. One place for queueing, bounded concurrency, retries and
 // abort, so modules do not grow their own in-flight flags and retry timers.
 
-export const DEFAULT_POOL = 'default';
+const DEFAULT_POOL = 'default';
 
 export interface AsyncTaskPoolParams {
   /** How many tasks of one pool run at once. */

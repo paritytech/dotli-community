@@ -3,7 +3,7 @@
 
 // smoldot's finalized-database blobs per genesis hash. Without them every chain syncs from its checkpoint.
 
-import { log } from '@dotli/shared';
+import { idbRequest, idbTransaction, log, openIdb, withTimeout } from '@dotli/shared';
 
 const DB_NAME = 'dotli-smoldot-db';
 const STORE = 'chain-databases';
@@ -28,65 +28,24 @@ export interface SmoldotDb {
   save(genesisHash: string, blob: string): Promise<void>;
 }
 
-function openDb(factory: IDBFactory): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = factory.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      for (const name of [STORE, LOADS_STORE]) {
-        if (!db.objectStoreNames.contains(name)) {
-          db.createObjectStore(name);
-        }
-      }
-      if (db.objectStoreNames.contains(V1_STORE)) {
-        db.deleteObjectStore(V1_STORE);
-      }
-    };
-    // A tab on v1 blocks the upgrade, and blocked fires neither `success` nor `error`. Warm start degrades to cold.
-    let settled = false;
-    req.onblocked = () => {
-      settled = true;
-      reject(new Error(`${DB_NAME} upgrade to v${String(DB_VERSION)} is blocked by another tab`));
-    };
-    req.onsuccess = () => {
-      if (settled) {
-        // The blocking tab closed after we gave up.
-        req.result.close();
-        return;
-      }
-      resolve(req.result);
-    };
-    req.onerror = () => {
-      settled = true;
-      reject(req.error ?? new Error('indexedDB.open failed'));
-    };
-  });
+function upgrade(db: IDBDatabase): void {
+  for (const name of [STORE, LOADS_STORE]) {
+    if (!db.objectStoreNames.contains(name)) {
+      db.createObjectStore(name);
+    }
+  }
+  if (db.objectStoreNames.contains(V1_STORE)) {
+    db.deleteObjectStore(V1_STORE);
+  }
 }
 
-function withTimeout<T>(work: Promise<T>, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${String(IDB_TIMEOUT_MS)}ms`));
-    }, IDB_TIMEOUT_MS);
-    work.then(resolve, reject).finally(() => {
-      clearTimeout(timer);
-    });
-  });
-}
+// A tab on v1 blocks the upgrade, which rejects, so warm start degrades to cold.
+const openDb = (factory: IDBFactory): Promise<IDBDatabase> => openIdb(factory, DB_NAME, DB_VERSION, upgrade);
 
 async function read(factory: IDBFactory, genesisHash: string): Promise<string | null> {
   const db = await openDb(factory);
   try {
-    const raw = await new Promise<unknown>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).get(genesisHash);
-      req.onsuccess = () => {
-        resolve(req.result);
-      };
-      req.onerror = () => {
-        reject(req.error ?? new Error('smoldot-db read failed'));
-      };
-    });
+    const raw: unknown = await idbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(genesisHash));
     if (typeof raw !== 'string') {
       return null;
     }
@@ -105,15 +64,8 @@ async function recordLoad(factory: IDBFactory, genesisHash: string): Promise<voi
   try {
     const db = await openDb(factory);
     try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(LOADS_STORE, 'readwrite');
+      await idbTransaction(db, LOADS_STORE, 'readwrite', tx => {
         tx.objectStore(LOADS_STORE).put(Date.now(), genesisHash);
-        tx.oncomplete = () => {
-          resolve();
-        };
-        tx.onerror = () => {
-          reject(tx.error ?? new Error('smoldot-db load marker failed'));
-        };
       });
     } finally {
       db.close();
@@ -126,15 +78,8 @@ async function recordLoad(factory: IDBFactory, genesisHash: string): Promise<voi
 async function write(factory: IDBFactory, genesisHash: string, blob: string): Promise<void> {
   const db = await openDb(factory);
   try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
+    await idbTransaction(db, STORE, 'readwrite', tx => {
       tx.objectStore(STORE).put(blob, genesisHash);
-      tx.oncomplete = () => {
-        resolve();
-      };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('smoldot-db write failed'));
-      };
     });
   } finally {
     db.close();
@@ -153,7 +98,11 @@ export function createSmoldotDb(factory: IDBFactory | null = pageIndexedDb()): S
   }
   return {
     load: async genesisHash => {
-      const blob = await withTimeout(read(factory, genesisHash), 'smoldot-db load');
+      const blob = await withTimeout(
+        read(factory, genesisHash),
+        IDB_TIMEOUT_MS,
+        () => new Error(`smoldot-db load timed out after ${String(IDB_TIMEOUT_MS)}ms`),
+      );
       if (blob !== null) {
         void recordLoad(factory, genesisHash);
       }
@@ -172,7 +121,11 @@ export function createSmoldotDb(factory: IDBFactory | null = pageIndexedDb()): S
         );
         return;
       }
-      await withTimeout(write(factory, genesisHash, blob), 'smoldot-db save');
+      await withTimeout(
+        write(factory, genesisHash, blob),
+        IDB_TIMEOUT_MS,
+        () => new Error(`smoldot-db save timed out after ${String(IDB_TIMEOUT_MS)}ms`),
+      );
     },
   };
 }

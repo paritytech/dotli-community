@@ -6,7 +6,7 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { startPwa } from './pwa.js';
-import { boot, createBootFlowId, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
+import { boot, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
 import { showErrorPage, showNotification } from '@dotli/ui';
 import { showNoContentError } from './no-content-page.js';
 import {
@@ -50,10 +50,9 @@ import {
   pruneBlockCache,
   putCachedBlock,
 } from '@dotli/storage';
-import { elapsed, log } from '@dotli/shared';
+import { elapsed, log, pageLocalStorage, randomId } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import {
-  BLOCK_CACHE_MAX_BYTES,
   DEBUG,
   getActiveServicesConfig,
   isLocalhost,
@@ -61,7 +60,6 @@ import {
   getNetwork,
   getTldSuffix,
   isSharedWorkerAvailable,
-  localStorageAdapter,
   parseSettingsFromSearch,
   resolveSettings,
 } from '@dotli/config';
@@ -88,7 +86,7 @@ import { applyProductBranding } from './product-branding.js';
 import { presentLoadFailure } from './load-failure.js';
 import { trustedProviderHosts } from './errors.js';
 import { createNameSource, type RpcResolver } from './name-source.js';
-import { loadDebugPanelParts } from './lazy.js';
+import { loadDebugPanelHost } from './lazy.js';
 import { reloadAfterFailure, sessionErrorSightings, switchBackendAndReload } from './show-load-failure.js';
 import {
   leaveForLanding,
@@ -101,7 +99,7 @@ import {
 } from './shell-route.js';
 import { createBlockVerifier } from './block-verifier.js';
 import { reportLazyMiss } from './lazy-miss.js';
-import { debugPanelHost, startDebugPanel } from './debug-panel.js';
+import { startDebugPanel } from './debug-panel.js';
 import { startMainThreadMonitor } from './main-thread-monitor.js';
 import { listenForSandboxDebugEvents } from './sandbox-debug-events.js';
 import { reportSandboxHandlerFailure } from './sandbox-handler.js';
@@ -110,6 +108,9 @@ import { recordRecentLabel } from './recent-labels.js';
 import { recordChainPhase, recordPeerCount, recordTransfer } from './state/network-monitor.js';
 import { bindTopbar } from './topbar.js';
 import { bindUrlPill } from './url-pill.js';
+
+/** Content block cache cap. After each load the least recently used blocks are dropped until it fits. */
+const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 interface Shell extends ShellServices {
   sandboxChannel: SandboxChannel;
@@ -140,13 +141,8 @@ async function startShell(): Promise<Shell> {
       .catch(() => undefined);
     void startDebugPanel({
       load: loadTruapiDebugMount,
-      host: async () =>
-        debugPanelHost(
-          (await loadDebugPanelParts()).debugPanelParts,
-          // As the sandbox relay serves blocks: from the block cache, else over bitswap.
-          async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
-        ),
-      options: { startCollapsed: !debugMode.explicit },
+      host: async () => (await loadDebugPanelHost()).debugPanelHost,
+      startCollapsed: !debugMode.explicit,
     });
   }
 
@@ -160,7 +156,7 @@ async function startShell(): Promise<Shell> {
     report: reportSandboxHandlerFailure,
   });
 
-  const bootFlowId = createBootFlowId();
+  const bootFlowId = randomId();
   if (debugMode.enabled) {
     startMainThreadMonitor(bootFlowId, { emit: emitDotliDebugEvent, watch: watchDotliDebugEvents });
     listenForSandboxDebugEvents(sandboxChannel, emitDotliDebugEvent);
@@ -375,7 +371,7 @@ async function main(): Promise<void> {
     // The TLD is a guess until settings apply, from the link and this origin, and the product route sets it again.
     showProductPill: label => {
       const { network } = resolveSettings({
-        local: localStorageAdapter,
+        local: pageLocalStorage,
         shared: null,
         url: parseSettingsFromSearch(new URLSearchParams(window.location.search)),
         sharedWorkerAvailable: isSharedWorkerAvailable(),

@@ -4,12 +4,12 @@
 // Lazy entry points, each its own chunk, so the product page boot leaves them out.
 
 import type * as BridgeNamespace from './runtime/bridge.js';
-import type * as DebugPanelPartsNamespace from './debug-panel-parts.js';
+import type * as DebugPanelHostNamespace from './debug-panel-host.js';
 import type * as LocalWalletCoreNamespace from './runtime/local-wallet-core.js';
 import type * as WorkboxWindowNamespace from 'workbox-window';
 
-export type DebugPanelPartsModule = typeof DebugPanelPartsNamespace;
-export const loadDebugPanelParts = (): Promise<DebugPanelPartsModule> => import('./debug-panel-parts.js');
+export type DebugPanelHostModule = typeof DebugPanelHostNamespace;
+export const loadDebugPanelHost = (): Promise<DebugPanelHostModule> => import('./debug-panel-host.js');
 
 /** Debug mode only. It reads every TrUAPI codec by name, so the bridge must not carry it. */
 export const loadWireDescriber = () => import('./runtime/debug-wire-describe.js');

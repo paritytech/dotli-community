@@ -12,7 +12,7 @@ import { Chart } from './resolution/Chart.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { Pane } from './shared/Pane.js';
 import { Summary } from './resolution/Summary.js';
-import type { PanelWork } from './work.js';
+import { usePanelWork } from './work.js';
 import s from './ResolutionView.module.css';
 
 const RESOLUTION_TICK_MS = 500;
@@ -28,12 +28,11 @@ export function ResolutionView(props: {
   /** The recorder's version as of the last panel refresh. */
   refresh: number;
   recorder: ResolutionRecorder;
-  work: Pick<PanelWork, 'buildResolution'>;
   tooltip: () => HTMLElement | undefined;
   panel: () => HTMLElement | undefined;
 }): JSX.Element {
   const recorder = untrack(() => props.recorder);
-  const { buildResolution } = untrack(() => props.work);
+  const { buildResolution } = usePanelWork();
   const [model, setModel] = createSignal<ResolutionModel | null>(null, {
     // Written from the redraw effect below.
     ownedWrite: true,

@@ -3,14 +3,9 @@
 
 export {
   BASE_DOMAIN,
-  BLOCK_CACHE_MAX_BYTES,
   DEBUG,
   DEV_PROTOCOL_PORT,
   DEV_SANDBOX_PORT,
-  SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS,
-  SCHEDULED_NOTIFICATIONS_MAX_AGE_MS,
-  SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP,
-  SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS,
   SITE_ID,
   isLocalhost,
   isSandboxOrigin,
@@ -24,10 +19,8 @@ export {
   getCacheSettings,
   isSharedWorkerAvailable,
   isVerifiedSession,
-  localStorageAdapter,
   type Backend,
   type CacheSettings,
-  type ModeStorage,
 } from './mode.js';
 export {
   CHAIN_ROLES,
@@ -39,8 +32,6 @@ export {
   getActiveChainRoles,
   getActiveCoreGatewayChains,
   getActiveCoreGatewaySupportedGenesisHashes,
-  getActiveFixedServicesConfig,
-  getActiveGatewayChains,
   getActiveGatewaySupportedGenesisHashes,
   getActiveServicesConfig,
   getActiveSupportedGenesisHashes,

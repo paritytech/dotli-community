@@ -3,15 +3,16 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ShowNotification } from '@dotli/ui';
+import { safeStorage } from '@dotli/shared';
 import { memoryStorage } from '@dotli/shared/testing';
 import { offerDesktopApp } from './desktop-offer.js';
 
 type Offer = Parameters<ShowNotification>[0];
 
 /** The page's storage where the browser blocks it: every access throws. */
-function blockedStorage(): never {
+const blockedStorage = safeStorage(() => {
   throw new DOMException('The operation is insecure.', 'SecurityError');
-}
+});
 
 describe('desktop offer', () => {
   it('As a desktop visitor whose browser blocks storage, I still get the offer, and dismissing it throws nothing', () => {
@@ -30,12 +31,12 @@ describe('desktop offer', () => {
     // Given
     const storage = memoryStorage();
     const first: Offer[] = [];
-    offerDesktopApp({ storage: () => storage, notify: offer => first.push(offer) });
+    offerDesktopApp({ storage: storage, notify: offer => first.push(offer) });
 
     // When
     first[0]?.onDismiss?.();
     const again: Offer[] = [];
-    offerDesktopApp({ storage: () => storage, notify: offer => again.push(offer) });
+    offerDesktopApp({ storage: storage, notify: offer => again.push(offer) });
 
     // Then
     expect(first).toHaveLength(1);
@@ -48,11 +49,11 @@ describe('desktop offer', () => {
 
     // When
     offerDesktopApp({
-      storage: () => memoryStorage(),
+      storage: memoryStorage(),
       notify: offer => shown.push(offer),
       downloadUrl: 'https://example.com/desktop',
     });
-    offerDesktopApp({ storage: () => memoryStorage(), notify: offer => shown.push(offer) });
+    offerDesktopApp({ storage: memoryStorage(), notify: offer => shown.push(offer) });
 
     // Then
     expect(shown.map(offer => offer.deeplink)).toEqual([

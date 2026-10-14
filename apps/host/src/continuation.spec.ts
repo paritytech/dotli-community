@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { safeStorage } from '@dotli/shared';
 import { memoryStorage } from '@dotli/shared/testing';
 import { markContinuation, peekContinuation, takeContinuation, type ContinuationStore } from './continuation.js';
 
 function unavailableStore(): ContinuationStore {
-  const refuse = (): never => {
+  return safeStorage(() => {
     throw new DOMException('The operation is insecure.', 'SecurityError');
-  };
-  return { getItem: refuse, setItem: refuse, removeItem: refuse };
+  });
 }
 
 describe('continuation', () => {

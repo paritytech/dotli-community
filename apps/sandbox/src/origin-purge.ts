@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { deleteIdb } from '@dotli/shared';
 import { m, recordExpected, spans as S } from '@dotli/metrics';
 
 /** The stores a product may leave in the sandbox origin. A store this browser lacks is `null`. */
@@ -14,21 +15,6 @@ export interface OriginStores {
   document: Pick<Document, 'cookie'>;
   /** The page's path, since a product may have set a cookie on it. */
   pathname: string;
-}
-
-function deleteDatabase(idb: Pick<IDBFactory, 'deleteDatabase'>, name: string): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const req = idb.deleteDatabase(name);
-    req.onsuccess = (): void => {
-      resolve();
-    };
-    req.onerror = (): void => {
-      reject(req.error ?? new Error(`Could not delete database ${name}`));
-    };
-    req.onblocked = (): void => {
-      reject(new Error(`Deleting database ${name} is blocked by an open connection`));
-    };
-  });
 }
 
 /**
@@ -51,9 +37,7 @@ export async function purgeSandboxOriginState(stores: OriginStores): Promise<voi
   if (idb !== null && typeof idb.databases === 'function') {
     await wipe('indexeddb', async () => {
       const dbs = await idb.databases();
-      await Promise.all(
-        dbs.flatMap(db => (db.name === undefined || db.name === '' ? [] : [deleteDatabase(idb, db.name)])),
-      );
+      await Promise.all(dbs.flatMap(db => (db.name === undefined || db.name === '' ? [] : [deleteIdb(idb, db.name)])));
     });
   }
   if (caches !== null) {

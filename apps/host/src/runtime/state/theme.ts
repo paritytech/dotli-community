@@ -10,7 +10,7 @@ export interface ThemeState {
   resolved: 'light' | 'dark';
 }
 
-// Dark matches the stylesheet default until initTheme writes the stored or system preference at boot.
+// Dark matches the stylesheet default until startTheme writes the stored or system preference at boot.
 const theme = createSyncStore<ThemeState>('theme', { pref: 'system', resolved: 'dark' }, { equals: shallowEqual });
 
 export const themeStore: ReadableStore<ThemeState> = theme;

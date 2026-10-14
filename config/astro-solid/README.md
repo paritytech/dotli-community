@@ -14,8 +14,8 @@ the client.
 - At `astro:config:setup` the integration adds the renderer and the Solid Vite plugin with SSR on. It marks Solid
   libraries (found by their peer dependencies) as `noExternal` so Node never loads their browser-only build.
 - It defines the virtual module `virtual:astro-solid-manifest`. In dev it returns the Solid plugin's live manifest. In a
-  build it reads the client manifest from an in-process registry, or from a persisted copy next to the server bundle.
-  Astro deletes its manifest folder after write, so the manifest is captured while the bundle is written.
+  build it reads the client manifest from an in-process registry the client build fills, since prerendering runs in the
+  same process.
 - The server entrypoint renders a component to a stream, with hydration markers unless the island has no directive. A
   probe pass checks whether a component renders, once per component type.
 - The client entrypoint hydrates, or renders for `client:only`, and keeps props in a signal so a re-render updates the
@@ -24,11 +24,10 @@ the client.
 
 ## Entries
 
-| Entry                                    | Use                                                                       |
-| ---------------------------------------- | ------------------------------------------------------------------------- |
-| `@config/astro-solid`                    | Default export `astroSolid(options)`, the integration for `astro.config`. |
-| `@config/astro-solid/client.js`          | The client entrypoint Astro loads for islands.                            |
-| `@config/astro-solid/server.js`          | The server entrypoint Astro loads for rendering.                          |
-| `@config/astro-solid/container-renderer` | `getContainerRenderer()` for Astro's Container API.                       |
+| Entry                           | Use                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| `@config/astro-solid`           | Default export `astroSolid(options)`, the integration for `astro.config`. |
+| `@config/astro-solid/client.js` | The client entrypoint Astro loads for islands.                            |
+| `@config/astro-solid/server.js` | The server entrypoint Astro loads for rendering.                          |
 
 The host app adds the integration to its Astro config.

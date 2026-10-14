@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { formatBytes, preview, summaryLabel, toFiles } from './archive-preview.js';
+import { preview, summaryLabel, toFiles } from './archive-preview.js';
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 // "DOTLI_ENC\x01", the encrypted-SPA magic, then room for a salt, a nonce and a tag.
@@ -28,7 +28,6 @@ describe('archive preview', () => {
     // Then
     expect(archive.files.map(file => file.path)).toEqual(['assets/app.js', 'index.html']);
     expect(summaryLabel(archive)).toBe('2 files · 16 B');
-    expect(formatBytes(enc('<h1>hi</h1>').length)).toBe('11 B');
   });
 
   it('As a dotli developer, a text file previews as its text', () => {
@@ -48,7 +47,6 @@ describe('archive preview', () => {
 
     // Then
     expect(shown).toEqual({ kind: 'binary' });
-    expect(formatBytes(bytes.length)).toBe('5 B');
   });
 
   it('As a dotli developer, an encrypted product says it is not decrypted', () => {
@@ -57,14 +55,5 @@ describe('archive preview', () => {
 
     // Then
     expect(shown).toEqual({ kind: 'encrypted' });
-  });
-
-  it('As a dotli developer, sizes read in bytes, kilobytes and megabytes', () => {
-    // Then
-    expect([formatBytes(1023), formatBytes(1536), formatBytes(5 * 1024 * 1024)]).toEqual([
-      '1023 B',
-      '1.5 KB',
-      '5.0 MB',
-    ]);
   });
 });

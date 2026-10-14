@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createAuthCommands, type AuthCommands } from './auth-commands.js';
-import type { DotliAuthState } from './host-callbacks/AuthState.js';
+import type { DotliAuthState } from './session/auth-state.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 
 const PAIRING: DotliAuthState = { tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' };

@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { memoryStorage } from '@dotli/shared/testing';
 import { yielded } from '../../testing/fixtures.js';
-import * as page from './LocalStorage.js';
+import * as page from './local-storage.js';
 
 let local: Storage;
 let otherTabs: EventTarget;

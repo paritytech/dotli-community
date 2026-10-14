@@ -14,7 +14,7 @@ import { setAuthState } from '../../src/runtime/state/auth.js';
 import { setProductLoaded } from '../../src/runtime/state/product.js';
 import { memoryChatRepo } from '../../src/runtime/chat/store.fake.js';
 import type { NetworkHealth } from '../../src/network-verdict.js';
-import { initChatPanelState } from '../../src/state/chat-panel.js';
+import { startChatPanelState } from '../../src/state/chat-panel.js';
 import { bindTopbarStatus, topbarActionRoom } from '../../src/topbar-status.js';
 import { byId } from '@dotli/ui/testing';
 import { stubPhoneViewport } from '../viewport.js';
@@ -62,7 +62,7 @@ describe('bindTopbarStatus', () => {
     const bar = byId('topbar');
     const chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
     const local = memoryStorage();
-    const stopChat = initChatPanelState(chat, () => local);
+    const stopChat = startChatPanelState(chat, local);
     const product = labelToProductId('chatty');
     setProductLoaded('chatty', product, { chat: true });
     setAuthState({ tag: 'Connected', session: { connected: true } });

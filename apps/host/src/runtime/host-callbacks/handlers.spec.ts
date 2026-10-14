@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
 import { createHostCallbacks } from './handlers.js';
-import type { NotificationScheduler } from './PushNotification.js';
+import type { NotificationScheduler } from './push-notification.js';
 import type { HostPrompts } from '../host-prompts.js';
 import { createFakePrompts } from '../host-prompts.fake.js';
 

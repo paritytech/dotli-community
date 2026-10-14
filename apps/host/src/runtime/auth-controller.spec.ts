@@ -19,7 +19,7 @@ import {
   type BlockingModalCoordinator,
   type BlockingModalScope,
 } from './blocking-modal-queue.js';
-import type { DotliAuthState } from './host-callbacks/AuthState.js';
+import type { DotliAuthState } from './session/auth-state.js';
 import { authModalStore, resetAuthModal, type AuthModalState } from '../state/auth-modal.js';
 import { setAuthState } from './state/auth.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';

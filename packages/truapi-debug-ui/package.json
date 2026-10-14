@@ -39,6 +39,7 @@
     "@dotli/metrics": "*",
     "@dotli/shared": "*",
     "@dotli/truapi-debug": "*",
+    "@dotli/ui": "*",
     "@solidjs/web": "2.0.0-rc.13",
     "solid-js": "2.0.0-rc.13"
   }

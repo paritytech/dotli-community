@@ -8,11 +8,10 @@ import { must } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
 import { getActiveServicesConfig } from '@dotli/config';
-import { bindCaptureSink } from '@dotli/metrics';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { Api } from './api.js';
 import { createDotnsResolver, type ChainClient, type DotnsResolver } from './resolve.js';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 
 interface Logged {
   level: LogLevel;
@@ -381,11 +380,8 @@ describe('createDotnsResolver', () => {
 
   it('As the host waiting on a name, I get my answer even when my phase callback throws, and each throw is reported', async () => {
     // Given a phase callback that throws on every phase
-    const captured: { err: unknown; step: string }[] = [];
-    const unbind = bindCaptureSink({
-      exception: (err, ctx) => captured.push({ err, step: ctx.step }),
-      expected: () => undefined,
-    });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const { dotns } = resolver();
 
     // When
@@ -394,12 +390,14 @@ describe('createDotnsResolver', () => {
         throw new Error('callback broke');
       },
     });
-    unbind();
 
     // Then
     expect(owner).toBeNull();
-    expect(captured.map(entry => entry.step)).toEqual(['phase_callback', 'phase_callback', 'phase_callback']);
+    expect(captured).toEqual(Array(3).fill({ step: 'listener', tags: { owner: 'resolver.status' } }));
     expect(logged.filter(line => line.level === 'error')).toHaveLength(3);
+    expect(sentry.counted('listener.delivery')).toEqual(
+      Array(3).fill({ outcome: 'error', reason: 'Error', owner: 'resolver.status' }),
+    );
   });
 
   it('As the protocol worker, I see the presync fail when Asset Hub never syncs, and the next read tries again', async () => {

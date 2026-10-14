@@ -9,7 +9,7 @@ import { labelToProductId } from '../runtime/runtime-config.js';
 import { setAuthState } from '../runtime/state/auth.js';
 import { setProductError, setProductLoaded } from '../runtime/state/product.js';
 import { memoryChatRepo, recordingConnection } from '../runtime/chat/store.fake.js';
-import { chatPanelStore, initChatPanelState, openChatRoom, setChatPanelOpen } from '../state/chat-panel.js';
+import { chatPanelStore, startChatPanelState, openChatRoom, setChatPanelOpen } from '../state/chat-panel.js';
 import { useChatDock } from './chat.js';
 
 const LABEL = 'chatty';
@@ -24,7 +24,7 @@ beforeEach(() => {
   connections = createChatConnections();
   chat = createChatStore({ repo: memoryChatRepo(), connections });
   local = memoryStorage();
-  stopState = initChatPanelState(chat, () => local);
+  stopState = startChatPanelState(chat, local);
   setProductLoaded(LABEL, PRODUCT, { chat: true });
   setAuthState({ tag: 'Connected', session: { connected: true } });
 });

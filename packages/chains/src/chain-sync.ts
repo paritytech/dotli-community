@@ -5,8 +5,8 @@
 // The peer list the watch lacks goes over the chain's JSON-RPC under a reserved string id.
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { m, reportListener } from '@dotli/metrics';
+import { createListenerSet, log } from '@dotli/shared';
 import { chainRoleForGenesis, type ChainRole } from '@dotli/config';
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
@@ -83,17 +83,6 @@ export interface ChainSyncTap {
 type DetailCallback = (detail: ChainDetail) => void;
 type SyncCallback = (event: ChainSyncEvent) => void;
 
-/** A throwing listener is a defect in its subscriber, so it is reported, and the other listeners still hear the event. */
-function deliver<T>(stream: 'detail' | 'sync', cb: (value: T) => void, value: T): void {
-  try {
-    cb(value);
-  } catch (err: unknown) {
-    captureException(err, { flow: 'resolve', step: 'chain_sync_listener', tags: { stream } });
-    log.error(`[dot.li chain-sync] A chain ${stream} listener threw`, err);
-    m.count(S.CHAIN_SYNC_LISTENER, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
-  }
-}
-
 export interface ChainSyncReporterOptions {
   /** Ask a ready chain for its peer list. Off on a build without metrics, which has nowhere to send it. */
   askPeers: boolean;
@@ -120,26 +109,25 @@ export interface ChainSyncReporter {
 }
 
 export function createChainSyncReporter(options: ChainSyncReporterOptions): ChainSyncReporter {
-  const detailListeners = new Set<DetailCallback>();
+  // A throwing listener is a defect in its subscriber, so it is reported, and the other listeners still hear the event.
+  const detailListeners = createListenerSet<ChainDetail>({
+    onListenerError: reportListener('resolve', 'chain_sync.detail'),
+  });
   // Latest per chain and kind, so a reconnecting chain replaces its entry instead of growing the replay.
   const detailHistory = new Map<string, ChainDetail>();
 
   function onChainDetail(cb: DetailCallback): () => void {
-    detailListeners.add(cb);
+    const unsubscribe = detailListeners.subscribe(cb);
     for (const detail of detailHistory.values()) {
-      deliver('detail', cb, detail);
+      detailListeners.deliver(cb, detail);
     }
-    return () => {
-      detailListeners.delete(cb);
-    };
+    return unsubscribe;
   }
 
   function emitChainDetail(detail: ChainDetail): void {
     const kind = detail.dbCache === undefined ? 'peers' : 'dbCache';
     detailHistory.set(`${detail.chain}:${kind}`, detail);
-    for (const cb of detailListeners) {
-      deliver('detail', cb, detail);
-    }
+    detailListeners.emit(detail);
   }
 
   function reportDbCache(genesisHash: string, warm: boolean): void {
@@ -155,18 +143,18 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
     emitChainDetail({ chain, dbCache: warm ? 'hit' : 'miss' });
   }
 
-  const syncListeners = new Set<SyncCallback>();
+  const syncListeners = createListenerSet<ChainSyncEvent>({
+    onListenerError: reportListener('resolve', 'chain_sync.sync'),
+  });
   // Latest event per chain and kind, so the replay stays bounded.
   const syncHistory = new Map<string, ChainSyncEvent>();
 
   function onChainSync(cb: SyncCallback): () => void {
-    syncListeners.add(cb);
+    const unsubscribe = syncListeners.subscribe(cb);
     for (const event of syncHistory.values()) {
-      deliver('sync', cb, event);
+      syncListeners.deliver(cb, event);
     }
-    return () => {
-      syncListeners.delete(cb);
-    };
+    return unsubscribe;
   }
 
   function emitChainSync(event: ChainSyncEvent): void {
@@ -183,9 +171,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
       syncHistory.delete(`${event.chain}:stalled`);
     }
     syncHistory.set(`${event.chain}:${event.kind}`, event);
-    for (const cb of syncListeners) {
-      deliver('sync', cb, event);
-    }
+    syncListeners.emit(event);
   }
 
   // Opt-in per chain, since each costs a lifecycle watch.

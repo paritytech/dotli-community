@@ -12,8 +12,14 @@ import type {
   ProductRendererRenderRequest,
 } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
-import { captureException, recordExpected } from '@dotli/metrics';
-import { createAsyncTaskPool, createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { captureException, recordExpected, reportListener } from '@dotli/metrics';
+import {
+  createAsyncTaskPool,
+  createListenerSet,
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from '@dotli/shared';
 import { isExpectedDbError, type ChatBotRecord, type ChatMessageRecord, type ChatRoomRecord } from '@dotli/storage';
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
@@ -144,7 +150,8 @@ const NO_VIEW: ChatView = {
 };
 
 export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore {
-  const listeners = new Set<(change: ChatChange) => void>();
+  // A broken subscriber must not fail the product's call that made the write.
+  const listeners = createListenerSet<ChatChange>({ onListenerError: reportListener('chat', 'chat_store.change') });
   const view = createSyncStore<ChatView>('chat_view', NO_VIEW, { equals: shallowEqual });
   let target: ChatFollow | null = null;
   // One read of each kind at a time, so results land in the order they were read. A change marks its read stale, and
@@ -240,18 +247,7 @@ export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore
 
   const notify = (change: ChatChange): void => {
     followChange(change);
-    for (const listener of [...listeners]) {
-      try {
-        listener(change);
-      } catch (error) {
-        // A broken subscriber must not fail the product's call that made the write.
-        captureException(error, {
-          flow: 'chat',
-          step: 'change_listener',
-          tags: { kind: 'chat_listener_error', change: change.kind },
-        });
-      }
-    }
+    listeners.emit(change);
   };
 
   const connected = (productId: string): ChatConnection => {
@@ -304,12 +300,7 @@ export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore
       await Promise.all([reads.settle('contacts'), reads.settle('messages')]);
     },
 
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: listeners.subscribe,
 
     async createRoom(productId, room) {
       const status = await repo.createRoom({ productId, ...room });

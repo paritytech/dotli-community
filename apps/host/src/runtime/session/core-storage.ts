@@ -19,8 +19,7 @@ import {
   type SharedStoreStatus,
 } from '@dotli/protocol';
 import { m, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log } from '@dotli/shared';
-import { idbRequest, idbTransaction, openIdb } from '@dotli/storage';
+import { createAsyncTaskPool, idbRequest, idbTransaction, log, openIdb } from '@dotli/shared';
 
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 

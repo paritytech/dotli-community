@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -9,6 +9,7 @@ import type {
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
 import { bindLogSink } from '@dotli/shared';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { ChainBroker } from './broker.js';
 import { createChainPool } from './chain-pool.js';
 
@@ -1318,8 +1319,20 @@ describe('ChainBroker.halt', () => {
     ]);
   });
 
-  it('As a dotli integrator, a session whose handler throws still hears its halt and does not keep the others from theirs', () => {
+  it('As a dotli integrator, a session whose handler throws is reported, still hears its halt and does not keep the others from theirs', () => {
     // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const errors: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'error') {
+            errors.push(message);
+          }
+        },
+      }),
+    );
     const { broker, open } = setup();
     const log: string[] = [];
     const broken = open('a', log, true);
@@ -1337,6 +1350,10 @@ describe('ChainBroker.halt', () => {
     expect(healthy.messages).toHaveLength(1);
     expect(log).toContain('a:halt');
     expect(log).toContain('b:halt');
+    expect(captured).not.toHaveLength(0);
+    expect(captured.every(capture => capture.tags?.['owner'] === 'chain_halt')).toBe(true);
+    expect(errors).toHaveLength(captured.length);
+    expect(metrics.counted('listener.delivery')).toHaveLength(captured.length);
   });
 
   it('As a dotli integrator, the release requests the broker sends itself are never answered on a halt', () => {

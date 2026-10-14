@@ -14,10 +14,14 @@ import {
   isExpectedDbError,
   type ScheduledNotificationRecord,
 } from '@dotli/storage';
-import { SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS } from '@dotli/config';
 import { captureException, recordExpected } from '@dotli/metrics';
 import { createAsyncTaskPool, log } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
+
+export const SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS = 1_000;
+
+/** Hidden tabs fire only records older than `now - offset`, giving a visible tab first crack at the lock. */
+const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
 
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };

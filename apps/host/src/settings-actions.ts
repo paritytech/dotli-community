@@ -5,10 +5,9 @@
 // host's boot resets through it when a URL changes the settings, before any island has loaded.
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { errorName, log, pageLocalStorage, pageSessionStorage, type SafeStorage } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
 import {
-  localStorageAdapter,
   sharedSettingsOf,
   writeLocalSettings,
   writeSettingsToSearch,
@@ -135,7 +134,7 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
 
 /** Stores `settings` on this origin and for the other subdomains, so the next boot reads them. */
 export function saveSettings(settings: Settings): void {
-  writeLocalSettings(settings, localStorageAdapter);
+  writeLocalSettings(settings, pageLocalStorage);
   writeSharedSettings(sharedSettingsOf(settings));
 }
 
@@ -169,17 +168,16 @@ export interface WipeParts {
   indexedDb: () => Promise<void>;
   cacheStorage: () => Promise<void>;
   serviceWorkers: () => Promise<void>;
-  /** Reached inside the wipe, as the page's storage throws where the browser blocks it. */
-  local: () => Storage;
-  session: () => Storage;
+  local: SafeStorage;
+  session: SafeStorage;
 }
 
 const BROWSER_WIPE_PARTS: WipeParts = {
   indexedDb: deleteAllIndexedDBs,
   cacheStorage: deleteAllCacheStorage,
   serviceWorkers: unregisterAllServiceWorkers,
-  local: () => localStorage,
-  session: () => sessionStorage,
+  local: pageLocalStorage,
+  session: pageSessionStorage,
 };
 
 /**
@@ -204,24 +202,13 @@ export async function wipeOriginState(parts: WipeParts = BROWSER_WIPE_PARTS): Pr
   };
   await Promise.all([run('indexeddb', parts.indexedDb), run('cache_storage', parts.cacheStorage)]);
   await run('service_worker', parts.serviceWorkers);
-  try {
-    parts.session().clear();
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage unavailable (Safari private mode). Full reset is best-effort; anything we can't clear just means a partial baseline.
-  } catch {
-    // sessionStorage unavailable.
-  }
-  try {
-    const local = parts.local();
-    const preserved = PRESERVED_KEYS.map(key => [key, local.getItem(key)] as const);
-    local.clear();
-    for (const [key, value] of preserved) {
-      if (value !== null) {
-        local.setItem(key, value);
-      }
+  parts.session.clear();
+  const preserved = PRESERVED_KEYS.map(key => [key, parts.local.getItem(key)] as const);
+  parts.local.clear();
+  for (const [key, value] of preserved) {
+    if (value !== null) {
+      parts.local.setItem(key, value);
     }
-    // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable. Full reset is best-effort.
-  } catch {
-    // localStorage unavailable.
   }
   return failed;
 }

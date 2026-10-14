@@ -4,7 +4,7 @@
 // Astro integration for Solid 2. Hands the client build's asset manifest to server renders, so lazy() boundaries
 // inside islands resolve their modules.
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import solid, { type Options as ViteSolidPluginOptions } from '@solidjs/vite-plugin';
@@ -13,12 +13,12 @@ import type { Plugin, PluginOption } from 'vite';
 import { crawlFrameworkPkgs } from 'vitefu';
 import { getContainerRenderer } from './container-renderer.ts';
 
-export type Options = Pick<ViteSolidPluginOptions, 'include' | 'exclude' | 'compiler'>;
+type Options = Pick<ViteSolidPluginOptions, 'include' | 'exclude' | 'compiler'>;
 
-export interface ManifestSource {
+interface ManifestSource {
   command: string;
-  clientDirs: string[];
-  serverDir: string | null;
+  /** Where the client build writes its manifest, the static site's output folder. */
+  clientDir: string;
   base: string;
 }
 
@@ -46,8 +46,7 @@ export default function astroSolid(options: Options = {}): AstroIntegration {
   // Filled in at `astro:config:done`, before dev or build starts.
   const manifestSource: ManifestSource = {
     command: 'dev',
-    clientDirs: [],
-    serverDir: null,
+    clientDir: '',
     base: '/',
   };
 
@@ -72,21 +71,10 @@ export default function astroSolid(options: Options = {}): AstroIntegration {
           vite: getViteConfiguration(options, solidPackages.ssr.noExternal, manifestSource),
         });
       },
-      'astro:config:done': ({ logger, config }) => {
-        // The client manifest lands in `build.client` for server output and in `outDir` for static. Both are probed.
-        manifestSource.clientDirs = [...new Set([fileURLToPath(config.build.client), fileURLToPath(config.outDir)])];
-        manifestSource.serverDir = config.output === 'server' ? fileURLToPath(config.build.server) : null;
+      'astro:config:done': ({ config }) => {
+        // The static build writes the client, and its manifest, to the site's output folder.
+        manifestSource.clientDir = fileURLToPath(config.outDir);
         manifestSource.base = config.base;
-        const knownJsxRenderers = ['@astrojs/react', '@astrojs/preact', '@astrojs/solid-js', PACKAGE];
-        const enabledKnownJsxRenderers = config.integrations.filter(renderer =>
-          knownJsxRenderers.includes(renderer.name),
-        );
-
-        if (enabledKnownJsxRenderers.length > 1 && options.include === undefined && options.exclude === undefined) {
-          logger.warn(
-            'More than one JSX renderer is enabled. This will lead to unexpected behavior unless you set the `include` or `exclude` option. See https://docs.astro.build/en/guides/integrations-guide/solid-js/#combining-multiple-jsx-frameworks for more information.',
-          );
-        }
       },
     },
   };
@@ -98,11 +86,10 @@ const RESOLVED_VIRTUAL_MANIFEST_ID = '\0' + VIRTUAL_MANIFEST_ID;
 // Hands the manifest from the client build to prerendering in the same process. Astro deletes every `.vite` folder
 // right after write, so it cannot be read from disk later.
 const MANIFEST_REGISTRY_KEY = `${PACKAGE}:client-manifest`;
-const PERSISTED_MANIFEST_NAME = 'solid-manifest.json';
 
 // Per project output, so several builds in one process don't read each other's manifests.
 function manifestRegistryKey(manifestSource: ManifestSource): string {
-  return `${MANIFEST_REGISTRY_KEY}:${manifestSource.clientDirs[0] ?? ''}`;
+  return `${MANIFEST_REGISTRY_KEY}:${manifestSource.clientDir}`;
 }
 
 function configEnvironmentPlugin(solidNoExternal: string[], manifestSource: ManifestSource): Plugin {
@@ -138,31 +125,12 @@ function configEnvironmentPlugin(solidNoExternal: string[], manifestSource: Mani
         // Dev: @solidjs/vite-plugin's live resolver, which renderToStream accepts directly.
         return `import manifest from 'virtual:solid-manifest';\nexport function loadManifest() { return manifest; }\n`;
       }
-      // Build: the server bundles exist before the manifest, so it is resolved at render time. Prerendering finds it
-      // in the in-process registry, a deployed server reads the persisted copy.
-      const fileCandidates = [
-        ...(manifestSource.serverDir === null
-          ? []
-          : [JSON.stringify(manifestSource.serverDir + PERSISTED_MANIFEST_NAME)]),
-        `new URL(${JSON.stringify('./' + PERSISTED_MANIFEST_NAME)}, import.meta.url)`,
-        `new URL(${JSON.stringify('../' + PERSISTED_MANIFEST_NAME)}, import.meta.url)`,
-      ];
+      // Build: prerendering runs in this process after the client build, which left its manifest in the registry.
       return (
-        `import { readFileSync } from 'node:fs';\n` +
         `const base = ${JSON.stringify(manifestSource.base)};\n` +
-        `let manifest;\n` +
         `export function loadManifest() {\n` +
-        `  if (manifest !== undefined) return manifest;\n` +
-        `  manifest = globalThis[Symbol.for(${JSON.stringify(manifestRegistryKey(manifestSource))})];\n` +
-        `  if (manifest === undefined) {\n` +
-        `    for (const candidate of [${fileCandidates.join(', ')}]) {\n` +
-        `      try {\n` +
-        `        manifest = JSON.parse(readFileSync(candidate, 'utf-8'));\n` +
-        `        break;\n` +
-        `      } catch {}\n` +
-        `    }\n` +
-        `  }\n` +
-        `  if (manifest == null) return (manifest = null);\n` +
+        `  const manifest = globalThis[Symbol.for(${JSON.stringify(manifestRegistryKey(manifestSource))})];\n` +
+        `  if (manifest == null) return null;\n` +
         `  manifest._base = base;\n` +
         `  return manifest;\n` +
         `}\n`
@@ -171,24 +139,13 @@ function configEnvironmentPlugin(solidNoExternal: string[], manifestSource: Mani
     writeBundle: {
       sequential: true,
       async handler() {
-        // Before Astro's `astro:ssr-assets` plugin deletes the .vite folder.
+        // Before Astro's `astro:ssr-assets` plugin deletes the .vite folder. The client build always writes the
+        // manifest, as its environment asks for one, so a missing one fails the build.
         if (this.environment.name !== 'client') {
           return;
         }
-        for (const dir of manifestSource.clientDirs) {
-          let raw: string;
-          try {
-            raw = await readFile(join(dir, '.vite/manifest.json'), 'utf-8');
-          } catch {
-            continue;
-          }
-          (globalThis as Record<symbol, unknown>)[Symbol.for(manifestRegistryKey(manifestSource))] = JSON.parse(raw);
-          if (manifestSource.serverDir !== null) {
-            // For deployed SSR runtimes. Next to the server bundle, so it is not publicly served.
-            await writeFile(join(manifestSource.serverDir, PERSISTED_MANIFEST_NAME), raw);
-          }
-          return;
-        }
+        const raw = await readFile(join(manifestSource.clientDir, '.vite/manifest.json'), 'utf-8');
+        (globalThis as Record<symbol, unknown>)[Symbol.for(manifestRegistryKey(manifestSource))] = JSON.parse(raw);
       },
     },
   };

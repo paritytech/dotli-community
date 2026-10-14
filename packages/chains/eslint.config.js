@@ -4,7 +4,12 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config, fixedServicesConfigOnly } from '@config/eslint/vite';
+import { config, fixedConfigOnly, importBans, onlyAllowedScopes } from '@config/eslint/vite';
+
+const scopeBan = onlyAllowedScopes(
+  ['@dotli/config', '@dotli/metrics', '@dotli/shared', '@parity/truapi-provider', '@config/eslint', '@config/vite'],
+  'chains holds the light client and the chain pool, below the protocol and the resolver.',
+);
 
 export default defineConfig([
   ...config,
@@ -15,5 +20,6 @@ export default defineConfig([
       },
     },
   },
-  ...fixedServicesConfigOnly(['src/provider.ts']),
+  ...importBans([scopeBan]),
+  ...importBans([scopeBan, fixedConfigOnly], ['src/provider.ts']),
 ]);

@@ -7,7 +7,7 @@ import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } fr
 import { getPermissionStatus, registerPermissionAuthorizationProvider, setPermissionStatus } from '../permissions.js';
 import { onPermissionsChanged, type PermissionsChange } from '../state/product-permissions.js';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
-import { createPromptPermission } from './PromptPermission.js';
+import { createPromptPermission } from './prompt-permission.js';
 import type { PermissionPromptDecision } from '../host-prompts.js';
 import { createFakePrompts, type FakePrompts } from '../host-prompts.fake.js';
 

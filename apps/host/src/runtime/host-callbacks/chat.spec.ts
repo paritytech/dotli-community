@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
-import { createChatPlatform } from './Chat.js';
+import { createChatPlatform } from './chat.js';
 import { createChatConnections, createChatStore } from '../chat/store.js';
 import { memoryChatRepo } from '../chat/store.fake.js';
 import { createChanges } from '../../testing/changes.js';

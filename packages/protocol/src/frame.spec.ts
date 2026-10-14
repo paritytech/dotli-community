@@ -572,12 +572,12 @@ describe('protocol status', () => {
     // Then the next listener heard each change, and each throw was captured once and counted once
     expect(heard).toEqual(['booting', 'listening']);
     expect(captures).toEqual([
-      { step: 'frame_status_listener', tags: { status: 'booting' } },
-      { step: 'frame_status_listener', tags: { status: 'listening' } },
+      { step: 'listener', tags: { owner: 'protocol.status' } },
+      { step: 'listener', tags: { owner: 'protocol.status' } },
     ]);
-    expect(metrics.counted('protocol.status_listener')).toEqual([
-      { outcome: 'error', reason: 'Error' },
-      { outcome: 'error', reason: 'Error' },
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'protocol.status' },
+      { outcome: 'error', reason: 'Error', owner: 'protocol.status' },
     ]);
   });
 

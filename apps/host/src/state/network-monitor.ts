@@ -7,7 +7,9 @@
 
 import { getActiveChainRoles, type ChainRole } from '@dotli/config';
 import type { ChainActivity } from '@dotli/chains';
+import { reportListener } from '@dotli/metrics';
 import { isRemoteChainConnectable } from '@dotli/protocol';
+import { createListenerSet } from '@dotli/shared';
 
 export type BlockHealth = 'onTime' | 'late' | 'veryLate';
 
@@ -127,17 +129,11 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
     fetched: null,
     total: null,
   };
-  const listeners = new Set<() => void>();
+  // A throwing renderer is a defect in the panel, so it is reported, and the other renderers still hear the change.
+  const listeners = createListenerSet<undefined>({ onListenerError: reportListener('ui', 'network_monitor') });
 
   function notify(): void {
-    for (const listener of listeners) {
-      try {
-        listener();
-        // eslint-disable-next-line no-restricted-syntax -- one bad renderer must not stop the others.
-      } catch {
-        // Listener threw.
-      }
-    }
+    listeners.emit(undefined);
   }
 
   function idleUse(): Pick<
@@ -296,10 +292,7 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
   }
 
   function subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
+    return listeners.subscribe(listener);
   }
 
   function isReachable(state: ChainState): boolean {

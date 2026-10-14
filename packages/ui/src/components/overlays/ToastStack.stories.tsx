@@ -1,13 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { JSX } from '@solidjs/web';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { dismissToast, pushToast, toastsStore, type ToastInput } from '../../page/state/toasts.js';
 import { BellIcon } from '../icons/BellIcon.js';
-import { ToastCard, type ToastCardProps } from './ToastCard.js';
 import { ToastStack } from './ToastStack.js';
 
 const toast = (text: string): ToastInput => ({ text, label: 'playground.dot', icon: BellIcon, dismissMs: 0 });
@@ -297,48 +295,6 @@ export const ActionInPileRunsOnce: Story = {
       await expect(onAction).toHaveBeenCalledOnce();
       await expect(toastsStore.get().expanded).toBe(false);
       await expect(toastsStore.get().items.map(t => t.leaving)).toEqual([false, false]);
-    });
-  },
-};
-
-/** Reads of each card's `depth` and `hidden`, counted by the card below. */
-const layoutReads = { count: 0 };
-
-/** The real card, counting the layout reads the stack makes it do. */
-function CountingCard(props: ToastCardProps): JSX.Element {
-  return ToastCard({
-    get entry() {
-      return props.entry;
-    },
-    get hidden() {
-      layoutReads.count += 1;
-      return props.hidden;
-    },
-    get depth() {
-      layoutReads.count += 1;
-      return props.depth;
-    },
-    get expanded() {
-      return props.expanded;
-    },
-    get single() {
-      return props.single;
-    },
-  });
-}
-
-export const FixedWorkPerCard: Story = {
-  tags: ['!autodocs'],
-  args: { card: CountingCard },
-  beforeEach: showLabelled(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']),
-  play: async ({ canvas, step }) => {
-    await step('When a visible toast starts to leave', async () => {
-      layoutReads.count = 0;
-      dismissToast(pushed.at(-1) ?? -1);
-      await waitFor(() => expect(canvas.getAllByTestId('notif-card').at(-1)).toHaveAttribute('data-leaving'));
-    });
-    await step('Then each card re-read its depth and hidden flag at most once', async () => {
-      await expect(layoutReads.count).toBeLessThanOrEqual(2 * pushed.length);
     });
   },
 };

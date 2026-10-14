@@ -6,7 +6,7 @@
 
 import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
-import { isValidNetwork, getActiveFixedServicesConfig, type Network } from '@dotli/config';
+import { isValidNetwork, getActiveFixedServicesConfig, type Network } from '@dotli/config/fixed';
 import { m, captureException, spans as S, type SpanHandle } from '@dotli/metrics';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '@dotli/protocol';
 import { errorName, log, serializeError } from '@dotli/shared';

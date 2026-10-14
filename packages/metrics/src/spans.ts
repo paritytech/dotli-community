@@ -95,22 +95,10 @@ export const APP_RUN = 'app.run';
 export const PROTOCOL_IFRAME_READY = 'protocol.iframe_ready';
 
 /**
- * A protocol status listener that threw. Tagged `outcome` (error) and `reason` (the error's name), as the listener
- * then missed that change.
+ * A listener that threw, so it missed that delivery. Tagged `outcome` (error), `reason` (the error's name) and `owner`
+ * (whose listeners, such as `chain_pool.status` or `debug_bus.replay`).
  */
-export const PROTOCOL_STATUS_LISTENER = 'protocol.status_listener';
-
-/**
- * A chain sync or chain detail listener that threw. Tagged `outcome` (error) and `reason` (the error's name), as the
- * listener then missed that milestone.
- */
-export const CHAIN_SYNC_LISTENER = 'chain_sync.listener';
-
-/**
- * A debug bus watcher, or a panel during its boot replay, that threw. Tagged `outcome` (error) and `reason` (the
- * error's name), as that receiver then missed the event.
- */
-export const DEBUG_BUS_LISTENER = 'debug_bus.listener';
+export const LISTENER_DELIVERY = 'listener.delivery';
 
 export const PROTOCOL_REQUEST = 'protocol.request';
 
@@ -169,12 +157,6 @@ export const WALLET_CORE_REDIAL = 'wallet.core_redial';
  * is there to report it.
  */
 export const PRODUCT_RERENDER = 'product.rerender';
-
-/**
- * A product frame status listener that threw. Tagged `outcome` (error) and `reason` (the error's name), as the listener
- * then missed that change.
- */
-export const PRODUCT_STATUS_LISTENER = 'product.status_listener';
 
 /** A topbar logout of a paired session. Tagged `outcome` and, on error, `reason`, as a failed one leaves the user in. */
 export const WALLET_LOGOUT = 'wallet.logout';
@@ -258,9 +240,3 @@ export const DEBUG_PANEL_LOAD = 'debug_panel.load';
 
 /** A lazy chunk a caller could not load and went on without. Tagged `outcome` and `reason` (the caller's step). */
 export const LAZY_CHUNK_LOAD = 'lazy_chunk.load';
-
-/**
- * A shell state part whose stop threw. Tagged `outcome` (error) and `reason` (the error's name), as that part may keep
- * running after the shell state stopped.
- */
-export const SHELL_STATE_STOP = 'shell_state.stop';

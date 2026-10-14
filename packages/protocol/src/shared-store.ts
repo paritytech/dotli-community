@@ -6,7 +6,7 @@
 import type { SiteId } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
-import { addListener, broadcast } from './listeners.js';
+import { protocolListeners } from './listeners.js';
 import type { LocalWalletIdentity } from './messages.js';
 import type { FrameRpc } from './rpc.js';
 
@@ -43,8 +43,8 @@ export interface SharedStoreDeps {
 }
 
 export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
-  const sharedAuthListeners = new Set<SharedAuthStorageListener>();
-  const statusListeners = new Set<(status: SharedStoreStatus) => void>();
+  const sharedAuthListeners = protocolListeners<SharedAuthStorageChange>('shared_auth');
+  const statusListeners = protocolListeners<SharedStoreStatus>('shared_store_status');
   // Latched from each status the frame publishes, since a listener ahead of this store's own can move the frame on
   // before this store reads it.
   let settledOnce = hasSettled(frame.getStatus());
@@ -61,21 +61,20 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
     const store = getStatus();
     if (store !== announced) {
       announced = store;
-      broadcast(statusListeners, store, 'Shared store status');
+      statusListeners.emit(store);
     }
   });
 
   frame.onEnvelope(msg => {
     if (msg.kind === 'auth-storage-changed') {
-      broadcast(sharedAuthListeners, { siteId: msg.siteId, key: msg.key, value: msg.value }, 'Shared auth');
+      sharedAuthListeners.emit({ siteId: msg.siteId, key: msg.key, value: msg.value });
     }
   });
 
   return {
     getSharedStoreStatus: getStatus,
     /** Called on each change only. */
-    subscribeSharedStoreStatus: (listener: (status: SharedStoreStatus) => void) =>
-      addListener(statusListeners, listener),
+    subscribeSharedStoreStatus: (listener: (status: SharedStoreStatus) => void) => statusListeners.subscribe(listener),
     readSharedAuthStorage: (siteId: SiteId, key: string) => rpc.request('authStorageRead', { siteId, key }),
     async writeSharedAuthStorage(siteId: SiteId, key: string, value: string): Promise<void> {
       await rpc.request('authStorageWrite', { siteId, key, value });
@@ -107,7 +106,7 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
      * over `BroadcastChannel`. A tab's own writes do not arrive here.
      */
     subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
-      const unsubscribe = addListener(sharedAuthListeners, listener);
+      const unsubscribe = sharedAuthListeners.subscribe(listener);
       // Not awaited, since subscribe is synchronous. A frame that fails rebuilds itself.
       void frame.whenUp('listening').catch((error: unknown) => {
         log.warn('[dot.li protocol] Failed to ensure host frame for shared auth subscription:', error);

@@ -5,7 +5,7 @@
 
 import { createSignal, onCleanup, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { useStore } from './use-store.js';
+import { useStore } from '@dotli/ui';
 import type { DebugPanelHost, HostAuth } from './host.js';
 import { Button } from './shared/Button.js';
 import { Callout } from './shared/Callout.js';

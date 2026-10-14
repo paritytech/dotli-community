@@ -4,8 +4,8 @@
 // The permissions of the product on show. The core persists them, so the store holds what was last read or written,
 // and every change goes through the intents here, one at a time, so a read never lands over a newer write.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log, createSyncStore, type ReadableStore } from '@dotli/shared';
+import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createListenerSet, log, createSyncStore, type ReadableStore } from '@dotli/shared';
 import {
   ALL_PERMISSIONS,
   getPermissionStatuses,
@@ -59,26 +59,15 @@ function permissionStatusIn(statuses: readonly PermissionStatus[], name: Enforce
   return statuses[NAMES.indexOf(name)] ?? 'ask';
 }
 
-const changeListeners = new Set<(change: PermissionsChange) => void>();
+// One listener's failure must not keep the change from the others.
+const changes = createListenerSet<PermissionsChange>({
+  onListenerError: reportListener('ui', 'product_permissions.change'),
+});
 
 /** Every change this store makes, for whoever must act on it, such as the frame that reloads for a device one. */
-export function onPermissionsChanged(listener: (change: PermissionsChange) => void): () => void {
-  changeListeners.add(listener);
-  return () => {
-    changeListeners.delete(listener);
-  };
-}
+export const onPermissionsChanged = changes.subscribe;
 
-function announce(change: PermissionsChange): void {
-  for (const listener of [...changeListeners]) {
-    try {
-      listener(change);
-    } catch (err) {
-      // One listener's failure must not keep the change from the others.
-      captureException(err, { flow: 'ui', step: 'store_listener', tags: { store: 'product_permissions' } });
-    }
-  }
-}
+const announce = changes.emit;
 
 // Reads and writes run one at a time, so the store only ever moves forward.
 const work = createAsyncTaskPool({ poolSize: 1 });

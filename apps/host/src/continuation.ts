@@ -3,6 +3,8 @@
 
 // Why the app is reloading this tab, written before the reload and read by the next boot for telemetry.
 
+import { pageSessionStorage, type SafeStorage } from '@dotli/shared';
+
 export type Continuation = 'reload_button' | 'switch_backend' | 'settings_change' | 'app_update';
 
 const KEY = 'dotli:continuation';
@@ -15,22 +17,9 @@ const CONTINUATIONS: readonly string[] = [
 ] satisfies readonly Continuation[];
 
 /** Where the reason is kept, the tab's sessionStorage unless given. */
-export interface ContinuationStore {
-  getItem: (key: string) => string | null;
-  setItem: (key: string, value: string) => void;
-  removeItem: (key: string) => void;
-}
+export type ContinuationStore = Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
 
-// Reaches `sessionStorage` per call, inside each caller's try, since the access itself can throw.
-const tabSession: ContinuationStore = {
-  getItem: key => sessionStorage.getItem(key),
-  setItem: (key, value) => {
-    sessionStorage.setItem(key, value);
-  },
-  removeItem: key => {
-    sessionStorage.removeItem(key);
-  },
-};
+const tabSession: ContinuationStore = pageSessionStorage;
 
 function isContinuation(value: string | null): value is Continuation {
   return value !== null && CONTINUATIONS.includes(value);
@@ -38,32 +27,17 @@ function isContinuation(value: string | null): value is Continuation {
 
 /** Call right before reloading. */
 export function markContinuation(reason: Continuation, store: ContinuationStore = tabSession): void {
-  try {
-    store.setItem(KEY, reason);
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode. The next load then reads as a plain browser reload, which is the honest fallback.
-  } catch {
-    /* sessionStorage unavailable */
-  }
+  store.setItem(KEY, reason);
 }
 
 export function peekContinuation(store: ContinuationStore = tabSession): Continuation | null {
-  try {
-    const value = store.getItem(KEY);
-    return isContinuation(value) ? value : null;
-  } catch {
-    // sessionStorage may be unavailable in Safari private mode, where nothing was ever marked.
-    return null;
-  }
+  const value = store.getItem(KEY);
+  return isContinuation(value) ? value : null;
 }
 
 /** Clears the reason, so it describes exactly one page load. */
 export function takeContinuation(store: ContinuationStore = tabSession): Continuation | null {
   const value = peekContinuation(store);
-  try {
-    store.removeItem(KEY);
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, where nothing was ever marked.
-  } catch {
-    /* sessionStorage unavailable */
-  }
+  store.removeItem(KEY);
   return value;
 }

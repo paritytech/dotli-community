@@ -12,11 +12,11 @@ describe('stored panel tab', () => {
     const storage = memoryStorage();
 
     // When
-    writeStoredSection('diagnostics', () => storage);
+    writeStoredSection('diagnostics', storage);
 
     // Then
     expect(storage.getItem('truapi-debug:section')).toBe('diagnostics');
-    expect(readStoredSection(() => storage)).toBe('diagnostics');
+    expect(readStoredSection(storage)).toBe('diagnostics');
   });
 
   it('As a dotli developer with an unknown tab stored, the panel opens on the TrUAPI tab', () => {
@@ -24,7 +24,7 @@ describe('stored panel tab', () => {
     const storage = memoryStorage({ 'truapi-debug:section': 'gone' });
 
     // When
-    const section = readStoredSection(() => storage);
+    const section = readStoredSection(storage);
 
     // Then
     expect(section).toBe('truapi');
@@ -35,9 +35,9 @@ describe('stored panel tab', () => {
     const storage = blockedStorage();
 
     // When
-    writeStoredSection('wallet', () => storage);
+    writeStoredSection('wallet', storage);
 
     // Then
-    expect(readStoredSection(() => storage)).toBe('truapi');
+    expect(readStoredSection(storage)).toBe('truapi');
   });
 });

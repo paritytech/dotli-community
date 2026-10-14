@@ -4,8 +4,14 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
-import { parseRecentLabels, serializeRecentLabels } from '@dotli/storage';
-import { createLazyRecentLabels, createRecentLabels, landingRecentLabels, type RecentMirror } from './recent-labels.js';
+import {
+  createLazyRecentLabels,
+  createRecentLabels,
+  landingRecentLabels,
+  parseRecentLabels,
+  serializeRecentLabels,
+  type RecentMirror,
+} from './recent-labels.js';
 import { memoryStorage } from '@dotli/shared/testing';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { memorySharedChannel, type MemorySharedChannel } from './runtime/shared-mode.fake.js';
@@ -32,6 +38,33 @@ function mirrorList(): unknown {
 const captures = { exception: vi.fn(), expected: vi.fn() };
 let metrics: RecordingSentry;
 let unbindCaptures: () => void;
+
+describe('parseRecentLabels', () => {
+  it('As a landing page with nothing stored, I show no recent names', () => {
+    // Then
+    expect(parseRecentLabels(null)).toEqual([]);
+    expect(parseRecentLabels('')).toEqual([]);
+  });
+
+  it('As a landing page, I show the stored names in order', () => {
+    // Then
+    expect(parseRecentLabels('["myapp","test"]')).toEqual(['myapp', 'test']);
+  });
+
+  it('As a landing page, I show at most eight recent names', () => {
+    // Given
+    const labels = Array.from({ length: 12 }, (_, index) => `app${String(index)}`);
+
+    // Then
+    expect(parseRecentLabels(JSON.stringify(labels))).toHaveLength(8);
+  });
+
+  it('As a landing page reading a corrupt or foreign entry, I show no recent names', () => {
+    // Then
+    expect(parseRecentLabels('not-json')).toEqual([]);
+    expect(parseRecentLabels('{"foo":"bar"}')).toEqual([]);
+  });
+});
 
 describe('recent labels across subdomains', () => {
   beforeEach(() => {

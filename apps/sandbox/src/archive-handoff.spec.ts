@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { TIMEOUTS } from '@dotli/config';
+import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { packArchive } from '@dotli/content';
 
 import { handOverArchive } from './archive-handoff.js';
@@ -75,7 +75,7 @@ describe('archive handoff to the service worker', () => {
     const worker = fakeWorker();
     const first = handOverArchive(worker, archive(), null);
     const firstGaveUp = expect(first).rejects.toThrow(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED);
-    vi.advanceTimersByTime(TIMEOUTS.SW_ARCHIVE_ACK);
+    vi.advanceTimersByTime(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK);
     await firstGaveUp;
     const retry = handOverArchive(worker, archive(), null);
 
@@ -93,11 +93,11 @@ describe('archive handoff to the service worker', () => {
     const worker = fakeWorker();
     const handoff = handOverArchive(worker, archive(), null);
     const gaveUp = expect(handoff).rejects.toThrow(
-      `Service worker did not acknowledge archive within ${String(TIMEOUTS.SW_ARCHIVE_ACK / 1000)}s`,
+      `Service worker did not acknowledge archive within ${String(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK / 1000)}s`,
     );
 
     // When
-    vi.advanceTimersByTime(TIMEOUTS.SW_ARCHIVE_ACK);
+    vi.advanceTimersByTime(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK);
 
     // Then
     await gaveUp;

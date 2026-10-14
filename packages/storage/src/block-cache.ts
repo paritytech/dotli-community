@@ -6,8 +6,7 @@
 
 import { createCacheReporter } from './cache-reporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbTransaction } from './idb.js';
-import { log } from '@dotli/shared';
+import { idbTransaction, log } from '@dotli/shared';
 
 const BLOCKS = 'blocks';
 const META = 'block_meta';

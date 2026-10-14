@@ -1,12 +1,14 @@
 # `@dotli/shared`
 
 Small, framework-free helpers that every other package may use: logging, error serialization, the async task pool, the
-sync store, the status cell and a few formatting helpers.
+listener set, the sync store, the status cell and a few formatting helpers.
 
 ## Responsibility
 
-- Owns the primitives other layers build on: `createAsyncTaskPool`, `createSyncStore`, `createStatusCell`, `log`.
-- Owns generic helpers with no owner of their own: error copy, hex, byte sizes, timing and abort.
+- Owns the primitives other layers build on: `createAsyncTaskPool`, `createListenerSet`, `createSyncStore`,
+  `createStatusCell`, `log`.
+- Owns generic helpers with no owner of their own: error copy, hex, byte sizes, timing, a timeout, abort, web storage
+  that never throws and the IndexedDB callbacks as promises.
 - Owns no page state, no dotNS rules, no metrics, no UI and no chain access. The log sink is bound from outside, and
   listener errors are reported through callbacks the caller passes in.
 
@@ -16,8 +18,15 @@ sync store, the status cell and a few formatting helpers.
   their task idempotent instead of hand-rolling in-flight flags.
 - The sync store imports no Solid. Notifications are synchronous, and every store registers a reset so tests can restore
   all of them at once. It stays off Solid so boot-path code does not ship Solid's core.
-- A status cell is the status a layer publishes upward. Setting an equal value is ignored, and a throwing listener is
-  reported through a callback while the others still hear the change.
+- A listener set delivers a value to every listener in order. A value emitted during delivery waits for the round in
+  progress, and a listener that throws is reported through a callback while the others still hear the value. Each owner
+  passes its own report.
+- IndexedDB's callbacks become promises in one helper: an open that rejects when an older tab blocks the upgrade, a
+  request, a transaction that resolves once it commits and rejects on an abort, and a delete that rejects when a
+  connection blocks it.
+- Web storage that the browser blocks or that is full reads as empty and drops writes, in one adapter, so no module
+  wraps storage itself.
+- A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
 - The logger writes to the console only in debug builds, read from the `VITE_APP_DEBUG` build flag at load so the first
   log of every entry point honours it. Warn, error and event always reach the sink bound with `bindLogSink`.
 - Error helpers turn any thrown value into a string or a chain for wire formats, logs and Sentry.
@@ -26,12 +35,15 @@ sync store, the status cell and a few formatting helpers.
 
 ### `@dotli/shared`
 
-- Concurrency and state: `createAsyncTaskPool`, `DEFAULT_POOL`, `createSyncStore`, `StoreListenerError`,
-  `registerStoreStateReset`, `shallowEqual`, `createStatusCell`, `toAbortError`.
-- Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `endpointHost`,
+- Concurrency and state: `createAsyncTaskPool`, `createListenerSet`, `ListenerSet`, `ListenerSetOptions`,
+  `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`, `createStatusCell`,
+  `toAbortError`.
+- Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `named`, `endpointHost`,
   `gatewayUnreachable`.
+- Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.
+- IndexedDB: `openIdb`, `idbRequest`, `idbTransaction`, `deleteIdb`.
 - Byte counts as people read them: `formatSize`, `formatRate`.
-- Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`.
+- Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `randomId`.
 
 ### `@dotli/shared/testing`
 

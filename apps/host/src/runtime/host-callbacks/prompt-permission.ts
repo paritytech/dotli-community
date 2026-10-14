@@ -16,7 +16,7 @@ import {
 } from '../permissions.js';
 import { throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
-import type { Notify } from './PushNotification.js';
+import type { Notify } from './push-notification.js';
 import { ERRORS } from '../errors.js';
 import { recordPromptDecision } from '../state/product-permissions.js';
 import type { HostPrompts } from '../host-prompts.js';

@@ -21,6 +21,8 @@ timeouts.
 - A chain is named by its role (`relay`, `assethub`, `bulletin`, `people`) everywhere: the network table, sync events,
   the light client's database outcomes and the UI. A genesis hash maps to its role from the fixed config, so a worker
   that never sees the runtime network config may read it.
+- The `./fixed` entry holds only what reads no overridable field, so a worker that never receives the runtime network
+  config imports it and never the bare entry.
 - Settings travel between origins as URL params. Default values are stripped, so a clean URL means every axis is at its
   default.
 
@@ -29,10 +31,16 @@ timeouts.
 ### `@dotli/config`
 
 - Environment: `BASE_DOMAIN`, `SITE_ID`, `DEBUG`, `DEV_PROTOCOL_PORT`, `DEV_SANDBOX_PORT`, `isLocalhost`,
-  `isSandboxOrigin`, `BLOCK_CACHE_MAX_BYTES`, the `SCHEDULED_NOTIFICATIONS_*` limits, `TIMEOUTS`.
-- Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `getActiveServicesConfig`,
-  `getActiveFixedServicesConfig`, `getActiveTldSuffix`, `withActiveTld`, the chain role helpers (`CHAIN_ROLES`,
-  `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway and genesis hash readers.
+  `isSandboxOrigin`, `TIMEOUTS`, the waits more than one package keeps in step.
+- Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `getActiveServicesConfig`, `getActiveTldSuffix`,
+  `withActiveTld`, the chain role helpers (`CHAIN_ROLES`, `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway
+  and genesis hash readers.
 - Settings: `getSettings`, `setSettings`, `getBackend`, `getCacheSettings`, `isSharedWorkerAvailable`,
   `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`, `setActiveNetwork`,
   `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `Settings`, `SharedSettings`.
+
+### `@dotli/config/fixed`
+
+What a context that never receives the runtime network config may read: `DEBUG`, `CHAIN_ROLES`, `ChainRole`,
+`chainRoleForGenesis`, `getActiveFixedServicesConfig`, `FixedServicesConfig`, `getActiveSupportedGenesisHashes`,
+`isValidNetwork`, `Network`. A name joins only once it reads no overridable field.

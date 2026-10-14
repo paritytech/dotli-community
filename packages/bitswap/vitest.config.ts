@@ -7,11 +7,14 @@ import { TEST_DEFINES } from '@config/vite/test-defines';
 export default defineConfig({
   test: {
     globals: false,
+    setupFiles: ['@dotli/metrics/testing/setup'],
     projects: [{ extends: true, test: { name: 'bitswap:unit', include: ['src/**/*.spec.ts'], environment: 'node' } }],
   },
   define: {
     ...TEST_DEFINES,
     'import.meta.env.DEV': 'false',
     'import.meta.env.VITE_APP_DEBUG': '"true"',
+    // On, so a test reads what the relay reports through a bound fake Sentry.
+    'import.meta.env.VITE_METRICS': '"true"',
   },
 });

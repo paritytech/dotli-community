@@ -8,7 +8,8 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransportHooks, ConnectionStatus } from './transport-hooks.js';
-import { log } from '@dotli/shared';
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet, log, type ListenerSet } from '@dotli/shared';
 import {
   ChainBroker,
   createBrokerWarner,
@@ -98,15 +99,19 @@ function stringsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+/** What the pool tells its watchers, one listener per watcher. */
+type WatchEvent =
+  { kind: 'activity'; activity: ChainActivity } | { kind: 'bestBlock'; genesisHash: string; blockNumber: number };
+
 export function createChainPool(options: ChainPoolOptions): ChainPool {
   const destroyDelay = options.destroyDelay ?? DEFAULT_DESTROY_DELAY_MS;
   const entries = new Map<string, Entry>();
   // Outlives the entries, so a chain that halts and is rebuilt keeps its warning count.
   const warners = new Map<string, BrokerWarner>();
   const statuses = new Map<string, ConnectionStatus>();
-  const listeners = new Map<string, Set<(status: ConnectionStatus) => void>>();
+  const listeners = new Map<string, ListenerSet<ConnectionStatus>>();
   let sessionCounter = 0;
-  const watchers = new Set<ChainPoolWatcher>();
+  const watchers = createListenerSet<WatchEvent>({ onListenerError: reportListener('protocol', 'chain_pool.watch') });
 
   function activityOf(entry: Entry): ChainActivity {
     return {
@@ -117,22 +122,8 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     };
   }
 
-  function tellWatchers(tell: (watcher: ChainPoolWatcher) => void): void {
-    for (const watcher of [...watchers]) {
-      try {
-        tell(watcher);
-        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one watcher's throw must not keep the others from the change, nor reach the pool.
-      } catch {
-        /* the other watchers still hear it */
-      }
-    }
-  }
-
   function report(entry: Entry): void {
-    const activity = activityOf(entry);
-    tellWatchers(watcher => {
-      watcher.onActivity(activity);
-    });
+    watchers.emit({ kind: 'activity', activity: activityOf(entry) });
   }
 
   function setStatus(key: string, status: ConnectionStatus): void {
@@ -140,14 +131,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       return;
     }
     statuses.set(key, status);
-    for (const callback of [...(listeners.get(key) ?? [])]) {
-      try {
-        callback(status);
-        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one listener's throw must not keep the others from the status, nor reach the transport's status callback.
-      } catch {
-        /* the other listeners still hear the status */
-      }
-    }
+    listeners.get(key)?.emit(status);
   }
 
   /** Close an entry: quietly on release or unload, telling its leases on a halt. */
@@ -261,9 +245,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           // Refused for a block finalization already unpinned, and the next best block reports instead.
           const blockNumber = typeof result === 'string' ? decodeHeaderNumber(result) : null;
           if (blockNumber !== null && entry.live) {
-            tellWatchers(watcher => {
-              watcher.onBestBlock(entry.key, blockNumber);
-            });
+            watchers.emit({ kind: 'bestBlock', genesisHash: entry.key, blockNumber });
           }
         } else if (message['method'] === 'chainHead_v1_followEvent') {
           const params = message['params'];
@@ -470,27 +452,32 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
 
     onStatusChanged(genesisHash, callback) {
       const key = genesisHash.toLowerCase();
-      const callbacks = listeners.get(key) ?? new Set<(status: ConnectionStatus) => void>();
-      listeners.set(key, callbacks);
-      callbacks.add(callback);
-      return () => {
-        callbacks.delete(callback);
-      };
+      let callbacks = listeners.get(key);
+      if (callbacks === undefined) {
+        callbacks = createListenerSet<ConnectionStatus>({
+          onListenerError: reportListener('protocol', 'chain_pool.status'),
+        });
+        listeners.set(key, callbacks);
+      }
+      return callbacks.subscribe(callback);
     },
 
     watch(watcher) {
-      watchers.add(watcher);
-      for (const entry of [...entries.values()]) {
-        try {
-          watcher.onActivity(activityOf(entry));
-          // eslint-disable-next-line no-restricted-syntax -- a throwing watcher must not reach whoever started the watch.
-        } catch {
-          /* the watcher still hears later changes */
+      const hear = (event: WatchEvent): void => {
+        if (event.kind === 'activity') {
+          watcher.onActivity(event.activity);
+        } else {
+          watcher.onBestBlock(event.genesisHash, event.blockNumber);
         }
+      };
+      const unsubscribe = watchers.subscribe(hear);
+      for (const entry of [...entries.values()]) {
+        watchers.deliver(hear, { kind: 'activity', activity: activityOf(entry) });
         syncWatchFollow(entry);
       }
       return () => {
-        if (watchers.delete(watcher) && watchers.size === 0) {
+        unsubscribe();
+        if (watchers.size === 0) {
           for (const entry of [...entries.values()]) {
             syncWatchFollow(entry);
           }

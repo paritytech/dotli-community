@@ -6,6 +6,7 @@
 
 /// <reference lib="webworker" />
 
+import { idbRequest, idbTransaction, openIdb } from '@dotli/shared';
 import { injectSandboxChecker } from './inject-checker.js';
 import { getMimeType } from './mime.js';
 import stripAppPrefixScript from './head/strip-app-prefix.js?inline-script';
@@ -43,32 +44,16 @@ function unpackArchive(packed: ArrayBuffer, index: ArchiveIndex): Record<string,
 }
 
 function openArchiveDb(indexedDB: IDBFactory): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(ARCHIVE_DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(ARCHIVE_STORE);
-    };
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-    request.onerror = () => {
-      reject(request.error ?? new Error('Failed to open the archive database'));
-    };
+  return openIdb(indexedDB, ARCHIVE_DB_NAME, 1, db => {
+    db.createObjectStore(ARCHIVE_STORE);
   });
 }
 
 async function persistArchive(indexedDB: IDBFactory, archive: PersistedArchive): Promise<void> {
   const db = await openArchiveDb(indexedDB);
   try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(ARCHIVE_STORE, 'readwrite');
+    await idbTransaction(db, ARCHIVE_STORE, 'readwrite', tx => {
       tx.objectStore(ARCHIVE_STORE).put(archive, CURRENT_ARCHIVE_KEY);
-      tx.oncomplete = () => {
-        resolve();
-      };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('Failed to persist the archive'));
-      };
     });
   } finally {
     db.close();
@@ -78,15 +63,10 @@ async function persistArchive(indexedDB: IDBFactory, archive: PersistedArchive):
 async function loadPersistedArchive(indexedDB: IDBFactory): Promise<PersistedArchive | null> {
   const db = await openArchiveDb(indexedDB);
   try {
-    return await new Promise((resolve, reject) => {
-      const request = db.transaction(ARCHIVE_STORE, 'readonly').objectStore(ARCHIVE_STORE).get(CURRENT_ARCHIVE_KEY);
-      request.onsuccess = () => {
-        resolve((request.result as PersistedArchive | undefined) ?? null);
-      };
-      request.onerror = () => {
-        reject(request.error ?? new Error('Failed to read the archive'));
-      };
-    });
+    const stored = (await idbRequest(
+      db.transaction(ARCHIVE_STORE, 'readonly').objectStore(ARCHIVE_STORE).get(CURRENT_ARCHIVE_KEY),
+    )) as PersistedArchive | undefined;
+    return stored ?? null;
   } finally {
     db.close();
   }
@@ -94,11 +74,13 @@ async function loadPersistedArchive(indexedDB: IDBFactory): Promise<PersistedArc
 
 /** The worker has no error reporting, and a failed write otherwise shows only when a restart has nothing to serve. */
 function reportArchiveFailure(clients: readonly Client[], stage: 'persist' | 'restore', err: unknown): void {
+  // The IndexedDB helper wraps a failed open, and the page groups failures by the browser's own error name.
+  const shown = err instanceof Error && err.cause instanceof Error ? err.cause : err;
   const message = {
     type: 'ARCHIVE_FAILURE',
     stage,
-    name: err instanceof Error ? err.name : 'NonErrorThrow',
-    message: err instanceof Error ? err.message : String(err),
+    name: shown instanceof Error ? shown.name : 'NonErrorThrow',
+    message: shown instanceof Error ? shown.message : String(shown),
   } as const;
   for (const client of clients) {
     client.postMessage(message);

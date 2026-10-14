@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { withActiveTld } from '@dotli/config';
-import { createNavigateTo as createPageNavigateTo } from './OpenUrl.js';
+import { createNavigateTo as createPageNavigateTo } from './open-url.js';
 
 const PORT = '3000';
 

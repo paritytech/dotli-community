@@ -4,7 +4,7 @@
 // The diagnostics report: build, transport, permissions, package versions and chain heights.
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { errorName, log, named, withTimeout } from '@dotli/shared';
 import { formatAppVersion } from './manifest-facts.js';
 import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
 import { getConnectedAssetHubRpcEndpoint } from '@dotli/chains';
@@ -17,6 +17,7 @@ import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   getActiveServicesConfig,
 } from '@dotli/config';
+import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from '@dotli/truapi-debug-ui';
 import { loadBridge } from '../lazy.js';
 import { ALL_PERMISSIONS, getPermissionStatuses } from './permissions.js';
 import { dotliVersion } from './runtime-config.js';
@@ -27,21 +28,6 @@ declare const __LIGHT_CLIENT_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__: { name: string; version: string }[] | undefined;
 declare const __PARITY_TRUAPI_VERSIONS__: { name: string; version: string }[] | undefined;
-
-/** A row a reader may want to paste elsewhere (an address, a node) is marked `copyable`. */
-export type DiagnosticsRow = [label: string, value: string, copyable?: boolean];
-
-/** What the debug panel's Diagnostics tab shows and shares. */
-export interface DiagnosticsSource {
-  /** The page rows, read each time the tab opens. */
-  rows: () => DiagnosticsRow[];
-  lightClientVersion: () => string;
-  packages: () => { polkadotApi: PackageVersion[]; parityTruapi: PackageVersion[] };
-  /** The shared report of `rows`. Chain heights are queried only here, so no chain stays awake for a closed tab. */
-  report: (rows: readonly DiagnosticsRow[]) => Promise<string>;
-  /** Opens the pre-filled issue in a new tab. */
-  openIssue: (url: string) => void;
-}
 
 export interface PageDiagnosticsDeps {
   /** The AssetHub node the trusted provider answers on, or null before it connects. */
@@ -236,9 +222,7 @@ export function createFinalizedBlockQuery(
   source: FinalizedBlockSource,
 ): (genesisHash: string) => Promise<number | null> {
   return async genesisHash => {
-    const timeout = new Error(`No finalized block within ${String(FINALIZED_BLOCK_LIMIT_MS)}ms`);
-    timeout.name = 'TimeoutError';
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = named(new Error(`No finalized block within ${String(FINALIZED_BLOCK_LIMIT_MS)}ms`), 'TimeoutError');
     try {
       const provider = await source.provider(genesisHash);
       if (provider === null) {
@@ -247,16 +231,8 @@ export function createFinalizedBlockQuery(
       const client = await source.createClient(provider);
       let block: { number: number };
       try {
-        block = await Promise.race([
-          client.getFinalizedBlock(),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => {
-              reject(timeout);
-            }, FINALIZED_BLOCK_LIMIT_MS);
-          }),
-        ]);
+        block = await withTimeout(client.getFinalizedBlock(), FINALIZED_BLOCK_LIMIT_MS, () => timeout);
       } finally {
-        clearTimeout(timer);
         client.destroy();
       }
       // After the close, so a close that throws counts as the one error instead of after an ok.
@@ -333,11 +309,6 @@ function summarizeUserAgent(ua: string): string {
   }
 
   return `${browser} (${os})`;
-}
-
-export interface PackageVersion {
-  name: string;
-  version: string;
 }
 
 /** The unscoped `polkadot-api` package is listed with its `@polkadot-api/*` siblings. */

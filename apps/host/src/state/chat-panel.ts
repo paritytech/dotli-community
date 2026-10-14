@@ -4,7 +4,14 @@
 // Outside Solid because the eager topbar button and the lazy panel both read it. Rooms, bots and
 // messages are not kept here, the open panel follows them in the chat store's view.
 
-import { createSyncStore, registerStoreStateReset, shallowEqual, type ReadableStore } from '@dotli/shared';
+import {
+  createSyncStore,
+  pageLocalStorage,
+  registerStoreStateReset,
+  shallowEqual,
+  type ReadableStore,
+  type SafeStorage,
+} from '@dotli/shared';
 import { chatStore } from '../runtime/chat/chat-store.js';
 import type { ChatChange, ChatStore, ChatView } from '../runtime/chat/store.js';
 import { labelToProductId } from '../runtime/runtime-config.js';
@@ -78,22 +85,17 @@ function clampWidth(width: number): number {
   return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, width));
 }
 
-type WidthStorage = () => Pick<Storage, 'getItem' | 'setItem'>;
+type WidthStorage = Pick<SafeStorage, 'getItem' | 'setItem'>;
 
-const pageWidthStorage: WidthStorage = () => localStorage;
+const pageWidthStorage: WidthStorage = pageLocalStorage;
 
-// Where the dragged width is kept across sessions, which `initChatPanelState` sets.
+// Where the dragged width is kept across sessions, which `startChatPanelState` sets.
 let widthStorage = pageWidthStorage;
 
 function storedPanelWidth(): number {
-  try {
-    const raw = Number(widthStorage().getItem(PANEL_WIDTH_KEY));
-    if (Number.isFinite(raw) && raw >= MIN_PANEL_WIDTH) {
-      return Math.min(raw, MAX_PANEL_WIDTH);
-    }
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode); the default width is the safe fallback.
-  } catch {
-    /* fall through to the default width */
+  const raw = Number(widthStorage.getItem(PANEL_WIDTH_KEY));
+  if (Number.isFinite(raw) && raw >= MIN_PANEL_WIDTH) {
+    return Math.min(raw, MAX_PANEL_WIDTH);
   }
   return DEFAULT_PANEL_WIDTH;
 }
@@ -175,16 +177,11 @@ export function setChatPanelWidth(width: number): void {
 }
 
 export function persistChatPanelWidth(): void {
-  try {
-    widthStorage().setItem(PANEL_WIDTH_KEY, String(panel.get().width));
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode); the width just resets next session.
-  } catch {
-    /* width resets next session */
-  }
+  widthStorage.setItem(PANEL_WIDTH_KEY, String(panel.get().width));
 }
 
-/** `storage` keeps the panel width, reached on every read and write as the page's localStorage can throw. */
-export function initChatPanelState(
+/** `storage` keeps the panel width. */
+export function startChatPanelState(
   chat: Pick<ChatStore, 'subscribe'> = chatStore,
   storage: WidthStorage = pageWidthStorage,
 ): () => void {

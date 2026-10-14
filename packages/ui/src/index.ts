@@ -14,10 +14,8 @@ export { StatusDot } from './components/primitives/StatusDot.js';
 export { Hint, Surface, SurfaceFoot, SurfaceHead } from './components/primitives/Surface.js';
 export { Switch } from './components/primitives/Switch.js';
 export { Callout, Row, Well } from './components/primitives/Well.js';
-export { Field } from './components/primitives/Field.js';
 export { Modal } from './components/floating/Modal.js';
 export { Popover, usePopover } from './components/floating/Popover.js';
-export { DropdownMenu, useDropdownMenu } from './components/floating/DropdownMenu.js';
 export { Tooltip } from './components/floating/Tooltip.js';
 // A row of actions that collapses what does not fit into a More menu.
 export { ActionGroup, type ActionGroupMorph, type MoreIds } from './components/actions/ActionGroup.js';
@@ -30,46 +28,28 @@ export {
 } from './components/actions/actions-context.js';
 export { PINNED } from './components/actions/fit.js';
 export type { MoreRow } from './components/actions/more-row.js';
-export {
-  AnchorBoundary,
-  LayerTracker,
-  ModalFocusFallback,
-  type TrackedLayer,
-} from './components/floating/layer-context.js';
+export { LayerTracker, ModalFocusFallback, type TrackedLayer } from './components/floating/layer-context.js';
 export { useStore } from './components/use-store.js';
 export { startDrag } from './components/drag.js';
 export { focusLostOrInside, focusTrigger } from './components/focus.js';
 
-// Mounting a view inside an error boundary, the overlays container and the toast view.
+// Mounting a view inside an error boundary, and the overlays container.
 export { ensureOverlayRoot } from './mount/overlay-root.js';
-export { mountRoot } from './mount/root.js';
-export { ToastStack } from './components/overlays/ToastStack.js';
+export { RootBoundary } from './mount/root-boundary.js';
+export { mountRoot, type MountRootOptions } from './mount/root.js';
 
-// The dialog and toast stores. The overlays render them and everything else opens, pushes and settles through them.
+// The dialog and toast stores. The overlays render them, and the apps open dialogs and read the toasts.
 export {
-  modalsStore,
   openModal,
   refuseModals,
-  settleModal,
   type ModalButton,
   type ModalButtonVariant,
   type ModalEntry,
   type ModalField,
-  type ModalOptions,
   type ModalOutcome,
   type ModalView,
 } from './page/state/modals.js';
-export {
-  clearToasts,
-  dismissAllToasts,
-  dismissToast,
-  pushToast,
-  removeToast,
-  setToastsExpanded,
-  toastsStore,
-  type ToastEntry,
-  type ToastInput,
-} from './page/state/toasts.js';
+export { toastsStore, type ToastEntry } from './page/state/toasts.js';
 
 // Page helpers.
 export { focusables } from './page/focusables.js';

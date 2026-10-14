@@ -9,7 +9,7 @@ describe('sessionErrorSightings', () => {
   it('As a visitor reloading after a failure, I find the sighting kept for this tab until it is forgotten', () => {
     // Given the tab's session storage
     const session = memoryStorage();
-    const sessionErrorSightings = createSessionErrorSightings(() => session);
+    const sessionErrorSightings = createSessionErrorSightings(session);
     sessionErrorSightings.remember('hub-sync-timeout');
 
     // When

@@ -50,39 +50,6 @@ export function parseBackend(raw: string | null): Backend | null {
   return raw !== null && VALID_BACKENDS.has(raw) ? (raw as Backend) : null;
 }
 
-/** A store the settings are read from and written to, such as this origin's localStorage. */
-export interface ModeStorage {
-  getItem: (key: string) => string | null;
-  setItem: (key: string, value: string) => void;
-  removeItem: (key: string) => void;
-}
-
-export const localStorageAdapter: ModeStorage = {
-  getItem: key => {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  setItem: (key, value) => {
-    try {
-      localStorage.setItem(key, value);
-      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies); writers drop silently and readers fall back to defaults.
-    } catch {
-      /* localStorage unavailable */
-    }
-  },
-  removeItem: key => {
-    try {
-      localStorage.removeItem(key);
-      // eslint-disable-next-line no-restricted-syntax -- mirror cleanup; readers tolerate the stale value on the next boot.
-    } catch {
-      /* localStorage unavailable */
-    }
-  },
-};
-
 /** This context's backend, or the default before boot sets the settings. */
 export function getBackend(): Backend {
   return activeSettings()?.backend ?? defaultBackend();
@@ -93,7 +60,7 @@ export function defaultBackend(): Backend {
 }
 
 /** The backend an old build's keys name, or null. */
-export function legacyBackend(target: Pick<ModeStorage, 'getItem'>): Backend | null {
+export function legacyBackend(target: Pick<Storage, 'getItem'>): Backend | null {
   const chain = target.getItem(BACKEND_KEY);
   const content = target.getItem(LEGACY_CONTENT_BACKEND_KEY);
   const legacyMode = target.getItem(LEGACY_MODE_KEY);

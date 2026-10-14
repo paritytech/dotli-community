@@ -4,6 +4,7 @@
 // A journey strings a tab's page loads at one app together until one reaches it, so Sentry can tell a recovered
 // failure from an abandoned one. The id lives in sessionStorage only, so it never identifies a person.
 
+import { pageSessionStorage, randomId, type SafeStorage } from '@dotli/shared';
 import { takeContinuation, type Continuation } from './continuation.js';
 
 /**
@@ -27,14 +28,14 @@ interface StoredJourney {
 
 /** The page's session storage, navigation timing and reload reason, in place of the browser's own in a spec. */
 export interface JourneyDeps {
-  /** A getter, since reading `sessionStorage` itself throws where storage is blocked. */
-  session: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  /** This tab's sessionStorage, which never throws. */
+  session: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
   navigationType: () => NavigationTimingType | undefined;
   takeContinuation: () => Continuation | null;
 }
 
 const pageJourney: JourneyDeps = {
-  session: () => sessionStorage,
+  session: pageSessionStorage,
   navigationType: () => (performance.getEntriesByType('navigation') as PerformanceNavigationTiming[])[0]?.type,
   takeContinuation,
 };
@@ -42,29 +43,25 @@ const pageJourney: JourneyDeps = {
 const KEY = 'dotli:journey';
 
 function readJourney(deps: JourneyDeps): StoredJourney | null {
-  try {
-    const raw = deps.session().getItem(KEY);
-    if (raw === null) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as Partial<StoredJourney>;
-    if (typeof parsed.id !== 'string' || typeof parsed.label !== 'string' || typeof parsed.attempts !== 'number') {
-      return null;
-    }
-    return { id: parsed.id, label: parsed.label, attempts: parsed.attempts };
-  } catch {
-    // Unavailable sessionStorage or a corrupt entry both mean no journey to continue.
+  const raw = deps.session.getItem(KEY);
+  if (raw === null) {
     return null;
   }
+  let parsed: Partial<StoredJourney>;
+  try {
+    parsed = JSON.parse(raw) as Partial<StoredJourney>;
+  } catch {
+    // A corrupt entry means no journey to continue.
+    return null;
+  }
+  if (typeof parsed.id !== 'string' || typeof parsed.label !== 'string' || typeof parsed.attempts !== 'number') {
+    return null;
+  }
+  return { id: parsed.id, label: parsed.label, attempts: parsed.attempts };
 }
 
 function writeJourney(deps: JourneyDeps, journey: StoredJourney): void {
-  try {
-    deps.session().setItem(KEY, JSON.stringify(journey));
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, where every attempt starts its own journey.
-  } catch {
-    /* sessionStorage unavailable */
-  }
+  deps.session.setItem(KEY, JSON.stringify(journey));
 }
 
 function navigationEntry(deps: JourneyDeps): AttemptEntry {
@@ -75,27 +72,16 @@ function navigationEntry(deps: JourneyDeps): AttemptEntry {
   return type === 'back_forward' ? 'back_forward' : 'navigation';
 }
 
-function newJourneyId(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `journey-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
-}
-
 export function beginAttempt(label: string, deps: JourneyDeps = pageJourney): Attempt {
   const entry = deps.takeContinuation() ?? navigationEntry(deps);
   const stored = readJourney(deps);
   const journey: StoredJourney =
-    stored?.label === label ? { ...stored, attempts: stored.attempts + 1 } : { id: newJourneyId(), label, attempts: 1 };
+    stored?.label === label ? { ...stored, attempts: stored.attempts + 1 } : { id: randomId(), label, attempts: 1 };
   writeJourney(deps, journey);
   return { journeyId: journey.id, attemptNumber: journey.attempts, entry };
 }
 
 /** The visitor reached the app, or learned there is nothing to reach. */
 export function endJourney(deps: JourneyDeps = pageJourney): void {
-  try {
-    deps.session().removeItem(KEY);
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, where nothing was stored.
-  } catch {
-    /* sessionStorage unavailable */
-  }
+  deps.session.removeItem(KEY);
 }

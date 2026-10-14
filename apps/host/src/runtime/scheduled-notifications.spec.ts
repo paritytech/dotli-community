@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS } from '@dotli/config';
+import { SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS } from './scheduled-notifications.js';
 import { bindCaptureSink } from '@dotli/metrics';
 import type { ScheduledNotificationRecord } from '@dotli/storage';
 import {

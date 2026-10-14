@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { bindCaptureSink } from '@dotli/metrics';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { RendererNode } from '@parity/truapi';
 import { createChatConnections, createChatStore, type ChatChange } from './store.js';
 import { memoryChatRepo, recordingConnection } from './store.fake.js';
@@ -173,6 +174,7 @@ describe('chat store', () => {
     // Given
     const { chat, changes } = setup();
     captured.length = 0;
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     chat.subscribe(() => {
       throw new Error('broken panel');
     });
@@ -183,7 +185,10 @@ describe('chat store', () => {
     // Then
     expect(status).toBe('New');
     expect(changes).toHaveLength(1);
-    expect(captured).toEqual(['change_listener']);
+    expect(captured).toEqual(['listener']);
+    expect(sentry.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'chat_store.change' },
+    ]);
   });
 });
 

@@ -15,6 +15,12 @@ export interface ErrorChainNode {
   raw?: unknown;
 }
 
+/** `err` with its `name` set, so it reaches Sentry as its own exception type. */
+export function named<E extends Error>(err: E, name: string): E {
+  err.name = name;
+  return err;
+}
+
 /** Walk a thrown value into a structured chain for Sentry, keeping every aggregated branch. */
 export function fullErrorChain(value: unknown): ErrorChainNode {
   return walk(value, new WeakSet());

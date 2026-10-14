@@ -28,19 +28,19 @@ restore, and logout are core-owned and do not cross the JS host callback boundar
 
 dotli still supplies platform primitives that are host policy or browser UI:
 
-| Area                      | Files                                                                                              |
-| ------------------------- | -------------------------------------------------------------------------------------------------- |
-| navigation                | `apps/host/src/runtime/host-callbacks/OpenUrl.ts`                                                  |
-| notifications             | `apps/host/src/runtime/host-callbacks/PushNotification.ts`                                         |
-| device/remote permissions | `apps/host/src/runtime/host-callbacks/PromptPermission.ts`, `apps/host/src/runtime/permissions.ts` |
-| feature support           | `apps/host/src/runtime/host-callbacks/FeatureSupported.ts`                                         |
-| product storage           | `apps/host/src/runtime/host-callbacks/LocalStorage.ts`                                             |
-| session persistence       | `apps/host/src/runtime/host-callbacks/core-storage.ts`, `session-state.ts`                         |
-| pairing presentation      | `apps/host/src/runtime/host-callbacks/AuthState.ts`                                                |
-| user confirmations        | `apps/host/src/runtime/host-callbacks/UserConfirmation.ts`                                         |
-| preimage lookup UI        | `apps/host/src/runtime/host-callbacks/Preimage.ts`                                                 |
-| theme subscription        | `apps/host/src/runtime/host-callbacks/Theme.ts`                                                    |
-| chain backend connection  | `apps/host/src/runtime/host-callbacks/Chain.ts`                                                    |
+| Area                      | Files                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| navigation                | `apps/host/src/runtime/host-callbacks/open-url.ts`                                                  |
+| notifications             | `apps/host/src/runtime/host-callbacks/push-notification.ts`                                         |
+| device/remote permissions | `apps/host/src/runtime/host-callbacks/prompt-permission.ts`, `apps/host/src/runtime/permissions.ts` |
+| feature support           | `apps/host/src/runtime/host-callbacks/feature-supported.ts`                                         |
+| product storage           | `apps/host/src/runtime/host-callbacks/local-storage.ts`                                             |
+| session persistence       | `apps/host/src/runtime/session/core-storage.ts`, `session-state.ts`                                 |
+| pairing presentation      | `apps/host/src/runtime/session/auth-state.ts`                                                       |
+| user confirmations        | `apps/host/src/runtime/host-callbacks/user-confirmation.ts`                                         |
+| preimage lookup UI        | `apps/host/src/runtime/host-callbacks/preimage.ts`                                                  |
+| theme subscription        | `apps/host/src/runtime/host-callbacks/theme.ts`                                                     |
+| chain backend connection  | `apps/host/src/runtime/host-callbacks/chain.ts`                                                     |
 
 These callbacks must remain generic host primitives. They should not re-add Nova package imports, wallet-specific JS
 channels, or statement-store request routing that belongs inside the Rust core.

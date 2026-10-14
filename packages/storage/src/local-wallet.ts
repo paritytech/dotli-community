@@ -4,7 +4,7 @@
 // The local wallet's root entropy, encrypted at rest under a key this origin can use but never export.
 
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbRequest, idbTransaction } from './idb.js';
+import { idbRequest, idbTransaction } from '@dotli/shared';
 
 const STORE = 'local_wallet';
 const RECORD_ID = 'wallet';

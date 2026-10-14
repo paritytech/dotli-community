@@ -4,7 +4,7 @@
 // The topbar's login, logout and cancel. Login and logout share one queue, so overlapping calls never reach the core twice.
 
 import { createAsyncTaskPool, type ReadableStore } from '@dotli/shared';
-import type { DotliAuthState } from './host-callbacks/AuthState.js';
+import type { DotliAuthState } from './session/auth-state.js';
 import { isLoginActive } from './state/auth.js';
 
 export interface AuthCommands {

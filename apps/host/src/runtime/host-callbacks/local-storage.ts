@@ -5,18 +5,18 @@ import type { ProductStorage } from '@parity/truapi-host';
 import type { HostLocalStorageChangeItem } from '@parity/truapi';
 import { bytesToHex } from '@parity/truapi/scale';
 import { base64 } from '@scure/base';
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createResultStream } from './result-stream.js';
 
 // Same-window writes fire no `storage` event, so runtimes in this window (app frames and the chat
 // worker) hear through this set. Other tabs get the `storage` event.
 type StorageListener = (key: string) => void;
-const listeners = new Set<StorageListener>();
+const listeners = createListenerSet<string>({ onListenerError: reportListener('storage', 'local_storage.change') });
 
 function notifyChanged(key: string): void {
-  for (const listener of listeners) {
-    listener(key);
-  }
+  listeners.emit(key);
 }
 
 export interface ProductStorageDeps {
@@ -95,11 +95,11 @@ export function createLocalStorageSubscribe({
         }
       };
       const target = events();
-      listeners.add(onLocalChange);
+      const unsubscribe = listeners.subscribe(onLocalChange);
       target.addEventListener('storage', onStorage);
       emit();
       return () => {
-        listeners.delete(onLocalChange);
+        unsubscribe();
         target.removeEventListener('storage', onStorage);
       };
     });

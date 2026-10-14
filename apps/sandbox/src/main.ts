@@ -7,13 +7,14 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import '@dotli/ui/styles.css';
-import { BASE_DOMAIN, TIMEOUTS, getActiveServicesConfig, setActiveNetwork } from '@dotli/config';
+import { BASE_DOMAIN, getActiveServicesConfig, setActiveNetwork } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
 import { endpointHost } from '@dotli/shared';
 
 import { createDecryptIfNeeded } from './decrypt-prompt.js';
+import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { listenForChunkFailures, showNotification, toastsStore } from '@dotli/ui';
 import { loadPageUi, loadSandboxChecker } from './lazy.js';
 import { createSandboxUi } from './sandbox-ui.js';
@@ -168,6 +169,6 @@ void runSandbox(
     askRerender: askHostToRerender,
     gatewayHost: () => endpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
-    recoverTimeoutMs: TIMEOUTS.SANDBOX_RECOVER,
+    recoverTimeoutMs: SANDBOX_TIMEOUTS.RECOVER,
   },
 );

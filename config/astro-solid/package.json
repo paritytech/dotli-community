@@ -9,7 +9,6 @@
     ".": "./src/index.ts",
     "./client.js": "./src/client.ts",
     "./server.js": "./src/server.ts",
-    "./container-renderer": "./src/container-renderer.ts",
     "./package.json": "./package.json"
   },
   "scripts": {

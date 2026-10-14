@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { yielded } from '../../testing/fixtures.js';
-import { createLocaleSubscribe as createPageLocaleSubscribe } from './Locale.js';
+import { createLocaleSubscribe as createPageLocaleSubscribe } from './locale.js';
 
 let language = 'en';
 const page = new EventTarget();

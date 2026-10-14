@@ -5,14 +5,13 @@
 
 import type { JSX } from '@solidjs/web';
 import { closeAuthModal, disableAuthModal, retryLogin } from '../runtime/auth-controller.js';
-import { LayerTracker, ModalFocusFallback, useStore } from '@dotli/ui';
-import { currentProductFrame } from '../product-frame-layout.js';
+import { LayerTracker, ModalFocusFallback, RootBoundary, useStore } from '@dotli/ui';
+import { productFrameFocus } from '../product-frame-layout.js';
 import { AuthModal as Modal } from '../components/account/AuthModal.js';
 import { authModalStore, getAuthModalTrigger } from '../state/auth-modal.js';
 import { registerTopbarSurface } from '../state/topbar-surfaces.js';
 import { revealTopbar } from '../topbar-autohide.js';
 import { closeWhenOpen, useRevealWhileOpen } from './auth-modal.js';
-import { IslandBoundary } from './IslandBoundary.js';
 
 /**
  * The sign-in modal, bound to the state the auth controller writes from boot, so a sign-in started before hydration
@@ -24,9 +23,9 @@ import { IslandBoundary } from './IslandBoundary.js';
  */
 export function AuthModal(): JSX.Element {
   return (
-    <IslandBoundary root="island:AuthModal" onBroken={disableAuthModal}>
+    <RootBoundary root="island:AuthModal" onBroken={disableAuthModal}>
       <BoundModal />
-    </IslandBoundary>
+    </RootBoundary>
   );
 }
 
@@ -39,7 +38,7 @@ function BoundModal(): JSX.Element {
   );
   return (
     <LayerTracker value={registerTopbarSurface}>
-      <ModalFocusFallback value={() => currentProductFrame() ?? undefined}>
+      <ModalFocusFallback value={productFrameFocus}>
         <Modal
           state={state}
           onClose={closeWhenOpen(authModalStore, closeAuthModal)}

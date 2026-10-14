@@ -3,8 +3,7 @@
 
 // The one "dotli" IndexedDB connection, opened on first use.
 
-import { createAsyncTaskPool } from '@dotli/shared';
-import { openIdb } from './idb.js';
+import { createAsyncTaskPool, openIdb } from '@dotli/shared';
 import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 
 /**

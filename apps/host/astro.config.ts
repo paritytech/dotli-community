@@ -101,7 +101,7 @@ export default defineConfig({
           '**/signing-worker*.js',
           '**/local-wallet-core*.js',
           '**/truapi-debug-panel*',
-          '**/debug-panel-parts*',
+          '**/debug-panel-host*',
           '**/debug-wire-describe*',
         ],
         cleanupOutdatedCaches: true,

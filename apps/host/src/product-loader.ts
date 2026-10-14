@@ -6,7 +6,7 @@
 
 import { getActiveTldSuffix, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, dur, elapsed, log, serializeError } from '@dotli/shared';
+import { createAsyncTaskPool, dur, elapsed, log, randomId, serializeError } from '@dotli/shared';
 import type { SmoldotDbChain } from '@dotli/protocol';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -255,10 +255,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     enterStep('name_resolve');
     const resolveStart = performance.now();
 
-    const resolveFlowId =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `resolve-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
+    const resolveFlowId = randomId();
     const resolveSource: 'smoldot' | 'rpc-gateway' = backend !== 'rpc-gateway' ? 'smoldot' : 'rpc-gateway';
     emit({
       layer: 'resolve',

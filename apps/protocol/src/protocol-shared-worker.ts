@@ -7,7 +7,7 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import { setActiveNetwork } from '@dotli/config';
+import { isLocalhost, setActiveNetwork } from '@dotli/config';
 import { initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { createLightClient, enableSyncReporting, lightClientDeps, onChainDetail, onChainSync } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
@@ -30,7 +30,7 @@ startProtocolWorker({
   scope: self,
   network,
   // A worker has no session to tune it from.
-  lightClient: createLightClient(lightClientDeps(null, self.location.hostname)),
+  lightClient: createLightClient(lightClientDeps(null, isLocalhost)),
   // The functions, not the namespace, so the worker bundle keeps only what it calls.
   resolver: {
     createDotnsResolver,

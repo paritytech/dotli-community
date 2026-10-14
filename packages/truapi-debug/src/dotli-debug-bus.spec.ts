@@ -2,27 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { bindCaptureSink } from '@dotli/metrics';
 import { bindLogSink } from '@dotli/shared';
 import { createDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from './dotli-debug-bus.js';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordCaptures, type RecordedCapture } from '@dotli/metrics/testing';
 
 interface ListenerReports {
-  captured: { step: string; tags: Record<string, string> | undefined }[];
+  captured: RecordedCapture[];
   errors: string[];
   counted: () => (Record<string, string> | undefined)[];
 }
 
 /** Record the captures, error lines and metrics a throwing listener leaves, until the test ends. */
 function recordListenerReports(): ListenerReports {
-  const captured: ListenerReports['captured'] = [];
+  const captured = recordCaptures({ onFinished: onTestFinished });
   const errors: string[] = [];
-  onTestFinished(
-    bindCaptureSink({
-      exception: (_err, ctx) => captured.push({ step: ctx.step, tags: ctx.tags }),
-      expected: () => undefined,
-    }),
-  );
   onTestFinished(
     bindLogSink({
       emit: (level, message) => {
@@ -33,7 +26,7 @@ function recordListenerReports(): ListenerReports {
     }),
   );
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-  return { captured, errors, counted: () => metrics.counted('debug_bus.listener') };
+  return { captured, errors, counted: () => metrics.counted('listener.delivery') };
 }
 
 function enabledBus(): DotliDebugBus {
@@ -65,9 +58,9 @@ describe('dotli debug bus listener failures', () => {
     // Then both later receivers got it, and the throw was reported once
     expect(watched).toEqual([bootEvent('flow-1')]);
     expect(shown).toEqual([bootEvent('flow-1')]);
-    expect(reports.captured).toEqual([{ step: 'debug_bus_listener', tags: { delivery: 'watch' } }]);
+    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'debug_bus.watch' } }]);
     expect(reports.errors).toHaveLength(1);
-    expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'TypeError', owner: 'debug_bus.watch' }]);
   });
 
   it('As a dotli developer, a panel that throws on a replayed boot event is reported and still gets the rest of the replay', () => {
@@ -89,9 +82,32 @@ describe('dotli debug bus listener failures', () => {
 
     // Then it still got the second, and the throw was reported once
     expect(shown).toEqual([bootEvent('flow-1'), bootEvent('flow-2')]);
-    expect(reports.captured).toEqual([{ step: 'debug_bus_listener', tags: { delivery: 'replay' } }]);
+    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'debug_bus.replay' } }]);
     expect(reports.errors).toHaveLength(1);
-    expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'RangeError' }]);
+    expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'RangeError', owner: 'debug_bus.replay' }]);
+  });
+
+  it('As a dotli developer, a panel that throws on a live event is reported, the next panel still gets it and the emitter goes on', () => {
+    // Given a mounted panel that throws, and one after it
+    const reports = recordListenerReports();
+    const bus = enabledBus();
+    bus.on(() => {
+      throw new TypeError('panel broke');
+    });
+    const shown: DotliDebugBusEvent[] = [];
+    bus.on(event => shown.push(event));
+
+    // When the host emits
+    const emit = (): void => {
+      bus.emit(bootEvent('flow-1'));
+    };
+
+    // Then
+    expect(emit).not.toThrow();
+    expect(shown).toEqual([bootEvent('flow-1')]);
+    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'debug_bus.live' } }]);
+    expect(reports.errors).toHaveLength(1);
+    expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'TypeError', owner: 'debug_bus.live' }]);
   });
 });
 

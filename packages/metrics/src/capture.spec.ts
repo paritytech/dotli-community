@@ -4,8 +4,8 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindLogSink } from '@dotli/shared';
 
-import { bindCaptureSink, captureException, recordExpected, reportExpected } from './capture.js';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindCaptureSink, captureException, recordExpected, reportExpected, reportListener } from './capture.js';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 
 function recordingSink() {
   return { exception: vi.fn(), expected: vi.fn() };
@@ -143,5 +143,23 @@ describe('reportExpected', () => {
     expect(reports.warnings).toEqual([]);
     expect(reports.sink.expected).toHaveBeenCalledWith(timeout, { flow: 'ui', step: 'diagnostics_block' });
     expect(reports.counted('diagnostics.finalized_block')).toEqual([{ outcome: 'timeout', reason: 'timeout' }]);
+  });
+});
+
+describe('reportListener', () => {
+  it('As an owner of listeners, a throwing listener is captured, logged and counted once under my name', () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const report = reportListener('protocol', 'chain_pool.status');
+
+    // When
+    report(new TypeError('listener broke'));
+
+    // Then
+    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'chain_pool.status' } }]);
+    expect(metrics.counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'TypeError', owner: 'chain_pool.status' },
+    ]);
   });
 });

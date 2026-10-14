@@ -37,8 +37,8 @@ flowchart LR
 ### `@dotli/sandbox-wire`
 
 - Param contract: `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`.
-- Messages: `parseHostToSandboxMessage`, `parseSandboxToHostMessage`, `postToHost`, `parseApiViolationMessage`,
-  `ApiViolationMessage`, `SandboxToHostMessage`, `HostToSandboxMessage`, `LoadingStatusMessage`, `SandboxDebugEvent`,
+- Messages: `parseHostToSandboxMessage`, `postToHost`, `parseApiViolationMessage`, `ApiViolationMessage`,
+  `SandboxToHostMessage`, `HostToSandboxMessage`, `LoadingStatusMessage`, `SandboxDebugEvent`,
   `SandboxDebugEventMessage`, `SandboxRecoverMessage`, `BitswapGetMessage`, `BitswapAbortMessage`,
   `BitswapResultMessage`.
 - Channel: `startSandboxChannel`, `SandboxChannel`, `StartedSandboxChannel`, `SandboxChannelOptions`, `SandboxSender`,

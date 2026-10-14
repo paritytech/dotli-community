@@ -9,9 +9,9 @@ and no data source.
 - The toast and modal stores, where everything that decides how a toast or dialog settles lives, and page helpers: the
   controls Tab reaches, idle preload, the phone viewport, reduced motion and the status tones.
 - Primitives (`Button`, `Switch`, `Chip`, `Surface`, `Well` and others) and the floating layers (`Modal`, `Popover`,
-  `DropdownMenu`, `Tooltip`).
+  `Tooltip`).
 - The action group: a row of actions that moves what does not fit into a More menu.
-- The toast view, which renders the toast store.
+- The toast view, which the overlays render from the toast store.
 - Mounting a view inside an error boundary, and the overlay container.
 - The screens and overlays both apps show: the error page and its frame, the notifier (a toast, and a system
   notification for a hidden tab), the prompt dialog every app asks through and the outlet that shows the modal queue,
@@ -45,30 +45,30 @@ and no data source.
   one.
 - Every icon is a Solid component that draws an `<svg>` in `currentColor`, one module per icon. It keeps the size,
   stroke and geometry it was drawn at, and takes a `size` for another size, a `class` and a test id.
-- `mountRoot` renders a view inside an error boundary. A view that throws is reported once under the root's name and the
+- `mountRoot` renders a view inside a root boundary. A view that throws is reported once under the root's name and the
   root is disposed.
+- One root boundary reports a broken root once and renders nothing in its place. The mounted roots, the floating layers
+  and the apps' islands use it, each with its own stand-in.
 - Eslint refuses chain libraries and any domain package.
 
 ## Public API
 
 ### `@dotli/ui`
 
-- Primitives: `Button`, `ButtonLink`, `Field`, `Chip`, `IconButton`, `IconTile`, `Choice`, `SegmentedControl`,
-  `Spinner`, `StatusDot`, `Surface` (with `SurfaceHead`, `SurfaceFoot`, `Hint`), `Switch`, `Well`, `Callout`, `Row`,
-  `Stack`, `SectionLabel`.
-- Floating layers: `Modal`, `Popover` and `usePopover`, `DropdownMenu` and `useDropdownMenu`, `Tooltip`, plus the layer
-  tracking (`LayerTracker`, `AnchorBoundary`, `ModalFocusFallback`).
+- Primitives: `Button`, `ButtonLink`, `Chip`, `IconButton`, `IconTile`, `Choice`, `SegmentedControl`, `Spinner`,
+  `StatusDot`, `Surface` (with `SurfaceHead`, `SurfaceFoot`, `Hint`), `Switch`, `Well`, `Callout`, `Row`, `Stack`,
+  `SectionLabel`.
+- Floating layers: `Modal`, `Popover` and `usePopover`, `Tooltip`, plus the layer tracking (`LayerTracker`,
+  `ModalFocusFallback`).
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar`, `ActionEntry` and `MoreRow`.
-- Stores: the modal store (`openModal`, `settleModal`, `modalsStore`, `refuseModals`, which answers every dialog with
-  its refusal while the overlays cannot render, and the types `ModalView`, `ModalOptions`, `ModalOutcome`, `ModalEntry`,
-  `ModalField`, `ModalButton`, `ModalButtonVariant`) and the toast store (`pushToast`, `clearToasts`, `toastsStore`,
-  `dismissToast`, `removeToast`, `dismissAllToasts`, `setToastsExpanded` and the types `ToastInput`, `ToastEntry`).
+- Stores: the modal store (`openModal`, `refuseModals`, which answers every dialog with its refusal while the overlays
+  cannot render, and the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
+  `ModalButtonVariant`) and the toast store (`toastsStore` and the type `ToastEntry`).
 - Page helpers: `focusables`, `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`, `watchPhoneViewport`,
   `prefersReducedMotion` and the type `StatusTone`.
 - Helpers: `useStore`, `startDrag`, `focusLostOrInside`, `focusTrigger`.
-- Roots: `mountRoot`, `ensureOverlayRoot`.
-- Overlay view: `ToastStack`, which the page's overlays render.
+- Roots: `mountRoot` with `MountRootOptions`, `RootBoundary`, `ensureOverlayRoot`.
 - Screens and overlays: `showErrorPage` and `showError` with the types `ErrorAction`, `ErrorPageContent`, `ErrorText`
   and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, `showScreen`, `clearScreen`,
   `pageContentStore` and the type `PageContent`, `Overlays`, `showNotification` with the types `NotificationParams` and

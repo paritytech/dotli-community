@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NetworkName } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
-import { type CidCache, createCidCache, getRecentLabels } from './cid-cache.js';
+import { type CidCache, createCidCache } from './cid-cache.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
 import { IDBDatabase } from 'fake-indexeddb';
 
@@ -18,46 +18,6 @@ beforeEach(() => {
 });
 
 const PASEO = NetworkName.PASEO;
-
-/** An origin's storage holding `recent` under the recent-labels key, or nothing. */
-function storageWith(recent?: string): Pick<Storage, 'getItem'> {
-  return { getItem: key => (key === 'dotli_recent' && recent !== undefined ? recent : null) };
-}
-
-describe('getRecentLabels', () => {
-  it('As a landing page offline from the shared store, I read my recent names from this origin and get none when nothing is stored', () => {
-    // When / Then
-    expect(getRecentLabels(storageWith())).toEqual([]);
-  });
-
-  it('As a landing page offline from the shared store, I read my recent names from this origin and get none from an empty value', () => {
-    // When / Then
-    expect(getRecentLabels(storageWith(''))).toEqual([]);
-  });
-
-  it('As a landing page offline from the shared store, I read my recent names from this origin and get the stored ones', () => {
-    // When / Then
-    expect(getRecentLabels(storageWith('["myapp","test"]'))).toEqual(['myapp', 'test']);
-  });
-
-  it('As a landing page offline from the shared store, I read my recent names from this origin and get at most 8', () => {
-    // When
-    const labels = Array.from({ length: 20 }, (_, i) => `label${String(i)}`);
-
-    // Then
-    expect(getRecentLabels(storageWith(JSON.stringify(labels)))).toHaveLength(8);
-  });
-
-  it('As a landing page offline from the shared store, I read my recent names from this origin and get none from a value that is not JSON', () => {
-    // When / Then
-    expect(getRecentLabels(storageWith('not-json'))).toEqual([]);
-  });
-
-  it('As a landing page offline from the shared store, I read my recent names from this origin and get none from JSON that is not a list', () => {
-    // When / Then
-    expect(getRecentLabels(storageWith('{"foo":"bar"}'))).toEqual([]);
-  });
-});
 
 const NO_MANIFESTS = { root: null, app: null };
 const ROOT = '{"$v":1,"displayName":"DOOM","description":"","icon":{"cid":"bafk","format":"png"}}';

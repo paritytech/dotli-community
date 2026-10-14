@@ -3,10 +3,10 @@
 
 // Each ends the load, since nothing can be served without a Service Worker controller.
 
-import { TIMEOUTS } from '@dotli/config';
+import { SANDBOX_TIMEOUTS } from './timeouts.js';
 
 export const SANDBOX_ERRORS = {
-  SW_NOT_AVAILABLE: `Service Worker not available after ${String(TIMEOUTS.SW_READY / 1000)}s`,
-  SW_ARCHIVE_NOT_ACKNOWLEDGED: `Service worker did not acknowledge archive within ${String(TIMEOUTS.SW_ARCHIVE_ACK / 1000)}s`,
+  SW_NOT_AVAILABLE: `Service Worker not available after ${String(SANDBOX_TIMEOUTS.SW_READY / 1000)}s`,
+  SW_ARCHIVE_NOT_ACKNOWLEDGED: `Service worker did not acknowledge archive within ${String(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK / 1000)}s`,
   SW_ARCHIVE_NOT_SENT: 'Service worker could not be handed the archive',
 } as const;

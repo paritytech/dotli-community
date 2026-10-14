@@ -43,8 +43,15 @@ window.addEventListener('vite:preloadError', event => {
   }
 });
 
-import { log, serializeError } from '@dotli/shared';
-import { TIMEOUTS, getActiveServicesConfig, isValidNetwork, setActiveNetwork, type Network } from '@dotli/config';
+import { deleteIdb, log, serializeError } from '@dotli/shared';
+import {
+  TIMEOUTS,
+  getActiveServicesConfig,
+  isLocalhost,
+  isValidNetwork,
+  setActiveNetwork,
+  type Network,
+} from '@dotli/config';
 
 import { isSharedAuthOriginAllowed, type ProtocolRequestEnvelope } from '@dotli/protocol';
 import { DB_NAME } from '@dotli/storage';
@@ -175,7 +182,7 @@ function getRequestedNetwork(): RequestedNetwork {
 /** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
 async function purgeWorkerCaches(): Promise<void> {
   // Throws rather than continuing, which would boot smoldot against the stale DB.
-  const KEEP = new Set([DB_NAME, 'dotli-sw']);
+  const KEEP = new Set([DB_NAME]);
   if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
     throw new Error(
       'Browser does not expose indexedDB.databases() — cannot fully purge worker caches. ' +
@@ -186,28 +193,7 @@ async function purgeWorkerCaches(): Promise<void> {
   const targets = dbs
     .map(db => db.name)
     .filter((name): name is string => name !== undefined && name !== '' && !KEEP.has(name));
-  await Promise.all(
-    targets.map(
-      name =>
-        new Promise<void>((resolve, reject) => {
-          const req = indexedDB.deleteDatabase(name);
-          req.onsuccess = () => {
-            resolve();
-          };
-          req.onerror = () => {
-            reject(
-              new Error(
-                `Failed to delete IDB ${name}: ${req.error?.name ?? 'unknown'}`,
-                req.error ? { cause: req.error } : undefined,
-              ),
-            );
-          };
-          req.onblocked = () => {
-            reject(new Error(`Delete of IDB ${name} blocked by another connection`));
-          };
-        }),
-    ),
-  );
+  await Promise.all(targets.map(name => deleteIdb(indexedDB, name)));
   log.event('Worker caches purged', { flow: 'protocol', databases: targets.length });
 }
 
@@ -349,7 +335,7 @@ async function initDirectMode(): Promise<void> {
   const lightClient = provider.createLightClient(
     provider.lightClientDeps(
       readSessionTuning(() => sessionStorage),
-      window.location.hostname,
+      isLocalhost,
     ),
   );
   const service = startLightClientService({

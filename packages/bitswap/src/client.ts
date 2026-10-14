@@ -5,12 +5,11 @@
 
 import { isResponse } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
-import { hexToBytes } from '@noble/hashes/utils.js';
 import { CHAIN_HALTED_ERROR_DATA } from '@dotli/chains';
 import type { RemoteChainProvider } from '@dotli/protocol';
-import { createAsyncTaskPool, log, serializeError } from '@dotli/shared';
+import { createAsyncTaskPool, fromHex, log, named, serializeError } from '@dotli/shared';
 
-import { BITSWAP_ERRORS, named } from './errors.js';
+import { BITSWAP_ERRORS } from './errors.js';
 
 // `bitswap_v1_get` error codes. Anything else, an invalid CID included, is terminal.
 const ERR_FAIL = -32810;
@@ -82,9 +81,10 @@ function errorCode(err: unknown): number | null {
 }
 
 function abortError(cid: string, cause?: unknown): Error {
-  const err = new Error(`bitswap_v1_get(${cid}): aborted`, cause === undefined ? undefined : { cause });
-  err.name = ABORT_ERROR_NAME;
-  return err;
+  return named(
+    new Error(`bitswap_v1_get(${cid}): aborted`, cause === undefined ? undefined : { cause }),
+    ABORT_ERROR_NAME,
+  );
 }
 
 export function createBitswapClient({ provider }: BitswapClientDeps): BitswapClient {
@@ -139,7 +139,7 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
         }
         // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
         const hex = message.result;
-        entry.resolve(hexToBytes(hex.startsWith('0x') ? hex.slice(2) : hex));
+        entry.resolve(fromHex(hex));
       },
       reason => {
         // The next attempt redials. Requests the halt never answered are rejected here, and a halt from a replaced

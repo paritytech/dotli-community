@@ -37,7 +37,7 @@ Helpers from `@config/eslint/vite`:
 - `importBans(bans, within?)`: bans imports that cross a layer, optionally only in some files.
 - `onlyAllowedScopes(allowed, message)`: refuses every `@dotli/*`, `@config/*` and `@parity/*` import but `allowed`.
 - `dynamicImportBan(pattern, message)`: refuses `import()` of a matching module.
-- `fixedServicesConfigOnly(files)`: limits those files to the fixed services part of the configuration.
+- `fixedConfigOnly`: a ban for `importBans` that limits a zone of files to the configuration's fixed entry.
 - `restrictedSyntax`: the shared syntax bans, for a package that adds its own `no-restricted-syntax` rule.
 
 Each package re-exports a config from its own lint config:

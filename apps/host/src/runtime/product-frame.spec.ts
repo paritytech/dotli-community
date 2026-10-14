@@ -6,10 +6,9 @@ import { encodeWireMessage, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
-import { bindCaptureSink } from '@dotli/metrics';
 import { createSyncStore } from '@dotli/shared';
 import { createCoreAuthCommands } from './core-login.js';
-import type { DotliAuthState } from './host-callbacks/AuthState.js';
+import type { DotliAuthState } from './session/auth-state.js';
 import { schedulePendingReset } from './pending-reset.js';
 import {
   createProductFrame,
@@ -53,7 +52,8 @@ interface Harness extends FakePageCore {
   hosts: FakeIframeHost[];
   /** The hosts not yet disposed, oldest first. */
   onScreen(): FakeIframeHost[];
-  statuses: ProductFrameStatus[];
+  /** Every status the frame showed after the `idle` it shows as it is built, in order. */
+  statuses(): ProductFrameStatus[];
   /** Holds the next frame until the returned release, after its render read the permission policy. */
   holdNextFrame(): () => void;
   /** How many frames were asked for, held or not. */
@@ -134,7 +134,13 @@ function harness(
         permissionListeners.delete(listener);
       };
     },
-    view: frameView.view,
+    view: {
+      ...frameView.view,
+      showStatus: status => {
+        frameView.view.showStatus(status);
+        fakes.changes.notify();
+      },
+    },
     notify: () => undefined,
     page: {
       location: () => location,
@@ -142,17 +148,12 @@ function harness(
     },
     ...overrides,
   });
-  const statuses: ProductFrameStatus[] = [];
-  frame.subscribeStatus(status => {
-    statuses.push(status);
-    fakes.changes.notify();
-  });
   return {
     ...fakes,
     frame,
     hosts,
     onScreen: () => hosts.filter(host => host.dispose.mock.calls.length === 0),
-    statuses,
+    statuses: () => frameView.statuses.slice(1),
     holdNextFrame() {
       const gate = Promise.withResolvers<undefined>();
       held = gate.promise;
@@ -199,7 +200,7 @@ function crash(connection: FakeCoreProvider): void {
 /** Answers the connection the render on a replacement core asks for, and waits until the product is back on screen. */
 async function reconnect(fakes: Harness, connection: number): Promise<FakeCoreProvider> {
   const provider = await answerConnection(fakes, connection);
-  await fakes.changes.until(() => fakes.frame.getStatus() === 'connected');
+  await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected');
   return provider;
 }
 
@@ -275,7 +276,7 @@ describe('product frame renders', () => {
     await fakes.changes.until(() => (firstHost?.dispose.mock.calls.length ?? 0) === 1);
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.frame.getStatus()).toBe('connected');
+    expect(frameView.statuses.at(-1)).toBe('connected');
     expect(fakes.onScreen()).toHaveLength(1);
     expect(fakes.onScreen()[0]?.options.iframeUrl).toBe('https://second.example/app');
   });
@@ -456,33 +457,14 @@ describe('product frame status', () => {
     const rendered = fakes.frame.render(iframeProduct('product'));
 
     // Then
-    expect(fakes.frame.getStatus()).toBe('connecting');
+    expect(frameView.statuses.at(-1)).toBe('connecting');
 
     // When
     await answerConnection(fakes, 0);
     await rendered;
 
     // Then
-    expect(fakes.statuses).toEqual(['connecting', 'connected']);
-  });
-
-  it('As a browser test, I read each status on the product mount as the frame publishes it', async () => {
-    // Given
-    const fakes = harness();
-    const seen = [frameView.statuses.at(-1)];
-    fakes.frame.subscribeStatus(() => {
-      seen.push(frameView.statuses.at(-1));
-    });
-    const rendered = fakes.frame.render(subdomainProduct('product'));
-    const dead = await answerConnection(fakes, 0);
-    await rendered;
-
-    // When
-    crash(dead);
-    await reconnect(fakes, 1);
-
-    // Then
-    expect(seen).toEqual(['idle', 'connecting', 'connected', 'lost', 'connecting', 'connected']);
+    expect(fakes.statuses()).toEqual(['connecting', 'connected']);
   });
 
   it('As the shell, a render whose core never boots fails to me and the frame reports failed', async () => {
@@ -496,7 +478,7 @@ describe('product frame status', () => {
 
     // Then
     await expect(rendered).rejects.toBe(failure);
-    expect(fakes.statuses).toEqual(['connecting', 'failed']);
+    expect(fakes.statuses()).toEqual(['connecting', 'failed']);
   });
 
   it('As a dApp user whose frame code fails to load, the render fails and lets go of its core', async () => {
@@ -512,7 +494,7 @@ describe('product frame status', () => {
     await expect(rendered).rejects.toBe(failure);
     expect(connection.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.frame.getStatus()).toBe('failed');
+    expect(frameView.statuses.at(-1)).toBe('failed');
   });
 
   it('As the shell, a render that a newer one superseded settles without an error', async () => {
@@ -528,92 +510,7 @@ describe('product frame status', () => {
     await expect(first).resolves.toBeUndefined();
     await answerConnection(fakes, 1);
     await second;
-    expect(fakes.frame.getStatus()).toBe('connected');
-  });
-
-  it('As the shell, a status listener that renders again hears every change in order', async () => {
-    // Given: a listener that renders again once a render failed
-    const fakes = harness();
-    fakes.nextBoots.push(() => new Error('worker fatal error: boot'));
-    const heard: ProductFrameStatus[] = [];
-    const retries: Promise<void>[] = [];
-    fakes.frame.subscribeStatus(status => {
-      if (status === 'failed') {
-        retries.push(fakes.frame.render(subdomainProduct('product')));
-      }
-    });
-    fakes.frame.subscribeStatus(status => {
-      heard.push(status);
-    });
-
-    // When
-    await expect(fakes.frame.render(subdomainProduct('product'))).rejects.toThrow('boot');
-    await answerConnection(fakes, 0);
-    await Promise.all(retries);
-
-    // Then
-    expect(heard).toEqual(['connecting', 'failed', 'connecting', 'connected']);
-  });
-
-  it('As the shell, a listener subscribed during a status delivery hears only the changes after it', async () => {
-    // Given: a listener that subscribes another and renders again once a render failed
-    const fakes = harness();
-    fakes.nextBoots.push(() => new Error('worker fatal error: boot'));
-    const late: ProductFrameStatus[] = [];
-    const retries: Promise<void>[] = [];
-    fakes.frame.subscribeStatus(status => {
-      if (status === 'failed') {
-        fakes.frame.subscribeStatus(next => {
-          late.push(next);
-        });
-        retries.push(fakes.frame.render(subdomainProduct('product')));
-      }
-    });
-
-    // When
-    await expect(fakes.frame.render(subdomainProduct('product'))).rejects.toThrow('boot');
-    await answerConnection(fakes, 0);
-    await Promise.all(retries);
-
-    // Then
-    expect(late).toEqual(['connecting', 'connected']);
-  });
-  it('As the shell, a status listener that throws is reported and counted, and the next listener still hears the change', async () => {
-    // Given a first listener that throws on every change, and a reporting pipeline that records captures and counts
-    const captures: { step: string; tags: Record<string, string> | undefined }[] = [];
-    onTestFinished(
-      bindCaptureSink({
-        exception: (_err, ctx) => {
-          captures.push({ step: ctx.step, tags: ctx.tags });
-        },
-        expected: () => undefined,
-      }),
-    );
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const fakes = harness();
-    fakes.frame.subscribeStatus(() => {
-      throw new Error('listener broke');
-    });
-    const heard: ProductFrameStatus[] = [];
-    fakes.frame.subscribeStatus(status => {
-      heard.push(status);
-    });
-
-    // When
-    const rendered = fakes.frame.render(iframeProduct('product'));
-    await answerConnection(fakes, 0);
-    await rendered;
-
-    // Then the next listener heard each change, and each throw was captured once and counted once
-    expect(heard).toEqual(['connecting', 'connected']);
-    expect(captures).toEqual([
-      { step: 'product_frame_status_listener', tags: { status: 'connecting' } },
-      { step: 'product_frame_status_listener', tags: { status: 'connected' } },
-    ]);
-    expect(metrics.counted('product.status_listener')).toEqual([
-      { outcome: 'error', reason: 'Error' },
-      { outcome: 'error', reason: 'Error' },
-    ]);
+    expect(frameView.statuses.at(-1)).toBe('connected');
   });
 });
 
@@ -697,7 +594,7 @@ describe('product frame rebuilds', () => {
       await vi.advanceTimersByTimeAsync(5_000);
 
       // Then
-      expect(fakes.frame.getStatus()).toBe('connected');
+      expect(frameView.statuses.at(-1)).toBe('connected');
       expect(fakes.connections).toHaveLength(2);
     } finally {
       vi.useRealTimers();
@@ -718,13 +615,13 @@ describe('product frame rebuilds', () => {
       // When the old frame asks again, then the new frame comes up and asks too
       askToRecover(fakes);
       release();
-      await fakes.changes.until(() => fakes.frame.getStatus() === 'connected' && fakes.hosts.length === 2);
+      await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected' && fakes.hosts.length === 2);
       askToRecover(fakes, 1);
       await vi.advanceTimersByTimeAsync(5_000);
 
       // Then the newer ask rebuilds the frame now on screen
       await answerConnection(fakes, 2);
-      await fakes.changes.until(() => fakes.hosts.length === 3 && fakes.frame.getStatus() === 'connected');
+      await fakes.changes.until(() => fakes.hosts.length === 3 && frameView.statuses.at(-1) === 'connected');
       await vi.advanceTimersByTimeAsync(10_000);
       expect(fakes.connections).toHaveLength(3);
     } finally {
@@ -743,7 +640,7 @@ describe('product frame rebuilds', () => {
     window.dispatchEvent(sandboxMessage({ type: 'dotli:sandbox-recover' }, other.origin));
 
     // Then
-    expect(fakes.frame.getStatus()).toBe('connected');
+    expect(frameView.statuses.at(-1)).toBe('connected');
     expect(fakes.connections).toHaveLength(1);
   });
 
@@ -760,7 +657,7 @@ describe('product frame rebuilds', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       // Then
-      expect(fakes.frame.getStatus()).toBe('connected');
+      expect(frameView.statuses.at(-1)).toBe('connected');
       expect(fakes.framesAsked()).toBe(1);
       expect(fakes.connections).toHaveLength(1);
     } finally {
@@ -776,14 +673,14 @@ describe('product frame rebuilds', () => {
       await settle(fakes, subdomainProduct('looping'), 0);
       askToRecover(fakes);
       await answerConnection(fakes, 1);
-      await fakes.changes.until(() => fakes.frame.getStatus() === 'connected' && fakes.hosts.length === 2);
+      await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected' && fakes.hosts.length === 2);
 
       // When the rebuilt sandbox asks again within the interval
       askToRecover(fakes, 1);
       await Promise.resolve();
 
       // Then it waits
-      expect(fakes.frame.getStatus()).toBe('connected');
+      expect(frameView.statuses.at(-1)).toBe('connected');
       expect(fakes.connections).toHaveLength(2);
 
       // When the interval has passed
@@ -810,7 +707,7 @@ describe('product frame rebuilds', () => {
         askToRecover(fakes);
       }
       await answerConnection(fakes, 1);
-      await fakes.changes.until(() => fakes.frame.getStatus() === 'failed');
+      await fakes.changes.until(() => frameView.statuses.at(-1) === 'failed');
       await vi.advanceTimersByTimeAsync(5_000);
       await answerConnection(fakes, 2);
       await fakes.changes.until(() => fakes.framesAsked() === 3);
@@ -818,7 +715,7 @@ describe('product frame rebuilds', () => {
 
       // Then
       expect(fakes.connections).toHaveLength(3);
-      expect(fakes.statuses).toEqual(['connecting', 'connected', 'connecting', 'failed', 'connecting', 'failed']);
+      expect(fakes.statuses()).toEqual(['connecting', 'connected', 'connecting', 'failed', 'connecting', 'failed']);
     } finally {
       vi.useRealTimers();
     }
@@ -846,7 +743,7 @@ describe('product frame rebuilds', () => {
     fakes.announce({ label: 'notifications', permissions: ['Notifications'], device: false });
 
     // Then
-    expect(fakes.frame.getStatus()).toBe('connected');
+    expect(frameView.statuses.at(-1)).toBe('connected');
     expect(fakes.connections).toHaveLength(1);
   });
 
@@ -911,7 +808,7 @@ describe('product frame and a device grant during a rebuild', () => {
 
     // Then the frame is built once more, so its policy is read after the grant
     await answerConnection(fakes, 2);
-    await fakes.changes.until(() => fakes.frame.getStatus() === 'connected' && fakes.framesAsked() === 3);
+    await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected' && fakes.framesAsked() === 3);
     expect(fakes.onScreen()).toHaveLength(1);
     expect(fakes.onScreen()[0]).toBe(fakes.hosts.at(-1));
     expect(fakes.hosts[1]?.dispose).toHaveBeenCalled();
@@ -931,7 +828,7 @@ describe('product frame and a device grant during a rebuild', () => {
     release();
 
     // Then no further frame is asked for
-    await fakes.changes.until(() => fakes.frame.getStatus() === 'connected');
+    await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected');
     expect(fakes.framesAsked()).toBe(2);
   });
 
@@ -945,7 +842,7 @@ describe('product frame and a device grant during a rebuild', () => {
 
     // Then no frame is asked for
     expect(fakes.framesAsked()).toBe(1);
-    expect(fakes.frame.getStatus()).toBe('connected');
+    expect(frameView.statuses.at(-1)).toBe('connected');
   });
 });
 
@@ -1027,8 +924,8 @@ describe('product frame and the page core', () => {
     await answerConnection(fakes, 1);
 
     // Then: the old frame and its dead core go once the new frame is up
-    await fakes.changes.until(() => fakes.frame.getStatus() === 'connected');
-    expect(fakes.statuses).toEqual(['connecting', 'connected', 'lost', 'connecting', 'connected']);
+    await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected');
+    expect(fakes.statuses()).toEqual(['connecting', 'connected', 'lost', 'connecting', 'connected']);
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
@@ -1082,8 +979,8 @@ describe('product frame and the page core', () => {
     dead.closeListener?.(new Error('worker fatal error: boom'));
 
     // Then
-    await fakes.changes.until(() => fakes.frame.getStatus() === 'failed');
-    expect(fakes.statuses).toEqual(['connecting', 'connected', 'lost', 'connecting', 'failed']);
+    await fakes.changes.until(() => frameView.statuses.at(-1) === 'failed');
+    expect(fakes.statuses()).toEqual(['connecting', 'connected', 'lost', 'connecting', 'failed']);
     expect(fakes.connections).toHaveLength(1);
   });
 
@@ -1095,15 +992,15 @@ describe('product frame and the page core', () => {
     await rendered;
     fakes.nextBoots.push(() => new Error('worker fatal error: redial'));
     dead.closeListener?.(new Error('worker fatal error: boom'));
-    await fakes.changes.until(() => fakes.frame.getStatus() === 'failed');
+    await fakes.changes.until(() => frameView.statuses.at(-1) === 'failed');
     fakes.core.setProduct({ label: 'second' });
 
     // When
     await settle(fakes, subdomainProduct('second'), 1);
 
     // Then
-    expect(fakes.frame.getStatus()).toBe('connected');
-    expect(fakes.statuses).toEqual([
+    expect(frameView.statuses.at(-1)).toBe('connected');
+    expect(fakes.statuses()).toEqual([
       'connecting',
       'connected',
       'lost',
@@ -1129,8 +1026,8 @@ describe('product frame and the page core', () => {
     await answerConnection(fakes, 1);
 
     // Then the product ends connected on the replacement core
-    await fakes.changes.until(() => fakes.frame.getStatus() === 'connected');
-    expect(fakes.statuses).toEqual(['connecting', 'lost', 'connecting', 'connected']);
+    await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected');
+    expect(fakes.statuses()).toEqual(['connecting', 'lost', 'connecting', 'connected']);
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
@@ -1149,9 +1046,9 @@ describe('product frame and the page core', () => {
 
     // Then the product ends connected on the local core, and the stale core goes
     await fakes.changes.until(
-      () => fakes.frame.getStatus() === 'connected' && (fakes.runtimes[0]?.dispose.mock.calls.length ?? 0) === 1,
+      () => frameView.statuses.at(-1) === 'connected' && (fakes.runtimes[0]?.dispose.mock.calls.length ?? 0) === 1,
     );
-    expect(fakes.statuses).toEqual(['connecting', 'connected', 'lost', 'connecting', 'connected']);
+    expect(fakes.statuses()).toEqual(['connecting', 'connected', 'lost', 'connecting', 'connected']);
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
     expect(fakes.onScreen()).toHaveLength(1);
@@ -1168,9 +1065,8 @@ describe('product frame and the page core', () => {
     await expect(fakes.core.acquire()).rejects.toThrow('boot');
 
     // Then
-    expect(fakes.core.getCoreStatus()).toBe('faulted');
-    expect(fakes.frame.getStatus()).toBe('connected');
-    expect(fakes.statuses).toEqual(['connecting', 'connected']);
+    expect(frameView.statuses.at(-1)).toBe('connected');
+    expect(fakes.statuses()).toEqual(['connecting', 'connected']);
   });
 
   it('As a dApp user whose core refuses another connection, my product is rendered again on the replacement core', async () => {
@@ -1188,8 +1084,8 @@ describe('product frame and the page core', () => {
     await answerConnection(fakes, 2);
 
     // Then
-    await fakes.changes.until(() => fakes.frame.getStatus() === 'connected');
-    expect(fakes.statuses).toEqual(['connecting', 'connected', 'lost', 'connecting', 'connected']);
+    await fakes.changes.until(() => frameView.statuses.at(-1) === 'connected');
+    expect(fakes.statuses()).toEqual(['connecting', 'connected', 'lost', 'connecting', 'connected']);
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
   });
@@ -1210,7 +1106,7 @@ describe('product frame and the page core', () => {
       await vi.advanceTimersByTimeAsync(4_000);
 
       // Then the next render waits out the interval
-      expect(fakes.frame.getStatus()).toBe('lost');
+      expect(frameView.statuses.at(-1)).toBe('lost');
       expect(fakes.connections).toHaveLength(2);
 
       // When the interval has passed and the third core dies as well
@@ -1219,9 +1115,9 @@ describe('product frame and the page core', () => {
       await vi.advanceTimersByTimeAsync(60_000);
 
       // Then the frame gives up and reports failed
-      expect(fakes.frame.getStatus()).toBe('failed');
+      expect(frameView.statuses.at(-1)).toBe('failed');
       expect(fakes.connections).toHaveLength(3);
-      expect(fakes.statuses).toEqual([
+      expect(fakes.statuses()).toEqual([
         'connecting',
         'connected',
         'lost',
@@ -1260,8 +1156,8 @@ describe('product frame and the page core', () => {
       await reconnect(fakes, 4);
 
       // Then the product is back on screen
-      expect(fakes.frame.getStatus()).toBe('connected');
-      expect(fakes.statuses).not.toContain('failed');
+      expect(frameView.statuses.at(-1)).toBe('connected');
+      expect(fakes.statuses()).not.toContain('failed');
       expect(fakes.connections).toHaveLength(5);
     } finally {
       vi.useRealTimers();
@@ -1294,8 +1190,8 @@ describe('product frame and the page core', () => {
       await reconnect(fakes, 5);
 
       // Then the product is back on screen
-      expect(fakes.frame.getStatus()).toBe('connected');
-      expect(fakes.statuses).not.toContain('failed');
+      expect(frameView.statuses.at(-1)).toBe('connected');
+      expect(fakes.statuses()).not.toContain('failed');
       expect(fakes.onScreen()[0]?.options.iframeUrl).toContain('cid=fresh-cid');
     } finally {
       vi.useRealTimers();
@@ -1318,7 +1214,7 @@ describe('product frame and the page core', () => {
     await newer;
 
     // Then the newer render is on screen, connected to the replacement core
-    expect(fakes.frame.getStatus()).toBe('connected');
+    expect(frameView.statuses.at(-1)).toBe('connected');
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);

@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveChainRoles } from '@dotli/config';
 import { createNetworkMonitor, type NetworkMonitor } from './network-monitor.js';
-import { initNetworkHealth as initPageNetworkHealth, networkHealthStore } from './network-health.js';
+import { startNetworkHealth as initPageNetworkHealth, networkHealthStore } from './network-health.js';
 import { FakePage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
 /** Every chain is connectable, so only what the monitor hears decides the health. */
@@ -28,7 +28,7 @@ let stop: (() => void) | null = null;
 let page: FakePage;
 
 /** The health over a page whose visibility and connectivity the test sets. */
-function initNetworkHealth(on: Parameters<typeof initPageNetworkHealth>[0]): () => void {
+function startNetworkHealth(on: Parameters<typeof initPageNetworkHealth>[0]): () => void {
   return initPageNetworkHealth(on, {
     isHidden: () => page.hidden,
     isOnline: () => page.onLine,
@@ -54,7 +54,7 @@ afterEach(() => {
 describe('The network health store', () => {
   it('As a user, I see syncing until every chain in use delivers a block, then ok', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
 
     // When
     useAll();
@@ -71,7 +71,7 @@ describe('The network health store', () => {
 
   it('As a user whose chains stop producing blocks, I see degraded without any new event', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
     useAll();
     blockAll(100);
     const slowest = Math.max(...getActiveChainRoles().map(role => role.blockTimeMs));
@@ -85,7 +85,7 @@ describe('The network health store', () => {
 
   it('As a user, the health rechecks once, when the first chain would be overdue, and a block moves that one recheck', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
     useAll();
 
     // Then: before any block nothing can fall overdue
@@ -108,7 +108,7 @@ describe('The network health store', () => {
 
   it('As a user in another tab, the health is not rechecked until the tab shows again', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
     useAll();
     blockAll(100);
     const slowest = Math.max(...getActiveChainRoles().map(role => role.blockTimeMs));
@@ -130,7 +130,7 @@ describe('The network health store', () => {
 
   it('As a user going offline and back, I see it at once, even before any chain exists', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
 
     // When
     page.setOnline(false);
@@ -150,7 +150,7 @@ describe('The network health store', () => {
     page.setOnline(false);
 
     // When
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
 
     // Then: the capsule takes the health's tone
     expect(networkHealthStore.get()).toBe('err');
@@ -158,7 +158,7 @@ describe('The network health store', () => {
 
   it('As a user before any app holds a chain, I see quiet', () => {
     // When
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
 
     // Then
     expect(networkHealthStore.get()).toBe('quiet');
@@ -166,7 +166,7 @@ describe('The network health store', () => {
 
   it('As a user loading a product, the frame syncing a chain shows syncing, and ready with nothing in use shows quiet', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
 
     // When
     monitor.recordChainPhase('relay', 'syncing');
@@ -183,7 +183,7 @@ describe('The network health store', () => {
 
   it('As a user, a frame chain that was ready and drops back to connecting shows unstable', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
     monitor.recordChainPhase('relay', 'ready');
 
     // When
@@ -207,7 +207,7 @@ describe('The network health store', () => {
         };
       },
     };
-    stop = initNetworkHealth(counted);
+    stop = startNetworkHealth(counted);
     expect(listening.size).toBe(1);
 
     // When
@@ -223,7 +223,7 @@ describe('The network health store', () => {
 
   it('As a user whose only live chain is released, an armed recheck never turns the indicator unstable', () => {
     // Given
-    stop = initNetworkHealth(monitor);
+    stop = startNetworkHealth(monitor);
     monitor.recordChainActivity({ genesisHash: relay(), consumers: 1, status: 'connected', following: true });
     monitor.recordBestBlock(relay(), 100);
     expect(networkHealthStore.get()).toBe('ok');

@@ -5,26 +5,26 @@
 // Product storage keys are opaque because the core owns product namespacing.
 
 import type { RequiredHostCallbacks } from '@parity/truapi-host';
-import { createNavigateTo } from './OpenUrl.js';
-import { createNotificationAdapters, type NotificationScheduler } from './PushNotification.js';
-import { createPromptPermission } from './PromptPermission.js';
+import { createNavigateTo } from './open-url.js';
+import { createNotificationAdapters, type NotificationScheduler } from './push-notification.js';
+import { createPromptPermission } from './prompt-permission.js';
 import {
   createLocalStorageRead,
   createLocalStorageWrite,
   createLocalStorageClear,
   createLocalStorageSubscribe,
-} from './LocalStorage.js';
-import { createProductOperations } from './ProductOperations.js';
-import { createPreimageAdapters } from './Preimage.js';
-import { createChainConnect } from './Chain.js';
-import { createFeatureSupported } from './FeatureSupported.js';
-import { createSupportedChains } from './SupportedChains.js';
-import { createThemeSubscribe } from './Theme.js';
-import { createLocaleSubscribe } from './Locale.js';
-import { createAuthStateChanged } from './AuthState.js';
-import { createChatPlatform } from './Chat.js';
-import { coreStorage } from './core-storage.js';
-import { createUserConfirmationAdapters } from './UserConfirmation.js';
+} from './local-storage.js';
+import { createProductOperations } from './product-operations.js';
+import { createPreimageAdapters } from './preimage.js';
+import { createChainConnect } from './chain.js';
+import { createFeatureSupported } from './feature-supported.js';
+import { createSupportedChains } from './supported-chains.js';
+import { createThemeSubscribe } from './theme.js';
+import { createLocaleSubscribe } from './locale.js';
+import { createAuthStateChanged } from '../session/auth-state.js';
+import { createChatPlatform } from './chat.js';
+import { coreStorage } from '../session/core-storage.js';
+import { createUserConfirmationAdapters } from './user-confirmation.js';
 import type { BlockingModalScope } from '../blocking-modal-queue.js';
 import type { HostPrompts } from '../host-prompts.js';
 

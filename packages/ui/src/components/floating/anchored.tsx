@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, Errored, onSettled, Show, untrack, useContext, type Accessor } from 'solid-js';
+import { createEffect, createSignal, onSettled, Show, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport } from '../../page/phone-viewport.js';
 import { preloadWhenIdle } from '../../page/idle.js';
 import { focusLostOrInside, focusTrigger } from '../focus.js';
 import { anchorName } from './anchor-name.js';
-import { Broken } from './broken.js';
+import { RootBoundary } from '../../mount/root-boundary.js';
 import type { CloseReason } from './close-reason.js';
 import { AnchorBoundary } from './layer-context.js';
 
@@ -182,9 +182,9 @@ export function createContentPreload(content: () => (() => Promise<unknown>) | u
 export function SurfaceSlot(props: { state: Anchored; children: JSX.Element }): JSX.Element {
   return (
     <Show when={props.state.mounted()}>
-      <Errored fallback={err => <Broken root={`popover:${props.state.id}`} error={err()} fail={props.state.fail} />}>
+      <RootBoundary root={`popover:${props.state.id}`} onBroken={props.state.fail}>
         {props.children}
-      </Errored>
+      </RootBoundary>
     </Show>
   );
 }

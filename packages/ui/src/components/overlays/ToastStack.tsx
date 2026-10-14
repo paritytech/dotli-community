@@ -1,22 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, For, Show, untrack, type Component } from 'solid-js';
+import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { dismissAllToasts, setToastsExpanded, toastsStore } from '../../page/state/toasts.js';
 import { useStore } from '../use-store.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
-import { ToastCard, type ToastCardProps } from './ToastCard.js';
+import { ToastCard } from './ToastCard.js';
 import { pileDepths, scrollsToNewest, visibleToasts } from './toast-pile.js';
 import s from './ToastStack.module.css';
 
-export interface ToastStackProps {
-  /** Draws each toast. Read once, and without one the stack's own card. */
-  card?: Component<ToastCardProps>;
-}
-
-export function ToastStack(props: ToastStackProps): JSX.Element {
-  const Card = untrack(() => props.card) ?? ToastCard;
+export function ToastStack(): JSX.Element {
   const items = useStore(toastsStore, state => state.items);
   const expanded = useStore(toastsStore, state => state.expanded);
   let root: HTMLDivElement | undefined;
@@ -93,7 +87,7 @@ export function ToastStack(props: ToastStackProps): JSX.Element {
         >
           <For each={items()} keyed={t => t.id}>
             {entry => (
-              <Card
+              <ToastCard
                 entry={entry()}
                 hidden={!depths().has(entry().id)}
                 depth={depths().get(entry().id) ?? (expanded() ? 0 : visible().length)}

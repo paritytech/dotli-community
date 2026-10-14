@@ -21,8 +21,8 @@ import { captureException, m, recordExpected, spans as S } from '@dotli/metrics'
 import { log, type ReadableStore } from '@dotli/shared';
 import { createAuthCommands, type AuthCommands } from './auth-commands.js';
 import { wrapCoreProviderForDebug } from './core-connection.js';
-import type { DotliAuthState } from './host-callbacks/AuthState.js';
-import type { SessionState } from './host-callbacks/session-state.js';
+import type { DotliAuthState } from './session/auth-state.js';
+import type { SessionState } from './session/session-state.js';
 import { LoginRequestError } from './login-request-error.js';
 import type { PageCore } from './page-core.js';
 import type { WalletMode } from './state/wallet-mode.js';

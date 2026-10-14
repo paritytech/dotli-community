@@ -16,9 +16,9 @@ flowchart LR
   host[host and runtime] -- emit --> bus[debug bus] -- listen --> panel[debug panel]
 ```
 
-- The bus is the single channel. It creates no emitter until buffering is enabled, so sessions that never open debug
-  mode pay nothing, and `emit` does nothing before then. Boot events are held until the first listener attaches, then
-  replayed once. A throwing receiver is reported and the others still get the event.
+- The bus is the single channel. It is off until buffering is enabled, so sessions that never open debug mode pay
+  nothing, and `emit` does nothing before then. Boot events are held until the first listener attaches, then replayed
+  once. A throwing receiver is reported and the others still get the event.
 - Debug mode reads the URL and session storage through a passed-in page, so its spec runs under Node.
 
 ## Public API

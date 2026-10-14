@@ -4,7 +4,7 @@
 // The screens a failed load ends on, and what their buttons do. The failure is already reported when it gets here.
 
 import { withActiveTld, type Backend } from '@dotli/config';
-import { log } from '@dotli/shared';
+import { log, randomId } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { RotateCwIcon, SlidersIcon } from '@dotli/ui/icons';
 import type { ShowErrorPage } from '@dotli/ui';
@@ -81,8 +81,7 @@ export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps):
     deps.emit({
       layer: 'failover',
       event: 'chain_backend',
-      flowId:
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `fail-${String(Date.now())}`,
+      flowId: randomId(),
       timestamp: Date.now(),
       payload: {
         from: backend,
