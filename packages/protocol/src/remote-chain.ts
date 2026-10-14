@@ -4,6 +4,7 @@
 // JSON-RPC connections to the chains the protocol frame runs.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
+import { reportListener } from '@dotli/metrics';
 import { log, serializeError } from '@dotli/shared';
 import { chainHaltedError, type RemoteChainHalt } from '@dotli/chains';
 import { ProtocolRequestError } from './errors.js';
@@ -36,33 +37,30 @@ function buildJsonRpcError(
   };
 }
 
-/** A consumer callback that throws is logged, not propagated. */
-function guardConsumer(connectionId: string, label: string, call: () => void): void {
+/** A consumer callback that throws is reported, not propagated, so the other consumers still hear the halt. */
+function guardConsumer(label: 'halt' | 'message', call: () => void): void {
   try {
     call();
   } catch (err: unknown) {
-    log.error(
-      `[dot.li protocol] ${label} threw (conn=${connectionId.slice(-8)}):`,
-      err instanceof Error ? err.message : err,
-    );
+    reportListener('protocol', `remote_chain.${label}`)(err);
   }
 }
 
 /** Unsent messages get the retryable halt error on a chain halt, and a plain close error on a dead frame. */
-function haltRemote(connectionId: string, connection: RemoteChainConnection, reason: RemoteChainHalt): void {
+function haltRemote(connection: RemoteChainConnection, reason: RemoteChainHalt): void {
   for (const message of connection.pendingMessages) {
     const errResponse = buildJsonRpcError(
       message,
       reason === 'chain' ? chainHaltedError() : 'Chain connection is closed',
     );
     if (errResponse !== null) {
-      guardConsumer(connectionId, 'onMessage', () => {
+      guardConsumer('message', () => {
         connection.onMessage(errResponse);
       });
     }
   }
   connection.pendingMessages = [];
-  guardConsumer(connectionId, 'onHalt', () => {
+  guardConsumer('halt', () => {
     connection.onHalt?.(reason);
   });
 }
@@ -110,7 +108,7 @@ export function createRemoteChains({ frame, rpc }: RemoteChainsDeps) {
         );
         return;
       }
-      guardConsumer(msg.connectionId, 'onMessage', () => {
+      guardConsumer('message', () => {
         conn.onMessage(parsed);
       });
       return;
@@ -119,7 +117,7 @@ export function createRemoteChains({ frame, rpc }: RemoteChainsDeps) {
       const halted = chainConnections.get(msg.connectionId);
       chainConnections.delete(msg.connectionId);
       if (halted !== undefined) {
-        haltRemote(msg.connectionId, halted, 'chain');
+        haltRemote(halted, 'chain');
       }
     }
   });
@@ -131,7 +129,7 @@ export function createRemoteChains({ frame, rpc }: RemoteChainsDeps) {
     const orphaned = [...chainConnections].filter(([, connection]) => connection.openedAfterLosses < lossCount);
     for (const [id, connection] of orphaned) {
       chainConnections.delete(id);
-      haltRemote(id, connection, 'frame');
+      haltRemote(connection, 'frame');
     }
   });
 
@@ -209,7 +207,7 @@ export function createRemoteChains({ frame, rpc }: RemoteChainsDeps) {
           // the halt is answered at once, not queued and lost.
           log.error('[dot.li protocol] Failed to connect remote chain:', error);
           chainConnections.delete(connectionId);
-          haltRemote(connectionId, remote, 'frame');
+          haltRemote(remote, 'frame');
         });
 
       return {

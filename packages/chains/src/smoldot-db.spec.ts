@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { IDBFactory } from 'fake-indexeddb';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, onTestFinished, vi } from 'vitest';
+import { must } from '@dotli/shared/testing';
 import { createSmoldotDb } from './smoldot-db.js';
 
 const GENESIS = '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd';
@@ -30,27 +31,21 @@ describe('Light-client database', () => {
     // Given
     const factory = new IDBFactory();
     const v1Tab = await holdDatabaseAtV1(factory);
-    const db = createSmoldotDb(factory);
-    expect(db).not.toBeNull();
-
-    try {
-      if (db === null) {
-        throw new Error('expected a database');
-      }
-      // When
-      const started = Date.now();
-      const outcome = await db
-        .save(GENESIS, BLOB)
-        .then(() => 'resolved')
-        .catch((err: unknown) => String(err));
-      const elapsed = Date.now() - started;
-
-      // Then
-      expect(outcome).toContain('blocked');
-      expect(elapsed, 'the new tab should give up straight away, not wait out the timeout').toBeLessThan(1_000);
-    } finally {
+    const db = must(createSmoldotDb(factory), 'database');
+    onTestFinished(() => {
       v1Tab.close();
-    }
+    });
+    // The timeout never runs, so a save that waited it out would never settle and fail by the test's own timeout.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+
+    // When
+    const save = db.save(GENESIS, BLOB);
+
+    // Then
+    await expect(save).rejects.toThrow(/blocked/);
   });
 
   it('As a user of a browser without IndexedDB, my light client starts cold rather than failing', () => {

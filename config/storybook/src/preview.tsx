@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The preview every Storybook shares. A package's own preview adds its stylesheet and anything only it needs.
+// The preview every story gets. The Storybook's own preview adds the stylesheet and the sidebar order.
 
 import { flush, merge } from 'solid-js';
 import type { Preview } from 'storybook-solidjs-vite';

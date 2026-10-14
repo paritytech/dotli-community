@@ -99,6 +99,6 @@ describe('hover tooltip placement', () => {
     const at = placeTooltip({ x: 100, y: 560 }, PANEL, { width: 200, height: HEIGHT }, VIEWPORT_HEIGHT);
 
     // Then
-    expect(at).toEqual({ left: 112, top: 560 + 16 - HEIGHT - 28 });
+    expect(at).toEqual({ left: 112, top: 488 });
   });
 });

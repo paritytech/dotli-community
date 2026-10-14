@@ -5,7 +5,7 @@
 // origin loses its storage on every reload, so the host fetches and keeps the blocks.
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
-import { reportListener } from '@dotli/metrics';
+import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import { createListenerSet, errorName, log, serializeError } from '@dotli/shared';
 
 import { readDagTotal } from './dag-total.js';
@@ -59,6 +59,15 @@ interface ServedBlock {
   from: BlockOrigin;
 }
 
+type RelayStep = 'verify' | 'cache_read' | 'cache_delete' | 'cache_write';
+
+/** A relay step that failed and was worked around, reported so the workaround does not hide it. */
+function reportRelayFailure(step: RelayStep, err: unknown, cid?: string): void {
+  captureException(err, { flow: 'content', step: `relay_${step}`, ...(cid === undefined ? {} : { tags: { cid } }) });
+  log.error(`[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}: ${serializeError(err)}`);
+  m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: errorName(err) ?? 'unknown', step });
+}
+
 function errorCode(err: unknown): number | null {
   const code = err instanceof Error ? (err as { code?: unknown }).code : undefined;
   return typeof code === 'number' ? code : null;
@@ -108,7 +117,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     try {
       return (await deps.verify(cid, bytes)) ? 'match' : 'mismatch';
     } catch (err) {
-      log.warn(`[dot.li bitswap-relay] verifier failed for ${cid}: ${serializeError(err)}`);
+      reportRelayFailure('verify', err, cid);
       return 'unknown';
     }
   }
@@ -118,7 +127,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     try {
       bytes = await store.get(cid);
     } catch (err) {
-      log.warn(`[dot.li bitswap-relay] block cache read failed for ${cid}: ${serializeError(err)}`);
+      reportRelayFailure('cache_read', err);
       return null;
     }
     if (bytes === null) {
@@ -134,7 +143,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     }
     // Corrupted on disk. Dropped so the network copy takes its place.
     void store.delete(cid).catch((err: unknown) => {
-      log.warn(`[dot.li bitswap-relay] block cache delete failed: ${serializeError(err)}`);
+      reportRelayFailure('cache_delete', err);
     });
     return null;
   }
@@ -151,7 +160,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     if (cache !== null && (await check(cid, bytes)) === 'match') {
       // The reply detaches `bytes.buffer` before the IndexedDB write clones it.
       void cache.put(cid, bytes.slice()).catch((err: unknown) => {
-        log.warn(`[dot.li bitswap-relay] block cache write failed: ${serializeError(err)}`);
+        reportRelayFailure('cache_write', err);
       });
     }
     return { bytes, from: 'network' };

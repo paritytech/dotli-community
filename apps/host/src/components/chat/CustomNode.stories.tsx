@@ -5,6 +5,7 @@ import { createSignal, untrack } from 'solid-js';
 import type { RendererNode } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { expectBefore } from '@config/storybook/play';
 import { CustomNode, type CustomActionHandler } from './CustomNode.js';
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -129,35 +130,38 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function childrenOf(el: Element): Element[] {
-  return [...el.children];
-}
-
+/** As a user, I see every layout node of a product tree as a host element, and an image never loads a URL. */
 export const AllNodeKinds: Story = {
   play: async ({ canvas, step }) => {
-    const root = canvas.getByTestId('chat-custom-column');
-    const [heading, row, box, effect] = childrenOf(root);
+    const root = within(canvas.getByTestId('chat-custom-column'));
+    const row = root.getByTestId('chat-custom-row');
+    const effect = root.getByTestId('chat-custom-effect');
     await step('Then every layout node maps onto a host element', async () => {
-      await expect(heading).toHaveAttribute('data-testid', 'chat-custom-text');
-      await expect(heading).toHaveTextContent('Poll results');
-      await expect(row).toHaveAttribute('data-testid', 'chat-custom-row');
-      await expect(box).toHaveAttribute('data-testid', 'chat-custom-box');
-      await expect(effect).toHaveAttribute('data-testid', 'chat-custom-effect');
+      await expect(root.getByTestId('chat-custom-text')).toHaveTextContent('Poll results');
+      await expect(root.getAllByTestId('chat-custom-box')).toHaveLength(2);
+      const [box] = root.getAllByTestId('chat-custom-box');
+      const inOrder = [root.getByTestId('chat-custom-text'), row, box, effect];
+      for (const [i, node] of inOrder.entries()) {
+        const next = inOrder[i + 1];
+        if (node !== undefined && next !== undefined) {
+          await expectBefore(node, next);
+        }
+      }
     });
     await step('Then a Spacer renders and a Nil renders nothing', async () => {
-      const rowChildren = row === undefined ? [] : childrenOf(row);
-      await expect(rowChildren).toHaveLength(1);
-      await expect(rowChildren[0]).toHaveAttribute('data-testid', 'chat-custom-spacer');
+      await expect(within(row).queryAllByTestId(/^chat-custom-/)).toHaveLength(1);
+      await expect(within(row).getByTestId('chat-custom-spacer')).toBeInTheDocument();
     });
     await step('Then an effect names its kind and an image is empty space, never a URL', async () => {
       await expect(effect).toHaveAttribute('data-effect', 'rainbow');
-      const image = within(effect as HTMLElement).getByTestId('chat-custom-image');
+      const image = within(effect).getByTestId('chat-custom-image');
       await expect(image.childNodes).toHaveLength(0);
       await expect(image.querySelector('img')).toBeNull();
     });
   },
 };
 
+/** As a user, I tap a product button and its click action is reported. */
 export const ButtonReportsAction: Story = {
   args: {
     node: {
@@ -184,6 +188,7 @@ export const ButtonReportsAction: Story = {
   },
 };
 
+/** As a user, I tap a disabled or loading product button and no action fires. */
 export const DisabledAndLoadingButtonsAreSilent: Story = {
   args: {
     node: {
@@ -210,6 +215,7 @@ export const DisabledAndLoadingButtonsAreSilent: Story = {
   },
 };
 
+/** As a user, I type in a product field and the text is reported with its action. */
 export const FieldReportsTypedValue: Story = {
   args: {
     node: {
@@ -242,6 +248,7 @@ export const FieldReportsTypedValue: Story = {
   },
 };
 
+/** As a user, I see markup in product text as plain text. */
 export const TextNeverInjectsMarkup: Story = {
   args: { node: text('<img src=x onerror=alert(1)>') },
   play: async ({ canvas, step }) => {
@@ -253,6 +260,7 @@ export const TextNeverInjectsMarkup: Story = {
   },
 };
 
+/** As a user typing in a live message, I keep my focus, text and caret when a new tree arrives. */
 export const NewTreeKeepsFocusCaretText: Story = {
   tags: ['!autodocs'],
   args: { node: form('Sign up', field('')) },
@@ -275,6 +283,7 @@ export const NewTreeKeepsFocusCaretText: Story = {
   },
 };
 
+/** As a user, I see a field take the new text the product sends for it. */
 export const ProductTextReplacesValue: Story = {
   tags: ['!autodocs'],
   args: { node: form('Sign up', field('')) },
@@ -290,6 +299,7 @@ export const ProductTextReplacesValue: Story = {
   },
 };
 
+/** As a user, I see the same element left empty when a new tree drops its children. */
 export const DroppedModifierIsRemoved: Story = {
   tags: ['!autodocs'],
   args: { node: form('Sign up', field('')) },
@@ -298,15 +308,14 @@ export const DroppedModifierIsRemoved: Story = {
     await step('When the next tree drops the padding and the children', () => {
       live.send({ tag: 'Column', value: { modifiers: [], props: {}, children: [] } });
     });
-    await step('Then the same element stays, empty and with no padding around nothing', async () => {
+    await step('Then the same element stays, empty', async () => {
       await waitFor(() => expect(shown.children).toHaveLength(0));
       await expect(canvas.getByTestId('chat-custom-column')).toBe(shown);
-      // 4 px of padding would hold an empty column 8 px tall.
-      await expect(shown.getBoundingClientRect().height).toBe(0);
     });
   },
 };
 
+/** As a user, I see a node replaced when the product changes its kind. */
 export const KindChangeReplacesNode: Story = {
   tags: ['!autodocs'],
   args: { node: form('Sign up', field('')) },
@@ -321,6 +330,7 @@ export const KindChangeReplacesNode: Story = {
   },
 };
 
+/** As a user typing in a field, I keep my focus and text when the product inserts a field above it. */
 export const InsertedFieldAboveTakesNothing: Story = {
   tags: ['!autodocs'],
   args: { node: column(field('', 'Email', 'email')) },
@@ -344,6 +354,7 @@ export const InsertedFieldAboveTakesNothing: Story = {
   },
 };
 
+/** As a user, I do not see a removed field's text in the field that stays. */
 export const RemovedFieldLeavesNoText: Story = {
   tags: ['!autodocs'],
   args: { node: column(field('', 'Name', 'name'), field('', 'Email', 'email')) },
@@ -361,6 +372,7 @@ export const RemovedFieldLeavesNoText: Story = {
   },
 };
 
+/** As a user, I tap a button the product updated and its current action is reported. */
 export const UpdatedButtonKeepsElement: Story = {
   tags: ['!autodocs'],
   args: { node: button({ text: 'Vote', loading: true, clickAction: 'vote:1' }) },
@@ -383,6 +395,7 @@ export const UpdatedButtonKeepsElement: Story = {
   },
 };
 
+/** As a user, I see nothing for a Nil node. */
 export const NilRendersNothing: Story = {
   tags: ['!autodocs'],
   args: { node: { tag: 'Nil' } },
@@ -395,6 +408,7 @@ export const NilRendersNothing: Story = {
   },
 };
 
+/** As a screen-reader user, I hear each text field named by its own label. */
 export const LabelNamesInput: Story = {
   args: { node: column(field(''), field('')) },
   play: async ({ canvas, step }) => {

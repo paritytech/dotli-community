@@ -18,6 +18,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a visitor, I see what failed under its mark and each action with its icon. */
 export const TitleActionsAndIcons: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -43,6 +44,7 @@ export const TitleActionsAndIcons: Story = {
   },
 };
 
+/** As a visitor, I see markup in a message, title, tip or button label shown as plain text. */
 export const MarkupShownAsText: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -72,6 +74,7 @@ export const MarkupShownAsText: Story = {
   },
 };
 
+/** As a visitor, I see no empty Try list or button row when there is nothing to suggest or click. */
 export const NoEmptyTipsOrActions: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -91,6 +94,7 @@ export const NoEmptyTipsOrActions: Story = {
   },
 };
 
+/** As a visitor, I click a button that opens a panel and it gets the click, so it can leave the panel open. */
 export const ButtonGetsClickEvent: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -122,6 +126,7 @@ export const ButtonGetsClickEvent: Story = {
   },
 };
 
+/** As a visitor, I see the warning mark only on a screen that warns me. */
 export const WarningGlyphOnlyWhenWarning: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -142,6 +147,7 @@ export const WarningGlyphOnlyWhenWarning: Story = {
   },
 };
 
+/** As a screen reader user, I hear the new screen announced when it replaces the old one and its title takes no tab stop. */
 export const TitleTakesFocusWithoutTabStop: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -161,6 +167,7 @@ export const TitleTakesFocusWithoutTabStop: Story = {
   },
 };
 
+/** As a keyboard user, I reach the buttons in the order I read them, with the recommended one last. */
 export const KeyboardOrderMatchesReading: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -187,6 +194,7 @@ export const KeyboardOrderMatchesReading: Story = {
   },
 };
 
+/** As a visitor, I see tips handed to the shorthand and a bare retry callback shown as a Retry button. */
 export const ShimTipsAndRetryButton: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {

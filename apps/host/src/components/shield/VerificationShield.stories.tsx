@@ -5,8 +5,8 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { byId, byTestId } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
-import { productPill, setShield, storyShieldState } from '../../../.storybook/shield-fixtures.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { productPill, setShield, storyShieldState } from '../../testing/stories/shield-fixtures.js';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verification-shield.js';
 import { VerificationShield } from './VerificationShield.js';
 
@@ -43,6 +43,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a visitor, I rest the mouse on the shield and see how this site was loaded. */
 export const Open: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
@@ -50,6 +51,7 @@ export const Open: Story = {
   },
 };
 
+/** As a phone visitor, I open the shield and see how this site was loaded. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -84,6 +86,7 @@ async function showByKey(): Promise<void> {
   await waitFor(() => expect(explainer().querySelector('[data-testid="popover-loading"]')).toBeNull());
 }
 
+/** As a screen-reader user, I reach the shield as a button described by its explainer, which shows when I press it. */
 export const DescribedByTooltip: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -91,8 +94,8 @@ export const DescribedByTooltip: Story = {
       'As a screen-reader user, the shield is a real button described by the explainer, a tooltip',
       async () => {
         // Given
-        const trigger = shieldButton();
-        await expect(trigger.tagName).toBe('BUTTON');
+        const trigger = within(document.body).getByRole('button', { name: 'Site verification' });
+        await expect(trigger).toBe(shieldButton());
         await expect(trigger).toHaveAttribute('aria-describedby', VERIFICATION_TOOLTIP_ID);
         await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
@@ -108,6 +111,7 @@ export const DescribedByTooltip: Story = {
   },
 };
 
+/** As a touch user, I tap into the app frame and the explainer hides. */
 export const WindowBlurHides: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -124,6 +128,7 @@ export const WindowBlurHides: Story = {
   },
 };
 
+/** As a dotli user, I move focus elsewhere, as a modal does, and the explainer hides. */
 export const FocusElsewhereHides: Story = {
   tags: ['!autodocs'],
   render: () => (
@@ -152,6 +157,7 @@ export const FocusElsewhereHides: Story = {
   },
 };
 
+/** As a visitor, I see the open explainer follow how this site was loaded, and stay open as it does. */
 export const FollowsStateWhileOpen: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -171,6 +177,7 @@ export const FollowsStateWhileOpen: Story = {
 
         // Then
         await waitFor(() => expect(shieldButton()).toHaveAttribute('data-state', 'trusted'));
+        await expectOpen();
         const trusted = await waitFor(() => byTestId('verification-tooltip-row-trusted', explainer()));
         await expect(trusted).toHaveTextContent(
           'TrustedServed by an external RPC provider. Faster, but you rely on its answers.',
@@ -189,39 +196,8 @@ export const FollowsStateWhileOpen: Story = {
           ),
         );
         await expect(explainer().querySelector('[data-testid="verification-tooltip-row-trusted"]')).toBeNull();
+        await expectOpen();
       },
     );
-  },
-};
-
-export const StateChangeKeepsOpen: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('As a dotli user, a state change keeps an open explainer open', async () => {
-      // Given
-      await showByKey();
-
-      // When
-      setShield('trusted');
-
-      // Then
-      await waitFor(() => expect(shieldButton()).toHaveAttribute('data-state', 'trusted'));
-      await expectOpen();
-    });
-  },
-};
-
-export const GlyphPerState: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('As a low-vision user, each state ships its own glyph', async () => {
-      // Then
-      const glyphs = shieldButton().querySelectorAll('[data-testid="verification-shield-icon"]');
-      await expect(glyphs).toHaveLength(2);
-      const [verified, trusted] = Array.from(glyphs).map(svg =>
-        Array.from(svg.querySelectorAll('path'), path => path.getAttribute('d')).join(' '),
-      );
-      await expect(verified).not.toBe(trusted);
-    });
   },
 };

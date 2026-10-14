@@ -7,7 +7,6 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { RendererNode } from '@parity/truapi';
 import { createChatConnections, createChatStore, type ChatChange } from './store.js';
 import { memoryChatRepo, recordingConnection } from './store.fake.js';
-import { createChanges } from '../../testing/changes.js';
 
 const captured: string[] = [];
 bindCaptureSink({
@@ -18,6 +17,7 @@ bindCaptureSink({
 });
 
 const PRODUCT = 'chatty.dot';
+const GONE = new Error('IndexedDB is gone');
 
 function setup(): {
   repo: ReturnType<typeof memoryChatRepo>;
@@ -167,7 +167,7 @@ describe('chat store', () => {
     );
 
     // Then
-    expect(errors).toHaveLength(1);
+    expect(errors).toEqual([new Error('Chat is not connected for this product')]);
   });
 
   it('As a product, my write succeeds even when a subscriber throws, and the failure is reported', async () => {
@@ -191,51 +191,6 @@ describe('chat store', () => {
     ]);
   });
 });
-
-/** Counts the room list and conversation reads, and holds each one while `hold` is set. */
-function gatedReads(repo: ReturnType<typeof memoryChatRepo>): {
-  reads: { contacts: number; messages: number };
-  hold: boolean;
-  held: (() => void)[];
-  failing: boolean;
-  /** Resolves once `count` reads are held. */
-  holding: (count: number) => Promise<void>;
-} {
-  const changes = createChanges();
-  const gate = {
-    reads: { contacts: 0, messages: 0 },
-    hold: false,
-    held: [] as (() => void)[],
-    failing: false,
-    holding: (count: number) => changes.until(() => gate.held.length === count),
-  };
-  const wait = async (): Promise<void> => {
-    if (gate.hold) {
-      await new Promise<void>(resolve => {
-        gate.held.push(resolve);
-        changes.notify();
-      });
-    }
-    if (gate.failing) {
-      throw new Error('IndexedDB is gone');
-    }
-  };
-  const listRooms = repo.listRooms.bind(repo);
-  const listMessages = repo.listMessages.bind(repo);
-  repo.listRooms = async productId => {
-    gate.reads.contacts += 1;
-    const rooms = await listRooms(productId);
-    await wait();
-    return rooms;
-  };
-  repo.listMessages = async (productId, roomId) => {
-    gate.reads.messages += 1;
-    const messages = await listMessages(productId, roomId);
-    await wait();
-    return messages;
-  };
-  return gate;
-}
 
 const TEXT = { tag: 'Text', value: { text: 'hi' } } as const;
 
@@ -261,7 +216,6 @@ describe('chat store view', () => {
   it('As the open panel, I follow the same target twice and it is read once', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
 
     // When
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
@@ -269,13 +223,12 @@ describe('chat store view', () => {
     await chat.settle();
 
     // Then
-    expect(gate.reads).toEqual({ contacts: 1, messages: 1 });
+    expect(repo.reads.count).toEqual({ rooms: 1, messages: 1 });
   });
 
   it('As the open panel on a conversation, a message there re-reads only it, and one elsewhere re-reads the list once I go back', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
     await chat.settle();
 
@@ -285,7 +238,7 @@ describe('chat store view', () => {
     await chat.settle();
 
     // Then
-    expect(gate.reads).toEqual({ contacts: 1, messages: 2 });
+    expect(repo.reads.count).toEqual({ rooms: 1, messages: 2 });
     expect(chat.view.get().messages).toHaveLength(1);
 
     // When
@@ -293,14 +246,13 @@ describe('chat store view', () => {
     await chat.settle();
 
     // Then
-    expect(gate.reads).toEqual({ contacts: 2, messages: 2 });
+    expect(repo.reads.count).toEqual({ rooms: 2, messages: 2 });
     expect(chat.view.get().messages).toBeNull();
   });
 
   it('As the open panel on the room list, a message or a room change re-reads the list, and going back with nothing missed reads nothing', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
     await chat.settle();
 
@@ -315,13 +267,12 @@ describe('chat store view', () => {
     await chat.settle();
 
     // Then
-    expect(gate.reads).toEqual({ contacts: 3, messages: 1 });
+    expect(repo.reads.count).toEqual({ rooms: 3, messages: 1 });
   });
 
   it('As the open panel, a reload of the same product reads the room list again', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
     await chat.settle();
 
@@ -330,41 +281,37 @@ describe('chat store view', () => {
     await chat.settle();
 
     // Then
-    expect(gate.reads).toEqual({ contacts: 2, messages: 1 });
+    expect(repo.reads.count).toEqual({ rooms: 2, messages: 1 });
   });
 
   it('As the open panel, when the rooms change during a read, the list ends on the newest rooms after one more read', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
-    gate.hold = true;
+    repo.reads.hold.rooms = true;
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
 
     // When: two rooms are created while the first read waits.
     await chat.createRoom(PRODUCT, { roomId: 'a', name: 'A', icon: '' });
     await chat.createRoom(PRODUCT, { roomId: 'b', name: 'B', icon: '' });
-    gate.hold = false;
-    gate.held.shift()?.();
+    repo.reads.hold.rooms = false;
+    repo.reads.releaseOne();
     await chat.settle();
 
     // Then
-    expect(gate.reads.contacts).toBe(2);
+    expect(repo.reads.count.rooms).toBe(2);
     expect(chat.view.get().contacts?.rooms.map(room => room.roomId)).toEqual(['a', 'b']);
   });
 
   it('As the panel that closed, a read that lands late changes nothing', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
-    gate.hold = true;
+    repo.reads.hold = { rooms: true, messages: true };
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
-    await gate.holding(2);
+    await repo.reads.holding(2);
 
     // When
     chat.follow(null);
-    gate.held.splice(0).forEach(release => {
-      release();
-    });
+    repo.reads.releaseAll();
     await chat.settle();
 
     // Then
@@ -381,14 +328,13 @@ describe('chat store view', () => {
   it('As the open panel, a failed read is reported and says so until a read works, keeping what it showed', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
     await chat.settle();
     captured.length = 0;
 
     // When
-    gate.failing = true;
+    repo.reads.error = { rooms: GONE, messages: GONE };
     await chat.postProductMessage(PRODUCT, 'main', TEXT);
     await chat.settle();
 
@@ -398,7 +344,7 @@ describe('chat store view', () => {
     expect(captured).toEqual(['chat_contacts_read']);
 
     // When
-    gate.failing = false;
+    repo.reads.error = { rooms: null, messages: null };
     await chat.postProductMessage(PRODUCT, 'main', TEXT);
     await chat.settle();
 
@@ -410,28 +356,26 @@ describe('chat store view', () => {
     // Given
     const { repo, chat } = setup();
     await chat.createRoom('other.dot', { roomId: 'side', name: 'Side', icon: '' });
-    const listRooms = repo.listRooms.bind(repo);
-    let failFirst: (error: Error) => void = () => undefined;
-    let reads = 0;
-    repo.listRooms = productId => {
-      reads += 1;
-      if (reads === 1) {
-        return new Promise((_, reject) => {
-          failFirst = reject;
-        });
-      }
-      return listRooms(productId);
-    };
+    repo.reads.hold.rooms = true;
     captured.length = 0;
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
     chat.follow({ productId: 'other.dot', roomId: null, loadId: 2 });
 
     // When
-    failFirst(new Error('IndexedDB is gone'));
+    await repo.reads.holding(1);
+    repo.reads.releaseOne(GONE);
+    await repo.reads.holding(1);
+
+    // Then: the failure is reported while the read of the product I am on is still running.
+    expect(captured).toEqual(['chat_contacts_read']);
+    expect(chat.view.get().contactsFailed).toBe(false);
+
+    // When
+    repo.reads.hold.rooms = false;
+    repo.reads.releaseAll();
     await chat.settle();
 
     // Then
-    expect(captured).toEqual(['chat_contacts_read']);
     expect(chat.view.get().contactsFailed).toBe(false);
     expect(chat.view.get().contacts?.rooms.map(room => room.roomId)).toEqual(['side']);
   });
@@ -453,23 +397,11 @@ describe('chat store view', () => {
   });
 });
 
-/** Fails the room list or the conversation reads while their flag is set. */
-function failingReads(repo: ReturnType<typeof memoryChatRepo>): { rooms: boolean; messages: boolean } {
-  const fail = { rooms: false, messages: false };
-  const listRooms = repo.listRooms.bind(repo);
-  const listMessages = repo.listMessages.bind(repo);
-  repo.listRooms = productId => (fail.rooms ? Promise.reject(new Error('IndexedDB is gone')) : listRooms(productId));
-  repo.listMessages = (productId, roomId) =>
-    fail.messages ? Promise.reject(new Error('IndexedDB is gone')) : listMessages(productId, roomId);
-  return fail;
-}
-
 describe('chat store view, failed reads', () => {
   it('As the open panel, a conversation that cannot be read is reported and says so', async () => {
     // Given
     const { repo, chat } = setup();
-    const fail = failingReads(repo);
-    fail.messages = true;
+    repo.reads.error.messages = GONE;
     captured.length = 0;
 
     // When
@@ -484,35 +416,32 @@ describe('chat store view, failed reads', () => {
   it('As the open panel back on a working list, a conversation that could not be read no longer says so', async () => {
     // Given
     const { repo, chat } = setup();
-    const gate = gatedReads(repo);
-    const fail = failingReads(repo);
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
     await chat.settle();
-    fail.messages = true;
+    repo.reads.error.messages = GONE;
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
     await chat.settle();
     expect(chat.view.get().messagesFailed).toBe(true);
-    const reads = gate.reads.contacts;
+    const reads = repo.reads.count.rooms;
 
     // When: back to the list, which missed nothing.
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
     await chat.settle();
 
     // Then
-    expect(gate.reads.contacts).toBe(reads);
+    expect(repo.reads.count.rooms).toBe(reads);
     expect(chat.view.get()).toMatchObject({ messagesFailed: false, contactsFailed: false });
   });
 
   it('As the open panel, a conversation that could not be read stops saying so once it can be', async () => {
     // Given
     const { repo, chat } = setup();
-    const fail = failingReads(repo);
-    fail.messages = true;
+    repo.reads.error.messages = GONE;
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
     await chat.settle();
 
     // When: a new message, and this time the read works.
-    fail.messages = false;
+    repo.reads.error.messages = null;
     await chat.postProductMessage(PRODUCT, 'main', TEXT);
     await chat.settle();
 
@@ -524,10 +453,9 @@ describe('chat store view, failed reads', () => {
   it('As the open panel, a room list that could not be re-read keeps saying so until it can be, whatever the conversation reads', async () => {
     // Given: the list shows, then a re-read of it fails.
     const { repo, chat } = setup();
-    const fail = failingReads(repo);
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
     await chat.settle();
-    fail.rooms = true;
+    repo.reads.error.rooms = GONE;
     await chat.postProductMessage(PRODUCT, 'side', TEXT);
     await chat.settle();
     expect(chat.view.get().contactsFailed).toBe(true);
@@ -542,7 +470,7 @@ describe('chat store view, failed reads', () => {
     expect(chat.view.get().contactsFailed).toBe(true);
 
     // When: back on the list, a message and a re-read that works.
-    fail.rooms = false;
+    repo.reads.error.rooms = null;
     chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
     await chat.postProductMessage(PRODUCT, 'side', TEXT);
     await chat.settle();
@@ -557,22 +485,21 @@ describe('chat store view, message reads', () => {
     // Given: a room open, and reads that wait for the test.
     const { repo, chat } = setup();
     await chat.postProductMessage(PRODUCT, 'main', TEXT);
-    const gate = gatedReads(repo);
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
     await chat.settle();
-    gate.hold = true;
-    const start = gate.reads.messages;
+    repo.reads.hold.messages = true;
+    const start = repo.reads.count.messages;
 
     // When: two messages arrive while the first read waits.
     await chat.postProductMessage(PRODUCT, 'main', TEXT);
     await chat.postProductMessage(PRODUCT, 'main', TEXT);
-    await gate.holding(1);
-    gate.hold = false;
-    gate.held.shift()?.();
+    await repo.reads.holding(1);
+    repo.reads.hold.messages = false;
+    repo.reads.releaseOne();
     await chat.settle();
 
     // Then
-    expect(gate.reads.messages - start).toBe(2);
+    expect(repo.reads.count.messages - start).toBe(2);
     expect(chat.view.get().messages).toHaveLength(3);
   });
 });

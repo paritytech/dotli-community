@@ -84,7 +84,7 @@ describe('chat panel state', () => {
     expect(chatPanelStore.get().available).toBe(false);
   });
 
-  it('As a user, the panel closes when the button goes away (logout or product error)', () => {
+  it('As a user, the panel closes when I log out', () => {
     // Given
     showProduct('app');
     setChatPanelOpen(true);
@@ -95,16 +95,6 @@ describe('chat panel state', () => {
     // Then
     expect(chatButtonVisible()).toBe(false);
     expect(chatPanelStore.get().open).toBe(false);
-
-    // When
-    setAuthState({ tag: 'Connected', session: { connected: true } });
-    setChatPanelOpen(true);
-    setProductError();
-
-    // Then
-    expect(chatButtonVisible()).toBe(false);
-    expect(chatPanelStore.get().open).toBe(false);
-    expect(currentChatProductId()).toBeNull();
   });
 
   it('As a user, product messages outside the room I am viewing count as unread, per room', async () => {
@@ -295,31 +285,15 @@ describe('chat panel state, rooms seen', () => {
   /** A chat store whose conversation reads wait for `release`, wired into the panel state in place of the default. */
   function heldReads(): { release: () => Promise<void> } {
     const repo = memoryChatRepo();
-    const held: (() => void)[] = [];
-    let onHeld = (): void => undefined;
-    const listMessages = repo.listMessages.bind(repo);
-    repo.listMessages = async (productId, roomId) => {
-      const messages = await listMessages(productId, roomId);
-      await new Promise<void>(resolve => {
-        held.push(resolve);
-        onHeld();
-      });
-      return messages;
-    };
+    repo.reads.hold.messages = true;
     remove();
     chat = createChatStore({ repo, connections });
     remove = startChatPanelState(chat, local);
     return {
       /** Lets the waiting read land, once it has started. */
       release: async () => {
-        if (held.length === 0) {
-          await new Promise<void>(resolve => {
-            onHeld = resolve;
-          });
-        }
-        held.splice(0).forEach(go => {
-          go();
-        });
+        await repo.reads.holding(1);
+        repo.reads.releaseAll();
       },
     };
   }
@@ -357,6 +331,7 @@ describe('chat panel state, rooms seen', () => {
     await chat.settle();
 
     // Then
+    expect(chat.view.get()).toMatchObject({ roomId: null, messages: null });
     expect(chatPanelStore.get().unreadByRoom).toEqual({ r1: 1 });
     stop();
   });

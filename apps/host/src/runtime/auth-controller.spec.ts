@@ -8,7 +8,6 @@ import type { AuthCommands } from './core-login.js';
 import {
   createAuthController,
   disableAuthModal,
-  exhaustedAllowanceError,
   friendlyAuthError,
   initAuthController,
   startLogin,
@@ -329,17 +328,26 @@ describe('auth controller: blocking-modal lease', () => {
     expect(getAuthModalState().open).toBe(false);
   });
 
-  it('As the auth modal, a second open while a lease is pending reuses it', () => {
+  it('As the auth modal, a second open while a lease is pending reuses it', async () => {
     // Given
     const { coordinator, tasks } = manualCoordinator();
     const { controller } = start({ coordinator });
-
-    // When
     controller.openAuthModal();
     controller.openAuthModal('again');
 
-    // Then
+    // When: the one pending lease is granted
+    const running = nth(tasks, 0).run();
+
+    // Then: the modal opens with the second call's reason
+    expect(getAuthModalState()).toMatchObject({ open: true, reason: 'again' });
     expect(tasks).toHaveLength(1);
+
+    // When: one close
+    controller.closeAuthModal({ skipTruapiCancel: true });
+    await running;
+
+    // Then: it releases the lease
+    expect(getAuthModalState().open).toBe(false);
   });
 
   it('As the user, closing the modal releases the lease and cancels the in-flight login once', async () => {
@@ -675,16 +683,6 @@ describe('auth controller on the page stores', () => {
   });
 
   describe('auth error copy', () => {
-    it('As a new user whose allowance is exhausted, I am told no slots are left, with the wallet wording, and offered no retry', () => {
-      // When
-      const copy = exhaustedAllowanceError('No free slots available (limit=8)');
-
-      // Then
-      expect(copy.title).toBe('No Statement Store slots left');
-      expect(copy.detail).toBe('No free slots available (limit=8)');
-      expect(copy.retryable).toBe(false);
-    });
-
     it('As a new user, a failure worth retrying keeps its raw reason and the retry', () => {
       // When
       const copy = friendlyAuthError('transport closed before the wallet answered');
@@ -739,16 +737,6 @@ describe('auth controller on the page stores', () => {
       // Then
       expect(copy.title).toBe('The login service did not start');
       expect(copy.retryable).not.toBe(false);
-    });
-
-    it('As a new user, a chunk that fails to fetch is a runtime problem, not a lost phone connection', () => {
-      // When
-      const copy = friendlyAuthError(
-        'TypeError: Failed to fetch dynamically imported module: http://localhost:5173/assets/web-1228KImM.js',
-      );
-
-      // Then
-      expect(copy.title).toBe('The login service did not start');
     });
 
     it('As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports', () => {

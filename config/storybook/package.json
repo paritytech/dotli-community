@@ -6,7 +6,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./main": "./src/main.ts",
+    "./preview": "./src/preview.tsx",
+    "./page-frame": "./src/page-frame.tsx",
     "./play": "./src/play.ts",
     "./vitest": "./src/vitest.ts",
     "./package.json": "./package.json"
@@ -18,9 +19,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@config/vite": "*",
     "@solidjs/web": "2.0.0-rc.15",
-    "@storybook/addon-vitest": "^10.6.2",
     "@vitest/browser-playwright": "^5.0.4",
     "playwright": "^1.64.0",
     "solid-js": "2.0.0-rc.15",

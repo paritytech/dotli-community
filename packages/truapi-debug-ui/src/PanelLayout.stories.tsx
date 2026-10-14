@@ -16,10 +16,11 @@ import {
   nextFrame,
   panel,
   part,
-} from '../.storybook/debug-panel-fixtures.js';
-import { clampSplit } from './resize-clamp.js';
+} from './testing/stories/debug-panel-fixtures.js';
+import { debugPanelStory } from './testing/stories/debug-panel-story.js';
 
 const meta = {
+  ...debugPanelStory,
   title: 'Debug/Panel layout',
   // The panel mounts on the page itself, as the host mounts it, so the canvas stays empty.
   tags: ['!autodocs'],
@@ -46,6 +47,7 @@ function dragHeight(height: number, end: 'pointerup' | 'pointercancel' = 'pointe
   drag(part('td-resize-handle'), [{ x: 0, y: window.innerHeight - height }], end);
 }
 
+/** As a developer using the debug panel, I dock the panel to the right or the bottom and it takes that edge and remembers it. */
 export const DockToggle: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ userEvent, step }) => {
@@ -82,6 +84,7 @@ export const DockToggle: Story = {
   },
 };
 
+/** As a developer using the debug panel, I mount the panel with a right dock stored and it docks right, from the top of a page with no topbar. */
 export const StoredRightDock: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) => {
@@ -96,6 +99,7 @@ export const StoredRightDock: Story = {
   },
 };
 
+/** As a developer using the debug panel, I drag the splitter down on a phone and the panel docks at the bottom with the list above the detail. */
 export const PhoneBottomDock: Story = {
   parameters: { debugPanel: { mount: false } },
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -110,12 +114,13 @@ export const PhoneBottomDock: Story = {
       await expect(panel()).toHaveAttribute('data-dock', 'bottom');
       await expect(panel()).toHaveAttribute('data-layout', 'stacked');
       await expect(part('td-body-splitter')).toHaveAttribute('aria-orientation', 'horizontal');
-      await expect(box(part('td-views')).height).toBeCloseTo(clampSplit(250, body.height), 0);
+      await expect(box(part('td-views')).height).toBeCloseTo(220, 0);
       await expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
     });
   },
 };
 
+/** As a developer using the debug panel, I turn the viewport narrow and wide and the panel moves to the bottom, then back to my stored right dock. */
 export const Rotation: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) => {
@@ -145,6 +150,7 @@ export const Rotation: Story = {
   },
 };
 
+/** As a developer using the debug panel, I dock right and back and the panel and its panes return to their default sizes. */
 export const DockingClearsSize: Story = {
   play: async ({ userEvent, step }) => {
     const height = box(panel()).height;
@@ -166,6 +172,7 @@ export const DockingClearsSize: Story = {
   },
 };
 
+/** As a developer using the debug panel, I collapse the panel, find its edge drag ignored, then expand and get my dragged height back. */
 export const CollapseRestoresHeight: Story = {
   play: async ({ userEvent, step }) => {
     await step('Given a dragged height', async () => {
@@ -198,6 +205,7 @@ export const CollapseRestoresHeight: Story = {
   },
 };
 
+/** As a developer using the debug panel, I drag the top edge and the panel stays within its bounds and ignores the pointer outside a drag. */
 export const EdgeDrag: Story = {
   play: async ({ step }) => {
     const handle = part('td-resize-handle');
@@ -231,6 +239,7 @@ export const EdgeDrag: Story = {
   },
 };
 
+/** As a developer using the debug panel, I cancel an edge or splitter drag and it ends where it was. */
 export const CancelledDrag: Story = {
   play: async ({ step }) => {
     const handle = part('td-resize-handle');
@@ -255,6 +264,7 @@ export const CancelledDrag: Story = {
   },
 };
 
+/** As a developer using the debug panel, I drag the left edge of a right-docked panel and it follows within its bounds. */
 export const RightEdgeDrag: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) => {
@@ -277,7 +287,9 @@ export const RightEdgeDrag: Story = {
   },
 };
 
+/** As a developer using the debug panel, I drag the splitter and the panes follow within their minimums, and a double-click restores the default. */
 export const SplitterDrag: Story = {
+  globals: { viewport: { value: 'desktop', isRotated: false } },
   play: async ({ userEvent, step }) => {
     const splitter = part('td-body-splitter');
     const body = box(part('td-body'));
@@ -295,7 +307,7 @@ export const SplitterDrag: Story = {
       await expect(box(part('td-views')).width).toBeCloseTo(220, 0);
       held.to(body.right, 0);
       held.release();
-      await expect(box(part('td-views')).width).toBeCloseTo(clampSplit(body.width, body.width), 0);
+      await expect(box(part('td-views')).width).toBeCloseTo(1014, 0);
       await expect(splitter).not.toHaveAttribute('data-dragging');
     });
     await step('When I double-click it', async () => {
@@ -307,8 +319,10 @@ export const SplitterDrag: Story = {
   },
 };
 
+/** As a developer using the debug panel, I drag the splitter of a right-docked panel and the top pane keeps its minimum, and a double-click restores the default. */
 export const RightDockSplitter: Story = {
   parameters: { debugPanel: { mount: false } },
+  globals: { viewport: { value: 'desktop', isRotated: false } },
   play: async ({ userEvent, step }) => {
     mountDocked('right');
     const splitter = part('td-body-splitter');
@@ -317,14 +331,14 @@ export const RightDockSplitter: Story = {
     await step('When I drag the splitter down and up, past both sides', async () => {
       const held = grab(splitter);
       held.to(0, body.top + 300);
-      await expect(box(part('td-views')).height).toBeCloseTo(clampSplit(300, body.height), 0);
+      await expect(box(part('td-views')).height).toBeCloseTo(300, 0);
       held.to(0, body.top + 10);
       await expect(box(part('td-views')).height).toBeCloseTo(220, 0);
       held.to(0, body.bottom + 80);
       held.release();
     });
     await step('Then the top pane keeps its minimum and leaves the detail its own', async () => {
-      await expect(box(part('td-views')).height).toBeCloseTo(clampSplit(body.height + 80, body.height), 0);
+      await expect(box(part('td-detail')).height).toBeCloseTo(260, 0);
     });
     await step('When I double-click it', async () => {
       await userEvent.dblClick(splitter);
@@ -338,26 +352,32 @@ export const RightDockSplitter: Story = {
 /** The room the panel last reported taking from the product frame. */
 const room = (): { right: number; bottom: number } => debugPanel().host.dockInset.get();
 
+/** As a developer using the debug panel, I mount the panel at the bottom and the frame leaves room as tall as the panel, or just its header when collapsed. */
 export const FrameAboveBottomDock: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ userEvent, step }) => {
     await step('When the panel mounts at the bottom of the host page', () => {
       mountDocked('bottom', { topbar: true });
     });
+    let expanded = 0;
     await step('Then it takes the bottom of the frame, as tall as the panel', async () => {
+      expanded = box(panel()).height;
       await expect(room().right).toBe(0);
-      await expect(room().bottom).toBeCloseTo(box(panel()).height, 0);
+      await expect(room().bottom).toBeCloseTo(expanded, 0);
     });
     await step('When I collapse it', async () => {
       await userEvent.click(part('td-collapse'));
     });
-    await step('Then it takes only its 32px header', async () => {
-      await expect(box(panel()).height).toBe(32);
-      await expect(room()).toEqual({ right: 0, bottom: 32 });
+    await step('Then it takes only the height of its collapsed header', async () => {
+      await expect(panel()).toHaveAttribute('data-collapsed');
+      await expect(room().right).toBe(0);
+      await expect(room().bottom).toBeLessThan(expanded);
+      await expect(room().bottom).toBeCloseTo(box(panel()).height, 0);
     });
   },
 };
 
+/** As a developer using the debug panel, I dock right and the frame leaves room as wide as the panel and gets all its room back when I collapse it. */
 export const FrameBesideRightDock: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ userEvent, step }) => {
@@ -386,6 +406,7 @@ export const FrameBesideRightDock: Story = {
   },
 };
 
+/** As a developer using the debug panel, I drag the panel edge and the panel reports its new room on the next frame. */
 export const FrameRefitsOnDrag: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) => {

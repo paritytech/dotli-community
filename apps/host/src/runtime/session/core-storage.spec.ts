@@ -517,7 +517,7 @@ describe('core storage', () => {
   it('As a signed-in user whose shared store refuses the cached account, the write is reported once and settles', async () => {
     // Given
     const { counted, captures, coreStorage } = loadWithMetrics(shared);
-    shared.write = () => Promise.reject(UNREACHABLE);
+    shared.writeError = UNREACHABLE;
 
     // When
     const written = coreStorage.writeUiCache(CACHED_UI_STATE);
@@ -533,8 +533,7 @@ describe('core storage', () => {
     const { counted, captures, coreStorage } = loadWithMetrics(shared);
     const storage = coreStorage.adapters();
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    const clear = shared.clear.bind(shared);
-    shared.clear = key => (key === UI_STATE_CACHE_KEY ? Promise.reject(UNREACHABLE) : clear(key));
+    shared.clearError = key => (key === UI_STATE_CACHE_KEY ? UNREACHABLE : null);
 
     // When
     await storage.clearCoreStorage(AUTH_SESSION_KEY);
@@ -605,24 +604,5 @@ describe('core storage', () => {
     expect(read).toBeUndefined();
     expect(shared.entries.get(SESSION_KEY)).toBe('0x010203');
     expect(shared.entries.get(UI_STATE_CACHE_KEY)).toBe(CACHED_UI_STATE);
-  });
-
-  it('As a Polkadot App user back from a local wallet, my core reads, writes and clears the paired session', async () => {
-    // Given
-    shared.entries.set(SESSION_KEY, '0x010203');
-    shared.entries.set(UI_STATE_CACHE_KEY, CACHED_UI_STATE);
-    const storage = coreStorage.adapters();
-
-    // When
-    const read = await storage.readCoreStorage(AUTH_SESSION_KEY);
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9, 9]));
-    const written = shared.entries.get(SESSION_KEY);
-    await storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then
-    expect(Array.from(read ?? [])).toEqual([1, 2, 3]);
-    expect(written).toBe('0x0909');
-    expect(shared.entries.get(SESSION_KEY)).toBeUndefined();
-    expect(shared.entries.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 });

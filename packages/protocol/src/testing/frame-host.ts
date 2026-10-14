@@ -3,7 +3,8 @@
 
 // One protocol frame or client per test, on its own message target and mount, so one left behind by an earlier test
 // hears nothing and builds nothing a later test sees. The iframe is a fake with only what the frame touches, so the
-// frame's lifecycle runs under Node. A mounted fake fires `load` as a page that loads would.
+// frame's lifecycle runs under Node. A mounted fake fires `load` as a page that loads would, or `error` when the test
+// asks.
 
 import { createProtocolClient, type ProtocolClient } from '../client.js';
 import type { MessageTarget, ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
@@ -17,9 +18,11 @@ export const FRAME_CONFIG: ProtocolFrameConfig = {
   skipWorkerCache: false,
 };
 
-/** The frame's window as the host sees it: something to post to. */
+/** The frame's window as the host sees it: something to post to, which keeps what it was sent. */
 export interface FakeFrameWindow {
   postMessage: (message: unknown, targetOrigin: string) => void;
+  /** Every message posted, in order. */
+  readonly posted: unknown[];
 }
 
 /** What the protocol frame reads and calls on its iframe. */
@@ -38,13 +41,19 @@ export class FakeIframe extends EventTarget {
   }
 
   /** Called by the mount it is appended to. */
-  mount(onRemove: () => void): void {
+  mount(onRemove: () => void, fires: 'load' | 'error' = 'load'): void {
     this.isConnected = true;
-    this.contentWindow = { postMessage: () => undefined };
+    const posted: unknown[] = [];
+    this.contentWindow = {
+      posted,
+      postMessage: message => {
+        posted.push(message);
+      },
+    };
     this.#onRemove = onRemove;
     queueMicrotask(() => {
       if (this.isConnected) {
-        this.dispatchEvent(new Event('load'));
+        this.dispatchEvent(new Event(fires));
       }
     });
   }
@@ -63,7 +72,7 @@ interface FakeMount {
   readonly iframes: ReadonlySet<FakeIframe>;
 }
 
-function createMount(): FakeMount {
+function createMount(fires: 'load' | 'error'): FakeMount {
   const iframes = new Set<FakeIframe>();
   return {
     iframes,
@@ -72,7 +81,7 @@ function createMount(): FakeMount {
         throw new Error('the fake mount holds only fake iframes');
       }
       iframes.add(node);
-      node.mount(() => iframes.delete(node));
+      node.mount(() => iframes.delete(node), fires);
       return node;
     },
   };
@@ -91,14 +100,18 @@ export interface FrameDom {
   deliver(envelope: ProtocolEnvelope, iframe?: FakeIframe, origin?: string): void;
 }
 
-export function createFrameDom(timeouts?: Partial<ProtocolFrameTimeouts>): FrameDom {
+/** `options.mount` `'error'` makes each protocol iframe fail as it mounts. */
+export function createFrameDom(
+  timeouts?: Partial<ProtocolFrameTimeouts>,
+  options: { mount?: 'load' | 'error' } = {},
+): FrameDom {
   const listeners = new Set<(event: MessageEvent) => void>();
   const messages: MessageTarget = {
     addEventListener: (_type, listener) => listeners.add(listener),
     removeEventListener: (_type, listener) => listeners.delete(listener),
   };
-  const mount = createMount();
-  const elsewhere = createMount();
+  const mount = createMount(options.mount ?? 'load');
+  const elsewhere = createMount('load');
   const iframe = (): FakeIframe => {
     const [found] = mount.iframes;
     if (found === undefined) {

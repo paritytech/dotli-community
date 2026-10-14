@@ -43,6 +43,8 @@ function openPipe(chain: 'relay' | 'assethub', from: ChainSyncReporter = reporte
   const forwarded: string[] = [];
   const queued: (Lifecycle | undefined)[] = [];
   let waiting: ((state: Lifecycle | undefined) => void) | null = null;
+  // The tap asks for its next state only after it has applied the one it was handed.
+  let asked: (() => void) | null = null;
   let closed = false;
   const offer = (state: Lifecycle | undefined): void => {
     if (waiting === null) {
@@ -57,12 +59,15 @@ function openPipe(chain: 'relay' | 'assethub', from: ChainSyncReporter = reporte
     chain,
     raw => sent.push(raw),
     () => ({
-      next: () =>
-        queued.length > 0
+      next: () => {
+        asked?.();
+        asked = null;
+        return queued.length > 0
           ? Promise.resolve(queued.shift())
           : new Promise(resolve => {
               waiting = resolve;
-            }),
+            });
+      },
       close: () => {
         closed = true;
         offer(undefined);
@@ -79,10 +84,11 @@ function openPipe(chain: 'relay' | 'assethub', from: ChainSyncReporter = reporte
     closed: () => closed,
     async push(...states: Lifecycle[]): Promise<void> {
       for (const state of states) {
+        const applied = new Promise<void>(resolve => {
+          asked = resolve;
+        });
         offer(state);
-        // Let the tap's read loop take the snapshot before the next one.
-        await Promise.resolve();
-        await Promise.resolve();
+        await applied;
       }
     },
     deliver(raw: string): boolean {

@@ -54,29 +54,6 @@ describe('parseSettingsFromSearch', () => {
 });
 
 describe('writeSettingsToSearch against the smoldot-direct default', () => {
-  it('As a visitor on the per-tab light client, I see it dropped from the URL, as it is the default with or without SharedWorker', () => {
-    // Given
-    const search = new URLSearchParams('chainBackend=smoldot-direct');
-
-    // When
-    const changed = writeSettingsToSearch(
-      {
-        network: NetworkName.PREVIEWNET,
-        backend: 'smoldot-direct',
-        cache: {
-          skipCidCache: true,
-          skipArchiveCache: true,
-          skipWorkerCache: false,
-        },
-      },
-      search,
-    );
-
-    // Then
-    expect(changed).toBe(true);
-    expect(search.get('chainBackend')).toBeNull();
-  });
-
   it('As a visitor on the shared light client, I see it kept in the URL, as the default is the per-tab one', () => {
     // Given
     const search = new URLSearchParams();

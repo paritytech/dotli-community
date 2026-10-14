@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { getSettingsState, initSettingsStore } from './settings.js';
-import { getEnabledNetworks, isSharedWorkerAvailable, setSettings } from '@dotli/config';
+import { setSettings } from '@dotli/config';
 
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
@@ -30,8 +30,9 @@ describe('settings store', () => {
       backend: 'rpc-gateway',
       cache,
       network: 'previewnet',
-      enabledNetworks: getEnabledNetworks(),
-      sharedWorkerAvailable: isSharedWorkerAvailable(),
+      // The networks the test build enables, and Node has no SharedWorker.
+      enabledNetworks: ['paseo-next-v2', 'previewnet'],
+      sharedWorkerAvailable: false,
       verified: false,
     });
   });

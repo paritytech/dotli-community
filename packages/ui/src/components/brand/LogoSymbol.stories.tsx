@@ -11,4 +11,5 @@ const meta = { title: 'Brand/LogoSymbol', component: LogoSymbol, parameters: { c
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see the dot.li symbol. */
 export const Default: Story = {};

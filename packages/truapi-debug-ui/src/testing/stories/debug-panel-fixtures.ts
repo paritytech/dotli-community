@@ -8,12 +8,12 @@ import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expect, fn, waitFor } from 'storybook/test';
 import { createDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
-import { fakeDebugPanelHost, type FakeDebugPanelHost } from '../src/host.fake.js';
-import type { KeyedSignals } from '../src/keyed-signals.js';
-import { setupTruapiDebugPanel } from '../src/truapi-debug-panel.js';
-import { NARROW_QUERY, PANEL_ID } from '../src/Panel.js';
-import type { PanelEffects } from '../src/effects.js';
-import { panelWork, type PanelWork } from '../src/work.js';
+import { fakeDebugPanelHost, type FakeDebugPanelHost } from '../../host.fake.js';
+import type { KeyedSignals } from '../../keyed-signals.js';
+import { setupTruapiDebugPanel } from '../../truapi-debug-panel.js';
+import { NARROW_QUERY, PANEL_ID } from '../../Panel.js';
+import type { PanelEffects } from '../../effects.js';
+import { panelWork, type PanelWork } from '../../work.js';
 
 /** How often each of the panel's repeated computations ran. */
 export interface WorkCalls {

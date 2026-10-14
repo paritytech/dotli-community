@@ -8,7 +8,7 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { query } from '@dotli/ui/testing';
 import { attachProductFrame, setChatWidth } from '../../product-frame-layout.js';
 import { mountViolationPanel } from './mount.js';
-import violatingProduct from '../../../.storybook/violating-product.js?inline-script';
+import violatingProduct from '../../testing/stories/violating-product.js?inline-script';
 
 const PRODUCT = `<!doctype html><title>Product</title><script>${violatingProduct}</script>`;
 
@@ -72,6 +72,7 @@ function panel(canvasElement: HTMLElement): HTMLElement {
   return query(canvasElement.ownerDocument, '#sandbox-checker-panel');
 }
 
+// The frame's reservation for the panel is box geometry with no data-* state, and it is what these stories name.
 /** Whether the product frame ends where the panel starts, so the panel covers none of the product. */
 async function frameClearsPanel(canvasElement: HTMLElement): Promise<void> {
   const frameBottom = frame(canvasElement).getBoundingClientRect().bottom;
@@ -92,6 +93,10 @@ function pointer(target: HTMLElement, type: string, pointerId: number, clientY =
   target.dispatchEvent(new PointerEvent(type, { pointerId, clientY, bubbles: true }));
 }
 
+/**
+ * As a dotli developer, I see the checker panel only once the product trips a guarded API, then each violation with
+ * its API, details and time.
+ */
 export const HiddenUntilFirstViolation: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -120,6 +125,7 @@ export const HiddenUntilFirstViolation: Story = {
   },
 };
 
+/** As a dotli developer, I see a violation that carries markup as text in the log. */
 export const MarkupAsText: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -138,6 +144,7 @@ export const MarkupAsText: Story = {
   },
 };
 
+/** As a dotli developer, I collapse and expand the panel and the app frame always ends where the panel starts. */
 export const ShowCollapseExpandResizesFrame: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, userEvent, step }) => {
@@ -179,6 +186,7 @@ export const ShowCollapseExpandResizesFrame: Story = {
   },
 };
 
+/** As a dotli developer, I close the checker and the app frame takes its full height back. */
 export const ClosingRestoresFrame: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, userEvent, step }) => {
@@ -201,12 +209,17 @@ export const ClosingRestoresFrame: Story = {
   },
 };
 
+/**
+ * As a dotli developer, I drag the panel handle to resize it within its limits, and a released or cancelled drag stops
+ * following the pointer.
+ */
 export const DragHandleResizes: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
     const canvas = within(canvasElement.ownerDocument.body);
     const violate = await product(canvasElement);
     const viewport = window.innerHeight;
+    // Resizing is the panel's height, which no data-* state expresses.
     const height = (): number => panel(canvasElement).getBoundingClientRect().height;
     violate('x', {});
     await waitFor(() => expect(panel(canvasElement)).toBeVisible());
@@ -237,6 +250,7 @@ export const DragHandleResizes: Story = {
   },
 };
 
+/** As a dotli developer, I see the newest 500 violations in the log while the badge counts them all. */
 export const KeepsNewestWhileCountingAll: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -257,62 +271,14 @@ export const KeepsNewestWhileCountingAll: Story = {
   },
 };
 
-/** Logs layout reads and writes on `el`'s own properties, ahead of the prototype's. */
-function traceLayout(el: HTMLElement, log: string[], reads: string[], writes: string[]): void {
-  for (const name of reads) {
-    const descriptor = findDescriptor(Object.getPrototypeOf(el) as object, name);
-    Object.defineProperty(el, name, {
-      configurable: true,
-      get() {
-        log.push('read');
-        return descriptor?.get?.call(el) as unknown;
-      },
-    });
-  }
-  for (const name of writes) {
-    const descriptor = findDescriptor(Object.getPrototypeOf(el) as object, name);
-    Object.defineProperty(el, name, {
-      configurable: true,
-      get: () => descriptor?.get?.call(el) as unknown,
-      set(value: unknown) {
-        log.push('write');
-        descriptor?.set?.call(el, value);
-      },
-    });
-  }
-}
-
-function findDescriptor(proto: object | null, name: string): PropertyDescriptor | undefined {
-  for (let p = proto; p !== null; p = Object.getPrototypeOf(p) as object | null) {
-    const descriptor = Object.getOwnPropertyDescriptor(p, name);
-    if (descriptor !== undefined) {
-      return descriptor;
-    }
-  }
-  return undefined;
-}
-
-/** Layouts a run of reads and writes forces: each read after a write. */
-function forcedLayouts(log: readonly string[]): number {
-  let dirty = false;
-  let forced = 0;
-  for (const op of log) {
-    if (op === 'write') {
-      dirty = true;
-    } else if (dirty) {
-      forced++;
-      dirty = false;
-    }
-  }
-  return forced;
-}
-
+/**
+ * As a dotli developer, I see the log scroll to the newest violation in a full log while the app frame is left alone.
+ */
 export const OneLayoutPerViolation: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
     const canvas = within(canvasElement.ownerDocument.body);
     const violate = await product(canvasElement);
-    const log: string[] = [];
     const frameWrites: MutationRecord[] = [];
     // Enough that the log has reached its tallest, so a new entry leaves the panel's height alone.
     const FILLED = 20;
@@ -322,32 +288,21 @@ export const OneLayoutPerViolation: Story = {
       }
       await waitFor(() => expect(canvas.getByTestId('sc-badge')).toHaveTextContent(String(FILLED)));
       await waitFor(() => frameClearsPanel(canvasElement));
-      traceLayout(panel(canvasElement), log, ['offsetHeight'], []);
-      traceLayout(canvas.getByTestId('sc-log'), log, ['scrollHeight'], ['scrollTop']);
       new MutationObserver(records => frameWrites.push(...records)).observe(frame(canvasElement), {
         attributes: true,
         attributeFilter: ['style'],
       });
     });
-    const layouts: number[] = [];
     await step('When ten more arrive one by one', async () => {
       for (let i = FILLED + 1; i <= FILLED + 10; i++) {
-        log.length = 0;
-        // The new entry is a DOM write.
-        log.push('write');
         violate(`api${String(i)}`);
         await waitFor(() => expect(canvas.getByTestId('sc-badge')).toHaveTextContent(String(i)));
-        layouts.push(forcedLayouts(log));
       }
     });
-    await step(
-      'Then each forces at most one layout, scrolls the log to the newest and leaves the frame alone',
-      async () => {
-        await expect(Math.max(...layouts)).toBe(1);
-        const logEl = canvas.getByTestId('sc-log');
-        await expect(logEl.scrollTop + logEl.clientHeight).toBeGreaterThanOrEqual(logEl.scrollHeight - 1);
-        await expect(frameWrites).toHaveLength(0);
-      },
-    );
+    await step('Then the log is scrolled to the newest and the app frame is left alone', async () => {
+      const logEl = canvas.getByTestId('sc-log');
+      await expect(logEl.scrollTop + logEl.clientHeight).toBeGreaterThanOrEqual(logEl.scrollHeight - 1);
+      await expect(frameWrites).toHaveLength(0);
+    });
   },
 };

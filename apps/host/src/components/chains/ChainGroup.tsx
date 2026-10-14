@@ -128,6 +128,7 @@ function BarStrip(props: { chain: ChainSummary; sinceLast: number | null }): JSX
             );
             return (
               <span
+                data-testid="chains-bar"
                 data-block={block}
                 class={s['bar']}
                 data-health={bar.health}
@@ -153,9 +154,9 @@ export function ChainGroup(props: { chain: ChainSummary; sinceLast: number | nul
   // No chip rather than "0 peers" until a sample lands: zero is a different claim. An unused chain claims none.
   const peers = (): number | null => (props.chain.reachable && !unused() ? props.chain.peers : null);
   return (
-    <Stack class={s['group']}>
+    <Stack class={s['group']} testId="chains-group">
       <p class={s['groupLabel']} data-testid="chains-group-label" data-state={props.chain.state}>
-        <span>{props.chain.label}</span>
+        <span data-testid="chains-group-name">{props.chain.label}</span>
         <Show
           when={!unused() || !props.chain.reachable}
           fallback={

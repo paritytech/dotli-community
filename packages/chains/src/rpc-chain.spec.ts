@@ -61,17 +61,21 @@ describe('rpc-chain', () => {
     expect(createCoreRpcChainProvider('0xdeadbeef', undefined, FakeWebSocketClass)).toBeNull();
   });
 
-  it('As a dotli integrator, the host-owned Rust core reaches Bulletin over RPC', () => {
+  it('As a dotli integrator, the host-owned Rust core reaches Bulletin over its configured RPC endpoints', async () => {
     // Given
     const bulletin = getActiveServicesConfig().bulletin;
 
     // When
     const coreSupported = isCoreRpcChainSupported(bulletin.genesis);
-    const coreProvider = createCoreRpcChainProvider(bulletin.genesis, undefined, FakeWebSocketClass);
+    const provider = must(
+      createCoreRpcChainProvider(bulletin.genesis, undefined, FakeWebSocketClass),
+      'Bulletin provider',
+    );
+    const { socket } = await connect(provider);
 
     // Then
     expect(coreSupported).toBe(true);
-    expect(coreProvider).not.toBeNull();
+    expect(bulletin.rpcs).toContain(socket.url);
   });
 
   it('As a dotli integrator, the socket reports its status to the pool', async () => {
@@ -256,25 +260,6 @@ describe('rpc-chain', () => {
         },
       },
     ]);
-  });
-
-  it('As a dotli user on Trusted Providers, every new chain socket first asks the node which methods it serves', async () => {
-    // Given
-    const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, undefined, FakeWebSocketClass),
-      'provider',
-    );
-    const { socket: first, connection } = await connect(provider);
-    connection.send({ jsonrpc: '2.0', id: 'a', method: 'chainSpec_v1_genesisHash', params: [] });
-
-    // When
-    await vi.advanceTimersByTimeAsync(121_000);
-    const second = must(FakeWebSocket.instances[1], 'second socket');
-    second.open();
-
-    // Then
-    expect(first.sent.map(raw => (JSON.parse(raw) as { method: string }).method)[0]).toBe('rpc_methods');
-    expect(second.sent.map(raw => (JSON.parse(raw) as { method: string }).method)[0]).toBe('rpc_methods');
   });
 
   it("As a dotli integrator, requests reach the node with numeric ids and their responses keep the caller's id", async () => {

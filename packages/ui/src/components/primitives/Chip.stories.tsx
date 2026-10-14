@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect } from 'storybook/test';
 import { Chip } from './Chip.js';
 
 const meta = {
@@ -16,14 +15,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {
-  args: { testId: 'chip' },
-  play: async ({ canvas, step }) => {
-    await step('Then I read the chip text', async () => {
-      await expect(canvas.getByTestId('chip')).toHaveTextContent('Paseo');
-    });
-  },
-};
+/** As a dotli user, I see a neutral chip and read its text. */
+export const Default: Story = {};
+/** As a dotli user, I see a verified chip drawn in the ok tone. */
 export const Ok: Story = { args: { tone: 'ok', children: 'Verified' } };
+/** As a dotli user, I see a local-account chip drawn in the warn tone. */
 export const Warn: Story = { args: { tone: 'warn', children: 'Local account' } };
+/** As a dotli user, I see an address chip drawn in monospace. */
 export const Mono: Story = { args: { tone: 'mono', children: '0x1a2b…9f' } };

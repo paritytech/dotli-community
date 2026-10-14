@@ -46,6 +46,7 @@ const Owned = (args: Args) => {
 const tabStops = (canvas: { getByTestId: (id: string) => HTMLElement }): (string | null)[] =>
   OPTIONS.map(option => canvas.getByTestId(option.testId).getAttribute('tabindex'));
 
+/** As a dotli user, I move through a labelled segmented control with the keyboard and pick Dark, which is reported. */
 export const Labels: Story = {
   render: Owned,
   play: async ({ args, canvas, userEvent, step }) => {
@@ -66,6 +67,7 @@ export const Labels: Story = {
 };
 
 // The glyphs are made per render, since one node would move between controls.
+/** As a dotli user, I press an icon option and it becomes the pressed one and is reported. */
 export const Icons: Story = {
   render: args => {
     const [value, setValue] = createSignal<Theme>(untrack(() => args.value));
@@ -97,6 +99,7 @@ export const Icons: Story = {
   },
 };
 
+/** As a screen reader user, I hear a named group with the current option pressed. */
 export const NamedGroup: Story = {
   args: { value: 'light' },
   play: async ({ canvas, step }) => {
@@ -110,6 +113,7 @@ export const NamedGroup: Story = {
   },
 };
 
+/** As a dotli user, I press the option that is already picked and nothing is reported. */
 export const PressingPickedChangesNothing: Story = {
   play: async ({ args, canvas, userEvent, step }) => {
     await step('When I press the option that is already picked', async () => {
@@ -121,6 +125,7 @@ export const PressingPickedChangesNothing: Story = {
   },
 };
 
+/** As a keyboard user, I find one Tab stop in the control and it follows the value I pick. */
 export const OneTabStopFollowsValue: Story = {
   args: { value: 'light' },
   render: Owned,
@@ -137,6 +142,7 @@ export const OneTabStopFollowsValue: Story = {
   },
 };
 
+/** As a keyboard user, I find the first option is the Tab stop when none is pressed. */
 export const FirstIsTabStopWhenNonePressed: Story = {
   render: args => <SegmentedControl<Theme | 'unset'> {...args} value="unset" />,
   play: async ({ canvas, step }) => {
@@ -146,6 +152,7 @@ export const FirstIsTabStopWhenNonePressed: Story = {
   },
 };
 
+/** As a keyboard user, I move focus between options with the arrows, Home and End, wrapping, and pick nothing. */
 export const ArrowsMoveWithoutPicking: Story = {
   args: { value: 'light' },
   render: Owned,
@@ -186,6 +193,7 @@ const WithNext = (args: Args) => (
   </div>
 );
 
+/** As a keyboard user, I find the option I arrowed to is the Tab stop while focus is inside, and Tab leaves the control at once. */
 export const ArrowedOptionIsTabStop: Story = {
   args: { value: 'light' },
   render: WithNext,
@@ -208,6 +216,7 @@ export const ArrowedOptionIsTabStop: Story = {
   },
 };
 
+/** As a keyboard user, I type other keys and they reach the page untouched and pick nothing. */
 export const OtherKeysPassThrough: Story = {
   args: { value: 'light' },
   render: WithNext,

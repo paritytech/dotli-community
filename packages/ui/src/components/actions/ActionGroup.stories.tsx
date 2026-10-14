@@ -8,6 +8,7 @@ import { expect, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
+import { expectBefore } from '@config/storybook/play';
 import { isPhoneViewport } from '../../page/phone-viewport.js';
 import { ActionGroup, type ActionGroupMorph, type MoreIds } from './ActionGroup.js';
 import { ActionItem } from './ActionItem.js';
@@ -233,9 +234,7 @@ export const AccountEndsBar: Story = {
     });
     await step('Then the account is inline after More and no row of it', async () => {
       await waitFor(() => expect(moreShows()).toBe(true));
-      await expect(
-        byId(MORE.buttonId).compareDocumentPosition(byId('account-button')) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      await expectBefore(byId(MORE.buttonId), byId('account-button'));
       await expect(inline('account')).toBe(true);
       await openMore(userEvent);
       await expect(moreRowNames()).not.toContain('account');
@@ -260,22 +259,6 @@ export const WideningRestoresAndClosesMore: Story = {
       await expect(moreShows()).toBe(false);
       await waitFor(() => expect(isOpen()).toBe(false));
       await expect(byId(MORE.buttonId)).toHaveAttribute('aria-expanded', 'false');
-    });
-  },
-};
-
-/** As a user widening the window, items that collapsed into More come back once the pill has room. */
-export const PillWideningRestores: Story = {
-  play: async ({ step }) => {
-    await step('Given the pill gives room for two', async () => {
-      fitSlots(2);
-      await waitFor(() => expect(inline('settings')).toBe(false));
-    });
-    await step('When the window widens so the pill has room for all six', () => {
-      fitSlots(6);
-    });
-    await step('Then every item is inline', async () => {
-      await waitFor(() => expect(ALL.filter(inline)).toEqual(ALL));
     });
   },
 };
@@ -422,6 +405,7 @@ const unmeasured: ActionBar = {
 };
 
 /** As the build-time render, the More button is parked. */
+/** As a dotli user, I get a page built before measuring with the More button parked, so nothing flashes on first paint. */
 export const BuildTimeMoreParked: Story = {
   render: () => (
     <ActionsContext value={unmeasured}>

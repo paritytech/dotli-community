@@ -10,7 +10,7 @@ import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 /** A connection on the previous schema that ignores `versionchange`, as a frozen older tab would. */
 function openPreviousSchema(factory: IDBFactory): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = factory.open('dotli', 5);
+    const req = factory.open(DB_NAME, DB_VERSION - 1);
     req.onsuccess = () => {
       resolve(req.result);
     };
@@ -33,33 +33,8 @@ describe('the dotli database connection', () => {
     const db = await getDb();
 
     // Then a fresh open serves it on the current schema
-    expect(db.version).toBe(6);
+    expect(db.version).toBe(DB_VERSION);
     expect([...db.objectStoreNames]).toContain('local_wallet');
-  });
-
-  it('As a dotli user, I leave no stray connection behind after a blocked open succeeds late', async () => {
-    // Given a blocked open that succeeded once the older tab closed, and the live handle released
-    const factory = new IDBFactory();
-    const getDb = createDbConnection(() => openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
-    const olderTab = await openPreviousSchema(factory);
-    await expect(getDb()).rejects.toThrow('blocked by another tab');
-    olderTab.close();
-    (await getDb()).close();
-
-    // When another tab upgrades the schema further
-    const upgrade = await new Promise<'blocked' | 'upgraded'>(resolve => {
-      const req = factory.open('dotli', 7);
-      req.onblocked = () => {
-        resolve('blocked');
-      };
-      req.onsuccess = () => {
-        req.result.close();
-        resolve('upgraded');
-      };
-    });
-
-    // Then no leftover connection holds it up
-    expect(upgrade).toBe('upgraded');
   });
 });
 

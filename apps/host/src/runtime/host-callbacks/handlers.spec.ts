@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
 import { createHostCallbacks } from './handlers.js';
+import { SUBMIT_MAX_PER_WINDOW } from './rate-limit.js';
 import type { NotificationScheduler } from './push-notification.js';
 import type { HostPrompts } from '../host-prompts.js';
 import { createFakePrompts } from '../host-prompts.fake.js';
@@ -26,9 +27,6 @@ const scheduler: NotificationScheduler = {
   schedule: () => Promise.resolve({ ok: true, id: 7, immediate: false }),
   cancel: () => Promise.resolve(true),
 };
-
-// Mirror of SUBMIT_WINDOW_MS / SUBMIT_MAX_PER_WINDOW in rate-limit.ts.
-const MAX_PER_WINDOW = 20;
 
 describe('blocking modal queue across host callbacks', () => {
   it('As a dotli integrator, I raise a user confirmation and a device permission prompt and the host shows them one at a time', async () => {
@@ -127,16 +125,16 @@ describe('prompt rate limiting across host callbacks', () => {
     });
 
     // When: camera prompts exhaust the whole window budget.
-    for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW; i += 1) {
       await permissions.devicePermission(PRODUCT, 'Camera');
     }
 
     // Then: a different permission shares that budget and is rate limited
-    // instead of showing a 21st modal.
+    // instead of showing one modal over the budget.
     await expect(permissions.devicePermission(PRODUCT, 'Notifications')).rejects.toThrow(
       'Permission prompt rate limited',
     );
-    expect(ask).toHaveBeenCalledTimes(MAX_PER_WINDOW);
+    expect(ask).toHaveBeenCalledTimes(SUBMIT_MAX_PER_WINDOW);
   });
 
   it('As a dotli user, I get many notifications delivered and my prompts still pass', async () => {
@@ -149,15 +147,15 @@ describe('prompt rate limiting across host callbacks', () => {
     });
 
     // When: more notifications than the whole prompt budget are delivered
-    for (let i = 0; i < MAX_PER_WINDOW * 2; i += 1) {
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW * 2; i += 1) {
       await expect(notifications.pushNotification({ text: `hello ${String(i)}` })).resolves.toEqual({ id: 7 });
     }
 
     // Then: the full prompt budget is still there, and no more
-    for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW; i += 1) {
       await permissions.devicePermission(PRODUCT, 'Camera');
     }
-    expect(ask).toHaveBeenCalledTimes(MAX_PER_WINDOW);
+    expect(ask).toHaveBeenCalledTimes(SUBMIT_MAX_PER_WINDOW);
     await expect(permissions.devicePermission(PRODUCT, 'Camera')).rejects.toThrow('Permission prompt rate limited');
     await expect(notifications.pushNotification({ text: 'after the budget' })).resolves.toEqual({ id: 7 });
   });

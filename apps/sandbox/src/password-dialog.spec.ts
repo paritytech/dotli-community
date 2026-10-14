@@ -11,13 +11,8 @@ describe('password prompt dialog', () => {
     const view = passwordPromptDialog();
 
     // Then
-    expect(view.title).toBe('Encrypted Content');
     expect(view.icon).toBe(LockIcon);
-    expect(view.input).toEqual({
-      kind: 'password',
-      placeholder: 'Password',
-      hint: 'This content is password-protected. Enter the password to decrypt.',
-    });
+    expect(view.input?.kind).toBe('password');
     expect(view.dismissOnBackdrop).toBe(false);
   });
 

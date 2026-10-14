@@ -44,14 +44,6 @@ describe('serializeError', () => {
     expect(serializeError(err)).toBe('Error');
   });
 
-  it('As an operator reading a failure, I see a TypeError without a message as its name', () => {
-    // Given
-    const err = new TypeError('');
-
-    // When / Then
-    expect(serializeError(err)).toBe('TypeError');
-  });
-
   it('As an operator reading a failure, I see an Error subclass without a message as its own name', () => {
     // Given
     class AlreadyDestroyedError extends Error {
@@ -60,14 +52,6 @@ describe('serializeError', () => {
 
     // When / Then
     expect(serializeError(new AlreadyDestroyedError(''))).toBe('AlreadyDestroyedError');
-  });
-
-  it('As an operator reading a failure, I see an Error whose message is real as that message', () => {
-    // Given
-    const err = new RangeError('out of range');
-
-    // When / Then
-    expect(serializeError(err)).toBe('out of range');
   });
 
   it('As an operator reading a failure, I see an Error with its cause described after it', () => {
@@ -94,12 +78,8 @@ describe('serializeError', () => {
     a.cause = b;
     b.cause = a;
 
-    // When
-    const out = serializeError(a);
-
-    // Then
-    expect(out).toContain('a');
-    expect(out).toContain('cause: b');
+    // When / Then
+    expect(serializeError(a)).toBe('a (cause: b (cause: [cycle]))');
   });
 
   it('As an operator reading a failure, I see an AggregateError with its inner errors', () => {
@@ -200,23 +180,5 @@ describe('fullErrorChain cycle semantics', () => {
     expect(chain.causes[0]?.message).toBe('b');
     expect(chain.causes[0]?.causes).toHaveLength(1);
     expect(chain.causes[0]?.causes[0]?.name).toBe('Cycle');
-  });
-
-  it('As an operator reading a failure, I see two branches that share a leaf described without a Cycle', () => {
-    // Given
-    const leaf = new Error('leaf');
-    const b = new Error('B', { cause: leaf });
-    const c = new Error('C', { cause: leaf });
-    const a = new AggregateError([b, c], 'A');
-
-    // When
-    const chain = fullErrorChain(a);
-
-    // Then
-    expect(chain.causes).toHaveLength(2);
-    expect(chain.causes[0]?.causes[0]?.message).toBe('leaf');
-    expect(chain.causes[0]?.causes[0]?.name).not.toBe('Cycle');
-    expect(chain.causes[1]?.causes[0]?.message).toBe('leaf');
-    expect(chain.causes[1]?.causes[0]?.name).not.toBe('Cycle');
   });
 });

@@ -4,8 +4,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import type { ProtocolRequestEnvelope, ProtocolRequestMap, SharedWalletRequestMethod } from '@dotli/protocol';
-import { createLocalWalletStore, type LocalWalletStore } from '@dotli/storage';
-import { memoryIdb, type MemoryIdb } from '@dotli/storage/testing';
+import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
+import { memoryIdb } from '@dotli/storage/testing';
 import { handleLocalWalletRequest } from './local-wallet-handler.js';
 
 const HOST = 'http://host-playground.localhost:5173';
@@ -20,33 +20,11 @@ function request<M extends SharedWalletRequestMethod>(
   return { namespace: 'dotli:protocol', kind: 'request', id: 'req-1', method, payload };
 }
 
-/** Swaps in a key that cannot open the stored ciphertext. */
-async function corruptRecord(): Promise<void> {
-  const other = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-  const db = await idb.connect();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction('local_wallet', 'readwrite');
-    const store = tx.objectStore('local_wallet');
-    const get = store.get('wallet');
-    get.onsuccess = () => {
-      store.put({ ...(get.result as object), key: other });
-    };
-    tx.oncomplete = () => {
-      resolve();
-    };
-    tx.onerror = () => {
-      reject(tx.error ?? new Error('write failed'));
-    };
-  });
-}
-
 // Each test gets a fresh database, so no test sees another's wallet.
-let idb: MemoryIdb;
 let store: LocalWalletStore;
 
 beforeEach(() => {
-  idb = memoryIdb();
-  store = createLocalWalletStore(idb);
+  store = createLocalWalletStore(memoryIdb());
 });
 
 describe('handleLocalWalletRequest', () => {
@@ -134,10 +112,13 @@ describe('handleLocalWalletRequest', () => {
   it('As a host page, I read an undecryptable wallet as unreadable and it is gone afterwards', async () => {
     // Given
     await store.saveLocalWallet(ENTROPY);
-    await corruptRecord();
+    const unreadable: LocalWalletStore = {
+      ...store,
+      loadLocalWallet: () => Promise.reject(new LocalWalletUnreadableError(new Error('wrong key'))),
+    };
 
     // When
-    const result = await handleLocalWalletRequest(request('localWalletRead', { siteId: SITE_ID }), HOST, store);
+    const result = await handleLocalWalletRequest(request('localWalletRead', { siteId: SITE_ID }), HOST, unreadable);
 
     // Then
     expect(result).toEqual({ status: 'unreadable' });

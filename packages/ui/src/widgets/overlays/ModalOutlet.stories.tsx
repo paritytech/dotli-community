@@ -117,6 +117,7 @@ const closed = async () => {
   await waitFor(() => expect(backdrop()).toBeNull());
 };
 
+/** As a dotli user, I press Always allow on a prompt and it settles with that answer and closes. */
 export const ButtonSettles: Story = {
   beforeEach: ask(permissionLike()),
   play: async ({ step }) => {
@@ -129,6 +130,7 @@ export const ButtonSettles: Story = {
   },
 };
 
+/** As a phone user, I cannot scroll the page under a prompt until I answer it. */
 export const PhoneLocksScroll: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: ask(permissionLike()),
@@ -145,6 +147,7 @@ export const PhoneLocksScroll: Story = {
   },
 };
 
+/** As a dotli user, I dismiss queued prompts with the scrim and Escape one by one, and a click inside the card answers nothing. */
 export const ScrimAndEscapeDismiss: Story = {
   beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
   play: async ({ step }) => {
@@ -166,6 +169,7 @@ export const ScrimAndEscapeDismiss: Story = {
   },
 };
 
+/** As a dotli user, I press Escape on a prompt and it closes while the page hears the key as handled. */
 export const EscapeHandledForPage: Story = {
   beforeEach: ask(permissionLike()),
   play: async ({ step }) => {
@@ -188,6 +192,7 @@ export const EscapeHandledForPage: Story = {
   },
 };
 
+/** As a dotli user, I press the scrim and Escape on a password prompt and it stays up unanswered. */
 export const MustAnswerIgnoresScrimAndEscape: Story = {
   beforeEach: ask(passwordView),
   play: async ({ step }) => {
@@ -210,6 +215,7 @@ export const MustAnswerIgnoresScrimAndEscape: Story = {
   },
 };
 
+/** As a phone user, I press Close on a prompt sheet and it is dismissed as the scrim would. */
 export const PhoneSheetCloseDismisses: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: ask(permissionLike()),
@@ -225,6 +231,7 @@ export const PhoneSheetCloseDismisses: Story = {
   },
 };
 
+/** As a phone user, I press Close on a password sheet and it answers Cancel without what I typed. */
 export const PhoneSheetCloseCancels: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: ask(passwordView),
@@ -242,6 +249,7 @@ export const PhoneSheetCloseCancels: Story = {
   },
 };
 
+/** As a keyboard user, I answer a prompt and focus returns to where I was. */
 export const FocusReturnsToOpener: Story = {
   beforeEach: ask(permissionLike()),
   play: async ({ step }) => {
@@ -254,6 +262,7 @@ export const FocusReturnsToOpener: Story = {
   },
 };
 
+/** As a dotli user, I press Enter in the password field and it unlocks with what I typed, but sends nothing when the field is empty. */
 export const PasswordEnterSubmits: Story = {
   beforeEach: ask({ ...passwordView, input: { kind: 'password', placeholder: 'Password', error: 'Wrong password' } }),
   play: async ({ step }) => {
@@ -282,6 +291,7 @@ export const PasswordEnterSubmits: Story = {
   },
 };
 
+/** As a dotli user, I cancel a password prompt and it settles without what I typed. */
 export const PasswordCancelDropsText: Story = {
   beforeEach: ask(passwordView),
   play: async ({ step }) => {
@@ -296,6 +306,7 @@ export const PasswordCancelDropsText: Story = {
   },
 };
 
+/** As a keyboard user, I answer the first of two prompts and the second shows with focus on it. */
 export const QueuedDialogGetsFocus: Story = {
   beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
   play: async ({ step }) => {
@@ -308,6 +319,7 @@ export const QueuedDialogGetsFocus: Story = {
   },
 };
 
+/** As a keyboard user, I answer two queued prompts and focus returns to where I was. */
 export const FocusReturnsAfterQueue: Story = {
   beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
   play: async ({ step }) => {
@@ -324,6 +336,7 @@ export const FocusReturnsAfterQueue: Story = {
   },
 };
 
+/** As a keyboard user, I answer a prompt after the button I came from left the page and focus goes to the app. */
 export const GoneOriginFocusesApp: Story = {
   args: { frames: 1 },
   beforeEach: ask(permissionLike()),
@@ -341,6 +354,7 @@ export const GoneOriginFocusesApp: Story = {
   },
 };
 
+/** As a keyboard user, I answer a prompt after the app reloaded and focus goes to the app's new frame. */
 export const ReloadFocusesNewFrame: Story = {
   args: { frames: 2 },
   beforeEach: ask(permissionLike()),
@@ -359,6 +373,7 @@ export const ReloadFocusesNewFrame: Story = {
   },
 };
 
+/** As a dotli user, I answer the first of two prompts and the second opens over the scrim already up. */
 export const SecondOpensOverScrim: Story = {
   beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
   play: async ({ step }) => {
@@ -374,6 +389,7 @@ export const SecondOpensOverScrim: Story = {
   },
 };
 
+/** As a dotli user, I dismiss the first prompt with the scrim and the second opens over the same scrim. */
 export const ScrimDenyKeepsScrim: Story = {
   beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
   play: async ({ step }) => {
@@ -386,6 +402,7 @@ export const ScrimDenyKeepsScrim: Story = {
   },
 };
 
+/** As a keyboard user, I dismiss one prompt with the scrim and answer the next and focus returns to where I was. */
 export const ScrimHandOffReturnsFocus: Story = {
   beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
   play: async ({ step }) => {
@@ -402,6 +419,7 @@ export const ScrimHandOffReturnsFocus: Story = {
   },
 };
 
+/** As a dotli user, I get a later prompt after the queue emptied and it brings its own scrim in. */
 export const LaterPromptBringsScrim: Story = {
   beforeEach: ask(permissionLike({ title: 'Later' })),
   play: async ({ step }) => {

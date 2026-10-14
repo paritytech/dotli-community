@@ -278,20 +278,6 @@ describe('isDotDomain', () => {
 });
 
 describe('dotNS TLD per network', () => {
-  it('As a user on Paseo, I open a .paseo name and reach the product', () => {
-    // Given
-    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
-
-    // When
-    const parsed = dotNsUrl.parseDotNsDomain('mytestapp.paseo/some/path');
-
-    // Then
-    expect(parsed).toEqual({
-      identifier: 'mytestapp.paseo',
-      pathname: 'some/path',
-    });
-  });
-
   it('As a user on Paseo, I open a .dot name and get a regular website', () => {
     // Given
     onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));

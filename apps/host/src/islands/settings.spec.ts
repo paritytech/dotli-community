@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ThemePref } from '../runtime/state/theme.js';
 import type { SavedSettings } from '../components/settings/settings.js';
 import { openSettings, registerSettingsOpener } from '../settings-intent.js';
-import { type SettingsBinding, useSettingsPanel } from './settings.js';
+import { useSettingsPanel } from './settings.js';
 
 const SAVED: SavedSettings = {
   backend: 'smoldot-direct',
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 /** The page's settings and theme, as boot left them, and the panel's props read from them under a fresh owner. */
-function mount(registerOpener: SettingsBinding['registerOpener'] = registerSettingsOpener) {
+function mount() {
   const settings = createSyncStore<SavedSettings | null>('settings-test-settings', null);
   const theme = createSyncStore<{ pref: ThemePref }>('settings-test-theme', { pref: 'system' });
   const { panel, dispose } = createRoot(d => ({
@@ -33,7 +33,7 @@ function mount(registerOpener: SettingsBinding['registerOpener'] = registerSetti
       theme,
       selectTheme: () => undefined,
       apply: () => Promise.resolve(),
-      registerOpener,
+      registerOpener: registerSettingsOpener,
       version: '1.2.3',
       debugMode: () => false,
       openDebugMode: () => undefined,
@@ -59,8 +59,7 @@ describe('useSettingsPanel', () => {
 
   it('As a visitor, Open settings opens the panel I closed, and stops reaching it once the button is gone', () => {
     // Given
-    const register = vi.fn(registerSettingsOpener);
-    const { panel, dispose } = mount(register);
+    const { panel, dispose } = mount();
     panel.onOpenChange(false);
     flush();
 
@@ -70,7 +69,6 @@ describe('useSettingsPanel', () => {
 
     // Then
     expect(panel.open()).toBe(true);
-    expect(register).toHaveBeenCalledTimes(1);
 
     // When
     dispose();

@@ -242,12 +242,6 @@ async function pairOnce(
     await page.goto(`http://${AUTH_HOST}:${PORT}/?network=${NETWORK}`, {
       timeout: 60_000,
     });
-    if (E2E_CHAIN_BACKEND === 'rpc-gateway') {
-      await page
-        .getByRole('button', { name: 'Switch to Gateway' })
-        .click({ timeout: 5_000 })
-        .catch(() => {});
-    }
 
     // The button is in the built page, so it is visible before its island hydrates.
     const authBtn = page.locator('#landing-auth-button');

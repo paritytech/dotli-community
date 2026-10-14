@@ -17,6 +17,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a visitor, I see markup in the domain of a no-content error shown as plain text. */
 export const MarkupShownAsText: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -32,6 +33,7 @@ export const MarkupShownAsText: Story = {
   },
 };
 
+/** As a visitor, I see that the app cannot be reached under a globe, with the name to check. */
 export const TitleLineAndIcon: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -49,6 +51,7 @@ export const TitleLineAndIcon: Story = {
   },
 };
 
+/** As a visitor, I read the page naming the app it could not reach, with no tab stop on its title. */
 export const TitleTakesNoFocus: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {

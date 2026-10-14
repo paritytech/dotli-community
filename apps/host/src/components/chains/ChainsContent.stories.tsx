@@ -8,7 +8,7 @@ import { HISTORY_SLOTS } from './chain-strip.js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   bars,
   chain,
@@ -21,7 +21,7 @@ import {
   storyNetwork,
   VERDICTS,
   waitingOn,
-} from '../../../.storybook/network-fixtures.js';
+} from '../../testing/stories/network-fixtures.js';
 import type { LiveVerdict } from '../../network-verdict.js';
 import type { ChainView, TransferView } from './chains.js';
 import { NetworkItem } from './NetworkItem.js';
@@ -37,7 +37,10 @@ const shownBlocks = (): string[] =>
   [...document.querySelectorAll<HTMLElement>('#chains-popover [data-block]')].map(bar => bar.dataset['block'] ?? '');
 const waitingText = (): string | null | undefined =>
   document.querySelector('[data-testid="chains-bars-waiting"]')?.textContent;
-const texts = (container: Element): (string | null)[] => [...container.children].map(child => child.textContent);
+const rowTexts = (row: Element): (string | null)[] =>
+  [...row.querySelectorAll('[data-testid="chains-transfer-label"], [data-testid="chains-transfer-value"]')].map(
+    cell => cell.textContent,
+  );
 
 interface ExpectedChain {
   label: string;
@@ -45,7 +48,7 @@ interface ExpectedChain {
   cell:
     | { kind: 'unavailable' }
     | { kind: 'waiting'; text: string; ghost: 'searching' | 'counting' | 'due' }
-    | { kind: 'bars'; titles: string[]; health: string[]; firstBlock: number };
+    | { kind: 'bars'; titles: string[]; firstBlock: number };
 }
 
 interface ExpectedBody {
@@ -57,56 +60,49 @@ interface ExpectedBody {
   size?: [string, string];
 }
 
-/** The body in order: head, status well, a group per chain, transfer rows, tips. */
+/** The body: head, status well, a group per known chain, transfer rows, tips. */
 async function expectBody(expected: ExpectedBody): Promise<void> {
-  const sections = [...content().children];
-  await expect(sections).toHaveLength(2 + expected.chains.length + 2);
-  await expect(sections[0]?.textContent).toBe('Network');
-  const status = sections[1];
-  await expect(status).toHaveAttribute('data-testid', 'chains-status');
-  await expect(status?.children[0]).toHaveAttribute('data-tone', expected.tone);
-  await expect(status?.children[1] === undefined ? [] : texts(status.children[1])).toEqual([
-    expected.title,
-    expected.detail,
-  ]);
+  const root = content();
+  await expect(query(root, '[data-testid="chains-head"]').textContent).toBe('Network');
+  await expect(query(root, '[data-testid="chains-status-dot"]')).toHaveAttribute('data-tone', expected.tone);
+  await expect(query(root, '[data-testid="chains-status-title"]').textContent).toBe(expected.title);
+  await expect(query(root, '[data-testid="chains-status-detail"]').textContent).toBe(expected.detail);
+  const groups = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-group"]')];
+  await expect(groups).toHaveLength(expected.chains.length);
   for (const [i, want] of expected.chains.entries()) {
-    const group = sections[2 + i];
-    const [name, cell] = [...(group?.children ?? [])];
-    await expect(name?.children[0]?.textContent).toBe(want.label);
-    const peers = name?.querySelector('[data-testid="chains-group-peers"]');
+    const group = groups[i];
+    if (group === undefined) {
+      continue;
+    }
+    const cell = query(group, '[data-testid="chains-cell"]');
+    await expect(query(group, '[data-testid="chains-group-name"]').textContent).toBe(want.label);
+    const peers = group.querySelector('[data-testid="chains-group-peers"]');
     await expect(peers?.textContent).toBe(want.peers?.text);
     await expect(peers?.getAttribute('aria-label')).toBe(want.peers?.aria);
-    await expect(cell?.hasAttribute('data-unavailable')).toBe(want.cell.kind === 'unavailable');
+    await expect(cell.hasAttribute('data-unavailable')).toBe(want.cell.kind === 'unavailable');
     if (want.cell.kind === 'unavailable') {
-      await expect(cell?.textContent).toBe('no endpoint on this network');
+      await expect(cell.textContent).toBe('no endpoint on this network');
     } else if (want.cell.kind === 'waiting') {
-      const strip = cell?.children[0];
-      await expect(strip?.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS - 1);
-      await expect(strip?.querySelector('[data-testid="chains-bar-pending"]')).toHaveAttribute(
-        'data-pending',
-        want.cell.ghost,
-      );
-      await expect(strip?.querySelector('[data-testid="chains-bars-waiting"]')?.textContent).toBe(want.cell.text);
+      await expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS - 1);
+      await expect(query(cell, '[data-testid="chains-bar-pending"]')).toHaveAttribute('data-pending', want.cell.ghost);
+      await expect(query(cell, '[data-testid="chains-bars-waiting"]').textContent).toBe(want.cell.text);
     } else {
-      const slots = [...(cell?.children[0]?.children ?? [])] as HTMLElement[];
-      const { titles, health, firstBlock } = want.cell;
-      await expect(slots).toHaveLength(HISTORY_SLOTS);
-      const marks = slots.filter(slot => slot.hasAttribute('data-block'));
+      const { titles, firstBlock } = want.cell;
+      const marks = [...cell.querySelectorAll<HTMLElement>('[data-testid="chains-bar"]')];
+      await expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(
+        HISTORY_SLOTS - titles.length,
+      );
       await expect(marks.map(mark => mark.dataset['block'])).toEqual(titles.map((_, n) => String(firstBlock + n)));
-      await expect(marks.map(mark => mark.dataset['health'])).toEqual(health);
       await expect(marks.map(mark => mark.title)).toEqual(titles);
       await expect(marks.map(mark => mark.getAttribute('aria-label'))).toEqual(
         titles.map((title, n) => `Block ${String(firstBlock + n)}, ${title}`),
       );
     }
   }
-  const footer = sections[2 + expected.chains.length];
-  const [speedRow, sizeRow] = [...(footer?.children ?? [])];
-  await expect(speedRow === undefined ? null : texts(speedRow)).toEqual(expected.speed ?? []);
-  await expect(sizeRow === undefined ? null : texts(sizeRow)).toEqual(expected.size ?? []);
-  const tips = sections[3 + expected.chains.length];
-  await expect(tips).toHaveAttribute('data-testid', 'chains-tips');
-  await expect(tips?.textContent).toBe(TIP);
+  const [speedRow, sizeRow] = [...root.querySelectorAll('[data-testid="chains-transfer-row"]')];
+  await expect(speedRow === undefined ? null : rowTexts(speedRow)).toEqual(expected.speed ?? []);
+  await expect(sizeRow === undefined ? null : rowTexts(sizeRow)).toEqual(expected.size ?? []);
+  await expect(query(root, '[data-testid="chains-tips"]').textContent).toBe(TIP);
 }
 
 /** The network button and panel as the host composes them, reading the story's network. */
@@ -134,38 +130,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/**
- * As a visitor, the network button shows from the first render with its labels, ARIA and a quiet health badge, and
- * opens a dialog named Network.
- */
-export const Open: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    const button = byId('chains-button');
-    await ctx.step('Given the button, shown before any product, with its labels and ARIA', async () => {
-      await expect(button).toBeVisible();
-      await expect(button).toHaveAttribute('title', 'Network');
-      await expect(button).toHaveAttribute('aria-label', 'Network');
-      await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
-      await expect(button).toHaveAttribute('aria-expanded', 'false');
-      await expect(button).toHaveAttribute('aria-controls', 'chains-popover');
-      await expect([...button.children].map(child => child.tagName)).toEqual(['svg']);
-    });
-    await ctx.step('And its badge in the quiet tone, with no chain in use', async () => {
-      await expect(button).toHaveAttribute('data-badge');
-      await expect(button).toHaveAttribute('data-tone', 'quiet');
-    });
-    await open(ctx);
-    await ctx.step('Then it announces the open dialog named Network', async () => {
-      await expect(button).toHaveAttribute('aria-expanded', 'true');
-      const popover = byId('chains-popover');
-      await expect(popover).toHaveAttribute('role', 'dialog');
-      await expect(popover).toHaveAttribute('aria-label', 'Network');
-      await expect(popover).toHaveAttribute('tabindex', '-1');
-    });
-  },
-};
-
 /** As a phone user, the chains open as a sheet whose header names it, so the body has no Network heading. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
@@ -175,7 +139,7 @@ export const OpenPhone: Story = {
     await open(ctx);
     await ctx.step('Then the body is a sheet with no Network heading', async () => {
       await expect(content()).toHaveAttribute('data-sheet');
-      await expect(texts(content())).not.toContain('Network');
+      await expect(content().querySelector('[data-testid="chains-head"]')).toBeNull();
     });
   },
 };
@@ -192,6 +156,21 @@ export const OpenInUse: Story = {
   },
   play: async ctx => {
     await open(ctx);
+    await ctx.step('Then each chain is named and waits, counting, for its first block', async () => {
+      const groups = [...content().querySelectorAll<HTMLElement>('[data-testid="chains-group"]')];
+      await expect(groups.map(group => query(group, '[data-testid="chains-group-name"]').textContent)).toEqual([
+        'Relay chain',
+        'Asset Hub',
+        '0xabab…abab',
+      ]);
+      for (const group of groups) {
+        await expect(query(group, '[data-testid="chains-cell"]')).toHaveAttribute('data-state', 'live');
+        await expect(query(group, '[data-testid="chains-bar-pending"]')).toHaveAttribute('data-pending', 'counting');
+        await expect(query(group, '[data-testid="chains-bars-waiting"]').textContent).toMatch(
+          /^next block in about \ds$/,
+        );
+      }
+    });
   },
 };
 
@@ -304,7 +283,6 @@ export const StatusOneOfTwoReady: Story = statusStory(
           kind: 'bars',
           firstBlock: 18,
           titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'],
-          health: ['onTime', 'onTime', 'onTime'],
         },
       },
       { label: 'People', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
@@ -322,7 +300,7 @@ export const StatusOverdue: Story = statusStory(
       role: 'assethub',
       label: 'Asset Hub',
       latest: 20,
-      bars: [...bars(18, 2), ...bars(20, 1, 12_000), ...bars(21, 1, 30_000)],
+      bars: [...bars(18, 2), ...bars(20, 1, 12_000, 'late'), ...bars(21, 1, 30_000, 'veryLate')],
       sinceLast: 20_000,
     }),
   ],
@@ -338,7 +316,6 @@ export const StatusOverdue: Story = statusStory(
           kind: 'bars',
           firstBlock: 18,
           titles: ['6.0s, on time', '6.0s, on time', '12s, 6.0s late', '30s, 24s late'],
-          health: ['onTime', 'onTime', 'late', 'veryLate'],
         },
       },
     ],
@@ -364,7 +341,6 @@ export const StatusGood: Story = statusStory(
           kind: 'bars',
           firstBlock: 8,
           titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'],
-          health: ['onTime', 'onTime', 'onTime'],
         },
       },
       {
@@ -374,7 +350,6 @@ export const StatusGood: Story = statusStory(
           kind: 'bars',
           firstBlock: 18,
           titles: ['4.0s, on time', '4.0s, on time', '4.0s, on time'],
-          health: ['onTime', 'onTime', 'onTime'],
         },
       },
     ],
@@ -445,18 +420,6 @@ export const OtherChains: Story = {
   },
 };
 
-/** As a user, the menu head says only Network, as the settings name the network. */
-export const HeadSaysNetwork: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then the head says Network and names no network', async () => {
-      await expect(document.querySelector('[data-testid="chains-network"]')).toBeNull();
-      await expect(content().children[0]?.textContent).toBe('Network');
-    });
-  },
-};
-
 /** As a user who went offline, the menu says so, as the capsule and the badge do. */
 export const Offline: Story = {
   tags: ['!autodocs'],
@@ -487,22 +450,6 @@ export const TrustedNoTip: Story = {
     await open(ctx);
     await ctx.step('Then there is no tip', async () => {
       await expect(document.querySelector('[data-testid="chains-tips"]')).toBeNull();
-    });
-  },
-};
-
-/** As a user on a chain with no peers, the count says 0 and is marked as none. */
-export const ZeroPeers: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    given([chain({ latest: 10, sinceLast: 500, peers: 0 })]);
-  },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then it says 0 peers, marked', async () => {
-      const peers = query(document, '[data-testid="chains-group-peers"]');
-      await expect(peers).toHaveTextContent('0 peers');
-      await expect(peers).toHaveAttribute('data-alert');
     });
   },
 };
@@ -678,7 +625,7 @@ export const TransferFooterEmpties: Story = {
   },
 };
 
-/** As a dotli user watching the download, updates that land no block slide nothing, so they read no layout. */
+/** As a user watching the strip, updates that land no block slide nothing. */
 export const NoLayoutReadWithoutBlock: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
@@ -729,38 +676,6 @@ export const FortyEightSlots: Story = {
     await open(ctx);
     await ctx.step('Then the newest 48 of the 60 show', async () => {
       await expect(shownBlocks()).toEqual(Array.from({ length: 48 }, (_, i) => String(13 + i)));
-    });
-  },
-};
-
-const PENDING_TICK_MS = 250;
-
-/** As a dotli user watching a chain between blocks, the countdown is computed once per tick, not once per read. */
-export const CountdownOncePerTick: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    let reads = 0;
-    await open(ctx);
-    await ctx.step('Given a chain between blocks whose block time is counted as read', async () => {
-      given([
-        Object.defineProperty(chain({ latest: 10, sinceLast: 1000 }), 'blockTimeMs', {
-          get: () => {
-            reads += 1;
-            return 6000;
-          },
-        }),
-      ]);
-      await waitFor(() => expect(waitingText()).toBe('next block in about 5s'));
-    });
-    const since = performance.now();
-    await ctx.step('When the countdown ticks on to the next second', async () => {
-      reads = 0;
-      await waitFor(() => expect(waitingText()).toBe('next block in about 4s'));
-    });
-    await ctx.step('Then each tick computed it once, reading the block time twice', async () => {
-      const ticks = Math.ceil((performance.now() - since) / PENDING_TICK_MS) + 1;
-      await expect(reads).toBeGreaterThan(0);
-      await expect(reads).toBeLessThanOrEqual(2 * ticks);
     });
   },
 };

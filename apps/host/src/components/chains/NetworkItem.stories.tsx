@@ -5,8 +5,8 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { resetStoryNetwork, setHealth, storyNetwork } from '../../../.storybook/network-fixtures.js';
-import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/network-fixtures.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import { NetworkItem } from './NetworkItem.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });
@@ -51,6 +51,7 @@ export const OpensBody: Story = {
       await expect(button).toHaveAttribute('aria-expanded', 'true');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Network');
+      await expect(popover).toHaveAttribute('tabindex', '-1');
       await expect(within(popover).getByTestId('chains-content')).toBeInTheDocument();
     });
   },

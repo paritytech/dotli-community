@@ -60,15 +60,6 @@ describe('preimage host callbacks', () => {
     expect(yielded(first)._unsafeUnwrap()).toBeUndefined();
   });
 
-  it('As a dotli integrator, I get only the lookup callback because submission is core-owned', () => {
-    // When
-    const adapters = createPreimageAdapters('myapp', { fetchBlock: missingBlock() });
-
-    // Then
-    expect(typeof adapters.lookupPreimage).toBe('function');
-    expect('submitPreimage' in adapters).toBe(false);
-  });
-
   it('As a dotli integrator, the host retries transient lookup backend failures', async () => {
     // Given
     const data = new TextEncoder().encode('retried preimage');

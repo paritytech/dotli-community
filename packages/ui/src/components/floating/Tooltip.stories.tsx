@@ -72,6 +72,7 @@ const tap = async (el: Element) => {
 const tip = (): HTMLElement => byId('story-tip');
 const trigger = () => body.getByTestId('tip-trigger');
 
+/** As a mouse user, I rest on the trigger and the tooltip shows and stays while I am on it, then hides when I leave. */
 export const ShowsOnHover: Story = {
   play: async ({ step }) => {
     await step('When the mouse rests on the trigger', async () => {
@@ -101,6 +102,7 @@ export const ShowsOnHover: Story = {
   },
 };
 
+/** As a keyboard user, I tab to the trigger and the tooltip shows, and Escape hides it while focus stays. */
 export const ShowsOnKeyboardFocusAndEscapeHides: Story = {
   play: async ({ step }) => {
     await step('When I Tab to the trigger', async () => {
@@ -133,6 +135,7 @@ export const ShowsOnKeyboardFocusAndEscapeHides: Story = {
   },
 };
 
+/** As a phone user, I tap the trigger to show the tooltip and tap elsewhere or on it again to hide it. */
 export const TapToggles: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {

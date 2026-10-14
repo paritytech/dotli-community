@@ -137,14 +137,7 @@ describe('createProtocolFrame', () => {
 
   it('As a dotli integrator, I lose a frame that fails the moment it is mounted and it leaves no load timer behind', async () => {
     // Given a page where the frame fails as it is mounted
-    const dom = createFrameDom();
-    const mount = dom.deps.document.body;
-    const append = mount.appendChild.bind(mount);
-    mount.appendChild = <T extends Node>(node: T): T => {
-      append(node);
-      node.dispatchEvent(new Event('error'));
-      return node;
-    };
+    const dom = createFrameDom(undefined, { mount: 'error' });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
 
@@ -177,22 +170,18 @@ describe('protocol status', () => {
     vi.useRealTimers();
   });
 
-  /** Records what the frame posts and lets it say `kinds` in turn. */
+  /** Lets the frame say `kinds` in turn, and returns everything posted to the current frame's window. */
   async function frameSays(...kinds: ('listening' | 'ready')[]): Promise<ProtocolRequestEnvelope[]> {
     await vi.advanceTimersByTimeAsync(0);
     const frameWindow = host.iframe().contentWindow;
     if (frameWindow === null) {
       throw new Error('protocol iframe has no window');
     }
-    const posted: ProtocolRequestEnvelope[] = [];
-    vi.spyOn(frameWindow, 'postMessage').mockImplementation((message: unknown) => {
-      posted.push(message as ProtocolRequestEnvelope);
-    });
     for (const kind of kinds) {
       host.deliver({ namespace: 'dotli:protocol', kind });
     }
     await vi.advanceTimersByTimeAsync(0);
-    return posted;
+    return frameWindow.posted as ProtocolRequestEnvelope[];
   }
 
   function settledWith(promise: Promise<unknown>): { outcome: string | null } {
@@ -398,7 +387,7 @@ describe('protocol status', () => {
     // Then
     expect(host.client.getProtocolStatus()).toBe('listening');
     expect(read.outcome).toBeNull();
-    expect(posted).toEqual([]);
+    expect(posted.map(envelope => envelope.method)).toEqual(['authStorageRead']);
   });
 
   it('As a dotli integrator, I request from a status listener after a config change and see the statuses in order', async () => {

@@ -44,7 +44,7 @@ describe('local-storage host callbacks', () => {
     expect(await read('truapi:product-storage:v1:9:myapp.dot:key')).toBeUndefined();
   });
 
-  it('As a dotli integrator, the host writes values larger than a single argument-spread chunk', async () => {
+  it('As a dotli integrator, a large value round-trips intact', async () => {
     // Given
     const read = createLocalStorageRead();
     const write = createLocalStorageWrite();

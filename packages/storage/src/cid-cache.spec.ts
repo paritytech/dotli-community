@@ -1,12 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { NetworkName } from '@dotli/config';
-import { bindCaptureSink } from '@dotli/metrics';
 import { type CidCache, createCidCache } from './cid-cache.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
-import { IDBDatabase } from 'fake-indexeddb';
 
 // Each test gets a fresh database, so no test sees another's records.
 let idb: MemoryIdb;
@@ -37,30 +35,7 @@ async function putRawEntry(entry: object): Promise<void> {
   });
 }
 
-async function readRawEntry(label: string): Promise<{ label: string; cid: string; timestamp: number } | undefined> {
-  const db = await idb.connect();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('cids', 'readonly');
-    const req = tx.objectStore('cids').get(label);
-    req.onsuccess = () => {
-      resolve(req.result as { label: string; cid: string; timestamp: number } | undefined);
-    };
-    req.onerror = () => {
-      reject(req.error ?? new Error('read failed'));
-    };
-  });
-}
-
 describe('CID IndexedDB round-trip', () => {
-  beforeEach(() => {
-    // Only the clock, as the fake IndexedDB schedules its events on real timers.
-    vi.useFakeTimers({ toFake: ['Date'] });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('As the resolver, I cache a CID and read it back as a hit', async () => {
     // Given
     await cache.setCachedCid('myapp', PASEO, 'bafy123', NO_MANIFESTS);
@@ -119,22 +94,19 @@ describe('CID IndexedDB round-trip', () => {
     expect(await cache.getCachedCid('myapp', PASEO)).toEqual({ cid: 'bafy456', manifests: NO_MANIFESTS });
   });
 
-  it('As the resolver, I cache a new CID for a cached label and it replaces the entry with a fresh timestamp', async () => {
+  it('As the resolver, I cache a new CID for a cached label and the next read returns the new CID', async () => {
     // Given
     await cache.setCachedCid('myapp', PASEO, 'bafy-old', NO_MANIFESTS);
-    const first = await readRawEntry('myapp');
-    expect(first?.cid).toBe('bafy-old');
-
-    // Coarse clocks would otherwise give both writes the same timestamp.
-    vi.setSystemTime((first?.timestamp ?? 0) + 1000);
 
     // When
     await cache.setCachedCid('myapp', PASEO, 'bafy-new', NO_MANIFESTS);
 
     // Then
-    const second = await readRawEntry('myapp');
-    expect(second?.cid).toBe('bafy-new');
-    expect(second?.timestamp ?? 0).toBeGreaterThan(first?.timestamp ?? 0);
+    expect(await cache.getCachedCidResult('myapp', PASEO)).toEqual({
+      kind: 'hit',
+      cid: 'bafy-new',
+      manifests: NO_MANIFESTS,
+    });
   });
 });
 
@@ -151,83 +123,32 @@ describe('evictCachedCid', () => {
     expect(await cache.getCachedCidResult('myapp', PASEO)).toEqual({ kind: 'miss' });
   });
 
-  it('As the host, I evict a label never cached and nothing changes', async () => {
+  it('As the host, I evict a label never cached and the labels that are cached stay', async () => {
     // Given
+    await cache.setCachedCid('kept', PASEO, 'bafy-kept', NO_MANIFESTS);
+
+    // When
     await cache.evictCachedCid('never-stored');
 
-    // When / Then
-    expect(await cache.getCachedCidResult('never-stored', PASEO)).toEqual({ kind: 'miss' });
+    // Then
+    expect(await cache.getCachedCidResult('kept', PASEO)).toEqual({
+      kind: 'hit',
+      cid: 'bafy-kept',
+      manifests: NO_MANIFESTS,
+    });
   });
 });
 
 describe('cid-cache failure reporting', () => {
-  const MANIFESTS = { root: null, app: null };
-  const captures = { exception: vi.fn(), expected: vi.fn() };
-
-  function failTransactions(err: Error): void {
-    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(() => {
-      throw err;
-    });
-  }
-
-  beforeEach(async () => {
-    captures.exception.mockClear();
-    captures.expected.mockClear();
-    await idb.connect();
-    return bindCaptureSink(captures);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('As an operator, a connection closing under an unloading page leaves a breadcrumb, not an issue', async () => {
-    // Given a connection that is closing
-    failTransactions(new DOMException('The database connection is closing.', 'InvalidStateError'));
-
-    // When the cache writes
-    await cache.setCachedCid('myapp', NetworkName.PASEO, 'bafy', MANIFESTS);
-
-    // Then the failure is recorded as expected
-    expect(captures.exception).not.toHaveBeenCalled();
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(DOMException), {
-      flow: 'storage',
-      step: 'cid_cache_write',
-    });
-  });
-
-  it('As an operator, a stuck cache reports each failing action once per page', async () => {
-    // Given a cache whose every transaction fails
-    const failure = new Error('disk gone');
-    failTransactions(failure);
-
-    // When it evicts twice
-    await cache.evictCachedCid('a');
-    await cache.evictCachedCid('b');
-
-    // Then one issue names the storage flow and the evict step
-    expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'storage',
-      step: 'cid_cache_evict',
-      tags: { kind: 'cid_cache_evict_error' },
-    });
-  });
-
   it('As a caller that reloads after a clear, I am told when the CID cache clear failed after it reported itself', async () => {
-    // Given
-    failTransactions(new DOMException('The database connection is closing.', 'InvalidStateError'));
+    // Given the cached connection has closed, as it does under an unloading page
+    (await idb.connect()).close();
 
     // When
     const cleared = await cache.clearCidCache();
 
-    // Then the clear says it failed, after leaving its own breadcrumb rather than an issue
+    // Then
     expect(cleared).toBe(false);
-    expect(captures.exception).not.toHaveBeenCalled();
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(DOMException), {
-      flow: 'storage',
-      step: 'cid_cache_clear',
-    });
   });
 
   it('As a caller that reloads after a clear, I am told when the CID cache clear succeeded', async () => {

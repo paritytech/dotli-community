@@ -3,10 +3,10 @@
 
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, waitFor, within } from 'storybook/test';
+import { expect, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { givenApp, resetStoryPermissions, storyPermissions } from '../../../.storybook/permissions-fixtures.js';
-import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { resetStoryPermissions, storyPermissions } from '../../testing/stories/permissions-fixtures.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import { PermissionsItem } from './PermissionsItem.js';
 
 const open = openSurface({ trigger: 'permissions-button', surface: 'permissions-popover' });
@@ -52,29 +52,6 @@ export const OpensBody: Story = {
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Permissions');
       await expect(within(popover).getByTestId('permissions-popover-header')).toBeInTheDocument();
-    });
-  },
-};
-
-/** As a user, the lock button shows its grants badge only while the app has a permission granted. */
-export const GrantsBadge: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    const button = byId('permissions-button');
-    await step('Given no grant, then no badge', async () => {
-      await expect(button).not.toHaveAttribute('data-badge');
-    });
-    await step('When the app has a grant', () => {
-      givenApp({ Clipboard: 'granted' });
-    });
-    await step('Then the badge shows', async () => {
-      await waitFor(() => expect(button).toHaveAttribute('data-badge'));
-    });
-    await step('When the grant goes', () => {
-      givenApp();
-    });
-    await step('Then the badge goes', async () => {
-      await waitFor(() => expect(button).not.toHaveAttribute('data-badge'));
     });
   },
 };

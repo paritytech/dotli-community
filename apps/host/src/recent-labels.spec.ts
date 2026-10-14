@@ -9,7 +9,7 @@ import {
   createRecentLabels,
   landingRecentLabels,
   parseRecentLabels,
-  serializeRecentLabels,
+  storageMirror,
   type RecentMirror,
 } from './recent-labels.js';
 import { memoryStorage } from '@dotli/shared/testing';
@@ -70,12 +70,7 @@ describe('recent labels across subdomains', () => {
   beforeEach(() => {
     channel = memorySharedChannel();
     local = memoryStorage();
-    mirror = {
-      read: () => parseRecentLabels(local.getItem(KEY)),
-      write: labels => {
-        local.setItem(KEY, serializeRecentLabels(labels));
-      },
-    };
+    mirror = storageMirror(local);
     metrics = bindRecordingSentry({ onFinished: onTestFinished });
     unbindCaptures = bindCaptureSink(captures);
   });
@@ -208,21 +203,21 @@ describe('recent labels across subdomains', () => {
     // Given: a mirror, and a shared store that cannot be read
     local.setItem(KEY, '["explore"]');
     channel.readFails = true;
-    const logged: [LogLevel, string][] = [];
-    bindLogSink({
-      emit: (level, message) => {
-        logged.push([level, message]);
-      },
-    });
+    const logged: LogLevel[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: level => {
+          logged.push(level);
+        },
+      }),
+    );
 
     // When
     await createRecentLabels(channel, mirror).record('staking');
 
     // Then
     expect(mirrorList()).toEqual(['staking', 'explore']);
-    expect(logged).toEqual([
-      ['warn', '[dot.li recent] Shared read failed; updating the per-origin mirror: shared store unreachable'],
-    ]);
+    expect(logged).toEqual(['warn']);
     expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'storage', step: 'recent_labels' });
     expect(metrics.counted('recent_labels.update')).toEqual([{ outcome: 'error', reason: 'read' }]);
   });

@@ -82,11 +82,11 @@ export interface ProtocolRequestEnvelope<M extends ProtocolRequestMethod = Proto
  * Turns an untrusted deadline into the resolver's remaining sync budget, less a grace for the typed
  * error to cross postMessage. The only place the deadline is validated.
  */
-export function getRequestSyncTimeoutMs(request: ProtocolRequestEnvelope): number | undefined {
+export function getRequestSyncTimeoutMs(request: ProtocolRequestEnvelope, now = Date.now()): number | undefined {
   if (typeof request.deadlineMs !== 'number' || !Number.isFinite(request.deadlineMs)) {
     return undefined;
   }
-  return Math.max(1, Math.floor(request.deadlineMs - Date.now() - TIMEOUTS.RESPONSE_DELIVERY_GRACE));
+  return Math.max(1, Math.floor(request.deadlineMs - now - TIMEOUTS.RESPONSE_DELIVERY_GRACE));
 }
 
 /** How far a name read has come, for the loading bar. */
@@ -248,7 +248,7 @@ const VALID_KINDS = new Set([
 // postMessage data is untrusted, so the kind is checked at runtime. The list is copied, since importing it would bring
 // the chain package's sync reporter, which starts at module load, into every page that talks to the frame. As
 // `Record<T, true>`, a value missing here fails typecheck instead of being dropped silently.
-export const ENVELOPE_SYNC_KINDS = Object.keys({
+const ENVELOPE_SYNC_KINDS = Object.keys({
   firstPeer: true,
   bootstrapComplete: true,
   stalled: true,

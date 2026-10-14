@@ -15,6 +15,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I read a label over its value. */
 export const Plain: Story = {
   args: { labelTestId: 'field-label', valueTestId: 'field-value' },
   play: async ({ canvas, step }) => {
@@ -24,6 +25,7 @@ export const Plain: Story = {
     });
   },
 };
+/** As a dotli user, I read a monospace value that fits its box as plain text, not a Tab stop. */
 export const Mono: Story = {
   args: {
     label: 'Account',
@@ -40,8 +42,10 @@ export const Mono: Story = {
     });
   },
 };
+/** As a dotli user, I see a field value drawn as a warning. */
 export const Warning: Story = { args: { label: 'Network', value: 'Unknown chain', warning: true } };
 // At a prompt's width, where call data outgrows its box.
+/** As a dotli user, I reach a long value that scrolls as a named region in the Tab order. */
 export const LongValue: Story = {
   args: { label: 'Call data', value: `0x${'0a1b2c3d4e5f'.repeat(48)}`, mono: true },
   render: args => (

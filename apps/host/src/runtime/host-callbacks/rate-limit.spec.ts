@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSubmitRateLimiter } from './rate-limit.js';
-
-// Mirror of SUBMIT_WINDOW_MS / SUBMIT_MAX_PER_WINDOW in rate-limit.ts.
-const WINDOW_MS = 10_000;
-const MAX_PER_WINDOW = 20;
+import { SUBMIT_MAX_PER_WINDOW, SUBMIT_WINDOW_MS, createSubmitRateLimiter } from './rate-limit.js';
 
 describe('createSubmitRateLimiter', () => {
   beforeEach(() => {
@@ -22,7 +18,7 @@ describe('createSubmitRateLimiter', () => {
     const limiter = createSubmitRateLimiter();
 
     // When / Then
-    for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW; i += 1) {
       expect(limiter.allow()).toBe(true);
     }
     expect(limiter.allow()).toBe(false);
@@ -32,11 +28,11 @@ describe('createSubmitRateLimiter', () => {
     // Given: half the budget spent now, the other half just before the
     // window boundary.
     const limiter = createSubmitRateLimiter();
-    for (let i = 0; i < MAX_PER_WINDOW / 2; i += 1) {
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW / 2; i += 1) {
       limiter.allow();
     }
-    vi.advanceTimersByTime(WINDOW_MS - 1);
-    for (let i = 0; i < MAX_PER_WINDOW / 2; i += 1) {
+    vi.advanceTimersByTime(SUBMIT_WINDOW_MS - 1);
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW / 2; i += 1) {
       limiter.allow();
     }
 
@@ -47,7 +43,7 @@ describe('createSubmitRateLimiter', () => {
     vi.advanceTimersByTime(1);
 
     // Then: exactly that much budget is back, no more.
-    for (let i = 0; i < MAX_PER_WINDOW / 2; i += 1) {
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW / 2; i += 1) {
       expect(limiter.allow()).toBe(true);
     }
     expect(limiter.allow()).toBe(false);
@@ -56,7 +52,7 @@ describe('createSubmitRateLimiter', () => {
   it('As a dotli integrator, the host denials do not consume budget', () => {
     // Given: a full window.
     const limiter = createSubmitRateLimiter();
-    for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+    for (let i = 0; i < SUBMIT_MAX_PER_WINDOW; i += 1) {
       limiter.allow();
     }
 
@@ -64,9 +60,9 @@ describe('createSubmitRateLimiter', () => {
     expect(limiter.allow()).toBe(false);
     expect(limiter.allow()).toBe(false);
 
-    // Then: once the window empties, the full budget is available again —
-    // denied attempts did not extend it.
-    vi.advanceTimersByTime(WINDOW_MS);
+    // Then: once the window empties, the full budget is available again.
+    // Denied attempts did not extend it.
+    vi.advanceTimersByTime(SUBMIT_WINDOW_MS);
     expect(limiter.allow()).toBe(true);
   });
 });

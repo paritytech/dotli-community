@@ -7,7 +7,6 @@ import { defineConfig } from 'eslint/config';
 import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
 export default defineConfig([
-  { ignores: ['storybook-static/**'] },
   ...config,
   {
     languageOptions: {
@@ -39,7 +38,6 @@ export default defineConfig([
         '@dotli/ui',
         '@config/eslint',
         '@config/vite',
-        '@config/storybook',
       ],
       'The debug panel shares nothing with the runtime or the data packages. It reads the host through its port and the network config, and takes only useStore and mountRoot of the ui package.',
     ),

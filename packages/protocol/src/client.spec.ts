@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { SITE_ID } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink } from '@dotli/shared';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS } from './errors.js';
@@ -144,20 +143,16 @@ describe('configureProtocolFrame', () => {
     if (frameWindow === null) {
       throw new Error('protocol iframe has no window');
     }
-    const posted: ProtocolRequestEnvelope[] = [];
-    vi.spyOn(frameWindow, 'postMessage').mockImplementation((message: unknown) => {
-      posted.push(message as ProtocolRequestEnvelope);
-    });
     host.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
     await vi.advanceTimersByTimeAsync(0);
-    for (const request of posted) {
+    for (const request of frameWindow.posted as ProtocolRequestEnvelope[]) {
       host.deliver({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result: 'session' });
     }
 
     // Then
     await expect(first).resolves.toBe('session');
     await expect(second).resolves.toBe('session');
-    expect(posted).toHaveLength(2);
+    expect(frameWindow.posted).toHaveLength(2);
     expect(host.frames()).toBe(1);
   });
 
@@ -199,32 +194,6 @@ describe('configureProtocolFrame', () => {
     expect(old.isConnected).toBe(false);
     expect(frameParams(host.iframe())['mode']).toBe('rpc');
     expect(host.client.getProtocolStatus()).toBe('booting');
-  });
-
-  it('As a dotli maintainer, I change the config of a booted frame and the trail says it was rebuilt for that, apart from a fatal', async () => {
-    // Given
-    const host = createFrameHost();
-    void host.client.ensureProtocolFrame().catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(0);
-    host.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    const trail: { message: string; attrs: Record<string, unknown> | undefined }[] = [];
-    bindLogSink({
-      emit: (level, message, attrs) => {
-        if (level === 'info') {
-          trail.push({ message, attrs });
-        }
-      },
-    });
-
-    // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG });
-    const eventsForSameConfig = trail.length;
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-
-    // Then
-    expect(eventsForSameConfig).toBe(0);
-    const reconfigured = trail.find(line => line.message === 'protocol frame reconfigured');
-    expect(reconfigured?.attrs).toMatchObject({ flow: 'protocol', backend: 'rpc-gateway' });
   });
 
   it('As the host, I take a pending reset that asks for a clean chain database, and a frame booted without it is rebuilt with it', async () => {
@@ -297,15 +266,13 @@ describe('protocol iframe listening handshake', () => {
     if (frameWindow === null) {
       throw new Error('protocol iframe has no window');
     }
-    const posted: ProtocolRequestEnvelope[] = [];
-    vi.spyOn(frameWindow, 'postMessage').mockImplementation((message: unknown) => {
-      posted.push(message as ProtocolRequestEnvelope);
-    });
 
     // When
     host.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
     await vi.advanceTimersByTimeAsync(0);
-    const request = posted.find(envelope => envelope.method === 'authStorageRead');
+    const request = (frameWindow.posted as ProtocolRequestEnvelope[]).find(
+      envelope => envelope.method === 'authStorageRead',
+    );
     if (request === undefined) {
       throw new Error('no authStorageRead posted');
     }
@@ -375,12 +342,6 @@ describe('protocol iframe listening handshake', () => {
       (err: unknown) => settled.push(err instanceof Error ? err.message : String(err)),
     );
     await vi.advanceTimersByTimeAsync(0);
-    const iframe = host.iframe();
-    const frameWindow = iframe.contentWindow;
-    if (frameWindow === null) {
-      throw new Error('protocol iframe has no window');
-    }
-    vi.spyOn(frameWindow, 'postMessage').mockImplementation(() => undefined);
     host.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
     await vi.advanceTimersByTimeAsync(0);
 

@@ -11,8 +11,8 @@ import {
   givenSettings,
   resetStorySettings,
   storySettings,
-} from '../../../.storybook/settings-fixtures.js';
-import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+} from '../../testing/stories/settings-fixtures.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
@@ -58,7 +58,9 @@ export const OpensBody: Story = {
       await expect(button).toHaveAttribute('aria-expanded', 'true');
       const popover = byId('mode-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
+      await expect(popover).toHaveAttribute('tabindex', '-1');
       await expect(popover).toHaveAttribute('aria-label', 'Settings');
+      await expect(byId('mode-popover-content').querySelector('h2')).toHaveTextContent('Settings');
       await expect(within(popover).getByTestId('mode-version')).toHaveTextContent('v0.0.0');
     });
     await ctx.step('When the page closes it', () => {
@@ -70,7 +72,7 @@ export const OpensBody: Story = {
   },
 };
 
-/** As the host booting, the button has no mark before the settings are read, and marks an unverified session. */
+/** As a host booting, I see no mark on the settings button before the settings are read, and a mark on an unverified session. */
 export const UnverifiedMark: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {

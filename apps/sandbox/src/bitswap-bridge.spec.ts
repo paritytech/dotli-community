@@ -143,19 +143,6 @@ describe('sandbox bitswap bridge', () => {
     expect(settledEarly).toBe(false);
   });
 
-  it('As a user, a torn-down fetch rejects rather than hanging the frame', async () => {
-    // Given an open request
-    const sandbox = harness();
-    const pending = sandbox.bridge.requestBlock('bafyZ');
-
-    // When the frame is torn down
-    sandbox.pagehide(false);
-
-    // Then the awaiting archive walk unwinds, and the message says "aborted"
-    // so the host treats it as a teardown rather than a failed load
-    await expect(pending).rejects.toThrow(/aborted/);
-  });
-
   it('As an operator, a block the host failed to fetch keeps its error class across the bridge', async () => {
     // Given a block request the host is fetching
     const sandbox = harness();

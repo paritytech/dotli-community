@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type M
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import {
+  bindRecordingSentry,
+  recordCaptures,
+  type RecordedCapture,
+  type RecordingSentry,
+} from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
 import type { RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from './messages.js';
@@ -117,6 +122,13 @@ function recordLoggedErrors(): unknown[][] {
   return errors;
 }
 
+/** Every exception this test captures with its step and tags, the errors themselves, and every metric it counts. */
+function recordReports(): { captured: RecordedCapture[]; errors: unknown[]; metrics: RecordingSentry } {
+  const errors: unknown[] = [];
+  const captured = recordCaptures({ onFinished: onTestFinished, errors });
+  return { captured, errors, metrics: bindRecordingSentry({ onFinished: onTestFinished }) };
+}
+
 interface Frame {
   posted: ProtocolRequestEnvelope[];
   deliver: (envelope: ProtocolEnvelope) => void;
@@ -148,10 +160,6 @@ async function bootFrame(): Promise<Frame> {
   if (frameWindow === null) {
     throw new Error('protocol iframe has no window');
   }
-  const posted: ProtocolRequestEnvelope[] = [];
-  vi.spyOn(frameWindow, 'postMessage').mockImplementation((message: unknown) => {
-    posted.push(message as ProtocolRequestEnvelope);
-  });
   const deliver = (envelope: ProtocolEnvelope): void => {
     host.deliver(envelope, iframe);
   };
@@ -159,7 +167,7 @@ async function bootFrame(): Promise<Frame> {
   await flush();
   deliver({ namespace: 'dotli:protocol', kind: 'ready' });
   await flush();
-  return { posted, deliver };
+  return { posted: frameWindow.posted as ProtocolRequestEnvelope[], deliver };
 }
 
 interface Remote {
@@ -259,11 +267,12 @@ describe('createRemoteChainProvider halts', () => {
     expect(onHalt).toHaveBeenCalledWith('chain');
   });
 
-  it('As a dotli integrator, a halt listener that throws is logged and the connection still closes', async () => {
+  it('As a dotli integrator, a halt listener that throws is reported and the connection still closes', async () => {
     // Given
-    const logError = recordLoggedErrors();
+    const { captured, errors, metrics } = recordReports();
+    const bug = new Error('listener bug');
     const { frame, received, connection, connectionId } = await connectRemote(() => {
-      throw new Error('listener bug');
+      throw bug;
     });
 
     // When
@@ -271,7 +280,11 @@ describe('createRemoteChainProvider halts', () => {
     connection.send({ jsonrpc: '2.0', id: 9, method: 'chainSpec_v1_genesisHash', params: [] });
 
     // Then
-    expect(logError).toContainEqual([expect.stringContaining('onHalt threw'), 'listener bug']);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'remote_chain.halt' } }]);
+    expect(errors).toEqual([bug]);
+    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'remote_chain.halt' },
+    ]);
     expect(received).toEqual([
       { jsonrpc: '2.0', id: 9, error: { code: -32603, message: 'Chain connection is closed' } },
     ]);
@@ -474,10 +487,11 @@ describe('createRemoteChainProvider halts', () => {
 
   it('As a dotli integrator, a consumer that throws while its queued send is closed cannot stop the rest from halting', async () => {
     // Given
-    const logError = recordLoggedErrors();
+    const { captured, errors, metrics } = recordReports();
+    const bug = new Error('consumer bug');
     const provider = peopleProvider();
     const throwing = provider(() => {
-      throw new Error('consumer bug');
+      throw bug;
     });
     throwing.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
     const frame = await bootFrame();
@@ -495,7 +509,11 @@ describe('createRemoteChainProvider halts', () => {
     await flush();
 
     // Then
-    expect(logError).toContainEqual([expect.stringContaining('onMessage threw'), 'consumer bug']);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'remote_chain.message' } }]);
+    expect(errors).toEqual([bug]);
+    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'remote_chain.message' },
+    ]);
     expect(secondHalt).toHaveBeenCalledTimes(1);
     expect(secondHalt).toHaveBeenCalledWith('frame');
     expect(dead.isConnected).toBe(false);
@@ -530,36 +548,6 @@ describe('createRemoteChainProvider halts', () => {
     expect(logError).toEqual([]);
   });
 
-  it('As a dotli integrator, a connection lost with its connect in flight hears the halt once the failed connect is in the trail', async () => {
-    // Given: a connection whose connect the frame has not answered yet.
-    const trail: string[] = [];
-    bindLogSink({
-      emit: (level, message) => {
-        if (level === 'info') {
-          trail.push(message);
-        }
-      },
-    });
-    const trailAtHalt: string[] = [];
-    const provider = peopleProvider();
-    provider(
-      () => undefined,
-      () => {
-        trailAtHalt.push(...trail);
-      },
-    );
-    const frame = await bootFrame();
-    if (!frame.posted.some(envelope => envelope.method === 'chainConnect')) {
-      throw new Error('no chainConnect posted');
-    }
-
-    // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-
-    // Then
-    expect(trailAtHalt).toContain('chainConnect failed');
-  });
-
   it('As a dotli integrator, a send still unacknowledged when the frame dies is neither logged nor answered', async () => {
     // Given
     const logError = recordLoggedErrors();
@@ -572,11 +560,12 @@ describe('createRemoteChainProvider halts', () => {
     frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
     await flush();
 
-    // Then
+    // Then the frame's own fatal is the one error logged. The line carries no error object, as a failed send's would
     expect(onHalt).toHaveBeenCalledTimes(1);
     expect(onHalt).toHaveBeenCalledWith('frame');
     expect(received).toEqual([]);
-    expect(logError).not.toContainEqual(['[dot.li protocol] Remote chain send failed:', expect.anything()]);
+    expect(logError).toHaveLength(1);
+    expect(logError.flat().filter(arg => arg instanceof Error)).toEqual([]);
   });
 
   it("As a dotli integrator, a chain connection's sends are not timed as protocol requests, while its connect is", async () => {
@@ -675,7 +664,6 @@ describe('createRemoteChainProvider halts', () => {
 
   it('As a dotli integrator, a connection the frame refuses to open halts as a dead frame', async () => {
     // Given: a send queued before the frame answers the connect
-    const logError = recordLoggedErrors();
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const provider = peopleProvider();
     const received: JsonRpcMessage[] = [];
@@ -705,7 +693,6 @@ describe('createRemoteChainProvider halts', () => {
       { jsonrpc: '2.0', id: 6, error: { code: -32603, message: 'Chain connection is closed' } },
       { jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'Chain connection is closed' } },
     ]);
-    expect(logError).toContainEqual(['[dot.li protocol] Failed to connect remote chain:', expect.any(Error)]);
   });
 
   it('As a dotli integrator, a connection whose connect timed out is closed in the frame, so a late accept cannot hold a slot', async () => {

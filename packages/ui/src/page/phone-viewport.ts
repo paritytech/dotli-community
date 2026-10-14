@@ -34,7 +34,7 @@ export function watchPhoneViewport(onChange: (phone: boolean) => void): () => vo
   };
 }
 
-/** For tests, so the next read reaches a stubbed `matchMedia`. */
+/** For tests, so the next read reads the current window's media query list. */
 export function resetPhoneViewport(): void {
   phoneList = null;
 }

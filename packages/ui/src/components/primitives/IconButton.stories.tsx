@@ -24,6 +24,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I press an icon button and its handler runs. */
 export const Default: Story = {
   play: async ({ args, canvas, userEvent, step }) => {
     await step('When I press it', async () => {
@@ -34,6 +35,7 @@ export const Default: Story = {
     });
   },
 };
+/** As a dotli user, I see an icon button's badge in each tone and tell the tones apart. */
 export const Badges: Story = {
   render: args => (
     <div style={{ display: 'flex', gap: '12px' }}>
@@ -47,6 +49,7 @@ export const Badges: Story = {
     </div>
   ),
 };
+/** As a dotli user, I see the small icon button. */
 export const Small: Story = {
   args: { size: 'sm', 'aria-label': 'Close' },
   render: args => (
@@ -56,6 +59,7 @@ export const Small: Story = {
   ),
 };
 
+/** As a dotli user, I press an icon button in a form and its handler runs without submitting the form. */
 export const InForm: Story = {
   args: { 'aria-label': 'Clear' },
   render: args => {

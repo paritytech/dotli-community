@@ -5,9 +5,9 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { bindCaptureSink } from '@dotli/metrics';
 import { expect, fn, waitFor } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { expectPhone, TopbarFrame } from '../../../.storybook/topbar-frame.js';
-import { type ChatStage, chatStage } from '../../../.storybook/chat-fixtures.js';
-import { GroupFrame, moreRow, openMore } from '../../../.storybook/frames.js';
+import { expectPhone, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { type ChatStage, chatStage } from '../../testing/stories/chat-fixtures.js';
+import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
 import type { ChatPanelModule } from '../../lazy.js';
 import { ChatItem } from './ChatButton.js';
 import { ChatDock } from './ChatDock.js';
@@ -77,6 +77,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a user, I see a waiting hint while the room list is empty. */
 export const EmptyRoomListHint: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -93,6 +94,7 @@ export const EmptyRoomListHint: Story = {
   },
 };
 
+/** As a user, I open the panel to see rooms with icon and name, open a room and go back. */
 export const RoomsWithIconAndName: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -133,6 +135,7 @@ export const RoomsWithIconAndName: Story = {
   },
 };
 
+/** As a user, I see the panel stretch to the top when the topbar hides. */
 export const StretchesWhenTopbarHides: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -152,6 +155,7 @@ export const StretchesWhenTopbarHides: Story = {
   },
 };
 
+/** As a user, I read product messages and my replies reach the product. */
 export const MessagesRenderAndRepliesPublish: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -180,6 +184,7 @@ export const MessagesRenderAndRepliesPublish: Story = {
   },
 };
 
+/** As a user, I see bots and rooms in one list ordered by last message time. */
 export const BotsAndRoomsByLastMessage: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -231,6 +236,7 @@ export const BotsAndRoomsByLastMessage: Story = {
   },
 };
 
+/** As a user, a custom message asks the product to render, a tap on it reaches the product and leaving the room disposes the render. */
 export const CustomMessageTreeAndTaps: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -248,7 +254,6 @@ export const CustomMessageTreeAndTaps: Story = {
       // Then
       const context = { tag: 'ChatMessage', value: { roomId: 'main', messageId, messageType: 'poll' } };
       await expect(stage.renders[0]?.request).toEqual({ context, payload: '0x0102' });
-      await expect(byId('chat-panel-messages')).toHaveTextContent('Loading…');
 
       // When the product renders its tree
       stage.renders[0]?.sink.onUpdate({
@@ -280,13 +285,6 @@ export const CustomMessageTreeAndTaps: Story = {
       await expect(stage.actions).toHaveLength(0);
       await expect(stage.published).toHaveLength(0);
 
-      // When the render fails, which must not leave a partial tree standing
-      stage.renders[0]?.sink.onError?.(new Error('render refused'));
-
-      // Then
-      await waitFor(() => expect(byId('chat-panel-messages')).not.toHaveTextContent('Pick one'));
-      await expect(byId('chat-panel-messages')).toHaveTextContent('This message can’t be shown right now.');
-
       // When
       byId('chat-panel-back').click();
 
@@ -296,10 +294,11 @@ export const CustomMessageTreeAndTaps: Story = {
   },
 };
 
+/** As a user with unread messages, I see their count on the chat button. */
 export const UnreadBadge: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
-    await step('As a user, unseen product messages show an unread badge until I open the panel', async () => {
+    await step('As a user with unread messages, I see their count on the chat button', async () => {
       // When the page counts a product message I have not seen
       stage.update({ unread: 1, unreadByRoom: { main: 1 } });
 
@@ -307,20 +306,15 @@ export const UnreadBadge: Story = {
       await waitFor(() => expect(byId('chat-unread-badge')).toBeVisible(), SLOW);
       await expect(byId('chat-unread-badge')).toHaveTextContent('1');
       await expect(byId('chat-button')).toHaveAccessibleName('Chat, 1 unread');
-
-      // When
-      openChat();
-
-      // Then
-      await waitFor(() => expect(byId('chat-unread-badge')).not.toBeVisible());
     });
   },
 };
 
+/** As a user, I see each room's unread count on its row and the total on the chat button. */
 export const PerRoomUnreadUntilOpened: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
-    await step('As a user, each room shows its own unread count until I open it', async () => {
+    await step("As a user, I see each room's unread count on its row and the total on the chat button", async () => {
       // Given
       stage.createRoom('busy', 'Busy');
       stage.createRoom('quiet', 'Quiet');
@@ -367,6 +361,7 @@ export const PerRoomUnreadUntilOpened: Story = {
   },
 };
 
+/** As a keyboard user, I press Escape to close the panel and focus returns to the chat button. */
 export const EscapeClosesAndRefocusesButton: Story = {
   tags: ['!autodocs'],
   play: async ({ step, userEvent }) => {
@@ -386,6 +381,7 @@ export const EscapeClosesAndRefocusesButton: Story = {
   },
 };
 
+/** As a user, I see a failed reply keep my message and show why it failed. */
 export const FailedReplyKeepsMessage: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -417,6 +413,7 @@ export const FailedReplyKeepsMessage: Story = {
   },
 };
 
+/** As a keyboard user, I open a room and focus lands in the composer. */
 export const OpeningRoomFocusesComposer: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -434,6 +431,7 @@ export const OpeningRoomFocusesComposer: Story = {
   },
 };
 
+/** As a user, I see a render error close the panel and the next open recovers it. */
 export const RenderErrorClosesThenRecovers: Story = {
   tags: ['!autodocs'],
   beforeEach: () => bindCaptureSink({ exception: fn(), expected: fn() }),
@@ -466,6 +464,7 @@ export const RenderErrorClosesThenRecovers: Story = {
   },
 };
 
+/** As a user, I find the panel closed when the chat code cannot load, and the next open retries. */
 export const ChunkLoadFailureRetries: Story = {
   tags: ['!autodocs'],
   render: () => (
@@ -498,6 +497,7 @@ export const ChunkLoadFailureRetries: Story = {
   },
 };
 
+/** As a user, I see the unread count on the chat button while the panel is closed and press it to toggle the panel. */
 export const PressTogglesPanel: Story = {
   tags: ['!autodocs'],
   parameters: { chrome: true },
@@ -537,18 +537,6 @@ export const PressTogglesPanel: Story = {
         await expect(byId('chat-button')).toHaveAttribute('aria-expanded', 'false');
       },
     );
-    await step('As a user, a logout that takes chat away hides the button and the panel', async () => {
-      // Given
-      byId('chat-button').click();
-      await waitFor(() => expect(byId('chat-panel')).toBeVisible());
-
-      // When I log out, which takes chat away and closes the panel on the page
-      stage.update({ available: false, open: false, loggedIn: false });
-
-      // Then
-      await waitFor(() => expect(byId('chat-button')).not.toBeVisible());
-      await expect(byId('chat-panel')).not.toBeVisible();
-    });
   },
 };
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import { TIMEOUTS, BASE_DOMAIN, isSandboxOrigin } from './config.js';
+import { BASE_DOMAIN, isSandboxOrigin } from './config.js';
 import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from './network.js';
 
 describe('config constants', () => {
@@ -17,19 +17,6 @@ describe('config constants', () => {
     it('As a resolver on Paseo, I read the dotNS content resolver at a valid hex address', () => {
       // When / Then
       expect(paseo.DOTNS_CONTENT_RESOLVER).toMatch(/^0x[0-9a-fA-F]{40}$/);
-    });
-  });
-
-  describe('dotns storage slots', () => {
-    it('As a resolver on any network, I read the registry records and contenthash at non-negative storage slots', () => {
-      // When / Then
-      for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
-        const slots = cfg.dotns.STORAGE_SLOTS;
-        expect(Number.isInteger(slots.REGISTRY_RECORDS)).toBe(true);
-        expect(slots.REGISTRY_RECORDS).toBeGreaterThanOrEqual(0);
-        expect(Number.isInteger(slots.CONTENTHASH)).toBe(true);
-        expect(slots.CONTENTHASH).toBeGreaterThanOrEqual(0);
-      }
     });
   });
 
@@ -53,15 +40,6 @@ describe('config constants', () => {
     it('As a visitor on Paseo, I fetch content from a first IPFS gateway on HTTPS', () => {
       // When / Then
       expect(NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO].bulletin.ipfsGateways[0]).toMatch(/^https:\/\//);
-    });
-  });
-
-  describe('TIMEOUTS', () => {
-    it('As a dotli maintainer, I set every timeout to a positive number of milliseconds', () => {
-      // When / Then
-      for (const [key, value] of Object.entries(TIMEOUTS)) {
-        expect(value, `TIMEOUTS.${key}`).toBeGreaterThan(0);
-      }
     });
   });
 

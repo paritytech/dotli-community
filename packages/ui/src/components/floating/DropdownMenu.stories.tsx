@@ -73,6 +73,7 @@ type Story = StoryObj<typeof meta>;
 const menu = (): HTMLElement => byId('story-menu');
 const row = (testId: string) => body.getByTestId(testId);
 
+/** As a keyboard user, I open the menu with Enter, move with the arrows and typeahead, and choose a row with focus back on More. */
 export const KeyboardOpensOnFirstItem: Story = {
   play: async ({ step }) => {
     await step('Given More announces the menu it controls', async () => {
@@ -121,6 +122,7 @@ export const KeyboardOpensOnFirstItem: Story = {
   },
 };
 
+/** As a keyboard user, I open the menu with ArrowDown and dismiss it with Escape, choosing nothing and keeping focus on More. */
 export const ArrowDownOpensOnFirstItem: Story = {
   play: async ({ step }) => {
     await step('When I focus More and press ArrowDown', async () => {
@@ -144,6 +146,7 @@ export const ArrowDownOpensOnFirstItem: Story = {
   },
 };
 
+/** As a mouse user, I click More and the menu takes focus, follows my hover and closes when I click More again. */
 export const PointerOpensOnTheMenu: Story = {
   play: async ({ step }) => {
     await step('When I click More', async () => {
@@ -169,6 +172,7 @@ export const PointerOpensOnTheMenu: Story = {
   },
 };
 
+/** As a phone user, I tap More and the rows open as a menu in a sheet that I move through with the arrows. */
 export const Sheet: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
@@ -193,6 +197,7 @@ export const Sheet: Story = {
   },
 };
 
+/** As a phone user, I tap a row that opens a sheet and it takes More's place, and Escape gives focus back to More. */
 export const SheetRowHandsOff: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
@@ -227,6 +232,7 @@ export const SheetRowHandsOff: Story = {
   },
 };
 
+/** As a phone user, I tap a row that opens no sheet and More closes as usual with focus back on More. */
 export const SheetRowWithoutSheetSlides: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {

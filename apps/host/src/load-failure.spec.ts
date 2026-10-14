@@ -202,12 +202,13 @@ describe('presentLoadFailure', () => {
   it('As a visitor hitting two unrelated unknown failures, I am never offered the gateway shortcut for them', () => {
     // Given
     const sightings = memorySightings();
-
-    // When
     present(described('unknown', 'switch-backend'), 'smoldot-direct', sightings);
 
+    // When
+    const { shown } = present(described('unknown', 'switch-backend'), 'smoldot-direct', sightings);
+
     // Then
-    expect(sightings.last()).toBeNull();
+    expect(labels(shown()).filter(label => label.startsWith(FAILOVER_BTN_LABELS['rpc-gateway']))).toEqual([]);
   });
 
   it('As a visitor on a failed load, I leave one error page breadcrumb however many of its screens I move between', () => {

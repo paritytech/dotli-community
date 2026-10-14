@@ -97,7 +97,7 @@ describe('readArchiveFiles', () => {
     });
 
     // Then
-    await expect(read).rejects.toThrow();
+    await expect(read).rejects.toMatchObject({ name: 'ContentVerificationError' });
   });
 });
 

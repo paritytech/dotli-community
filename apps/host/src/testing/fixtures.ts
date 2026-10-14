@@ -3,19 +3,8 @@
 
 // Pure fixtures shared by the runtime specs.
 
-import type { Result } from 'neverthrow';
-
 export const genesisHash = `0x${'11'.repeat(32)}` as const;
 export const blockHash = `0x${'22'.repeat(32)}` as const;
-
-export function unwrap<T, E>(result: Result<T, E>): T {
-  if (result.isErr()) {
-    throw new Error(`expected Ok, got Err: ${String(result.error)}`, {
-      cause: result.error,
-    });
-  }
-  return result.value;
-}
 
 /** Narrows an iterator step, whose value an async iterator types as `any`, throwing if the iterator finished. */
 export function yielded<T>(step: IteratorResult<T, unknown>): T {

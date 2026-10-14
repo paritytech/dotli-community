@@ -71,8 +71,9 @@ const TABLE: Row[] = [
 ];
 
 describe('the protocol frame refusal report', () => {
-  it('As a dotli operator, I see each refused request logged and counted by its route and reason', () => {
-    for (const row of TABLE) {
+  it.each(TABLE)(
+    'As a dotli operator, I see the $refusal.route route refused for $refusal.reason logged and counted as it should be',
+    row => {
       // Given a reporter on its own log and counter
       const warned: unknown[][] = [];
       const counted: unknown[][] = [];
@@ -85,7 +86,7 @@ describe('the protocol frame refusal report', () => {
       report(row.refusal);
 
       // Then it is logged and counted as the table says
-      expect({ refusal: row.refusal, warned, counted }).toEqual(row);
-    }
-  });
+      expect({ warned, counted }).toEqual({ warned: row.warned, counted: row.counted });
+    },
+  );
 });

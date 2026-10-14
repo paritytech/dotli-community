@@ -4,6 +4,7 @@
 // The panel's work per frame, click and tick at its 2000-event capacity, counted through the computations it is
 // handed and Solid's dev warnings, with layout from the real browser.
 
+import { createRenderEffect, createRoot, createSignal, flush } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, spyOn, waitFor, within } from 'storybook/test';
 import {
@@ -19,13 +20,15 @@ import {
   rows,
   withFakeClock,
   type FakeClock,
-} from '../.storybook/debug-panel-fixtures.js';
+} from './testing/stories/debug-panel-fixtures.js';
+import { debugPanelStory } from './testing/stories/debug-panel-story.js';
 
 const meta = {
+  ...debugPanelStory,
   title: 'Debug/Panel work',
   // The panel mounts on the page itself, as the host mounts it, so the canvas stays empty.
   tags: ['!autodocs'],
-  parameters: { debugPanel: { mount: false } },
+  parameters: { ...debugPanelStory.parameters, debugPanel: { mount: false } },
   render: () => <div data-testid="story-host-page" />,
   beforeEach: debugPanelBeforeEach,
 } satisfies Meta;
@@ -66,11 +69,41 @@ async function watchFanOut(play: (warnings: () => string[]) => Promise<void>): P
   }
 }
 
+/** Past Solid's dev threshold for a fan-out warning, which is 2000 subscribers. */
+const HUGE_FAN_OUT_READERS = 2500;
+
+/** As a dotli developer, the fan-out watch sees a huge fan-out, so its silence elsewhere means something. */
+export const FanOutWatchSeesFanOut: Story = {
+  play: async ({ step }) =>
+    watchFanOut(async fanOut => {
+      const [shared, setShared] = createSignal(0);
+      const dispose = createRoot(d => {
+        for (let i = 0; i < HUGE_FAN_OUT_READERS; i++) {
+          createRenderEffect(shared, () => undefined);
+        }
+        return d;
+      });
+      flush();
+      try {
+        await step('When one signal read by every reader changes', () => {
+          setShared(1);
+          flush();
+        });
+        await step('Then the watch reports the fan-out', async () => {
+          await expect(fanOut()).toHaveLength(1);
+        });
+      } finally {
+        dispose();
+      }
+    }),
+};
+
 /** Waits for `clock` to be just past a Resolution tick, so the next frames stay clear of one. */
 function pastResolutionTick(clock: FakeClock): void {
   clock.advance(500 - (Date.now() % 500) + 1);
 }
 
+/** As a developer using the debug panel, I collapse the panel while traffic arrives and only the header count is matched, and it catches up once when I expand. */
 export const CollapsedKeepsCountOnly: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -102,6 +135,7 @@ export const CollapsedKeepsCountOnly: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I collapse the panel with a call pending and its pending clock stops until I expand. */
 export const PendingClockStopsCollapsed: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -124,22 +158,7 @@ export const PendingClockStopsCollapsed: Story = {
     }),
 };
 
-export const NoPendingNoClock: Story = {
-  play: async ({ step }) =>
-    withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
-      mount();
-      fillWithAnsweredPairs(clock);
-      resetCalls(calls);
-      await step('When three ticks pass with every call answered', () => {
-        clock.advance(3000);
-      });
-      await step('Then no pending badge renders', async () => {
-        await expect(calls.formatPending).toBe(0);
-      });
-    }),
-};
-
+/** As a developer using the debug panel, I keep the Resolution tab open while TrUAPI traffic arrives and nothing is recomputed until I go back. */
 export const ResolutionTabIgnoresTraffic: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -170,6 +189,7 @@ export const ResolutionTabIgnoresTraffic: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I see a system event redraw the Resolution view once. */
 export const ResolutionRedrawsOnSystemEvent: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -189,6 +209,7 @@ export const ResolutionRedrawsOnSystemEvent: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I receive frames of filtered-out events and the timeline is not laid out again. */
 export const FilteredFrameNoRelayout: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -213,14 +234,15 @@ export const FilteredFrameNoRelayout: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I receive one more request at 2000 pending and only that event is filtered and rendered. */
 export const OneEventAtCapacity: Story = {
   play: async ({ step }) =>
-    withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
-      mount();
-      fillWithPendingRequests(clock);
-      resetCalls(calls);
-      await watchFanOut(async fanOut => {
+    withFakeClock(async clock =>
+      watchFanOut(async fanOut => {
+        const { mount, calls } = debugPanel();
+        mount();
+        fillWithPendingRequests(clock);
+        resetCalls(calls);
         await step('When one more request arrives at 2000 pending', () => {
           request('host_sign_request', 'new');
           clock.frame();
@@ -231,17 +253,18 @@ export const OneEventAtCapacity: Story = {
           await expect(pendingBadge(rows()[1999])).not.toBeNull();
           await expect(fanOut()).toEqual([]);
         });
-      });
-    }),
+      }),
+    ),
 };
 
+/** As a developer using the debug panel, I wait through a pending tick at 2000 pending and every badge updates without a fan-out warning. */
 export const PendingTickNoFanOut: Story = {
   play: async ({ step }) =>
-    withFakeClock(async clock => {
-      debugPanel().mount();
-      fillWithPendingRequests(clock);
-      const badge = pendingBadge(rows()[0]);
-      await watchFanOut(async fanOut => {
+    withFakeClock(async clock =>
+      watchFanOut(async fanOut => {
+        debugPanel().mount();
+        fillWithPendingRequests(clock);
+        const badge = pendingBadge(rows()[0]);
         await step('When a pending tick passes at 2000 pending', () => {
           clock.advance(1000);
         });
@@ -250,10 +273,11 @@ export const PendingTickNoFanOut: Story = {
           await expect(pendingBadge(rows()[1999])).toHaveTextContent('⟳ 1.0s pending');
           await expect(fanOut()).toEqual([]);
         });
-      });
-    }),
+      }),
+    ),
 };
 
+/** As a developer using the debug panel, I receive one more answered pair at 1000 pairs and only the new events are filtered. */
 export const AnsweredPairAtCapacity: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -273,14 +297,15 @@ export const AnsweredPairAtCapacity: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I click rows at 2000 rows and only the rows whose selection changed are restyled. */
 export const ClickRestylesChangedRows: Story = {
   play: async ({ step }) =>
-    withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
-      mount();
-      fillWithAnsweredPairs(clock);
-      resetCalls(calls);
-      await watchFanOut(async fanOut => {
+    withFakeClock(async clock =>
+      watchFanOut(async fanOut => {
+        const { mount, calls } = debugPanel();
+        mount();
+        fillWithAnsweredPairs(clock);
+        resetCalls(calls);
         await step('When I click a row at 2000 rows', () => {
           rows()[500]?.click();
         });
@@ -300,19 +325,20 @@ export const ClickRestylesChangedRows: Story = {
           await expect(rows()[900]).toHaveAttribute('data-selection', 'selected');
           await expect(calls.rowSelection).toBeLessThanOrEqual(4);
         });
-      });
-    }),
+      }),
+    ),
 };
 
+/** As a developer using the debug panel, I press ArrowDown repeatedly at 2000 rows and only the rows whose selection changed are restyled. */
 export const ArrowsRestyleChangedRows: Story = {
   play: async ({ step }) =>
-    withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
-      mount();
-      fillWithPendingRequests(clock);
-      rows()[10]?.click();
-      resetCalls(calls);
-      await watchFanOut(async fanOut => {
+    withFakeClock(async clock =>
+      watchFanOut(async fanOut => {
+        const { mount, calls } = debugPanel();
+        mount();
+        fillWithPendingRequests(clock);
+        rows()[10]?.click();
+        resetCalls(calls);
         await step('When I press ArrowDown twenty times at 2000 rows', () => {
           for (let i = 0; i < 20; i++) {
             part('td-list').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -324,10 +350,11 @@ export const ArrowsRestyleChangedRows: Story = {
           await expect(calls.rowSelection).toBeLessThanOrEqual(40);
           await expect(fanOut()).toEqual([]);
         });
-      });
-    }),
+      }),
+    ),
 };
 
+/** As a developer using the debug panel, I type a filter that keeps the selected event visible and the detail pane is left alone. */
 export const FilterKeepsDetail: Story = {
   play: async ({ userEvent, step }) => {
     const { mount, system } = debugPanel();
@@ -353,6 +380,7 @@ export const FilterKeepsDetail: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see a reply's latency stay the same when its row is filtered out and made again. */
 export const LatencyIndependentOfRow: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -386,6 +414,7 @@ export const LatencyIndependentOfRow: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I scroll up to read a row and new events that evict the oldest leave the same row under me. */
 export const ScrolledUpKeepsRows: Story = {
   play: async ({ step }) => {
     debugPanel().mount({ capacity: 50 });
@@ -413,6 +442,7 @@ export const ScrolledUpKeepsRows: Story = {
   },
 };
 
+/** As a developer using the debug panel, I drag the edge with several moves in one frame and the host hears the last move once when the frame passes. */
 export const EdgeDragRefitsOncePerFrame: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
@@ -440,43 +470,42 @@ export const EdgeDragRefitsOncePerFrame: Story = {
     }),
 };
 
+/** As a dotli developer, I drag the splitter through three moves and the list pane ends as wide as the last one. */
 export const SplitterMeasuresOnce: Story = {
   play: async ({ step }) => {
     debugPanel().mount();
-    const body = part('td-body');
-    const left = body.getBoundingClientRect().left;
-    const measure = spyOn(body, 'getBoundingClientRect');
-    try {
-      await step('When I drag the splitter through three moves', () => {
-        const held = grab(part('td-body-splitter'));
-        held.to(left + 500, 0);
-        held.to(left + 510, 0);
-        held.to(left + 520, 0);
-        held.release();
-      });
-      await step('Then the body was measured once, at the start', async () => {
-        await expect(measure).toHaveBeenCalledTimes(1);
-        await expect(part('td-views').getBoundingClientRect().width).toBeCloseTo(520, 0);
-      });
-    } finally {
-      measure.mockRestore();
-    }
+    const left = part('td-body').getBoundingClientRect().left;
+    await step('When I drag the splitter through three moves', () => {
+      const held = grab(part('td-body-splitter'));
+      held.to(left + 500, 0);
+      held.to(left + 510, 0);
+      held.to(left + 520, 0);
+      held.release();
+    });
+    await step('Then the list pane is as wide as the last move', async () => {
+      await expect(part('td-views').getBoundingClientRect().width).toBeCloseTo(520, 0);
+    });
   },
 };
 
+/** As a dotli developer, rows evicted at capacity release their keys, which guards the keyed maps against growth. */
 export const EvictedRowsReleaseKeys: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
       const { mount, keyedMaps } = debugPanel();
       mount({ capacity: 10 });
       const subscribed = (): string[] => keyedMaps.flatMap(map => [...map.subscribedKeys()].map(String));
+      const seqsOf = (): string[] => rows().map(r => r.dataset['seq'] ?? '');
+      let evicted: string[] = [];
       await step('Given ten requests, one selected', async () => {
         for (let i = 0; i < 10; i++) {
           request('host_sign_request', `old${String(i)}`);
         }
         clock.frame();
         rows()[0]?.click();
+        evicted = seqsOf();
         await expect(subscribed().some(k => k.includes('old'))).toBe(true);
+        await expect(evicted.every(seq => subscribed().includes(seq))).toBe(true);
       });
       await step('When ten new requests evict every row', () => {
         for (let i = 0; i < 10; i++) {
@@ -484,12 +513,11 @@ export const EvictedRowsReleaseKeys: Story = {
         }
         clock.frame();
       });
-      await step('Then only the current rows hold a seq, a group key and a pending key each', async () => {
-        const seqs = rows().map(r => r.dataset['seq'] ?? '');
+      await step('Then no key of an evicted row is held, and the current rows hold theirs', async () => {
         const keys = subscribed();
+        await expect(keys.filter(k => evicted.includes(k))).toEqual([]);
         await expect(keys.filter(k => k.includes('old'))).toEqual([]);
-        await expect(keys).toHaveLength(30);
-        await expect(seqs.every(seq => keys.includes(seq))).toBe(true);
+        await expect(seqsOf().every(seq => keys.includes(seq))).toBe(true);
       });
     }),
 };

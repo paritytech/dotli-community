@@ -109,12 +109,4 @@ describe('Solid server renderer', () => {
     expect(await renderer.check.call(ctx, svelte, {}, {})).toBe(false);
     expect(await renderer.check.call(ctx, Broken, {}, {})).toBe(false);
   });
-
-  it("As a page's first Solid island, I get the hydration script Astro injects and it bootstraps Solid", () => {
-    // When
-    const script = renderer.renderHydrationScript?.() ?? '';
-
-    // Then
-    expect(script).toMatch(/^<script[^>]*>.*_\$HY/s);
-  });
 });

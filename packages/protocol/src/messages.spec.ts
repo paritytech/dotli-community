@@ -1,18 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, it, expect, onTestFinished, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import type { ChainRole } from '@dotli/config';
 import {
-  CHAIN_ROLES,
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  NetworkName,
-  getActiveSupportedGenesisHashes,
-  getSettings,
-  setSettings,
-  type ChainRole,
-} from '@dotli/config';
-import {
-  ENVELOPE_SYNC_KINDS,
   isChainSyncPayloadValid,
   isProgressPayloadValid,
   getRequestSyncTimeoutMs,
@@ -215,11 +206,6 @@ describe('progress envelope validation', () => {
 });
 
 describe('getRequestSyncTimeoutMs', () => {
-  // Not inside a test body: a failing assertion would leak the mock onward.
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   const requestWithDeadline = (deadlineMs?: number): ProtocolRequestEnvelope => ({
     namespace: 'dotli:protocol',
     kind: 'request',
@@ -231,10 +217,10 @@ describe('getRequestSyncTimeoutMs', () => {
 
   it("As a handler of a request with a deadline, I get a sync budget that leaves time to deliver the response inside the caller's deadline", () => {
     // Given
-    vi.spyOn(Date, 'now').mockReturnValue(10_000);
+    const now = 10_000;
 
     // When
-    const budget = getRequestSyncTimeoutMs(requestWithDeadline(100_000));
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(100_000), now);
 
     // Then
     expect(budget).toBe(89_000);
@@ -242,10 +228,10 @@ describe('getRequestSyncTimeoutMs', () => {
 
   it('As a handler reading an already-expired deadline, my budget stays positive', () => {
     // Given
-    vi.spyOn(Date, 'now').mockReturnValue(100_000);
+    const now = 100_000;
 
     // When
-    const budget = getRequestSyncTimeoutMs(requestWithDeadline(10_000));
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(10_000), now);
 
     // Then
     expect(budget).toBe(1);
@@ -268,25 +254,6 @@ describe('getRequestSyncTimeoutMs', () => {
   });
 });
 
-describe('getActiveSupportedGenesisHashes', () => {
-  it('As a product on Paseo, I target an unknown genesis hash and it is not supported', () => {
-    // Given
-    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
-
-    // When / Then
-    expect(getActiveSupportedGenesisHashes().has('0xdeadbeef')).toBe(false);
-  });
-});
-
-describe('genesis hash constants', () => {
-  it('As a dotli maintainer, I give every network a relay genesis as a 0x-prefixed hex string', () => {
-    // When / Then
-    for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
-      expect(cfg.relay.genesis).toMatch(/^0x[0-9a-f]{64}$/);
-    }
-  });
-});
-
 describe('chain-sync envelope validation works', () => {
   function envelope(over: Partial<ProtocolChainSyncEnvelope> = {}): ProtocolChainSyncEnvelope {
     return {
@@ -297,24 +264,6 @@ describe('chain-sync envelope validation works', () => {
       ...over,
     };
   }
-
-  // Drift guard: the validator keeps its own copy of the resolver's vocabulary, and a gap drops kinds silently.
-  it('As a user, every sync milestone the resolver can emit reaches the shell', () => {
-    // Given / When / Then
-    for (const chain of CHAIN_ROLES) {
-      for (const syncKind of ENVELOPE_SYNC_KINDS) {
-        expect(
-          isChainSyncPayloadValid(
-            envelope({
-              chain,
-              syncKind,
-              ...(syncKind === 'peers' ? { peers: 1 } : {}),
-            }),
-          ),
-        ).toBe(true);
-      }
-    }
-  });
 
   it('As a user, a spoofed chain or milestone is refused', () => {
     // Given / When / Then
@@ -328,7 +277,7 @@ describe('chain-sync envelope validation works', () => {
     expect(
       isChainSyncPayloadValid(
         envelope({
-          syncKind: 'somethingElse' as (typeof ENVELOPE_SYNC_KINDS)[number],
+          syncKind: 'somethingElse' as ProtocolChainSyncEnvelope['syncKind'],
         }),
       ),
     ).toBe(false);

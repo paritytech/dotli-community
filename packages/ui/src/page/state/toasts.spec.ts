@@ -32,27 +32,6 @@ function pushToast(toast: ToastInput): number {
   return pushToastTo(toast);
 }
 
-/** A page that counts the visibility listeners still attached, as each is removed through its abort signal. */
-class ListenerCountingPage extends FakePage {
-  visibilityListeners = 0;
-
-  override addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: AddEventListenerOptions | boolean,
-  ): void {
-    super.addEventListener(type, listener, options);
-    if (type !== 'visibilitychange') {
-      return;
-    }
-    this.visibilityListeners += 1;
-    const signal = typeof options === 'object' ? options.signal : undefined;
-    signal?.addEventListener('abort', () => {
-      this.visibilityListeners -= 1;
-    });
-  }
-}
-
 function setVisibility(state: 'visible' | 'hidden'): void {
   page.setVisibility(state);
 }
@@ -64,7 +43,7 @@ function leaving(): boolean[] {
 beforeEach(() => {
   vi.useFakeTimers();
   page = new FakePage();
-  bindToastPage(page);
+  bindToastPage(page.document);
 });
 
 afterEach(() => {
@@ -263,18 +242,27 @@ describe('toast store', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
-  it('As a dotli page reset between stories, I bind my page again and it listens for visibility once', () => {
-    // Given a page bound, reset, and bound again
-    const counted = new ListenerCountingPage();
-    bindToastPage(counted);
+  it('As a dotli page reset between stories, I bind my page again and its countdown resumes', () => {
+    // Given a page bound, reset, and bound twice more
+    const again = new FakePage();
+    bindToastPage(again.document);
     resetAllStoresForTests();
+    bindToastPage(again.document);
+    bindToastPage(again.document);
+    const onDismiss = vi.fn();
+    pushToast(input({ onDismiss }));
 
-    // When
-    bindToastPage(counted);
-    bindToastPage(counted);
+    // When the page hides and shows again after the dismiss time
+    again.setVisibility('hidden');
+    vi.advanceTimersByTime(5000);
+    again.setVisibility('visible');
+    vi.advanceTimersByTime(999);
 
-    // Then
-    expect(counted.visibilityListeners).toBe(1);
+    // Then the toast leaves once, at the right time
+    expect(leaving()).toEqual([false]);
+    vi.advanceTimersByTime(1);
+    expect(leaving()).toEqual([true]);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it('As the toasts, clearing an empty stack notifies nobody', () => {

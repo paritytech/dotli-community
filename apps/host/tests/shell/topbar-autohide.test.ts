@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { getTopbarState, setTopbarPresent } from '../../src/state/topbar.js';
-import { browserTopbarPage, createTopbarAutoHide, type TopbarAutoHide } from '../../src/topbar-autohide.js';
+import {
+  browserTopbarPage,
+  createTopbarAutoHide,
+  HIDE_DELAY_MS,
+  type TopbarAutoHide,
+} from '../../src/topbar-autohide.js';
 import { byId } from '@dotli/ui/testing';
-
-const HIDE_DELAY_MS = 2500;
 
 const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 

@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   parseExecutableManifest,
   parseRootManifest,
+  toExecutableManifestResult,
+  toRootManifestResult,
   validateExecutableManifest,
   validateRootManifest,
 } from './manifest-types.js';
@@ -36,6 +38,16 @@ const VALID_WORKER = {
   entrypoint: 'index.js',
   includes: { chat: true, pocket: false },
 };
+
+const ROOT = JSON.stringify(VALID_ROOT);
+const APP = JSON.stringify({ $v: 1, kind: 'app', appVersion: [0, 1, 9] });
+// What `app.doom.paseo` publishes: a schema this host does not read.
+const APP_V2 = JSON.stringify({
+  $v: 2,
+  kind: 'app',
+  appVersion: [0, 1, 9],
+  runtime: { kind: 'polkavm', abiVersion: 1, entrypoint: 'app.polkavm' },
+});
 
 describe('validateRootManifest', () => {
   it('As the host validating a root manifest, I accept a well-formed one', () => {
@@ -208,5 +220,56 @@ describe('parse* helpers', () => {
 
     // Then
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('toRootManifestResult', () => {
+  it.each([null, ''])('As the host reading a root manifest record, I read %j as no manifest', raw => {
+    // When / Then
+    expect(toRootManifestResult(raw)).toEqual({ kind: 'empty' });
+  });
+
+  it('As the host reading a root manifest record, I keep its text next to the valid manifest', () => {
+    // When / Then
+    expect(toRootManifestResult(ROOT)).toMatchObject({ kind: 'ok', value: { displayName: 'HackM3' }, raw: ROOT });
+  });
+
+  it('As the host reading a root manifest record, I report an unknown $v as an unsupported version', () => {
+    // Given
+    const raw = JSON.stringify({ $v: 3 });
+
+    // When / Then
+    expect(toRootManifestResult(raw)).toEqual({ kind: 'unsupported-version', version: 3, raw });
+  });
+
+  it('As the host reading a root manifest record, I report text that is not JSON as invalid', () => {
+    // When / Then
+    expect(toRootManifestResult('{ nope')).toMatchObject({ kind: 'invalid', raw: '{ nope' });
+  });
+});
+
+describe('toExecutableManifestResult', () => {
+  it('As the host reading an executable manifest record, I keep its text next to the valid manifest', () => {
+    // When / Then
+    expect(toExecutableManifestResult(APP, 'app')).toMatchObject({ kind: 'ok', value: { kind: 'app' }, raw: APP });
+  });
+
+  it('As the host reading an executable manifest record, I report a v2 manifest as an unsupported version', () => {
+    // When / Then
+    expect(toExecutableManifestResult(APP_V2, 'app')).toEqual({ kind: 'unsupported-version', version: 2, raw: APP_V2 });
+  });
+
+  it('As the host reading an executable manifest record, I report a manifest read from the wrong subname as invalid', () => {
+    // When / Then
+    expect(toExecutableManifestResult(APP, 'worker')).toEqual({
+      kind: 'invalid',
+      errors: ["executable manifest kind 'app' does not match its subname 'worker'"],
+      raw: APP,
+    });
+  });
+
+  it('As the host reading an executable manifest record, I read an empty record as no manifest', () => {
+    // When / Then
+    expect(toExecutableManifestResult(null, 'app')).toEqual({ kind: 'empty' });
   });
 });

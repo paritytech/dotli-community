@@ -8,6 +8,7 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { fakeDebugPanelHost } from '@dotli/truapi-debug-ui/testing';
 import type { ArchiveLoader } from './host.js';
 import { ArchiveView, type ObjectUrls } from './ArchiveView.js';
+import { debugPanelStory } from './testing/stories/debug-panel-story.js';
 
 const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
 
@@ -17,9 +18,10 @@ const loads = (files: Record<string, Uint8Array>) => fn<ArchiveLoader>(() => Pro
 const page = fakeDebugPanelHost();
 
 const meta = {
+  ...debugPanelStory,
   title: 'Debug/Archive',
   component: ArchiveView,
-  parameters: { docs: { story: { inline: false, height: '320px' } } },
+  parameters: { ...debugPanelStory.parameters, docs: { story: { inline: false, height: '320px' } } },
   args: {
     active: true,
     load: loads({ 'index.html': enc('<h1>hi</h1>'), 'assets/app.js': enc('run()') }),
@@ -37,6 +39,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a developer using the debug panel, I select a text file in the archive and read its content. */
 export const TextFile: Story = {
   play: async ({ args, canvas, userEvent, step }) => {
     await step('Given the archive is listed', async () => {
@@ -52,6 +55,7 @@ export const TextFile: Story = {
   },
 };
 
+/** As a developer using the debug panel, I preview an image from the archive and its preview is freed when I pick another file. */
 export const ImagePreviewFreed: Story = {
   args: {
     load: loads({ 'logo.png': new Uint8Array([0x89, 0x50]), 'a.txt': enc('a') }),
@@ -77,6 +81,7 @@ export const ImagePreviewFreed: Story = {
   },
 };
 
+/** As a developer using the debug panel, I am told why the archive read failed. */
 export const ReadFails: Story = {
   args: { load: fn<ArchiveLoader>(() => Promise.reject(new Error('gateway 504'))) },
   play: async ({ canvas, step }) => {
@@ -86,6 +91,7 @@ export const ReadFails: Story = {
   },
 };
 
+/** As a developer using the debug panel, I am told a local product has no archive and nothing is read. */
 export const LocalProduct: Story = {
   beforeEach: () => {
     page.product.set({ status: 'loaded' });
@@ -99,6 +105,7 @@ export const LocalProduct: Story = {
 };
 
 // The panel shows and hides the tab, so this owner does.
+/** As a developer using the debug panel, I show the archive tab repeatedly and it reads the archive only once. */
 export const ReadOnceWhenShown: Story = {
   render: args => {
     const [active, setActive] = createSignal(false);

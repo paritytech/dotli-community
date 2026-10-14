@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { decodeWireMessage } from '@parity/truapi';
 import { bindCaptureSink } from '@dotli/metrics';
 import { createAuthCommands, createCoreAuthCommands, requestCoreLogin, type AuthCommands } from './core-login.js';
 import type { DotliAuthState } from './session/auth-state.js';
@@ -324,17 +325,18 @@ describe('requestCoreLogin', () => {
   it('As a dotli integrator, the host rejects malformed response frames and unsubscribes', async () => {
     // Given
     const { requestCoreLogin } = harness();
+    const malformed = new Uint8Array([0xff, 0x00]);
     const provider = makeProvider({
       onPostMessage() {
-        provider.listener?.(new Uint8Array([0xff, 0x00]));
+        provider.listener?.(malformed);
       },
     });
 
     // When
     const login = requestCoreLogin(provider);
 
-    // Then
-    await expect(login).rejects.toThrow();
+    // Then: the login fails with the envelope's own decode error
+    await expect(login).rejects.toThrow(decodeWireMessage(malformed)._unsafeUnwrapErr().message);
     expect(provider.listener).toBeNull();
   });
 

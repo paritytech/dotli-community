@@ -230,6 +230,50 @@ describe('createEngine name reads', () => {
     ]);
     expect(new Set(out.map(envelope => ('id' in envelope ? envelope.id : null))).size).toBe(1);
   });
+
+  it.each([
+    ['caps the budget a far deadline allows', 1000, 1000],
+    ['leaves the budget to the deadline', undefined, 'deadline'],
+  ])('As a tester, a resolve budget cap %s', async (_case, syncBudgetCapMs, expected) => {
+    // Given
+    const { createChainProvider } = createTransports();
+    const broker = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    const seen: (number | undefined)[] = [];
+    const resolver: EngineResolver = {
+      resolveDotName: (_label, opts) => {
+        seen.push(opts?.syncTimeoutMs);
+        return Promise.resolve('bafy-doom');
+      },
+      resolveOwner: () => Promise.resolve(null),
+      resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
+      resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
+    };
+    const engine = createEngine({ broker, isChainSupported: () => true, resolver, syncBudgetCapMs });
+    const hour = 60 * 60 * 1000;
+
+    // When
+    await engine.openScope().handleRequest(
+      {
+        namespace: 'dotli:protocol',
+        kind: 'request',
+        id: 'r1',
+        method: 'resolveDotName',
+        payload: { label: 'doom' },
+        deadlineMs: Date.now() + hour,
+      },
+      ORIGIN_A,
+      () => undefined,
+    );
+
+    // Then
+    expect(seen).toHaveLength(1);
+    if (expected === 'deadline') {
+      expect(seen[0]).toBeGreaterThan(1000);
+      expect(seen[0]).toBeLessThanOrEqual(hour);
+    } else {
+      expect(seen[0]).toBe(expected);
+    }
+  });
 });
 
 describe('createEngine halts', () => {
@@ -508,7 +552,9 @@ describe('createEngine scopes', () => {
     );
 
     // Then
-    expect(connected).toHaveLength(2 * MAX_CONNS);
+    expect(connected.flat().map(envelope => envelope.kind === 'response' && envelope.ok)).toEqual(
+      Array.from({ length: 2 * MAX_CONNS }, () => true),
+    );
   });
 
   it('As a dotli user on the shared light client, a tab stops getting connections at its limit, whatever the site', async () => {
@@ -629,33 +675,8 @@ describe('createEngine scopes', () => {
     haltTransport(must(built[0], 'first chain'));
 
     // Then
-    expect(must(built[0], 'first chain').disconnect.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(must(built[0], 'first chain').disconnect).toHaveBeenCalledTimes(1);
     expect(must(built[1], 'second chain').disconnect).toHaveBeenCalledTimes(1);
     expect(scope.close()).toBe(0);
-  });
-
-  it("As a dotli maintainer, the breadcrumbs name each connection's first answer, halt and close", async () => {
-    // Given
-    const notes: string[] = [];
-    const { scope, built } = setup({ log: message => notes.push(message) });
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c2' });
-
-    // When
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
-    const transport = must(built[0], 'transport');
-    transport.emit({ jsonrpc: '2.0', id: must(transport.sent[0], 'request').id ?? null, result: '0xaa' });
-    transport.emit({ jsonrpc: '2.0', id: 'unrelated', result: '0xaa' });
-    haltTransport(transport);
-    await call(scope, 'chainDisconnect', { connectionId: 'c2' });
-
-    // Then
-    expect(notes).toEqual([
-      'Chain connected: c1 (1 total)',
-      'Chain connected: c2 (2 total)',
-      expect.stringMatching(/^First chain message for c1 \(\d+ bytes\)$/),
-      'Chain halted: c1 (1 remaining)',
-      'Chain disconnected: c2 (0 remaining)',
-    ]);
   });
 });

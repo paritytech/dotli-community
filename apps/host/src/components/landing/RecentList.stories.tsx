@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal } from 'solid-js';
+import { createSignal, flush } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { Meta, StoryObj } from 'storybook-solidjs-vite';
+import type { Meta, SolidRenderer, StoryObj } from 'storybook-solidjs-vite';
+import type { StoryContext } from 'storybook/internal/types';
 import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { RecentList } from './RecentList.js';
@@ -47,6 +48,10 @@ type Story = StoryObj<typeof meta>;
 const labelsShown = (canvas: { queryAllByTestId: (id: string) => HTMLElement[] }): (string | undefined)[] =>
   canvas.queryAllByTestId('landing-recent-link').map(link => link.dataset['label']);
 
+/**
+ * As a returning visitor, I see my recent names under a Recent heading, each linking to its site with a button to
+ * remove it.
+ */
 export const Recents: Story = {
   beforeEach: visited('alpha', 'beta'),
   play: async ({ canvas, step }) => {
@@ -67,6 +72,7 @@ export const Recents: Story = {
   },
 };
 
+/** As a first-time visitor, I see no recents row. */
 export const NoRecents: Story = {
   beforeEach: visited(),
   play: async ({ canvas, step }) => {
@@ -77,6 +83,7 @@ export const NoRecents: Story = {
   },
 };
 
+/** As a returning visitor, I see a recent name that holds markup as text. */
 export const MarkupAsText: Story = {
   // A page that hands one over, past the store's parse that would drop it.
   beforeEach: visited('<img src=x onerror="alert(1)">'),
@@ -89,6 +96,10 @@ export const MarkupAsText: Story = {
   },
 };
 
+/**
+ * As a keyboard user, I Tab to a recent name's remove button and press it to forget the name, and the row goes with
+ * the last one.
+ */
 export const RemoveForgets: Story = {
   beforeEach: visited('alpha', 'beta'),
   play: async ({ canvas, step }) => {
@@ -121,53 +132,152 @@ const tap = (target: Element): MouseEvent => {
   return event;
 };
 
+/** Taps `target` and says whether the page cancelled it, keeping the test browser from following a link it did not. */
+const wasPrevented = (target: Element): boolean => {
+  let prevented = false;
+  // Added after the page's own listeners, so it sees what they decided.
+  const record = (event: Event): void => {
+    prevented = event.defaultPrevented;
+    event.preventDefault();
+  };
+  document.addEventListener('click', record, { once: true });
+  tap(target);
+  document.removeEventListener('click', record);
+  return prevented;
+};
+
+/** The press timing is the point, so the clock is the test's, and it is real again when `run` ends. */
+async function onFakeClock(run: (advance: (ms: number) => Promise<void>) => Promise<void>): Promise<void> {
+  // Imported lazily so Storybook loads the stories outside Vitest.
+  const { vi } = await import('vitest');
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    await run(ms => vi.advanceTimersByTimeAsync(ms).then(() => undefined));
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+const HOLD_MS = 450;
+
+type Canvas = StoryContext<SolidRenderer>['canvas'];
+
+const link = (canvas: Canvas, label: string): Promise<HTMLElement> =>
+  canvas.findByRole('link', { name: `${label}${SUFFIX}` });
+const remove = (canvas: Canvas, label: string): HTMLElement =>
+  canvas.getByRole('button', { name: `Remove ${label}${SUFFIX} from recently visited` });
+
+/** As a returning visitor on a touch screen, I hold a name and its remove button shows only once the press is long. */
 export const LongPressReveals: Story = {
   beforeEach: visited('alpha', 'beta'),
   play: async ({ canvas, step }) => {
-    // The press timing is the point, so the clock is the test's. Imported lazily so Storybook loads the stories
-    // outside Vitest.
-    const { vi } = await import('vitest');
-    const link = async (label: string) => canvas.findByRole('link', { name: `${label}${SUFFIX}` });
-    const remove = (label: string) =>
-      canvas.getByRole('button', { name: `Remove ${label}${SUFFIX} from recently visited` });
-    const alpha = await link('alpha');
-    const beta = await link('beta');
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
-      await step('When a press on alpha moves, then it is a scroll and reveals nothing', async () => {
-        touch(alpha, 'touchstart');
-        await vi.advanceTimersByTimeAsync(200);
-        touch(alpha, 'touchmove');
-        await vi.advanceTimersByTimeAsync(1000);
-        await expect(remove('alpha')).not.toHaveAttribute('data-revealed');
-      });
+    const alpha = await link(canvas, 'alpha');
+    await onFakeClock(async advance => {
       await step('When I hold alpha, then its remove button shows only once the press is long', async () => {
         touch(alpha, 'touchstart');
-        await vi.advanceTimersByTimeAsync(449);
-        await expect(remove('alpha')).not.toHaveAttribute('data-revealed');
-        await vi.advanceTimersByTimeAsync(1);
-        await expect(remove('alpha')).toHaveAttribute('data-revealed');
+        await advance(HOLD_MS - 1);
+        await expect(remove(canvas, 'alpha')).not.toHaveAttribute('data-revealed');
+        await advance(1);
+        await expect(remove(canvas, 'alpha')).toHaveAttribute('data-revealed');
+      });
+    });
+  },
+};
+
+/** As a returning visitor on a touch screen, I scroll past a name and no remove button shows. */
+export const ScrollDoesNotReveal: Story = {
+  beforeEach: visited('alpha', 'beta'),
+  play: async ({ canvas, step }) => {
+    const alpha = await link(canvas, 'alpha');
+    await onFakeClock(async advance => {
+      await step('When a press on alpha moves, then it is a scroll and reveals nothing', async () => {
+        touch(alpha, 'touchstart');
+        await advance(200);
+        touch(alpha, 'touchmove');
+        await advance(1000);
+        await expect(remove(canvas, 'alpha')).not.toHaveAttribute('data-revealed');
+      });
+    });
+  },
+};
+
+/** As a returning visitor on a touch screen, I lift my finger after a long press and the site does not open. */
+export const TapAfterHoldIsSuppressed: Story = {
+  beforeEach: visited('alpha', 'beta'),
+  play: async ({ canvas, step }) => {
+    const alpha = await link(canvas, 'alpha');
+    await onFakeClock(async advance => {
+      await step('Given I hold alpha until its remove button shows', async () => {
+        touch(alpha, 'touchstart');
+        await advance(HOLD_MS);
+        await expect(remove(canvas, 'alpha')).toHaveAttribute('data-revealed');
       });
       await step('When the press ends, then its tap does not open the site', async () => {
         touch(alpha, 'touchend');
-        await expect(tap(alpha).defaultPrevented).toBe(true);
+        await expect(wasPrevented(alpha)).toBe(true);
+      });
+    });
+  },
+};
+
+/** As a returning visitor on a touch screen, I hold another name and the remove button moves to it. */
+export const HoldMovesReveal: Story = {
+  beforeEach: visited('alpha', 'beta'),
+  play: async ({ canvas, step }) => {
+    const alpha = await link(canvas, 'alpha');
+    const beta = await link(canvas, 'beta');
+    await onFakeClock(async advance => {
+      await step('Given I hold alpha until its remove button shows', async () => {
+        touch(alpha, 'touchstart');
+        await advance(HOLD_MS);
+        await expect(remove(canvas, 'alpha')).toHaveAttribute('data-revealed');
       });
       await step('When I hold beta, then the reveal moves there', async () => {
         touch(beta, 'touchstart');
-        await vi.advanceTimersByTimeAsync(450);
-        await expect(remove('alpha')).not.toHaveAttribute('data-revealed');
-        await expect(remove('beta')).toHaveAttribute('data-revealed');
+        await advance(HOLD_MS);
+        await expect(remove(canvas, 'alpha')).not.toHaveAttribute('data-revealed');
+        await expect(remove(canvas, 'beta')).toHaveAttribute('data-revealed');
       });
-    } finally {
-      vi.useRealTimers();
-    }
+    });
+  },
+};
+
+/** As a returning visitor on a touch screen, I tap inside the recents and the revealed remove button stays. */
+export const TapInsideKeepsReveal: Story = {
+  beforeEach: visited('alpha', 'beta'),
+  play: async ({ canvas, step }) => {
+    const beta = await link(canvas, 'beta');
+    await onFakeClock(async advance => {
+      await step('Given I hold beta until its remove button shows', async () => {
+        touch(beta, 'touchstart');
+        await advance(HOLD_MS);
+        await expect(remove(canvas, 'beta')).toHaveAttribute('data-revealed');
+      });
+    });
     await step('When I tap inside the recents, then beta stays revealed', async () => {
       canvas.getAllByTestId('landing-recent-item')[1]?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-      await expect(remove('beta')).toHaveAttribute('data-revealed');
+      // A reveal that hid would only show once Solid applies it.
+      flush();
+      await expect(remove(canvas, 'beta')).toHaveAttribute('data-revealed');
+    });
+  },
+};
+
+/** As a returning visitor on a touch screen, I tap elsewhere and the remove button hides and the name opens again. */
+export const TapOutsideHidesReveal: Story = {
+  beforeEach: visited('alpha', 'beta'),
+  play: async ({ canvas, step }) => {
+    const beta = await link(canvas, 'beta');
+    await onFakeClock(async advance => {
+      await step('Given I hold beta until its remove button shows', async () => {
+        touch(beta, 'touchstart');
+        await advance(HOLD_MS);
+        await expect(remove(canvas, 'beta')).toHaveAttribute('data-revealed');
+      });
     });
     await step('When I tap anywhere else, then it hides and beta opens its site again', async () => {
       document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-      await waitFor(() => expect(remove('beta')).not.toHaveAttribute('data-revealed'));
+      await waitFor(() => expect(remove(canvas, 'beta')).not.toHaveAttribute('data-revealed'));
       beta.addEventListener('click', event => {
         // The test browser must not leave the story.
         if (!event.defaultPrevented) {

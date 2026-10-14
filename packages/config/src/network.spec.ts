@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import {
   applyNetworkOverrides,
   NETWORK_NAME_TO_SERVICES_CONFIG,
@@ -10,6 +10,7 @@ import {
   getActiveCoreGatewayChains,
   getActiveGatewayChains,
   getActiveGatewaySupportedGenesisHashes,
+  getActiveServicesConfig,
 } from './network.js';
 import { getSettings } from './settings.js';
 import { setSettings } from './active-settings.js';
@@ -55,10 +56,14 @@ describe('gateway-supported chains (rpc-gateway mode)', () => {
   });
 
   it('As a product on Trusted Providers, I am offered only chains with a configured RPC endpoint', () => {
-    // When / Then
-    for (const chain of getActiveGatewayChains()) {
-      expect(chain.rpcs.length).toBeGreaterThan(0);
-    }
+    // Given
+    const cfg = { ...getActiveServicesConfig(), people: { ...getActiveServicesConfig().people, rpcs: [] } };
+
+    // When
+    const chains = getActiveGatewayChains(cfg);
+
+    // Then
+    expect(chains.map(chain => chain.genesis)).toEqual([cfg.relay.genesis, cfg.assethub.genesis]);
   });
 
   it('As a product on Trusted Providers, I am offered no chain the light client set lacks', () => {
@@ -74,6 +79,25 @@ describe('gateway-supported chains (rpc-gateway mode)', () => {
   it('As a product on the light client, I am offered the Bulletin chain', () => {
     // When / Then
     expect(getActiveSupportedGenesisHashes().has(v2.bulletin.genesis.toLowerCase())).toBe(true);
+  });
+});
+
+describe('getActiveSupportedGenesisHashes', () => {
+  it('As a product on Paseo, I target an unknown genesis hash and it is not supported', () => {
+    // Given
+    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
+
+    // When / Then
+    expect(getActiveSupportedGenesisHashes().has('0xdeadbeef')).toBe(false);
+  });
+});
+
+describe('genesis hash constants', () => {
+  it('As a dotli maintainer, I give every network a relay genesis as a 0x-prefixed hex string', () => {
+    // When / Then
+    for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
+      expect(cfg.relay.genesis).toMatch(/^0x[0-9a-f]{64}$/);
+    }
   });
 });
 

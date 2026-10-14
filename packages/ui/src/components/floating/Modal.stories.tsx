@@ -63,6 +63,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a keyboard user, I tab past the last answer in the card and focus wraps inside it, and Escape reports it closed once. */
 export const Desktop: Story = {
   play: async ({ userEvent, step }) => {
     onOpenChange.mockClear();
@@ -88,6 +89,7 @@ export const Desktop: Story = {
   },
 };
 
+/** As a phone user, I see the dialog as a sheet with its title. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
@@ -97,6 +99,7 @@ export const Phone: Story = {
   },
 };
 
+/** As a dotli user, I resize the window across the phone breakpoint and the dialog keeps my typed value and focus. */
 export const SwitchesFormKeepingContent: Story = {
   play: async ({ userEvent, step }) => {
     const input = () => body.getByTestId<HTMLInputElement>('story-password');

@@ -7,7 +7,7 @@ import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import type { ModalEntry, ModalView } from '../../page/state/modals.js';
 import { LockIcon } from '../../icons.js';
-import { CameraIcon, UploadIcon } from '../../../.storybook/glyphs.js';
+import { CameraIcon, UploadIcon } from '../../testing/stories/glyphs.js';
 import { PromptDialog } from './PromptDialog.js';
 
 // Ids outside the store, so a pressed button settles nothing.
@@ -54,6 +54,7 @@ const footer = (): [string, string | null][] =>
     .getAllByRole('button')
     .map(button => [button.textContent, button.getAttribute('data-variant')]);
 
+/** As a dotli user, I meet a modal dialog named by its title with its icon, fields, notice and answers. */
 export const PermissionRequest: Story = {
   play: async ({ step }) => {
     await step('Then I meet a modal dialog named by its title, with its icon, fields, notice and answers', async () => {
@@ -86,6 +87,7 @@ export const PermissionRequest: Story = {
   },
 };
 
+/** As a keyboard user, I find focus on the dialog and not on an answer, and Tab wraps between the answers. */
 export const FocusStartsOnDialog: Story = {
   play: async ({ step }) => {
     await step('Then focus is on the dialog, not on an answer', async () => {
@@ -103,6 +105,7 @@ export const FocusStartsOnDialog: Story = {
   },
 };
 
+/** As a dotli user, I type into a password field that keeps its text to itself, and Unlock waits for a password. */
 export const PasswordPrompt: Story = {
   args: {
     entry: entry({
@@ -144,6 +147,7 @@ export const PasswordPrompt: Story = {
   },
 };
 
+/** As a screen reader user, I hear the wrong-password error announced. */
 export const WrongPassword: Story = {
   args: {
     entry: entry({
@@ -170,6 +174,7 @@ export const WrongPassword: Story = {
   },
 };
 
+/** As a dotli user, I read a preimage submit prompt with its data size and answers. */
 export const PreimageSubmit: Story = {
   args: {
     entry: entry({
@@ -185,6 +190,7 @@ export const PreimageSubmit: Story = {
   },
 };
 
+/** As a dotli user, I read a sign-transaction prompt where the answer that rejects is drawn destructive. */
 export const SignTransaction: Story = {
   args: {
     entry: entry({
@@ -214,6 +220,7 @@ export const SignTransaction: Story = {
   },
 };
 
+/** As a dotli user, I read a sign-message prompt with the code in monospace and the warning marked. */
 export const SignMessage: Story = {
   args: {
     entry: entry({
@@ -244,6 +251,7 @@ export const SignMessage: Story = {
   },
 };
 
+/** As a phone user, I see the prompt as a sheet headed by its title with a Close button. */
 export const Phone: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],

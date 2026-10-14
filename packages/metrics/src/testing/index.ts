@@ -4,7 +4,7 @@
 // A Sentry for tests that records what the page reports. Apart from the barrel so no browser bundle reaches it, and
 // free of any test runner so every package's tests can share it.
 
-import { bindCaptureSink } from '../capture.js';
+import { bindCaptureSink, type Flow } from '../capture.js';
 import { m } from '../metrics.js';
 
 export interface RecordedMetric {
@@ -78,16 +78,26 @@ export function bindRecordingSentry(options: RecordingOptions = {}): RecordingSe
 }
 
 export interface RecordedCapture {
+  flow: Flow;
   step: string;
   tags: Record<string, string> | undefined;
 }
 
-/** Records each captured exception's step and tags, until `onFinished` puts back the sink bound before. */
-export function recordCaptures(options: { onFinished: (restore: () => void) => void }): RecordedCapture[] {
+/**
+ * Records each captured exception's flow, step and tags, until `onFinished` puts back the sink bound before. Each captured
+ * error is also pushed to `errors` when given.
+ */
+export function recordCaptures(options: {
+  onFinished: (restore: () => void) => void;
+  errors?: unknown[];
+}): RecordedCapture[] {
   const captured: RecordedCapture[] = [];
   options.onFinished(
     bindCaptureSink({
-      exception: (_err, ctx) => captured.push({ step: ctx.step, tags: ctx.tags }),
+      exception: (err, ctx) => {
+        captured.push({ flow: ctx.flow, step: ctx.step, tags: ctx.tags });
+        options.errors?.push(err);
+      },
       expected: () => undefined,
     }),
   );

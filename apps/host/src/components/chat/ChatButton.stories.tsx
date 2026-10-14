@@ -4,8 +4,8 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { TopbarFrame } from '../../../.storybook/topbar-frame.js';
-import { type ChatStage, chatStage } from '../../../.storybook/chat-fixtures.js';
+import { TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { type ChatStage, chatStage } from '../../testing/stories/chat-fixtures.js';
 import { ChatButton } from './ChatButton.js';
 
 /** The story's chat, fresh for each. */
@@ -29,6 +29,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a user, I see the chat button only while the page has chat for me. */
 export const HiddenWithoutChat: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {

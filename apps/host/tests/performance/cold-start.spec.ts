@@ -598,7 +598,7 @@ test.describe('Cold Start Performance', () => {
   let warmStats: RunStats | null = null;
   let lukewarmStats: RunStats | null = null;
 
-  test(`As a dotli maintainer, I measure a cold start over ${String(NUM_RUNS)} iterations and every run is recorded`, async ({
+  test(`As a dotli maintainer, I measure a cold start over ${String(NUM_RUNS)} iterations and at least one run is recorded`, async ({
     browser,
   }) => {
     // When
@@ -623,7 +623,7 @@ test.describe('Cold Start Performance', () => {
     expect(runs.length).toBeGreaterThan(0);
   });
 
-  test(`As a dotli maintainer, I measure a warm start over ${String(NUM_RUNS)} iterations and every run is recorded`, async ({
+  test(`As a dotli maintainer, I measure a warm start over ${String(NUM_RUNS)} iterations and at least one run is recorded`, async ({
     browser,
   }) => {
     // When
@@ -637,7 +637,7 @@ test.describe('Cold Start Performance', () => {
     expect(runs.length).toBeGreaterThan(0);
   });
 
-  test(`As a dotli maintainer, I measure a lukewarm start from ${DOMAIN_A} to ${DOMAIN_B} over ${String(NUM_RUNS)} iterations and every run is recorded`, async ({
+  test(`As a dotli maintainer, I measure a lukewarm start from ${DOMAIN_A} to ${DOMAIN_B} over ${String(NUM_RUNS)} iterations and at least one run is recorded`, async ({
     browser,
   }) => {
     // When

@@ -94,14 +94,14 @@ describe('device permission prompts', () => {
     expect(page.pending()).toEqual([]);
   });
 
-  it('As a product, my iframe stays alive when notifications are granted', async () => {
+  it('As a product, a notifications grant is announced as not a device change', async () => {
     // When / Then
     expect(await grantAndRecordChanges('Notifications')).toEqual([
       { label: 'myapp', permissions: ['Notifications'], device: false, fromPrompt: true },
     ]);
   });
 
-  it('As a product, my iframe reloads after my answer when a grant changes its allow attribute', async () => {
+  it('As a product, a camera grant is announced as a device change from the prompt', async () => {
     // When / Then
     expect(await grantAndRecordChanges('Camera')).toEqual([
       { label: 'myapp', permissions: ['Camera'], device: true, fromPrompt: true },

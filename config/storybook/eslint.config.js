@@ -15,5 +15,5 @@ export default defineConfig([
       },
     },
   },
-  ...importBans([onlyAllowedScopes(['@config/eslint', '@config/vite'], 'Tooling imports only tooling.')]),
+  ...importBans([onlyAllowedScopes(['@config/eslint'], 'Tooling imports only tooling.')]),
 ]);

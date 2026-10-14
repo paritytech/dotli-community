@@ -12,7 +12,7 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   DEFAULT_CACHE,
   DEFAULT_SETTINGS,
@@ -21,7 +21,7 @@ import {
   resetStorySettings,
   settingsAsked,
   storySettings,
-} from '../../../.storybook/settings-fixtures.js';
+} from '../../testing/stories/settings-fixtures.js';
 import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
@@ -175,32 +175,6 @@ const DEFAULTS: Shown = {
   debugOn: false,
 };
 
-/** As a dotli user, the button announces the settings dialog it opens and whether it is open, with no trusted mark. */
-export const Open: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    const button = byId('mode-button');
-    await ctx.step('Given the closed button with its labels and ARIA state', async () => {
-      await expect(button).toHaveAttribute('title', 'Settings');
-      await expect(button).toHaveAttribute('aria-label', 'Settings');
-      await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
-      await expect(button).toHaveAttribute('aria-expanded', 'false');
-      await expect(button).toHaveAttribute('aria-controls', 'mode-popover');
-      await expect(button).not.toHaveAttribute('data-badge');
-    });
-    await open(ctx);
-    await ctx.step('Then it is the open dialog named Settings, with its heading and version', async () => {
-      await expect(button).toHaveAttribute('aria-expanded', 'true');
-      const popover = byId('mode-popover');
-      await expect(popover).toHaveAttribute('role', 'dialog');
-      await expect(popover).toHaveAttribute('tabindex', '-1');
-      await expect(popover).toHaveAttribute('aria-label', 'Settings');
-      await expect(byId('mode-popover-content').querySelector('h2')).toHaveTextContent('Settings');
-      await expect(query(document, '[data-testid="mode-version"]')).toHaveTextContent('v0.0.0');
-    });
-  },
-};
-
 /** As a phone user, the settings sheet leaves its title to the sheet header and Save and apply sits in its foot. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
@@ -218,38 +192,6 @@ export const OpenPhone: Story = {
         await expect(applyButton()).toHaveAttribute('data-block');
       },
     );
-  },
-};
-
-/** As a visitor on trusted providers, the button carries the trusted-provider mark. */
-export const TrustedMark: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    givenSettings({ ...DEFAULT_SETTINGS, backend: 'rpc-gateway', verified: false });
-  },
-  play: async ({ step }) => {
-    await step('Then the button carries the mark', async () => {
-      await expect(byId('mode-button')).toHaveAttribute('data-badge');
-    });
-  },
-};
-
-/** As the host booting, a button mounted before the settings are read has no mark, and follows them once read. */
-export const UnreadSettingsHaveNoMark: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    givenSettings(null);
-  },
-  play: async ({ step }) => {
-    await step('Then there is no mark', async () => {
-      await expect(byId('mode-button')).not.toHaveAttribute('data-badge');
-    });
-    await step('When the host reads them on trusted providers', () => {
-      givenSettings({ ...DEFAULT_SETTINGS, backend: 'rpc-gateway', verified: false });
-    });
-    await step('Then the button carries the mark', async () => {
-      await waitFor(() => expect(byId('mode-button')).toHaveAttribute('data-badge'));
-    });
   },
 };
 

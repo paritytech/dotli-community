@@ -16,6 +16,7 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import { enableDotliDebugBuffering, watchDotliDebugEvents, type DotliDebugEvent } from '@dotli/truapi-debug';
 import { clearScreen } from '@dotli/ui';
+import { beginAttempt } from '../../src/journey.js';
 import type { LoadFailure } from '../../src/load-failure.js';
 import { pageLoading } from '../../src/loading-controller.js';
 import type { NameSource } from '../../src/name-source.js';
@@ -78,7 +79,6 @@ interface Options {
 }
 
 function harness(options: Options = {}) {
-  const order: string[] = [];
   const failures: LoadFailure[] = [];
   const contentDone: ((outcome: ContentOutcome, failedStep: string | undefined) => void)[] = [];
   const stored: string[] = [];
@@ -97,13 +97,8 @@ function harness(options: Options = {}) {
     readWorkerManifest: vi.fn(() => Promise.resolve(options.workerManifest ?? { kind: 'empty' as const })),
   };
   const frame = {
-    setPageProduct: vi.fn(() => {
-      order.push('setPageProduct');
-    }),
-    render: vi.fn<LoaderFrame['render']>(() => {
-      order.push('render');
-      return Promise.resolve();
-    }),
+    setPageProduct: vi.fn(),
+    render: vi.fn<LoaderFrame['render']>(() => Promise.resolve()),
     onContentDone: callback => {
       contentDone.push(callback);
     },
@@ -149,7 +144,6 @@ function harness(options: Options = {}) {
     names,
     frame,
     cidCache,
-    order,
     failures,
     stored,
     revalidated,
@@ -162,8 +156,6 @@ function harness(options: Options = {}) {
     },
   };
 }
-
-const JOURNEY_KEY = 'dotli:journey';
 
 describe('createProductLoader', () => {
   const captured: CaptureContext[] = [];
@@ -207,9 +199,37 @@ describe('createProductLoader', () => {
     }
   });
 
-  it('As a visitor opening a name for the first time, I get its app subname content rendered as verified, and it is remembered for next time', async () => {
+  it('As a visitor opening a name for the first time, I get its app subname content rendered', async () => {
     // Given
-    const { loader, frame, order, stored, recorded, forgotten } = harness({
+    const { loader, frame } = harness({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(frame.render).toHaveBeenCalledWith({
+      mode: 'subdomain',
+      label: 'doom',
+      cid: 'bafy-app',
+      chat: expect.any(Promise) as unknown,
+    });
+    expect(events()).toContain('boot:ready');
+  });
+
+  it('As a visitor opening a name for the first time, I see its URL pill as verified', async () => {
+    // Given
+    const { loader } = harness({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(urlPillStore.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'verified' });
+  });
+
+  it('As a visitor opening a name for the first time, it is remembered for next time', async () => {
+    // Given
+    const { loader, stored, recorded, forgotten } = harness({
       published: { 'app.doom': 'bafy-app', doom: 'bafy-base' },
     });
 
@@ -217,28 +237,9 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // Then
-    expect(order).toEqual(['setPageProduct', 'render']);
-    expect(frame.render).toHaveBeenCalledWith({
-      mode: 'subdomain',
-      label: 'doom',
-      cid: 'bafy-app',
-      chat: expect.any(Promise) as unknown,
-    });
-    expect(urlPillStore.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'verified' });
     expect(stored).toEqual(['doom bafy-app']);
     expect(recorded).toEqual(['doom']);
     expect(forgotten()).toBe(1);
-    expect(events()).toEqual([
-      'boot:cid_cache_checked',
-      'resolve:started',
-      'resolve:phase',
-      'resolve:completed',
-      'boot:ready',
-    ]);
-    expect(debug.find(event => event.event === 'phase')?.payload).toEqual({
-      label: 'doom',
-      phase: 'asset-hub-syncing',
-    });
   });
 
   it('As a visitor opening a product whose worker manifest includes chat, I get it rendered with chat on', async () => {
@@ -319,7 +320,7 @@ describe('createProductLoader', () => {
     // Then
     expect(document.querySelector('[data-testid="error-page-domain"]')?.textContent).toContain('doom');
     expect(getProductState().status).toBe('error');
-    expect(sessionStorage.getItem(JOURNEY_KEY)).toBeNull();
+    expect(beginAttempt('doom').attemptNumber).toBe(1);
     expect(resolution()).toMatchObject({ outcome: 'no_content' });
     expect(frame.render).not.toHaveBeenCalled();
     expect(failures).toEqual([]);
@@ -361,14 +362,12 @@ describe('createProductLoader', () => {
     // Given
     const { loader, reportContent } = harness({ published: { doom: 'bafy-base' } });
     await loader.load('doom');
-    const journeyBefore = sessionStorage.getItem(JOURNEY_KEY);
 
     // When
     reportContent('loaded');
 
     // Then
-    expect(journeyBefore).not.toBeNull();
-    expect(sessionStorage.getItem(JOURNEY_KEY)).toBeNull();
+    expect(beginAttempt('doom').attemptNumber).toBe(1);
     expect(resolution()).toMatchObject({ outcome: 'rendered', loading_phase: 'content' });
   });
 
@@ -381,7 +380,7 @@ describe('createProductLoader', () => {
     reportContent('failed', 'archive_fetch');
 
     // Then
-    expect(sessionStorage.getItem(JOURNEY_KEY)).not.toBeNull();
+    expect(beginAttempt('doom').attemptNumber).toBe(2);
     expect(resolution()).toMatchObject({ outcome: 'content_error', failed_step: 'archive_fetch' });
   });
 

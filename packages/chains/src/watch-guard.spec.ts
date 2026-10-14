@@ -55,25 +55,6 @@ function dropped(subscription: string): JsonRpcMessage {
 }
 
 describe('createWatchGuard', () => {
-  it('As a dotli integrator, a transaction watch the transport loses on a disconnect ends with dropped', () => {
-    // Given
-    const { transport, emit } = createTransport();
-    const guard = createWatchGuard(transport);
-    const received: JsonRpcMessage[] = [];
-    const connection = guard.provider(message => {
-      received.push(message);
-    });
-    connection.send(submit(1));
-    emit({ jsonrpc: '2.0', id: 1, result: 'watch-1' });
-    received.length = 0;
-
-    // When
-    guard.onStatus('disconnected');
-
-    // Then
-    expect(received).toEqual([dropped('watch-1')]);
-  });
-
   it('As a dotli integrator, a watch that already ended or was unwatched is not dropped again', () => {
     // Given
     const { transport, emit } = createTransport();

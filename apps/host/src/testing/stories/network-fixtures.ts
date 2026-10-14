@@ -5,11 +5,12 @@
 
 import { createSignal, onCleanup } from 'solid-js';
 import type { Backend } from '@dotli/config';
-import type { NetworkHealth } from '../src/components/chains/network-health.js';
-import type { ChainBar } from '../src/components/chains/chain.js';
-import type { ChainView, NetworkView, TransferView } from '../src/components/chains/chains.js';
-import type { LiveVerdict } from '../src/network-verdict.js';
-import type { NetworkItemProps } from '../src/components/chains/NetworkItem.js';
+import type { NetworkHealth } from '../../components/chains/network-health.js';
+import type { BlockHealth } from '../../state/network-monitor.js';
+import type { ChainBar } from '../../components/chains/chain.js';
+import type { ChainView, NetworkView, TransferView } from '../../components/chains/chains.js';
+import type { LiveVerdict } from '../../network-verdict.js';
+import type { NetworkItemProps } from '../../components/chains/NetworkItem.js';
 
 const NO_TRANSFER: TransferView = { bytesPerSecond: null, fetched: null, total: null };
 
@@ -68,13 +69,9 @@ export function chain(overrides: Partial<ChainView> & { latest?: number | null }
   };
 }
 
-/** `count` bars from block `from`, each `gapMs` after the one before. */
-export function bars(from: number, count: number, gapMs = 6000): ChainBar[] {
-  return Array.from({ length: count }, (_, i) => ({
-    number: from + i,
-    health: gapMs > 18_000 ? 'veryLate' : gapMs > 9000 ? 'late' : 'onTime',
-    gapMs,
-  }));
+/** `count` bars from block `from`, each `gapMs` after the one before, all with `health`, as the story says. */
+export function bars(from: number, count: number, gapMs = 6000, health: BlockHealth = 'onTime'): ChainBar[] {
+  return Array.from({ length: count }, (_, i) => ({ number: from + i, health, gapMs }));
 }
 
 /**

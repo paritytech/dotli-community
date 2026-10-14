@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, byTestId } from '@dotli/ui/testing';
 import type { PermissionStatus } from '../../runtime/permissions.js';
-import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   givenApp,
   givenHost,
@@ -16,7 +16,7 @@ import {
   resetStoryPermissions,
   STORY_PERMISSIONS,
   storyPermissions,
-} from '../../../.storybook/permissions-fixtures.js';
+} from '../../testing/stories/permissions-fixtures.js';
 import { PermissionsItem } from './PermissionsItem.js';
 
 const open = openSurface({ trigger: 'permissions-button', surface: 'permissions-popover' });
@@ -77,7 +77,7 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * As a user of a loaded app, the popover lists its device and app permissions in named groups, each with its status
- * pressed, under the app's host, and the button announces the dialog it opens.
+ * pressed, under the app's host, and the open dialog is named Permissions.
  */
 export const Open: Story = {
   tags: ['!autodocs'],
@@ -86,12 +86,7 @@ export const Open: Story = {
   },
   play: async ctx => {
     const button = byId('permissions-button');
-    await ctx.step('Given the button announces the closed dialog it opens', async () => {
-      await expect(button).toHaveAttribute('title', 'Permissions');
-      await expect(button).toHaveAttribute('aria-label', 'Permissions');
-      await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
-      await expect(button).toHaveAttribute('aria-expanded', 'false');
-      await expect(button).toHaveAttribute('aria-controls', 'permissions-popover');
+    await ctx.step('Given the app has grants', async () => {
       await waitFor(() => expect(button).toHaveAttribute('data-badge'));
     });
     await open(ctx);

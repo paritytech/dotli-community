@@ -50,6 +50,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see an open sheet announced as a modal dialog titled Settings. */
 export const Open: Story = {
   args: { initiallyOpen: true },
   play: async ({ step }) => {
@@ -63,6 +64,7 @@ export const Open: Story = {
   },
 };
 
+/** As a keyboard user, I press Escape in a sheet and it closes and gives focus back to the button that opened it. */
 export const EscapeClosesAndRestoresFocus: Story = {
   play: async ({ canvas, userEvent, step }) => {
     onOpenChange.mockClear();
@@ -80,6 +82,7 @@ export const EscapeClosesAndRestoresFocus: Story = {
   },
 };
 
+/** As a dotli user, I press the scrim above a sheet and it closes. */
 export const ScrimClosesIt: Story = {
   args: { initiallyOpen: true },
   play: async ({ userEvent, step }) => {
@@ -95,6 +98,7 @@ export const ScrimClosesIt: Story = {
   },
 };
 
+/** As a keyboard user, I press Tab on the last control of a sheet and focus wraps inside it. */
 export const TabStaysInside: Story = {
   args: { initiallyOpen: true },
   play: async ({ userEvent, step }) => {
@@ -156,6 +160,7 @@ function HandOffHarness(props: { opensNext: boolean; onMarks: (marks: HandOffMar
 
 const onMarks = fn<(marks: HandOffMarks) => void>().mockName('onMarks');
 
+/** As a dotli user, I close a sheet that hands off to another and both sheets are marked, so the change reads as one move. */
 export const HandOff: Story = {
   render: () => <HandOffHarness opensNext onMarks={onMarks} />,
   play: async ({ userEvent, step }) => {
@@ -176,6 +181,7 @@ export const HandOff: Story = {
   },
 };
 
+/** As a dotli user, I close a sheet that hands off to nothing and it slides out as usual. */
 export const CloseWithoutHandOff: Story = {
   render: () => <HandOffHarness opensNext={false} onMarks={onMarks} />,
   play: async ({ userEvent, step }) => {
@@ -223,6 +229,7 @@ function ThrowingHandOffHarness() {
   );
 }
 
+/** As a dotli user, I close a sheet whose hand-off throws and the sheet still closes and the page answers again. */
 export const HandOffThatThrows: Story = {
   render: () => <ThrowingHandOffHarness />,
   play: async ({ userEvent, step }) => {

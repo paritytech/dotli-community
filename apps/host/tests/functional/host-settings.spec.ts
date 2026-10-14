@@ -85,9 +85,7 @@ test.describe('Settings works', () => {
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user opening a link that selects ${backend}, my session runs in that mode and stays there`, async ({
-      page,
-    }) => {
+    test(`As a user opening a link that selects ${backend}, my session runs in that mode`, async ({ page }) => {
       // When
       await page.goto(`${LANDING_URL}?chainBackend=${backend}`);
 
@@ -144,21 +142,6 @@ test.describe('Settings works', () => {
     // Given
     await page.addInitScript(() => {
       localStorage.setItem('dotli:chain-backend', 'smoldot-direct');
-    });
-
-    // When
-    await page.goto(LANDING_URL);
-
-    // Then
-    const state = await readChainBackendState(page, 'smoldot-direct');
-    expect(state.url).not.toContain('chainBackend=');
-  });
-
-  test('As a user on a browser without shared worker support, my address bar still stays clean', async ({ page }) => {
-    // Given
-    await page.addInitScript(() => {
-      localStorage.setItem('dotli:chain-backend', 'smoldot-direct');
-      delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
     });
 
     // When
@@ -407,6 +390,7 @@ test.describe('Settings fails', () => {
     // Then
     const state = await readChainBackendState(page, 'smoldot-direct');
     expect(state.chainBackend).toBe('smoldot-direct');
+    expect(state.url).not.toContain('chainBackend=');
     await expect(page.getByText(FALLBACK_LABEL)).not.toBeVisible();
   });
 });

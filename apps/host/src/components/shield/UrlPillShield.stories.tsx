@@ -3,8 +3,8 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
-import { TopbarFrame } from '../../../.storybook/topbar-frame.js';
-import { noProductPill, productPill, setShield, storyShield } from '../../../.storybook/shield-fixtures.js';
+import { TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { noProductPill, productPill, setShield, storyShield } from '../../testing/stories/shield-fixtures.js';
 import { UrlPillShield } from './UrlPillShield.js';
 
 const shield = (): HTMLElement | null => document.getElementById('verification-shield');
@@ -50,13 +50,7 @@ export const ProductShield: Story = {
 /** As a developer on a localhost proxy, or before a product loads, there is no shield. */
 export const NoShieldOnLocalhost: Story = {
   play: async ({ step }) => {
-    await step('Then no shield shows before a product loads', async () => {
-      await expect(shield()).toBeNull();
-    });
-    await step('When the pill shows a localhost proxy', () => {
-      noProductPill();
-    });
-    await step('Then there is still no shield', async () => {
+    await step('Then no shield shows on a pill with no product, as on a localhost proxy', async () => {
       await expect(shield()).toBeNull();
     });
     await step('When a product loads', () => {

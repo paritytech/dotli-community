@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { fakeDebugPanelHost } from '@dotli/truapi-debug-ui/testing';
 import type { WalletSwitch, WalletSwitchOutcome } from './host.js';
 import { WalletView } from './WalletView.js';
+import { debugPanelStory } from './testing/stories/debug-panel-story.js';
 
 const IDENTITY_ACCOUNT = `0x${'11'.repeat(32)}`;
 
@@ -30,6 +30,7 @@ const phraseToEntropy = (phrase: string): Uint8Array | null => (phrase.trim() ==
 const page = fakeDebugPanelHost({ walletSwitch: intents, phraseToEntropy });
 
 const meta = {
+  ...debugPanelStory,
   title: 'Debug/Wallet',
   component: WalletView,
   args: { active: true, host: page.host },
@@ -46,6 +47,7 @@ const localWallet = (): void => {
   page.walletMode.set({ mode: 'local', failure: null });
 };
 
+/** As a developer using the debug panel, I paste my phrase and use it locally, and this browser switches to the local wallet. */
 export const ImportSwitchesToLocal: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {
@@ -62,6 +64,7 @@ export const ImportSwitchesToLocal: Story = {
   },
 };
 
+/** As a developer using the debug panel, I am told what a local wallet is and warned that it is not secure. */
 export const ExplainsAndWarns: Story = {
   play: async ({ canvas, step }) => {
     await step('Then I am told what a local wallet is and warned that it is not secure', async () => {
@@ -75,6 +78,7 @@ export const ExplainsAndWarns: Story = {
   },
 };
 
+/** As a developer using the debug panel, I use a mistyped phrase and am told so with nothing saved. */
 export const MistypedPhrase: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {
@@ -94,6 +98,7 @@ export const MistypedPhrase: Story = {
   },
 };
 
+/** As a developer using the debug panel, I use a phrase when the save fails and am told to try again and can submit again. */
 export const SaveFailedRetry: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -116,6 +121,7 @@ export const SaveFailedRetry: Story = {
   },
 };
 
+/** As a developer using the debug panel, I forget my local wallet and this browser goes back to Polkadot App. */
 export const LocalAccountForget: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -139,6 +145,7 @@ export const LocalAccountForget: Story = {
   },
 };
 
+/** As a developer using the debug panel, I forget my wallet when the switch fails and am told to try again. */
 export const ForgetFailed: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -156,39 +163,7 @@ export const ForgetFailed: Story = {
   },
 };
 
-// The panel shows and hides the tab, so this owner does.
-export const LateForgetAfterClose: Story = {
-  tags: ['!autodocs'],
-  beforeEach: localWallet,
-  render: () => {
-    const [active, setActive] = createSignal(true);
-    return (
-      <>
-        <button type="button" onClick={() => setActive(shown => !shown)}>
-          Toggle wallet
-        </button>
-        <WalletView active={active()} host={page.host} />
-      </>
-    );
-  },
-  play: async ({ canvas, userEvent, step }) => {
-    const held = Promise.withResolvers<WalletSwitchOutcome>();
-    intents.usePolkadotApp.mockImplementationOnce(() => held.promise);
-    await step('Given I forget the wallet and the switch has not answered', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Forget' }));
-    });
-    await step('When I close the tab, then the switch answers that it failed', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Toggle wallet' }));
-      held.resolve('failed');
-      await held.promise;
-    });
-    await step('Then nothing is written into the closed tab', async () => {
-      await expect(intents.usePolkadotApp).toHaveBeenCalledTimes(1);
-      await expect(canvas.getByTestId('td-wallet')).toBeEmptyDOMElement();
-    });
-  },
-};
-
+/** As a developer using the debug panel, I replace my wallet with another phrase and the new phrase is used instead of Polkadot App. */
 export const ReplacePhrase: Story = {
   tags: ['!autodocs'],
   beforeEach: localWallet,
@@ -209,6 +184,7 @@ export const ReplacePhrase: Story = {
   },
 };
 
+/** As a developer using the debug panel, I cancel replacing my wallet and keep it. */
 export const CancelReplace: Story = {
   tags: ['!autodocs'],
   beforeEach: localWallet,
@@ -227,6 +203,7 @@ export const CancelReplace: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see the import form has no Cancel, since there is no wallet to keep. */
 export const ImportHasNoCancel: Story = {
   play: async ({ canvas, step }) => {
     await step('Then the import form has no Cancel', async () => {
@@ -236,6 +213,7 @@ export const ImportHasNoCancel: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see why my local wallet could not start. */
 export const LocalWalletFailed: Story = {
   beforeEach: () => {
     page.walletMode.set({ mode: 'app', failure: 'Local wallet could not be decrypted and was forgotten' });

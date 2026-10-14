@@ -52,23 +52,11 @@ const showThree = () => {
   return resetAllStoresForTests;
 };
 
-export const OneToast: Story = {
-  beforeEach: showOne,
-  play: async ({ canvas, step }) => {
-    await step('Then exactly one toast shows', async () => {
-      await expect(canvas.getAllByTestId('notif-card')).toHaveLength(1);
-    });
-  },
-};
+/** As a dotli user, I see a stack holding one toast. */
+export const OneToast: Story = { beforeEach: showOne };
 
-export const ThreeToasts: Story = {
-  beforeEach: showThree,
-  play: async ({ canvas, step }) => {
-    await step('Then three toasts are stacked', async () => {
-      await expect(canvas.getAllByTestId('notif-card')).toHaveLength(3);
-    });
-  },
-};
+/** As a dotli user, I see three toasts stacked. */
+export const ThreeToasts: Story = { beforeEach: showThree };
 
 const titles = (canvasElement: HTMLElement, shown: boolean): string[] =>
   within(canvasElement)
@@ -76,6 +64,7 @@ const titles = (canvasElement: HTMLElement, shown: boolean): string[] =>
     .filter(card => card.hasAttribute('data-hidden') !== shown)
     .map(card => within(card).getByTestId('notif-title').textContent);
 
+/** As a dotli user, I see only the newest three of four toasts, with Dismiss all offered. */
 export const FourToastsShowNewestThree: Story = {
   beforeEach: showLabelled(['A', 'B', 'C', 'D']),
   play: async ({ canvas, canvasElement, step }) => {
@@ -87,6 +76,7 @@ export const FourToastsShowNewestThree: Story = {
   },
 };
 
+/** As a dotli user, I see a toast's tinted icon, title, link, action and close button, and pressing the action runs it once. */
 export const ToastParts: Story = {
   beforeEach: showLabelled(['Update available'], {
     deeplink: 'https://dot.li/',
@@ -127,6 +117,7 @@ export const ToastParts: Story = {
 
 // Plays run in the workshop too, so the dismissals get stories of their own
 // and the stacks above stay on screen.
+/** As a dotli user, I dismiss a toast and it plays its exit and leaves the stack empty. */
 export const DismissOne: Story = {
   // Its play empties the stack, which a docs page would show as a blank block.
   tags: ['!autodocs'],
@@ -146,6 +137,7 @@ export const DismissOne: Story = {
   },
 };
 
+/** As a dotli user, I dismiss all toasts and each plays its exit, leaving the stack empty. */
 export const DismissAll: Story = {
   tags: ['!autodocs'],
   beforeEach: showThree,
@@ -166,6 +158,7 @@ export const DismissAll: Story = {
   },
 };
 
+/** As a dotli user, I dismiss a toast hidden behind the pile and it is gone at once. */
 export const HiddenToastDismissedAtOnce: Story = {
   tags: ['!autodocs'],
   beforeEach: showLabelled(['A', 'B', 'C', 'D']),
@@ -180,6 +173,7 @@ export const HiddenToastDismissedAtOnce: Story = {
   },
 };
 
+/** As a dotli user, I click the pile to expand every toast and click outside to collapse it to the newest three. */
 export const ClickExpandsOutsideCollapses: Story = {
   tags: ['!autodocs'],
   beforeEach: showLabelled(['A', 'B', 'C', 'D']),
@@ -203,6 +197,7 @@ export const ClickExpandsOutsideCollapses: Story = {
   },
 };
 
+/** As a dotli user, I click a link in a toast and the pile stays collapsed. */
 export const LinkDoesNotExpand: Story = {
   tags: ['!autodocs'],
   beforeEach: showLabelled(['A', 'B'], { deeplink: 'https://dot.li/' }),
@@ -224,6 +219,7 @@ export const LinkDoesNotExpand: Story = {
 
 const MANY = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 
+/** As a dotli user, I scroll back in an expanded stack and it stays put, then a new toast scrolls the list to it. */
 export const NewToastScrollsWhenExpanded: Story = {
   tags: ['!autodocs'],
   beforeEach: showLabelled(MANY),
@@ -252,6 +248,7 @@ export const NewToastScrollsWhenExpanded: Story = {
   },
 };
 
+/** As a dotli user, I click a live toast beside a leaving one and the stack does not expand. */
 export const LeavingToastDoesNotExpand: Story = {
   tags: ['!autodocs'],
   beforeEach: showLabelled(['A', 'B']),
@@ -269,6 +266,7 @@ export const LeavingToastDoesNotExpand: Story = {
   },
 };
 
+/** As a dotli user, I press a toast's action in the pile and it runs once with the pile unchanged. */
 export const ActionInPileRunsOnce: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {

@@ -1,22 +1,32 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** The page's visibility and connectivity, which a spec flips and whose events it fires. */
-export class FakePage extends EventTarget {
+/** The page's document as a spec sees it: its visibility and the `visibilitychange` it fires. */
+class FakeDocument extends EventTarget {
   visibilityState: DocumentVisibilityState = 'visible';
-  onLine = true;
 
   get hidden(): boolean {
     return this.visibilityState !== 'visible';
   }
+}
+
+/** The page's window as a spec sees it: connectivity, and the `online`, `offline` and lifecycle events it fires. */
+class FakeWindow extends EventTarget {
+  onLine = true;
+}
+
+/** The page a spec flips, firing each event on the target the browser fires it on. */
+export class FakePage {
+  readonly document = new FakeDocument();
+  readonly window = new FakeWindow();
 
   setVisibility(state: DocumentVisibilityState): void {
-    this.visibilityState = state;
-    this.dispatchEvent(new Event('visibilitychange'));
+    this.document.visibilityState = state;
+    this.document.dispatchEvent(new Event('visibilitychange'));
   }
 
   setOnline(online: boolean): void {
-    this.onLine = online;
-    this.dispatchEvent(new Event(online ? 'online' : 'offline'));
+    this.window.onLine = online;
+    this.window.dispatchEvent(new Event(online ? 'online' : 'offline'));
   }
 }

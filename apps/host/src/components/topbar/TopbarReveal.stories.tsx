@@ -4,10 +4,14 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { expectBefore } from '@config/storybook/play';
 import { TopbarReveal, type RevealActions } from './TopbarReveal.js';
 
 const [autoHide, setAutoHide] = createSignal(false);
 const [revealed, setRevealed] = createSignal(true);
+
+/** How often the button asked to bring the bar back and focus it. */
+const asked = { revealAndFocus: 0 };
 
 /** The story's auto-hide, which marks the bar folded and brings it back focusing its first control. */
 const actions: RevealActions = {
@@ -16,6 +20,7 @@ const actions: RevealActions = {
     setRevealed(true);
   },
   revealAndFocus: () => {
+    asked.revealAndFocus += 1;
     setRevealed(true);
     document.querySelector<HTMLElement>('[data-testid="story-topbar-home"]')?.focus();
   },
@@ -28,6 +33,7 @@ const meta = {
   beforeEach: () => {
     setAutoHide(false);
     setRevealed(true);
+    asked.revealAndFocus = 0;
   },
   render: () => (
     <div>
@@ -54,6 +60,10 @@ function fold(): void {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/**
+ * As a keyboard user, I Tab out of the app to a reveal button that brings the bar back, and pressing it asks for the
+ * bar to take focus.
+ */
 export const RevealButtonAfterFrame: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step, userEvent }) => {
@@ -67,23 +77,22 @@ export const RevealButtonAfterFrame: Story = {
       'Then the reveal button sits between the app frame and the toasts, so one Tab out of the app reaches it',
       async () => {
         const frame = canvas.getByTestId('story-app-frame');
-        await expect(frame.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        await expect(
-          canvas.getByTestId('story-toast').compareDocumentPosition(button) & Node.DOCUMENT_POSITION_PRECEDING,
-        ).toBeTruthy();
+        await expectBefore(frame, button);
+        await expectBefore(button, canvas.getByTestId('story-toast'));
       },
     );
     await step('When it takes focus, the bar comes back', async () => {
       button.focus();
       await waitFor(() => expect(canvas.getByTestId('story-topbar')).not.toHaveAttribute('data-folded'));
     });
-    await step('When I press it, focus moves to the bar', async () => {
+    await step('When I press it, the bar is asked to come back and take focus', async () => {
       await userEvent.click(button);
-      await waitFor(() => expect(canvas.getByTestId('story-topbar-home')).toHaveFocus());
+      await waitFor(() => expect(asked.revealAndFocus).toBe(1));
     });
   },
 };
 
+/** As a keyboard user, I find the reveal button while the bar auto-hides and not once it stops. */
 export const ShownOnlyWhileAutoHiding: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {

@@ -4,14 +4,14 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
-import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   chain,
   given,
   resetStoryNetwork,
   setProductLoaded,
   storyNetwork,
-} from '../../../.storybook/network-fixtures.js';
+} from '../../testing/stories/network-fixtures.js';
 import { byTestId } from '@dotli/ui/testing';
 import type { ChainView } from './chains.js';
 import { NetworkItem } from './NetworkItem.js';
@@ -85,6 +85,7 @@ function shownBlocks(): string[] {
   return Array.from(strip().querySelectorAll<HTMLElement>('[data-block]'), bar => bar.dataset['block'] ?? '');
 }
 
+/** As a user watching a chain, I see the newest block at the right-hand end of the strip. */
 export const NewestBlockAtRight: Story = {
   ...stripStory,
   play: async ctx => {
@@ -100,6 +101,7 @@ export const NewestBlockAtRight: Story = {
   },
 };
 
+/** As a user watching a chain, I see a block already on screen keep its own bar when new ones arrive. */
 export const BarKeepsIdentity: Story = {
   ...stripStory,
   play: async ctx => {
@@ -119,6 +121,7 @@ export const BarKeepsIdentity: Story = {
   },
 };
 
+/** As a user watching a chain, I see the strip glide left as a new block appears. */
 export const SlidesOnNewBlock: Story = {
   ...stripStory,
   play: async ctx => {
@@ -138,6 +141,7 @@ export const SlidesOnNewBlock: Story = {
   },
 };
 
+/** As a user watching a chain, I see a new bar drop its landing mark once its animation ends. */
 export const LandingMarkDrops: Story = {
   ...stripStory,
   play: async ctx => {
@@ -156,6 +160,7 @@ export const LandingMarkDrops: Story = {
   },
 };
 
+/** As a user opening the panel on a chain with history, I see nothing slide. */
 export const NoSlideOnOpen: Story = {
   ...stripStory,
   play: async ctx => {
@@ -171,6 +176,7 @@ export const NoSlideOnOpen: Story = {
   },
 };
 
+/** As a user watching a chain, I see the strip always hold 48 slots, with stubs filling the empty ones. */
 export const FortyEightSlots: Story = {
   ...stripStory,
   play: async ctx => {

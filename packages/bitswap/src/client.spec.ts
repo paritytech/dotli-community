@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { RemoteChainHalt } from '@dotli/chains';
 import type { RemoteChainProvider } from '@dotli/protocol';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
 import { createBitswapClient, type BitswapClient } from './client.js';
 
 type Reply = { code: number; data?: string } | { hex: string } | 'silent';
@@ -85,20 +84,25 @@ function clientOn(provider: RemoteChainProvider | null): BitswapClient {
   return createBitswapClient({ provider: () => provider });
 }
 
-interface LogLine {
-  level: LogLevel;
-  message: string;
-  attrs?: Record<string, unknown> | undefined;
-}
-
-function recordLog(): LogLine[] {
-  const lines: LogLine[] = [];
-  bindLogSink({
-    emit: (level, message, attrs) => {
-      lines.push({ level, message, attrs });
-    },
-  });
-  return lines;
+/** A signal that never aborts and counts the abort listeners attached to it, so a leak shows as a number. */
+class CountingSignal extends EventTarget {
+  readonly aborted = false;
+  readonly reason: unknown = undefined;
+  added = 0;
+  live = 0;
+  override addEventListener(...args: Parameters<EventTarget['addEventListener']>): void {
+    if (args[0] === 'abort') {
+      this.added += 1;
+      this.live += 1;
+    }
+    super.addEventListener(...args);
+  }
+  override removeEventListener(...args: Parameters<EventTarget['removeEventListener']>): void {
+    if (args[0] === 'abort') {
+      this.live -= 1;
+    }
+    super.removeEventListener(...args);
+  }
 }
 
 beforeEach(() => {
@@ -275,41 +279,24 @@ describe('createBitswapClient aborts', () => {
     // Given a chain that never answers, so every attempt ends on its per-call timeout, and a signal that outlives the
     // call as a subscription's does
     const chain = fakeChain([], 'silent');
-    const aborter = new AbortController();
-    let added = 0;
-    let removed = 0;
-    const add = aborter.signal.addEventListener.bind(aborter.signal);
-    const remove = aborter.signal.removeEventListener.bind(aborter.signal);
-    aborter.signal.addEventListener = ((type: string, ...rest: unknown[]) => {
-      if (type === 'abort') {
-        added += 1;
-      }
-      add(type, ...(rest as [EventListener]));
-    }) as typeof add;
-    aborter.signal.removeEventListener = ((type: string, ...rest: unknown[]) => {
-      if (type === 'abort') {
-        removed += 1;
-      }
-      remove(type, ...(rest as [EventListener]));
-    }) as typeof remove;
+    const signal = new CountingSignal();
 
     // When the call spends its whole budget on per-call timeouts
     const block = clientOn(chain.provider)
-      .get('bafyLeak', aborter.signal)
+      .get('bafyLeak', signal as unknown as AbortSignal)
       .catch(() => 'done');
     await vi.advanceTimersByTimeAsync(185_000);
     await block;
 
     // Then every listener it registered came off again
-    expect(added).toBeGreaterThan(0);
-    expect(removed).toBe(added);
+    expect(signal.added).toBeGreaterThan(0);
+    expect(signal.live).toBe(0);
   });
 });
 
 describe('createBitswapClient after a halt', () => {
   it('As a dotli user, I still load content after the Bulletin chain halts', async () => {
     // Given a request in flight on a connection that then halts
-    const lines = recordLog();
     const chain = fakeChain(['silent'], { hex: '0xabcd' });
     const block = clientOn(chain.provider).get('bafyHalt');
     await vi.advanceTimersByTimeAsync(100);
@@ -328,13 +315,6 @@ describe('createBitswapClient after a halt', () => {
     // Then the same call redials and resolves with the second connection's bytes
     await expect(block).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
     expect(chain.dials).toHaveLength(2);
-    expect(lines).toEqual([
-      {
-        level: 'info',
-        message: 'Bitswap retry',
-        attrs: { flow: 'content', cid: 'bafyHalt', attempt: 1, code: -32811, delay_ms: 500 },
-      },
-    ]);
   });
 
   it('As a dotli user, I see a request in flight when the protocol frame dies fail at once', async () => {
@@ -394,7 +374,6 @@ describe('createBitswapClient after a halt', () => {
 
   it('As a dotli user, I keep the new Bulletin connection working through a late halt from the replaced one', async () => {
     // Given a fetch that redialled after its chain halted, with a request in flight on the new connection
-    const lines = recordLog();
     const chain = fakeChain([], 'silent');
     const client = clientOn(chain.provider);
     const fetching = client.get('bafyReplaced');
@@ -429,13 +408,6 @@ describe('createBitswapClient after a halt', () => {
     current.onMessage({ jsonrpc: '2.0', id: sentAt(current, 1), result: '0xef' });
     await expect(next).resolves.toEqual(new Uint8Array([0xef]));
     expect(chain.dials).toHaveLength(2);
-    expect(lines).toEqual([
-      {
-        level: 'info',
-        message: 'Bitswap retry',
-        attrs: { flow: 'content', cid: 'bafyReplaced', attempt: 1, code: -32811, delay_ms: 500 },
-      },
-    ]);
   });
 });
 

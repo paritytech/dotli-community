@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
+import { bindLogSink } from '@dotli/shared';
 
 import type { LoadInput, LoadOutcome } from './load-product.js';
 import { runSandbox, type SandboxRunDeps, type SandboxStep } from './sandbox-run.js';
@@ -94,18 +94,12 @@ const framed = (href: string): { href: string; framed: boolean } => ({ href, fra
 
 let captured: { err: unknown; ctx: CaptureContext }[] = [];
 let expected: { err: unknown; step: string }[] = [];
-let logged: { level: LogLevel; message: string }[] = [];
 let unbind: () => void = () => undefined;
 
 beforeEach(() => {
   captured = [];
   expected = [];
-  logged = [];
-  bindLogSink({
-    emit: (level, message) => {
-      logged.push({ level, message });
-    },
-  });
+  bindLogSink({ emit: () => undefined });
   unbind = bindCaptureSink({
     exception: (err, ctx) => {
       captured.push({ err, ctx });
@@ -314,7 +308,6 @@ describe('runSandbox retries', () => {
       message: 'Reached 5 failed attempts. Reload the page to start over.',
       retry: undefined,
     });
-    expect(logged).toContainEqual({ level: 'warn', message: '[dot.li app] Retry refused after 5 failed attempts' });
   });
 });
 
@@ -333,10 +326,6 @@ describe('runSandbox broken dependencies', () => {
     expect(sandbox.failures).toMatchObject([{ step: 'init', title: 'Failed to load content' }]);
     expect(sandbox.failures[0]?.retry).toBeTypeOf('function');
     expect(captured).toMatchObject([{ err: broken, ctx: { step: 'init' } }]);
-    expect(logged.map(line => [line.level, line.message])).toContainEqual([
-      'error',
-      '[dot.li app] The load rejected instead of returning its outcome load blew up',
-    ]);
   });
 
   it('As a visitor whose failure cannot be shown, I still end the host loading screen, and the operator sees the throw', async () => {
@@ -355,10 +344,6 @@ describe('runSandbox broken dependencies', () => {
     expect(captured).toMatchObject([
       { ctx: { step: 'content_fetch' } },
       { err: broken, ctx: { step: 'failure_show', tags: { failed_step: 'content_fetch' } } },
-    ]);
-    expect(logged.map(line => [line.level, line.message])).toContainEqual([
-      'error',
-      '[dot.li app] Could not show the content_fetch failure error page blew up',
     ]);
   });
 });

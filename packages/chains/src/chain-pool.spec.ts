@@ -167,7 +167,7 @@ describe('createChainPool', () => {
     // Then
     expect(report).not.toThrow();
     expect(seen).toEqual(['connected']);
-    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'chain_pool.status' } }]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'chain_pool.status' } }]);
     expect(errors).toHaveLength(captured.length);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'chain_pool.status' },
@@ -404,22 +404,6 @@ describe('createChainPool', () => {
     // Then
     expect(must(built[0], 'transport').sent).toHaveLength(2);
   });
-
-  it('As a dotli integrator, a remote connection is a broker session under its own prefix', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    const remote = must(
-      pool.connectRemote('0xaa', 'conn-a', () => undefined),
-      'remote connection',
-    );
-
-    // When
-    remote.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] }));
-
-    // Then
-    expect(String(must(built[0], 'transport').sent[0]?.id)).toMatch(/^broker:[0-9a-z]+:remote:conn-a$/);
-  });
 });
 
 describe('createChainPool warnings', () => {
@@ -464,7 +448,7 @@ describe('createChainPool warnings', () => {
     });
 
     // Then the rebuilt broker continues the count instead of logging its first few again
-    expect(warnings).toEqual(['[dot.li broker] response_unknown_id: 10 so far']);
+    expect(warnings).toEqual([expect.stringMatching(/^\[dot\.li broker\] \w+: 10 so far$/) as string]);
   });
 });
 
@@ -605,13 +589,16 @@ describe('createChainPool watch', () => {
     // When
     const connection = lease(pool, '0xaa');
 
-    // Then
+    // Then the throwing panel is reported once for each of the two activity changes a first lease makes
     expect(seen.activity.at(-1)).toMatchObject({ consumers: 1 });
     expect(connection).toBeDefined();
-    expect(captured).not.toHaveLength(0);
-    expect(captured.every(capture => capture.tags?.['owner'] === 'chain_pool.watch')).toBe(true);
-    expect(errors).toHaveLength(captured.length);
-    expect(metrics.counted('listener.delivery')).toHaveLength(captured.length);
+    expect(captured).toEqual(
+      Array(2).fill({ flow: 'protocol', step: 'listener', tags: { owner: 'chain_pool.watch' } }),
+    );
+    expect(errors).toHaveLength(2);
+    expect(metrics.counted('listener.delivery')).toEqual(
+      Array(2).fill({ outcome: 'error', reason: 'Error', owner: 'chain_pool.watch' }),
+    );
   });
 
   const isFollow = (message: JsonRpcRequest): boolean => message.method === 'chainHead_v1_follow';

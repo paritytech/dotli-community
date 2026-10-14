@@ -93,7 +93,7 @@ describe('core runtime boot', () => {
     expect(bootLocalWalletCore).not.toHaveBeenCalled();
   });
 
-  it('As a Polkadot App user, my core speaks for my session only while the page keeps it in service', async () => {
+  it("As a Polkadot App user, the callbacks get the page's in-service check", async () => {
     // Given
     const { deps, callbackOptions } = harness(null);
     const boot = createCoreRuntimeBoot(deps);
@@ -102,19 +102,6 @@ describe('core runtime boot', () => {
     await boot(request);
 
     // Then
-    expect(callbackOptions[0]?.inService).toBe(request.inService);
-  });
-
-  it('As a local wallet user, I boot a signing core and it speaks for my session only while the page keeps it in service', async () => {
-    // Given
-    const { deps, callbackOptions } = harness(WALLET);
-    const boot = createCoreRuntimeBoot(deps);
-
-    // When
-    await boot(request);
-
-    // Then
-    expect(callbackOptions).toEqual([expect.objectContaining({ local: true })]);
     expect(callbackOptions[0]?.inService).toBe(request.inService);
   });
 
@@ -134,6 +121,7 @@ describe('core runtime boot', () => {
     expect(wallet).toBe(WALLET);
     expect(isLive).toBe(request.isLive);
     expect(callbackOptions).toEqual([expect.objectContaining({ local: true })]);
+    expect(callbackOptions[0]?.inService).toBe(request.inService);
     expect(create).not.toHaveBeenCalled();
   });
 

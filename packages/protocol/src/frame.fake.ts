@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A protocol frame without an iframe, for the layers above it. The test says when it is up, what it sends and when it
-// is lost.
+// is lost. A `whenUp` on an idle frame asks for one, so it starts booting. A `whenUp` waits for the status the test
+// sets, and fails when the frame is then lost or goes idle.
 
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from './messages.js';
@@ -11,8 +12,6 @@ export interface FakeFrame {
   frame: ProtocolFrame;
   /** Every request posted, in order. */
   posted: ProtocolRequestEnvelope[];
-  /** What each `whenUp` call waited for, in order. */
-  waits: ('listening' | 'ready')[];
   /** The frame sending a message. */
   send(envelope: ProtocolEnvelope): void;
   /** The frame moving to `status`. */
@@ -21,7 +20,10 @@ export interface FakeFrame {
   lose(error: Error): void;
 }
 
-/** Up and ready unless the test moves it, so a `whenUp` resolves at once. Once lost, a `whenUp` fails with why. */
+/**
+ * Up and ready unless the test moves it. A `whenUp` on an idle frame starts it booting, as the frame does. A `whenUp`
+ * waits for the status the test sets, and fails when the frame is then lost or goes idle.
+ */
 export function createFakeFrame(): FakeFrame {
   let status: ProtocolStatus = 'ready';
   let lostWith: Error = new Error('lost');
@@ -30,7 +32,6 @@ export function createFakeFrame(): FakeFrame {
   const envelopeListeners = new Set<(envelope: ProtocolEnvelope) => void>();
   const lostListeners = new Set<(error: Error) => void>();
   const posted: ProtocolRequestEnvelope[] = [];
-  const waits: ('listening' | 'ready')[] = [];
   const subscribe =
     <T>(listeners: Set<(event: T) => void>) =>
     (listener: (event: T) => void): (() => void) => {
@@ -51,8 +52,30 @@ export function createFakeFrame(): FakeFrame {
       subscribeStatus: subscribe(statusListeners),
       configure: () => undefined,
       whenUp(wanted) {
-        waits.push(wanted);
-        return status === 'failed' ? Promise.reject(lostWith) : Promise.resolve();
+        if (status === 'idle') {
+          setStatus('booting');
+        }
+        return new Promise<void>((resolve, reject) => {
+          const settle = (next: ProtocolStatus): boolean => {
+            if (next === 'ready' || (wanted === 'listening' && next === 'listening')) {
+              resolve();
+              return true;
+            }
+            if (next === 'failed' || next === 'idle') {
+              reject(next === 'failed' ? lostWith : new Error('frame went idle'));
+              return true;
+            }
+            return false;
+          };
+          if (settle(status)) {
+            return;
+          }
+          const stop = subscribe(statusListeners)(next => {
+            if (settle(next)) {
+              stop();
+            }
+          });
+        });
       },
       post(message) {
         posted.push(message as ProtocolRequestEnvelope);
@@ -62,7 +85,6 @@ export function createFakeFrame(): FakeFrame {
       losses: () => losses,
     },
     posted,
-    waits,
     send(envelope) {
       for (const listener of [...envelopeListeners]) {
         listener(envelope);

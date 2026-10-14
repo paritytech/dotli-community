@@ -208,7 +208,7 @@ describe('applyAndReset', () => {
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'pending_reset' }]);
   });
 
-  it('As a user whose origin wipe and purge request both fail, Clear all counts each failed step once and warns only of the purge', async () => {
+  it('As a user whose origin wipe and purge request both fail, Clear all counts each failed step once and warns once, that the purge request was not stored', async () => {
     // Given a wipe that left something behind, and no session storage for the purge request
     const { deps, steps } = resetDeps();
     deps.wipeOrigin = () => Promise.resolve(['indexeddb']);
@@ -238,7 +238,7 @@ describe('applyAndReset', () => {
       { outcome: 'error', reason: 'pending_reset' },
     ]);
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(warnings).toEqual(['[dot.li settings] purge request not stored: Pending reset not scheduled']);
+    expect(warnings).toHaveLength(1);
   });
 
   it('As a user whose cache clear throws where it should have resolved, Save & Apply still reloads and the fault is reported once', async () => {

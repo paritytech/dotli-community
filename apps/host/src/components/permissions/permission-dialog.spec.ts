@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ALL_PERMISSIONS } from '../../runtime/permissions.js';
+import { permissionIcon } from './permission-icons.js';
 import { permissionRequestDialog, type PermissionRequest } from './permission-dialog.js';
 
 const CAMERA: PermissionRequest = { app: 'myapp.dot', permission: 'Camera', allowOnce: false, reloads: true };
@@ -61,7 +62,7 @@ describe('permission request dialog', () => {
     );
 
     // Then
-    expect(dialogs.every(dialog => typeof dialog.icon === 'function')).toBe(true);
+    expect(dialogs.map(dialog => dialog.icon)).toEqual(names.map(name => permissionIcon(name)));
     expect(new Set(dialogs.map(dialog => dialog.fields[1]?.value)).size).toBe(names.length);
   });
 });

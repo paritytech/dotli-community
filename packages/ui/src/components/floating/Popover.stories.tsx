@@ -150,6 +150,7 @@ const press = async (testId: string) => {
   await (await trustedInput()).click(body.getByTestId(testId));
 };
 
+/** As a dotli user, I press a button to open its anchored dialog with focus on the first control, and Escape closes it. */
 export const Open: Story = {
   play: async ({ step }) => {
     await step('Given the button it holds announces the dialog it controls', async () => {
@@ -178,6 +179,7 @@ export const Open: Story = {
   },
 };
 
+/** As a phone user, I press the button and a bottom sheet opens with focus on its first control, and no anchored layer. */
 export const PhoneSheet: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
@@ -195,6 +197,7 @@ export const PhoneSheet: Story = {
   },
 };
 
+/** As a phone user, I close the sheet with its button or Escape and focus returns to the trigger. */
 export const PhoneClosesReturnFocus: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
@@ -218,6 +221,7 @@ export const PhoneClosesReturnFocus: Story = {
   },
 };
 
+/** As a dotli user, I press a button the popover let go and its own click runs and nothing opens. */
 export const ReleasedTriggerOpensNothing: Story = {
   args: { handOver: true },
   play: async ({ step }) => {
@@ -242,6 +246,7 @@ export const ReleasedTriggerOpensNothing: Story = {
   },
 };
 
+/** As a dotli user, I open a popover whose content cannot load and it closes again, including when I reopen it at once. */
 export const LazyContentFails: Story = {
   args: { content: 'failing' },
   play: async ({ step }) => {
@@ -267,6 +272,7 @@ const tab = async (shift = false) => {
   await (await trustedInput()).keyboard(shift ? '{Shift>}{Tab}{/Shift}' : '{Tab}');
 };
 
+/** As a keyboard user, I open a popover that starts with a link and focus lands on the first control, past the link. */
 export const FirstControlTakesFocus: Story = {
   args: { content: 'link-first' },
   play: async ({ step }) => {
@@ -277,6 +283,7 @@ export const FirstControlTakesFocus: Story = {
   },
 };
 
+/** As a keyboard user, I tab through a popover and focus skips disabled controls and unchecked radios and wraps at both ends. */
 export const TabSkipsUncheckedRadiosAndDisabled: Story = {
   args: { content: 'radios' },
   play: async ({ step }) => {
@@ -295,6 +302,7 @@ export const TabSkipsUncheckedRadiosAndDisabled: Story = {
   },
 };
 
+/** As a keyboard user, I tab from a control out of the tab order and focus wraps to the right end of the popover. */
 export const TabWrapsPastControlsOutOfTabOrder: Story = {
   args: { content: 'tab-order' },
   play: async ({ step }) => {
@@ -326,6 +334,7 @@ export const TabWrapsPastControlsOutOfTabOrder: Story = {
   },
 };
 
+/** As a keyboard user, I tab through a popover and focus wraps between its visible controls only. */
 export const TabWrapsPastHiddenControls: Story = {
   args: { content: 'hidden' },
   play: async ({ step }) => {
@@ -344,6 +353,7 @@ export const TabWrapsPastHiddenControls: Story = {
   },
 };
 
+/** As a keyboard user, I open a popover with nothing to press and focus stays on its surface. */
 export const EmptySurfaceKeepsFocus: Story = {
   args: { content: 'text' },
   play: async ({ step }) => {
@@ -358,6 +368,7 @@ export const EmptySurfaceKeepsFocus: Story = {
   },
 };
 
+/** As a keyboard user, I open a popover whose only control is a link and the surface has focus, not the link. */
 export const LinksOnlySurfaceFocusesItself: Story = {
   args: { content: 'link' },
   play: async ({ step }) => {
@@ -400,6 +411,7 @@ function HeldHarness() {
 
 const heldOpen = (): boolean => document.getElementById('story-held')?.hasAttribute('data-open') === true;
 
+/** As a dotli user, I press a button the popover took back and it opens once. */
 export const TriggerHandedBackOpensOnce: Story = {
   render: () => <HeldHarness />,
   beforeEach: () => {
@@ -429,6 +441,7 @@ export const TriggerHandedBackOpensOnce: Story = {
   },
 };
 
+/** As a dotli user, I lose a popover's button while it is open and it closes once with focus returning to the button. */
 export const TriggerReleasedWhileOpenReturnsFocus: Story = {
   render: () => <HeldHarness />,
   beforeEach: () => {
@@ -450,6 +463,7 @@ export const TriggerReleasedWhileOpenReturnsFocus: Story = {
   },
 };
 
+/** As a dotli user, I lose a popover's button while focus is on the body and it closes and leaves focus alone. */
 export const TriggerReleasedFocusElsewhereClosesOnly: Story = {
   render: () => <HeldHarness />,
   beforeEach: () => {

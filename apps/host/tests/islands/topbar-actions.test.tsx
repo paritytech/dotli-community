@@ -6,14 +6,14 @@
 // these pin the wiring. The views themselves are tested by the TopbarActions, More and ActionGroup story plays.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { flush, useContext } from 'solid-js';
+import { flush } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
 import { resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
-import { LayerTracker, ModalFocusFallback } from '@dotli/ui';
-import { TopbarActions, TopbarProviders } from '../../src/islands/TopbarActions.js';
+import { TopbarActions } from '../../src/islands/TopbarActions.js';
 import { createProductFrameView } from '../../src/product-frame-view.js';
-import { anyTopbarSurfaceOpen, registerTopbarSurface, topbarSurfaceContains } from '../../src/state/topbar-surfaces.js';
+import { anyTopbarSurfaceOpen, topbarSurfaceContains } from '../../src/state/topbar-surfaces.js';
 import { byId } from '@dotli/ui/testing';
+import { resetViewport, setPhoneViewport } from '../happy-dom.js';
 
 let unmount: (() => void) | undefined;
 
@@ -30,6 +30,7 @@ async function until(id: string, open: boolean): Promise<void> {
 }
 
 afterEach(() => {
+  resetViewport();
   unmount?.();
   unmount = undefined;
   resetAllStoresForTests();
@@ -57,8 +58,9 @@ describe('TopbarActions island', () => {
     expect(anyTopbarSurfaceOpen()).toBe(false);
   });
 
-  it('As a phone user, the bar gives its sheets the product frame to hand focus to once their trigger left the page', () => {
-    // Given: the product's frame attached, and what the bar provides read from inside it
+  it('As a phone user, closing a sheet of the bar whose trigger left the page hands focus to the product frame', async () => {
+    // Given: the product's frame attached, and a phone-wide page with the bar's network sheet opened
+    setPhoneViewport();
     const frame = document.createElement('iframe');
     document.body.append(frame);
     createProductFrameView({
@@ -67,22 +69,18 @@ describe('TopbarActions island', () => {
       clearScreen: () => undefined,
       hideLoading: () => undefined,
     }).attachFrame(frame);
-    const seen: { tracker?: unknown; fallback?: () => HTMLElement | undefined } = {};
-    function Probe(): JSX.Element {
-      seen.tracker = useContext(LayerTracker);
-      seen.fallback = useContext(ModalFocusFallback);
-      return null;
-    }
+    mount(() => <TopbarActions />);
+    const trigger = byId('chains-button');
+    trigger.focus();
+    trigger.click();
+    await until('chains-popover', true);
 
-    // When
-    mount(() => (
-      <TopbarProviders>
-        <Probe />
-      </TopbarProviders>
-    ));
+    // When: the trigger leaves the page, and the sheet closes
+    trigger.remove();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until('chains-popover', false);
 
     // Then
-    expect(seen.tracker).toBe(registerTopbarSurface);
-    expect(seen.fallback?.()).toBe(frame);
+    expect(document.activeElement).toBe(frame);
   });
 });

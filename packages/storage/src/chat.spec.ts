@@ -80,7 +80,7 @@ describe('chat rooms', () => {
     const created = chat.createRoom(room);
 
     // Then
-    await expect(created).rejects.toBeInstanceOf(Error);
+    await expect(created).rejects.toMatchObject({ name: 'AbortError' });
     expect(await chat.listRooms('abort.dot')).toEqual([]);
   });
 });

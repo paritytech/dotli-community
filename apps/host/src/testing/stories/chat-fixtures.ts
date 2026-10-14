@@ -9,11 +9,11 @@ import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
 import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
 import { createSyncStore, shallowEqual, type SyncStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
-import { chatUnreadLabel } from '../src/components/chat/unread.js';
-import type { ChatMessageRecord } from '../src/runtime/chat/store.js';
-import type { ChatRenderSink } from '../src/components/chat/chat.js';
-import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../src/components/chat/chat.js';
-import type { ChatButtonProps } from '../src/components/chat/ChatButton.js';
+import { chatUnreadLabel } from '../../components/chat/unread.js';
+import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import type { ChatRenderSink } from '../../components/chat/chat.js';
+import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../components/chat/chat.js';
+import type { ChatButtonProps } from '../../components/chat/ChatButton.js';
 
 const PRODUCT = 'chatty.dot';
 
@@ -336,11 +336,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     button: {
       visible: () => current().available,
       open: () => current().open,
-      // As the page shows it: only while the panel is closed, since the room rows carry their own.
-      unread: () => {
-        const { open, unread } = current();
-        return open || unread === 0 ? undefined : chatUnreadLabel(unread);
-      },
+      unread: () => (current().unread === 0 ? undefined : chatUnreadLabel(current().unread)),
       onToggle: () => {
         update({ open: !state.get().open });
       },

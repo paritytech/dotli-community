@@ -21,8 +21,8 @@ import { ERRORS } from '../errors.js';
 import { recordPromptDecision } from '../state/product-permissions.js';
 import type { HostPrompts } from '../host-prompts.js';
 
-// WebRtc is gated by the iframe `allow` attribute and `Remote` (HTTP/WS) cannot be intercepted
-// reliably from the sandbox, so both are auto-granted.
+// The host cannot enforce `Remote` (HTTP/WS) or `WebRtc`, since the sandbox cannot reliably intercept either. A prompt
+// would offer a choice the host could not keep, so both are auto-granted.
 function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePermissionName | null {
   switch (tag) {
     case 'ChainSubmit':

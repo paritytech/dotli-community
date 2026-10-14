@@ -44,31 +44,32 @@ const read = (statuses: readonly PermissionStatus[], label = 'app'): ReadPermiss
 });
 
 describe('usePermissionsPanel', () => {
-  it('As the permissions panel, I say why there is nothing to change: loading, no app, or unreadable permissions', () => {
+  it.each<[string, ShownProduct, ReadPermissions, string | undefined]>([
+    ['the product is still loading', { status: 'none' }, { status: 'none' }, 'loading'],
+    ['there is no app', { status: 'error' }, { status: 'none' }, 'no-app'],
+    ['the permissions are unreadable', LOADED, { status: 'failed', label: 'app' }, 'unavailable'],
+    ['the failure was for the app shown before', LOADED, { status: 'failed', label: 'other' }, undefined],
+  ])('As the permissions panel, when %s, I say why there is nothing to change', (_case, shown, permissions, notice) => {
     // Given
     const { panel, dispose, given } = mount();
 
-    // Then
-    expect(panel.notice()).toBe('loading');
-
     // When
-    given({ status: 'error' }, { status: 'none' });
+    given(shown, permissions);
 
     // Then
-    expect(panel.notice()).toBe('no-app');
+    expect(panel.notice()).toBe(notice);
+    dispose();
+  });
+
+  it('As the permissions panel, when the permissions are unreadable, I still name the app', () => {
+    // Given
+    const { panel, dispose, given } = mount();
 
     // When
     given(LOADED, { status: 'failed', label: 'app' });
 
     // Then
-    expect(panel.notice()).toBe('unavailable');
     expect(panel.host()).toBe('app.dot');
-
-    // When the failure was for the app shown before
-    given(LOADED, { status: 'failed', label: 'other' });
-
-    // Then
-    expect(panel.notice()).toBeUndefined();
     dispose();
   });
 

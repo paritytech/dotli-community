@@ -8,7 +8,7 @@ import { expect, waitFor } from 'storybook/test';
 import { reachable, TopbarFrame } from './topbar-frame.js';
 import { ActionGroup } from '@dotli/ui';
 import { byId, query } from '@dotli/ui/testing';
-import { TOPBAR_MORE } from '../src/components/topbar/TopbarActions.js';
+import { TOPBAR_MORE } from '../../components/topbar/TopbarActions.js';
 
 /** The host bar with an action group `room` px wide, so the items that do not fit collapse into More. */
 export function GroupFrame(props: { room: number; children?: JSX.Element }): JSX.Element {

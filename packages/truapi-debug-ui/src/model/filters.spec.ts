@@ -42,40 +42,72 @@ function shown(store: EventStore, query: Partial<FilterState>): string[] {
 }
 
 describe('debug panel text filters', () => {
-  it('As a dotli developer, include and exclude text filters match the tag or layer:event', () => {
+  it('As a dotli developer, I include a substring in any case and see the tags that hold it', () => {
     // Given
     const store = filterTraffic();
 
-    // When a case-insensitive substring is included
-    // Then
-    expect(shown(store, { tagQuery: 'ALPHA' })).toEqual(['alpha_request', 'alpha_response']);
+    // When
+    const rows = shown(store, { tagQuery: 'ALPHA' });
 
-    // When a system event is named by layer:event
     // Then
-    expect(shown(store, { tagQuery: 'boot:start' })).toEqual(['boot.started']);
+    expect(rows).toEqual(['alpha_request', 'alpha_response']);
+  });
 
-    // When the include is a regex
+  it('As a dotli developer, I include layer:event and see that system event', () => {
+    // Given
+    const store = filterTraffic();
+
+    // When
+    const rows = shown(store, { tagQuery: 'boot:start' });
+
     // Then
-    expect(shown(store, { tagQuery: '/^(alpha|beta)_request$/' })).toEqual(['alpha_request', 'beta_request']);
+    expect(rows).toEqual(['boot.started']);
+  });
+
+  it('As a dotli developer, I include a regex and see the tags it matches', () => {
+    // Given
+    const store = filterTraffic();
+
+    // When
+    const rows = shown(store, { tagQuery: '/^(alpha|beta)_request$/' });
+
+    // Then
+    expect(rows).toEqual(['alpha_request', 'beta_request']);
     expect(compileQuery('/^(alpha|beta)_request$/').invalid).toBe(false);
+  });
 
-    // When the exclude matches too, it wins
+  it('As a dotli developer, I exclude what I also include and the exclude wins', () => {
+    // Given
+    const store = filterTraffic();
+
+    // When
+    const rows = shown(store, { tagQuery: '/^(alpha|beta)_request$/', excludeQuery: 'beta' });
+
     // Then
-    expect(shown(store, { tagQuery: '/^(alpha|beta)_request$/', excludeQuery: 'beta' })).toEqual(['alpha_request']);
+    expect(rows).toEqual(['alpha_request']);
+  });
 
-    // When an include regex does not parse, it is flagged and inert
+  it('As a dotli developer, I include a regex that does not parse and it is flagged and inert', () => {
+    // Given
+    const store = filterTraffic();
+
+    // When
+    const rows = shown(store, { tagQuery: '/(/', excludeQuery: 'beta' });
+
     // Then
     expect(compileQuery('/(/').invalid).toBe(true);
-    expect(shown(store, { tagQuery: '/(/', excludeQuery: 'beta' })).toEqual([
-      'alpha_request',
-      'alpha_response',
-      'gamma_request',
-      'boot.started',
-    ]);
+    expect(rows).toEqual(['alpha_request', 'alpha_response', 'gamma_request', 'boot.started']);
+  });
 
-    // When an exclude regex does not parse, it is flagged and inert
+  it('As a dotli developer, I exclude a regex that does not parse and it is flagged and inert', () => {
+    // Given
+    const store = filterTraffic();
+
+    // When
+    const rows = shown(store, { excludeQuery: '/[/' });
+
     // Then
     expect(compileQuery('/[/').invalid).toBe(true);
-    expect(shown(store, { excludeQuery: '/[/' })).toHaveLength(5);
+    expect(rows).toEqual(['alpha_request', 'alpha_response', 'beta_request', 'gamma_request', 'boot.started']);
   });
 });

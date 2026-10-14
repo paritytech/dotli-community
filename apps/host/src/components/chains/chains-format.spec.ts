@@ -93,13 +93,13 @@ describe('describeNetworkStatus under a light client', () => {
 
   it("As a user on the shared-worker light client, the captions are the light client's", () => {
     // Given
-    const health: LiveVerdict = { text: 'Waiting on Hub', tone: 'warn', slow: ['Hub'] };
+    const health: LiveVerdict = { text: 'Your connection is good', tone: 'ok' };
 
     // When
     const line = describeNetworkStatus(health, false, 4, 'smoldot-shared-worker');
 
     // Then
-    expect(line.detail).toBe('Hub is behind');
+    expect(line.detail).toBe('Light client is in sync on all four chains');
   });
 });
 

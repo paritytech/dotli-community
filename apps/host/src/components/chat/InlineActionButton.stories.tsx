@@ -15,8 +15,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a user, I see the primary inline action button. */
 export const Primary: Story = {};
+/** As a user, I see the secondary inline action button reading Later. */
 export const Secondary: Story = { args: { variant: 'secondary', children: 'Later' } };
+/** As a user, I see the text inline action button reading Details. */
 export const Text: Story = { args: { variant: 'text', children: 'Details' } };
+/** As a user, I see an inline action button busy while its action runs. */
 export const Loading: Story = { args: { loading: true } };
+/** As a user, I see a disabled inline action button that I cannot press. */
 export const Disabled: Story = { args: { disabled: true } };

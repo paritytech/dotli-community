@@ -28,7 +28,7 @@ export function parseRecentLabels(raw: string | null): string[] {
   }
 }
 
-export function serializeRecentLabels(labels: string[]): string {
+function serializeRecentLabels(labels: string[]): string {
   return JSON.stringify(labels.slice(0, MAX_RECENT));
 }
 
@@ -59,12 +59,17 @@ export interface RecentMirror {
   write: (labels: string[]) => void;
 }
 
-const localMirror: RecentMirror = {
-  read: () => parseRecentLabels(pageLocalStorage.getItem(RECENT_KEY)),
-  write: labels => {
-    pageLocalStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));
-  },
-};
+/** This origin's copy of the list in `storage`, kept for when the shared store is unreachable. */
+export function storageMirror(storage: Pick<Storage, 'getItem' | 'setItem'>): RecentMirror {
+  return {
+    read: () => parseRecentLabels(storage.getItem(RECENT_KEY)),
+    write: labels => {
+      storage.setItem(RECENT_KEY, serializeRecentLabels(labels));
+    },
+  };
+}
+
+const localMirror: RecentMirror = storageMirror(pageLocalStorage);
 
 export function createRecentLabels(channel: SharedChannel, mirror: RecentMirror = localMirror): RecentLabels {
   // Each update reads, changes and writes the whole list, so two at once would drop one of them.

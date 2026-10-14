@@ -267,13 +267,3 @@ export function describeWireFrame(
   }
   return { tag: generic.name, value: { wireId, bytes } };
 }
-
-// For the drift-guard test.
-export const __testing = {
-  CHAIN_LINKAGE,
-  WALLET_LINKAGE,
-  snakeCase,
-  resolveCodec,
-  buildChainEntries,
-  legsOf,
-};

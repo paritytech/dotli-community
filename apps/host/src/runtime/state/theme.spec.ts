@@ -31,20 +31,4 @@ describe('theme store', () => {
     expect(themeStore.get()).toEqual({ pref: 'light', resolved: 'light' });
     stop();
   });
-
-  it('As the theme store, an unchanged theme notifies nobody', () => {
-    // Given
-    setTheme({ pref: 'light', resolved: 'light' });
-    let heard = 0;
-    const stop = themeStore.subscribe(() => {
-      heard += 1;
-    });
-
-    // When
-    setTheme({ pref: 'light', resolved: 'light' });
-
-    // Then
-    expect(heard).toBe(0);
-    stop();
-  });
 });

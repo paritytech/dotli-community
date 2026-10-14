@@ -16,6 +16,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a screen reader user, I hear a named switch that is off. */
 export const Off: Story = {
   play: async ({ canvas, step }) => {
     await step('Then I hear a named switch that is off', async () => {
@@ -27,6 +28,7 @@ export const Off: Story = {
 };
 
 // No owner updates `checked` here.
+/** As a dotli user, I flip a switch and its owner hears the next value while the switch does not flip itself. */
 export const OwnerDecides: Story = {
   play: async ({ args, canvas, userEvent, step }) => {
     const toggle = canvas.getByRole('switch', { name: 'Notifications' });
@@ -40,9 +42,11 @@ export const OwnerDecides: Story = {
     });
   },
 };
+/** As a dotli user, I see a switch that is on. */
 export const On: Story = { args: { checked: true } };
 
 // The switch shows `checked` until its owner updates it, so this owner does.
+/** As a dotli user, I press a switch and it turns on and reports it. */
 export const Interactive: Story = {
   render: args => {
     const [checked, setChecked] = createSignal(untrack(() => args.checked));

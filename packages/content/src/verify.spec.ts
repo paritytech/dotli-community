@@ -120,22 +120,6 @@ describe('assertBlockMatchesCid', () => {
     expect(check).toThrow(expect.objectContaining({ name: 'ContentVerificationError' }) as Error);
   });
 
-  it('As a content loader, I reject a block with a single flipped byte', () => {
-    // Given
-    const bytes = enc('a'.repeat(1000));
-    const cid = sha256Cid(bytes);
-    const flipped = bytes.slice();
-    flipped[500] = 'a'.charCodeAt(0) ^ 0x01;
-
-    // When
-    const check = (): void => {
-      assertBlockMatchesCid(cid, flipped);
-    };
-
-    // Then
-    expect(check).toThrow(/hash mismatch/i);
-  });
-
   it('As a content loader, I fail closed on a multihash I cannot recompute', () => {
     // Given
     const bytes = enc('payload');

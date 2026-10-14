@@ -16,15 +16,25 @@ describe('pathWithoutAppPrefix', () => {
     expect(path).toBe('/docs/intro?tab=1#top');
   });
 
-  it('As a product, my root under the prefix reads as the root path, and a path outside it is left alone', () => {
+  it('As a product, my root under the prefix reads as the root path', () => {
     // Given
     const root = { pathname: '/dotli-app', search: '', hash: '' };
+
+    // When
+    const path = pathWithoutAppPrefix(root, '/dotli-app');
+
+    // Then
+    expect(path).toBe('/');
+  });
+
+  it('As a product, a path outside the prefix is left alone', () => {
+    // Given
     const outside = { pathname: '/other', search: '', hash: '' };
 
     // When
-    const paths = [pathWithoutAppPrefix(root, '/dotli-app'), pathWithoutAppPrefix(outside, '/dotli-app')];
+    const path = pathWithoutAppPrefix(outside, '/dotli-app');
 
     // Then
-    expect(paths).toEqual(['/', null]);
+    expect(path).toBeNull();
   });
 });

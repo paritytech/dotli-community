@@ -43,7 +43,7 @@ jobs:
         uses: ./.github/actions/setup-playwright
 
       - name: Run stories as tests
-        run: npm run test:stories --workspaces --if-present
+        run: npm run test:stories
 
   # One build for the suites below, as deployed: metrics on, so the functional suite can read the envelopes the
   # preview server collects.

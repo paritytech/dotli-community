@@ -3,5 +3,5 @@
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", ".storybook/*", "eslint.config.js", "vitest.config.ts", "vitest.storybook.config.ts"]
+  "include": ["src", "eslint.config.js", "vitest.config.ts"]
 }

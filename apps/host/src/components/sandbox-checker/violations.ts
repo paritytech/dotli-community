@@ -14,7 +14,7 @@ export interface ParsedViolation {
 const MIN_HEIGHT = 40;
 const MAX_VIEWPORT_SHARE = 0.8;
 /** Older entries are dropped, but the badge still counts them. */
-export const MAX_ENTRIES = 500;
+const MAX_ENTRIES = 500;
 
 function parseViolation(raw: unknown, now: () => number): ParsedViolation | null {
   const message = parseApiViolationMessage(raw);

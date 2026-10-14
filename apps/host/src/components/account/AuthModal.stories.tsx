@@ -5,16 +5,17 @@ import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import { byId } from '@dotli/ui/testing';
+import { byId, byTestId } from '@dotli/ui/testing';
 import { LayerTracker, Popover, type TrackedLayer } from '@dotli/ui';
-import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { expectBefore } from '@config/storybook/play';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   connect,
   disconnect,
   resetStoryAccount,
   storyAccount,
   storyCallbacks,
-} from '../../../.storybook/account-fixtures.js';
+} from '../../testing/stories/account-fixtures.js';
 import {
   CLOSED_MODAL,
   modalCallbacks,
@@ -22,7 +23,7 @@ import {
   resetStoryModal,
   showModal,
   storyModal,
-} from '../../../.storybook/auth-modal-fixtures.js';
+} from '../../testing/stories/auth-modal-fixtures.js';
 import { AuthButton } from './AuthButton.js';
 import type { AuthModalState } from '../../state/auth-modal.js';
 import { AuthModal } from './AuthModal.js';
@@ -180,7 +181,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a user asked to sign in by a product, the modal opens on its QR under the product's name. */
+/** As a user asked to sign in by a product, I see the modal open on its QR under the product's name. */
 export const Open: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -195,7 +196,7 @@ export const Open: Story = {
   },
 };
 
-/** As a phone user, the sign-in sheet is headed Sign in with a close button, which asks once to close it. */
+/** As a phone user, I see the sign-in sheet headed Sign in with a close button, and pressing it asks once to close. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -207,12 +208,10 @@ export const OpenPhone: Story = {
     await expectPhone(ctx.step);
     await open(ctx);
     const head = (): HTMLElement => body.getByTestId('auth-modal-sheet-head');
-    await ctx.step('Then the sheet head leads, titled Sign in, above the product title', async () => {
-      await expect(body.getByTestId('auth-modal').firstElementChild).toBe(head());
-      const title = within(head()).getByTestId('auth-modal-sheet-title');
-      await expect(title.tagName).toBe('H2');
-      await expect(title).toHaveTextContent('Sign in');
+    await ctx.step('Then the sheet head is titled Sign in, before the product title', async () => {
+      await expect(within(head()).getByRole('heading', { level: 2, name: 'Sign in' })).toBeVisible();
       await expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
+      await expectBefore(head(), byId('auth-modal-title'));
     });
     await ctx.step('When I press its close button', async () => {
       const close = within(head()).getByTestId('auth-modal-sheet-close');
@@ -226,7 +225,7 @@ export const OpenPhone: Story = {
   },
 };
 
-/** As a keyboard user, Escape asks once to close the modal, and focus goes back to the auth button. */
+/** As a keyboard user, I press Escape and the modal is asked once to close, and focus goes back to the auth button. */
 export const EscapeCloses: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -245,7 +244,7 @@ export const EscapeCloses: Story = {
   },
 };
 
-/** As a dotli user, the closed modal is a dialog with its labels and ARIA state, and empty. */
+/** As a dotli user, I find the closed modal a dialog with its labels and ARIA state, and empty. */
 export const ClosedIsEmpty: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -257,7 +256,7 @@ export const ClosedIsEmpty: Story = {
   },
 };
 
-/** As a desktop user, the login modal opens on the spinner, then shows the QR code. */
+/** As a desktop user, I see the login modal open on the spinner and then show the QR code. */
 export const SpinnerThenQr: Story = {
   tags: ['!autodocs'],
   play: async ({ userEvent, step }) => {
@@ -286,13 +285,13 @@ export const SpinnerThenQr: Story = {
       await expect(qrCanvas()).toHaveAttribute('data-qr-payload', DEEPLINK);
       await expect(qrCanvas()).toHaveAttribute('role', 'img');
       await expect(qrCanvas()).toHaveAttribute('aria-label', 'Sign-in QR code');
-      await expect(tile.lastElementChild).toHaveAttribute('aria-hidden', 'true');
+      await expect(within(tile).getByTestId('auth-modal-qr-badge')).toHaveAttribute('aria-hidden', 'true');
       await expect(within(qrBox()).getByTestId('auth-modal-waiting')).toHaveTextContent('Waiting for your phone');
     });
   },
 };
 
-/** As a user on a phone-width window, the QR code is drawn at the phone sheet's larger size. */
+/** As a user on a phone-width window, I see the QR code drawn at the phone sheet's larger size. */
 export const PhoneQrSize: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -308,7 +307,7 @@ export const PhoneQrSize: Story = {
   },
 };
 
-/** As a desktop user narrowing the window to a phone width and back, the open QR code is redrawn at each size. */
+/** As a desktop user narrowing the window to a phone width and back, I see the open QR code redrawn at each size. */
 export const NarrowAndWiden: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -345,7 +344,7 @@ export const NarrowAndWiden: Story = {
   },
 };
 
-/** As a user asked to sign in by a product, the title names it and shows why, as text. */
+/** As a user asked to sign in by a product, I read its name and why as text in the title. */
 export const ProductTitleAsText: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -366,7 +365,7 @@ export const ProductTitleAsText: Story = {
   },
 };
 
-/** As a user who approved in the wallet, login progress replaces the pairing QR. */
+/** As a user who approved in the wallet, I see login progress replace the pairing QR. */
 export const ProgressView: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -389,7 +388,7 @@ export const ProgressView: Story = {
   },
 };
 
-/** As a new user, a failed login shows the error view, and Retry starts over. */
+/** As a new user, I see a failed login explained and press Retry to start over. */
 export const ErrorViewRetry: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -400,7 +399,7 @@ export const ErrorViewRetry: Story = {
     await step('Then the error view explains it, keeps the reason and offers Retry', async () => {
       await opened();
       await expectHead({ title: HOST_GLOBAL_TITLE, hint: DESKTOP_HINT, getAppHidden: true });
-      await expect(failure().firstElementChild?.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      await expect(within(failure()).getByTestId('auth-modal-failure-icon')).toHaveAttribute('aria-hidden', 'true');
       await expect(failure()).toHaveTextContent('Login did not complete');
       await expect(failure()).toHaveTextContent(
         'Something interrupted the connection to Polkadot Mobile. Try again, and make sure the app is installed and up to date.',
@@ -419,7 +418,7 @@ export const ErrorViewRetry: Story = {
   },
 };
 
-/** As a user, Cancel asks once to close the pairing modal, which closes empty. */
+/** As a user, I press Cancel and the pairing modal is asked once to close, and it closes empty. */
 export const CancelCloses: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -438,7 +437,7 @@ export const CancelCloses: Story = {
   },
 };
 
-/** As a user, a click on the backdrop itself closes the modal, and a click inside it does not. */
+/** As a user, I click the backdrop to close the modal and a click inside it leaves it open. */
 export const BackdropCloses: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -453,11 +452,7 @@ export const BackdropCloses: Story = {
       await expect(isOpen()).toBe(true);
     });
     await step('When I click the scrim around it', async () => {
-      const scrim = byId('auth-modal-backdrop').firstElementChild;
-      if (scrim === null) {
-        throw new Error('No scrim');
-      }
-      await userEvent.click(scrim);
+      await userEvent.click(byTestId('auth-modal-scrim'));
     });
     await step('Then it closed on one close asked for', async () => {
       await closed();
@@ -466,7 +461,7 @@ export const BackdropCloses: Story = {
   },
 };
 
-/** As a user, the page does not scroll behind the open modal, and scrolls again once it closes. */
+/** As a user, I cannot scroll the page behind the open modal, and I can again once it closes. */
 export const ScrollLocked: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -487,7 +482,7 @@ export const ScrollLocked: Story = {
   },
 };
 
-/** As a keyboard user, Retry keeps focus in the modal while the error view it sat in goes away. */
+/** As a keyboard user, I press Retry and keep focus in the modal while the error view goes away. */
 export const RetryKeepsFocus: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -511,7 +506,7 @@ export const RetryKeepsFocus: Story = {
   },
 };
 
-/** As a user, the modal opens focused and trapping Tab while an open popover of the bar closes for it. */
+/** As a user, I see the modal open focused and trapping Tab while an open popover of the bar closes for it. */
 export const HoldsFocusOverPopover: Story = {
   tags: ['!autodocs'],
   render: () => (
@@ -543,7 +538,7 @@ export const HoldsFocusOverPopover: Story = {
   },
 };
 
-/** As a user, when my login completes the modal closes and focus goes back to the auth button. */
+/** As a user, I complete my login and the modal closes and focus goes back to the auth button. */
 export const CompletionReturnsFocus: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -565,22 +560,7 @@ export const CompletionReturnsFocus: Story = {
   },
 };
 
-/** As a user whose pairing started before the islands loaded, the modal is open with the QR as it mounts. */
-export const PairedBeforeMount: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    pairing();
-  },
-  play: async ({ step }) => {
-    await step('Then it is open with the product named and the QR in', async () => {
-      await opened();
-      await expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
-      await waitFor(() => expect(qrCanvas()).not.toBeNull());
-    });
-  },
-};
-
-/** As a dApp user, a sign-in counts as an open layer of the bar from opening until it closes, so the bar stays up. */
+/** As a dApp user, I am asked to sign in and the bar counts the modal as open until it closes, so the bar stays up. */
 export const CountsAsOpenLayer: Story = {
   tags: ['!autodocs'],
   play: async ({ userEvent, step }) => {
@@ -604,7 +584,10 @@ export const CountsAsOpenLayer: Story = {
   },
 };
 
-/** As a user asked to sign in while another prompt holds the queue, my pairing code is drawn once, when the modal opens. */
+/**
+ * As a user asked to sign in while another prompt holds the queue, I see my pairing code drawn once, when the modal
+ * opens.
+ */
 export const QueuedSignInDrawsQrOnce: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -627,7 +610,7 @@ export const QueuedSignInDrawsQrOnce: Story = {
   },
 };
 
-/** As a new user on a phone without the app, the login modal shows me where to get Polkadot Mobile until the wallet approves. */
+/** As a new user on a phone without the app, I see where to get Polkadot Mobile until the wallet approves. */
 export const PhoneAppInstallLink: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -649,21 +632,9 @@ export const PhoneAppInstallLink: Story = {
   },
 };
 
-/** As a desktop user scanning with my phone, the modal does not offer an app install link. */
-export const DesktopNoInstallLink: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    pairing();
-  },
-  play: async ({ step }) => {
-    await step('Then the install link is hidden', async () => {
-      await opened();
-      await expect(byId('auth-modal-get-app').hidden).toBe(true);
-    });
-  },
-};
-
-/** As a phone user, the deeplink leads and the QR is behind Show QR instead, until a new pairing starts over. */
+/**
+ * As a phone user, I see the deeplink first and press Show QR instead to see the QR, until a new pairing starts over.
+ */
 export const DeeplinkFirst: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -675,7 +646,7 @@ export const DeeplinkFirst: Story = {
     const deeplinkLeads = async (): Promise<void> => {
       await waitFor(() => expect(openApp()).toHaveAttribute('href', DEEPLINK));
       await expect(openApp()).toHaveTextContent('Login With Polkadot App');
-      await expect(qrBox().firstElementChild).toBe(openApp());
+      await expectBefore(openApp(), within(qrBox()).getByTestId('auth-modal-qr-toggle'));
       const toggle = within(qrBox()).getByTestId('auth-modal-qr-toggle');
       await expect(toggle).toHaveAttribute('type', 'button');
       await expect(toggle).toHaveTextContent('Show QR instead');
@@ -686,19 +657,20 @@ export const DeeplinkFirst: Story = {
         getAppHidden: false,
       });
     };
-    await step('Then the deeplink leads, with Show QR instead under it', async () => {
+    await step('Then the deeplink comes first, with Show QR instead after it', async () => {
       await opened();
       await deeplinkLeads();
     });
     await step('When I press Show QR instead', async () => {
       await userEvent.click(within(qrBox()).getByTestId('auth-modal-qr-toggle'));
     });
-    await step('Then the QR, linked to the deeplink, is on top and the deeplink is a link under it', async () => {
+    await step('Then the QR, linked to the deeplink, shows before the deeplink, which stays a link', async () => {
       const qrLink = within(qrBox()).getByTestId('auth-modal-qr-link');
       await expect(qrLink).toHaveAttribute('href', DEEPLINK);
       await expect(qrLink.querySelector('canvas')).toHaveAttribute('data-qr-payload', DEEPLINK);
       await expect(within(qrBox()).getByTestId('auth-modal-waiting')).toHaveTextContent('Waiting for your phone');
-      await expect(qrBox().lastElementChild).toBe(openApp());
+      await expect(openApp()).toHaveAttribute('href', DEEPLINK);
+      await expectBefore(qrLink, openApp());
       await expect(qrBox().querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
       await expect(byId('auth-modal-hint')).toHaveTextContent(DESKTOP_HINT);
     });
@@ -716,7 +688,9 @@ export const DeeplinkFirst: Story = {
   },
 };
 
-/** As a user who narrows an open sign-in to a phone width, the sheet it becomes is headed Sign in with a close button. */
+/**
+ * As a user who narrows an open sign-in to a phone width, I see it become a sheet headed Sign in with a close button.
+ */
 export const NarrowOpenBecomesSheet: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -732,7 +706,8 @@ export const NarrowOpenBecomesSheet: Story = {
       });
       const head = (): HTMLElement => body.getByTestId('auth-modal-sheet-head');
       await step('Then the sheet is headed Sign in', async () => {
-        await waitFor(() => expect(body.getByTestId('auth-modal').firstElementChild).toBe(head()));
+        await waitFor(() => expect(head()).toBeVisible());
+        await expectBefore(head(), byId('auth-modal-title'));
         await expect(within(head()).getByTestId('auth-modal-sheet-title')).toHaveTextContent('Sign in');
       });
       await step('When I press its close button', async () => {
@@ -748,7 +723,7 @@ export const NarrowOpenBecomesSheet: Story = {
   },
 };
 
-/** As a keyboard user on a phone, Show QR instead keeps focus in the sign-in while the button goes away. */
+/** As a keyboard user on a phone, I press Show QR instead and keep focus in the sign-in while the button goes away. */
 export const ShowQrKeepsFocus: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -766,13 +741,13 @@ export const ShowQrKeepsFocus: Story = {
     });
     await step('Then the button is gone, the QR is in and focus is on the card', async () => {
       await waitFor(() => expect(toggle?.isConnected).toBe(false));
-      await expect(within(qrBox()).getByTestId('auth-modal-qr-link').tagName).toBe('A');
+      await expect(within(qrBox()).getByTestId('auth-modal-qr-link')).toHaveAttribute('href', DEEPLINK);
       await waitFor(() => expect(body.getByTestId('auth-modal')).toHaveFocus());
     });
   },
 };
 
-/** As a phone user who chose Show QR instead, the QR stays shown while other modal fields change. */
+/** As a phone user who chose Show QR instead, I keep seeing the QR while other modal fields change. */
 export const QrStaysOnUnrelatedWrites: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {

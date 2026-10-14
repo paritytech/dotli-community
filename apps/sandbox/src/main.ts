@@ -8,7 +8,6 @@
 import './boot.js';
 import '@dotli/ui/styles.css';
 import { BASE_DOMAIN, getActiveServicesConfig, setActiveNetwork } from '@dotli/config';
-import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
 import { endpointHost } from '@dotli/shared';
@@ -26,6 +25,7 @@ import {
   reportSandboxDebug,
   showStatus,
 } from './host-messages.js';
+import { withoutContractParams } from './contract-url.js';
 import { createBitswapBridge, hostOriginRule } from './bitswap-bridge.js';
 import { loadProduct, type BlockSource, type SandboxParams } from './load-product.js';
 import { purgeSandboxOriginState } from './origin-purge.js';
@@ -76,11 +76,7 @@ function sinceStart(): number {
 
 /** The dApp sees only the user's own query params. */
 function stripContractParamsFromUrl(): void {
-  const cleaned = new URL(window.location.href);
-  for (const key of Object.values(SANDBOX_CONTRACT_PARAMS)) {
-    cleaned.searchParams.delete(key);
-  }
-  history.replaceState(null, '', cleaned.toString());
+  history.replaceState(null, '', withoutContractParams(window.location.href));
 }
 
 /** Inline, since document.write() replaces the page. */

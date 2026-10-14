@@ -4,24 +4,21 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { must } from '@dotli/shared/testing';
 import { byId } from '@dotli/ui/testing';
-import { expectPhone, reachable, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { expectBefore } from '@config/storybook/play';
+import { expectPhone, reachable, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   disconnect,
   resetStoryAccount,
   storyAccount,
   storyCallbacks,
   storyModalOpen,
-} from '../../../.storybook/account-fixtures.js';
-import { moreRow, moreRowNames, openMore } from '../../../.storybook/frames.js';
-import { givenApp, resetStoryPermissions, storyPermissions } from '../../../.storybook/permissions-fixtures.js';
-import {
-  DEFAULT_SETTINGS,
-  givenSettings,
-  resetStorySettings,
-  storySettings,
-} from '../../../.storybook/settings-fixtures.js';
-import { resetStoryNetwork, setHealth, storyNetwork } from '../../../.storybook/network-fixtures.js';
+} from '../../testing/stories/account-fixtures.js';
+import { moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js';
+import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissions-fixtures.js';
+import { resetStorySettings, storySettings } from '../../testing/stories/settings-fixtures.js';
+import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/network-fixtures.js';
 import type { TopbarMorph } from '../../topbar-status.js';
 import { NetworkItem } from '../chains/NetworkItem.js';
 import { PermissionsItem } from '../permissions/PermissionsItem.js';
@@ -40,11 +37,6 @@ const phone = { viewport: { value: 'phone', isRotated: false } };
 /** An app with a grant, as the page reads its permissions. */
 function givenGrant(): void {
   givenApp({ Camera: 'granted' });
-}
-
-/** A session the light client does not verify, as the page reads its settings. */
-function givenUnverified(): void {
-  givenSettings({ ...DEFAULT_SETTINGS, backend: 'rpc-gateway', verified: false });
 }
 
 /** A bar that never morphs. */
@@ -161,15 +153,6 @@ export const NetworkAndSettingsRowsOpen: Story = {
   },
 };
 
-/** As a mounted group, it is marked data-collapsible, so the CSS for its build-time render no longer applies. */
-export const CollapsibleOnMount: Story = {
-  play: async ({ step }) => {
-    await step('Then the mounted group is marked collapsible', async () => {
-      await waitFor(() => expect(byId('topbar-actions')).toHaveAttribute('data-collapsible'));
-    });
-  },
-};
-
 /** As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it. */
 export const PhoneActionsReplaceAddress: Story = {
   play: async ({ step }) => {
@@ -179,11 +162,8 @@ export const PhoneActionsReplaceAddress: Story = {
       await waitFor(() => expect(more).toHaveAttribute('data-parked'));
       const items = [...document.querySelectorAll('#topbar-actions [data-testid="action-item"]')];
       await expect(items.filter(item => item.hasAttribute('data-parked'))).toEqual([]);
-      const account = byId('auth-button').closest('[data-testid="action-item"]');
-      await expect(account).not.toBeNull();
-      await expect(
-        byId('more-button').compareDocumentPosition(account as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      const account = must(byId('auth-button').closest('[data-testid="action-item"]'), 'the account item');
+      await expectBefore(byId('more-button'), account);
     });
   },
 };
@@ -209,42 +189,6 @@ export const PhoneNetworkRowLeads: Story = {
       );
       await expect(more).toHaveAttribute('data-tone', 'warn');
       await expect(more).toHaveAttribute('aria-label', 'More, network unstable');
-    });
-  },
-};
-
-/** As a phone user with a grant and an unverified session, the Permissions and Settings rows keep their badges, and More raises none. */
-export const PhoneRowBadges: Story = {
-  render: narrow,
-  beforeEach: () => {
-    givenUnverified();
-    givenGrant();
-  },
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I open More', async () => {
-      await waitFor(() => expect(byId('permissions-button')).toHaveAttribute('data-badge'));
-      await openMore(userEvent);
-    });
-    await step('Then the Permissions and Settings rows carry their badges and More none', async () => {
-      await expect(within(moreRow('permissions')).getByRole('img')).toHaveAttribute('aria-label', 'Has permissions');
-      await expect(within(moreRow('settings')).getByRole('img')).toHaveAttribute('aria-label', 'Unverified session');
-      await expect(byId('more-button')).toHaveAttribute('aria-label', 'More');
-    });
-  },
-};
-
-/** As a phone user with no grants and a verified session, I see the Permissions and Settings rows without badges. */
-export const PhoneRowsWithoutBadges: Story = {
-  render: narrow,
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I open More', async () => {
-      await openMore(userEvent);
-    });
-    await step('Then neither row has a badge', async () => {
-      await expect(moreRow('permissions').querySelector('[data-testid="more-row-aside"]')).toBeNull();
-      await expect(moreRow('settings').querySelector('[data-testid="more-row-aside"]')).toBeNull();
     });
   },
 };

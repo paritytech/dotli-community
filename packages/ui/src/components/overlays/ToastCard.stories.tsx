@@ -29,10 +29,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I read an informational toast. */
 export const Info: Story = {};
+/** As a dotli user, I see a transfer toast drawn in the ok tone. */
 export const Ok: Story = { args: { entry: toast({ tone: 'ok', text: 'Transfer finalized' }) } };
+/** As a dotli user, I see a low-peers toast drawn in the warn tone. */
 export const Warn: Story = { args: { entry: toast({ tone: 'warn', text: 'Peers are low on Hub' }) } };
+/** As a dotli user, I see a failed-transaction toast drawn in the error tone. */
 export const Err: Story = { args: { entry: toast({ tone: 'err', text: 'Transaction failed' }) } };
+/** As a dotli user, I press the action on a toast and it runs. */
 export const WithAction: Story = {
   args: { entry: toast({ action: { label: 'View', onClick: onAction } }) },
   play: async ({ canvas, userEvent, step }) => {

@@ -3,12 +3,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  encodeWireMessage,
   MESSAGE_TYPE_INTERRUPT,
+  MESSAGE_TYPE_RECEIVE,
   MESSAGE_TYPE_REQUEST,
   MESSAGE_TYPE_RESPONSE,
   MESSAGE_TYPE_START,
   MESSAGE_TYPE_STOP,
+  type MethodIds,
   VersionedRemoteChainHeadFollowRequest,
   VersionedRemoteChainHeadHeaderError,
   VersionedRemoteChainHeadHeaderRequest,
@@ -25,15 +26,68 @@ import {
   CHAIN_UNPIN_HEAD,
   ENTROPY_DERIVE,
   LOCAL_STORAGE_READ,
+  RESOURCE_ALLOCATION_REQUEST,
+  SIGNING_CREATE_TRANSACTION,
+  SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
+  SIGNING_SIGN_PAYLOAD,
+  SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
   SIGNING_SIGN_RAW,
+  SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
   SYSTEM_HANDSHAKE,
 } from '@parity/truapi/wire-table';
-import { describeWireFrame, wireFrameId, wireFrameKey, __testing } from './debug-wire-describe.js';
-import { blockHash, genesisHash, unwrap } from '../testing/fixtures.js';
+import { describeWireFrame, wireFrameId, wireFrameKey, type WireFrameId } from './debug-wire-describe.js';
+import { blockHash, genesisHash } from '../testing/fixtures.js';
 
 function payloadBytes(codec: { enc: (v: never) => Uint8Array }, value: unknown): Uint8Array {
   return codec.enc(value as never);
 }
+
+/** SCALE decodes zeros as every field's zero value (variant 0, empty, false) and ignores the bytes it does not need. */
+const ZERO_PAYLOAD = new Uint8Array(512);
+
+type Leg = 'start' | 'receive' | 'interrupt' | 'stop' | 'request' | 'response';
+
+/** What a decoded zero payload looks like per leg: version 1, and for a response the Ok side of the result. */
+const DECODED = {
+  start: { tag: 'V1' },
+  receive: { tag: 'V1' },
+  request: { tag: 'V1' },
+  response: { success: true, value: { tag: 'V1' } },
+};
+
+const LEGS: Record<MethodIds['kind'], readonly (readonly [number, Leg])[]> = {
+  subscription: [
+    [MESSAGE_TYPE_START, 'start'],
+    [MESSAGE_TYPE_RECEIVE, 'receive'],
+    [MESSAGE_TYPE_INTERRUPT, 'interrupt'],
+    [MESSAGE_TYPE_STOP, 'stop'],
+  ],
+  request: [
+    [MESSAGE_TYPE_REQUEST, 'request'],
+    [MESSAGE_TYPE_RESPONSE, 'response'],
+  ],
+};
+
+function chainFrames(): { leg: Leg; frame: WireFrameId }[] {
+  return Object.entries(WIRE_TABLE)
+    .filter(([key]) => key.startsWith('CHAIN_'))
+    .flatMap(([, ids]) =>
+      LEGS[(ids as MethodIds).kind].map(([messageType, leg]) => ({
+        leg,
+        frame: wireFrameId(ids as MethodIds, messageType),
+      })),
+    );
+}
+
+const WALLET_FRAME_IDS = [
+  SIGNING_SIGN_PAYLOAD,
+  SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
+  SIGNING_SIGN_RAW,
+  SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
+  SIGNING_CREATE_TRANSACTION,
+  SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
+  RESOURCE_ALLOCATION_REQUEST,
+];
 
 describe('describeWireFrame', () => {
   it("As a dotli integrator, the host tags chain frames with the panel's legacy names and decodes their payloads", () => {
@@ -125,26 +179,6 @@ describe('describeWireFrame', () => {
       wireId: wireFrameKey(wireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST)),
       bytes,
     });
-  });
-
-  it('As a dotli integrator, the host encodes a full envelope round-trip the tap will perform', () => {
-    // Given: the exact envelope the provider carries (guards Task 2's usage).
-    const inner = payloadBytes(VersionedRemoteChainHeadFollowRequest, {
-      tag: 'V1',
-      value: { genesisHash, withRuntime: true },
-    });
-    const framed = unwrap(
-      encodeWireMessage({
-        requestId: 'req-1',
-        payload: {
-          ...wireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_START),
-          value: inner,
-        },
-      }),
-    );
-
-    // Then: sanity check that the envelope encodes. The tap decodes it with decodeWireMessage.
-    expect(framed).toBeInstanceOf(Uint8Array);
   });
 
   it("As a dotli integrator, the host decodes a real chainHead.header Ok response using the generated client's wire composition", () => {
@@ -298,86 +332,78 @@ describe('describeWireFrame', () => {
   });
 
   it('As a dotli integrator, I find a codec for every wallet frame the tap decodes', () => {
-    // Given
-    const { WALLET_LINKAGE, resolveCodec } = __testing;
+    // Given: the frames a local signing host serves itself, each leg carrying its codec's zero value.
+    const frames = WALLET_FRAME_IDS.flatMap(ids => [
+      { leg: 'request' as const, frame: wireFrameId(ids, MESSAGE_TYPE_REQUEST) },
+      { leg: 'response' as const, frame: wireFrameId(ids, MESSAGE_TYPE_RESPONSE) },
+    ]);
 
     // When
-    const missing = WALLET_LINKAGE.flatMap(({ stem }) =>
-      ['Request', 'Response', 'Error']
-        .map(leg => `VersionedHost${stem}${leg}`)
-        .filter(name => resolveCodec(name) === undefined),
-    );
+    const described = frames.map(({ leg, frame }) => ({
+      leg,
+      ...describeWireFrame(frame, ZERO_PAYLOAD, { decodeWalletFrames: true }),
+    }));
 
-    // Then
-    expect(missing).toEqual([]);
+    // Then: every leg decodes, neither redacted nor left as raw bytes.
+    for (const { leg, tag, value } of described) {
+      expect(value, tag).toMatchObject(DECODED[leg]);
+    }
   });
 });
 
-// `CHAIN_LINKAGE` is the one hand-maintained link from a wire-table entry to its codec family. These tests fail when
-// the installed `@parity/truapi` drifts from it.
+// Chain frames keep the legacy `remote_chain_*` tags the panel's swimlane keys on. These tests fail when the installed
+// `@parity/truapi` adds, renames or reshapes a chain method the host does not yet describe.
 describe('chain-family drift guard', () => {
-  it("As a dotli integrator, the host's linkage table covers every CHAIN_* wire-table export", () => {
-    // Given: every chain wire-table export the installed `@parity/truapi` defines.
-    const chainWireTableKeys = Object.keys(WIRE_TABLE).filter(key => key.startsWith('CHAIN_'));
+  it('As a dotli integrator, the host tags and decodes every CHAIN_* wire-table frame', () => {
+    // Given: every leg of every chain method the installed `@parity/truapi` defines, carrying its codec's zero value.
+    const frames = chainFrames();
 
     // When
-    const linkedKeys = __testing.CHAIN_LINKAGE.map(row => row.wireTableKey);
+    const described = frames.map(({ leg, frame }) => ({ leg, frame, ...describeWireFrame(frame, ZERO_PAYLOAD) }));
 
-    // Then: codegen adding a chain method with no linkage row fails here,
-    // forcing a linkage row (and a redaction decision) before it ships.
-    expect(new Set(linkedKeys)).toEqual(new Set(chainWireTableKeys));
-    expect(linkedKeys).toHaveLength(chainWireTableKeys.length);
+    // Then: a frame without a linkage row would carry its generic wire-table name, and a row whose codec is missing
+    // would leave its payload as raw bytes. Control legs are never decoded.
+    for (const { leg, frame, tag, value } of described) {
+      expect(tag).toMatch(/^remote_chain_/);
+      if (leg === 'interrupt' || leg === 'stop') {
+        expect(value, tag).toEqual({ wireId: wireFrameKey(frame), bytes: ZERO_PAYLOAD });
+      } else {
+        expect(value, tag).toMatchObject(DECODED[leg]);
+      }
+    }
   });
 
-  it.each(__testing.CHAIN_LINKAGE)(
-    'As a dotli integrator, the host resolves every codec export linkage row $stem needs for its shape',
-    ({ wireTableKey, stem }) => {
-      // Given: the shape (subscription vs call) the wire table declares for
-      // this row, read through the same `kind` production uses.
-      const ids = WIRE_TABLE[wireTableKey] as Parameters<typeof __testing.legsOf>[0];
-
-      // When / Then: a codegen rename of any expected export fails here
-      // instead of silently mis-decoding or falling back to raw bytes.
-      if (ids.kind === 'subscription') {
-        expect(__testing.resolveCodec(`VersionedRemoteChain${stem}Request`)).toBeDefined();
-        expect(__testing.resolveCodec(`VersionedRemoteChain${stem}Item`)).toBeDefined();
-      } else {
-        expect(__testing.resolveCodec(`VersionedRemoteChain${stem}Request`)).toBeDefined();
-        expect(__testing.resolveCodec(`VersionedRemoteChain${stem}Error`)).toBeDefined();
-        expect(__testing.resolveCodec(`VersionedRemoteChain${stem}Response`)).toBeDefined();
-      }
-    },
-  );
-
   it("As a dotli integrator, the host derives the exact legacy tag vocabulary the panel's swimlane keys on", () => {
-    // Given: the tag root every linkage row's stem derives (a stem typo here
-    // would silently shift which swimlane a chain's frames land in), plus
-    // the two `chainHead_follow` control tags that are full tags on their own.
-    const derivedTagRoots = __testing.CHAIN_LINKAGE.map(({ stem }) => `remote_chain_${__testing.snakeCase(stem)}`);
-    const controlOnlyTags = ['remote_chain_head_follow_stop', 'remote_chain_head_follow_interrupt'];
+    // Given
+    const frames = chainFrames();
 
-    // When
-    const derived = [...derivedTagRoots, ...controlOnlyTags];
+    // When: data legs reduce to their method's tag root, and the follow control legs stay full tags.
+    const vocabulary = new Set(
+      frames.map(({ frame }) =>
+        describeWireFrame(frame, ZERO_PAYLOAD).tag.replace(/_(request|response|start|receive)$/, ''),
+      ),
+    );
 
-    // Then: pins the exact current 16-entry legacy vocabulary as a literal
-    // snapshot, so it can't drift silently.
-    expect(derived).toEqual([
-      'remote_chain_head_follow',
-      'remote_chain_head_header',
-      'remote_chain_head_body',
-      'remote_chain_head_storage',
-      'remote_chain_head_call',
-      'remote_chain_head_unpin',
-      'remote_chain_head_continue',
-      'remote_chain_head_stop_operation',
-      'remote_chain_spec_genesis_hash',
-      'remote_chain_spec_chain_name',
-      'remote_chain_spec_properties',
-      'remote_chain_info',
-      'remote_chain_transaction_broadcast',
-      'remote_chain_transaction_stop',
-      'remote_chain_head_follow_stop',
-      'remote_chain_head_follow_interrupt',
-    ]);
+    // Then: pins the exact current 16-entry legacy vocabulary as a literal snapshot, so it can't drift silently.
+    expect(vocabulary).toEqual(
+      new Set([
+        'remote_chain_head_follow',
+        'remote_chain_head_header',
+        'remote_chain_head_body',
+        'remote_chain_head_storage',
+        'remote_chain_head_call',
+        'remote_chain_head_unpin',
+        'remote_chain_head_continue',
+        'remote_chain_head_stop_operation',
+        'remote_chain_spec_genesis_hash',
+        'remote_chain_spec_chain_name',
+        'remote_chain_spec_properties',
+        'remote_chain_info',
+        'remote_chain_transaction_broadcast',
+        'remote_chain_transaction_stop',
+        'remote_chain_head_follow_stop',
+        'remote_chain_head_follow_interrupt',
+      ]),
+    );
   });
 });

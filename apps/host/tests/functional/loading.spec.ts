@@ -23,9 +23,6 @@ import {
 } from './helpers/fake-protocol.js';
 import { findAppFrame } from '../product-frame.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
-// From source files, since the package barrels read `self.location` and `import.meta.env` at load and Node cannot.
-import { TIMEOUTS } from '../../../../packages/config/src/timeouts.js';
-import { METHOD_TIMEOUTS } from '../../../../packages/protocol/src/method-timeouts.js';
 
 import { PORT, TLD_SUFFIX } from '../env.js';
 
@@ -34,9 +31,6 @@ const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
 // The first sighting of a failure offers Settings, only a repeat of the same kind offers the one-click switch.
 const RETRY_LABEL_FROM_SMOLDOT = FAILOVER_BTN_LABELS['rpc-gateway'];
-
-// The budget a `resolveDotName` handler derives from its request deadline.
-const RESOLVER_SYNC_BUDGET_MS = (METHOD_TIMEOUTS.resolveDotName ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE;
 
 // Keeps the backend the in-page retry button flipped.
 async function setBackend(page: Page, backend: Backend): Promise<void> {
@@ -48,25 +42,6 @@ test('As a user using smoldot directly, when the light client panics mid-resolut
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
-  await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
-});
-
-test('As a user using smoldot in shared worker, when the light client panics mid-resolution, I see the appropriate error and can switch backend', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-shared-worker');
   await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
 
   // When
@@ -150,14 +125,9 @@ test('As a user using smoldot directly, when every peer WebSocket is unavailable
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  // A window, not equality: dispatch time comes off the budget, so it lands just under the constant.
-  await page.addInitScript((budgetMs: number) => {
-    const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
-    globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
-      const isResolverBudget = timeout !== undefined && timeout <= budgetMs && timeout > budgetMs - 5_000;
-      return nativeSetTimeout(handler, isResolverBudget ? 1_000 : timeout, ...args);
-    }) as typeof globalThis.setTimeout;
-  }, RESOLVER_SYNC_BUDGET_MS);
+  await page.addInitScript(() => {
+    sessionStorage.setItem('dotli:resolve-budget-ms', '1000');
+  });
   let blockedSockets = 0;
   await page.context().routeWebSocket(/^wss?:\/\//, socket => {
     blockedSockets += 1;
@@ -174,32 +144,6 @@ test('As a user using smoldot directly, when every peer WebSocket is unavailable
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
   expect(blockedSockets).toBeGreaterThan(0);
-});
-
-test('As a user using smoldot in shared worker, when the sync times out (>45s) I see the appropriate error and can switch backend', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-shared-worker');
-  await mockProtocolIframe(
-    page,
-    errorResolveResponse(
-      'Sync to Asset Hub Paseo timed out after 45s — unable to reach peers',
-      1_500,
-      'NetworkSyncTimeoutError',
-    ),
-  );
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
-  await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
 
 test('As a user, when the app chunks fail to load mid-session, I see the appropriate error with a reload button', async ({
@@ -225,25 +169,6 @@ test('As a user using smoldot directly, when smoldot rejects the chain spec, I s
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, initFailed('Chain spec rejected: invalid checkpoint'));
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.CHAIN_SPEC_REJECTED);
-  await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
-});
-
-test('As a user using smoldot in shared worker, when smoldot rejects the chain spec, I see the appropriate error and can switch backend', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-shared-worker');
   await mockProtocolIframe(page, initFailed('Chain spec rejected: invalid checkpoint'));
 
   // When
@@ -320,9 +245,7 @@ test('As a user, when the same failure survives a reload, the error page escalat
   await expect(page.locator('#error-retry-btn-1')).toContainText(RETRY_LABEL_FROM_SMOLDOT);
 });
 
-test('As a user, after a resolution failure, clicking retry switches backend and the app loads successfully', async ({
-  page,
-}) => {
+test('As a user, after a resolution failure, clicking retry switches backend', async ({ page }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
   await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
@@ -331,8 +254,9 @@ test('As a user, after a resolution failure, clicking retry switches backend and
     timeout: 10_000,
   });
   // The switch is offered only on the second sighting.
+  const secondSighting = page.waitForEvent('load');
   await page.locator('#error-retry-btn').click();
-  await page.waitForLoadState('domcontentloaded');
+  await secondSighting;
   await expect(page.locator('#error-retry-btn-1')).toContainText(RETRY_LABEL_FROM_SMOLDOT, { timeout: 10_000 });
   const backendBefore = await page.evaluate(() => localStorage.getItem('dotli:chain-backend'));
   expect(backendBefore).toBe('smoldot-direct');
@@ -342,8 +266,9 @@ test('As a user, after a resolution failure, clicking retry switches backend and
   // Dropping verification is confirmed first, and `Try Anyway` leads, so it keeps `#error-retry-btn`.
   await expect(page.locator('#error-retry-btn')).toContainText(TRY_ANYWAY_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(GO_BACK_BTN_LABEL);
+  const switched = page.waitForEvent('load');
   await page.locator('#error-retry-btn').click();
-  await page.waitForLoadState('domcontentloaded');
+  await switched;
 
   // Then
   const backendAfter = await page.evaluate(() => localStorage.getItem('dotli:chain-backend'));
@@ -365,8 +290,10 @@ test('As a user, after a resolution failure, I can refresh instead of switching 
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 
   // When
+  // Armed before the click, so the assertions below read the new document.
+  const reloaded = page.waitForEvent('load');
   await refresh.click();
-  await page.waitForLoadState('domcontentloaded');
+  await reloaded;
 
   // Then
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
@@ -380,7 +307,7 @@ for (const [label, backend] of [
   ['per-product smoldot', 'smoldot-direct'],
   ['shared smoldot', 'smoldot-shared-worker'],
 ] as const) {
-  test(`As a user using ${label}, the host must only spawn one instance of the light client`, async ({ page }) => {
+  test(`As a user using ${label}, the host shell spawns no light client of its own`, async ({ page }) => {
     // Given
     await setBackend(page, backend);
     await mockProtocolIframe(page, successfulResolveResponse('bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa'));

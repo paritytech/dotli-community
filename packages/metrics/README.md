@@ -39,7 +39,7 @@ compile time.
 ### `@dotli/metrics/testing`
 
 - `bindRecordingSentry`: a recording Sentry that tests bind and restore, and `recordCaptures`, which records each
-  captured exception's step and tags. Never imported by shipped code.
+  captured exception's flow, step and tags, and its error when asked. Never imported by shipped code.
 
 ### `@dotli/metrics/testing/setup`
 

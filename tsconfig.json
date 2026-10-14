@@ -1,4 +1,11 @@
 {
   "extends": "./config/typescript/node.json",
-  "include": ["scripts", "eslint.config.js", "knip.ts", "lint-staged.config.js"]
+  "include": [
+    "scripts",
+    ".storybook/*",
+    "eslint.config.js",
+    "knip.ts",
+    "lint-staged.config.js",
+    "vitest.storybook.config.ts"
+  ]
 }

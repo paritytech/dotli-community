@@ -1,11 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The room arithmetic is unit tested beside topbar-status.ts. These walk the real layout it measures, and the bar it
-// binds to the page's state. Finding the row past the island's wrapper is the action group's, pinned by its
-// `RowPastIslandWrapper` story.
+// The room arithmetic is unit tested beside topbar-status.ts, and finding the row past the island's wrapper is pinned
+// by the action group's `RowPastIslandWrapper` story. This is the bar it binds to the page's state.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createSyncStore } from '@dotli/shared';
 import { memoryStorage, resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
 import { createChatConnections, createChatStore } from '../../src/runtime/chat/store.js';
@@ -15,45 +14,8 @@ import { setProductLoaded } from '../../src/runtime/state/product.js';
 import { memoryChatRepo } from '../../src/runtime/chat/store.fake.js';
 import type { NetworkHealth } from '../../src/network-verdict.js';
 import { startChatPanelState } from '../../src/state/chat-panel.js';
-import { bindTopbarStatus, topbarActionRoom } from '../../src/topbar-status.js';
+import { bindTopbarStatus } from '../../src/topbar-status.js';
 import { byId } from '@dotli/ui/testing';
-import { stubPhoneViewport } from '../viewport.js';
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
-
-describe('topbarActionRoom', () => {
-  it("As the action group on a desktop, my room is the pill's max width less the rest of its row", () => {
-    // Given: the group hydrated in a box-less island wrapper, whose row the group hands over
-    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url"></div><astro-island style="display: contents"><div id="group"></div></astro-island></div></header>`;
-    const group = byId('group');
-    vi.spyOn(group, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 200, 44));
-    vi.spyOn(byId('row'), 'scrollWidth', 'get').mockReturnValue(600);
-
-    // When
-    const room = topbarActionRoom(group, byId('row'));
-
-    // Then
-    expect(room).toBe(300);
-    document.body.replaceChildren();
-  });
-
-  it('As the action group on a phone, my room is my own width, as I fill the bar in place of the address', () => {
-    // Given: a pill row with room to spare, on a phone-wide viewport
-    stubPhoneViewport(true);
-    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url"></div><div id="group"></div></div></header>`;
-    vi.spyOn(byId('group'), 'clientWidth', 'get').mockReturnValue(310);
-
-    // When
-    const room = topbarActionRoom(byId('group'), byId('row'));
-
-    // Then
-    expect(room).toBe(310);
-    document.body.replaceChildren();
-  });
-});
 
 describe('bindTopbarStatus', () => {
   it('As a user with unread chat, the bar leads with the action dot once the product posts', async () => {

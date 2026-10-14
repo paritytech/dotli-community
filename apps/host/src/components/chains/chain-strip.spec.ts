@@ -9,9 +9,8 @@ const RELAY = { blockTimeMs: 6000, phase: null };
 describe('slotOpacity', () => {
   it('As a user reading the history, the oldest slot is half strength and the newest full', () => {
     // When / Then
-    expect(HISTORY_SLOTS).toBe(48);
     expect(slotOpacity(0)).toBe('0.50');
-    expect(slotOpacity(47)).toBe('1.00');
+    expect(slotOpacity(HISTORY_SLOTS - 1)).toBe('1.00');
   });
 });
 

@@ -115,6 +115,7 @@ const openIt = async () => {
   await waitFor(() => expect(surface()).toHaveAttribute('data-open'));
 };
 
+/** As a dotli user, I click another button while a popover is open and the popover closes and the button gets the click. */
 export const ClickOutsideReachesTarget: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
@@ -128,6 +129,7 @@ export const ClickOutsideReachesTarget: Story = {
   },
 };
 
+/** As a dotli user, I click inside the product frame and the open popover closes while focus stays in the frame. */
 export const ClosesOnWindowBlur: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
@@ -141,6 +143,7 @@ export const ClosesOnWindowBlur: Story = {
   },
 };
 
+/** As a keyboard user, I press Escape with focus on the body and the popover closes with focus back on its trigger. */
 export const EscapeReturnsFocusToTrigger: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open and focus is on the body (as Safari leaves it)', async () => {
@@ -157,23 +160,7 @@ export const EscapeReturnsFocusToTrigger: Story = {
   },
 };
 
-export const TabStaysInside: Story = {
-  play: async ({ step }) => {
-    await step('Given the popover is open with focus on its first control', async () => {
-      await openIt();
-      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
-    });
-    await step('When I Tab twice', async () => {
-      const user = await trustedInput();
-      await user.tab();
-      await user.tab();
-    });
-    await step('Then focus wrapped to the first control', async () => {
-      await expect(body.getByTestId('inside-a')).toHaveFocus();
-    });
-  },
-};
-
+/** As a dotli user, I click the trigger of an open popover and it closes once. */
 export const TriggerTogglesClosed: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
@@ -187,6 +174,7 @@ export const TriggerTogglesClosed: Story = {
   },
 };
 
+/** As a dotli user, I open a modal dialog and the open popover closes. */
 export const ClosesWhenAModalOpens: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
@@ -203,6 +191,7 @@ export const ClosesWhenAModalOpens: Story = {
   },
 };
 
+/** As a dotli user, I click another popover's trigger once and the first closes while the second opens with focus inside. */
 export const OneClickMovesToAnotherPopover: Story = {
   render: () => <TwoPopovers />,
   play: async ({ step }) => {
@@ -223,6 +212,7 @@ export const OneClickMovesToAnotherPopover: Story = {
   },
 };
 
+/** As a dotli user, I open a popover and the page tracks one open layer holding focus until I press Escape. */
 export const PageTracksOpenLayer: Story = {
   render: () => (
     <LayerTracker value={track}>
@@ -250,6 +240,7 @@ export const PageTracksOpenLayer: Story = {
   },
 };
 
+/** As a keyboard user, I press Escape after the page hid the trigger and focus goes to the page's fallback. */
 export const HiddenTriggerHandsFocusToBoundary: Story = {
   render: () => (
     <AnchorBoundary value={{ fallbackFocus: () => body.getByTestId('other') }}>

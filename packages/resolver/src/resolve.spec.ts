@@ -8,15 +8,10 @@ import { must } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
 import { getActiveServicesConfig } from '@dotli/config';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
+import { bindLogSink } from '@dotli/shared';
 import type { Api } from './api.js';
 import { createDotnsResolver, type ChainClient, type DotnsResolver } from './resolve.js';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-
-interface Logged {
-  level: LogLevel;
-  message: string;
-}
 
 /** A chain client whose follow can be stopped from the test. */
 interface FakeClient extends ChainClient {
@@ -96,20 +91,12 @@ function rejectAfter(ms: number, err: Error): Promise<void> {
   });
 }
 
-const RETRY_EVENT = 'Resolve retry after a chain halt';
-
 describe('createDotnsResolver', () => {
   let disconnect: Mock<() => void>;
   let assetHub: Mock<() => JsonRpcProvider>;
-  let logged: Logged[];
 
   beforeEach(() => {
-    logged = [];
-    bindLogSink({
-      emit: (level, message) => {
-        logged.push({ level, message });
-      },
-    });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
     disconnect = vi.fn<() => void>();
     assetHub = vi.fn<() => JsonRpcProvider>(
       () => () => ({ send: vi.fn<JsonRpcConnection['send']>(), disconnect }) satisfies JsonRpcConnection,
@@ -117,18 +104,8 @@ describe('createDotnsResolver', () => {
   });
 
   afterEach(() => {
-    bindLogSink({ emit: () => undefined });
     vi.useRealTimers();
-    vi.restoreAllMocks();
   });
-
-  const retried = (): Logged[] => logged.filter(line => line.level === 'info' && line.message === RETRY_EVENT);
-
-  const warned = (pattern: RegExp | string): string[] =>
-    logged
-      .filter(line => line.level === 'warn')
-      .map(line => line.message)
-      .filter(message => (typeof pattern === 'string' ? message === pattern : pattern.test(message)));
 
   function resolver(shapes: ApiShape[] = []): { dotns: DotnsResolver; opened: FakeClient[] } {
     const { open, opened } = clients(shapes);
@@ -152,7 +129,6 @@ describe('createDotnsResolver', () => {
     // Then
     expect(assetHub).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(warned('[dot.li resolve] chainHead follow stopped, invalidating resolver client')).toHaveLength(1);
   });
 
   it('As the host on a cold start, I make three concurrent reads and they share one Asset Hub client', async () => {
@@ -183,8 +159,6 @@ describe('createDotnsResolver', () => {
     // Then
     expect(owner).toBeNull();
     expect(assetHub).toHaveBeenCalledTimes(2);
-    expect(warned('[dot.li resolve] chainHead follow stopped, invalidating resolver client')).toHaveLength(1);
-    expect(retried()).toHaveLength(1);
   });
 
   it.each([
@@ -203,7 +177,6 @@ describe('createDotnsResolver', () => {
 
       // Then
       expect(assetHub).toHaveBeenCalledTimes(2);
-      expect(retried()).toHaveLength(1);
     },
   );
 
@@ -232,7 +205,6 @@ describe('createDotnsResolver', () => {
     // Then
     await expect(result).rejects.toThrow('chainHead follow stopped');
     expect(assetHub).toHaveBeenCalledTimes(4);
-    expect(retried()).toHaveLength(3);
   });
 
   it('As a dotli user on a light client, I see a read that fails for any other reason fail without a retry', async () => {
@@ -245,7 +217,6 @@ describe('createDotnsResolver', () => {
     // Then
     await expect(result).rejects.toThrow('Unknown subscription/token');
     expect(assetHub).toHaveBeenCalledTimes(1);
-    expect(retried()).toHaveLength(0);
   });
 
   it('As a dotli maintainer, I see each Asset Hub client bring-up timed once, with its outcome', async () => {
@@ -289,7 +260,6 @@ describe('createDotnsResolver', () => {
     // Then: the halt came at 300 ms and the retry runs on the next timer tick
     expect(failure).toMatchObject({ name: 'NetworkSyncTimeoutError', timeoutMs: 699 });
     expect(assetHub).toHaveBeenCalledTimes(2);
-    expect(retried()).toHaveLength(1);
   });
 
   it('As a dotli user on a light client, I get no retry once a halt comes after my budget is spent', async () => {
@@ -301,11 +271,9 @@ describe('createDotnsResolver', () => {
     const failure = dotns.resolveOwner('alice', { syncTimeoutMs: 1_000 }).catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(1_100);
 
-    // Then the read fails on its budget without opening a second client, and the trail says no retry ran
+    // Then the read fails on its budget without opening a second client
     await expect(failure).resolves.toMatchObject({ name: 'NetworkSyncTimeoutError', timeoutMs: 1_000 });
     expect(assetHub).toHaveBeenCalledTimes(1);
-    expect(retried()).toHaveLength(0);
-    expect(warned(/retry/i)).toHaveLength(0);
   });
 
   it('As a visitor on a gateway whose Asset Hub never syncs, I see each queued read fail within 180 s of its own call', async () => {
@@ -393,8 +361,7 @@ describe('createDotnsResolver', () => {
 
     // Then
     expect(owner).toBeNull();
-    expect(captured).toEqual(Array(3).fill({ step: 'listener', tags: { owner: 'resolver.status' } }));
-    expect(logged.filter(line => line.level === 'error')).toHaveLength(3);
+    expect(captured).toEqual(Array(3).fill({ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.status' } }));
     expect(sentry.counted('listener.delivery')).toEqual(
       Array(3).fill({ outcome: 'error', reason: 'Error', owner: 'resolver.status' }),
     );

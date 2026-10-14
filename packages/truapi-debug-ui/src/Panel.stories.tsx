@@ -21,9 +21,11 @@ import {
   seedMixedTraffic,
   selectedTags,
   withFakeClock,
-} from '../.storybook/debug-panel-fixtures.js';
+} from './testing/stories/debug-panel-fixtures.js';
+import { debugPanelStory } from './testing/stories/debug-panel-story.js';
 
 const meta = {
+  ...debugPanelStory,
   title: 'Debug/Panel',
   // The panel mounts on the page itself, as the host mounts it, so the canvas stays empty.
   tags: ['!autodocs'],
@@ -49,6 +51,7 @@ async function seededFilters(): Promise<void> {
   await waitFor(() => expect(rows()).toHaveLength(5));
 }
 
+/** As a developer using the debug panel, I see the header with the tabs, counts and every control, the filters wide open and an empty list beside an empty detail pane. */
 export const Default: Story = {
   play: async ({ step }) => {
     const header = within(part('td-header'));
@@ -119,6 +122,7 @@ export const Default: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see the panel mount header-only when it starts collapsed. */
 export const StartCollapsed: Story = {
   parameters: { debugPanel: { startCollapsed: true } },
   play: async ({ step }) => {
@@ -131,6 +135,7 @@ export const StartCollapsed: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see each TrUAPI message as a row with arrow, product, request id, tag, summary and latency. */
 export const TruapiRows: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>
@@ -177,6 +182,7 @@ export const TruapiRows: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I see a host boot report as a row with layer badge, flow id, layer.event and summary. */
 export const SystemRows: Story = {
   play: async ({ step }) => {
     await step('When the host reports its boot', async () => {
@@ -199,6 +205,7 @@ export const SystemRows: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see a chain message row show the decoded method label instead of the raw tag. */
 export const ChainMethodLabel: Story = {
   play: async ({ step }) => {
     await step('When a chain message arrives', () => {
@@ -215,6 +222,7 @@ export const ChainMethodLabel: Story = {
   },
 };
 
+/** As a developer using the debug panel, I select a failed chain response and the detail shows its summary and decoded annotations. */
 export const ChainResponseDetail: Story = {
   play: async ({ userEvent, step }) => {
     await step('Given a failed chain response', async () => {
@@ -241,6 +249,7 @@ export const ChainResponseDetail: Story = {
   },
 };
 
+/** As a developer using the debug panel, I pause the list so new messages add no rows, and resume so they show again. */
 export const PauseResume: Story = {
   play: async ({ userEvent, step }) => {
     const { truapi } = debugPanel();
@@ -284,6 +293,7 @@ export const HideLeavesDebugMode: Story = {
   },
 };
 
+/** As a developer using the debug panel, I clear the TrUAPI tab and the list, counts and selection empty while the Resolution view still shows the load. */
 export const ClearEventsKeepsResolution: Story = {
   parameters: { debugPanel: { capacity: 2 } },
   play: async ({ userEvent, step }) => {
@@ -308,6 +318,7 @@ export const ClearEventsKeepsResolution: Story = {
   },
 };
 
+/** As a developer using the debug panel, I clear the Resolution tab and its view empties while the events are kept. */
 export const ClearResolutionKeepsEvents: Story = {
   play: async ({ userEvent, step }) => {
     await step('Given a load on the Resolution tab', async () => {
@@ -325,6 +336,7 @@ export const ClearResolutionKeepsEvents: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see each tab show only the controls that apply to it. */
 export const ControlsPerTab: Story = {
   play: async ({ userEvent, step }) => {
     const shown = (): string[] =>
@@ -351,6 +363,7 @@ export const ControlsPerTab: Story = {
   },
 };
 
+/** As a developer using the debug panel, I export with the responses hidden and the filtered events download as JSON. */
 export const ExportDownloadsFilteredJson: Story = {
   play: async ({ userEvent, step }) => {
     const { effects } = debugPanel();
@@ -384,6 +397,7 @@ export const ExportDownloadsFilteredJson: Story = {
   },
 };
 
+/** As a developer using the debug panel, I copy with system events hidden and the filtered JSON lands on the clipboard while the button flashes a check mark. */
 export const CopyFlashesCheck: Story = {
   play: async ({ userEvent, step }) => {
     const { effects } = debugPanel();
@@ -418,6 +432,7 @@ export const CopyFlashesCheck: Story = {
   },
 };
 
+/** As a developer using the debug panel, I copy when the browser refuses the clipboard and the button flashes a cross. */
 export const CopyRefusedFlashesCross: Story = {
   play: async ({ userEvent, step }) => {
     const { effects } = debugPanel();
@@ -440,6 +455,7 @@ export const CopyRefusedFlashesCross: Story = {
   },
 };
 
+/** As a developer using the debug panel, I untick event kinds and the list shows only the kinds left, or says nothing matches. */
 export const KindCheckboxes: Story = {
   play: async ({ userEvent, step }) => {
     await seededFilters();
@@ -467,6 +483,7 @@ export const KindCheckboxes: Story = {
   },
 };
 
+/** As a developer using the debug panel, I pick outgoing, incoming or both and the list shows the TrUAPI rows of that direction with the system rows. */
 export const DirectionChips: Story = {
   play: async ({ userEvent, step }) => {
     await seededFilters();
@@ -511,6 +528,7 @@ function chipTexts(): string[] {
     .map(c => c.textContent);
 }
 
+/** As a developer using the debug panel, I pick a product chip and the list shows its TrUAPI rows and the system rows. */
 export const ProductChips: Story = {
   play: async ({ userEvent, step }) => {
     await seededFilters();
@@ -542,6 +560,7 @@ export const ProductChips: Story = {
   },
 };
 
+/** As a dotli developer, the product chips keep their nodes as events arrive. */
 export const ProductChipsStableAndText: Story = {
   play: async ({ step }) => {
     const { truapi } = debugPanel();
@@ -558,18 +577,10 @@ export const ProductChipsStableAndText: Story = {
         await expect(node).toBe(before[i]);
       }
     });
-    await step('When a product id holds markup', async () => {
-      truapi({ tag: 'evil_request', requestId: 'e1', productId: '<b>x</b>' });
-      await waitFor(() => expect(rows()).toHaveLength(7));
-    });
-    await step('Then it shows as text', async () => {
-      await expect(chipTexts()).toContain('<b>x</b>');
-      await expect(part('td-filters').querySelector('b')).toBeNull();
-      await expect(part('td-list').querySelector('b')).toBeNull();
-    });
   },
 };
 
+/** As a developer using the debug panel, I type include and exclude filters and the matching rows show, while a regex that does not parse is flagged and inert. */
 export const TextFiltersFlagInvalid: Story = {
   play: async ({ userEvent, step }) => {
     await seededFilters();
@@ -604,6 +615,7 @@ export const TextFiltersFlagInvalid: Story = {
   },
 };
 
+/** As a developer using the debug panel, I click a request row and its response is highlighted, and the sibling pill pairs them. */
 export const RowClickHighlightsGroup: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>
@@ -650,6 +662,7 @@ export const RowClickHighlightsGroup: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I select the boot event and the detail shows its summary, a What is this? section and the payload. */
 export const SystemDetailExplains: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -678,6 +691,7 @@ export const SystemDetailExplains: Story = {
   },
 };
 
+/** As a developer using the debug panel, I move the selection with the arrow keys and it stops at the first and last rows. */
 export const ArrowKeysClamp: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -710,6 +724,7 @@ export const ArrowKeysClamp: Story = {
   },
 };
 
+/** As a developer using the debug panel, I press ArrowUp with nothing selected and the last row is selected. */
 export const ArrowUpPicksLast: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -723,23 +738,31 @@ export const ArrowUpPicksLast: Story = {
   },
 };
 
+/** As a developer using the debug panel, I select an event whose payload and product id hold markup and it shows as text in the row, the chip and the detail pane. */
 export const PayloadMarkupAsText: Story = {
   play: async ({ userEvent, step }) => {
-    await step('Given a payload holding markup', async () => {
-      debugPanel().truapi({ tag: 'note_request', requestId: 'n1', value: { note: '<b>bold</b>' } });
+    await step('Given a payload and a product id holding markup', async () => {
+      debugPanel().truapi({
+        tag: 'note_request',
+        requestId: 'n1',
+        productId: '<b>x</b>',
+        value: { note: '<b>bold</b>' },
+      });
       await waitFor(() => expect(rows()).toHaveLength(1));
     });
     await step('When I select it', async () => {
       await userEvent.click(rowByTag('note_request'));
     });
-    await step('Then the markup shows as text in the row and the detail pane', async () => {
+    await step('Then the markup shows as text in the row, the product chip and the detail pane', async () => {
       await expect(panel().querySelector('b')).toBeNull();
+      await expect(chipTexts()).toContain('<b>x</b>');
       await expect(within(rowByTag('note_request')).getByTestId('td-summary')).toHaveTextContent('<b>bold</b>');
       await expect(part('td-detail-pre')).toHaveTextContent('"note": "<b>bold</b>"');
     });
   },
 };
 
+/** As a developer using the debug panel, I keep reading an open explanation while events stream in and the detail pane stays the same. */
 export const DetailNotRebuilt: Story = {
   play: async ({ userEvent, step }) => {
     let explanation: HTMLDetailsElement | null = null;
@@ -764,6 +787,7 @@ export const DetailNotRebuilt: Story = {
   },
 };
 
+/** As a developer using the debug panel, I filter the list and the selected request and its pair stay selected. */
 export const SelectionSurvivesFilter: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -783,6 +807,7 @@ export const SelectionSurvivesFilter: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see a small list keep only the newest messages and count the dropped ones. */
 export const SmallCapacity: Story = {
   parameters: { debugPanel: { capacity: 5 } },
   play: async ({ step }) => {
@@ -801,6 +826,7 @@ export const SmallCapacity: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see an unanswered request show a pending badge that counts up and turns slow, and goes away when the reply lands. */
 export const PendingBadgeCountsUp: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>
@@ -835,6 +861,7 @@ export const PendingBadgeCountsUp: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I keep my selection while a burst streams in and the rows and detail keep their nodes. */
 export const StreamingClickKeepsNode: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -868,6 +895,7 @@ export const StreamingClickKeepsNode: Story = {
   },
 };
 
+/** As a developer using the debug panel, I click a row while events are queued and the click sticks after the render. */
 export const ClickMidBurstSticks: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>

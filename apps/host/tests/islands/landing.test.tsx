@@ -14,6 +14,7 @@ import { setAuthState } from '../../src/runtime/state/auth.js';
 import { createRecentLabels, type RecentLabels } from '../../src/recent-labels.js';
 import { mountLandingPage } from '../helpers/landing.js';
 import { appears, byId, query } from '@dotli/ui/testing';
+import { setPageUrl } from '../happy-dom.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
@@ -33,18 +34,7 @@ function visited(...labels: string[]): void {
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
-    media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  }));
-  vi.stubGlobal('location', {
-    hostname: 'localhost',
-    protocol: 'http:',
-    port: '5173',
-    href: 'http://localhost:5173/',
-  });
+  setPageUrl('http://localhost:5173/');
   shared = memorySharedChannel();
   // A visitor not signed in, whose saved session has been read.
   setAuthState({ tag: 'Disconnected' });
@@ -59,27 +49,31 @@ afterEach(() => {
   document.body.innerHTML = '';
   resetAllStoresForTests();
   vi.useRealTimers();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
 });
 
 describe('landing page', () => {
   it("As a visitor, the page's document listener goes with it", async () => {
-    // Given
-    const add = vi.spyOn(document, 'addEventListener');
-    const remove = vi.spyOn(document, 'removeEventListener');
+    // Given: the recent list's box, which its listener asks whether a press landed inside
     visited('alpha');
     mount();
     await appears('[data-testid="landing-recent-item"]');
-    const added = add.mock.calls.filter(([type]) => type === 'pointerdown');
-    expect(added).toHaveLength(1);
+    const list = byId('dotli-recent');
+    let asked = 0;
+    const contains = list.contains.bind(list);
+    list.contains = (node): boolean => {
+      asked += 1;
+      return contains(node);
+    };
+    document.dispatchEvent(new Event('pointerdown'));
+    expect(asked).toBe(1);
 
     // When
     page?.dispose();
     page = null;
+    document.dispatchEvent(new Event('pointerdown'));
 
     // Then
-    expect(remove).toHaveBeenCalledWith('pointerdown', added[0]?.[1]);
+    expect(asked).toBe(1);
   });
 
   it("As a visitor, the auth button sits in the page's corner", async () => {

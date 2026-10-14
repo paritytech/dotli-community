@@ -55,6 +55,9 @@ export const CONTENT_BITSWAP_RPC = 'content.bitswap_rpc';
 /** Blocks per content fetch, 1 for raw and N for dag-pb directories. */
 export const CONTENT_BITSWAP_BLOCKS = 'content.bitswap_blocks';
 
+/** A bitswap relay step that failed. Tag `outcome` (`error`), `reason` (the error name) and `step` (`verify, cache_read, cache_delete, cache_write`). */
+export const CONTENT_BLOCK_RELAY = 'content.block_relay';
+
 /** Bytes. */
 export const CONTENT_SIZE = 'content.size';
 

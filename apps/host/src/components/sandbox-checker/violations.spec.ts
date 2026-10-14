@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { appendViolation, clampPanelHeight, MAX_ENTRIES, violationFrom } from './violations.js';
+import { appendViolation, clampPanelHeight, violationFrom } from './violations.js';
 
 const product = { name: 'product window' };
 const now = (): number => 42;
@@ -57,7 +57,6 @@ describe('sandbox checker violations', () => {
     }
 
     // Then
-    expect(MAX_ENTRIES).toBe(500);
     expect(entries).toHaveLength(500);
     expect(entries[0]).toBe('api100');
     expect(entries[499]).toBe('api599');

@@ -30,7 +30,7 @@ describe('isSharedWorkerAvailable', () => {
 });
 
 describe('defaultBackend', () => {
-  it('As a new visitor, I start on the per-tab light client whether or not my browser has SharedWorker', () => {
+  it('As a new visitor, I start on the per-tab light client', () => {
     // When / Then
     expect(defaultBackend()).toBe('smoldot-direct');
   });

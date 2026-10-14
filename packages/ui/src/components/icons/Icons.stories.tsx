@@ -34,6 +34,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a screen reader user, I skip every icon, since each draws an svg that assistive technology ignores. */
 export const All: Story = {
   play: async ({ canvas, step }) => {
     await step('Then every icon draws an svg that assistive technology skips', async () => {

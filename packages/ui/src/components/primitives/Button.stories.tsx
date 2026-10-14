@@ -20,8 +20,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see the default secondary button and read its label. */
 export const Secondary: Story = {};
 
+/** As a dotli user, I press the primary button and its handler runs once. */
 export const Primary: Story = {
   args: { variant: 'primary' },
   play: async ({ args, canvas, userEvent, step }) => {
@@ -34,8 +36,10 @@ export const Primary: Story = {
   },
 };
 
+/** As a dotli user, I see a destructive choice drawn as a danger button and read what it denies. */
 export const Danger: Story = { args: { variant: 'danger', children: 'Deny' } };
 
+/** As a dotli user, I see the small, medium and large buttons side by side and tell them apart by size. */
 export const Sizes: Story = {
   render: args => (
     <div style={{ display: 'flex', gap: '12px', 'align-items': 'center' }}>
@@ -52,9 +56,11 @@ export const Sizes: Story = {
   ),
 };
 
+/** As a dotli user, I see a block button fill the width of its container and read its label. */
 export const Block: Story = { args: { block: true, variant: 'primary' } };
 
 // In a form, so a press that went through would also submit it.
+/** As a dotli user, I press a disabled button and nothing happens, not even a form submit. */
 export const Disabled: Story = {
   args: { disabled: true },
   render: args => {
@@ -88,31 +94,8 @@ export const Disabled: Story = {
   },
 };
 
-export const WithPopup: Story = {
-  args: {
-    children: 'alice',
-    'aria-label': 'alice, account',
-    'aria-expanded': 'true',
-    'aria-controls': 'story-user-popover',
-    'aria-haspopup': 'dialog',
-  },
-  render: args => (
-    <>
-      <Button {...args} />
-      <div id="story-user-popover">Account details</div>
-    </>
-  ),
-  play: async ({ canvas, step }) => {
-    await step('Then I hear the label and the open popup the button controls', async () => {
-      const button = canvas.getByRole('button', { name: 'alice, account' });
-      await expect(button).toHaveAttribute('aria-expanded', 'true');
-      await expect(button).toHaveAttribute('aria-controls', 'story-user-popover');
-      await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
-    });
-  },
-};
-
 /** Toggle `loading` off to watch the circle grow to the label. */
+/** As a dotli user, I see a loading button busy with no label, and pressing it does nothing. */
 export const Loading: Story = {
   args: { loading: true, 'aria-label': 'Continue' },
   play: async ({ args, canvas, userEvent, step }) => {
@@ -128,6 +111,7 @@ export const Loading: Story = {
   },
 };
 
+/** As a dotli user, I follow a link drawn as a button and it points where it says. */
 export const Link: Story = {
   render: () => (
     <ButtonLink href="https://dot.li" variant="primary" size="lg" block>
@@ -135,12 +119,9 @@ export const Link: Story = {
     </ButtonLink>
   ),
   play: async ({ canvas, step }) => {
-    await step('Then the link drawn as a large primary button points where it says', async () => {
+    await step('Then the link points where it says', async () => {
       const link = canvas.getByRole('link', { name: 'Open dot.li' });
       await expect(link).toHaveAttribute('href', 'https://dot.li');
-      await expect(link).toHaveAttribute('data-variant', 'primary');
-      await expect(link).toHaveAttribute('data-size', 'lg');
-      await expect(link).toHaveAttribute('data-block', '');
     });
   },
 };

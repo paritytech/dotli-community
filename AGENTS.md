@@ -111,7 +111,8 @@ Tests:
 - Test-only modules live in `src`: `<name>.fake.ts` beside the module it fakes, shared fixtures in `src/testing/`. Never
   export them from `src/index.ts`. Another package reaches them through a `./testing` package entry.
 - A shared fixture that reads the page is named `<name>.dom.ts`. Only functional tests and stories use it.
-- Story fixtures and frames live in the package's `.storybook/`. Stories may also import `./testing` entries.
+- There is one Storybook, at the repo root. It runs every story in every app and package. Story fixtures and frames live
+  in the package's `src/testing/stories/` and are never exported. Stories may also import `./testing` entries.
 - Helpers every package's tests use live once: in `@dotli/shared/testing`, the page wait `untilDom` included, and page
   queries in `@dotli/ui/testing`.
 - Name tests as user stories: `As a <role>, I <action> and <outcome>`.

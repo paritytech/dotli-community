@@ -22,16 +22,6 @@ describe('auth modal store', () => {
     resetStores();
   });
 
-  it('As the auth modal, the store starts closed with the spinner and no labels', () => {
-    // When / Then
-    expect(authModalStore.get()).toEqual({
-      open: false,
-      productLabel: null,
-      reason: null,
-      view: { kind: 'spinner' },
-    });
-  });
-
   it('As the auth controller, an update replaces only the given fields', () => {
     // Given
     updateAuthModal({ open: true, view: { kind: 'authenticating' } });

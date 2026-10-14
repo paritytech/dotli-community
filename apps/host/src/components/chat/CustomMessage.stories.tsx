@@ -109,6 +109,7 @@ async function scrollIn(): Promise<void> {
   screen.scroll(true);
 }
 
+/** As a reader of a custom message, I cost the product a render only while the message is on screen. */
 export const SubscribesOnlyOnScreen: Story = {
   tags: ['!autodocs'],
   play: async ({ step }) => {
@@ -129,6 +130,7 @@ export const SubscribesOnlyOnScreen: Story = {
   },
 };
 
+/** As a reader of a custom message, I see Loading until the product sends its tree. */
 export const LoadingUntilTree: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, step }) => {
@@ -146,6 +148,7 @@ export const LoadingUntilTree: Story = {
   },
 };
 
+/** As a reader of a custom message, I see a neutral message in place of a partial tree when the render fails. */
 export const FailedRenderIsNeutral: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, step }) => {
@@ -166,6 +169,7 @@ export const FailedRenderIsNeutral: Story = {
   },
 };
 
+/** As a reader of a custom message, I am told when I tap a button and the app cannot be reached. */
 export const UnreachableTapSaysSo: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {
@@ -195,6 +199,7 @@ export const UnreachableTapSaysSo: Story = {
   },
 };
 
+/** As a reader of a custom message, I keep my focus and typed text when the product streams an update. */
 export const StreamedUpdateKeepsFocusAndText: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {
@@ -216,6 +221,7 @@ export const StreamedUpdateKeepsFocusAndText: Story = {
   },
 };
 
+/** As a reader of a custom message, I see a new tree the product sends after a failed render. */
 export const NewTreeAfterFailureShows: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, step }) => {
@@ -234,6 +240,7 @@ export const NewTreeAfterFailureShows: Story = {
   },
 };
 
+/** As a reader of a custom message, I stop its render subscription by scrolling it off the page. */
 export const LeavingStopsSubscription: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {
@@ -251,6 +258,7 @@ export const LeavingStopsSubscription: Story = {
   },
 };
 
+/** As a reader of a custom message, I see nothing from a late answer after the message left. */
 export const LateRenderAfterLeavingIsIgnored: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {

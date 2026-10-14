@@ -11,7 +11,7 @@ import { currentProductFrame, setTopbarLayout, type TopbarLayout } from './produ
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
 
-const HIDE_DELAY_MS = 2000;
+export const HIDE_DELAY_MS = 2000;
 
 /** Advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';

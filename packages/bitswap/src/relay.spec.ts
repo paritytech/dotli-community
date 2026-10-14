@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { SandboxChannel, SandboxMessageOf, SandboxMessageType, SandboxSender } from '@dotli/sandbox-wire';
-import { bindLogSink } from '@dotli/shared';
 import {
   createSandboxBlockRelay,
   type BlockCache,
@@ -110,7 +109,10 @@ interface MemoryCache extends BlockCache {
   writes: number;
 }
 
-function memoryCache(initial: [string, Uint8Array][] = [], fail: { get?: Error; put?: Error } = {}): MemoryCache {
+function memoryCache(
+  initial: [string, Uint8Array][] = [],
+  fail: { get?: Error; put?: Error; delete?: Error } = {},
+): MemoryCache {
   const blocks = new Map(initial);
   const cache: MemoryCache = {
     blocks,
@@ -128,6 +130,9 @@ function memoryCache(initial: [string, Uint8Array][] = [], fail: { get?: Error; 
     },
     delete: cid => {
       cache.deleted.push(cid);
+      if (fail.delete) {
+        return Promise.reject(fail.delete);
+      }
       blocks.delete(cid);
       return Promise.resolve();
     },
@@ -145,19 +150,6 @@ function get(id: string, cid = 'bafyBlock'): SandboxMessageOf<'dotli:bitswap-get
 
 function abort(...ids: string[]): SandboxMessageOf<'dotli:bitswap-abort'> {
   return { type: 'dotli:bitswap-abort', ids };
-}
-
-/** Binds a log sink that keeps the warnings, so a failure path's report can be asserted. */
-function recordWarnings(): string[] {
-  const warnings = recording<string>();
-  bindLogSink({
-    emit: (level, message) => {
-      if (level === 'warn') {
-        warnings.push(message);
-      }
-    },
-  });
-  return warnings;
 }
 
 const pushed = new WeakMap<unknown[], Set<() => void>>();
@@ -423,7 +415,8 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
   it('As a user, I still load the app when the block cache cannot be read', async () => {
     // Given a cache whose reads fail
-    const warnings = recordWarnings();
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const network = fakeNetwork();
     const { channel, send } = fakeChannel();
     createSandboxBlockRelay({
@@ -441,9 +434,8 @@ describe('createSandboxBlockRelay with a block cache', () => {
     // Then the block came from the network, and the failed read was reported
     expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
     expect(network.fetches).toHaveLength(1);
-    expect(warnings).toEqual([
-      expect.stringMatching(/^\[dot\.li bitswap-relay\] block cache read failed for bafyBlock: /),
-    ]);
+    expect(captured).toEqual([{ flow: 'content', step: 'relay_cache_read', tags: undefined }]);
+    expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'Error', step: 'cache_read' }]);
   });
 
   it('As a user with the archive cache off, I get every block from the network', async () => {
@@ -466,7 +458,8 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
   it('As a user, I get a cached block treated as a miss when the verifier fails to load, the cached copy is kept, and no fresh one is written', async () => {
     // Given a cache already holding the block, but a verifier whose chunk cannot load
-    const warnings = recordWarnings();
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const network = fakeNetwork();
     const cache = memoryCache([['bafyBlock', BLOCK.slice()]]);
     const { channel, send } = fakeChannel();
@@ -489,15 +482,55 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(cache.writes).toBe(0);
     expect(cache.deleted).toEqual([]);
     expect(cache.blocks.get('bafyBlock')).toEqual(BLOCK);
-    expect(warnings).not.toHaveLength(0);
-    expect(warnings.every(line => line.startsWith('[dot.li bitswap-relay] verifier failed for bafyBlock: '))).toBe(
-      true,
-    );
+    // The verifier failed twice, on the cached copy and on the fetched one
+    const verifyFailure = { outcome: 'error', reason: 'Error', step: 'verify' };
+    expect(captured).toEqual([
+      { flow: 'content', step: 'relay_verify', tags: { cid: 'bafyBlock' } },
+      { flow: 'content', step: 'relay_verify', tags: { cid: 'bafyBlock' } },
+    ]);
+    expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
+  });
+
+  it('As a user, I am still served the fetched block when dropping a corrupted cached block fails', async () => {
+    // Given a cache holding corrupted bytes whose delete fails
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const reported = recording<true>();
+    const sentry = bindRecordingSentry({
+      onFinished: onTestFinished,
+      onRecord: () => reported.push(true),
+    });
+    const network = fakeNetwork();
+    const { channel, send } = fakeChannel();
+    createSandboxBlockRelay({
+      channel,
+      blocks: network.blocks,
+      cache: memoryCache([['bafyBlock', new Uint8Array([0x00])]], { delete: new Error('delete failed') }),
+      verify: matchesBlock,
+    });
+
+    // When
+    const frame = fakeFrame();
+    send(frame, get('req-1'));
+    await until(frame.replies);
+    await until(reported);
+
+    // Then the block came from the network, and the failed delete was reported once
+    expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
+    expect(network.fetches).toHaveLength(1);
+    expect(captured).toEqual([{ flow: 'content', step: 'relay_cache_delete', tags: undefined }]);
+    expect(sentry.counted('content.block_relay')).toEqual([
+      { outcome: 'error', reason: 'Error', step: 'cache_delete' },
+    ]);
   });
 
   it('As a user, I am still served the fetched block when the block cache write rejects', async () => {
     // Given a cache whose writes fail
-    const warnings = recordWarnings();
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const reported = recording<true>();
+    const sentry = bindRecordingSentry({
+      onFinished: onTestFinished,
+      onRecord: () => reported.push(true),
+    });
     const { channel, send } = fakeChannel();
     createSandboxBlockRelay({
       channel,
@@ -513,8 +546,9 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
     // Then the block was served, and the failed write was reported once it settled
     expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
-    await until(warnings);
-    expect(warnings).toEqual([expect.stringMatching(/^\[dot\.li bitswap-relay\] block cache write failed: /)]);
+    await until(reported);
+    expect(captured).toEqual([{ flow: 'content', step: 'relay_cache_write', tags: undefined }]);
+    expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'Error', step: 'cache_write' }]);
   });
 });
 

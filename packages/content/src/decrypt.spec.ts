@@ -97,8 +97,8 @@ describe('decryptContent', () => {
     // Given
     const encrypted = await encrypt(new TextEncoder().encode('secret'), 'correct');
 
-    // When / Then
-    await expect(decryptContent(encrypted, 'wrong')).rejects.toThrow();
+    // When / Then the AEAD tag failure, which the sandbox's password prompt reads as a wrong password
+    await expect(decryptContent(encrypted, 'wrong')).rejects.toThrow(/invalid tag/i);
   });
 
   it('As a visitor of an encrypted product archive, I enter the right password and get its binary content back', async () => {

@@ -3,9 +3,18 @@
 
 import { test, expect, openHostPlayground, waitForHostPlaygroundFrame } from './fixtures/paired.js';
 import { waitForPlaygroundReady, runTestExpectSuccess } from './helpers/run-test.js';
-import { runWebSignedTest } from './helpers/signing.js';
+import { answerHostDialogs, runWebSignedTest, type HostDialog } from './helpers/signing.js';
 
 // Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.
+
+// The host dialogs these tests expect, by the title the host draws. A once answer leaves no grant behind the test.
+const PERMISSION_ONCE: HostDialog = { title: 'Permission Request', answer: 'Allow once' };
+const PERMISSION_ALLOW: HostDialog = { title: 'Permission Request', answer: 'Allow' };
+const IDENTITY_ONCE: HostDialog = { title: 'Identity Disclosure', answer: 'Allow once' };
+const ALLOCATION: HostDialog = { title: 'Resource Allocation', answer: 'Allow' };
+const PREIMAGE: HostDialog = { title: 'Submit Preimage', answer: 'Allow' };
+const SIGN_MESSAGE: HostDialog = { title: 'Sign Message', answer: 'Sign' };
+const SIGN_TRANSACTION: HostDialog = { title: 'Sign Transaction', answer: 'Sign' };
 
 test.describe('dot.li > host-playground.dot', () => {
   test('As a product on dot.li, I load in the host and report ready', async ({ productFrame }) => {
@@ -44,7 +53,7 @@ test.describe('dot.li > host-playground.dot', () => {
       await runTestExpectSuccess(productFrame, 'request-login');
     });
 
-    test("As a product on dot.li, I read the paired user's identity once the topbar shows it", async ({
+    test("As a product on dot.li, I read the paired user's identity once the topbar shows it and the user allows it", async ({
       pairedPage,
       productFrame,
     }) => {
@@ -54,8 +63,13 @@ test.describe('dot.li > host-playground.dot', () => {
       await expect(badge).toBeVisible({ timeout: 30_000 });
       await expect(badge).not.toHaveText('??', { timeout: 60_000 });
 
-      // When / Then
-      await runTestExpectSuccess(productFrame, 'get-user-id');
+      // When the user allows the disclosure for this request only, so no grant outlives the test
+      const status = await runWebSignedTest(pairedPage, productFrame, 'get-user-id', [IDENTITY_ONCE], {
+        timeoutMs: 20_000,
+      });
+
+      // Then
+      expect(status).toBe('success');
     });
   });
 
@@ -83,7 +97,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // Each allocation opens a host permission modal, which is all these tests drive.
+  // The host asks the user to confirm every allocation, so each test answers its own dialog.
 
   test.describe('Allowances', () => {
     test('As a product on dot.li, I get a statement store allowance once the user allows it', async ({
@@ -94,13 +108,9 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'allowances-statement-store',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 90_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-statement-store', [ALLOCATION], {
+        timeoutMs: 90_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -114,13 +124,9 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'allowances-bulletin',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 90_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-bulletin', [ALLOCATION], {
+        timeoutMs: 90_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -134,13 +140,9 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'allowances-smart-contract',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 90_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-smart-contract', [ALLOCATION], {
+        timeoutMs: 90_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -161,7 +163,7 @@ test.describe('dot.li > host-playground.dot', () => {
         test.setTimeout(120_000);
 
         // When
-        const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', ['Always allow', 'Allow'], {
+        const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', [ALLOCATION], {
           timeoutMs: 90_000,
         });
 
@@ -198,7 +200,7 @@ test.describe('dot.li > host-playground.dot', () => {
     });
   });
 
-  // The first request for a capability in a session opens a host permission modal.
+  // Each permission test spends its own once grant, so it leaves nothing for the tests after it.
 
   test.describe('Permissions', () => {
     test('As a product on dot.li, I check which features the host supports', async ({ productFrame }) => {
@@ -206,7 +208,7 @@ test.describe('dot.li > host-playground.dot', () => {
       await runTestExpectSuccess(productFrame, 'feature-check');
     });
 
-    test('As a product on dot.li, I reach a remote over HTTP and WebSocket once the user allows it', async ({
+    test('As a product on dot.li, I reach a remote over HTTP and WebSocket, which the host grants without asking', async ({
       pairedPage,
       productFrame,
     }) => {
@@ -214,19 +216,15 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(60_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'remote-permission-remote',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 30_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'remote-permission-remote', [], {
+        timeoutMs: 30_000,
+      });
 
       // Then
       expect(status).toBe('success');
     });
 
-    test('As a product on dot.li, I reach a remote over WebRTC once the user allows it', async ({
+    test('As a product on dot.li, I reach a remote over WebRTC, which the host grants without asking', async ({
       pairedPage,
       productFrame,
     }) => {
@@ -234,76 +232,81 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(60_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'remote-permission-webrtc',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 30_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'remote-permission-webrtc', [], {
+        timeoutMs: 30_000,
+      });
 
       // Then
       expect(status).toBe('success');
     });
 
-    test('As a product on dot.li, I submit to a remote chain once the user allows it', async ({
+    test('As a product on dot.li, I submit to a remote chain once the user allows it, and my next broadcast spends the grant', async ({
       pairedPage,
       productFrame,
     }) => {
-      // Given
-      test.setTimeout(60_000);
-
-      // When
-      const status = await runWebSignedTest(
+      // Given the user allows the request once
+      test.setTimeout(90_000);
+      const granted = await runWebSignedTest(
         pairedPage,
         productFrame,
         'remote-permission-chain-submit',
-        ['Always allow', 'Allow'],
+        [PERMISSION_ONCE],
         { timeoutMs: 30_000 },
       );
 
+      // When the product broadcasts, which spends the grant without asking again
+      const spent = await runWebSignedTest(pairedPage, productFrame, 'chain-transaction-broadcast', [], {
+        timeoutMs: 20_000,
+      });
+
       // Then
-      expect(status).toBe('success');
+      expect([granted, spent]).toEqual(['success', 'success']);
     });
 
-    test('As a product on dot.li, I submit a preimage remotely once the user allows it', async ({
+    test('As a product on dot.li, I submit a preimage remotely once the user allows it, and my next submit spends the grant', async ({
       pairedPage,
       productFrame,
     }) => {
-      // Given
-      test.setTimeout(60_000);
-
-      // When
-      const status = await runWebSignedTest(
+      // Given the user allows the request once
+      test.setTimeout(240_000);
+      const granted = await runWebSignedTest(
         pairedPage,
         productFrame,
         'remote-permission-preimage-submit',
-        ['Always allow', 'Allow'],
+        [PERMISSION_ONCE],
         { timeoutMs: 30_000 },
       );
 
+      // When the product submits a preimage, which spends the grant and asks only to confirm the submit
+      const spent = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', [PREIMAGE], {
+        timeoutMs: 60_000,
+      });
+
       // Then
-      expect(status).toBe('success');
+      expect([granted, spent]).toEqual(['success', 'success']);
     });
 
-    test('As a product on dot.li, I submit a statement remotely once the user allows it', async ({
+    test('As a product on dot.li, I submit a statement remotely once the user allows it, and my next submit spends the grant', async ({
       pairedPage,
       productFrame,
     }) => {
-      // Given
-      test.setTimeout(60_000);
-
-      // When
-      const status = await runWebSignedTest(
+      // Given the user allows the request once
+      test.setTimeout(180_000);
+      const granted = await runWebSignedTest(
         pairedPage,
         productFrame,
         'remote-permission-statement-submit',
-        ['Always allow', 'Allow'],
+        [PERMISSION_ONCE],
         { timeoutMs: 30_000 },
       );
 
+      // When the product submits a statement, which spends the grant without asking again
+      const spent = await runWebSignedTest(pairedPage, productFrame, 'statement-store-submit', [], {
+        timeoutMs: 90_000,
+      });
+
       // Then
-      expect(status).toBe('success');
+      expect([granted, spent]).toEqual(['success', 'success']);
     });
   });
 
@@ -313,18 +316,14 @@ test.describe('dot.li > host-playground.dot', () => {
       await runTestExpectSuccess(productFrame, 'statement-store-create-proof-authorized');
     });
 
-    test('As a product user, I can submit a statement', async ({ pairedPage, productFrame }) => {
+    test('As a product user, I submit a statement once the user allows it', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        'statement-store-submit',
-        ['Always allow', 'Allow'],
-        { timeoutMs: 90_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'statement-store-submit', [PERMISSION_ONCE], {
+        timeoutMs: 90_000,
+      });
 
       // Then
       expect(status).toBe('success');
@@ -410,16 +409,34 @@ test.describe('dot.li > host-playground.dot', () => {
     });
 
     // The product broadcasts a transaction the chain rejects, so these need no funds, only an operation id.
-    test('As a product on dot.li, I broadcast a chain transaction and get an operation id', async ({
+    test('As a product on dot.li, I broadcast a chain transaction once the user allows it and get an operation id', async ({
+      pairedPage,
       productFrame,
     }) => {
-      // When / Then
-      await runTestExpectSuccess(productFrame, 'chain-transaction-broadcast');
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        'chain-transaction-broadcast',
+        [PERMISSION_ONCE],
+        { timeoutMs: 20_000 },
+      );
+
+      // Then
+      expect(status).toBe('success');
     });
 
-    test('As a product on dot.li, I stop a chain transaction I broadcast', async ({ productFrame }) => {
-      // When / Then
-      await runTestExpectSuccess(productFrame, 'chain-transaction-stop');
+    test('As a product on dot.li, I stop a chain transaction I broadcast once the user allows it', async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // When
+      const status = await runWebSignedTest(pairedPage, productFrame, 'chain-transaction-stop', [PERMISSION_ONCE], {
+        timeoutMs: 20_000,
+      });
+
+      // Then
+      expect(status).toBe('success');
     });
   });
 
@@ -459,7 +476,7 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', ['Always allow', 'Allow'], {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', [PERMISSION_ONCE, PREIMAGE], {
         timeoutMs: 60_000,
       });
 
@@ -475,7 +492,7 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', ['Always allow', 'Allow'], {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', [PERMISSION_ONCE, PREIMAGE], {
         timeoutMs: 60_000,
       });
 
@@ -486,11 +503,8 @@ test.describe('dot.li > host-playground.dot', () => {
 
   test.describe('Notifications', () => {
     test('As a product user, I can allow and receive a push notification', async ({ pairedPage, productFrame }) => {
-      // Given
-      const approvalButtons = ['Always allow', 'Allow'];
-
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'push-notification', approvalButtons, {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'push-notification', [PERMISSION_ONCE], {
         timeoutMs: 20_000,
       });
 
@@ -514,15 +528,16 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'wallet-sign-message',
-        ['Always allow', 'Allow', 'Sign'],
-        { timeoutMs: 120_000, preClickDelayMs: 1_000 },
+        // The wallet connects first, which asks to disclose the identity and to submit, then the user signs.
+        [IDENTITY_ONCE, PERMISSION_ONCE, SIGN_MESSAGE],
+        { timeoutMs: 120_000 },
       );
 
       // Then
       expect(status).toBe('success');
     });
 
-    test('As a product on dot.li, I create a signed transaction once the user signs it', async ({
+    test('As a product on dot.li, I create a signed transaction once the user allows and signs it', async ({
       pairedPage,
       productFrame,
     }) => {
@@ -534,7 +549,7 @@ test.describe('dot.li > host-playground.dot', () => {
         pairedPage,
         productFrame,
         'create-transaction',
-        ['Always allow', 'Allow', 'Sign'],
+        [PERMISSION_ONCE, SIGN_TRANSACTION],
         { timeoutMs: 120_000 },
       );
 
@@ -561,7 +576,8 @@ test.describe('dot.li > host-playground.dot', () => {
           pairedPage,
           productFrame,
           'sign-batch-payload',
-          ['Always allow', 'Allow', 'Sign'],
+          // Unchecked while blocked: a Resource Allocation dialog may come first while the account holds no PGAS.
+          [PERMISSION_ONCE, SIGN_TRANSACTION],
           { timeoutMs: 120_000 },
         );
 
@@ -592,7 +608,8 @@ test.describe('dot.li > host-playground.dot', () => {
           pairedPage,
           productFrame,
           'contract-store-value',
-          ['Always allow', 'Allow', 'Sign'],
+          // Unchecked while blocked: a Resource Allocation dialog may come first while the account holds no PGAS.
+          [PERMISSION_ONCE, SIGN_TRANSACTION],
           { timeoutMs: 120_000 },
         );
 
@@ -615,7 +632,8 @@ test.describe('dot.li > host-playground.dot', () => {
       async ({ pairedPage, productFrame }) => {
         // Given
         test.setTimeout(300_000);
-        const dialogs = ['Always allow', 'Allow', 'Sign'];
+        // Unchecked while blocked: a Resource Allocation dialog may come first while the account holds no PGAS.
+        const dialogs = [PERMISSION_ONCE, SIGN_TRANSACTION];
 
         // When: withdraw only becomes deterministic after this run's own deposit
         const deposited = await runWebSignedTest(pairedPage, productFrame, 'contract-deposit', dialogs, {
@@ -644,8 +662,9 @@ test.describe('dot.li > host-playground.dot', () => {
       const run = productFrame.locator('[data-testid="run-device-permission-camera"]');
       await expect(run).toBeEnabled({ timeout: 15_000 });
 
-      // When: the fixture's auto-allow answers the host's dialog, and the grant rebuilds the frame
+      // When the user allows the host's dialog, whose grant rebuilds the frame
       await run.click();
+      await answerHostDialogs(pairedPage, [PERMISSION_ALLOW]);
       const rebuilt = await waitForHostPlaygroundFrame(pairedPage, 60_000, productFrame);
 
       // Then

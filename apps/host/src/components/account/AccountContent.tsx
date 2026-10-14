@@ -39,7 +39,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
   return (
     <Surface width="sm" padded testId="account-content">
       <div class={s['identity']}>
-        <AccountAvatar session={props.account.session()} size="lg" decorative />
+        <AccountAvatar session={props.account.session()} size="lg" decorative testId="account-avatar" />
         <div class={s['text']}>
           <div class={s['label']}>Welcome back</div>
           <div

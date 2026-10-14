@@ -20,17 +20,19 @@ import {
   type ProductManifests,
 } from './manifest-gate.js';
 
-const ROOT = toRootManifestResult(
-  JSON.stringify({ $v: 1, displayName: 'DOOM', description: 'Doom', icon: { cid: 'bafk', format: 'png' } }),
-);
+const ROOT_TEXT = JSON.stringify({
+  $v: 1,
+  displayName: 'DOOM',
+  description: 'Doom',
+  icon: { cid: 'bafk', format: 'png' },
+});
+const ROOT = toRootManifestResult(ROOT_TEXT);
 const APP = toExecutableManifestResult(JSON.stringify({ $v: 1, kind: 'app', appVersion: [0, 1, 9] }), 'app');
 const EMPTY = { kind: 'empty' } as const;
 const NO_TEXT_RECORDS = { kind: 'unsupported', reason: 'TEXT_RECORDS slot not configured' } as const;
 // What `app.doom.paseo` publishes.
-const APP_V2 = toExecutableManifestResult(
-  JSON.stringify({ $v: 2, kind: 'app', appVersion: [0, 1, 9], runtime: { kind: 'polkavm' } }),
-  'app',
-);
+const APP_V2_TEXT = JSON.stringify({ $v: 2, kind: 'app', appVersion: [0, 1, 9], runtime: { kind: 'polkavm' } });
+const APP_V2 = toExecutableManifestResult(APP_V2_TEXT, 'app');
 
 function rejection(
   root: ManifestResult<RootManifest>,
@@ -86,14 +88,6 @@ describe('manifest gate', () => {
 });
 
 describe('cached manifests', () => {
-  const ROOT_TEXT = JSON.stringify({
-    $v: 1,
-    displayName: 'DOOM',
-    description: 'Doom',
-    icon: { cid: 'bafk', format: 'png' },
-  });
-  const APP_V2_TEXT = JSON.stringify({ $v: 2, kind: 'app', appVersion: [0, 1, 9] });
-
   it('As a dotli user, a cached app whose manifest this host does not read is rejected again on the next load', () => {
     // Given
     const cached = fromCache({ root: ROOT_TEXT, app: APP_V2_TEXT });
@@ -107,11 +101,8 @@ describe('cached manifests', () => {
 
   it('As the host caching a resolved name, I keep the text of every manifest record that has one and null for the rest', () => {
     // When / Then
-    expect(toCache({ root: ROOT, app: EMPTY })).toEqual({ root: ROOT.kind === 'ok' ? ROOT.raw : '', app: null });
-    expect(toCache({ root: NO_TEXT_RECORDS, app: APP_V2 })).toEqual({
-      root: null,
-      app: APP_V2.kind === 'unsupported-version' ? APP_V2.raw : '',
-    });
+    expect(toCache({ root: ROOT, app: EMPTY })).toEqual({ root: ROOT_TEXT, app: null });
+    expect(toCache({ root: NO_TEXT_RECORDS, app: APP_V2 })).toEqual({ root: null, app: APP_V2_TEXT });
   });
 });
 

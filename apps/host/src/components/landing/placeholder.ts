@@ -3,9 +3,9 @@
 
 export const PLACEHOLDER_NAMES = ['browse', 'mark3t', 'playground'] as const;
 
-const PLACEHOLDER_TYPE_MS = 95;
-const PLACEHOLDER_ERASE_MS = 45;
-const PLACEHOLDER_HOLD_MS = 1400;
+export const PLACEHOLDER_TYPE_MS = 95;
+export const PLACEHOLDER_ERASE_MS = 45;
+export const PLACEHOLDER_HOLD_MS = 1400;
 
 /** Type and erase example names in `input`'s placeholder while it is empty, holding the first under reduced motion. */
 export function animatePlaceholder(

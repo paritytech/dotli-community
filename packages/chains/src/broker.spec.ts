@@ -1146,13 +1146,15 @@ describe('broker warnings', () => {
     });
 
     // Then the first three are logged in full, then only the count at each power of ten
-    expect(warnings).toEqual([
+    expect(warnings.slice(0, 3)).toEqual([
       '[dot.li broker] ← upstream response for unknown id=stray-0',
       '[dot.li broker] ← upstream response for unknown id=stray-1',
       '[dot.li broker] ← upstream response for unknown id=stray-2',
-      '[dot.li broker] response_unknown_id: 10 so far',
-      '[dot.li broker] response_unknown_id: 100 so far',
-      '[dot.li broker] response_unknown_id: 1000 so far',
+    ]);
+    expect(warnings.slice(3).map(warning => /^\[dot\.li broker\] \w+: (\d+) so far$/.exec(warning)?.[1])).toEqual([
+      '10',
+      '100',
+      '1000',
     ]);
   });
 
@@ -1171,8 +1173,8 @@ describe('broker warnings', () => {
       strayToSecond('second-0');
     });
 
-    // Then it is logged in full, as the second broker's first
-    expect(warnings).toEqual(['[dot.li broker] ← upstream response for unknown id=second-0']);
+    // Then it is one full-form warning, as the second broker's first
+    expect(warnings).toEqual([expect.stringMatching(/^\[dot\.li broker\] .*unknown id=second-0$/) as string]);
   });
 });
 
@@ -1350,10 +1352,9 @@ describe('ChainBroker.halt', () => {
     expect(healthy.messages).toHaveLength(1);
     expect(log).toContain('a:halt');
     expect(log).toContain('b:halt');
-    expect(captured).not.toHaveLength(0);
-    expect(captured.every(capture => capture.tags?.['owner'] === 'chain_halt')).toBe(true);
-    expect(errors).toHaveLength(captured.length);
-    expect(metrics.counted('listener.delivery')).toHaveLength(captured.length);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'chain_halt' } }]);
+    expect(errors).toHaveLength(1);
+    expect(metrics.counted('listener.delivery')).toEqual([{ outcome: 'error', reason: 'Error', owner: 'chain_halt' }]);
   });
 
   it('As a dotli integrator, the release requests the broker sends itself are never answered on a halt', () => {
@@ -1371,7 +1372,7 @@ describe('ChainBroker.halt', () => {
     broker.halt();
 
     // Then
-    expect(harness.sent.some(m => String(m.id).startsWith('broker-release:'))).toBe(true);
+    expect(harness.sent.filter(m => m.method === 'transactionWatch_v1_unwatch')).toHaveLength(1);
     expect(staying.messages).toEqual([
       {
         jsonrpc: '2.0',

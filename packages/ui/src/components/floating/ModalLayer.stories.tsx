@@ -76,6 +76,7 @@ const openFirst = async (user: { click: (el: Element) => Promise<void> }) => {
   await waitFor(() => expect(body.getByTestId('first-backdrop')).toHaveAttribute('data-open'));
 };
 
+/** As a dotli user, I open a layer and the page behind goes inert and the open popover closes, then the page answers again when it closes. */
 export const PageBehindInertPopoversAside: Story = {
   play: async ({ canvasElement, userEvent, step }) => {
     const page = canvasElement.closest('body > *');
@@ -106,6 +107,7 @@ export const PageBehindInertPopoversAside: Story = {
   },
 };
 
+/** As a dotli user, I open a second layer and only it answers, and the first answers again when the second closes. */
 export const SecondLayerAloneAnswers: Story = {
   play: async ({ canvasElement, userEvent, step }) => {
     const page = canvasElement.closest('body > *');
@@ -129,6 +131,7 @@ export const SecondLayerAloneAnswers: Story = {
   },
 };
 
+/** As a keyboard user, I press Escape after clicking off the layer's controls and the layer is dismissed once. */
 export const EscapeWithFocusOnBody: Story = {
   play: async ({ userEvent, step }) => {
     await step('Given the layer is open and I clicked off its controls', async () => {

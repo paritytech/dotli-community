@@ -63,7 +63,7 @@ describe('createFrameTelemetry', () => {
 
     // Then
     expect(totals).toEqual([100]);
-    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'protocol.net_bytes' } }]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'protocol.net_bytes' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'protocol.net_bytes' },
     ]);

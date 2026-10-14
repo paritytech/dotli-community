@@ -30,10 +30,10 @@ const CREEP_CEILING = 99;
 const CREEP_MS = 10_000;
 
 // The per-chain watchdog cannot see a bar parked at its ceiling, such as a content chain with no peers.
-const PROGRESS_STALL_MS = 4_000;
+export const PROGRESS_STALL_MS = 4_000;
 
 // Most of this window is the turnover animation, so the finished sentence is still for only about 4s.
-const MESSAGE_ROTATE_MS = 9_000;
+export const MESSAGE_ROTATE_MS = 9_000;
 
 const DOMAIN_TOKEN = '{domain}';
 
@@ -79,9 +79,12 @@ function stepSentence(parts: readonly StepPart[]): string {
   return parts.map(part => (typeof part === 'string' ? part : `${part.host}${part.tld}`)).join('');
 }
 
+/** How long the screen fades before it is gone. */
+export const FADE_MS = 300;
+
 // A fixed budget rather than a per-character delay, so any sentence lands inside the rotation interval.
-const ERASE_MS = 1_400;
-const TYPE_MS = 3_600;
+export const ERASE_MS = 1_400;
+export const TYPE_MS = 3_600;
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
@@ -428,12 +431,12 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
       return;
     }
     updateLoading({ phase: 'dismissing' });
-    // 300ms matches the fade.
+    // The screen is removed only once its fade has finished.
     setTimeout(() => {
       if (getLoadingState().phase === 'dismissing') {
         hideLoading();
       }
-    }, 300);
+    }, FADE_MS);
   }
 
   // One-shot, for telemetry that must wait until the content fetch has dialled the Bulletin Chain.

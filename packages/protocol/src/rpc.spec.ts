@@ -52,17 +52,25 @@ describe('createFrameRpc', () => {
   });
 
   it('As a dotli integrator, a shared store request waits only for a listening frame, and any other for a ready one', async () => {
-    // Given
+    // Given a frame still booting, with a shared store request and another waiting on it
     const fake = createFakeFrame();
+    fake.setStatus('booting');
     const rpc = createFrameRpc(fake.frame);
-
-    // When
     void rpc.request('authStorageRead', { siteId: 'dotli', key: 'k' });
     void rpc.request('resolveOwner', { label: 'doom' });
+
+    // When the frame listens
+    fake.setStatus('listening');
     await posted();
 
-    // Then
-    expect(fake.waits).toEqual(['listening', 'ready']);
+    // Then only the shared store request is posted
+    expect(fake.posted.map(envelope => envelope.method)).toEqual(['authStorageRead']);
+
+    // When the frame is ready
+    fake.setStatus('ready');
+    await posted();
+
+    // Then the other follows
     expect(fake.posted.map(envelope => envelope.method)).toEqual(['authStorageRead', 'resolveOwner']);
   });
 
@@ -154,6 +162,48 @@ describe('createFrameRpc', () => {
     await expect(read).rejects.toThrow('Fatal: boom');
   });
 
+  it('As a dotli integrator, a request on an idle frame asks for the frame and goes out once it is ready', async () => {
+    // Given a frame nobody has asked for yet
+    const fake = createFakeFrame();
+    fake.setStatus('idle');
+    const rpc = createFrameRpc(fake.frame);
+
+    // When a request is made, and the frame then comes up
+    void rpc.request('resolveOwner', { label: 'doom' });
+    await posted();
+    const statusWhileWaiting = fake.frame.getStatus();
+    const postedWhileWaiting = fake.posted.length;
+    fake.setStatus('ready');
+    await posted();
+
+    // Then the frame boots, and the request waits for it instead of failing
+    expect(statusWhileWaiting).toBe('booting');
+    expect(postedWhileWaiting).toBe(0);
+    expect(fake.posted.map(envelope => envelope.method)).toEqual(['resolveOwner']);
+  });
+
+  it.each(['idle', 'failed'] as const)(
+    'As a dotli integrator, a request waiting on a frame that goes %s fails instead of waiting forever',
+    async down => {
+      // Given a frame still booting
+      const fake = createFakeFrame();
+      fake.setStatus('booting');
+      const rpc = createFrameRpc(fake.frame);
+      const request = rpc.request('resolveOwner', { label: 'doom' });
+
+      // When
+      if (down === 'failed') {
+        fake.lose(new Error('frame lost'));
+      } else {
+        fake.setStatus('idle');
+      }
+
+      // Then
+      await expect(request).rejects.toThrow(down === 'failed' ? 'frame lost' : 'frame went idle');
+      expect(fake.posted).toEqual([]);
+    },
+  );
+
   it('As a dotli integrator, a request whose frame vanished before the post fails with why, and leaves no timer or count behind', async () => {
     // Given
     const fake = createFakeFrame();
@@ -189,11 +239,7 @@ describe('createFrameRpc', () => {
   it('As a dotli integrator, I send a request while the frame comes up and its timer starts only once the frame is up', async () => {
     // Given a frame still coming up
     const fake = createFakeFrame();
-    let comeUp: () => void = () => undefined;
-    fake.frame.whenUp = () =>
-      new Promise<void>(resolve => {
-        comeUp = resolve;
-      });
+    fake.setStatus('booting');
     const rpc = createFrameRpc(fake.frame);
 
     // When a request is made, and the frame then comes up
@@ -201,7 +247,7 @@ describe('createFrameRpc', () => {
     await posted();
     const timersWhileWaiting = vi.getTimerCount();
     const postedWhileWaiting = fake.posted.length;
-    comeUp();
+    fake.setStatus('ready');
     await posted();
 
     // Then nothing was posted or timed while it waited, and the budget starts once the request is posted

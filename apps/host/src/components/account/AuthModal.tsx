@@ -53,7 +53,7 @@ interface DrawnQr {
 /** Decorative: the code's error correction survives it. */
 function QrBadge(): JSX.Element {
   return (
-    <span class={s['badge']} aria-hidden="true">
+    <span class={s['badge']} aria-hidden="true" data-testid="auth-modal-qr-badge">
       <span>
         <PolkadotIcon />
       </span>
@@ -90,7 +90,7 @@ function QrCode(props: { qr: DrawnQr; link: boolean }): JSX.Element {
 function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
   return (
     <div class={s['errorView']} data-testid="auth-modal-failure">
-      <IconTile class={s['pendingIcon']}>
+      <IconTile class={s['pendingIcon']} testId="auth-modal-failure-icon">
         {/* The account is still being set up. */}
         <ClockIcon />
       </IconTile>

@@ -3,14 +3,13 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { memoryStorage } from '@dotli/shared/testing';
-import type { Continuation } from './continuation.js';
+import { markContinuation, takeContinuation } from './continuation.js';
 
 import { beginAttempt as beginOnPage, endJourney as endOnPage, type Attempt, type JourneyDeps } from './journey.js';
 
-/** One tab: its session storage, how it was last navigated, and the reason the app gave for its own reload. */
+/** One tab: its session storage, which also keeps why the app reloaded it, and how it was last navigated. */
 let session: Storage;
 let navigation: NavigationTimingType;
-let continuation: Continuation | null;
 
 const tab: JourneyDeps = {
   // The tab's storage is replaced for each test.
@@ -18,20 +17,11 @@ const tab: JourneyDeps = {
     return session;
   },
   navigationType: () => navigation,
-  // Read once, as the page reads the reason its last reload left.
-  takeContinuation: () => {
-    const taken = continuation;
-    continuation = null;
-    return taken;
-  },
+  takeContinuation: () => takeContinuation(session),
 };
 
 function navigatedBy(type: NavigationTimingType): void {
   navigation = type;
-}
-
-function markContinuation(reason: Continuation): void {
-  continuation = reason;
 }
 
 const beginAttempt = (label: string): Attempt => beginOnPage(label, tab);
@@ -42,7 +32,6 @@ const endJourney = (): void => {
 beforeEach(() => {
   session = memoryStorage();
   navigation = 'navigate';
-  continuation = null;
 });
 
 describe('Attempts at opening an app form a journey', () => {
@@ -75,7 +64,7 @@ describe('Attempts at opening an app form a journey', () => {
     // Given
     navigatedBy('navigate');
     const first = beginAttempt('coffer');
-    markContinuation('switch_backend');
+    markContinuation('switch_backend', session);
 
     // When the switch reloads the page
     navigatedBy('reload');
@@ -87,7 +76,7 @@ describe('Attempts at opening an app form a journey', () => {
 
   it('As a maintainer, the reason for a reload describes only the load right after it', () => {
     // Given
-    markContinuation('reload_button');
+    markContinuation('reload_button', session);
     navigatedBy('reload');
     beginAttempt('coffer');
 

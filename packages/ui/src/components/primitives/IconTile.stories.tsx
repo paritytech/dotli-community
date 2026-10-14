@@ -14,6 +14,7 @@ const meta = { title: 'Primitives/IconTile', component: IconTile, parameters: { 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see an icon in its tile, which assistive technology skips. */
 export const Icon: Story = {
   args: { icon: GlobeIcon, testId: 'tile' },
   play: async ({ canvas, step }) => {
@@ -24,6 +25,7 @@ export const Icon: Story = {
     });
   },
 };
+/** As a dotli user, I see a drawn icon in the same tile, which assistive technology skips. */
 export const Children: Story = {
   args: { testId: 'tile' },
   play: async ({ canvas, step }) => {

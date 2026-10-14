@@ -19,6 +19,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see a broken view replaced by nothing while its stand-in runs once. */
 export const BrokenRenderNothing: Story = {
   render: args => (
     <div data-testid="root-holder">
@@ -35,6 +36,7 @@ export const BrokenRenderNothing: Story = {
   },
 };
 
+/** As a dotli user, I see a healthy view render its children and no stand-in runs. */
 export const HealthyRendersItsChildren: Story = {
   render: args => (
     <RootBoundary root={args.root} onBroken={args.onBroken}>

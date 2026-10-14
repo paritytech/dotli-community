@@ -259,7 +259,7 @@ describe('createRawApi', () => {
 
       // Then
       expect(heard).toBe(1);
-      expect(captured).toEqual([{ step: 'listener', tags: { owner: 'resolver.stop' } }]);
+      expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.stop' } }]);
       expect(metrics.counted('listener.delivery')).toEqual([
         { outcome: 'error', reason: 'TypeError', owner: 'resolver.stop' },
       ]);
@@ -281,7 +281,7 @@ describe('createRawApi', () => {
 
       // Then
       expect(subscribe).not.toThrow();
-      expect(captured).toEqual([{ step: 'listener', tags: { owner: 'resolver.stop' } }]);
+      expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.stop' } }]);
     });
   });
 });

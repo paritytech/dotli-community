@@ -26,7 +26,6 @@ const dynamicBan = dynamicImportBan(
 );
 
 export default defineConfig([
-  { ignores: ['storybook-static/**'] },
   ...config,
   {
     languageOptions: {

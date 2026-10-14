@@ -240,19 +240,19 @@ describe('The network monitor tracks blocks', () => {
     expect(monitor.getNetworkStatus()[0]?.bars.length).toBe(MAX_BARS);
   });
 
-  it('As a user who kept the panel open, more history is retained than a strip can show', () => {
+  it('As a user who kept the panel open, every block after the first stays as a bar, 60 of them', () => {
     // Given
     use(relayGenesis());
     const genesis = relayGenesis();
 
-    // When
-    for (let i = 0; i < 60; i += 1) {
+    // When the first block only sets the baseline
+    for (let i = 0; i < 61; i += 1) {
       vi.advanceTimersByTime(6000);
       monitor.recordBestBlock(genesis, i);
     }
 
     // Then
-    expect(monitor.getNetworkStatus()[0]?.bars.length).toBeGreaterThan(36);
+    expect(monitor.getNetworkStatus()[0]?.bars.length).toBe(60);
   });
 
   it('As a user on a chain that republishes its head, one block makes one bar', () => {
@@ -639,7 +639,7 @@ describe('The network monitor judges how each chain is used', () => {
 
     // Then
     expect(heard).toBe(1);
-    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'network_monitor' } }]);
+    expect(captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'network_monitor' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'network_monitor' },
     ]);

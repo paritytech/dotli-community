@@ -16,6 +16,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a visitor whose app is starting again, I see the pulsing mark over what is happening. */
 export const MarkOverStatus: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -33,6 +34,7 @@ export const MarkOverStatus: Story = {
   },
 };
 
+/** As a visitor whose load failed, I retry and the error page gives way to the retry screen. */
 export const RetryScreenReplacesErrorPage: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {

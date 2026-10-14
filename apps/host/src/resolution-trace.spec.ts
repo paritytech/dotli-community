@@ -1,15 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { m } from '@dotli/metrics';
-import type { Continuation } from './continuation.js';
+import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { markContinuation, peekContinuation } from './continuation.js';
 import {
   createChainPhaseTracker,
   startResolutionTrace as startOnPage,
   type ResolutionTrace,
   type ResolutionTraceOptions,
 } from './resolution-trace.js';
+import { getLoadingState, updateLoading } from './state/loading.js';
 
 /** Records the span tree instead of sending it. `vitest.config.ts` turns metrics on so the real tree is built. */
 interface RecordedSpan {
@@ -77,25 +79,16 @@ function names(): string[] {
   return spans.map(s => s.name);
 }
 
-/** The page the trace runs in: where the visitor leaves from, the bar they see and the reason the app reloaded. */
+/** The page the trace runs in: where the visitor leaves from, the loading store and the tab's session storage. */
 let page: EventTarget;
-let barPercent: number;
-let continuation: Continuation | null;
-
-function markContinuation(reason: Continuation): void {
-  continuation = reason;
-}
-
-function updateLoading({ progress }: { progress: number }): void {
-  barPercent = progress;
-}
+let session: Storage;
 
 function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTrace {
   return startOnPage(opts, {
     lifecycle: page,
     isVisible: () => true,
-    readProgress: () => barPercent,
-    peekContinuation: () => continuation,
+    readProgress: () => getLoadingState().progress,
+    peekContinuation: () => peekContinuation(session),
   });
 }
 
@@ -104,8 +97,8 @@ beforeEach(() => {
   spans = fake.spans;
   m.bind(fake.sentry as Parameters<typeof m.bind>[0]);
   page = new EventTarget();
-  barPercent = 0;
-  continuation = null;
+  session = memoryStorage();
+  resetAllStoresForTests();
 });
 
 const ATTEMPT = { journeyId: 'journey-1', attemptNumber: 2, entry: 'reload_button' } as const;
@@ -251,11 +244,16 @@ describe('A resolution is traced as one unit', () => {
 
 describe('A resolution reports how it ended', () => {
   it('As a maintainer, a load that reached the app reports its outcome and duration', () => {
-    // Given
-    const trace = startResolutionTrace(OPTS);
+    // Given a load that reaches the app 2.5s after the page started
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const trace = startResolutionTrace({ ...OPTS, startedAt: performance.now() });
 
     // When
     trace.nameResolved('bafy123');
+    vi.advanceTimersByTime(2_500);
     trace.finish('rendered');
 
     // Then
@@ -263,6 +261,7 @@ describe('A resolution reports how it ended', () => {
     expect(root?.attributes).toMatchObject({
       outcome: 'rendered',
       cid: 'bafy123',
+      total_ms: 2_500,
     });
     expect(root?.ended).toBe(true);
   });
@@ -430,7 +429,7 @@ describe('A resolution is one attempt of a journey', () => {
   it('As a maintainer, a load the visitor left by reloading from the error page says so', () => {
     // Given
     startResolutionTrace(OPTS);
-    markContinuation('reload_button');
+    markContinuation('reload_button', session);
 
     // When
     page.dispatchEvent(pagehide(false));
@@ -495,16 +494,25 @@ describe('The chain phase tracker', () => {
     expect(recovered).toBe('connecting');
   });
 
-  it('As a visitor, a recovery with no phase known before it reads as syncing, and a peer count moves no phase', () => {
+  it('As a visitor, a recovery with no phase known before it reads as syncing', () => {
+    // Given
+    const track = createChainPhaseTracker();
+
+    // When
+    const recovered = track('relay', 'recovered');
+
+    // Then
+    expect(recovered).toBe('syncing');
+  });
+
+  it('As a visitor, a peer count moves no phase', () => {
     // Given
     const track = createChainPhaseTracker();
 
     // When
     const peers = track('bulletin', 'peers');
-    const recovered = track('relay', 'recovered');
 
     // Then
     expect(peers).toBeUndefined();
-    expect(recovered).toBe('syncing');
   });
 });

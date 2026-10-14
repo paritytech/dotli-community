@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BlockCache, createBlockCache } from './block-cache.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
-import { IDBDatabase } from 'fake-indexeddb';
 import { bindCaptureSink } from '@dotli/metrics';
 
 // Each test gets a fresh database, so no test sees another's records.
@@ -79,9 +78,10 @@ describe('block cache', () => {
     await cache.putCachedBlock('bafyB', new Uint8Array([2]));
 
     // When
-    await cache.clearBlockCache();
+    const cleared = await cache.clearBlockCache();
 
     // Then
+    expect(cleared).toBe(true);
     expect(await cache.getCachedBlock('bafyA')).toBeNull();
     expect(await cache.getCachedBlock('bafyB')).toBeNull();
   });
@@ -128,33 +128,19 @@ describe('block cache failure reporting', () => {
     return bindCaptureSink(captures);
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('As a caller that reloads after a clear, I am told when the block cache clear failed after it reported itself', async () => {
-    // Given
-    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(() => {
-      throw new DOMException('The database connection is closing.', 'InvalidStateError');
-    });
+  it('As a caller that reloads after a clear, I am told when the block cache clear failed on a closing connection, which leaves a breadcrumb and no issue', async () => {
+    // Given the cached connection has closed, as it does under an unloading page
+    (await idb.connect()).close();
 
     // When
     const cleared = await cache.clearBlockCache();
 
-    // Then the clear says it failed, after leaving its own breadcrumb rather than an issue
+    // Then the clear says it failed, after a breadcrumb rather than an issue
     expect(cleared).toBe(false);
     expect(captures.exception).not.toHaveBeenCalled();
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(DOMException), {
+    expect(captures.expected).toHaveBeenCalledWith(expect.objectContaining({ name: 'InvalidStateError' }), {
       flow: 'storage',
       step: 'block_cache_clear',
     });
-  });
-
-  it('As a caller that reloads after a clear, I am told when the block cache clear succeeded', async () => {
-    // When
-    const cleared = await cache.clearBlockCache();
-
-    // Then
-    expect(cleared).toBe(true);
   });
 });

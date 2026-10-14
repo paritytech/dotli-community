@@ -44,7 +44,16 @@ const domTestingFiles = ['**/src/testing/**/*.dom.ts', '**/src/testing/**/*.dom.
 
 const storyFiles = ['**/src/**/*.stories.tsx'];
 
-const storyImportPatterns = [tsExtensionImport, testOnlyModuleImport];
+// Story fixtures and frames. Only stories import them, and they run in the browser with them.
+const storyFixtureFiles = ['**/src/testing/stories/**/*.ts', '**/src/testing/stories/**/*.tsx'];
+
+// Stories reach their package's story fixtures by path, and other test code only through a `./testing` entry.
+const storyTestOnlyModuleImport = {
+  regex: '^\\.{1,2}/(.*/)?(testing/(?!stories/).*|[^/]+\\.(spec|fake))(\\.js)?$',
+  message: testOnlyMessage,
+};
+
+const storyImportPatterns = [tsExtensionImport, storyTestOnlyModuleImport];
 
 const noDomMessage =
   'Unit specs run under Node with no DOM. Test a component with a story play, or DOM wiring with a functional test in tests/.';
@@ -234,7 +243,7 @@ export const config = defineConfig([
   },
   {
     // No unit spec runs these, so they may read the DOM. A spec that called one would fail under Node.
-    files: domTestingFiles,
+    files: [...domTestingFiles, ...storyFixtureFiles],
     rules: {
       'no-restricted-globals': 'off',
       'no-restricted-properties': 'off',

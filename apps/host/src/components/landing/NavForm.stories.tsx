@@ -28,6 +28,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a visitor, I see a name field for my network and a Go button, with no error. */
 export const EmptyForm: Story = {
   play: async ({ canvas, step }) => {
     const field = canvas.getByRole('textbox', { name: `Search a ${SUFFIX} name` });
@@ -44,6 +45,7 @@ export const EmptyForm: Story = {
   },
 };
 
+/** As a visitor, I load the page with nothing focused, so a screen reader starts at the top. */
 export const NothingFocusedOnLoad: Story = {
   play: async ({ canvas, step }) => {
     await step('Then nothing has focus, so a screen reader starts at the top and no keyboard pops up', async () => {
@@ -53,6 +55,7 @@ export const NothingFocusedOnLoad: Story = {
   },
 };
 
+/** As a visitor, I am told inline why a name is not valid, and the error clears when I type again. */
 export const InvalidNameInline: Story = {
   play: async ({ canvas, userEvent, step }) => {
     const field = canvas.getByRole('textbox');
@@ -80,6 +83,7 @@ export const InvalidNameInline: Story = {
   },
 };
 
+/** As a visitor, I press Go with nothing typed and am asked for a name. */
 export const EmptySubmitAsksForName: Story = {
   play: async ({ canvas, userEvent, step }) => {
     await step('When I press Go with nothing typed', async () => {
@@ -92,6 +96,7 @@ export const EmptySubmitAsksForName: Story = {
   },
 };
 
+/** As a visitor, I see an example name in the field with the TLD beside it. */
 export const FirstPlaceholder: Story = {
   play: async ({ canvas, step }) => {
     await step('Then the first placeholder is the first example name, the TLD shown beside it, not in it', async () => {

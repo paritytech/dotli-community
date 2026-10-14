@@ -91,4 +91,4 @@ flowchart LR
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
 - `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
   local functional run needs `VITE_METRICS=true` in both the build and the run.
-- `npm run storybook`, `build-storybook`, `test:stories`, `test:vrt`: component stories and their visual checks.
+- Its component stories and their visual checks run in the one Storybook at the repo root.

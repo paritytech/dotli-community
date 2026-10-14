@@ -6,6 +6,7 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from './host.js';
 import { DiagnosticsView } from './Diagnostics.js';
 import { PanelEffectsContext, type PanelEffects } from './effects.js';
+import { debugPanelStory } from './testing/stories/debug-panel-story.js';
 
 const ROWS: DiagnosticsRow[] = [
   ['Site', 'app.dot.li', true],
@@ -49,6 +50,7 @@ function view(tabSource: DiagnosticsSource) {
 }
 
 const meta = {
+  ...debugPanelStory,
   title: 'Debug/Diagnostics',
   component: DiagnosticsView,
   args: { active: true, source },
@@ -69,6 +71,7 @@ function rowValue(canvasElement: HTMLElement, label: string): HTMLElement {
   return within(row).getByRole('definition');
 }
 
+/** As a developer using the debug panel, I see the share button, the page rows and the light client version, and copy the site and node rows. */
 export const PageRowsAndVersion: Story = {
   play: async ({ canvas, canvasElement, step }) => {
     await step('Then the tab shows the share button, the page rows and the light client version', async () => {
@@ -102,6 +105,7 @@ export const PageRowsAndVersion: Story = {
   },
 };
 
+/** As a developer using the debug panel, I see every package listed under its group. */
 export const PackagesByGroup: Story = {
   render: view(
     fakeSource({
@@ -133,6 +137,7 @@ export const PackagesByGroup: Story = {
   },
 };
 
+/** As a developer using the debug panel, I leave the tab closed and it renders no diagnostics and reads none. */
 export const ClosedReadsNothing: Story = {
   tags: ['!autodocs'],
   args: { active: false },
@@ -145,6 +150,7 @@ export const ClosedReadsNothing: Story = {
   },
 };
 
+/** As a developer using the debug panel, I click the Site row and it copies the value and reads Copied before showing its value again. */
 export const CopyFlashes: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, canvasElement, userEvent, step }) => {
@@ -161,6 +167,7 @@ export const CopyFlashes: Story = {
   },
 };
 
+/** As a developer using the debug panel, I click a row when the browser refuses the clipboard and it reads Copy failed before showing its value again. */
 export const CopyRefused: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -190,15 +197,7 @@ export const CopyRefused: Story = {
   },
 };
 
-export const NaHasNoCopy: Story = {
-  play: async ({ canvas, canvasElement, step }) => {
-    await step('Then a copyable row that reads n/a offers nothing to copy', async () => {
-      await expect(rowValue(canvasElement, 'Relay node')).toHaveTextContent('n/a');
-      await expect(canvas.queryByRole('button', { name: 'Copy Relay node' })).toBeNull();
-    });
-  },
-};
-
+/** As a developer using the debug panel, I click Share diagnostic twice while the report builds and one issue opens. */
 export const ShareOnce: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {

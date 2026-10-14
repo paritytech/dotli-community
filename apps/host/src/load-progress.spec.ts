@@ -5,15 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import type { Backend } from '@dotli/config';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { enableDotliDebugBuffering, watchDotliDebugEvents, type DotliDebugEvent } from '@dotli/truapi-debug';
-import type { LoadingPhase } from './loading-controller.js';
+import { createSyncStore } from '@dotli/shared';
+import type { PageContent } from '@dotli/ui';
+import { createLoadingController, type LoadingPhase } from './loading-controller.js';
 import {
   startLoadProgress,
   type ChainDetailFacts,
   type ContentProgressFacts,
+  type LoadingScreen,
   type LoadProgress,
 } from './load-progress.js';
 import type { ChainSyncFacts } from './resolution-trace.js';
 import { setProductLoaded } from './runtime/state/product.js';
+import { getLoadingState } from './state/loading.js';
 import { networkMonitor } from './state/network-monitor.js';
 
 /** A report source the test sends on, as the protocol client and the content fetch would. */
@@ -37,23 +41,23 @@ function source<T>(): { on: (listener: (event: T) => void) => () => void; send: 
 // Each load has its own flow, since an earlier test's subscription to the product store outlives it.
 let flows = 0;
 
+/** The line the loading screen shows for its running stage, the name drawn with its TLD. */
+function stepLine(): string {
+  return getLoadingState()
+    .step.map(part => (typeof part === 'string' ? part : `${part.host}${part.tld}`))
+    .join('');
+}
+
+const progressNow = (): number => getLoadingState().progress;
+
 function setup(backend: Backend): {
   progress: LoadProgress;
   chainSync: ReturnType<typeof source<ChainSyncFacts>>;
   chainDetail: ReturnType<typeof source<ChainDetailFacts>>;
   netBytes: ReturnType<typeof source<{ received: number }>>;
   content: ReturnType<typeof source<ContentProgressFacts>>;
-  loading: {
-    initPhases: ReturnType<typeof vi.fn<(phases: LoadingPhase[]) => void>>;
-    setLoadingDomain: ReturnType<typeof vi.fn<(domain: string) => void>>;
-    advancePhase: ReturnType<typeof vi.fn<(index: number) => void>>;
-    nudgePhaseProgress: ReturnType<typeof vi.fn<(fraction: number, stage: 'relay' | 'content') => void>>;
-    releasePhaseProgress: ReturnType<typeof vi.fn<() => void>>;
-    setLoadingStage: ReturnType<typeof vi.fn<(stage: 'preparing') => void>>;
-    setLoadingWarning: ReturnType<typeof vi.fn<(message: string) => void>>;
-    onProgressStall: ReturnType<typeof vi.fn<(listener: () => void) => void>>;
-    stopStatusTick: ReturnType<typeof vi.fn<() => void>>;
-  };
+  /** The bands the load gave the loading screen. */
+  bands: () => LoadingPhase[];
   trace: {
     chainSync: ReturnType<typeof vi.fn>;
     chainDetail: ReturnType<typeof vi.fn>;
@@ -67,16 +71,19 @@ function setup(backend: Backend): {
   const chainDetail = source<ChainDetailFacts>();
   const netBytes = source<{ received: number }>();
   const content = source<ContentProgressFacts>();
-  const loading = {
-    initPhases: vi.fn<(phases: LoadingPhase[]) => void>(),
-    setLoadingDomain: vi.fn<(domain: string) => void>(),
-    advancePhase: vi.fn<(index: number) => void>(),
-    nudgePhaseProgress: vi.fn<(fraction: number, stage: 'relay' | 'content') => void>(),
-    releasePhaseProgress: vi.fn<() => void>(),
-    setLoadingStage: vi.fn<(stage: 'preparing') => void>(),
-    setLoadingWarning: vi.fn<(message: string) => void>(),
-    onProgressStall: vi.fn<(listener: () => void) => void>(),
-    stopStatusTick: vi.fn<() => void>(),
+  // The page's loading screen, which writes the loading store, with motion off so no typing frame is asked for.
+  const controller = createLoadingController({
+    reducedMotion: () => true,
+    frames: { request: () => 0, cancel: () => undefined, now: () => performance.now() },
+    pageContent: createSyncStore<PageContent>('load-progress-spec-page-content', 'page'),
+  });
+  let given: LoadingPhase[] = [];
+  const loading: LoadingScreen = {
+    ...controller,
+    initPhases: phases => {
+      given = phases;
+      controller.initPhases(phases);
+    },
   };
   const trace = {
     chainSync: vi.fn(),
@@ -107,11 +114,7 @@ function setup(backend: Backend): {
     loading,
     trace,
   });
-  return { progress, chainSync, chainDetail, netBytes, content, loading, trace, debug };
-}
-
-function bands(phases: LoadingPhase[] | undefined): string[] {
-  return (phases ?? []).map(phase => phase.stage);
+  return { progress, chainSync, chainDetail, netBytes, content, bands: () => given, trace, debug };
 }
 
 describe('startLoadProgress', () => {
@@ -127,115 +130,141 @@ describe('startLoadProgress', () => {
 
   it('As a visitor on the per-tab light client, I see four bands open on the first, and the download counts its bytes', () => {
     // Given
-    const { loading } = setup('smoldot-direct');
+    const { progress, content, bands } = setup('smoldot-direct');
+    const opened = { progress: progressNow(), line: stepLine() };
+
+    // When the download starts and a second passes with no byte counted, then half the bytes land
+    progress.contentFetch();
+    vi.advanceTimersByTime(1_000);
+    const waiting = progressNow();
+    content.send({ bytesFetched: 50, totalBytes: 100 });
 
     // Then
-    const phases = loading.initPhases.mock.calls[0]?.[0];
-    expect(bands(phases)).toEqual(['starting', 'assetHub', 'resolving', 'content']);
-    expect(phases?.[0]?.label).toBe('Starting');
-    expect(phases?.[3]?.reportsProgress).toBe(true);
-    expect(loading.setLoadingDomain).toHaveBeenCalledWith('doom');
-    expect(loading.advancePhase.mock.calls).toEqual([[0]]);
+    expect(bands().map(band => band.stage)).toEqual(['starting', 'assetHub', 'resolving', 'content']);
+    expect(opened).toEqual({ progress: 2, line: 'Reaching out' });
+    expect(waiting).toBe(62);
+    expect(progressNow()).toBe(78.5);
+    expect(stepLine()).toBe('Downloading the app');
   });
 
-  it('As a visitor on the shared light client, I see the worker start and the download runs on the clock', () => {
+  it('As a visitor on the shared light client, I see the download run on the clock', () => {
     // Given
-    const { loading } = setup('smoldot-shared-worker');
+    const { progress } = setup('smoldot-shared-worker');
+
+    // When a second of the download passes with no byte counted
+    progress.contentFetch();
+    vi.advanceTimersByTime(1_000);
 
     // Then
-    const phases = loading.initPhases.mock.calls[0]?.[0];
-    expect(phases?.[0]?.label).toBe('Starting Worker');
-    expect(phases?.[3]?.reportsProgress).toBe(false);
+    // Five crawl ticks through the 62 to 95 band, which expects ten seconds.
+    expect(progressNow()).toBeCloseTo(65.3);
   });
 
   it('As a visitor on a light client, I see resolver milestones move the bar, the bar hold once the name resolves, and the download take the last band', () => {
     // Given
-    const { progress, loading } = setup('smoldot-shared-worker');
+    const { progress } = setup('smoldot-shared-worker');
+    const band = (): { progress: number; line: string } => ({ progress: progressNow(), line: stepLine() });
 
     // When
     progress.resolvePhase('asset-hub-connecting');
+    const connecting = band();
     progress.resolvePhase('asset-hub-syncing');
+    const syncing = band();
     progress.resolvePhase('resolving-content');
+    const resolving = band();
     progress.nameResolved();
-    const heldAfterResolve = loading.stopStatusTick.mock.calls.length;
+    const resolved = getLoadingState();
+    vi.advanceTimersByTime(5_000);
+    const held = getLoadingState();
     progress.contentFetch();
 
     // Then
-    expect(loading.advancePhase.mock.calls).toEqual([[0], [1], [1], [2], [3]]);
-    expect(heldAfterResolve).toBe(1);
+    expect(connecting).toEqual({ progress: 10, line: 'Looking up doom.paseo' });
+    expect(syncing).toEqual(connecting);
+    expect(resolving).toEqual({ progress: 55, line: 'Found it' });
+    expect(held).toEqual(resolved);
+    expect(band()).toEqual({ progress: 62, line: 'Downloading the app' });
   });
 
   it('As a visitor on a gateway, I see three bands that resolver milestones leave alone, and the download takes the third', () => {
     // Given
-    const { progress, loading } = setup('rpc-gateway');
+    const { progress, bands } = setup('rpc-gateway');
+    const opened = { progress: progressNow(), line: stepLine() };
 
     // When
     progress.resolvePhase('asset-hub-syncing');
+    const afterMilestone = { progress: progressNow(), line: stepLine() };
     progress.contentFetch();
 
     // Then
-    expect(bands(loading.initPhases.mock.calls[0]?.[0])).toEqual(['relay', 'resolving', 'content']);
-    expect(loading.advancePhase.mock.calls).toEqual([[0], [2]]);
+    expect(bands().map(band => band.stage)).toEqual(['relay', 'resolving', 'content']);
+    expect(opened).toEqual({ progress: 5, line: 'Connecting to Polkadot' });
+    expect(afterMilestone).toEqual(opened);
+    expect({ progress: progressNow(), line: stepLine() }).toEqual({ progress: 62, line: 'Downloading the app' });
   });
 
   it('As a visitor on a gateway, I see no chain warnings, while the resolution trace still hears every report', () => {
     // Given
-    const { chainSync, chainDetail, netBytes, content, loading, trace, debug } = setup('rpc-gateway');
+    const { chainSync, chainDetail, netBytes, content, trace, debug } = setup('rpc-gateway');
 
-    // When
+    // When the relay finds no peers, and Asset Hub finds one, which would move a light client's bar
+    chainSync.send({ chain: 'relay', syncKind: 'peers', peers: 0 });
     chainSync.send({ chain: 'relay', syncKind: 'connecting' });
+    chainSync.send({ chain: 'assethub', syncKind: 'firstPeer' });
     chainDetail.send({ chain: 'assethub', dbCache: 'hit' });
     netBytes.send({ received: 2048 });
     content.send({ bytesFetched: 10, totalBytes: 100 });
+    const afterReports = progressNow();
     vi.advanceTimersByTime(10_000);
 
     // Then
+    expect(getLoadingState().warning).toBeNull();
+    expect(afterReports).toBe(5);
     expect(trace.chainSync).toHaveBeenCalledWith({ chain: 'relay', syncKind: 'connecting' });
     expect(trace.chainDetail).toHaveBeenCalledWith({ chain: 'assethub', dbCache: 'hit' });
     expect(trace.bytes).toHaveBeenCalledWith(2048);
     expect(trace.content).toHaveBeenCalledWith(10, 100);
     expect(debug.map(event => event.event)).toEqual(['dbcache']);
-    expect(loading.setLoadingWarning).not.toHaveBeenCalled();
-    expect(loading.nudgePhaseProgress).not.toHaveBeenCalled();
   });
 
   it('As a visitor in direct mode, I am told a chain finds no peers only once the load is old enough to be slow', () => {
     // Given
-    const { chainSync, loading, trace } = setup('smoldot-direct');
+    const { chainSync, trace } = setup('smoldot-direct');
     chainSync.send({ chain: 'relay', syncKind: 'peers', peers: 0 });
 
     // When
     chainSync.send({ chain: 'relay', syncKind: 'connecting' });
     vi.advanceTimersByTime(3_000);
-    const warnedEarly = loading.setLoadingWarning.mock.calls.length;
+    const warnedEarly = getLoadingState().warning;
     vi.advanceTimersByTime(2_000);
 
     // Then
-    expect(warnedEarly).toBe(0);
-    expect(loading.setLoadingWarning.mock.calls).toEqual([
-      ['Still looking for computers that carry Polkadot. Nothing has answered yet.'],
-    ]);
+    expect(warnedEarly).toBeNull();
+    expect(getLoadingState().warning).toBe(
+      'Still looking for computers that carry Polkadot. Nothing has answered yet.',
+    );
     expect(trace.warningShown).toHaveBeenCalledTimes(1);
   });
 
-  it('As a visitor in direct mode, I see the bar follow Asset Hub and the relay warp, and the network monitor follows each chain', () => {
+  it('As a visitor in direct mode, I see the bar follow the relay warp and Asset Hub, and the network monitor follows each chain', () => {
     // Given
-    const { chainSync, loading, debug } = setup('smoldot-direct');
+    const { chainSync, debug } = setup('smoldot-direct');
 
     // When
     chainSync.send({ chain: 'relay', syncKind: 'warpSyncProgress', at: 50, target: 100 });
+    const warping = progressNow();
     chainSync.send({ chain: 'relay', syncKind: 'warpSyncFinished' });
+    const warped = progressNow();
     chainSync.send({ chain: 'assethub', syncKind: 'firstPeer' });
+    const hubFound = { progress: progressNow(), line: stepLine() };
     chainSync.send({ chain: 'assethub', syncKind: 'bootstrapComplete' });
     chainSync.send({ chain: 'bulletin', syncKind: 'peers', peers: 3 });
 
-    // Then
-    expect(loading.nudgePhaseProgress.mock.calls).toEqual([
-      [0.5, 'relay'],
-      [1, 'relay'],
-    ]);
-    expect(loading.advancePhase.mock.calls).toEqual([[0], [1], [2]]);
-    expect(loading.releasePhaseProgress).toHaveBeenCalledTimes(1);
+    // Then: half the warp is half of the starting band, from 2 to 10
+    expect(warping).toBe(6);
+    expect(warped).toBe(10);
+    expect(hubFound).toEqual({ progress: 10, line: 'Looking up doom.paseo' });
+    expect({ progress: progressNow(), line: stepLine() }).toEqual({ progress: 55, line: 'Found it' });
     const chains = networkMonitor.getNetworkStatus();
     expect(chains.find(chain => chain.key === 'relay')?.phase).toBe('ready');
     expect(chains.find(chain => chain.key === 'assethub')?.phase).toBe('ready');
@@ -245,21 +274,45 @@ describe('startLoadProgress', () => {
 
   it('As a visitor in direct mode, I see the download fill its band by bytes and hand over to preparing once complete', () => {
     // Given
-    const { content, loading } = setup('smoldot-direct');
+    const { progress, content } = setup('smoldot-direct');
+    progress.contentFetch();
 
     // When
     content.send({ bytesFetched: 0, totalBytes: null });
     content.send({ bytesFetched: 50, totalBytes: 100 });
+    const filling = { progress: progressNow(), line: stepLine() };
     content.send({ bytesFetched: 100, totalBytes: 100 });
 
     // Then
-    expect(loading.releasePhaseProgress).toHaveBeenCalledTimes(1);
-    expect(loading.nudgePhaseProgress.mock.calls).toEqual([
-      [0.5, 'content'],
-      [1, 'content'],
-    ]);
-    expect(loading.setLoadingStage.mock.calls).toEqual([['preparing']]);
+    expect(filling).toEqual({ progress: 78.5, line: 'Downloading the app' });
+    expect({ progress: progressNow(), line: stepLine() }).toEqual({ progress: 95, line: 'Got everything' });
     expect(networkMonitor.getTransfer()).toMatchObject({ fetched: 100, total: 100 });
+  });
+
+  it.each([
+    [
+      'Bulletin finds a peer',
+      (load: ReturnType<typeof setup>) => {
+        load.chainSync.send({ chain: 'bulletin', syncKind: 'peers', peers: 3 });
+      },
+    ],
+    [
+      'the download declares no total',
+      (load: ReturnType<typeof setup>) => {
+        load.content.send({ bytesFetched: 0, totalBytes: null });
+      },
+    ],
+  ])('As a visitor in direct mode, I see the download run on the clock once %s', (_case, release) => {
+    // Given
+    const load = setup('smoldot-direct');
+    load.progress.contentFetch();
+
+    // When a second of the download passes with no byte counted
+    release(load);
+    vi.advanceTimersByTime(1_000);
+
+    // Then: five crawl ticks through the 62 to 95 band, where waiting on bytes would hold it at 62
+    expect(progressNow()).toBeCloseTo(65.3);
   });
 
   it('As a developer with the debug panel, I see byte totals stop once the product is on screen, the last total included', () => {

@@ -13,6 +13,16 @@ export interface FakeSharedSessionStore extends SharedSessionStore {
   readError: Error | null;
   /** While set, reads wait on it, so a test can hold one in flight. */
   readGate: Promise<void> | null;
+  /** Every write, in order. */
+  readonly writes: [key: string, value: string][];
+  /** Every key cleared, in order. */
+  readonly clears: string[];
+  /** While set, every write rejects with it. */
+  writeError: Error | null;
+  /** Answers the error a clear of `key` rejects with, or null to clear it. */
+  clearError: ((key: string) => Error | null) | null;
+  /** Resolves with the value of the next write of `key`. */
+  nextWrite(key: string): Promise<string>;
   /** The store reporting a status change, as the protocol client does. */
   setStatus(status: SharedStoreStatus): void;
   /** Another tab writing a key. */
@@ -22,6 +32,7 @@ export interface FakeSharedSessionStore extends SharedSessionStore {
 
 export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connecting'): FakeSharedSessionStore {
   const entries = new Map<string, string>();
+  const writeWaiters = new Map<string, ((value: string) => void)[]>();
   const changeListeners = new Set<(key: string) => void>();
   const statusListeners = new Set<(status: SharedStoreStatus) => void>();
   let current = status;
@@ -38,13 +49,37 @@ export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connec
       }
       return entries.get(key) ?? null;
     },
+    writes: [],
+    clears: [],
+    writeError: null,
+    clearError: null,
     write(key, value) {
+      if (store.writeError !== null) {
+        return Promise.reject(store.writeError);
+      }
+      store.writes.push([key, value]);
       entries.set(key, value);
+      for (const resolve of writeWaiters.get(key)?.splice(0) ?? []) {
+        resolve(value);
+      }
       return Promise.resolve();
     },
     clear(key) {
+      const error = store.clearError?.(key) ?? null;
+      if (error !== null) {
+        return Promise.reject(error);
+      }
+      store.clears.push(key);
       entries.delete(key);
       return Promise.resolve();
+    },
+    nextWrite(key) {
+      if (store.writeError !== null) {
+        return Promise.reject(store.writeError);
+      }
+      return new Promise(resolve => {
+        writeWaiters.set(key, [...(writeWaiters.get(key) ?? []), resolve]);
+      });
     },
     subscribe(listener) {
       const onChange = (key: string): void => {

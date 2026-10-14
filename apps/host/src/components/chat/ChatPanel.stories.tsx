@@ -6,7 +6,7 @@ import type { ChatMessageContent } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { query } from '@dotli/ui/testing';
-import { type ChatStage, chatStage } from '../../../.storybook/chat-fixtures.js';
+import { type ChatStage, chatStage } from '../../testing/stories/chat-fixtures.js';
 import { ChatPanel } from './ChatPanel.js';
 
 /** The story's chat with the panel open, fresh for each. */
@@ -117,6 +117,7 @@ async function openRoom(canvasElement: HTMLElement, name: string, count: number)
   return list;
 }
 
+/** As a reader, I am told when chat cannot be read and the notice goes once reads work again. */
 export const ReadFails: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -150,6 +151,7 @@ export const ReadFails: Story = {
   },
 };
 
+/** As a reader who scrolled up, I stay where I read when a new message arrives. */
 export const ReadingOlderStaysPut: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -171,6 +173,7 @@ export const ReadingOlderStaysPut: Story = {
   },
 };
 
+/** As a reader at the newest message, I stay there when a custom message grows late. */
 export const LateCustomRenderStaysAtBottom: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -199,6 +202,9 @@ export const LateCustomRenderStaysAtBottom: Story = {
   },
 };
 
+/**
+ * As a reader near the newest message, I am followed to it within 24 px of the end and left where I read beyond that.
+ */
 export const Within24pxCountsAsBottom: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -246,6 +252,10 @@ function resized(el: HTMLElement, change: () => void): Promise<void> {
   });
 }
 
+/**
+ * As a reader at the newest message, I stay there when the panel is resized, and stay off the bottom if I had scrolled
+ * up.
+ */
 export const ShrinkingPanelKeepsMeAtBottom: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -279,7 +289,7 @@ export const ShrinkingPanelKeepsMeAtBottom: Story = {
   },
 };
 
-/** As a reader who closed the panel, its watch on the conversation's size stops with it. */
+/** As a reader, I close the panel and its watch on the conversation's size stops with it. */
 export const ClosingStopsTheSizeWatch: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -309,6 +319,7 @@ export const ClosingStopsTheSizeWatch: Story = {
   },
 };
 
+/** As a reader who scrolled up, I am brought to my own message when I send it. */
 export const SendingBringsMeToMine: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -330,6 +341,7 @@ export const SendingBringsMeToMine: Story = {
   },
 };
 
+/** As a reader of a room whose app chose an empty footer, I see no message box. */
 export const EmptyFooterHasNoComposer: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -346,6 +358,7 @@ export const EmptyFooterHasNoComposer: Story = {
   },
 };
 
+/** As a reader, I drag the panel edge to resize it, and the drag ends at the width the pointer last asked for. */
 export const DragEdgeResizes: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -379,6 +392,7 @@ export const DragEdgeResizes: Story = {
   },
 };
 
+/** As a keyboard user, I keep my focus on a room row when a new message moves it to the top. */
 export const MovedRowKeepsFocus: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {

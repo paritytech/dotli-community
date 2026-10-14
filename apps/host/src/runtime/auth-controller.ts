@@ -299,7 +299,7 @@ const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
   },
 ];
 
-export function exhaustedAllowanceError(message: string): FriendlyAuthError {
+function exhaustedAllowanceError(message: string): FriendlyAuthError {
   return {
     title: 'No Statement Store slots left',
     subtitle:

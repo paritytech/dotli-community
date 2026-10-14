@@ -47,6 +47,74 @@ describe('createListenerSet', () => {
     expect(heard).toEqual(['first:a', 'second:a', 'first:b', 'second:b']);
   });
 
+  it('As a layer above, an error handler that throws ends the round, and the next value reaches listeners alone', () => {
+    // Given a set whose error handler throws, and a listener that queues 2 and then throws on 1
+    const listeners = createListenerSet<number>({
+      onListenerError: error => {
+        throw error;
+      },
+    });
+    const heard: number[] = [];
+    listeners.subscribe(value => {
+      heard.push(value);
+      if (value === 1) {
+        listeners.emit(2);
+        throw new Error('listener failed');
+      }
+    });
+    expect(() => {
+      listeners.emit(1);
+    }).toThrow('listener failed');
+
+    // When
+    listeners.emit(3);
+
+    // Then the listener hears the new value, not the one the failed round left queued
+    expect(heard).toEqual([1, 3]);
+  });
+
+  it('As a listener subscribed during a round, I hear only later values', () => {
+    // Given a listener that subscribes another on 1, then emits 2
+    const listeners = createListenerSet<number>({ onListenerError: () => undefined });
+    const late: number[] = [];
+    listeners.subscribe(value => {
+      if (value === 1) {
+        listeners.subscribe(next => {
+          late.push(next);
+        });
+        listeners.emit(2);
+      }
+    });
+
+    // When
+    listeners.emit(1);
+
+    // Then
+    expect(late).toEqual([2]);
+  });
+
+  it('As a listener another one removes, I still hear the value in progress and nothing after it', () => {
+    // Given a first listener that emits 2 on 1, and then removes the second
+    const listeners = createListenerSet<number>({ onListenerError: () => undefined });
+    const heard: number[] = [];
+    let stopSecond = (): void => undefined;
+    listeners.subscribe(value => {
+      if (value === 1) {
+        listeners.emit(2);
+        stopSecond();
+      }
+    });
+    stopSecond = listeners.subscribe(value => {
+      heard.push(value);
+    });
+
+    // When
+    listeners.emit(1);
+
+    // Then
+    expect(heard).toEqual([1]);
+  });
+
   it('As a subscriber who subscribed twice, I am two subscriptions, and each unsubscribe ends one of them once', () => {
     // Given
     const listeners = createListenerSet<number>({ onListenerError: () => undefined });

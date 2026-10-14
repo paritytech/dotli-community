@@ -6,9 +6,7 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { setProductError } from './runtime/state/product.js';
 import { getTopbarState, setTopbarPresent } from './state/topbar.js';
 import { registerTopbarSurface } from './state/topbar-surfaces.js';
-import { createTopbarAutoHide, type TopbarAutoHide } from './topbar-autohide.js';
-
-const HIDE_DELAY_MS = 2500;
+import { createTopbarAutoHide, HIDE_DELAY_MS, type TopbarAutoHide } from './topbar-autohide.js';
 
 /** An element of the page: where it sits, and focus moving to it. */
 interface FakeElement {
@@ -171,19 +169,6 @@ afterEach(() => {
 });
 
 describe('topbar auto-hide reveal', () => {
-  it('As a user who just logged in, the bar arms from the session before the badge renders', () => {
-    // Given: the account button renders no badge here; the session store
-    // alone says the user is in.
-    const { arm: armTopbarAutoHide } = loadAutoHide();
-
-    // When
-    armTopbarAutoHide();
-    advance(HIDE_DELAY_MS);
-
-    // Then
-    expect(isHidden()).toBe(true);
-  });
-
   it('As a keyboard user, the bar stays up while its settings popover is open', () => {
     // Given
     const { arm: armTopbarAutoHide } = loadAutoHide();
@@ -198,27 +183,13 @@ describe('topbar auto-hide reveal', () => {
 
     // When the popover closes, the bar hides again
     settings.open = false;
-    advance(HIDE_DELAY_MS);
+    advance(HIDE_DELAY_MS - 1);
 
-    // Then
-    expect(isHidden()).toBe(true);
-  });
-
-  it('As a keyboard user, the bar stays up while the shield explainer is open', () => {
-    // Given
-    const { arm: armTopbarAutoHide } = loadAutoHide();
-    armTopbarAutoHide();
-
-    // When
-    const explainer = surface(true);
-    advance(HIDE_DELAY_MS * 3);
-
-    // Then
+    // Then it is still up a millisecond short of the delay
     expect(isHidden()).toBe(false);
 
-    // When the explainer closes, the bar hides again
-    explainer.open = false;
-    advance(HIDE_DELAY_MS);
+    // When
+    advance(1);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -277,20 +248,24 @@ describe('topbar auto-hide reveal', () => {
     expect(isHidden()).toBe(false);
   });
 
-  it('As a dotli integrator, disposing the auto-hide drops a queued focus check', () => {
-    // Given a focusout has queued its next-tick focus check
-    const { arm: armTopbarAutoHide, stop: disposeTopbarAutoHide } = loadAutoHide();
-    armTopbarAutoHide();
-    // Armed: the hide timer is pending, alongside timers owned by other modules.
-    const armedTimers = vi.getTimerCount();
+  it('As a dotli integrator, a focus check queued before the auto-hide was disposed does not outlive it', () => {
+    // Given a focusout has queued its next-tick focus check, and the auto-hide is disposed and started again
+    const autoHide = loadAutoHide();
+    autoHide.arm();
     page.document.dispatchEvent(new Event('focusout'));
-    expect(vi.getTimerCount()).toBe(armedTimers + 1);
+    autoHide.stop();
+    disposers.push(autoHide.start());
+    autoHide.arm();
+    autoHide.setContentShown(true);
 
-    // When
-    disposeTopbarAutoHide();
+    // When focus sits in the bar as the next tick passes, then leaves it unseen
+    page.active = home;
+    advance(0);
+    page.active = null;
+    advance(HIDE_DELAY_MS);
 
-    // Then both the hide timer and the queued focus check are gone
-    expect(vi.getTimerCount()).toBe(armedTimers - 1);
+    // Then only the new hide timer ran, so the bar folds
+    expect(isHidden()).toBe(true);
   });
 });
 

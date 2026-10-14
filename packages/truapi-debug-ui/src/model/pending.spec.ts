@@ -3,8 +3,9 @@
 
 // The open-call set must follow the ring buffer exactly, at a cost proportional to what changed.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import { nth } from '@dotli/shared/testing';
 import { EventStore, type StoredEvent } from './event-store.js';
 import { OpenCallTracker } from './pending.js';
 
@@ -34,7 +35,19 @@ function dotli(layer: string, event = 'started'): DotliDebugEvent {
   } as unknown as DotliDebugEvent;
 }
 
-/** The reference result, recomputed from the whole snapshot. */
+/** Inserts at `at` ms on the fake clock, so two copies of one request differ in time. */
+function insertAt(store: EventStore, at: number, tag: string, requestId: string, productId?: string | null): void {
+  vi.setSystemTime(at);
+  insert(store, tag, requestId, productId);
+}
+
+/** The open calls after the tracker reads the store as it is now. */
+function openAfterUpdate(tracker: OpenCallTracker, store: EventStore): Map<string, number> {
+  tracker.update(store.list().slice());
+  return new Map(tracker.open);
+}
+
+/** A cross-check only: recomputed from the whole snapshot, by rules written again here. */
 function openCalls(events: readonly StoredEvent[]): Map<string, number> {
   const requestedAt = new Map<string, number>();
   const answered = new Set<string>();
@@ -56,7 +69,68 @@ function openCalls(events: readonly StoredEvent[]): Map<string, number> {
 }
 
 describe('OpenCallTracker', () => {
-  it('As the debug panel, I keep the open calls equal to a full recompute, frame by frame and across clears', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('As the debug panel, I close a call whose request is evicted', () => {
+    // Given
+    const store = new EventStore({ capacity: 2 });
+    const tracker = new OpenCallTracker();
+    insert(store, 'x_request', 'r1');
+    insert(store, 'x_request', 'r2');
+    const [r1, r2] = [nth(store.list(), 0), nth(store.list(), 1)];
+    expect(openAfterUpdate(tracker, store)).toEqual(
+      new Map([
+        ['app.dot::r1', r1.receivedAt],
+        ['app.dot::r2', r2.receivedAt],
+      ]),
+    );
+
+    // When
+    insert(store, 'x_request', 'r3');
+
+    // Then
+    expect(openAfterUpdate(tracker, store)).toEqual(
+      new Map([
+        ['app.dot::r2', r2.receivedAt],
+        ['app.dot::r3', nth(store.list(), 1).receivedAt],
+      ]),
+    );
+  });
+
+  it('As the debug panel, I time a repeated request from its first kept copy', () => {
+    // Given two copies at distinct times, which only a set clock guarantees
+    vi.useFakeTimers();
+    const store = new EventStore({ capacity: 2 });
+    const tracker = new OpenCallTracker();
+    insertAt(store, 100, 'x_request', 'r1');
+    insertAt(store, 200, 'x_request', 'r1');
+    expect(openAfterUpdate(tracker, store)).toEqual(new Map([['app.dot::r1', 100]]));
+
+    // When the first copy is evicted
+    store.insertDotli(dotli('boot'));
+
+    // Then
+    expect(openAfterUpdate(tracker, store)).toEqual(new Map([['app.dot::r1', 200]]));
+  });
+
+  it('As the debug panel, I drop the open calls on a clear and open only what arrives after it', () => {
+    // Given
+    const store = new EventStore({ capacity: 10 });
+    const tracker = new OpenCallTracker();
+    insert(store, 'x_request', 'r1');
+    openAfterUpdate(tracker, store);
+
+    // When
+    store.clear();
+    insert(store, 'x_request', 'r2');
+
+    // Then
+    expect(openAfterUpdate(tracker, store)).toEqual(new Map([['app.dot::r2', nth(store.list(), 0).receivedAt]]));
+  });
+
+  it('As the debug panel, I keep the open calls equal to a full recompute over a random walk, as a cross-check', () => {
     // Given
     const store = new EventStore({ capacity: 25 });
     const tracker = new OpenCallTracker();

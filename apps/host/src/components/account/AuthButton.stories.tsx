@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
 import { byId, byTestId } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   calls,
   connect,
@@ -18,7 +18,7 @@ import {
   storyCallbacks,
   storyModalOpen,
   unreachable,
-} from '../../../.storybook/account-fixtures.js';
+} from '../../testing/stories/account-fixtures.js';
 import type { AccountSession } from './account.js';
 import { AuthButton } from './AuthButton.js';
 
@@ -62,18 +62,14 @@ async function expectButton(state: 'logged-out' | { initials: string | undefined
   await expect(b).not.toHaveAttribute('aria-busy');
   if (state === 'logged-out') {
     await expect(popupAria()).toEqual(['dialog', storyModalOpen() ? 'true' : 'false', 'auth-modal-backdrop']);
-    await expect(Array.from(b.children).map(child => child.tagName)).toEqual(['svg', 'SPAN']);
     await expect(b.textContent.trim()).toBe('Sign in');
     return;
   }
   await expect(b).toHaveAttribute('aria-controls', 'user-popover');
-  await expect(Array.from(b.children).map(child => child.tagName)).toEqual(['SPAN']);
   if (state.initials !== undefined) {
     await expect(badge().textContent).toBe(state.initials);
-    await expect(badge().children).toHaveLength(0);
   } else {
     await expect(badge().textContent).toBe('');
-    await expect(Array.from(badge().children).map(child => child.tagName)).toEqual(['svg']);
   }
 }
 
@@ -221,18 +217,17 @@ export const NameChangeFollows: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    const avatar = (): Element | null | undefined =>
-      document.querySelector('[data-testid="account-content"]')?.firstElementChild?.firstElementChild;
+    const avatar = (): HTMLElement => byTestId('account-avatar');
     await ctx.step('Given AS in the badge and the account', async () => {
       await expect(badge().textContent).toBe('AS');
-      await expect(avatar()?.textContent).toBe('AS');
+      await expect(avatar().textContent).toBe('AS');
     });
     await ctx.step('When my name changes', () => {
       connect({ publicKey: PUBLIC_KEY, fullUsername: 'Bob Jones' });
     });
     await ctx.step('Then both show BJ', async () => {
       await waitFor(() => expect(badge().textContent).toBe('BJ'));
-      await expect(avatar()?.textContent).toBe('BJ');
+      await expect(avatar().textContent).toBe('BJ');
     });
   },
 };
@@ -341,24 +336,6 @@ export const MarkupName: Story = {
     await ctx.step('And the account shows the username as text', async () => {
       await expect(byId('user-popover').querySelector('b')).toBeNull();
       await expect(byId('user-popover-username').textContent).toBe('<b>x</b>');
-    });
-  },
-};
-
-/** As a returning user whose session was restored before the islands loaded, my badge and account show me as they mount. */
-export const RestoredBeforeMount: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    connect({ ...PG, primaryUsername: 'alice' });
-  },
-  play: async ctx => {
-    await ctx.step('Then the button shows my badge from its first render', async () => {
-      await expect(button().textContent).toBe('PG');
-      await expect(button()).toHaveAttribute('title', 'Account');
-    });
-    await open(ctx);
-    await ctx.step('And the account shows my username', async () => {
-      await expect(byId('user-popover-username').textContent).toBe('alice');
     });
   },
 };

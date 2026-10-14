@@ -4,7 +4,7 @@
 // The shield state a story gives the shield views. Plays move it the way the page's product load does.
 
 import { createSignal } from 'solid-js';
-import type { ShieldState } from '../src/state/url-pill.js';
+import type { ShieldState } from '../../state/url-pill.js';
 
 const [shield, setShieldSignal] = createSignal<ShieldState | null | undefined>(undefined);
 

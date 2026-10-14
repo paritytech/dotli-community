@@ -445,11 +445,10 @@ export function chainRoleForGenesis(genesisHash: string): ChainRole | null {
 }
 
 /**
- * Chains advertised to dApps in rpc-gateway mode. Bulletin is excluded because its content is served through IPFS
- * gateways. This is advertisement, not access control.
+ * Chains advertised to dApps in rpc-gateway mode: those of `cfg` with an RPC endpoint. Bulletin is excluded because its
+ * content is served through IPFS gateways. This is advertisement, not access control.
  */
-export function getActiveGatewayChains(): ChainService[] {
-  const cfg = getActiveServicesConfig();
+export function getActiveGatewayChains(cfg: ServicesConfig = getActiveServicesConfig()): ChainService[] {
   return [cfg.relay, cfg.assethub, cfg.people].filter(c => c.rpcs.length > 0);
 }
 

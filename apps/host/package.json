@@ -23,11 +23,7 @@
     "test:perf:compare": "node tests/performance/compare.ts",
     "test:perf:compare:md": "node tests/performance/compare.ts --markdown",
     "lint": "eslint .",
-    "typecheck": "astro check && tsc --noEmit -p tsconfig.shipped.json",
-    "storybook": "storybook dev -p 6006 --no-open",
-    "build-storybook": "storybook build -o storybook-static",
-    "test:stories": "vitest run --config vitest.storybook.config.ts",
-    "test:vrt": "VRT=1 vitest run --config vitest.storybook.config.ts"
+    "typecheck": "astro check && tsc --noEmit -p tsconfig.shipped.json"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
@@ -38,9 +34,6 @@
     "@noble/hashes": "^2.4.0",
     "@playwright/test": "^1.64.0",
     "@solidjs/vite-plugin": "3.0.0-next.50",
-    "@storybook/addon-a11y": "^10.6.2",
-    "@storybook/addon-docs": "^10.6.2",
-    "@storybook/addon-vitest": "^10.6.2",
     "@types/qrcode": "^1.5.6",
     "fake-indexeddb": "^6.2.5",
     "jsqr": "^1.4.0",

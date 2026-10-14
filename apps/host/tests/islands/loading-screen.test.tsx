@@ -15,9 +15,10 @@ const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
 import { LoadingScreen } from '../../src/islands/LoadingScreen.js';
-import * as ctl from '../../src/loading-controller.js';
+import { createLoadingController, type LoadingController } from '../../src/loading-controller.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { getLoadingState, updateLoading } from '../../src/state/loading.js';
+import { pageContentStore, prefersReducedMotion } from '@dotli/ui';
 import { byId, settle } from '@dotli/ui/testing';
 
 const mounted: (() => void)[] = [];
@@ -35,10 +36,10 @@ async function mountScreen(): Promise<HTMLElement> {
   return slot;
 }
 
-// The status typewriter (loading-controller.ts) runs on animation frames,
-// which the tests hold so it never types.
-let frames: Map<number, FrameRequestCallback>;
+// The status typewriter runs on animation frames, which the controller is given held so it never types.
+let frames: Map<number, (now: number) => void>;
 let nextFrame = 0;
+let ctl: LoadingController;
 
 function app(): HTMLElement {
   return byId('app');
@@ -49,13 +50,20 @@ beforeEach(() => {
     toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
   });
   frames = new Map();
-  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-    nextFrame += 1;
-    frames.set(nextFrame, cb);
-    return nextFrame;
-  });
-  vi.stubGlobal('cancelAnimationFrame', (id: number) => {
-    frames.delete(id);
+  ctl = createLoadingController({
+    reducedMotion: prefersReducedMotion,
+    frames: {
+      request: step => {
+        nextFrame += 1;
+        frames.set(nextFrame, step);
+        return nextFrame;
+      },
+      cancel: handle => {
+        frames.delete(handle);
+      },
+      now: () => 0,
+    },
+    pageContent: pageContentStore,
   });
   app().replaceChildren();
   captures.exception.mockClear();
@@ -65,18 +73,17 @@ afterEach(() => {
   for (const dispose of mounted.splice(0).reverse()) {
     dispose();
   }
-  ctl.pageLoading.stopStatusTick();
+  ctl.stopStatusTick();
   resetAllStoresForTests();
   app().innerHTML = '';
   vi.useRealTimers();
-  vi.unstubAllGlobals();
 });
 
 describe('Loading screen island', () => {
   it('As the shell, mounting the island does not dispose the running load', async () => {
     // Given a crawling bar
-    ctl.pageLoading.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 10_000, stage: 'relay' }]);
-    ctl.pageLoading.advancePhase(0);
+    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 10_000, stage: 'relay' }]);
+    ctl.advancePhase(0);
 
     // When
     await mountScreen();

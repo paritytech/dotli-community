@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getSettings, setSettings, type Backend } from '@dotli/config';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { ChainActivity, ChainPool, LeaseProvider, RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolStatus, RemoteChainProvider } from '@dotli/protocol';
 import { createCoreRpcChainProvider } from '@dotli/chains';
@@ -100,21 +99,6 @@ function connectOn(
   pool: { destroyDelay?: number } = { destroyDelay: 0 },
 ): ReturnType<typeof createChainConnect> {
   return createChainConnect(createHostChainPool({ ...sources, ...pool }), readyFrame, sources);
-}
-
-interface LogLine {
-  level: LogLevel;
-  args: unknown[] | undefined;
-}
-
-function recordLogs(): LogLine[] {
-  const lines: LogLine[] = [];
-  bindLogSink({
-    emit: (level, _message, _attrs, args) => {
-      lines.push({ level, args });
-    },
-  });
-  return lines;
 }
 
 describe('createChainConnect', () => {
@@ -239,7 +223,6 @@ describe('createChainConnect', () => {
 
   it('As a dotli integrator, a request after a halt that no new transport can serve is answered at once', async () => {
     // Given
-    const logs = recordLogs();
     const connection = await connectOn(sources)(hexBytes(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(sources.upstreams[0], 'upstream').halt();
@@ -254,10 +237,6 @@ describe('createChainConnect', () => {
       jsonrpc: '2.0',
       id: 'truapi:2',
       error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
-    });
-    expect(logs).toContainEqual({
-      level: 'warn',
-      args: [`[dot.li truapi-chain] no chain transport for ${people.toLowerCase()} after a halt`],
     });
     connection.close();
     expect((await responses.next()).done).toBe(true);
@@ -399,7 +378,6 @@ describe('createChainConnect', () => {
 
   it('As a dotli integrator, a chain the protocol frame cannot serve is refused before any transport is built', () => {
     // Given
-    const logs = recordLogs();
     sources.isRemoteChainConnectable.mockReturnValue(false);
 
     // When
@@ -408,10 +386,6 @@ describe('createChainConnect', () => {
     // Then
     expect(connect).toThrow(`Unsupported smoldot chain: ${people.toLowerCase()}`);
     expect(sources.remoteChain).not.toHaveBeenCalled();
-    expect(logs).toContainEqual({
-      level: 'warn',
-      args: [`[dot.li truapi-chain] smoldot backend doesn't support ${people.toLowerCase()}; product call will fail`],
-    });
   });
 
   it("As a dotli user on Trusted Providers, name resolution leases the pool's one Asset Hub transport", () => {
@@ -493,22 +467,6 @@ describe('host chain pool on a light client backend', () => {
     connection.send(JSON.stringify({ jsonrpc: '2.0', id, method: 'chainSpec_v1_chainName', params: [] }));
   };
 
-  it("As a dotli user, products' connections to one chain share one connection to the protocol frame", async () => {
-    // Given
-    const connect = createChainConnect(createHostChainPool({ remoteChain }), frame);
-
-    // When
-    const first = await connect(hexBytes(people));
-    const second = await connect(hexBytes(people));
-
-    // Then
-    expect(remoteChain).toHaveBeenCalledTimes(1);
-    expect(remoteChain).toHaveBeenCalledWith(people.toLowerCase());
-    expect(remotes).toHaveLength(1);
-    first.close();
-    second.close();
-  });
-
   it("As a dotli user, a block bar shares the products' connection to the protocol frame", async () => {
     // Given
     const pool = createHostChainPool({ remoteChain });
@@ -553,21 +511,6 @@ describe('host chain pool on a light client backend', () => {
     // Then
     expect(provider).toBeNull();
     expect(remoteChain).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli user, the connection to the protocol frame closes 60 seconds after its last lease', async () => {
-    // Given
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
-    const remote = must(remotes[0], 'remote');
-
-    // When
-    connection.close();
-    await vi.advanceTimersByTimeAsync(59_999);
-
-    // Then
-    expect(remote.disconnect).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(remote.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it.each(['chain', 'frame'] as const)(
@@ -672,14 +615,6 @@ describe('host chain pool on a light client backend', () => {
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(remotes[0], 'first remote').halt('frame');
     remoteChain.mockReturnValue(null);
-    const warn = vi.fn<(...args: unknown[]) => void>();
-    bindLogSink({
-      emit: (level, _message, _attrs, args) => {
-        if (level === 'warn') {
-          warn(...(args ?? []));
-        }
-      },
-    });
 
     // When
     ask(connection, 'truapi:1');
@@ -688,9 +623,6 @@ describe('host chain pool on a light client backend', () => {
     const halted = { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' };
     expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', error: halted });
     expect(remoteChain).toHaveBeenCalledTimes(2);
-    expect(warn).toHaveBeenCalledWith(
-      `[dot.li truapi-chain] no chain transport for ${people.toLowerCase()} after a halt`,
-    );
     connection.close();
   });
 

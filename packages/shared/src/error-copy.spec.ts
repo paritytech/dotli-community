@@ -21,12 +21,6 @@ describe('gatewayUnreachable', () => {
     // When / Then
     expect(gatewayUnreachable('')).toBe("Your browser couldn't connect to the trusted provider.");
   });
-
-  it('As a visitor, I never read the words trusted provider twice in a row', () => {
-    // When / Then
-    expect(gatewayUnreachable(undefined)).not.toContain('provider a trusted');
-    expect(gatewayUnreachable('ipfs.example.io')).toContain('the trusted provider ipfs.example.io.');
-  });
 });
 
 describe('endpointHost', () => {

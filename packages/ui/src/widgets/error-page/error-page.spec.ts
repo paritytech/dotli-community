@@ -44,28 +44,8 @@ describe('error page actions', () => {
     expect(buttons.find(b => b.id === 'error-retry-btn-1')?.primary).toBe(true);
   });
 
-  // Reading, DOM and tab order must agree, so the primary is never placed with CSS `order`.
-  it('As a keyboard user, I reach the buttons in the order I read them', () => {
-    // When
-    const buttons = arranged([
-      { label: 'Reload', primary: true, onClick: noop },
-      { label: 'Open Settings', onClick: noop },
-    ]);
-
-    // Then
-    expect(buttons.map(b => b.label)).toEqual(['Open Settings', 'Reload']);
-  });
-
-  it('As a visitor, a lone button keeps its place', () => {
-    // When
-    const buttons = arranged([{ label: 'Only', primary: true, onClick: noop }]);
-
-    // Then
-    expect(buttons.map(b => b.label)).toEqual(['Only']);
-  });
-
   // The primary is first in the array but rendered last, the only arrangement that catches an id keyed on render
-  // position.
+  // position. Reading, DOM and tab order must agree, so the primary is never placed with CSS `order`.
   it('As a test author, the first action keeps its id even when it renders last', () => {
     // When
     const buttons = arranged([

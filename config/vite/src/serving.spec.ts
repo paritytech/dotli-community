@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  LOCAL_SERVER_HEADERS,
   fileHeaders,
   headerPolicy,
   resolveFile,
@@ -128,7 +127,7 @@ describe('headerPolicy', () => {
 });
 
 describe('responseHeaders', () => {
-  it('As the release server, I send a precompressed asset with the type of the file it stands for', () => {
+  it('As the release server, I send a hashed asset with its type, immutable caching and the private network header', () => {
     // Given
     const pathname = '/assets/a.js';
 
@@ -136,11 +135,11 @@ describe('responseHeaders', () => {
     const headers = responseHeaders('/dist/host/assets/a.js', pathname, 'worker-coep');
 
     // Then
-    expect(headers).toEqual({
+    expect(headers).toMatchObject({
       'Content-Type': 'text/javascript',
-      ...fileHeaders(pathname),
-      ...securityHeaders('worker-coep'),
-      ...LOCAL_SERVER_HEADERS,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Access-Control-Allow-Private-Network': 'true',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
     });
   });
 

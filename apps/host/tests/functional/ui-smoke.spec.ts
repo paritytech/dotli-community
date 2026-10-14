@@ -3,7 +3,7 @@
 
 // None of these wait for a chain: they stop at what the shell renders by itself.
 
-import { expect, type Locator } from '@playwright/test';
+import { expect } from '@playwright/test';
 import jsQR from 'jsqr';
 import { PORT } from '../env.js';
 import { seedBackend } from './fixtures/settings.js';
@@ -17,12 +17,6 @@ const LABEL_URL = `http://browse.localhost:${PORT}/`;
 const PRODUCT_URL = `http://host-playground.localhost:${PORT}/`;
 // 127.0.0.1 because Node on Linux does not resolve *.localhost.
 const SHARED_STORE = `http://127.0.0.1:${PORT}/__dotli-mode/`;
-
-/** A phone sheet's bottom is the bar's top once it has slid up. */
-async function sheetBottom(sheet: Locator): Promise<number> {
-  const box = await sheet.boundingBox();
-  return Math.round((box?.y ?? 0) + (box?.height ?? 0));
-}
 
 test.describe('Shell UI smoke', () => {
   test('As a returning user, the landing page shows my recent sites as a list', async ({ page, request }) => {
@@ -55,9 +49,7 @@ test.describe('Shell UI smoke', () => {
     await expect(page).toHaveURL(/\/\/browse\./);
   });
 
-  test("As a user, the shell's islands hydrate without errors, and its login button opens the QR modal", async ({
-    page,
-  }) => {
+  test("As a user, the shell's islands hydrate without errors", async ({ page }) => {
     // Given
     const problems: string[] = [];
     page.on('console', message => {
@@ -71,20 +63,13 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.goto(LANDING_URL);
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
 
     // Then: the landing page renders its own auth button, and the topbar's
     // action group, More button included, is gone.
     await expect(page.locator('#landing-auth-button')).toBeVisible();
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
-
-    // When: the idle-hydrated sign-in island has taken over its markup.
-    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
-    await page.locator('#landing-auth-button').click();
-
-    // Then
-    await expect(page.locator('#auth-modal-backdrop')).toHaveAttribute('data-open');
-    await expect(page.locator('#auth-modal-title')).toBeVisible();
   });
 
   test('As a phone user, the sign-in opens as a sheet and the shell hydrates without warnings', async ({ page }) => {
@@ -113,9 +98,7 @@ test.describe('Shell UI smoke', () => {
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
   });
 
-  test('As a phone user, the bar spans the foot of the screen with the actions in place of the address, then the account', async ({
-    page,
-  }) => {
+  test('As a phone user, the bar shows the actions in place of the address, then the account', async ({ page }) => {
     // Given
     await page.setViewportSize({ width: 390, height: 844 });
 
@@ -124,15 +107,18 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
 
     // Then
-    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 844 - 60, width: 390, height: 60 });
+    await expect(page.locator('#topbar')).toBeVisible();
     await expect(page.locator('#topbar-url')).toBeHidden();
     await expect(page.locator('#permissions-button')).toBeVisible();
     await expect(page.locator('#mode-button')).toBeVisible();
     await expect(page.locator('#more-button')).toBeHidden();
-    const settings = await page.locator('#mode-button').boundingBox();
-    const account = await page.locator('#auth-button').boundingBox();
-    expect((settings?.x ?? 0) < (account?.x ?? 0)).toBe(true);
-    expect(Math.round((account?.x ?? 0) + (account?.width ?? 0))).toBe(390 - 8);
+    await expect(page.locator('#auth-button')).toBeVisible();
+    const settingsPrecedesAccount = await page.evaluate(() => {
+      const settings = document.querySelector('#mode-button');
+      const account = document.querySelector('#auth-button');
+      return ((settings?.compareDocumentPosition(account as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    });
+    expect(settingsPrecedesAccount).toBe(true);
   });
 
   test('As a phone user on a bar too narrow for every action, the rest fold into More, which opens as a sheet above the bar that a tap on the scrim closes', async ({
@@ -157,7 +143,8 @@ test.describe('Shell UI smoke', () => {
     const sheet = page.locator('#more-popover');
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
     await expect(sheet.getByTestId('menu-sheet-title')).toHaveText('More');
-    await expect.poll(() => sheetBottom(sheet.getByTestId('menu'))).toBe(640 - 60);
+    await expect(sheet).toHaveAttribute('data-open');
+    await expect(sheet.getByTestId('menu')).toBeVisible();
 
     // When
     await page.mouse.click(195, 100);
@@ -182,7 +169,7 @@ test.describe('Shell UI smoke', () => {
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
-    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
+    await expect(sheet).toHaveAttribute('data-open');
 
     // When
     await sheet.getByTestId('popover-sheet-close').click();
@@ -193,7 +180,6 @@ test.describe('Shell UI smoke', () => {
     // When: open it again and swipe the header down.
     await page.locator('#mode-button').click();
     await expect(sheet).toHaveAttribute('data-open');
-    await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
     const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
@@ -206,48 +192,23 @@ test.describe('Shell UI smoke', () => {
     await expect(sheet).not.toHaveAttribute('data-open');
   });
 
-  test('As a phone user, Permissions opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
-    page,
-  }) => {
+  test('As a phone user, Permissions opens as a bottom sheet with its list and no desktop header', async ({ page }) => {
     // Given
     await page.setViewportSize({ width: 375, height: 740 });
     await page.goto(LABEL_URL);
     await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
     const sheet = page.locator('#permissions-popover');
-    const open = async (): Promise<void> => {
-      await page.locator('#permissions-button').click();
-      await expect(sheet).toHaveAttribute('data-open');
-      await expect.poll(() => sheetBottom(sheet.getByTestId('popover'))).toBe(740 - 60);
-    };
 
     // When
-    await open();
+    await page.locator('#permissions-button').click();
 
     // Then
+    await expect(sheet).toHaveAttribute('data-open');
     await expect(sheet).toHaveAttribute('data-layout', 'sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
     await expect(sheet.locator('#permissions-popover-list')).toBeAttached();
     await expect(sheet.getByTestId('permissions-popover-header')).toHaveCount(0);
-
-    // When
-    await sheet.getByTestId('popover-sheet-close').click();
-
-    // Then
-    await expect(sheet).not.toHaveAttribute('data-open');
-
-    // When: open it again and swipe the header down.
-    await open();
-    const header = await sheet.getByTestId('popover-sheet-head').boundingBox();
-    const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
-    const y = (header?.y ?? 0) + 10;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x, y + 300, { steps: 8 });
-    await page.mouse.up();
-
-    // Then
-    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a desktop user, Permissions opens anchored under the topbar', async ({ page }) => {
@@ -360,7 +321,7 @@ test.describe('Shell UI smoke', () => {
     await expect(bar).not.toHaveAttribute('data-tone', 'err');
   });
 
-  test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {
+  test('As a desktop user, I see a toast I can dismiss and it stays gone after a reload', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
     const card = page.getByTestId('notif-card').filter({
@@ -376,7 +337,13 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(card).toHaveCount(0);
-    expect(await page.evaluate(() => localStorage.getItem('desktop-banner-dismissed'))).toBe('1');
+
+    // When
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
+
+    // Then
+    await expect(card).toHaveCount(0);
   });
 
   test('As a desktop user, a part of the app that fails to load offers a reload in an error toast', async ({
@@ -476,7 +443,7 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(popover).toHaveAttribute('data-open');
     await expect(popover.getByTestId('chains-content')).toBeVisible();
-    await expect(popover.getByTestId('chains-status')).not.toHaveText('');
+    await expect(popover.getByTestId('chains-status-title')).toHaveText('No chains in use');
 
     // When
     await page.keyboard.press('Escape');

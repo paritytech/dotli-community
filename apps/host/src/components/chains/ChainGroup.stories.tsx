@@ -84,9 +84,10 @@ export const WaitingForFirstBlock: Story = {
 export const NoPeers: Story = {
   args: { chain: { ...RELAY, peers: 0 } },
   play: async ({ canvas, step }) => {
-    await step('Then the chip says 0 peers and is named for the chain', async () => {
+    await step('Then the chip says 0 peers, is marked and is named for the chain', async () => {
       const chip = canvas.getByTestId('chains-group-peers');
       await expect(chip).toHaveTextContent('0 peers');
+      await expect(chip).toHaveAttribute('data-alert');
       await expect(chip).toHaveAccessibleName('Polkadot: 0 peers connected');
     });
   },

@@ -1,177 +1,83 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
-import type { ChainStatus, TransferState } from './network-monitor.js';
-import { createNetworkStore, networkStore, startNetworkStore, type NetworkFeed } from './network.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReadableStore } from '@dotli/shared';
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
+import { createNetworkMonitor, type ChainPhase, type NetworkMonitor } from './network-monitor.js';
+import { createNetworkStore, type NetworkState } from './network.js';
 
-/** What the monitor holds, which a test changes before it notifies. */
-const monitor = {
-  listeners: new Set<() => void>(),
-  status: [] as unknown[],
-  transfer: { bytesPerSecond: null, fetched: null, total: null } as TransferState,
-};
+/** Every chain is connectable, so only what the monitor hears decides what the store shows. */
+let monitor: NetworkMonitor;
 
-const feed: NetworkFeed = {
-  subscribe: listener => {
-    monitor.listeners.add(listener);
-    return () => monitor.listeners.delete(listener);
-  },
-  getNetworkStatus: () => monitor.status as ChainStatus[],
-  getTransfer: () => monitor.transfer,
-};
+function relayPhase(store: ReadableStore<NetworkState>): ChainPhase | null | undefined {
+  return store.get().chains.find(chain => chain.role === 'relay')?.phase;
+}
 
 describe('network store', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    monitor = createNetworkMonitor({ isConnectable: () => true });
+  });
+
   afterEach(() => {
     resetStores();
-    monitor.listeners.clear();
-    Object.defineProperty(monitor, 'status', {
-      configurable: true,
-      writable: true,
-      value: [],
-    });
+    vi.useRealTimers();
   });
 
-  it('As the chains popover, the store mirrors the monitor on every change after start', () => {
+  it('As the chains popover, the store mirrors the monitor and its verdict on every change after start, and stops at stop', () => {
     // Given
     const { store, start } = createNetworkStore();
-    const stop = start(feed);
-    monitor.status = [{ role: 'relay', label: 'Relay' }];
+    const stop = start(monitor);
 
     // When
-    for (const l of monitor.listeners) {
-      l();
-    }
+    monitor.recordChainPhase('relay', 'syncing');
+    const syncing = relayPhase(store);
+    const syncingVerdict = store.get().verdict;
+    monitor.recordChainPhase('relay', 'ready');
+    const ready = relayPhase(store);
+    stop();
+    monitor.recordChainPhase('relay', 'stalled');
 
     // Then
-    expect(store.get().chains).toEqual([{ role: 'relay', label: 'Relay' }]);
-    stop();
-    expect(monitor.listeners.size).toBe(0);
+    expect(syncing).toBe('syncing');
+    expect(syncingVerdict).toEqual({ text: 'Connecting', tone: 'idle' });
+    expect(ready).toBe('ready');
+    expect(relayPhase(store)).toBe('ready');
   });
 
-  it('As the host with no reader subscribed, monitor changes build no snapshot until one is read', () => {
-    // Given
-    let reads = 0;
+  it('As the chains popover opening after the monitor changed unwatched, I read the chains as of my opening, then hear each change', () => {
+    // Given a change while nobody is subscribed, and the popover opening five seconds later
     const { store, start } = createNetworkStore();
-    const stop = start(feed);
-    const status = [{ role: 'relay', label: 'Relay' }];
-    Object.defineProperty(monitor, 'status', {
-      configurable: true,
-      get: () => {
-        reads += 1;
-        return status;
-      },
-    });
+    const stop = start(monitor);
+    monitor.recordChainPhase('relay', 'syncing');
+    vi.advanceTimersByTime(5_000);
+    const openedAt = Date.now();
 
-    // When: five notifications with nobody subscribed.
-    for (let i = 0; i < 5; i += 1) {
-      for (const l of monitor.listeners) {
-        l();
-      }
-    }
-
-    // Then
-    expect(reads).toBe(0);
-    expect(store.get().chains).toEqual(status);
-    expect(store.get().chains).toEqual(status);
-    expect(reads).toBe(1);
-
-    // When: a reader subscribes, each notification builds one snapshot.
-    const seen: unknown[] = [];
+    // When
+    const opened = store.get();
+    const heard: (ChainPhase | null | undefined)[] = [];
     const unsubscribe = store.subscribe(() => {
-      seen.push(store.get().chains);
+      heard.push(relayPhase(store));
     });
-    for (let i = 0; i < 2; i += 1) {
-      for (const l of monitor.listeners) {
-        l();
-      }
-    }
-
-    // Then
-    expect(reads).toBe(3);
-    expect(seen).toHaveLength(2);
+    monitor.recordChainPhase('relay', 'ready');
     unsubscribe();
     stop();
-  });
-
-  it('As the chains popover, the verdict is worked out once per network update', () => {
-    // Given a reader, and a live chain whose alarm only the verdict reads
-    let verdicts = 0;
-    const { store, start } = createNetworkStore();
-    const stop = start(feed);
-    const unsubscribe = store.subscribe(() => undefined);
-    monitor.status = [
-      Object.defineProperty({ label: 'Relay', state: 'live', sinceLast: 0, blockTimeMs: 6000 }, 'alarm', {
-        get: () => {
-          verdicts += 1;
-          return false;
-        },
-      }),
-    ];
-
-    // When a block lands
-    for (const l of monitor.listeners) {
-      l();
-    }
 
     // Then
-    expect(store.get().verdict).toEqual({ text: 'Your connection is good', tone: 'ok' });
-    expect(store.get().verdict).toEqual({ text: 'Your connection is good', tone: 'ok' });
-    expect(verdicts).toBe(1);
-    unsubscribe();
-    stop();
+    expect(opened.chains.find(chain => chain.role === 'relay')?.phase).toBe('syncing');
+    expect(opened.readAt).toBe(openedAt);
+    expect(heard).toEqual(['ready']);
   });
 
   it('As the host, the store does nothing until started', () => {
-    // Given a monitor with a chain, the store never started
+    // Given a monitor that heard a chain, the store never started
     const { store } = createNetworkStore();
-    monitor.status = [{ role: 'relay', label: 'Relay' }];
+
+    // When
+    monitor.recordChainPhase('relay', 'syncing');
 
     // Then
     expect(store.get().chains).toEqual([]);
-    expect(monitor.listeners.size).toBe(0);
-  });
-
-  it('As a test, resetting the stores forgets a reader left subscribed, so changes build no snapshot again', () => {
-    // Given: a reader that is never unsubscribed.
-    networkStore.subscribe(() => undefined);
-    let reads = 0;
-    Object.defineProperty(monitor, 'status', {
-      configurable: true,
-      get: () => {
-        reads += 1;
-        return [];
-      },
-    });
-
-    // When
-    resetStores();
-    const stop = startNetworkStore(feed);
-    reads = 0;
-    for (const l of monitor.listeners) {
-      l();
-    }
-
-    // Then
-    expect(reads).toBe(0);
-    stop();
-  });
-
-  it('As a test, resetting the stores drops a stale mark, so the next read gets the reset value', () => {
-    // Given: a change with nobody subscribed marks the store stale.
-    const stop = startNetworkStore(feed);
-    monitor.status = [{ role: 'relay', label: 'Relay' }];
-    for (const l of monitor.listeners) {
-      l();
-    }
-    stop();
-
-    // When
-    resetStores();
-
-    // Then
-    expect(networkStore.get().chains).toEqual([]);
-    expect(networkStore.get().readAt).toBe(0);
   });
 });

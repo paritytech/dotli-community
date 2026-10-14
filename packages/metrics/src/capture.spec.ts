@@ -152,12 +152,24 @@ describe('reportListener', () => {
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const report = reportListener('protocol', 'chain_pool.status');
+    const errorLines: unknown[][] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, _message, _attrs, args) => {
+          if (level === 'error') {
+            errorLines.push(args ?? []);
+          }
+        },
+      }),
+    );
+    const broken = new TypeError('listener broke');
 
     // When
-    report(new TypeError('listener broke'));
+    report(broken);
 
     // Then
-    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'chain_pool.status' } }]);
+    expect(errorLines).toEqual([['[dot.li] A chain_pool.status listener threw', broken]]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'chain_pool.status' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'chain_pool.status' },
     ]);

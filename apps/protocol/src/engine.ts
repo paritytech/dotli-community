@@ -50,6 +50,8 @@ export interface EngineOptions {
    * instead of leaving the caller to hang.
    */
   resolver?: EngineResolver;
+  /** Caps each request's sync budget, for a tester who needs a timeout to show quickly. */
+  syncBudgetCapMs?: number | undefined;
 }
 
 export type EngineResolver = Pick<
@@ -173,7 +175,11 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       ) {
         throw new Error(`Shared storage request reached the chain engine: ${request.method}`);
       }
-      const syncTimeoutMs = getRequestSyncTimeoutMs(request);
+      const deadlineBudget = getRequestSyncTimeoutMs(request);
+      const syncTimeoutMs =
+        options.syncBudgetCapMs === undefined || deadlineBudget === undefined
+          ? deadlineBudget
+          : Math.min(deadlineBudget, options.syncBudgetCapMs);
       const syncOptions = syncTimeoutMs !== undefined ? { syncTimeoutMs } : {};
 
       switch (request.method) {

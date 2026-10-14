@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
 import type { DotliAuthState } from '../runtime/session/auth-state.js';
@@ -19,10 +19,9 @@ function mount(auth: DotliAuthState, loggedIn = auth.tag === 'Connected') {
     loggedIn: createSyncStore('account-test-logged-in', loggedIn),
     walletMode: createSyncStore<{ mode: 'app' | 'local' }>('account-test-wallet-mode', { mode: 'app' }),
   };
-  const subscribe = vi.spyOn(stores.auth, 'subscribe');
   const { account, dispose } = createRoot(d => ({ account: useAccount(stores), dispose: d }));
   flush();
-  return { stores, account, dispose, subscribe };
+  return { stores, account, dispose };
 }
 
 function read(account: Account) {
@@ -37,15 +36,6 @@ function read(account: Account) {
 }
 
 describe('useAccount', () => {
-  it('As the account button, I follow the auth store through one subscription', () => {
-    // When
-    const { subscribe, dispose } = mount({ tag: 'Restoring' });
-
-    // Then
-    expect(subscribe).toHaveBeenCalledTimes(1);
-    dispose();
-  });
-
   it('As a visitor whose session is still being read, the account is restoring and signed out', () => {
     // When
     const { account, dispose } = mount({ tag: 'Restoring' });
@@ -72,10 +62,9 @@ describe('useAccount', () => {
     dispose();
   });
 
-  it('As a signed-in user, a pairing that starts elsewhere keeps my session, and a disconnect signs me out', () => {
+  it('As a signed-in user, a pairing that starts elsewhere keeps my session', () => {
     // Given
     const { stores, account, dispose } = mount({ tag: 'Connected', session: ALICE });
-    expect(read(account)).toMatchObject({ loggedIn: true, session: ALICE, connected: true });
 
     // When
     stores.auth.set(PAIRING);
@@ -83,6 +72,13 @@ describe('useAccount', () => {
 
     // Then
     expect(read(account)).toMatchObject({ loggedIn: true, session: ALICE, connected: false });
+    dispose();
+  });
+
+  it('As a signed-in user, a disconnect signs me out', () => {
+    // Given
+    const { stores, account, dispose } = mount({ tag: 'Connected', session: ALICE });
+    expect(read(account)).toMatchObject({ loggedIn: true, session: ALICE, connected: true });
 
     // When
     stores.auth.set({ tag: 'Disconnected' });

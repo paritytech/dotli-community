@@ -6,7 +6,6 @@ import type { ProductContext } from '@parity/truapi-host';
 import { createChatPlatform } from './chat.js';
 import { createChatConnections, createChatStore } from '../chat/store.js';
 import { memoryChatRepo } from '../chat/store.fake.js';
-import { createChanges } from '../../testing/changes.js';
 import { yielded } from '../../testing/fixtures.js';
 
 const PRODUCT: ProductContext = { productId: 'chatty.dot', executionKind: 'Worker' };
@@ -65,19 +64,7 @@ describe('chat platform', () => {
   it('As a product, when my rooms change during a read, my stream ends on the newest list after one more read', async () => {
     // Given: a repo whose room reads wait for the test.
     const repo = memoryChatRepo();
-    const held: (() => void)[] = [];
-    const changes = createChanges();
-    let reads = 0;
-    const listRooms = repo.listRooms.bind(repo);
-    repo.listRooms = async productId => {
-      reads += 1;
-      const rooms = await listRooms(productId);
-      await new Promise<void>(resolve => {
-        held.push(resolve);
-        changes.notify();
-      });
-      return rooms;
-    };
+    repo.reads.hold.rooms = true;
     const chat = createChatStore({ repo, connections: createChatConnections() });
     const platform = createChatPlatform(chat);
     const stream = platform.subscribeChatRooms(PRODUCT)[Symbol.asyncIterator]();
@@ -86,11 +73,11 @@ describe('chat platform', () => {
     // When: two rooms are created while the first read waits.
     await platform.createChatRoom(PRODUCT, room('a'));
     await platform.createChatRoom(PRODUCT, room('b'));
-    held.shift()?.();
+    repo.reads.releaseOne();
     expect(yielded(await first)._unsafeUnwrap()).toEqual({ rooms: [] });
     const second = stream.next();
-    await changes.until(() => held.length === 1);
-    held.shift()?.();
+    await repo.reads.holding(1);
+    repo.reads.releaseOne();
 
     // Then
     expect(yielded(await second)._unsafeUnwrap()).toEqual({
@@ -99,7 +86,7 @@ describe('chat platform', () => {
         { roomId: 'b', participatingAs: 'RoomHost' },
       ],
     });
-    expect(reads).toBe(2);
+    expect(repo.reads.count.rooms).toBe(2);
     await stream.return?.();
   });
 
@@ -108,32 +95,20 @@ describe('chat platform', () => {
     try {
       // Given: a read that waits for the test, and a change that queues another behind it
       const repo = memoryChatRepo();
-      const held: (() => void)[] = [];
-      const changes = createChanges();
-      let reads = 0;
-      const listRooms = repo.listRooms.bind(repo);
-      repo.listRooms = async productId => {
-        reads += 1;
-        const rooms = await listRooms(productId);
-        await new Promise<void>(resolve => {
-          held.push(resolve);
-          changes.notify();
-        });
-        return rooms;
-      };
+      repo.reads.hold.rooms = true;
       const chat = createChatStore({ repo, connections: createChatConnections() });
       const platform = createChatPlatform(chat);
       const stream = platform.subscribeChatRooms(PRODUCT)[Symbol.asyncIterator]();
-      await changes.until(() => held.length === 1);
+      await repo.reads.holding(1);
       await platform.createChatRoom(PRODUCT, room('a'));
 
       // When: the product stops listening, then the running read ends
       await stream.return?.();
-      held.shift()?.();
+      repo.reads.releaseOne();
       await vi.advanceTimersByTimeAsync(0);
 
       // Then
-      expect(reads).toBe(1);
+      expect(repo.reads.count.rooms).toBe(1);
     } finally {
       vi.useRealTimers();
     }

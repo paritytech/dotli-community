@@ -108,7 +108,7 @@ describe('readReleaseVersion', () => {
     }
   }
 
-  it('As a release build, reports the newest release tag the commit descends from, not the stale package version', () => {
+  it('As a release build, I report the newest release tag my commit descends from, not the stale package version', () => {
     // Given
     execSync('git init -q', { cwd: dir });
     commit('v0.10.1');
@@ -121,7 +121,7 @@ describe('readReleaseVersion', () => {
     expect(version).toBe('0.10.1');
   });
 
-  it('As a build outside a git checkout, falls back to the package version', () => {
+  it('As a build outside a git checkout, I fall back to the package version', () => {
     // When
     const version = readReleaseVersion(dir);
 

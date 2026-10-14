@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { untilDom } from '@dotli/shared/testing';
+import { createDotliDebugBus } from '@dotli/truapi-debug';
 import { setupTruapiDebugPanel } from '../src/truapi-debug-panel.js';
 import { PANEL_ID } from '../src/Panel.js';
 import { fakeDebugPanelHost } from '../src/host.fake.js';
@@ -19,20 +20,15 @@ bindCaptureSink(captures);
 const view = {
   breakLater: null as (() => void) | null,
   disposed: 0,
-  ticks: 0,
 };
 
-/** A stand-in view that can be made to throw later, counting its ticks. */
+/** A stand-in view that can be made to throw later. */
 function lateView(id: string): () => JSX.Element {
   return () => {
     const [late, setLate] = createSignal(false, { ownedWrite: true });
     view.breakLater = () => setLate(true);
-    const timer = setInterval(() => {
-      view.ticks += 1;
-    }, 5);
     onCleanup(() => {
       view.disposed += 1;
-      clearInterval(timer);
     });
     const el = document.createElement('div');
     el.id = id;
@@ -52,47 +48,42 @@ function lateView(id: string): () => JSX.Element {
 beforeEach(() => {
   view.breakLater = null;
   view.disposed = 0;
-  view.ticks = 0;
   captures.exception.mockClear();
-  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-  vi.spyOn(console, 'error').mockImplementation(() => {});
-  vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
-  vi.useRealTimers();
-  vi.restoreAllMocks();
   document.head.replaceChildren();
   document.body.replaceChildren();
 });
 
 describe('late render errors', () => {
-  it('As a dotli developer, a debug panel that throws after it mounted is disposed once, leaves the page and can be set up again', async () => {
+  it('As a dotli developer, a debug panel that throws after it mounted is disposed once, stops listening to the bus, leaves the page and can be set up again', async () => {
     // Given
     const panelView = lateView(PANEL_ID);
     const { host } = fakeDebugPanelHost();
-    const dispose = setupTruapiDebugPanel({ host, view: panelView });
+    const bus = createDotliDebugBus();
+    bus.enableBuffering();
+    const dispose = setupTruapiDebugPanel({ host, bus, view: panelView });
     await untilDom(() => document.getElementById(PANEL_ID) !== null);
     const panel = document.getElementById(PANEL_ID);
     expect(panel?.isConnected).toBe(true);
+    expect(bus.hasListeners()).toBe(true);
 
     // When
     view.breakLater?.();
     flush();
     await untilDom(() => panel?.isConnected === false);
-    const ticks = view.ticks;
-    vi.advanceTimersByTime(30);
 
     // Then
     expect(panel?.isConnected).toBe(false);
     expect(document.body.childElementCount).toBe(0);
     expect(view.disposed).toBe(1);
-    expect(view.ticks).toBe(ticks);
+    expect(bus.hasListeners()).toBe(false);
     expect(captures.exception).toHaveBeenCalledTimes(1);
 
     // When
     dispose();
-    const again = setupTruapiDebugPanel({ host, view: panelView });
+    const again = setupTruapiDebugPanel({ host, bus, view: panelView });
 
     // Then
     expect(view.disposed).toBe(1);

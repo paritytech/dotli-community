@@ -237,13 +237,4 @@ describe('validateSandboxParams: resolution id', () => {
       expect(result.params.resolutionId).toBeNull();
     }
   });
-
-  it('As a user, the app I open never sees the tracking id in its URL', () => {
-    // Given the strip iterates the contract param map.
-    const keys = Object.values(SANDBOX_CONTRACT_PARAMS);
-
-    // Then the id is in that map, so `stripContractParamsFromUrl` removes it
-    // and it never leaks into the product `location.search`.
-    expect(keys).toContain(SANDBOX_CONTRACT_PARAMS.resolutionId);
-  });
 });

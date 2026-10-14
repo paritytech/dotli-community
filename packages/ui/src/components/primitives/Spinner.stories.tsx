@@ -11,4 +11,5 @@ const meta = { title: 'Primitives/Spinner', component: Spinner, parameters: { ch
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see a spinner while something loads. */
 export const Default: Story = {};

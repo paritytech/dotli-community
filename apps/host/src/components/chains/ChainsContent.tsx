@@ -78,12 +78,20 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   };
   return (
     <Surface width="md" padded testId="chains-content">
-      <SurfaceHead title="Network" />
+      <SurfaceHead title="Network" testId="chains-head" />
       <Well class={s['status']} testId="chains-status">
         <StatusDot tone={status().tone} testId="chains-status-dot" />
         <div class={s['statusText']}>
-          <p class={s['statusTitle']}>{status().title}</p>
-          <Show when={status().detail}>{detail => <p class={s['statusDetail']}>{detail()}</p>}</Show>
+          <p class={s['statusTitle']} data-testid="chains-status-title">
+            {status().title}
+          </p>
+          <Show when={status().detail}>
+            {detail => (
+              <p class={s['statusDetail']} data-testid="chains-status-detail">
+                {detail()}
+              </p>
+            )}
+          </Show>
         </div>
       </Well>
       <For each={knownChains()} keyed={chain => chain.key}>
@@ -104,8 +112,12 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
           <Show when={speed()}>
             {rate => (
               <>
-                <span class={s['transferLabel']}>Speed</span>
-                <span class={s['transferValue']}>{rate()}</span>
+                <span class={s['transferLabel']} data-testid="chains-transfer-label">
+                  Speed
+                </span>
+                <span class={s['transferValue']} data-testid="chains-transfer-value">
+                  {rate()}
+                </span>
               </>
             )}
           </Show>
@@ -114,8 +126,12 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
           <Show when={size()}>
             {row => (
               <>
-                <span class={s['transferLabel']}>{row().label}</span>
-                <span class={s['transferValue']}>{row().value}</span>
+                <span class={s['transferLabel']} data-testid="chains-transfer-label">
+                  {row().label}
+                </span>
+                <span class={s['transferValue']} data-testid="chains-transfer-value">
+                  {row().value}
+                </span>
               </>
             )}
           </Show>

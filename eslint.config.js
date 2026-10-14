@@ -6,9 +6,9 @@
 import { defineConfig } from 'eslint/config';
 import { config } from '@config/eslint/vite';
 
-// The root lints only scripts/. Every workspace lints itself.
+// The root lints its scripts and the Storybook config. Every workspace lints itself.
 export default defineConfig([
-  { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**'] },
+  { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**', 'storybook-static/**'] },
   ...config,
   {
     languageOptions: {

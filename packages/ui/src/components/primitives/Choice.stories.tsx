@@ -4,7 +4,7 @@
 import { createSignal, For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn } from 'storybook/test';
-import { ShieldCheckIcon } from '../../../.storybook/glyphs.js';
+import { ShieldCheckIcon } from '../../testing/stories/glyphs.js';
 import { Chip } from './Chip.js';
 import { Choice } from './Choice.js';
 
@@ -22,6 +22,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I read a static choice with a title and description and no control in it. */
 export const Plain: Story = {
   play: async ({ canvas, step }) => {
     await step('Then I read a static choice with no control in it', async () => {
@@ -31,12 +32,15 @@ export const Plain: Story = {
     });
   },
 };
+/** As a dotli user, I see which choice is selected. */
 export const Selected: Story = { args: { selected: true } };
+/** As a dotli user, I see a recommendation chip beside the choice's title. */
 export const WithChip: Story = {
   args: { selected: true },
   render: args => <Choice {...args} chip={<Chip tone="ok">Recommended</Chip>} />,
 };
 
+/** As a dotli user, I see an icon and a chip around a selected choice. */
 export const WithIcon: Story = {
   args: {
     title: 'Verified',
@@ -66,6 +70,7 @@ const TRANSPORTS = [
   },
 ] as const;
 
+/** As a dotli user, I pick a choice in a radio group and it becomes the chosen one with the focus on its radio. */
 export const RadioGroup: Story = {
   render: () => {
     const [value, setValue] = createSignal<string>('per-tab');
@@ -109,6 +114,7 @@ export const RadioGroup: Story = {
 const onRefusedChoose = fn().mockName('onChoose');
 
 // The owner hears the pick and keeps the current transport.
+/** As a dotli user, I pick a choice its owner refuses, and the current choice stays checked. */
 export const OwnerRefuses: Story = {
   render: () => (
     <div role="radiogroup" aria-label="Transport" style={{ display: 'grid', gap: '8px', 'max-width': '360px' }}>
@@ -140,6 +146,7 @@ export const OwnerRefuses: Story = {
 
 const onDisabledChoose = fn().mockName('onChoose');
 
+/** As a dotli user, I try to pick a disabled choice and nothing is picked. */
 export const Disabled: Story = {
   render: args => (
     <Choice

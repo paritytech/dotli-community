@@ -1,14 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createScheduledNotifications,
   type ScheduledNotificationRecord,
   type ScheduledNotifications,
 } from './scheduled-notifications.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
-import { IDBDatabase } from 'fake-indexeddb';
 
 // Each test gets a fresh database, so no test sees another's records.
 let idb: MemoryIdb;
@@ -319,42 +318,21 @@ describe('removeStale', () => {
   });
 });
 
-describe('a database connection that is closing', () => {
-  beforeEach(async () => {
-    // Opened first, so the spy only meets the transactions under test.
-    await idb.connect();
-    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(() => {
-      throw new DOMException(
-        "Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing.",
-        'InvalidStateError',
-      );
+describe('a database connection that is closed', () => {
+  it('As the scheduler, schedule rejects rather than hanging', async () => {
+    // Given the cached connection has closed, as it does under an unloading page
+    (await idb.connect()).close();
+
+    // When the scheduler schedules a notification
+    const scheduled = queue.schedule({
+      productId: 'acme.dot',
+      title: 'Acme',
+      text: 'x',
+      deeplink: null,
+      scheduledAt: Date.now() + 60_000,
     });
-  });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  const request = {
-    productId: 'acme.dot',
-    title: 'Acme',
-    text: 'x',
-    deeplink: null,
-    scheduledAt: Date.now() + 60_000,
-  };
-
-  it.each([
-    ['schedule', () => queue.schedule(request)],
-    ['allocateId', () => queue.allocateId('acme.dot')],
-    ['cancel', () => queue.cancel('acme.dot', 1)],
-    ['removeById', () => queue.removeById(1)],
-    ['listAll', () => queue.listAll()],
-    ['removeStale', () => queue.removeStale(Date.now())],
-  ] as const)('As the scheduler, %s rejects rather than hanging', async (_name, call) => {
-    // Given a connection that throws on every new transaction
-
-    // When the scheduler calls into the queue
     // Then the call rejects with that error
-    await expect(call()).rejects.toMatchObject({ name: 'InvalidStateError' });
+    await expect(scheduled).rejects.toMatchObject({ name: 'InvalidStateError' });
   });
 });

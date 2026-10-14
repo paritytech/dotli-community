@@ -21,8 +21,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a user, I see a contact with an icon as its image. */
 export const WithIcon: Story = {};
 
+/** As a user, I see the initial of a contact with no icon or a broken one, and the image of one with an icon. */
 export const InitialWithoutIcon: Story = {
   render: () => (
     <>
@@ -42,7 +44,7 @@ export const InitialWithoutIcon: Story = {
     });
     await step('Then a contact with an icon shows it as a decorative image', async () => {
       const img = icons().find(el => el.getAttribute('src') === GOOD);
-      await expect(img?.tagName).toBe('IMG');
+      await expect(img).not.toHaveAttribute('data-fallback');
       await expect(img?.getAttribute('alt')).toBe('');
     });
     await step('Then an icon that fails to load falls back to the initial', async () => {
@@ -52,6 +54,7 @@ export const InitialWithoutIcon: Story = {
   },
 };
 
+/** As a user, I see a contact's new icon once the product sends one after the first failed to load. */
 export const ReplacedBrokenIcon: Story = {
   render: () => {
     const [icon, setIcon] = createSignal(BROKEN);

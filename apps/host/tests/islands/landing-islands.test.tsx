@@ -68,40 +68,28 @@ afterEach(() => {
   }
   unmounts = [];
   resetAllStoresForTests();
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
 });
 
 describe('landing page islands', () => {
-  it('As a visitor, the landing page shows its own account button', async () => {
-    // When
-    await mountIslands();
-
-    // Then
-    expect([...slot(SLOTS.auth).children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth']);
-    expect(document.querySelectorAll('[id="landing-auth-button"]')).toHaveLength(1);
-    expect(captures.exception).not.toHaveBeenCalled();
-  });
-
   it('As a visitor, an error page takes over the landing page and disposes every island, typing placeholder and all', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    // The account popover's idle preload is not one of the page's timers.
-    vi.stubGlobal('requestIdleCallback', () => 1);
-    vi.stubGlobal('cancelIdleCallback', () => undefined);
     try {
       // Given
       await mountIslands();
-      expect(vi.getTimerCount()).toBe(1);
+      const field = must(slot(SLOTS.nav).querySelector('input'), 'name field');
       expect(byId('landing-auth-button')).not.toBeNull();
 
       // When
       showErrorPage({ title: 'Failed' });
       flush();
+      const typed = field.placeholder;
+      vi.advanceTimersByTime(10_000);
 
       // Then
       expect(document.querySelector('[data-testid="landing"]')).toBeNull();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(field.placeholder).toBe(typed);
       expect(byTestId('error-page-title').textContent).toBe('Failed');
     } finally {
       vi.useRealTimers();
@@ -111,8 +99,10 @@ describe('landing page islands', () => {
   it('As a visitor, when one landing island fails to render, I see an error page with a reload button, and it is reported once', async () => {
     // Given
     const failure = new Error('landing render failed');
+    const reload = vi.fn();
     const failingNav = (): JSX.Element =>
       LandingPart({
+        reload,
         get children(): JSX.Element {
           throw failure;
         },
@@ -134,8 +124,6 @@ describe('landing page islands', () => {
     expect(document.querySelectorAll('[data-testid="error-page"]')).toHaveLength(1);
 
     // When
-    const reload = vi.fn();
-    vi.stubGlobal('location', { reload });
     (byId('error-retry-btn') as HTMLButtonElement).click();
 
     // Then

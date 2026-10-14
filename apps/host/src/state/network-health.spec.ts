@@ -30,10 +30,10 @@ let page: FakePage;
 /** The health over a page whose visibility and connectivity the test sets. */
 function startNetworkHealth(on: Parameters<typeof initPageNetworkHealth>[0]): () => void {
   return initPageNetworkHealth(on, {
-    isHidden: () => page.hidden,
-    isOnline: () => page.onLine,
-    visibility: page,
-    connectivity: page,
+    isHidden: () => page.document.hidden,
+    isOnline: () => page.window.onLine,
+    visibility: page.document,
+    connectivity: page.window,
   });
 }
 
@@ -83,27 +83,40 @@ describe('The network health store', () => {
     expect(networkHealthStore.get()).toBe('warn');
   });
 
-  it('As a user, the health rechecks once, when the first chain would be overdue, and a block moves that one recheck', () => {
+  it('As a user, the health rechecks when the first chain would be overdue, and a block moves that recheck', () => {
     // Given
     stop = startNetworkHealth(monitor);
     useAll();
-
-    // Then: before any block nothing can fall overdue
-    expect(vi.getTimerCount()).toBe(0);
-
-    // When
+    const fastest = Math.min(...getActiveChainRoles().map(role => role.blockTimeMs));
+    const overdue = fastest * 3;
     blockAll(100);
 
-    // Then
-    expect(vi.getTimerCount()).toBe(1);
-
-    // When
+    // When a block arrives later, moving the overdue time
     vi.advanceTimersByTime(1000);
     blockAll(101);
 
-    // Then
-    expect(vi.getTimerCount()).toBe(1);
+    // Then the health is still ok just before the moved overdue time
+    vi.advanceTimersByTime(overdue - 1);
     expect(networkHealthStore.get()).toBe('ok');
+
+    // When it passes
+    vi.advanceTimersByTime(2);
+
+    // Then
+    expect(networkHealthStore.get()).toBe('warn');
+  });
+
+  it('As a user, going offline is heard from the window and not from the document', () => {
+    // Given a health over a page that is online
+    stop = startNetworkHealth(monitor);
+
+    // When the document fires offline, as nothing in a browser does
+    page.document.dispatchEvent(new Event('offline'));
+
+    // Then nothing changes, and the window's offline does
+    expect(networkHealthStore.get()).toBe('quiet');
+    page.setOnline(false);
+    expect(networkHealthStore.get()).toBe('err');
   });
 
   it('As a user in another tab, the health is not rechecked until the tab shows again', () => {

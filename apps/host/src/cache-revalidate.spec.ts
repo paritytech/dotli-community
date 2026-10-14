@@ -7,22 +7,22 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { ShowNotification } from '@dotli/ui';
 import { revalidateCachedCopy, type CacheRevalidationDeps } from './cache-revalidate.js';
-import type { NameSource } from './name-source.js';
+import { createNameSource, type NameSource } from './name-source.js';
 
 type Notice = Parameters<ShowNotification>[0];
 
-/** A name with no manifests, which any host can open. */
-const NO_MANIFESTS = { root: { kind: 'empty' as const }, app: { kind: 'empty' as const } };
-
-/** Reads names from what is published, as the name source does over either backend. */
+/** The light client's resolver over what is published, so the name source's own lookup order is what runs. */
 function nameSource(published: Record<string, string> | Error): NameSource {
-  const resolveName = (name: string): Promise<string | null> =>
-    published instanceof Error ? Promise.reject(published) : Promise.resolve(published[name] ?? null);
-  return {
-    resolveProduct: async label => (await resolveName(`app.${label}`)) ?? resolveName(label),
-    readManifests: () => Promise.resolve(NO_MANIFESTS),
-    readWorkerManifest: () => Promise.resolve({ kind: 'empty' }),
-  };
+  return createNameSource({
+    backend: 'smoldot-direct',
+    remote: {
+      resolveDotName: name =>
+        published instanceof Error ? Promise.reject(published) : Promise.resolve(published[name] ?? null),
+      resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
+      resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
+    },
+    loadRpc: () => Promise.reject(new Error('a light client load reads no gateway')),
+  });
 }
 
 function setup(published: Record<string, string> | Error): {

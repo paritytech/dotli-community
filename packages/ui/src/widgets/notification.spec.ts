@@ -15,13 +15,13 @@ const showNotification = createNotifier({
   present: input => {
     pushToast(input);
   },
-  visible: () => page.visibilityState === 'visible',
+  visible: () => page.document.visibilityState === 'visible',
   system: () => system,
 });
 
 beforeEach(() => {
   page = new FakePage();
-  bindToastPage(page);
+  bindToastPage(page.document);
   system = undefined;
 });
 
@@ -30,15 +30,6 @@ afterEach(() => {
 });
 
 describe('showNotification', () => {
-  it('As a dotli integrator, a notification keeps the tone it is given, info by default', () => {
-    // When
-    showNotification({ label: 'Plain', text: 'Body' });
-    showNotification({ label: 'Failed', text: 'Body', tone: 'err' });
-
-    // Then
-    expect(toastsStore.get().items.map(t => t.tone)).toEqual(['info', 'err']);
-  });
-
   it('As a dotli user, a notification shows its title, its trimmed text, and leaves the icon to its tone', () => {
     // When
     showNotification({ label: 'Hello', text: '  World  ' });

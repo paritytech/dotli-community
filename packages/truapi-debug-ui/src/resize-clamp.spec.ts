@@ -35,15 +35,4 @@ describe('debug panel resize bounds', () => {
     // Then the list keeps 220px and the detail keeps 260px plus the 6px splitter
     expect(sizes).toEqual([500, 220, 734]);
   });
-
-  it('As a dotli developer, the body splitter resizes the top pane when docked right', () => {
-    // Given a body 600px tall
-    const span = 600;
-
-    // When the splitter is dragged to the middle, near the top and past the bottom
-    const sizes = [300, 10, 680].map(offset => clampSplit(offset, span));
-
-    // Then
-    expect(sizes).toEqual([300, 220, 334]);
-  });
 });

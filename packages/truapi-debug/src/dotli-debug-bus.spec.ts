@@ -58,7 +58,7 @@ describe('dotli debug bus listener failures', () => {
     // Then both later receivers got it, and the throw was reported once
     expect(watched).toEqual([bootEvent('flow-1')]);
     expect(shown).toEqual([bootEvent('flow-1')]);
-    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'debug_bus.watch' } }]);
+    expect(reports.captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_bus.watch' } }]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'TypeError', owner: 'debug_bus.watch' }]);
   });
@@ -82,7 +82,7 @@ describe('dotli debug bus listener failures', () => {
 
     // Then it still got the second, and the throw was reported once
     expect(shown).toEqual([bootEvent('flow-1'), bootEvent('flow-2')]);
-    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'debug_bus.replay' } }]);
+    expect(reports.captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_bus.replay' } }]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'RangeError', owner: 'debug_bus.replay' }]);
   });
@@ -105,7 +105,7 @@ describe('dotli debug bus listener failures', () => {
     // Then
     expect(emit).not.toThrow();
     expect(shown).toEqual([bootEvent('flow-1')]);
-    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'debug_bus.live' } }]);
+    expect(reports.captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_bus.live' } }]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.counted()).toEqual([{ outcome: 'error', reason: 'TypeError', owner: 'debug_bus.live' }]);
   });

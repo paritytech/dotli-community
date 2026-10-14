@@ -22,7 +22,8 @@ Shared ESLint flat configs and the import-layer helpers that enforce the package
   `_FAILURE`, `_TIMEOUT`, `_RETRY` or `_RETRIES` metric constants. It refuses `.ts` import extensions in shipped code,
   imports of test-only modules (specs, fakes, testing folders and `@dotli/*/testing`) from shipped code, and DOM tooling
   in unit specs.
-- Specs, tests and stories are matched by file pattern, so one config covers all of them.
+- Specs, tests and stories are matched by file pattern, so one config covers all of them. Stories import their package's
+  story fixtures by path. Those fixtures run in the browser with the stories, so they may read the DOM.
 
 ## Entry points
 

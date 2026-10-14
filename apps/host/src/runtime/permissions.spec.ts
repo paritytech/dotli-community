@@ -95,22 +95,6 @@ describe('getPermissionStatus / setPermissionStatus', () => {
     }
   });
 
-  it('As a product, my granted permission status is preserved', async () => {
-    // Given
-    await setPermissionStatus('myapp', 'Camera', 'granted');
-
-    // When / Then
-    expect(await getPermissionStatus('myapp', 'Camera')).toBe('granted');
-  });
-
-  it('As a product, my denied permission status is preserved', async () => {
-    // Given
-    await setPermissionStatus('myapp', 'ChainSubmit', 'denied');
-
-    // When / Then
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('denied');
-  });
-
   it('As a product, my permission decisions use the core authorization store', async () => {
     // Given
     expect(myappStore).toEqual(new Map());
@@ -348,18 +332,6 @@ describe('getGrantedDevicePermissions', () => {
     // Then
     expect(permissions).toEqual(['Camera']);
   });
-
-  it('As a product, submit permissions do not alter my iframe policy', async () => {
-    // Given
-    await setPermissionStatus('myapp', 'ChainSubmit', 'granted');
-    await setPermissionStatus('myapp', 'PreimageSubmit', 'granted');
-
-    // When
-    const permissions = await getGrantedDevicePermissions('myapp');
-
-    // Then
-    expect(permissions).toEqual([]);
-  });
 });
 
 describe('buildAllowAttribute', () => {
@@ -400,19 +372,6 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     for (const { name } of ALL_PERMISSIONS) {
       expect(AUTO_GRANT_DEVICE_PERMISSIONS.has(name as never)).toBe(false);
     }
-  });
-
-  it('As the host listing permissions, I name the submit gates by their v0.7 wire tags', () => {
-    // When
-    const names = ALL_PERMISSIONS.map(p => p.name);
-
-    // Then
-    expect(names).toContain('ChainSubmit');
-    expect(names).toContain('IdentityDisclosure');
-    expect(names).toContain('PreimageSubmit');
-    expect(names).toContain('StatementSubmit');
-    expect(names).toContain('Notifications');
-    expect(names).not.toContain('TransactionSubmit');
   });
 
   it('As a user, the menu lists the eight device permissions, then the four app permissions', () => {

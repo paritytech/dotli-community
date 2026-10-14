@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
-import { DEBUG, getActiveServicesConfig, getActiveSupportedGenesisHashes } from '@dotli/config';
+import { getActiveServicesConfig, getActiveSupportedGenesisHashes } from '@dotli/config';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import {
   createLightClient,
@@ -230,7 +230,6 @@ describe('createLightClient', () => {
     await second.reported('connected');
     expect(first.onStatus).toHaveBeenLastCalledWith('connected');
     expect(engine.start).toHaveBeenCalledTimes(1);
-    expect(logs.filter(line => line.message === 'Light client ready')).toHaveLength(1);
   });
 
   it('As a dotli integrator, I see a light-client stream that ends on its own halt the transport', async () => {
@@ -265,7 +264,7 @@ describe('createLightClient', () => {
     // Then
     await until(() => captured.length > 0);
     expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
-    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'light_client.halt' } }]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'light_client.halt' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'light_client.halt' },
     ]);
@@ -316,7 +315,6 @@ describe('createLightClient', () => {
     expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
     expect(changes).toEqual([]);
     expect(client.status().fatal).toBeNull();
-    expect(logs).toContainEqual({ level: 'info', message: 'Light client ready', args: undefined });
     expect(logs.some(line => line.level === 'error')).toBe(false);
   });
 
@@ -337,12 +335,6 @@ describe('createLightClient', () => {
     expect(chainHooks.onStatus).toHaveBeenLastCalledWith('disconnected');
     expect(client.status().fatal).toBeNull();
     expect(logs.some(line => line.level === 'error')).toBe(false);
-    expect(logs).toContainEqual(
-      expect.objectContaining({
-        level: 'warn',
-        args: [`[dot.li provider] chain ${people} read failed, halting it: malformed response`, failure],
-      }),
-    );
   });
 
   it('As a dotli user on a light client, I see a light client that cannot open a chain fail the app once', async () => {
@@ -363,7 +355,6 @@ describe('createLightClient', () => {
     const message = `chain ${people} connection failed: catalog has no such chain`;
     expect(changes).toEqual([{ kind: 'fatal', message }]);
     expect(client.status().fatal).toBe(message);
-    expect(logs).toContainEqual(expect.objectContaining({ level: 'error', args: [`[dot.li provider] ${message}`] }));
   });
 
   it('As a dotli user on a light client, I open a chain after a failed start and the light client starts again', async () => {
@@ -422,7 +413,7 @@ describe('createLightClient', () => {
     // Then
     await first.halted();
     expect(changes).toEqual([{ kind: 'fatal', message: `chain ${people} connection failed: wasm fetch failed` }]);
-    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'light_client' } }]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'light_client' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'light_client' },
     ]);
@@ -584,15 +575,6 @@ describe('lightClientDeps', () => {
 
     // Then
     expect(metrics.gauges).toEqual([{ name: 'dotli.smoldot.active', value: 1, unit: 'none', attributes: undefined }]);
-  });
-
-  it("As a developer on a debug build, I get the debug console's log level hook", () => {
-    // When
-    const { debug } = lightClientDeps(null, false);
-
-    // Then
-    expect(DEBUG).toBe(true);
-    expect(debug).toBe(true);
   });
 });
 

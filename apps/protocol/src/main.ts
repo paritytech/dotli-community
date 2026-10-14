@@ -51,7 +51,7 @@ import { DB_NAME } from '@dotli/storage';
 
 import type { SWRelayRequest } from './worker-messages.js';
 import { connectSharedWorker } from './shared-worker-link.js';
-import { readSessionTuning } from './session-tuning.js';
+import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
 import { chainDetailEnvelope, chainSyncEnvelope } from './envelopes.js';
 import { createEngine, type ResponseCallback } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
@@ -262,12 +262,8 @@ async function initDirectMode(): Promise<void> {
     loadResolve(),
     loadLightClientService(),
   ]);
-  const lightClient = provider.createLightClient(
-    provider.lightClientDeps(
-      readSessionTuning(() => sessionStorage),
-      isLocalhost,
-    ),
-  );
+  const session = readSessionTuning(() => sessionStorage);
+  const lightClient = provider.createLightClient(provider.lightClientDeps(session, isLocalhost));
   const service = lightClientService.startLightClientService({
     lightClient,
     resolver: { createDotnsResolver: resolve.createDotnsResolver, enableSyncReporting: provider.enableSyncReporting },
@@ -320,6 +316,7 @@ async function initDirectMode(): Promise<void> {
       return Promise.resolve();
     },
     resolver: service.dotns,
+    syncBudgetCapMs: resolveBudgetCapMs(session),
   });
 
   // The iframe serves its one parent, so one scope holds every connection.

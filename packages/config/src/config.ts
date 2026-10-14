@@ -91,5 +91,3 @@ export function isSandboxOrigin(origin: string): boolean {
 }
 
 export const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
-
-export { TIMEOUTS } from './timeouts.js';

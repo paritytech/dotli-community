@@ -19,9 +19,11 @@ import {
   seedMixedTraffic,
   timelineBox,
   withFakeClock,
-} from '../.storybook/debug-panel-fixtures.js';
+} from './testing/stories/debug-panel-fixtures.js';
+import { debugPanelStory } from './testing/stories/debug-panel-story.js';
 
 const meta = {
+  ...debugPanelStory,
   title: 'Debug/Panel views',
   // The panel mounts on the page itself, as the host mounts it, so the canvas stays empty.
   tags: ['!autodocs'],
@@ -42,6 +44,7 @@ async function seeded(): Promise<void> {
   await waitFor(() => expect(rows()).toHaveLength(3));
 }
 
+/** As a developer using the debug panel, I switch between the timeline, the Resolution tab and the list and each takes the panel as it should. */
 export const ViewTabs: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -95,6 +98,7 @@ export const ViewTabs: Story = {
   },
 };
 
+/** As a developer using the debug panel, I pick the Diagnostics tab and the panel opens on it the next time it mounts. */
 export const StoredTabOpensNextTime: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ userEvent, step }) => {
@@ -115,6 +119,7 @@ export const StoredTabOpensNextTime: Story = {
   },
 };
 
+/** As a developer using the debug panel, I open the Archive tab with no product loaded and it takes the whole width and says so. */
 export const ArchiveFullWidth: Story = {
   play: async ({ userEvent, step }) => {
     await step('When I open the Archive tab with no product loaded', async () => {
@@ -137,6 +142,7 @@ export const ArchiveFullWidth: Story = {
   },
 };
 
+/** As a developer using the debug panel, I open the Diagnostics tab and it takes the whole width, and nothing is read while it is closed. */
 export const DiagnosticsFullWidth: Story = {
   play: async ({ userEvent, step }) => {
     await step('Given the Diagnostics tab is closed, nothing is read', async () => {
@@ -163,6 +169,7 @@ export const DiagnosticsFullWidth: Story = {
   },
 };
 
+/** As a developer using the debug panel, I click a timeline box and the detail pane shows its whole group. */
 export const TimelineClickShowsGroup: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>
@@ -195,6 +202,7 @@ export const TimelineClickShowsGroup: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I keep the timeline open and a new message shows in it. */
 export const TimelineLive: Story = {
   play: async ({ userEvent, step }) => {
     await step('Given the timeline is open', async () => {
@@ -209,6 +217,7 @@ export const TimelineLive: Story = {
   },
 };
 
+/** As a developer using the debug panel, I hover and click a timeline box while traffic streams in and the box, its tooltip and my click hold. */
 export const StreamingKeepsHoverAndClick: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -235,6 +244,7 @@ export const StreamingKeepsHoverAndClick: Story = {
   },
 };
 
+/** As a developer using the debug panel, I select a pending timeline box and the selection follows it when its call is answered. */
 export const TimelineSelectionAndPending: Story = {
   play: async ({ userEvent, step }) => {
     const { truapi } = debugPanel();
@@ -267,6 +277,7 @@ export const TimelineSelectionAndPending: Story = {
   },
 };
 
+/** As a developer using the debug panel, I hover a timeline box and its tooltip shows at once and hides when I leave or switch to the list. */
 export const TimelineHoverTooltip: Story = {
   play: async ({ userEvent, step }) => {
     await seeded();
@@ -296,6 +307,7 @@ export const TimelineHoverTooltip: Story = {
   },
 };
 
+/** As a developer using the debug panel, I watch a load and its elapsed time redraws on a tick, but not while the panel is collapsed. */
 export const ResolutionTicks: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>
@@ -304,7 +316,6 @@ export const ResolutionTicks: Story = {
       mount();
       part('td-section', 'resolution').click();
       await expect(within(part('td-res')).getByTestId('td-res-empty')).toBeInTheDocument();
-      let first = '';
       await step('When a load starts', () => {
         system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
         system('resolve', 'started', 'flow-res', { label: 'myapp', source: 'smoldot' });
@@ -313,26 +324,24 @@ export const ResolutionTicks: Story = {
       await step('Then the view shows it', async () => {
         await expect(within(part('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
         await expect(resolutionFact('name')).toBe('myapp');
-        first = resolutionFact('elapsed');
       });
-      let second = '';
       await step('When time passes with no events', () => {
         clock.advance(500);
-        second = resolutionFact('elapsed');
       });
       await step('Then the elapsed time redraws on its tick', async () => {
-        await expect(second).not.toBe(first);
+        await expect(resolutionFact('elapsed')).toBe('500ms');
       });
       await step('When the panel is collapsed and time passes', () => {
         part('td-collapse').click();
         clock.advance(1500);
       });
       await step('Then nothing redraws', async () => {
-        await expect(resolutionFact('elapsed')).toBe(second);
+        await expect(resolutionFact('elapsed')).toBe('500ms');
       });
     }),
 };
 
+/** As a developer using the debug panel, I see each phase of a load as a block with the last one open, and a failure closes it with the reason as a tooltip. */
 export const ResolutionChart: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>
@@ -378,6 +387,7 @@ export const ResolutionChart: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I watch an in-flight load and ticks redraw its blocks in the same nodes, then nothing changes once it finishes. */
 export const ResolutionRedrawKeepsNodes: Story = {
   parameters: { debugPanel: { mount: false } },
   play: async ({ step }) =>
@@ -400,9 +410,12 @@ export const ResolutionRedrawKeepsNodes: Story = {
         clock.frame();
         block = relayBlock();
         width = block?.getBoundingClientRect().width ?? 0;
-        await expect(info()?.getAttribute('data-tooltip')).toBeTruthy();
+        await expect(info()).toHaveAttribute(
+          'data-tooltip',
+          'The duration of the whole load, from the host starting up to the app being on screen.',
+        );
         await expect(info()).toHaveAttribute('data-tooltip-prose');
-        await expect(block?.title).not.toBe('');
+        await expect(block).toHaveAttribute('title', 'connecting for 300ms\nfrom 0ms to 300ms');
       });
       const infoNode = info();
       await step('When a tick passes', () => {
@@ -410,7 +423,7 @@ export const ResolutionRedrawKeepsNodes: Story = {
       });
       await step('Then the closed block narrows as the axis grows, in the same node', async () => {
         await expect(relayBlock()).toBe(block);
-        await expect(block?.getBoundingClientRect().width).not.toBe(width);
+        await expect(block?.getBoundingClientRect().width).toBeLessThan(width);
         await expect(info()).toBe(infoNode);
       });
       let changes: ReturnType<typeof countMutations> | undefined;

@@ -59,7 +59,7 @@ export interface LoadingScreen {
   initPhases: (phases: LoadingPhase[]) => void;
   setLoadingDomain: (domain: string) => void;
   advancePhase: (index: number) => void;
-  nudgePhaseProgress: (fraction: number, stage: 'relay' | 'content') => void;
+  nudgePhaseProgress: (fraction: number, stage: 'starting' | 'content') => void;
   releasePhaseProgress: () => void;
   setLoadingStage: (stage: 'preparing') => void;
   setLoadingWarning: (message: string) => void;
@@ -360,10 +360,11 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
         }
         return;
       case 'warpSyncProgress': {
-        // The one true percentage smoldot offers.
+        // The one true percentage smoldot offers. Adding the relay happens inside the starting band, so its warp
+        // fills that band.
         const { at, target } = event;
         if (event.chain === 'relay' && at !== undefined && target !== undefined && target > 0 && at <= target) {
-          loading.nudgePhaseProgress(at / target, 'relay');
+          loading.nudgePhaseProgress(at / target, 'starting');
         }
         return;
       }
@@ -380,7 +381,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
       case 'warpSyncFinished':
         // The last sample lands short of the target, which would leave the band just below full.
         if (event.chain === 'relay') {
-          loading.nudgePhaseProgress(1, 'relay');
+          loading.nudgePhaseProgress(1, 'starting');
         }
         return;
       case 'connecting':

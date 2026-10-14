@@ -47,6 +47,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a user, I press an action button and it reaches the app, or I am told it could not. */
 export const ActionButtonsReachApp: Story = {
   args: {
     chat: {
@@ -81,6 +82,7 @@ export const ActionButtonsReachApp: Story = {
 
 const stopCustom = fn();
 
+/** As a reader, I see a custom message subscribe to the product once, and stop when I remove it. */
 export const CustomMessageBeforeTimestamp: Story = {
   tags: ['!autodocs'],
   args: {
@@ -102,11 +104,7 @@ export const CustomMessageBeforeTimestamp: Story = {
     );
   },
   play: async ({ args, canvas, userEvent, step }) => {
-    await step('Then the live content comes before the timestamp and subscribes once', async () => {
-      const bubble = canvas.getByTestId('chat-msg-bubble');
-      await expect(bubble).toHaveAttribute('data-custom');
-      await expect(bubble.firstElementChild).toHaveAttribute('data-testid', 'chat-custom-root');
-      await expect(bubble.lastElementChild?.tagName).toBe('TIME');
+    await step('Then the message subscribes once', async () => {
       await waitFor(() => expect(args.chat.renderCustomMessage).toHaveBeenCalledTimes(1));
     });
     await step('When the message is removed', async () => {

@@ -4,7 +4,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveTldSuffix, isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
-import { createLoadingController, type LoadingController, type LoadingPhase } from './loading-controller.js';
+import {
+  createLoadingController,
+  ERASE_MS,
+  FADE_MS,
+  MESSAGE_ROTATE_MS,
+  PROGRESS_STALL_MS,
+  TYPE_MS,
+  type LoadingController,
+  type LoadingPhase,
+} from './loading-controller.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { PageContent } from '@dotli/ui';
@@ -15,13 +24,6 @@ import type { StepPart } from './state/loading.js';
 const rethrow = (error: unknown): never => {
   throw error;
 };
-
-// Mirrors of the constants in loading-controller.ts.
-const STALL_MS = 4_000;
-const ROTATE_MS = 9_000;
-const ERASE_MS = 1_400;
-const TYPE_MS = 3_600;
-const FADE_MS = 300;
 
 const SANDBOX_ORIGIN = 'http://myapp.app.localhost:5173';
 
@@ -147,7 +149,7 @@ describe('The loading controller drives the loading store', () => {
     expect(store.getLoadingState().srText).toBe('Connecting to Polkadot');
 
     // When
-    vi.advanceTimersByTime(ROTATE_MS * 5);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 5);
 
     // Then
     expect(step()).toEqual(['Connecting to Polkadot']);
@@ -187,7 +189,7 @@ describe('The loading controller drives the loading store', () => {
     ctl.setLoadingStage('relay');
 
     // When the first explanation is due and has had time to type
-    vi.advanceTimersByTime(ROTATE_MS + TYPE_MS + 100);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS + TYPE_MS + 100);
 
     // Then it typed in a piece at a time from empty
     expect(seen).toContain('Look');
@@ -195,7 +197,7 @@ describe('The loading controller drives the loading store', () => {
     expect(store.getLoadingState().explanationOpacity).toBe(1);
 
     // When the next turn has erased the line and typed the next one
-    vi.advanceTimersByTime(ROTATE_MS + ERASE_MS);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS + ERASE_MS);
 
     // Then
     expect(seen).toContain('Looking for');
@@ -206,7 +208,7 @@ describe('The loading controller drives the loading store', () => {
   it("As a visitor, a new stage swaps the step line at once and drops the last stage's explanation mid-type", () => {
     // Given an explanation half typed
     ctl.setLoadingStage('relay');
-    vi.advanceTimersByTime(ROTATE_MS + TYPE_MS / 2);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS + TYPE_MS / 2);
     expect(explanation()).not.toBe('');
 
     // When
@@ -219,7 +221,7 @@ describe('The loading controller drives the loading store', () => {
     expect(store.getLoadingState().srText).toBe('Found it');
 
     // When time passes short of the next turn
-    vi.advanceTimersByTime(ROTATE_MS - 100);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS - 100);
 
     // Then nothing of the old stage was typed back in
     expect(explanation()).toBe('');
@@ -231,7 +233,7 @@ describe('The loading controller drives the loading store', () => {
     ctl.setLoadingStage('relay');
 
     // When
-    vi.advanceTimersByTime(ROTATE_MS);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS);
 
     // Then
     expect(explanation()).toBe('Looking for other computers to talk to');
@@ -255,7 +257,13 @@ describe('The loading controller drives the loading store', () => {
 
     // When
     ctl.advancePhase(0);
-    vi.advanceTimersByTime(STALL_MS + 100);
+    vi.advanceTimersByTime(PROGRESS_STALL_MS - 1);
+
+    // Then
+    expect(onStall).not.toHaveBeenCalled();
+
+    // When
+    vi.advanceTimersByTime(1);
 
     // Then
     expect(onStall).toHaveBeenCalledTimes(1);
@@ -408,7 +416,7 @@ describe('The loading controller drives the loading store', () => {
     // When
     ctl.hideLoading();
     const frozen = store.getLoadingState();
-    vi.advanceTimersByTime(ROTATE_MS * 5);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 5);
 
     // Then
     expect(frozen.phase).toBe('gone');
@@ -416,7 +424,7 @@ describe('The loading controller drives the loading store', () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
-  it('As the shell, a late signal after the loading screen was hidden starts no timer', () => {
+  it('As the shell, a late signal after the loading screen was hidden changes nothing on screen', () => {
     // Given a load whose screen has gone
     ctl.initPhases([
       { label: 'a', base: 5, target: 50, expectedMs: 60_000, stage: 'relay' },
@@ -428,19 +436,23 @@ describe('The loading controller drives the loading store', () => {
         stage: 'content',
       },
     ]);
+    const onStall = vi.fn();
+    ctl.onProgressStall(onStall);
     ctl.advancePhase(0);
     ctl.hideLoading();
-    expect(vi.getTimerCount()).toBe(0);
 
     // When late signals arrive: content bytes, a progress fraction and a
     // phase change
     ctl.setLoadingStage('preparing');
     ctl.advancePhase(1);
     ctl.nudgePhaseProgress(0.5, 'content');
+    const afterSignals = store.getLoadingState();
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 5);
 
-    // Then no rotation, typing frame, crawl or stall watch was started
-    expect(vi.getTimerCount()).toBe(0);
-    expect(store.getLoadingState().phase).toBe('gone');
+    // Then time passing moves nothing: no rotation, typing frame, crawl or stall watch runs
+    expect(afterSignals.phase).toBe('gone');
+    expect(store.getLoadingState()).toEqual(afterSignals);
+    expect(onStall).not.toHaveBeenCalled();
   });
 
   it('As the shell, a full-page screen shown before the load started takes the static screen down', () => {
@@ -458,7 +470,7 @@ describe('The loading controller drives the loading store', () => {
     // Given an explanation mid-turn
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     ctl.advancePhase(0);
-    vi.advanceTimersByTime(ROTATE_MS + TYPE_MS / 2);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS + TYPE_MS / 2);
     const midTurn = explanation();
 
     // When
@@ -469,7 +481,7 @@ describe('The loading controller drives the loading store', () => {
     expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
     const settled = explanation();
-    vi.advanceTimersByTime(ROTATE_MS * 3);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 3);
     expect(explanation()).toBe(settled);
     expect(store.getLoadingState().explanationOpacity).toBe(1);
     expect(midTurn).not.toBe('');
@@ -526,23 +538,6 @@ describe('The loading bar reports when it stops moving', () => {
     vi.useRealTimers();
   });
 
-  it('As a user whose load has parked, I am told the percentage it stuck at', () => {
-    // Given
-    const stalls: number[] = [];
-    ctl.initPhases(STALL_PHASES);
-    ctl.onProgressStall(pct => {
-      stalls.push(pct);
-    });
-
-    // When
-    ctl.advancePhase(1);
-    vi.advanceTimersByTime(STALL_MS + 100);
-
-    // Then
-    expect(stalls.length).toBe(1);
-    expect(Math.round(nth(stalls, 0))).toBeGreaterThanOrEqual(10);
-  });
-
   it('As a user whose load is still moving, I am not warned', () => {
     // Given
     const stalls: number[] = [];
@@ -572,9 +567,9 @@ describe('The loading bar reports when it stops moving', () => {
     ctl.advancePhase(1);
 
     // When
-    vi.advanceTimersByTime(STALL_MS + 100);
+    vi.advanceTimersByTime(PROGRESS_STALL_MS + 100);
     ctl.nudgePhaseProgress(0.5, 'content');
-    vi.advanceTimersByTime(STALL_MS + 100);
+    vi.advanceTimersByTime(PROGRESS_STALL_MS + 100);
 
     // Then
     expect(stalls.length).toBe(2);
@@ -593,7 +588,7 @@ describe('The loading bar reports when it stops moving', () => {
     ctl.advancePhase(1);
     ctl.nudgePhaseProgress(1, 'content');
     ctl.stopProgressWatch();
-    vi.advanceTimersByTime(STALL_MS * 3);
+    vi.advanceTimersByTime(PROGRESS_STALL_MS * 3);
 
     // Then
     expect(stalls).toEqual([]);
@@ -627,7 +622,7 @@ describe('The loading bar never stands still', () => {
     expect(frozen).toEqual([]);
   });
 
-  it('As a user, the creeping number never claims more than the step it is in', () => {
+  it('As a user whose current step counts bytes, the creeping number never claims more than the step', () => {
     // Given
     ctl.initPhases(STALL_PHASES);
     ctl.advancePhase(1);

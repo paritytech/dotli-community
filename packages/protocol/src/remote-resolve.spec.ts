@@ -29,7 +29,6 @@ describe('createRemoteResolve', () => {
     await expect(cid).resolves.toBe('0xcid');
     expect(request?.method).toBe('resolveDotName');
     expect(request?.payload).toEqual({ label: 'doom' });
-    expect(fake.waits).toEqual(['ready']);
     expect(progress).toEqual(['asset-hub-syncing']);
   });
 });

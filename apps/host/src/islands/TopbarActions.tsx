@@ -18,7 +18,7 @@ import { SettingsButton } from './SettingsButton.js';
  * What the bar gives the surfaces in it: their popovers and menus keep the auto-hiding bar up while open, and a phone
  * sheet whose trigger left the page hands focus to the product.
  */
-export function TopbarProviders(props: { children: JSX.Element }): JSX.Element {
+function TopbarProviders(props: { children: JSX.Element }): JSX.Element {
   return (
     <LayerTracker value={registerTopbarSurface}>
       <ModalFocusFallback value={productFrameFocus}>{props.children}</ModalFocusFallback>

@@ -77,7 +77,7 @@ describe('idbTransaction', () => {
     });
 
     // Then
-    await expect(aborted).rejects.toBeInstanceOf(Error);
+    await expect(aborted).rejects.toThrow('IndexedDB transaction aborted');
   });
 
   it('As a store, I write in a body that then throws and get its error with nothing committed', async () => {
@@ -104,6 +104,37 @@ describe('idbTransaction', () => {
 
     // Then
     await expect(closed).rejects.toMatchObject({ name: 'InvalidStateError' });
+  });
+});
+
+describe('openIdb', () => {
+  it('As a store, I leave no stray connection behind after an open is blocked and succeeds late', async () => {
+    // Given an open blocked by an older tab, which then closes so the open goes through unowned
+    const factory = new IDBFactory();
+    const olderTab = await openIdb(factory, 'late', 1, created => {
+      created.createObjectStore(STORE);
+    });
+    await expect(
+      openIdb(factory, 'late', 2, created => {
+        created.createObjectStore('more');
+      }),
+    ).rejects.toThrow('Failed to open late DB: blocked by another tab');
+    olderTab.close();
+
+    // When another tab upgrades the schema further
+    const upgrade = await new Promise<'blocked' | 'upgraded'>(resolve => {
+      const req = factory.open('late', 3);
+      req.onblocked = () => {
+        resolve('blocked');
+      };
+      req.onsuccess = () => {
+        req.result.close();
+        resolve('upgraded');
+      };
+    });
+
+    // Then no leftover connection holds it up
+    expect(upgrade).toBe('upgraded');
   });
 });
 

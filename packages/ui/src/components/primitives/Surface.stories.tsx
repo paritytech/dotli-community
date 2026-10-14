@@ -64,7 +64,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see the small popover surface. */
 export const Small: Story = { args: { width: 'sm' } };
+/** As a dotli user, I read a popover surface with its title, body and footer. */
 export const Medium: Story = {
   args: { testId: 'surface' },
   play: async ({ canvas, step }) => {
@@ -77,8 +79,11 @@ export const Medium: Story = {
     });
   },
 };
+/** As a dotli user, I see the large popover surface. */
 export const Large: Story = { args: { width: 'lg' } };
+/** As a dotli user, I see the extra large popover surface. */
 export const ExtraLarge: Story = { args: { width: 'xl' } };
+/** As a phone user, I hear the title once, since the surface in a sheet leaves it to the sheet. */
 export const InSheet: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],

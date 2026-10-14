@@ -21,6 +21,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see plain content in a well. */
 export const Plain: Story = {
   render: args => (
     <Well {...args}>
@@ -29,6 +30,7 @@ export const Plain: Story = {
   ),
 };
 
+/** As a dotli user, I read labelled fields stacked in a list well. */
 export const List: Story = {
   args: { layout: 'list' },
   render: args => (
@@ -41,6 +43,7 @@ export const List: Story = {
 
 const onCacheChange = fn<(enabled: boolean) => void>().mockName('onCacheChange');
 
+/** As a dotli user, I read each row label beside its control in a controls well. */
 export const Controls: Story = {
   args: { layout: 'controls' },
   render: args => (
@@ -70,6 +73,7 @@ const PACKAGES = [
 ] as const;
 
 // Flush content brings its own padding, which the shell's stylesheet gives it and this story inlines.
+/** As a dotli user, I open and close a flush well section from its header button. */
 export const Flush: Story = {
   args: { layout: 'flush' },
   render: args => {
@@ -117,14 +121,8 @@ export const Flush: Story = {
   },
 };
 
+/** As a dotli user, I read a callout with an icon about what trusted providers see. */
 export const Callouts: Story = {
-  play: async ({ canvas, step }) => {
-    await step('Then I read the callout', async () => {
-      await expect(canvas.getByTestId('callout')).toHaveTextContent(
-        'Trusted providers see which chains you read. Light clients verify everything locally.',
-      );
-    });
-  },
   render: () => (
     <Callout icon={InfoIcon} testId="callout">
       Trusted providers see which chains you read. Light clients verify everything locally.

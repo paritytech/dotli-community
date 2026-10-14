@@ -6,21 +6,21 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
 import type { PermissionStatus } from '../../runtime/permissions.js';
-import { expectPhone, openSurface, reachable } from '../../../.storybook/topbar-frame.js';
-import { GroupFrame, moreRow, openMore } from '../../../.storybook/frames.js';
+import { expectPhone, openSurface } from '../../testing/stories/topbar-frame.js';
+import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
 import {
   givenApp,
   resetStoryPermissions,
   STORY_PERMISSIONS,
   storyPermissions,
-} from '../../../.storybook/permissions-fixtures.js';
+} from '../../testing/stories/permissions-fixtures.js';
 import {
   DEFAULT_SETTINGS,
   givenSettings,
   resetStorySettings,
   storySettings,
-} from '../../../.storybook/settings-fixtures.js';
-import { resetStoryNetwork, setHealth, storyNetwork } from '../../../.storybook/network-fixtures.js';
+} from '../../testing/stories/settings-fixtures.js';
+import { resetStoryNetwork, storyNetwork } from '../../testing/stories/network-fixtures.js';
 import { NetworkItem } from '../chains/NetworkItem.js';
 import { PermissionsItem } from '../permissions/PermissionsItem.js';
 import { SettingsItem } from '../settings/SettingsItem.js';
@@ -68,6 +68,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a user, I press More and see the actions that do not fit in the bar. */
 export const Open: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
@@ -75,6 +76,7 @@ export const Open: Story = {
   },
 };
 
+/** As a phone user, I press More and see a sheet of the actions that do not fit in the bar. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -84,6 +86,10 @@ export const OpenPhone: Story = {
   },
 };
 
+/**
+ * As a user, I choose the Settings row in More and Settings opens in More's place, and Escape hands my focus back to
+ * More.
+ */
 export const RowOpensCollapsedPopover: Story = {
   tags: ['!autodocs'],
   play: async ({ userEvent, step }) => {
@@ -107,61 +113,9 @@ export const RowOpensCollapsedPopover: Story = {
   },
 };
 
-/** As a phone user choosing Permissions in More before any popover opened, the permissions sheet takes More's place. */
-export const PhoneRowFirstOpening: Story = {
-  tags: ['!autodocs'],
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  render: () => (
-    <GroupFrame room={40}>
-      <StoryPermissions />
-    </GroupFrame>
-  ),
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('Given Permissions collapsed into More and More open', async () => {
-      await reachable(query(document, '#more-button'));
-      await userEvent.click(query(document, '#more-button'));
-      await waitFor(() => expect(query(document, '#more-popover')).toHaveAttribute('data-open'));
-    });
-    await step('When I tap the Permissions row', async () => {
-      await userEvent.click(query(document, '#more-popover [role="menuitem"][data-item="permissions"]'));
-    });
-    await step("Then Permissions took More's place, both marked as a hand-off", async () => {
-      const sheet = query(document, '#permissions-popover');
-      await waitFor(() => expect(sheet).toHaveAttribute('data-open'));
-      await expect(sheet).toHaveAttribute('data-handoff');
-      const more = query(document, '#more-popover');
-      await expect(more).not.toHaveAttribute('data-open');
-      await expect(more).toHaveAttribute('data-handoff');
-    });
-  },
-};
-
-/** As a mobile user, the More menu's Permissions row opens the permissions popover with its content. */
-export const PermissionsRowOpens: Story = {
-  tags: ['!autodocs'],
-  play: async ({ userEvent, step }) => {
-    await step('Given More is open', async () => {
-      await reachable(query(document, '#more-button'));
-      await userEvent.click(query(document, '#more-button'));
-      await waitFor(() => expect(document.getElementById('more-popover')).toHaveAttribute('data-open'));
-    });
-    await step('When I choose the Permissions row', async () => {
-      await userEvent.click(query(document, '#more-popover [data-item="permissions"]'));
-    });
-    await step('Then More closed and Permissions is open with its content', async () => {
-      await waitFor(() => expect(document.getElementById('permissions-popover')).toHaveAttribute('data-open'));
-      await expect(document.getElementById('more-popover')).not.toHaveAttribute('data-open');
-      await waitFor(() =>
-        expect(query(document, '#permissions-popover [data-testid="permissions-popover-row"]')).toBeVisible(),
-      );
-    });
-  },
-};
-
 /**
- * As a phone user with the permissions button in More, its row carries the grants mark while the app has a grant,
- * More raises none, and the row opens the panel with every permission and its status.
+ * As a phone user with the permissions button in More, I see its row carry the grants mark while the app has a grant,
+ * and open the panel with every permission and its status.
  */
 export const PhoneRowMarksGrants: Story = {
   tags: ['!autodocs'],
@@ -206,8 +160,8 @@ export const PhoneRowMarksGrants: Story = {
 };
 
 /**
- * As a mobile user who opened the settings from the More menu, the sheet takes focus, and closing it by Close or
- * Escape hands focus back to the More button, since the settings button is collapsed.
+ * As a mobile user who opened the settings from More, I get focus in the sheet and get it back on More when I close it
+ * by Close or Escape.
  */
 export const SettingsFromMoreHandsFocusBack: Story = {
   tags: ['!autodocs'],
@@ -247,7 +201,10 @@ export const SettingsFromMoreHandsFocusBack: Story = {
   },
 };
 
-/** As a phone user with the settings button in More, its row carries the unverified mark while the session is unverified. */
+/**
+ * As a phone user with the settings button in More, I see its row carry the unverified mark while the session is
+ * unverified.
+ */
 export const PhoneRowMarksUnverified: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -273,37 +230,6 @@ export const PhoneRowMarksUnverified: Story = {
     });
     await step('Then the row has no mark', async () => {
       await waitFor(() => expect(moreRow('settings').querySelector('[data-testid="more-row-aside"]')).toBeNull());
-    });
-  },
-};
-
-/**
- * As a phone user with the network button in More, its row says the health in a word, and a warning raises More's
- * badge and its name.
- */
-export const PhoneRowCarriesVerdict: Story = {
-  tags: ['!autodocs'],
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  render: () => (
-    <GroupFrame room={40}>
-      <NetworkItem {...storyNetwork} />
-    </GroupFrame>
-  ),
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    const aside = (): HTMLElement => within(moreRow('network')).getByTestId('more-row-aside');
-    await step('Given no chain in use, with More open', async () => {
-      await openMore(userEvent);
-      await expect(aside()).toHaveTextContent('Not in use');
-      await expect(byId('more-button')).toHaveAttribute('aria-label', 'More');
-    });
-    await step('When a chain in use stalls', () => {
-      setHealth('warn');
-    });
-    await step('Then the row says Unstable and More carries the warning badge in its name', async () => {
-      await waitFor(() => expect(aside()).toHaveTextContent('Unstable'));
-      await expect(byId('more-button')).toHaveAttribute('data-tone', 'warn');
-      await expect(byId('more-button')).toHaveAttribute('aria-label', 'More, network unstable');
     });
   },
 };

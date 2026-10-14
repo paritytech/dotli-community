@@ -5,6 +5,7 @@ import { test as base, expect, type Page, type Frame } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { STATE_FILE } from './paths.js';
 import { E2E_CHAIN_BACKEND, initializeChainBackend } from '../helpers/chain-backend.js';
+import { answerAccountDialog } from '../helpers/signing.js';
 
 const PORT = process.env['PORT'] ?? '5173';
 const HOST = process.env['E2E_HOST'] ?? 'host-playground';
@@ -15,45 +16,11 @@ const USER_BADGE_TIMEOUT_MS = 15_000;
 // Every new context downloads the product's CAR from the public gateway again, which takes up to ~23s on CI.
 const PRODUCT_IFRAME_TIMEOUT_MS = 60_000;
 // The product asks for its account right after rendering, and a click during that host modal hits its backdrop.
-const HOST_MODAL_QUIET_MS = 750;
 const HOST_MODAL_SETTLE_TIMEOUT_MS = 15_000;
 
-/** Clicks the lasting grant of every permission modal that appears, until stopped. */
-function startAutoAllow(page: Page): () => void {
-  // A function, since TypeScript would narrow a plain flag set only in the stop closure to `false`.
-  const stop = new AbortController();
-  const stopped = (): boolean => stop.signal.aborted;
-  const POLL_MS = 300;
-  void (async () => {
-    while (!stopped()) {
-      try {
-        // Lasting grants only, so a test's later operations are not prompted again.
-        const allow = page.getByRole('button', {
-          name: /^(Always allow|Allow)$/,
-        });
-        const visible = await allow
-          .first()
-          .isVisible({ timeout: POLL_MS })
-          .catch(() => false);
-        if (visible) {
-          await allow
-            .first()
-            .click({ timeout: 2_000 })
-            .catch(() => {});
-        } else {
-          await page.waitForTimeout(POLL_MS);
-        }
-      } catch {
-        if (!stopped()) {
-          await page.waitForTimeout(POLL_MS);
-        }
-      }
-    }
-  })();
-  return () => {
-    stop.abort();
-  };
-}
+// The worker's pages that shared the product account. The core keeps the account it fetched for the session, so only
+// a worker's first frame is asked, and a host that stops asking fails that worker's first test.
+const accountShared = new WeakSet<Page>();
 
 /** The first frame other than `previous` that shows the playground's heading, or null. */
 async function visiblePlaygroundFrame(page: Page, previous: Frame | undefined): Promise<Frame | null> {
@@ -95,20 +62,8 @@ export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number, 
   return seen.frame;
 }
 
-/** The auto-allow poller answers the prompts meanwhile. */
 async function waitForHostModalsSettled(page: Page): Promise<void> {
-  const backdrop = page.getByTestId('signing-modal-backdrop');
-  const deadline = Date.now() + HOST_MODAL_SETTLE_TIMEOUT_MS;
-  let quietSince = Date.now();
-  while (Date.now() < deadline) {
-    if ((await backdrop.count()) > 0) {
-      quietSince = Date.now();
-    } else if (Date.now() - quietSince >= HOST_MODAL_QUIET_MS) {
-      return;
-    }
-    await page.waitForTimeout(100);
-  }
-  console.log(`[productFrame] host modal still open after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`);
+  await expect(page.getByTestId('signing-modal-backdrop')).toHaveCount(0, { timeout: HOST_MODAL_SETTLE_TIMEOUT_MS });
 }
 
 /** A test that sends the page to another product calls this to hand the next test a host-playground page. */
@@ -120,12 +75,6 @@ export async function openHostPlayground(page: Page): Promise<void> {
   await page.goto(productHostUrl, {
     timeout: 60_000,
   });
-  if (E2E_CHAIN_BACKEND === 'rpc-gateway') {
-    await page
-      .getByRole('button', { name: 'Switch to Gateway' })
-      .click({ timeout: 5_000 })
-      .catch(() => {});
-  }
 
   const restoreStart = Date.now();
   await page
@@ -196,13 +145,8 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
 
       await openHostPlayground(page);
 
-      // Plain `runTest` reads don't click the permission modal the first signing-capable call opens, and would
-      // stick behind its backdrop.
-      const stopAutoAllow = startAutoAllow(page);
-
       await use(page);
 
-      stopAutoAllow();
       await ctx.close();
     },
     { scope: 'worker' },
@@ -212,15 +156,26 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
     async ({ pairedPage }, use) => {
       const start = Date.now();
       const frame = await waitForHostPlaygroundFrame(pairedPage, PRODUCT_IFRAME_TIMEOUT_MS);
+      if (!accountShared.has(pairedPage)) {
+        await answerAccountDialog(pairedPage, HOST_MODAL_SETTLE_TIMEOUT_MS);
+        // A request made before the fetched account comes back is asked again, so the frame is handed over only once
+        // the product holds its account, which the balance card shows as its default address.
+        await expect(frame.getByTestId('arg-chain-query-balance-address')).not.toHaveValue('', {
+          timeout: HOST_MODAL_SETTLE_TIMEOUT_MS,
+        });
+        accountShared.add(pairedPage);
+      }
       await waitForHostModalsSettled(pairedPage);
       console.log(`[productFrame] iframe ready in ${String(Date.now() - start)}ms`);
       await use(frame);
+      // A dialog still open fails the test that left it, not the next one.
+      await expect(pairedPage.getByTestId('signing-modal-backdrop')).toHaveCount(0);
     },
     // Test-scoped, since a product handoff or reload replaces the iframe. Its own timeout, since a gateway download
     // can exceed the test's.
     {
       scope: 'test',
-      timeout: PRODUCT_IFRAME_TIMEOUT_MS + HOST_MODAL_SETTLE_TIMEOUT_MS + 10_000,
+      timeout: PRODUCT_IFRAME_TIMEOUT_MS + 3 * HOST_MODAL_SETTLE_TIMEOUT_MS + 10_000,
     },
   ],
 });

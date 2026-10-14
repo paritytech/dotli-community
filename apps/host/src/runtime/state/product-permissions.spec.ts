@@ -49,14 +49,16 @@ interface FakeCore {
   holdReads: boolean;
   heldReads: (() => void)[];
   failWrite: (name: string) => Error | null;
-  /** Resolves at the next read the core is asked for. */
-  nextRead: () => Promise<void>;
+  /** Set to hold every write until it resolves. */
+  writeGate: Promise<void> | null;
+  /** Resolves at the next read the core is asked for, with what the core held when asked. */
+  nextRead: () => Promise<ReadonlyMap<string, PermissionAuthorizationStatus>>;
 }
 
 const cleanups: (() => void)[] = [];
 
 function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorizationStatus> = {}): FakeCore {
-  const readWaiters: (() => void)[] = [];
+  const readWaiters: ((held: ReadonlyMap<string, PermissionAuthorizationStatus>) => void)[] = [];
   const core: FakeCore = {
     stored: new Map(Object.entries(initial)),
     reads: 0,
@@ -64,6 +66,7 @@ function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorization
     holdReads: false,
     heldReads: [],
     failWrite: () => null,
+    writeGate: null,
     nextRead: () =>
       new Promise(resolve => {
         readWaiters.push(resolve);
@@ -74,7 +77,7 @@ function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorization
       getPermissionAuthorizationStatuses: requests => {
         core.reads += 1;
         for (const woken of readWaiters.splice(0)) {
-          woken();
+          woken(new Map(core.stored));
         }
         // A snapshot taken now, as the core would answer for the moment it was asked.
         const answer = requests.map(request => core.stored.get(nameOf(request)) ?? 'NotDetermined');
@@ -92,9 +95,15 @@ function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorization
         if (failure !== null) {
           return Promise.reject(failure);
         }
-        core.writes.push({ name: nameOf(request), status });
-        core.stored.set(nameOf(request), status);
-        return Promise.resolve();
+        const store = (): void => {
+          core.writes.push({ name: nameOf(request), status });
+          core.stored.set(nameOf(request), status);
+        };
+        if (core.writeGate === null) {
+          store();
+          return Promise.resolve();
+        }
+        return core.writeGate.then(store);
       },
     }),
   );
@@ -456,42 +465,26 @@ describe('product permissions store', () => {
   });
 
   it('As a product whose prompt was torn down mid-write, a refresh waits for the write to settle before it reads', async () => {
-    // Given
+    // Given: a prompt's write held in the core, and the prompt torn down
     const core = fakeCore();
     await loaded();
     const write = Promise.withResolvers<undefined>();
-    const store = core.stored;
-    const registered = registerPermissionAuthorizationProvider(LABEL, {
-      getPermissionAuthorizationStatuses: requests => {
-        core.reads += 1;
-        return Promise.resolve(requests.map(request => store.get(nameOf(request)) ?? 'NotDetermined'));
-      },
-      setPermissionAuthorizationStatus: async (request, status) => {
-        await write.promise;
-        store.set(nameOf(request), status);
-      },
-    });
-    cleanups.push(registered);
-    const readsBefore = core.reads;
+    core.writeGate = write.promise;
     const prompt = new AbortController();
     const decision = recordPromptDecision(LABEL, 'Camera', 'granted', prompt.signal);
     decision.catch(() => undefined);
-
-    // When
     prompt.abort(new DOMException('Blocking modal scope disposed', 'AbortError'));
+    const readsBefore = core.reads;
+    const refreshRead = core.nextRead();
     const refresh = refreshProductPermissions();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    // Then
-    expect(core.reads).toBe(readsBefore);
 
     // When
     write.resolve(undefined);
+
+    // Then: the refresh reads once, and the core already holds the written grant when it does
+    expect((await refreshRead).get('Camera')).toBe('Authorized');
     await expect(decision).rejects.toThrow('Blocking modal scope disposed');
     await refresh;
-
-    // Then
     expect(core.reads).toBe(readsBefore + 1);
     expect(productPermissionsStore.get()).toMatchObject({ statuses: statuses({ Camera: 'granted' }) });
   });

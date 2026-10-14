@@ -69,7 +69,7 @@ describe('account names', () => {
     expect(name).toBe('alice');
   });
 
-  it('As a user with a bare session, I get no name and no address, since too short a value is not shortened', () => {
+  it('As a user with a bare session, I get no name', () => {
     // Given
     const bare = {};
 
@@ -78,6 +78,13 @@ describe('account names', () => {
 
     // Then
     expect(name).toBeUndefined();
-    expect(shortenAccount('0x0102')).toBeUndefined();
+  });
+
+  it('As a user with a short account value, I get no shortened address', () => {
+    // When
+    const shortened = shortenAccount('0x0102');
+
+    // Then
+    expect(shortened).toBeUndefined();
   });
 });

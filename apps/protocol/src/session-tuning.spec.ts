@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
-import { readSessionTuning } from './session-tuning.js';
+import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
 
 describe('readSessionTuning', () => {
   it('As a visitor whose browser blocks frame storage, my direct-mode light client still starts, with its default tuning', () => {
@@ -37,5 +37,25 @@ describe('readSessionTuning', () => {
 
     // Then
     expect(session?.getItem('dotli:truapi-provider-log')).toBe('debug');
+  });
+});
+
+describe('resolveBudgetCapMs', () => {
+  it.each([
+    ['a positive whole number of milliseconds', '1000', 1000],
+    ['no key', null, undefined],
+    ['a value that is not a number', 'soon', undefined],
+    ['zero', '0', undefined],
+  ])('As a tester, %s in the session gives a resolve budget cap of %j', (_case, raw, cap) => {
+    // Given
+    const session = { getItem: (key: string) => (key === 'dotli:resolve-budget-ms' ? raw : null) };
+
+    // When / Then
+    expect(resolveBudgetCapMs(session)).toBe(cap);
+  });
+
+  it('As a tester whose browser blocks frame storage, I get no resolve budget cap', () => {
+    // When / Then
+    expect(resolveBudgetCapMs(null)).toBeUndefined();
   });
 });

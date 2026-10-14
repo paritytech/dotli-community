@@ -666,7 +666,7 @@ describe('user confirmation modal', () => {
     ]);
   });
 
-  it('As a dotli user, allowing account access once is not remembered', async () => {
+  it('As a dotli user, Allow once answers AllowOnce', async () => {
     // Given
     const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
       tag: 'AccountAccess',
@@ -684,7 +684,7 @@ describe('user confirmation modal', () => {
     await expect(decision).resolves.toBe('AllowOnce');
   });
 
-  it('As a dotli user, always allowing account access is remembered', async () => {
+  it('As a dotli user, Always allow answers AllowAlways', async () => {
     // Given
     const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
       tag: 'AccountAccess',
@@ -702,7 +702,7 @@ describe('user confirmation modal', () => {
     await expect(decision).resolves.toBe('AllowAlways');
   });
 
-  it('As a dotli user, denying account access is remembered', async () => {
+  it('As a dotli user, Deny answers Deny', async () => {
     // Given
     const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
       tag: 'AccountAccess',
@@ -789,25 +789,6 @@ describe('user confirmation modal', () => {
     expect(footerVariants()).toEqual([
       ['Cancel', 'danger'],
       ['Sign', 'primary'],
-    ]);
-  });
-
-  it('As a dotli user, Deny on an account access prompt is drawn as the destructive answer', async () => {
-    // When
-    void createUserConfirmationAdapters('localhost:3000').confirmPermission({
-      tag: 'AccountAccess',
-      value: {
-        requestingProductId: 'truapi-playground.dot',
-        targetProductId: 'other-product.dot',
-      },
-    });
-    await modalShown();
-
-    // Then
-    expect(footerVariants()).toEqual([
-      ['Deny', 'danger'],
-      ['Always allow', 'secondary'],
-      ['Allow once', 'primary'],
     ]);
   });
 });

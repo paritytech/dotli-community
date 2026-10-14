@@ -2,73 +2,76 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { EventStore } from './event-store.js';
 import { buildExport, exportFilename, type ExportMeta } from './export.js';
-import { initialFilterState, matches } from './filters.js';
+import { initialFilterState } from './filters.js';
 
-/** A handshake request and its response, then a host boot event. */
-function mixedTraffic(): EventStore {
+const META: ExportMeta = {
+  exportedAt: '2026-09-25T10:34:56.789Z',
+  url: 'https://dot.li/app.dot',
+  userAgent: 'test-agent',
+  capacity: 2000,
+  droppedCount: 0,
+  totalEvents: 1,
+  exportedEvents: 1,
+  filters: initialFilterState(),
+};
+
+/** The export of one request whose payload is `value`, read back. */
+function exported(value: unknown): { meta: unknown; events?: { payload: unknown }[]; error?: string } {
   const store = new EventStore({ capacity: 2000 });
   store.insertTruapi({
     kind: 'truapi',
     direction: 'outgoing',
     productId: 'app.dot',
-    requestId: 'req-aaa-111',
-    payload: { tag: 'system_handshake_request', value: { version: 1 } },
+    requestId: 'req-1',
+    payload: { tag: 'host_sign_request', value },
   });
-  store.insertTruapi({
-    kind: 'truapi',
-    direction: 'incoming',
-    productId: 'app.dot',
-    requestId: 'req-aaa-111',
-    payload: { tag: 'system_handshake_response', value: { ok: true } },
-  });
-  store.insertDotli({
-    layer: 'boot',
-    event: 'started',
-    flowId: 'flow-boot-1',
-    timestamp: 0,
-    payload: { chainBackend: 'smoldot', mode: 'direct', contentBackend: 'helia' },
-  } as unknown as DotliDebugEvent);
-  return store;
+  return JSON.parse(buildExport(store.list(), META)) as ReturnType<typeof exported>;
 }
 
 describe('debug export', () => {
-  it('As a dotli developer, Export writes the filtered events as JSON with what was left out', () => {
+  it('As a dotli developer, a bigint in a payload is exported as its digits and an n', () => {
+    // When
+    const out = exported({ amount: 12_345_678_901_234_567_890n });
+
+    // Then
+    expect(out.events?.[0]?.payload).toEqual({ amount: '12345678901234567890n' });
+  });
+
+  it('As a dotli developer, bytes in a payload are exported whole, as their length and hex', () => {
+    // When
+    const out = exported({ data: new Uint8Array([1, 2, 255]) });
+
+    // Then
+    expect(out.events?.[0]?.payload).toEqual({ data: { __type: 'Uint8Array', length: 3, hex: '0x0102ff' } });
+  });
+
+  it('As a dotli developer, a payload that refers back to itself is exported with the loop marked', () => {
     // Given
-    const store = mixedTraffic();
-    const filters = { ...initialFilterState(), excludeQuery: 'response' };
-    const all = store.list();
-    const events = all.filter(event => matches(event, filters));
-    const meta: ExportMeta = {
-      exportedAt: '2026-09-25T10:34:56.789Z',
-      url: 'https://dot.li/app.dot',
-      userAgent: 'test-agent',
-      capacity: store.capacity,
-      droppedCount: store.dropped(),
-      totalEvents: all.length,
-      exportedEvents: events.length,
-      filters,
+    const loop: Record<string, unknown> = { name: 'loop' };
+    loop['self'] = loop;
+
+    // When
+    const out = exported(loop);
+
+    // Then
+    expect(out.events?.[0]?.payload).toEqual({ name: 'loop', self: '[Circular]' });
+  });
+
+  it('As a dotli developer, events that cannot be serialized are exported as the reason, beside the meta', () => {
+    // Given
+    const unserializable = {
+      toJSON: () => {
+        throw new Error('no JSON for this');
+      },
     };
 
     // When
-    const exported = JSON.parse(buildExport(events, meta)) as {
-      meta: Record<string, unknown>;
-      events: { tag?: string; event?: string }[];
-    };
+    const out = exported(unserializable);
 
     // Then
-    expect(exported.meta).toMatchObject({
-      capacity: 2000,
-      droppedCount: 0,
-      totalEvents: 3,
-      exportedEvents: 2,
-      url: 'https://dot.li/app.dot',
-      userAgent: 'test-agent',
-      filters: { excludeQuery: 'response', direction: 'both' },
-    });
-    expect(exported.events.map(event => event.tag ?? event.event)).toEqual(['system_handshake_request', 'started']);
+    expect(out).toEqual({ meta: META, error: 'serialization failed: no JSON for this' });
   });
 
   it('As a dotli developer, the export file is named after the moment it was taken', () => {

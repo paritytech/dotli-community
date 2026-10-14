@@ -155,13 +155,13 @@ describe('queryFinalizedBlock', () => {
 });
 
 describe('createPageDiagnostics', () => {
-  /** The page's diagnostics over a trusted provider connected to `node` and chains that answer `block`. */
-  function pageDiagnostics(node: string | null, block: number | null = null) {
+  /** The page's diagnostics on `site`, over a trusted provider connected to `node` and chains that answer `block`. */
+  function pageDiagnostics(node: string | null, block: number | null = null, site = 'dot.li') {
     const deps = {
       connectedAssetHubNode: vi.fn<PageDiagnosticsDeps['connectedAssetHubNode']>(() => node),
       finalizedBlock: vi.fn<PageDiagnosticsDeps['finalizedBlock']>(() => Promise.resolve(block)),
       openIssue: vi.fn<PageDiagnosticsDeps['openIssue']>(),
-      page: () => ({ site: 'dot.li', userAgent: 'Mozilla/5.0 (Macintosh) Chrome/147.0' }),
+      page: () => ({ site, userAgent: 'Mozilla/5.0 (Macintosh) Chrome/147.0' }),
     };
     return { deps, diagnostics: createPageDiagnostics(deps) };
   }
@@ -209,6 +209,18 @@ describe('createPageDiagnostics', () => {
       'AssetHub node',
       'Bulletin Node',
     ]);
+  });
+
+  it.each(['', 'n/a'])('As a dotli developer, a row with nothing to copy (%j) is not offered for copying', site => {
+    // Given
+    onTestFinished(setSettings({ ...getSettings(), backend: 'rpc-gateway' }));
+    const { diagnostics } = pageDiagnostics('wss://live.example', null, site);
+
+    // When
+    const rows = diagnostics.rows();
+
+    // Then
+    expect(rows.find(([label]) => label === 'Site')).toStrictEqual(['Site', site]);
   });
 
   it('As a dotli developer on the light client, the rows ask no trusted provider for its node', () => {

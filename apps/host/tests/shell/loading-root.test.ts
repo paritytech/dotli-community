@@ -6,13 +6,15 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { clearScreen, pageContentStore, prefersReducedMotion, showErrorPage } from '@dotli/ui';
 import { showNoContentError } from '../../src/no-content-page.js';
-import { createLoadingController, type LoadingController, type LoadingPhase } from '../../src/loading-controller.js';
+import {
+  createLoadingController,
+  PROGRESS_STALL_MS,
+  type LoadingController,
+  type LoadingPhase,
+} from '../../src/loading-controller.js';
 import { getLoadingState } from '../../src/state/loading.js';
 
 bindCaptureSink({ exception: vi.fn(), expected: vi.fn() });
-
-// Mirror of PROGRESS_STALL_MS in loading-controller.ts.
-const STALL_MS = 4_000;
 
 // One long clock-driven band, so the crawl moves the bar on every tick.
 const PHASES: LoadingPhase[] = [{ label: 'Connecting', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }];
@@ -71,7 +73,7 @@ describe('A full-page screen ends the loading screen', () => {
     // When
     show();
     const frozen = progress();
-    vi.advanceTimersByTime(STALL_MS * 5);
+    vi.advanceTimersByTime(PROGRESS_STALL_MS * 5);
 
     // Then no crawl tick or stall lands after the screen
     expect(progress()).toBe(frozen);
@@ -94,15 +96,20 @@ describe('A full-page screen ends the loading screen', () => {
     ],
   ])('As a visitor, %s shown before the load starts takes the static screen down', (_name, show) => {
     // Given the static screen, with no phases started
+    const onStall = vi.fn();
+    ctl.onProgressStall(onStall);
 
     // When the screen shows, and the load starts behind it
     show();
     ctl.initPhases(PHASES);
     ctl.advancePhase(0);
+    const frozen = progress();
+    vi.advanceTimersByTime(PROGRESS_STALL_MS * 5);
 
-    // Then
+    // Then the bar never moves and no stall fires
     expect(getLoadingState().phase).toBe('gone');
-    expect(vi.getTimerCount()).toBe(0);
+    expect(progress()).toBe(frozen);
+    expect(onStall).not.toHaveBeenCalled();
     expect(document.querySelector('[data-testid="error-page-title"]')).not.toBeNull();
   });
 });

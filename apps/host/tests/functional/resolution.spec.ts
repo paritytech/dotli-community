@@ -42,7 +42,7 @@ test.describe('Resolution across chain backends', () => {
     });
   }
 
-  test(`As a user opening ${DOMAIN}.dot, I am shown how many peers the light client found`, async ({ browser }) => {
+  test(`As a user opening ${DOMAIN}.dot, the host hears the light client's peer count`, async ({ browser }) => {
     // Given
     const { context, page } = await setupTest(browser, {
       backend: 'smoldot-direct',

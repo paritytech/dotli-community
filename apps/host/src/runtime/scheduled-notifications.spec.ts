@@ -56,8 +56,8 @@ function start(store: ScheduledNotificationStore, deps: Partial<ScheduledNotific
       request: ((_name: string, _opts: unknown, run: (lock: object) => unknown) => run({})) as LockManager['request'],
     },
     openChannel: () => null,
-    visibility: page,
-    lifecycle: page,
+    visibility: page.document,
+    lifecycle: page.window,
     ...deps,
   });
   notifications.init({ label: 'acme' });
@@ -112,7 +112,7 @@ describe('scheduled notifications poller', () => {
     const read: PromiseWithResolvers<ScheduledNotificationRecord[]> = Promise.withResolvers();
     store.listAll.mockReturnValue(read.promise);
     await vi.advanceTimersByTimeAsync(SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
-    page.dispatchEvent(new Event('pagehide'));
+    page.window.dispatchEvent(new Event('pagehide'));
     read.reject(closing());
     await ticks(3);
 

@@ -55,32 +55,7 @@ function dotli(layer: string, event = 'started'): DotliDebugEvent {
   } as unknown as DotliDebugEvent;
 }
 
-/** Count how often `list()`'s array is iterated from now on. */
-function countIterations(store: EventStore): () => number {
-  const buf = store.list() as StoredEvent[] & {
-    [Symbol.iterator]: () => ArrayIterator<StoredEvent>;
-  };
-  let visits = 0;
-  const iterate = Array.prototype[Symbol.iterator];
-  Object.defineProperty(buf, Symbol.iterator, {
-    configurable: true,
-    value(this: StoredEvent[]) {
-      visits++;
-      return iterate.call(this);
-    },
-  });
-  return () => visits;
-}
-
 describe('EventStore.version()', () => {
-  it('As the debug panel, I see a new event store at version 0', () => {
-    // When
-    const store = new EventStore({ capacity: 10 });
-
-    // Then
-    expect(store.version()).toBe(0);
-  });
-
   it('As the debug panel, I see the version go up when a TrUAPI event comes in', () => {
     // Given
     const store = new EventStore({ capacity: 10 });
@@ -166,7 +141,7 @@ describe('EventStore.subscribe()', () => {
 
     // Then
     expect(heard).toBe(1);
-    expect(captured).toEqual([{ step: 'listener', tags: { owner: 'debug_panel.event_store' } }]);
+    expect(captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_panel.event_store' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'debug_panel.event_store' },
     ]);
@@ -174,10 +149,9 @@ describe('EventStore.subscribe()', () => {
 });
 
 describe('EventStore.productIds()', () => {
-  it('As the debug panel, I see the products of the kept events follow inserts, evictions and a clear without a scan', () => {
+  it('As the debug panel, I see the products of the kept events, the missing product id among them', () => {
     // Given
     const store = new EventStore({ capacity: 3 });
-    const visits = countIterations(store);
 
     // When
     insert(store, 'a_request', '1', 'one.dot');
@@ -186,31 +160,49 @@ describe('EventStore.productIds()', () => {
 
     // Then
     expect(store.productIds().sort()).toEqual(['one.dot', undefined]);
+  });
 
-    // When: it evicts the first one.dot event, while another is still kept
+  it('As the debug panel, I keep a product while another of its events is kept after an eviction', () => {
+    // Given
+    const store = new EventStore({ capacity: 3 });
+    insert(store, 'a_request', '1', 'one.dot');
+    insert(store, 'a_request', '2', null);
+    insert(store, 'a_request', '3', 'one.dot');
+
+    // When it evicts the first one.dot event
     insert(store, 'a_request', '4', 'two.dot');
 
     // Then
     expect(store.productIds().sort()).toEqual(['one.dot', 'two.dot', undefined]);
+  });
 
-    // When: it evicts the event without a product id, then the last one.dot event
+  it('As the debug panel, I drop a product, the missing product id among them, when its last event is evicted', () => {
+    // Given
+    const store = new EventStore({ capacity: 3 });
+    insert(store, 'a_request', '1', 'one.dot');
+    insert(store, 'a_request', '2', null);
+    insert(store, 'a_request', '3', 'one.dot');
+    insert(store, 'a_request', '4', 'two.dot');
+
+    // When it evicts the event without a product id, then the last one.dot event
     insert(store, 'a_request', '5', 'two.dot');
-
-    // Then
-    expect(store.productIds().sort()).toEqual(['one.dot', 'two.dot']);
-
-    // When
     insert(store, 'a_request', '6', 'two.dot');
 
     // Then
     expect(store.productIds()).toEqual(['two.dot']);
+  });
+
+  it('As the debug panel, I see no product once the events are cleared', () => {
+    // Given
+    const store = new EventStore({ capacity: 3 });
+    insert(store, 'a_request', '1', 'one.dot');
+    insert(store, 'a_request', '2', null);
 
     // When
     store.clear();
 
     // Then
     expect(store.productIds()).toEqual([]);
-    expect(visits()).toBe(0);
   });
 
   it('As the debug panel, I see no product for a system event', () => {

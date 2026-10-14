@@ -235,22 +235,32 @@ function nestedSite(): { root: CID; blocks: Blocks } {
 
 interface HeldSource {
   source: BlockSource;
+  /** Resolves once at least `count` fetches are held. */
+  untilHeld: (count: number) => Promise<void>;
   /** Lets every held fetch finish. */
   releaseAll: () => void;
+  /** How many of the DAG's blocks are not yet released. */
+  unreleased: () => number;
   maxInFlight: () => number;
 }
 
 /** A block source that holds each fetch until released, counting how many are in flight at once. */
 function heldSource(blocks: Blocks): HeldSource {
   const held: (() => void)[] = [];
+  const waiting: { count: number; wake: () => void }[] = [];
   let inFlight = 0;
   let max = 0;
+  let released = 0;
   return {
     source: async cid => {
       inFlight += 1;
       max = Math.max(max, inFlight);
       await new Promise<void>(resolve => {
         held.push(resolve);
+        for (const waiter of waiting.filter(({ count }) => held.length >= count)) {
+          waiting.splice(waiting.indexOf(waiter), 1);
+          waiter.wake();
+        }
       });
       inFlight -= 1;
       const bytes = blocks.get(cid.toString());
@@ -259,7 +269,17 @@ function heldSource(blocks: Blocks): HeldSource {
       }
       return bytes;
     },
+    untilHeld: count =>
+      new Promise<void>(resolve => {
+        if (held.length >= count) {
+          resolve();
+        } else {
+          waiting.push({ count, wake: resolve });
+        }
+      }),
+    unreleased: () => blocks.size - released,
     releaseAll: () => {
+      released += held.length;
       for (const release of held.splice(0)) {
         release();
       }
@@ -268,19 +288,17 @@ function heldSource(blocks: Blocks): HeldSource {
   };
 }
 
-// A macrotask turn drains every microtask, so by then the walk has asked for every block it can.
-const nextTurn = (): Promise<void> =>
-  new Promise(resolve => {
-    setTimeout(resolve, 0);
-  });
-
-/** Releases the held fetches wave by wave, each once the walk has asked for all it can, until the walk settles. */
-async function drive<T>(walk: Promise<T>, held: HeldSource): Promise<T> {
-  const settled = walk.then(
-    () => true,
-    () => true,
-  );
-  while (!(await Promise.race([settled, nextTurn().then(() => false)]))) {
+/**
+ * Releases the held fetches wave by wave. The first waves are the sizes the walk is known to ask for while it still
+ * discovers blocks, the rest are full budgets until the last blocks are left.
+ */
+async function drive<T>(walk: Promise<T>, held: HeldSource, discovery: readonly number[], budget: number): Promise<T> {
+  for (const size of discovery) {
+    await Promise.race([held.untilHeld(size), walk]);
+    held.releaseAll();
+  }
+  while (held.unreleased() > 0) {
+    await Promise.race([held.untilHeld(Math.min(budget, held.unreleased())), walk]);
     held.releaseAll();
   }
   return walk;
@@ -292,8 +310,8 @@ describe('walkUnixFsDag', () => {
     const { root, blocks } = nestedSite();
     const held = heldSource(blocks);
 
-    // When
-    const files = await drive(walkUnixFsDag(root, held.source), held);
+    // When the root and its four entries are released, then the 34 leaves in waves of the budget
+    const files = await drive(walkUnixFsDag(root, held.source), held, [1, 4], 8);
 
     // Then
     expect(held.maxInFlight()).toBe(8);

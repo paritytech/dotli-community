@@ -10,11 +10,16 @@ import { showBrokenPage } from '../broken-page.js';
  * Wraps each landing island. The page is nothing but these, so one failing breaks the whole page. A full-page screen
  * takes the page over, and the islands and their timers go with it.
  */
-export function LandingPart(props: { children: JSX.Element }): JSX.Element {
+export function LandingPart(props: { children: JSX.Element; reload?: () => void }): JSX.Element {
   const shown = useStore(pageContentStore, content => content === 'page');
   return (
     <Show when={shown()}>
-      <RootBoundary root="page" onBroken={showBrokenPage}>
+      <RootBoundary
+        root="page"
+        onBroken={() => {
+          showBrokenPage(props.reload);
+        }}
+      >
         {props.children}
       </RootBoundary>
     </Show>

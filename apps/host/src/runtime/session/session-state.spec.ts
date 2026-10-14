@@ -468,10 +468,15 @@ describe('session state', () => {
     // When
     coreReports({ tag: 'Connected', value: connectedSessionUiInfo() });
     coreReports({ tag: 'Disconnected' });
-    await flushMicrotasks();
+    // A paired report is the positive control, so a write the local reports would make has landed before it.
+    localWallet = false;
+    const control = shared.nextWrite(UI_STATE_CACHE_KEY);
+    coreReports({ tag: 'Connected', value: connectedSessionUiInfo() });
+    await control;
 
     // Then
-    expect(shared.entries.get(UI_STATE_CACHE_KEY)).toBe(JSON.stringify(CONNECTED_DETAIL));
+    expect(shared.writes.filter(([key]) => key === UI_STATE_CACHE_KEY)).toHaveLength(1);
+    expect(shared.clears).not.toContain(UI_STATE_CACHE_KEY);
   });
 
   it('As a user whose login failed before the core saw it, I am shown why', () => {
@@ -489,11 +494,15 @@ describe('session state', () => {
 
     // When
     session.reportLogoutWithoutCore();
-    await flushMicrotasks();
+    const signedOut = auth.get();
+    const control = shared.nextWrite(UI_STATE_CACHE_KEY);
+    coreReports({ tag: 'Connected', value: connectedSessionUiInfo() });
+    await control;
 
     // Then
-    expect(auth.get()).toEqual({ tag: 'Disconnected' });
-    expect(shared.entries.get(UI_STATE_CACHE_KEY)).toBe(JSON.stringify(CONNECTED_DETAIL));
+    expect(signedOut).toEqual({ tag: 'Disconnected' });
+    expect(shared.clears).not.toContain(UI_STATE_CACHE_KEY);
+    expect(shared.writes.filter(([key]) => key === UI_STATE_CACHE_KEY)).toHaveLength(1);
   });
 });
 

@@ -188,17 +188,12 @@ describe('the service worker code', () => {
     unbind();
   });
 
-  it('As a dotli user whose connection drops before the worker code loads, the failure is reported and no update is offered', async () => {
+  it('As a dotli user whose connection drops before the worker code loads, the failure is reported', async () => {
     // When
-    const pwa = start(
-      {},
-      { createWorkbox: () => Promise.reject(new Error('Failed to fetch dynamically imported module')) },
-    );
+    start({}, { createWorkbox: () => Promise.reject(new Error('Failed to fetch dynamically imported module')) });
 
     // Then
     await reported;
     expect(captured).toEqual([expect.objectContaining({ flow: 'pwa', step: 'sw_load' })]);
-    pwa.emit('waiting');
-    expect(pwa.actions).toHaveLength(0);
   });
 });

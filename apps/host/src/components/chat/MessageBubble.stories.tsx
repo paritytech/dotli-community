@@ -4,6 +4,7 @@
 import { For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, within } from 'storybook/test';
+import { expectBefore } from '@config/storybook/play';
 import type { ChatMessageRecord } from '../../runtime/chat/store.js';
 import { MessageBubble } from './MessageBubble.js';
 
@@ -41,6 +42,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a reader, I see a product message as text with a relative time, and the exact time on hover. */
 export const TextWithRelativeTime: Story = {
   play: async ({ canvas, step }) => {
     const row = canvas.getByTestId('chat-msg');
@@ -52,7 +54,6 @@ export const TextWithRelativeTime: Story = {
     });
     await step('Then it shows a relative time with the exact time on hover', async () => {
       const time = within(bubble).getByTestId('chat-msg-time');
-      await expect(time.tagName).toBe('TIME');
       await expect(time).toHaveTextContent('5 mins ago');
       await expect(time).toHaveAttribute('data-timestamp', String(NOW - 5 * 60_000));
       await expect(time.title).not.toBe('');
@@ -60,6 +61,7 @@ export const TextWithRelativeTime: Story = {
   },
 };
 
+/** As a reader, I see my own message marked as mine. */
 export const OwnMessage: Story = {
   args: { record: record({ tag: 'Text', value: { text: 'me' } }, 'user') },
   play: async ({ canvas, step }) => {
@@ -77,6 +79,7 @@ const RICH_KINDS = [
   { name: 'unknown', content: { tag: 'Hologram', value: {} } },
 ];
 
+/** As a reader, I read rich text, reactions, files and unknown kinds each as their own line. */
 export const RichKindsReadAsToday: Story = {
   render: args => (
     <For each={RICH_KINDS}>
@@ -109,6 +112,7 @@ export const RichKindsReadAsToday: Story = {
   },
 };
 
+/** As a reader, I press an action button and the page hears which one I chose. */
 export const ActionButtonsReportTaps: Story = {
   args: {
     record: record({
@@ -141,17 +145,19 @@ export const ActionButtonsReportTaps: Story = {
   },
 };
 
+/** As a reader, I see a custom message as the page's custom body beside its time. */
 export const CustomBodyBeforeTimestamp: Story = {
   tags: ['!autodocs'],
   args: {
     record: record({ tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }),
   },
   play: async ({ args, canvas, step }) => {
-    await step('Then the page renders the custom body once, and it comes before the timestamp', async () => {
+    await step('Then the page renders the custom body once, before the timestamp', async () => {
       const bubble = canvas.getByTestId('chat-msg-bubble');
       await expect(bubble).toHaveAttribute('data-custom');
-      await expect(bubble.firstElementChild).toHaveAttribute('data-testid', 'chat-custom-root');
-      await expect(bubble.lastElementChild?.tagName).toBe('TIME');
+      await expect(within(bubble).getByTestId('chat-custom-root')).toBeVisible();
+      await expect(within(bubble).getByTestId('chat-msg-time')).toBeVisible();
+      await expectBefore(within(bubble).getByTestId('chat-custom-root'), within(bubble).getByTestId('chat-msg-time'));
       await expect(args.custom).toHaveBeenCalledTimes(1);
       await expect(args.custom).toHaveBeenCalledWith({ messageType: 'poll', payload: '0x01' });
     });

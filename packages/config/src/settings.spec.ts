@@ -6,7 +6,7 @@ import { memoryStorage } from '@dotli/shared/testing';
 import { BACKEND_KEY, CACHE_KEY } from './mode.js';
 import { NETWORK_KEY } from './network.js';
 import { hasStoredSettings, resolveSettings, sharedSettingsOf, writeLocalSettings } from './settings.js';
-import { parseSettingsFromSearch, type ParsedUrlSettings } from './url-settings.js';
+import { parseSettingsFromSearch } from './url-settings.js';
 
 const CACHE_OFF = JSON.stringify({ skipCidCache: true, skipArchiveCache: true, skipWorkerCache: false });
 const DEFAULT_CACHE = { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false };
@@ -100,17 +100,6 @@ describe('resolveSettings', () => {
     expect(settings.backend).toBe('rpc-gateway');
   });
 
-  it('As a visitor whose browser lost SharedWorker, I get the light client per tab', () => {
-    // Given
-    const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-shared-worker' });
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: false });
-
-    // Then
-    expect(settings.backend).toBe('smoldot-direct');
-  });
-
   it('As a visitor whose browser lacks SharedWorker, a link naming the shared light client runs me per tab', () => {
     // Given
     const local = memoryStorage({ [BACKEND_KEY]: 'rpc-gateway' });
@@ -164,26 +153,21 @@ describe('resolveSettings', () => {
     expect(settings.cache).toEqual({ skipCidCache: false, skipArchiveCache: true, skipWorkerCache: true });
   });
 
-  it('As a visitor following a link to a network this build does not offer, I get the stored network', () => {
+  it('As a visitor following a link to a network this build does not know, the link names no network and I get the stored one', () => {
     // Given
     const local = memoryStorage({ [NETWORK_KEY]: 'previewnet' });
-    const url = {
-      network: 'kusama',
-      backend: null,
-      skipArchiveCache: null,
-      skipCidCache: null,
-      skipWorkerCache: null,
-    };
+    const url = parseSettingsFromSearch(new URLSearchParams('network=kusama'));
 
     // When
     const { settings } = resolveSettings({
       local,
       shared: null,
-      url: url as unknown as ParsedUrlSettings,
+      url,
       sharedWorkerAvailable: true,
     });
 
     // Then
+    expect(url.network).toBeNull();
     expect(settings.network).toBe('previewnet');
   });
 
