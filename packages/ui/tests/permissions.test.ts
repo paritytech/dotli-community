@@ -441,8 +441,8 @@ describe('getGrantedDevicePermissions', () => {
 });
 
 describe('buildAllowAttribute', () => {
-  it('As a product, my iframe always receives clipboard-write access', async () => {
-    expect(await buildAllowAttribute('myapp')).toBe('clipboard-write');
+  it('As a product, my iframe always receives clipboard-write, fullscreen, picture-in-picture and web-share', async () => {
+    expect(await buildAllowAttribute('myapp')).toBe('clipboard-write; fullscreen; picture-in-picture; web-share');
   });
 
   it('As a product, my granted device permissions appear in iframe policy', async () => {
@@ -455,7 +455,14 @@ describe('buildAllowAttribute', () => {
     const directives = (await buildAllowAttribute('myapp')).split('; ').sort();
 
     // Then
-    expect(directives).toEqual(['camera', 'clipboard-write', 'microphone']);
+    expect(directives).toEqual([
+      'camera',
+      'clipboard-write',
+      'fullscreen',
+      'microphone',
+      'picture-in-picture',
+      'web-share',
+    ]);
   });
 
   it('As a product, denied and submit permissions stay out of iframe policy', async () => {
@@ -467,7 +474,7 @@ describe('buildAllowAttribute', () => {
     const allow = await buildAllowAttribute('myapp');
 
     // Then
-    expect(allow).toBe('clipboard-write');
+    expect(allow).toBe('clipboard-write; fullscreen; picture-in-picture; web-share');
   });
 });
 

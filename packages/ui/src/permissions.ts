@@ -218,8 +218,12 @@ export async function hasAnyGrant(label: string): Promise<boolean> {
   return statuses.some(status => status === 'granted');
 }
 
+// A player in a product goes full screen or picture in picture, and a share button opens the share menu of the system.
+// None of these reads data of the user, so they need no consent.
+const ALWAYS_ALLOWED = ['clipboard-write', 'fullscreen', 'picture-in-picture', 'web-share'];
+
 export async function buildAllowAttribute(label: string): Promise<string> {
-  const policies = ['clipboard-write'];
+  const policies = [...ALWAYS_ALLOWED];
   for (const name of await getGrantedDevicePermissions(label)) {
     const directive = DEVICE_PERMISSION_POLICY[name];
     if (directive !== undefined) {
