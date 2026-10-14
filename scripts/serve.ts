@@ -8,14 +8,14 @@
 // Binds loopback by default because the bundle only works over `*.localhost`, so remote use goes through a tunnel.
 
 import { createServer, type ServerResponse } from 'node:http';
-import { createReadStream, existsSync, statSync } from 'node:fs';
-import { join, normalize, resolve } from 'node:path';
+import { createReadStream, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
 import {
   LOCAL_SERVER_HEADERS,
   headerPolicy,
+  resolveFile,
   responseHeaders,
-  rootPage,
   routeFor,
   securityHeaders,
   type HeaderPolicy,
@@ -42,14 +42,6 @@ function negotiate(filePath: string, acceptEncoding: string): { path: string; en
     return { path: `${filePath}.gz`, encoding: 'gzip' };
   }
   return { path: filePath };
-}
-
-function isFile(path: string): boolean {
-  try {
-    return existsSync(path) && statSync(path).isFile();
-  } catch {
-    return false;
-  }
 }
 
 function send(
@@ -111,26 +103,12 @@ createServer((req, res) => {
     return;
   }
 
-  // `normalize` then confine to `dir`, so `..` cannot escape the bundle.
-  const requested = normalize(decodeURIComponent(url.pathname));
-  const candidate = join(dir, requested);
-  if (!candidate.startsWith(dir)) {
-    res.writeHead(403).end('Forbidden');
+  const resolved = resolveFile(dir, route, url.pathname);
+  if (resolved === undefined) {
+    res.writeHead(404).end('Not Found');
     return;
   }
-
-  if (requested !== '/' && isFile(candidate)) {
-    send(res, candidate, url.pathname, policy, accept);
-    return;
-  }
-
-  const page = requested === '/' ? rootPage(route) : 'index.html';
-  const index = join(dir, page);
-  if (isFile(index)) {
-    send(res, index, `/${page}`, policy, accept);
-    return;
-  }
-  res.writeHead(404).end('Not Found');
+  send(res, resolved.file, resolved.pathname, policy, accept);
 }).listen(PORT, HOST, () => {
   const config = process.env['DOTLI_NETWORK']?.trim();
   console.log(`dot.li serving ${DIST} on http://localhost:${String(PORT)} (bound ${HOST})`);

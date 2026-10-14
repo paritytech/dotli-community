@@ -67,7 +67,7 @@ for (const [workspace, name] of [
 // host-playground's product-sdk-host nests an older @parity/truapi. A second client over the same MessagePort
 // collides on request ids, so point the nested one at this checkout.
 const shouldLinkProduct = process.env['E2E_PRODUCT_REPO'] !== undefined || process.env['E2E_PRODUCT_URL'] !== undefined;
-const productRoot = resolve(process.env['E2E_PRODUCT_REPO'] ?? resolve(dotliRoot, '../../../host-playground'));
+const productRoot = resolve(dotliRoot, process.env['E2E_PRODUCT_REPO'] ?? '../host-playground');
 if (shouldLinkProduct && existsSync(resolve(productRoot, 'package.json'))) {
   const nestedTruapi = resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
   const nestedParent = dirname(nestedTruapi);

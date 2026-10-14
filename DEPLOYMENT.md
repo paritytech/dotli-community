@@ -64,7 +64,8 @@ deploys do not use these: the GitHub Actions path reads `DEPLOY_HOST` / `DEPLOY_
 4. `provision-cert` — issues a Let's Encrypt cert via DNS-01 covering the apex, `*.<base>`, and `*.app.<base>`.
    `--keep-until-expiring --expand` makes re-runs cheap.
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
-6. `deploy` — runs `npm run build` on your machine `dist/` outputs into the env's web root.
+6. `deploy` — runs `npm run build:prod` on your machine, forced since a linked TrUAPI checkout is invisible to Turbo,
+   and rsyncs the `dist/` outputs into the env's web root.
 7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst) and installs it plus `nginx/snippets/`
    into `/etc/nginx/`, runs `nginx -t`, and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
 

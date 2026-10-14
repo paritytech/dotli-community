@@ -12,14 +12,7 @@ import {
   setResolutionId,
   spans as S,
 } from '@dotli/metrics';
-import {
-  chainBytesReceived,
-  installByteMeter,
-  createChainPool,
-  createCoreRpcChainProvider,
-  isCoreRpcChainSupported,
-  loadProvider,
-} from '@dotli/chains';
+import { chainBytesReceived, installByteMeter, loadProvider } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
 // Before anything opens a socket. Smoldot traffic is invisible to resource timing, so the speed readout needs this.
@@ -61,7 +54,7 @@ import { connectSharedWorker } from './shared-worker-link.js';
 import { readSessionTuning } from './session-tuning.js';
 import { chainDetailEnvelope, chainSyncEnvelope } from './envelopes.js';
 import { createEngine, type ResponseCallback } from './engine.js';
-import { startLightClientService } from './light-client-service.js';
+import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { handleLocalWalletRequest } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
 import { createFrameRouter } from './frame-router.js';
@@ -210,7 +203,7 @@ async function init(): Promise<void> {
       m.count(S.PROTOCOL_MODE, { mode: 'shared-worker' });
     } else if (backend === 'rpc-gateway') {
       m.setDefaults({ protocol_mode: 'rpc' });
-      initRpcMode();
+      await initRpcMode();
       m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
     } else {
       m.setDefaults({ protocol_mode: 'direct' });
@@ -263,15 +256,19 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 }
 
 async function initDirectMode(): Promise<void> {
-  // Dynamic so the other modes do not pay for the smoldot bundle.
-  const [provider, resolve] = await Promise.all([loadProvider(), loadResolve()]);
+  // Dynamic so the other modes pay for neither smoldot nor the chain pool.
+  const [provider, resolve, lightClientService] = await Promise.all([
+    loadProvider(),
+    loadResolve(),
+    loadLightClientService(),
+  ]);
   const lightClient = provider.createLightClient(
     provider.lightClientDeps(
       readSessionTuning(() => sessionStorage),
       isLocalhost,
     ),
   );
-  const service = startLightClientService({
+  const service = lightClientService.startLightClientService({
     lightClient,
     resolver: { createDotnsResolver: resolve.createDotnsResolver, enableSyncReporting: provider.enableSyncReporting },
     services: getActiveServicesConfig(),
@@ -335,13 +332,9 @@ async function initDirectMode(): Promise<void> {
 }
 
 // Gateway mode resolves names in the host process, so no resolver is wired here.
-function initRpcMode(): void {
-  const engine = createEngine({
-    // The core set, so the network panel can watch Bulletin. Advertisement to dApps is curated in
-    // `isRemoteChainSupported`. An unused RPC chain's socket closes a minute after its last connection.
-    broker: createChainPool({ createTransport: createCoreRpcChainProvider, destroyDelay: 60_000 }),
-    isChainSupported: isCoreRpcChainSupported,
-  });
+async function initRpcMode(): Promise<void> {
+  const { openGatewayChains } = await loadGatewayChains();
+  const engine = createEngine(openGatewayChains());
 
   // The iframe serves its one parent, so one scope holds every connection.
   router.setRoute('chain', engine.openScope().handleRequest);

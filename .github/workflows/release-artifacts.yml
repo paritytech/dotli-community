@@ -54,9 +54,41 @@ jobs:
             echo "latest=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # The PR checks' own scripts, as the deploy gate runs them. The builds below do not type-check.
+  quality-gate:
+    name: Quality Gate
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      # Tags cut before the knip script existed still backfill.
+      - name: Unused files, exports and dependencies
+        run: npm run --if-present knip
+
+      - name: Unit tests
+        run: npm test
+
   tarball:
     name: Bundle tarball
-    needs: resolve
+    needs: [resolve, quality-gate]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -141,7 +173,7 @@ jobs:
 
   image:
     name: Image (${{ matrix.arch }})
-    needs: resolve
+    needs: [resolve, quality-gate]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

@@ -198,6 +198,7 @@ npm install
 export VITE_NETWORKS=paseo-next-v2,previewnet
 npm run dev              # Dev servers with hot reload on localhost:4321
 npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
+HOST=0.0.0.0 npm run preview   # The same, reachable from a phone on the LAN
 ```
 
 `npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
@@ -231,8 +232,9 @@ Local development uses wildcard subdomains:
 ### Running the host-playground E2E locally
 
 The product E2E suite can load the source checkout directly through dotli's localhost proxy instead of resolving the
-published `host-playground.dot` CID. By default it expects the product at `../../../host-playground` relative to this
-repository, and the `truapi-host` CLI from [host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
+published `host-playground.dot` CID. By default it expects the product at `../host-playground`, beside this repository
+(checked out inside the truapi repository, set `E2E_PRODUCT_REPO`), and the `truapi-host` CLI from
+[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash

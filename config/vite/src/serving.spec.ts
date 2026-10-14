@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   LOCAL_SERVER_HEADERS,
   fileHeaders,
   headerPolicy,
+  resolveFile,
   responseHeaders,
   rootPage,
   routeFor,
@@ -149,6 +150,105 @@ describe('responseHeaders', () => {
 
     // Then
     expect(headers['Content-Type']).toBe('application/octet-stream');
+  });
+});
+
+describe('resolveFile', () => {
+  const DIR = '/srv/host';
+
+  /** A build folder holding `paths`, which records every path a lookup asks for. */
+  function build(...paths: string[]): { asked: string[]; isFile: (path: string) => boolean } {
+    const present = new Set(paths.map(path => join(DIR, path)));
+    const asked: string[] = [];
+    return {
+      asked,
+      isFile: path => {
+        asked.push(path);
+        return present.has(path);
+      },
+    };
+  }
+
+  it('As a visitor, I open the bare host and get the landing page', () => {
+    // Given
+    const disk = build('landing.html', 'index.html');
+
+    // When
+    const resolved = resolveFile(DIR, routeFor('localhost'), '/', disk.isFile);
+
+    // Then
+    expect(resolved).toEqual({ file: join(DIR, 'landing.html'), pathname: '/landing.html' });
+  });
+
+  it('As a visitor, I follow a deep link on a product host and get the shell', () => {
+    // Given
+    const disk = build('index.html');
+
+    // When
+    const resolved = resolveFile(DIR, routeFor('browse.localhost'), '/some/page', disk.isFile);
+
+    // Then
+    expect(resolved).toEqual({ file: join(DIR, 'index.html'), pathname: '/index.html' });
+  });
+
+  it('As a page, I load an asset that exists and get the file under its own path', () => {
+    // Given
+    const disk = build('index.html', 'assets/index-A.js');
+
+    // When
+    const resolved = resolveFile(DIR, routeFor('browse.localhost'), '/assets/index-A.js', disk.isFile);
+
+    // Then
+    expect(resolved).toEqual({ file: join(DIR, 'assets/index-A.js'), pathname: '/assets/index-A.js' });
+  });
+
+  it('As a page after a deploy, I ask for an asset, a worker or the version file that is gone and get a 404, not the shell', () => {
+    // Given
+    const disk = build('index.html');
+
+    // When
+    const answers = ['/assets/gone.js', '/host-sw.js', '/host_version.json'].map(path =>
+      resolveFile(DIR, routeFor('browse.localhost'), path, disk.isFile),
+    );
+
+    // Then
+    expect(answers).toEqual([undefined, undefined, undefined]);
+  });
+
+  it('As an attacker, I ask for a path that climbs out of the build and am answered from inside it', () => {
+    // Given
+    const disk = build('index.html');
+
+    // When
+    const answers = ['/..%2f..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/a%00b', '..', '../x'].map(path =>
+      resolveFile(DIR, routeFor('browse.localhost'), path, disk.isFile),
+    );
+
+    // Then
+    expect(answers.every(answer => answer?.file === join(DIR, 'index.html'))).toBe(true);
+    expect(disk.asked.every(path => path.startsWith(`${DIR}${sep}`))).toBe(true);
+  });
+
+  it('As a visitor, I send a malformed escape and get a 404', () => {
+    // Given
+    const disk = build('index.html');
+
+    // When
+    const resolved = resolveFile(DIR, routeFor('browse.localhost'), '/%E0%A4%A', disk.isFile);
+
+    // Then
+    expect(resolved).toBeUndefined();
+  });
+
+  it("As a visitor, I open a folder on the bare host and get its index, as nginx's bare-host block tries it", () => {
+    // Given
+    const disk = build('landing.html', 'index.html', 'docs/index.html');
+
+    // When
+    const resolved = resolveFile(DIR, routeFor('localhost'), '/docs/', disk.isFile);
+
+    // Then
+    expect(resolved).toEqual({ file: join(DIR, 'docs/index.html'), pathname: '/docs/' });
   });
 });
 

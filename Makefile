@@ -54,10 +54,15 @@ TRUAPI_HOST_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi-host/package.json
 # The brotli module is split across two packages on noble, both auto-loaded. curl and ca-certificates back certbot.
 APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
-.PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal renew-cert deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
+.PHONY: build build-prod link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal renew-cert deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
 build: link-truapi-local
 	npm run build
+
+# Deploys ship the .br and .gz siblings that nginx's brotli_static and gzip_static serve.
+# --force: link-truapi-local changes node_modules, which Turbo does not hash, so a cached dist could be stale.
+build-prod: link-truapi-local
+	npm run build:prod -- --force
 
 link-truapi-local:
 	@if [ -f "$(TRUAPI_LOCAL_PACKAGE)" ] && [ -f "$(TRUAPI_HOST_LOCAL_PACKAGE)" ]; then \
@@ -110,7 +115,7 @@ renew-cert: _require-env
 	ssh -o ServerAliveInterval=30 $(REMOTE_TARGET) 'sudo certbot renew -v --non-interactive --no-random-sleep-on-renew --cert-name $(SITE_$(ENV)) && sudo nginx -t && sudo systemctl reload nginx && sudo certbot certificates --cert-name $(SITE_$(ENV))'
 
 # Builds locally, then rsyncs only the dist directories.
-deploy: _require-env build
+deploy: _require-env build-prod
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval REMOTE_PATH   := $(DEPLOY_PATH_$(ENV)))
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 -o $$(whoami) -g $$(id -gn) $(REMOTE_PATH) $(REMOTE_PATH)/host $(REMOTE_PATH)/app $(REMOTE_PATH)/protocol'

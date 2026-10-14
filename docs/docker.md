@@ -36,9 +36,10 @@ configurable — see the README inside the tarball
 node >= 22 without TypeScript support or the rest of this repo. It reproduces the nginx serving rules: hostname
 routing, the same security headers, precompressed siblings, immutable asset
 caching and SPA fallback. **Changing the rules in one means changing the other.**
-A spec holds the header values to nginx's snippets, but routing and caching per
-location are not checked, and a mismatch there means the tarball behaves
-differently from a deployed site.
+A spec holds the header values to nginx's snippets and pins which file answers a
+path (the root page, the asset 404 and the shell fallback). Which snippet each
+nginx location includes is not checked, and a mismatch there means the tarball
+behaves differently from a deployed site.
 
 ## Running the container
 
@@ -247,7 +248,8 @@ and a read-only mount makes the entrypoint's write fail.
 
 `.github/workflows/release-artifacts.yml` builds both artifacts on
 `release: published`, and accepts a tag via `workflow_dispatch` for releases
-published before it existed (a tag-triggered run cannot backfill one).
+published before it existed (a tag-triggered run cannot backfill one). The tarball and the image build only
+after the same checks as a PR pass on the tag.
 
 Two build settings are load-bearing, and the workflow asserts both rather than
 trusting them:

@@ -1,11 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// How every local dotli server answers: which build serves a hostname, and the headers each response carries, split as
-// nginx's snippets are. The release server, the test server and the dev servers read it, and its spec holds nginx's
-// snippets to it, so the functional tests run under the same sandbox isolation as a deploy.
+// How every local dotli server answers: which build serves a hostname, which file answers a path, and the headers each
+// response carries, split as nginx's snippets are. The release server, the test server and the dev servers read it, and
+// its spec holds nginx's snippets to it, so the functional tests run under the same sandbox isolation as a deploy.
 
-import { extname } from 'node:path';
+import { statSync } from 'node:fs';
+import { extname, join, normalize } from 'node:path';
+import type { Plugin } from 'vite';
 
 /** The three builds, each on its own origin. */
 export type Site = 'host' | 'app' | 'protocol';
@@ -86,6 +88,29 @@ export function securityHeaders(
   };
 }
 
+/**
+ * The isolated headers on the routes this table isolates, for the dev servers. Server-wide, COEP would break the
+ * localhost dev servers, which ship no CORP.
+ */
+export function isolationHeaders(): Plugin {
+  const headers = securityHeaders('isolated');
+  return {
+    name: 'dotli-isolation-headers',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = (req.url ?? '/').split('?')[0] ?? '/';
+        const hostname = (req.headers.host ?? '').split(':')[0] ?? '';
+        if (headerPolicy(routeFor(hostname), pathname) === 'isolated') {
+          for (const [name, value] of Object.entries(headers)) {
+            res.setHeader(name, value);
+          }
+        }
+        next();
+      });
+    },
+  };
+}
+
 const SERVICE_WORKERS: ReadonlySet<string> = new Set(['/host-sw.js', '/app-sw.js']);
 
 /** Caching and worker scope. Asset names are content-hashed, and a worker is revalidated so an update reaches it. */
@@ -97,6 +122,69 @@ export function fileHeaders(pathname: string): Record<string, string> {
     return { 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/' };
   }
   return { 'Cache-Control': 'no-cache' };
+}
+
+/**
+ * Missing, these are a 404 rather than the shell, which a browser would try to run. nginx's exact locations answer so
+ * where they exist.
+ */
+const NO_FALLBACK: ReadonlySet<string> = new Set([...SERVICE_WORKERS, '/host_version.json']);
+
+/** A file a local server sends. */
+export interface ResolvedFile {
+  file: string;
+  /** The path its caching headers follow. */
+  pathname: string;
+}
+
+function isFileOnDisk(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    // Missing, or a name the platform refuses, such as one holding a null byte.
+    return false;
+  }
+}
+
+/**
+ * The file that answers `pathname` from the build in `dir`, in nginx's `try_files` order: the root page at `/`, the file
+ * itself, a folder's index on the bare host, then the shell. A missing asset, worker or version file is a 404 instead.
+ * `undefined` is a 404.
+ */
+export function resolveFile(
+  dir: string,
+  route: Route,
+  pathname: string,
+  isFile: (path: string) => boolean = isFileOnDisk,
+): ResolvedFile | undefined {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    // A malformed escape names no file.
+    return undefined;
+  }
+  if (decoded === '/') {
+    const page = rootPage(route);
+    const file = join(dir, page);
+    return isFile(file) ? { file, pathname: `/${page}` } : undefined;
+  }
+  // The leading slash makes `normalize` settle `..` against the root, so no path leaves `dir`.
+  const file = join(dir, normalize(`/${decoded}`));
+  if (isFile(file)) {
+    return { file, pathname: decoded };
+  }
+  if (decoded.startsWith('/assets/') || NO_FALLBACK.has(decoded)) {
+    return undefined;
+  }
+  if (route.bare) {
+    const index = join(file, 'index.html');
+    if (isFile(index)) {
+      return { file: index, pathname: decoded };
+    }
+  }
+  const shell = join(dir, 'index.html');
+  return isFile(shell) ? { file: shell, pathname: '/index.html' } : undefined;
 }
 
 export const MIME_TYPES: Readonly<Record<string, string>> = {

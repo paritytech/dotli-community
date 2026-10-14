@@ -74,6 +74,12 @@ github-actions:
           - 'packages/ui/**'
           - '!packages/ui/package.json'
 
+'pkg: truapi-debug-ui':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/truapi-debug-ui/**'
+          - '!packages/truapi-debug-ui/package.json'
+
 'pkg: eslint':
   - changed-files:
       - all-globs-to-any-file:
@@ -91,6 +97,18 @@ github-actions:
       - all-globs-to-any-file:
           - 'config/vite/**'
           - '!config/vite/package.json'
+
+'pkg: storybook':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'config/storybook/**'
+          - '!config/storybook/package.json'
+
+'pkg: astro-solid':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'config/astro-solid/**'
+          - '!config/astro-solid/package.json'
 
 'pkg: metrics':
   - changed-files:

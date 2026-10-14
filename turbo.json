@@ -3,23 +3,30 @@
   "agentGuidance": false,
   "globalEnv": ["DEV", "PROD", "SSR", "BASE_URL", "NODE_ENV", "VITE_*", "DOTLI_NETWORK"],
   "tasks": {
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*"],
       "outputs": ["dist/**"],
       "cache": false
     },
     "build:prod": {
-      "dependsOn": ["^build:prod"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*"],
       "outputs": ["dist/**"],
       "env": ["SENTRY_AUTH_TOKEN"]
     },
-    "test": {},
+    "test": {
+      "dependsOn": ["transit"]
+    },
     "lint": {
+      "dependsOn": ["transit"],
       "outputs": []
     },
     "typecheck": {
+      "dependsOn": ["transit"],
       "outputs": []
     },
     "dev": {
@@ -30,6 +37,9 @@
       "outputs": []
     },
     "//#typecheck:root": {
+      "outputs": []
+    },
+    "//#test:root": {
       "outputs": []
     }
   }

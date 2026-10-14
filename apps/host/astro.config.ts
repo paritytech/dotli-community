@@ -2,23 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from 'astro/config';
-import type { Plugin } from 'vite';
 import { resolve } from 'node:path';
 import astroSolid from '@config/astro-solid';
 import { dotliApp } from '@config/vite/app';
 import { astroPwa } from '@config/vite/astro-pwa';
-import { buildInfo, readReleaseVersion } from '@config/vite/build-info';
-import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
-import { cssModules } from '@config/vite/css-modules';
+import { readReleaseVersion } from '@config/vite/build-info';
 import { dependencyVersions } from '@config/vite/dependency-versions';
-import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
-import { headerPolicy, routeFor, securityHeaders } from '@config/vite/serving';
 import { spaFallback } from '@config/vite/spa-fallback';
 import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 
-const app = dotliApp(import.meta.dirname);
-
-const OUT_DIR = 'dist';
+const app = dotliApp(import.meta.dirname, 'host');
 
 // Direct dependencies only, so Diagnostics lists just what dot.li code imports. A missing one reads as "unknown".
 const dependencies = dependencyVersions(resolve(import.meta.dirname, '../..'), [
@@ -29,31 +22,7 @@ const dependencies = dependencyVersions(resolve(import.meta.dirname, '../..'), [
 const versionOf = (name: string): string => dependencies.find(dep => dep.name === name)?.version ?? 'unknown';
 const scoped = (prefix: string) => dependencies.filter(dep => dep.name.startsWith(prefix));
 
-/**
- * The isolated headers on the routes the serving table isolates, the bare host's /__preview. Server-wide, COEP would
- * break the localhost dev servers, which ship no CORP.
- */
-function isolatedPageHeaders(): Plugin {
-  const headers = securityHeaders('isolated');
-  return {
-    name: 'isolated-page-headers',
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const pathname = (req.url ?? '/').split('?')[0] ?? '/';
-        const hostname = (req.headers.host ?? '').split(':')[0] ?? '';
-        if (headerPolicy(routeFor(hostname), pathname) === 'isolated') {
-          for (const [name, value] of Object.entries(headers)) {
-            res.setHeader(name, value);
-          }
-        }
-        next();
-      });
-    },
-  };
-}
-
 export default defineConfig({
-  outDir: OUT_DIR,
   // Apart from the preview server's 5173, so a preview build's precaching service worker never serves this origin.
   server: { port: 4321 },
   // Its floating bar covers the phone bar.
@@ -114,28 +83,12 @@ export default defineConfig({
       },
     }),
   ],
-  vite: {
-    css: { modules: cssModules() },
-    envDir: app.envDir,
-    // Astro's default is PUBLIC_*.
-    envPrefix: 'VITE_',
-    plugins: [
-      app.wasm(),
-      // Serves /dotli-network.js under `astro dev`.
-      runtimeNetworkConfigScript(),
-      buildInfo('host'),
-      isolatedPageHeaders(),
-      // After isolatedPageHeaders, which needs the `/__preview` path this rewrites to `/`.
-      spaFallback({ landing: '/landing' }),
-      app.sentry(),
-      truapiSigningWorker(),
-    ],
+  vite: app.vite({
+    plugins: [spaFallback({ landing: '/landing' }), truapiSigningWorker()],
     worker: {
       plugins: () => [truapiSigningWorker()],
-      rolldownOptions: rolldownOptions(),
     },
     define: {
-      ...app.define,
       __DOTLI_VERSION__: JSON.stringify(readReleaseVersion(import.meta.dirname)),
       // smoldot is compiled into truapi-provider's wasm, so the provider version identifies the light client.
       __LIGHT_CLIENT_VERSION__: JSON.stringify(versionOf('@parity/truapi-provider')),
@@ -143,22 +96,13 @@ export default defineConfig({
       __POLKADOT_API_VERSIONS__: JSON.stringify(scoped('@polkadot-api/')),
       __PARITY_TRUAPI_VERSIONS__: JSON.stringify(scoped('@parity/truapi')),
     },
-    optimizeDeps: {
-      exclude: ['@polkadot-api/wasm-executor'],
-    },
     // Node would load the workspace sources to render the page, and cannot map their `.js` imports to `.ts` files.
     ssr: { noExternal: [/^@dotli\//] },
-    build: {
-      ...appBuildOptions(),
-      sourcemap: 'hidden',
-    },
     server: {
-      // The sandbox and protocol dev servers take the next ports, so this one must not drift onto them.
-      strictPort: true,
       headers: {
         'Service-Worker-Allowed': '/',
         'Access-Control-Allow-Origin': '*',
       },
     },
-  },
+  }),
 });

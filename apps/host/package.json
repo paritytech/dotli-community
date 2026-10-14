@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build": "astro build",
-    "build:prod": "astro check && astro build && node ../../scripts/compress-dist.ts",
+    "build:prod": "astro build && node ../../scripts/compress-dist.ts",
     "dev": "astro dev",
     "test": "vitest run",
     "test:functional": "playwright test --config=tests/functional/playwright.config.ts",
@@ -23,7 +23,7 @@
     "test:perf:compare": "node tests/performance/compare.ts",
     "test:perf:compare:md": "node tests/performance/compare.ts --markdown",
     "lint": "eslint .",
-    "typecheck": "astro check",
+    "typecheck": "astro check && tsc --noEmit -p tsconfig.shipped.json",
     "storybook": "storybook dev -p 6006 --no-open",
     "build-storybook": "storybook build -o storybook-static",
     "test:stories": "vitest run --config vitest.storybook.config.ts",
@@ -48,8 +48,7 @@
     "playwright": "^1.63.0",
     "simple-statistics": "^7.12.1",
     "storybook": "^10.6.1",
-    "storybook-solidjs-vite": "^10.7.2",
-    "workbox-window": "^7.4.1"
+    "storybook-solidjs-vite": "^10.7.2"
   },
   "dependencies": {
     "@config/astro-solid": "*",
@@ -71,12 +70,12 @@
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@polkadot-labs/hdkd-helpers": "^0.0.34",
     "@scure/base": "^2.4.0",
-    "@sentry/browser": "^11.4.0",
     "@solidjs/web": "2.0.0-rc.13",
     "astro": "^7.3.6",
     "neverthrow": "^8.2.0",
     "polkadot-api": "^3.2.1",
     "qrcode": "^1.5.4",
-    "solid-js": "2.0.0-rc.13"
+    "solid-js": "2.0.0-rc.13",
+    "workbox-window": "^7.4.1"
   }
 }

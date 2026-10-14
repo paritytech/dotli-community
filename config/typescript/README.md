@@ -14,6 +14,8 @@ Shared `tsconfig` bases for the monorepo, so every package compiles under the sa
   and `erasableSyntaxOnly`. It is `noEmit` and checks JS files. It allows `.ts` import extensions for the files Node
   loads directly.
 - `@config/typescript/node.json` extends the base with `lib: ES2024` and Node types, for tooling packages.
+- Shipped code targets ES2022. A workspace whose tests use ES2024 APIs raises `lib` to ES2024 in its own config and
+  checks its shipped sources against ES2022 with a second, shipped-only config, which its `typecheck` script runs too.
 - `@config/typescript/solid.json` adds the JSX settings (`preserve`, `@solidjs/web`). Combine it with the base.
 - `@config/typescript/vite-env.d.ts` declares the `VITE_*` keys of `import.meta.env`, so dot access passes
   `noPropertyAccessFromIndexSignature`. Vite inlines only dot reads. It also types `?inline-script` imports as a string.

@@ -69,17 +69,21 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      # The PR checks' own scripts, so whatever deploys passes them too.
       - name: Check formatting
-        run: npx prettier --check "**/*.{ts,tsx,md}"
+        run: npm run format:check
 
       - name: Lint
-        run: npx turbo run lint
+        run: npm run lint
 
       - name: Type check
-        run: npx turbo run typecheck
+        run: npm run typecheck
+
+      - name: Unused files, exports and dependencies
+        run: npm run knip
 
       - name: Unit tests
-        run: npx turbo run test
+        run: npm test
 
   deploy:
     name: Deploy ${{ matrix.environment }}

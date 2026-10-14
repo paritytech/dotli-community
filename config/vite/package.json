@@ -9,7 +9,6 @@
     "./app": "./src/app.ts",
     "./astro-pwa": "./src/astro-pwa.ts",
     "./build-info": "./src/build-info-plugin.ts",
-    "./build-options": "./src/build-options.ts",
     "./css-modules": "./src/css-modules.ts",
     "./dependency-versions": "./src/dependency-versions.ts",
     "./inline-script": "./src/inline-script.ts",
@@ -30,12 +29,12 @@
   },
   "dependencies": {
     "@sentry/vite-plugin": "^5.4.1",
+    "vite-plugin-pwa": "^2.0.0",
     "vite-plugin-wasm": "^3.6.0"
   },
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "astro": "^7.3.6",
-    "vite-plugin-pwa": "^2.0.0"
+    "astro": "^7.3.6"
   }
 }

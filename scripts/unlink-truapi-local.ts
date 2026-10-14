@@ -25,7 +25,7 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
-const productRoot = resolve(process.env['E2E_PRODUCT_REPO'] ?? resolve(dotliRoot, '../../../host-playground'));
+const productRoot = resolve(dotliRoot, process.env['E2E_PRODUCT_REPO'] ?? '../host-playground');
 const nestedTruapi = resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
 const linkedProductSdkHost = resolve(productRoot, 'node_modules/@parity/product-sdk-host');
 const isSymlink = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
