@@ -5,7 +5,9 @@
 // The sink is bound from `@dotli/metrics`, since this package cannot depend on it.
 
 // Read from the build flag here rather than set at boot, so the first log of every entry point already honours it.
-const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
+// Node loaders other than Vite's, such as Playwright's for test helpers, define no `import.meta.env`.
+const env = import.meta.env as ImportMetaEnv | undefined;
+const DEBUG = env?.VITE_APP_DEBUG === 'true';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
