@@ -109,7 +109,11 @@ function DockBottomIcon(): JSX.Element {
 export function Header(props: {
   section: PanelSection;
   onSelectSection: (section: PanelSection) => void;
+  /** Whether a PolkaVM product reports diagnostics, which adds the Runtime tab. */
+  runtime: boolean;
   counts: string;
+  /** The PolkaVM runtime badge, while a PolkaVM product reports diagnostics. */
+  runtimeEntry?: JSX.Element | undefined;
   paused: boolean;
   collapsed: boolean;
   dock: DockPosition;
@@ -196,10 +200,11 @@ export function Header(props: {
 
   return (
     <div class={s['header']} data-testid="td-header" data-dock={props.placement}>
-      <SectionTabs section={props.section} onSelect={props.onSelectSection} />
+      <SectionTabs section={props.section} runtime={props.runtime} onSelect={props.onSelectSection} />
       <span class={s['counts']} data-testid="td-counts" hidden={!events()}>
         {props.counts}
       </span>
+      {props.runtimeEntry}
       <span class={s['spacer']} />
       <Button testId="td-pause" hidden={!events()} active={props.paused} onClick={props.onTogglePause}>
         {props.paused ? 'Resume' : 'Pause'}

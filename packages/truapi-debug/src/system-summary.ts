@@ -24,10 +24,10 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       }
       return 'URL parsed: landing page (no subdomain).';
     }
-    case 'boot:cid_cache_checked':
+    case 'boot:installed_executable_cache_checked':
       return p['hit'] === true
-        ? `CID cache hit for ${str(p['label'])} → ${str(p['cid'])}.`
-        : `CID cache miss for ${str(p['label'])}.`;
+        ? `Installed executable cache hit for ${str(p['label'])} → ${str(p['contenthash'])}.`
+        : `Installed executable cache miss for ${str(p['label'])}.`;
     case 'boot:block_cache':
       return `Host block cache: ${str(p['hits'])} blocks from cache, ${str(p['misses'])} from the network.`;
     case 'boot:landing_page_shown':

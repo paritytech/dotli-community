@@ -9,7 +9,9 @@ export const TIMEOUTS = {
   SANDBOX_RECOVER: 6_000,
   /** Wait for `controllerchange` after registration. */
   SW_READY: 10_000,
-  /** Per attempt. */
+  /** Persisting a maximum-size application archive in the service worker. */
+  SW_ARCHIVE_STORE: 180_000,
+  /** P2P fetch abort (per attempt) */
   P2P_FETCH: 30_000,
   /**
    * Exceeds `HUB_FINALIZED_SYNC` so the outer wait doesn't race the inner one. A caller with its own deadline

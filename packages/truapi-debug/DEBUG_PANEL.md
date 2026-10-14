@@ -37,8 +37,9 @@ dynamically imported, so users who never see the panel pay zero download cost.
 
 A resizable, dockable panel at the bottom of the viewport. It mounts visible whenever debug mode is on; the panel's `×`
 button exits debug mode entirely (see [Enabling and disabling](#enabling-and-disabling)). The header holds the top-level
-tabs: **TrUAPI**, **Resolution**, **Archive**, **Diagnostics** and **Wallet**. The panel reopens on the tab you last
-picked, kept in `localStorage` like the dock side.
+tabs: **TrUAPI**, **Resolution**, **Archive**, **Diagnostics** and **Wallet**, plus **Runtime** while a PolkaVM product
+reports diagnostics. The panel reopens on the tab you last picked, kept in `localStorage` like the dock side; Runtime is
+never restored.
 
 The TrUAPI tab shows the captured events. Its filters sit under the header, the left pane is your choice of **List** or
 **Timeline**, and the right pane is the detail inspector for the selected event. A draggable splitter between them lets
@@ -59,10 +60,10 @@ The panel ships in every build. Default behavior depends on the build flag `VITE
   covering content unsolicited.
 - **Staging / production** (`VITE_APP_DEBUG` unset): the panel is off until the user explicitly opts in.
 
-When the panel isn't mounted, the bus stays in a null-stub state and every `emitDotliDebugEvent(...)` call site
-scattered through `main.ts`, `bridge.ts`, and `container.ts` is a cheap early-return. The panel UI
-(`packages/ui/src/components/truapi-debug/mount.tsx`, a Solid tree) is a dynamic import — it isn't fetched until the
-panel mounts.
+Until debug mode is enabled, the bus stays in a null-stub state: event and PolkaVM snapshot publication are cheap
+early-returns. Once enabled, runtime publication retains only the latest snapshot reference and skips dispatch when no
+runtime listener is attached. The panel UI (`packages/ui/src/components/truapi-debug/mount.tsx`, a Solid tree) is a
+dynamic import — it isn't fetched until the panel mounts.
 
 Two ways to explicitly turn the panel on (mounts **expanded**):
 
@@ -116,8 +117,8 @@ changes.
 Dotli-internal host-side orchestration, captured by `onDotliDebugEvent` from `@dotli/truapi-debug`
 (`src/dotli-debug-bus.ts`).
 
-- `boot:*` — `started`, `protocol_warmup_started`, `topbar_ready`, `url_parsed`, `cid_cache_checked`,
-  `landing_page_shown`, `ready`, `failed`.
+- `boot:*` — `started`, `protocol_warmup_started`, `topbar_ready`, `url_parsed`, `installed_executable_cache_checked`,
+  `block_cache`, `landing_page_shown`, `ready`, `failed`.
 - `resolve:*` — `started`, `phase`, `storage_read`, `completed`, `failed`.
 - `render:*` — `iframe_begin`, `iframe_ready`.
 - `bridge:*` — `setup_begin`, `setup_ready`, `iframe_load`, `first_inbound`, `first_outbound`.
@@ -126,7 +127,8 @@ Dotli-internal host-side orchestration, captured by `onDotliDebugEvent` from `@d
 ## Views
 
 The TrUAPI tab's List and Timeline views both operate on the same filtered slice of the event store. Clicking an event
-in one view pins the same event in the detail pane regardless of which view is active.
+in one view pins the same event in the detail pane regardless of which view is active. Runtime is a live snapshot and
+does not add sampled FPS values to the event ring buffer.
 
 ### List view
 
@@ -163,6 +165,28 @@ How the page load went: each resolution phase, the open block and the chains tha
 
 The files of the loaded product.
 
+### Runtime
+
+PolkaVM products publish their latest runtime snapshot from the product sandbox to the authenticated host frame. The
+header shows the current backend (**JIT**, **Interpreter**, or **Starting**) and FPS in a badge, with first-frame
+latency in its tooltip. Clicking the badge expands the panel and opens the Runtime tab with:
+
+- startup stage and total startup / first-frame latency;
+- translation-cache result, translation time, compilation time, and translated Wasm size;
+- current FPS, presented frame count, and update count;
+- update p50, p95, and maximum latency;
+- emitted audio chunk and sample counts;
+- compiler fallback stage and reason when compiler startup failed (not for a forced interpreter).
+
+The snapshot is replaced in place rather than appended to the TrUAPI events. Pausing or clearing event capture does not
+stop these live counters. Loading another product clears the current snapshot, hides Runtime, and returns to the last
+stored tab if Runtime was selected. PolkaVM renders no separate diagnostics overlay over product content.
+
+The `@dotli/truapi-debug` barrel exports `PolkaVmDebugSnapshot`, `PolkaVmDebugMessage`, `emitPolkaVmDebugSnapshot`,
+`onPolkaVmDebugSnapshot`, and `clearPolkaVmDebugSnapshot`. Subscribers immediately receive the latest available sample;
+reset publishes `null` and clears that replay value. Disposal unsubscribes the panel without adding samples to the event
+store.
+
 ### Diagnostics
 
 The site, backend and package versions, for a bug report.
@@ -177,7 +201,7 @@ mode. Logging out from the topbar in local mode does the same.
 
 ## Filters
 
-The filter bar at the top of the panel applies to both views:
+The filter bar at the top of the panel applies to the two event views:
 
 - **TrUAPI / System checkboxes** — coarse kind toggle. Unchecking hides events of that kind from both views, and the
   affected swimlanes disappear when they have nothing to show.

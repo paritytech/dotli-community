@@ -144,8 +144,10 @@ async function applyUrlSettings(): Promise<void> {
     (rawUrlBackend === 'smoldot-shared-worker' || rawPersistedBackend === 'smoldot-shared-worker');
 
   // Before reading prior values, so they reflect the cross-subdomain store and the writes below mirror to it.
+  let flushSharedModeWrites: (() => Promise<void>) | undefined;
   try {
-    const { bootstrapSharedMode } = await loadSharedMode();
+    const { bootstrapSharedMode, flushSharedModeWrites: flushWrites } = await loadSharedMode();
+    flushSharedModeWrites = flushWrites;
     await bootstrapSharedMode();
   } catch (err: unknown) {
     bootLog.warn('[dot.li] Shared mode bootstrap failed; continuing with per-origin localStorage:', err);
@@ -170,6 +172,8 @@ async function applyUrlSettings(): Promise<void> {
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
+  // Finish writes through the bootstrap iframe before a backend change tears it down.
+  await flushSharedModeWrites?.();
 
   if (writeSettingsToSearch({ network: next.network, chainBackend: next.chain, cache: next.cache }, search)) {
     const query = search.toString();
@@ -208,6 +212,7 @@ async function applyUrlSettings(): Promise<void> {
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
+  await flushSharedModeWrites?.();
   try {
     sessionStorage.setItem('dotli:pending-reset:protocol', '1');
     sessionStorage.setItem('dotli:pending-reset:sandbox', '1');

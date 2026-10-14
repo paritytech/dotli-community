@@ -13,6 +13,12 @@ export default defineConfig({
   testDir: '.',
   timeout: 900_000,
   retries: 0,
+  use: {
+    ...baseConfig.use,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
+  outputDir: './test-results',
   // One preview server per worker: its metrics buffer and mode-sync store are process-wide, and tests must not
   // share them.
   workers: WORKERS,

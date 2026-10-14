@@ -90,17 +90,24 @@
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
-/* Its hover, underline and focus ring hug the text, not the card's width. */
-a.body {
+/* A toast the app can be reopened from: its text is the button. Its hover,
+   underline and focus ring hug the text, not the card's width. */
+button.body {
   align-self: flex-start;
+  padding: 0;
+  border: 0;
   border-radius: var(--r-hair);
+  background: none;
+  font-family: inherit;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
-a.body:hover {
+button.body:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-a.body:focus-visible {
+button.body:focus-visible {
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }

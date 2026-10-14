@@ -3,15 +3,22 @@
 
 // The bus stays null until `enableDotliDebugBuffering()`, so sessions that never open debug mode pay nothing.
 
-import { createNanoEvents } from 'nanoevents';
+import { createNanoEvents, type Emitter } from 'nanoevents';
 
-import type { DotliDebugEvent } from './dotli-debug-types.js';
+import type { DotliDebugEvent, PolkaVmDebugSnapshot } from './dotli-debug-types.js';
 import type { TruapiDebugMessageEvent } from './event-store.js';
 
 export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
-let bus: ReturnType<typeof createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>> | null = null;
+interface DebugBusEvents {
+  event: (event: DotliDebugBusEvent) => void;
+  polkavm: (snapshot: PolkaVmDebugSnapshot | null) => void;
+}
+
+let bus: Emitter<DebugBusEvents> | null = null;
 let listenerCount = 0;
+let latestPolkaVmSnapshot: PolkaVmDebugSnapshot | null = null;
+let polkaVmListenerCount = 0;
 
 // Boot events fire while the lazily loaded panel is still loading. They are held until the first
 // subscriber attaches, replayed to it once, and then buffering stops for the session.
@@ -25,7 +32,7 @@ function noopUnsubscribe(): void {
 
 /** Call as soon as the panel is known to mount, before any emit site runs. */
 export function enableDotliDebugBuffering(): void {
-  bus ??= createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>();
+  bus ??= createNanoEvents<DebugBusEvents>();
   bufferingEnabled = true;
 }
 
@@ -43,6 +50,48 @@ export function emitDotliDebugEvent(event: DotliDebugBusEvent): void {
       bufferedEvents.shift();
     }
   }
+}
+
+/** Publish the latest PolkaVM runtime state without adding a sampled value to
+ * the event timeline. Silent no-op outside debug mode. */
+export function emitPolkaVmDebugSnapshot(snapshot: PolkaVmDebugSnapshot): void {
+  if (bus === null) {
+    return;
+  }
+  latestPolkaVmSnapshot = snapshot;
+  if (polkaVmListenerCount > 0) {
+    bus.emit('polkavm', snapshot);
+  }
+}
+
+/** Forget the previous product's metrics, including the late-subscriber replay. */
+export function clearPolkaVmDebugSnapshot(): void {
+  latestPolkaVmSnapshot = null;
+  if (bus !== null && polkaVmListenerCount > 0) {
+    bus.emit('polkavm', null);
+  }
+}
+
+/** Subscribe to live PolkaVM runtime state. The current snapshot is replayed
+ * immediately so a dynamically imported panel cannot miss startup metrics. */
+export function onPolkaVmDebugSnapshot(callback: (snapshot: PolkaVmDebugSnapshot | null) => void): () => void {
+  if (bus === null) {
+    return noopUnsubscribe;
+  }
+  const unsubscribe = bus.on('polkavm', callback);
+  polkaVmListenerCount++;
+  if (latestPolkaVmSnapshot !== null) {
+    callback(latestPolkaVmSnapshot);
+  }
+  let disposed = false;
+  return () => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    polkaVmListenerCount--;
+    unsubscribe();
+  };
 }
 
 /** Cheap gate for emit sites that build non-trivial payloads. */

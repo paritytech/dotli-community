@@ -26,13 +26,13 @@ interface GaugePoint {
   mode: string;
 }
 
-async function readGauge(request: APIRequestContext): Promise<GaugePoint[]> {
+async function readGauge(request: APIRequestContext, mode: string): Promise<GaugePoint[]> {
   const res = await request.get(METRICS_URL);
   if (!res.ok()) {
     throw new Error(`preview-server returned HTTP ${String(res.status())}`);
   }
   const points = (await res.json()) as GaugePoint[];
-  return points.filter(p => p.name === 'dotli.smoldot.active');
+  return points.filter(p => p.name === 'dotli.smoldot.active' && p.mode === mode);
 }
 
 // Long enough for a late flush to reveal an extra light client.
@@ -42,17 +42,22 @@ const SETTLE_MS = 5_000;
  * Waits for the expected count, then holds for more. Waiting for the count to stop changing would read the gap
  * between two Sentry flushes as settled and undercount.
  */
-async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
+async function settledGauge(
+  request: APIRequestContext,
+  page: Page,
+  expected: number,
+  mode: string,
+): Promise<GaugePoint[]> {
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const points = await readGauge(request);
+    const points = await readGauge(request, mode);
     if (points.reduce((sum, p) => sum + p.value, 0) >= expected) {
       break;
     }
     await page.waitForTimeout(1_000);
   }
   await page.waitForTimeout(SETTLE_MS);
-  return readGauge(request);
+  return readGauge(request, mode);
 }
 
 for (const [label, backend, expected] of [
@@ -92,7 +97,11 @@ for (const [label, backend, expected] of [
     await tabB.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
     expect(await findAppFrame(tabB, TIMEOUT_MS)).not.toBeNull();
 
-    const points = await settledGauge(request, tabA, expected);
+    // The collector is process-wide. A prior test context can finish flushing
+    // after DELETE, so isolate this assertion by the mode emitted with each
+    // point. A backend fallback still fails: the requested mode contributes 0.
+    const expectedMode = backend === 'smoldot-shared-worker' ? 'shared-worker' : 'direct';
+    const points = await settledGauge(request, tabA, expected, expectedMode);
 
     // Then
     const total = points.reduce((sum, p) => sum + p.value, 0);

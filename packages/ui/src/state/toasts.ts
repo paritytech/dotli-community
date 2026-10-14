@@ -15,7 +15,7 @@ export interface ToastAction {
 export interface ToastInput {
   text: string;
   label: string;
-  deeplink?: string;
+  onActivate?: () => void;
   icon: string;
   /** Tints the icon tile. */
   tone?: StatusTone;
@@ -29,7 +29,7 @@ export interface ToastEntry {
   id: number;
   text: string;
   label: string;
-  deeplink?: string;
+  onActivate?: () => void;
   icon: string;
   tone: StatusTone;
   action?: ToastAction;
@@ -140,8 +140,8 @@ export function pushToast(input: ToastInput): number {
     tone: input.tone ?? 'info',
     leaving: false,
   };
-  if (input.deeplink !== undefined) {
-    entry.deeplink = input.deeplink;
+  if (input.onActivate !== undefined) {
+    entry.onActivate = input.onActivate;
   }
   if (input.action !== undefined) {
     entry.action = input.action;

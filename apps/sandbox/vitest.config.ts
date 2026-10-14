@@ -7,7 +7,7 @@ import solid from '@solidjs/vite-plugin';
 export default defineConfig({
   plugins: [solid()],
   test: {
-    include: ['tests/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'happy-dom',
     globals: false,
   },

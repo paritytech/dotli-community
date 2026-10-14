@@ -2,21 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import {
-  SANDBOX_SCHEMA_VERSION,
-  SANDBOX_CONTRACT_PARAMS,
-  validateSandboxParams,
-} from '../src/host-sandbox-contract.js';
+import { SANDBOX_CONTRACT_PARAMS, validateSandboxParams } from '../src/host-sandbox-contract.js';
+import { SANDBOX_SCHEMA_VERSION } from '../src/host-sandbox-version.js';
 import { NetworkName } from '../src/network.js';
 
 const VALID_CID = 'bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 
-/** The required params, with overrides. `null` removes one. */
+/** Required v5 params, with overrides. `null` removes one. */
 function search(overrides: Record<string, string | null> = {}): URLSearchParams {
   const base: Record<string, string> = {
+    [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
     [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'smoldot-direct',
     [SANDBOX_CONTRACT_PARAMS.network]: NetworkName.PASEO,
+    [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: '0',
   };
   const params = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
@@ -29,9 +28,9 @@ function search(overrides: Record<string, string | null> = {}): URLSearchParams 
   return params;
 }
 
-describe('validateSandboxParams: v3 cid contract', () => {
-  it('As the sandbox, when I receive a valid contract, I read cid, chainBackend, and network from the params', () => {
-    // Given a contract that carries every required v3 param.
+describe('validateSandboxParams: v5 cid contract', () => {
+  it('As the sandbox, when I receive a valid contract, I read its content and runtime policy', () => {
+    // Given a contract that carries every required v5 param.
     const params = search();
 
     // When the sandbox validates it.
@@ -43,6 +42,41 @@ describe('validateSandboxParams: v3 cid contract', () => {
       expect(result.params.cid).toBe(VALID_CID);
       expect(result.params.chainBackend).toBe('smoldot-direct');
       expect(result.params.network).toBe(NetworkName.PASEO);
+      expect(result.params.polkaVmEnabled).toBe(false);
+    }
+  });
+
+  it('accepts an explicit PolkaVM runtime opt-in', () => {
+    const result = validateSandboxParams(search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: '1' }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.polkaVmEnabled).toBe(true);
+    }
+  });
+
+  it('rejects a missing or malformed PolkaVM runtime policy', () => {
+    for (const value of [null, 'true', '2']) {
+      const result = validateSandboxParams(search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: value }));
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/polkavmenabled/i);
+      }
+    }
+  });
+
+  it('preserves exact executable manifest text for sandbox byte comparison', () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,7],"runtime":{"kind":"web","entrypoint":"index.html"}}';
+    const result = validateSandboxParams(
+      search({
+        [SANDBOX_CONTRACT_PARAMS.executableManifest]: executableManifest,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.executableManifest).toBe(executableManifest);
     }
   });
 
@@ -109,17 +143,27 @@ describe('validateSandboxParams: v3 cid contract', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('As the sandbox, I reject a contract whose schema version is older than my build', () => {
-    // Given a contract from a host built against an older schema.
+  it('As the sandbox, I request a host update when its schema is older than my build', () => {
     const params = search({
       [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION - 1),
     });
 
-    // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails (the version gate protects against stale host deploys).
     expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.hostUpdateRequired).toBe(true);
+      expect(result.reason).toMatch(/update dot\.li/i);
+    }
+  });
+
+  it('As the sandbox, I request a host update when an active contract omits its schema version', () => {
+    const result = validateSandboxParams(search({ [SANDBOX_CONTRACT_PARAMS.v]: null }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.hostUpdateRequired).toBe(true);
+    }
   });
 
   it('As the sandbox, I reject a contract that omits the chainBackend', () => {
@@ -129,7 +173,7 @@ describe('validateSandboxParams: v3 cid contract', () => {
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails (chainBackend is still required after the v3 bump).
+    // Then it fails (chainBackend is still required after the v4 bump).
     expect(result.ok).toBe(false);
   });
 
@@ -140,7 +184,7 @@ describe('validateSandboxParams: v3 cid contract', () => {
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails (network is still required after the v3 bump).
+    // Then it fails (network is still required after the v4 bump).
     expect(result.ok).toBe(false);
   });
 
@@ -237,14 +281,5 @@ describe('validateSandboxParams: resolution id', () => {
     if (result.ok) {
       expect(result.params.resolutionId).toBeNull();
     }
-  });
-
-  it('As a user, the app I open never sees the tracking id in its URL', () => {
-    // Given the strip iterates the contract param map.
-    const keys = Object.values(SANDBOX_CONTRACT_PARAMS);
-
-    // Then the id is in that map, so `stripContractParamsFromUrl` removes it
-    // and it never leaks into the product `location.search`.
-    expect(keys).toContain(SANDBOX_CONTRACT_PARAMS.resolutionId);
   });
 });

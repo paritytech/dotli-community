@@ -90,6 +90,24 @@ export function isSandboxOrigin(origin: string): boolean {
   }
 }
 
+/**
+ * Exact sandbox origin for a validated DotNS label in this deployment.
+ *
+ * Keep this shared by iframe construction and host-side message
+ * authorization so those two boundaries cannot drift.
+ */
+export function sandboxOriginForLabel(label: string): string {
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) {
+    throw new Error(`invalid sandbox label: ${label}`);
+  }
+  if (isLocalhost) {
+    const port = import.meta.env.DEV ? '5174' : self.location.port;
+    return `http://${label}.app.localhost${port === '' ? '' : `:${port}`}`;
+  }
+  return `https://${label}.app.${BASE_DOMAIN}`;
+}
+
+// Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
 export const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
 
 /** Content block cache cap. After each load the least recently used blocks are dropped until it fits. */

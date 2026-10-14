@@ -7,14 +7,14 @@ import type { RemoteChainProvider } from '@dotli/protocol';
 import type { ModeDraft } from '../src/settings-actions.js';
 
 const mocks = vi.hoisted(() => ({
-  clearCidCache: vi.fn(() => Promise.resolve()),
+  clearInstalledExecutableCache: vi.fn(() => Promise.resolve()),
   clearBlockCache: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../storage/src/cid-cache.js', async importOriginal => ({
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- required for mock typing
   ...(await importOriginal<typeof import('../../storage/src/cid-cache.js')>()),
-  clearCidCache: mocks.clearCidCache,
+  clearInstalledExecutableCache: mocks.clearInstalledExecutableCache,
 }));
 vi.mock('../../storage/src/block-cache.js', () => ({
   clearBlockCache: mocks.clearBlockCache,
@@ -39,6 +39,7 @@ const prior: ModeDraft = {
   chain: 'smoldot-direct',
   network: 'paseo-next-v2',
   cache: CACHE_ON,
+  polkaVmAppsEnabled: true,
 };
 
 describe('applyAndReset: archive cache', () => {

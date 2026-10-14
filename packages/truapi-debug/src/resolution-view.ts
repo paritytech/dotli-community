@@ -44,7 +44,7 @@ export interface ResolutionSummary {
   avgBytesPerSecond: number | null;
   peakBytesPerSecond: number | null;
   firstByteMs: number | null;
-  cidCache: CacheResult;
+  executableCache: CacheResult;
   archiveCache: CacheResult;
 }
 
@@ -325,7 +325,7 @@ function emptySummary(): ResolutionSummary {
     avgBytesPerSecond: null,
     peakBytesPerSecond: null,
     firstByteMs: null,
-    cidCache: null,
+    executableCache: null,
     archiveCache: null,
   };
 }
@@ -377,7 +377,7 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
         summary.renderedMs ??= Math.max(0, ev.timestamp - startedAt);
         break;
       case 'boot:started': {
-        // Authoritative, because a load served from the CID cache emits no resolve event.
+        // The authoritative backend for the load, even before resolution begins.
         const backend = str(p['chainBackend']);
         if (backend === 'rpc-gateway') {
           summary.backend = 'rpc-gateway';
@@ -386,21 +386,18 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
         }
         // A cache the user turned off never reports a result.
         if (p['skipCidCache'] === true) {
-          summary.cidCache = 'skipped';
+          summary.executableCache = 'skipped';
         }
         if (p['skipArchiveCache'] === true) {
           summary.archiveCache = 'skipped';
         }
         break;
       }
-      case 'boot:cid_cache_checked':
-        summary.cidCache = p['hit'] === true ? 'hit' : 'miss';
-        // A cache hit resolves the name without a `resolve:completed` event.
-        if (p['hit'] === true) {
-          summary.cid ??= str(p['cid']);
-          summary.label ??= str(p['label']);
-          summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
-        }
+      case 'boot:installed_executable_cache_checked':
+        summary.executableCache = p['hit'] === true ? 'hit' : 'miss';
+        summary.label ??= str(p['label']);
+        // A local hit still needs chain revalidation. Its contenthash is not
+        // a resolved CID, and the lookup time is not the resolution latency.
         break;
       case 'boot:block_cache':
         summary.archiveCache = num(p['misses']) === 0 && (num(p['hits']) ?? 0) > 0 ? 'hit' : 'miss';

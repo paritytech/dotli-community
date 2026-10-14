@@ -1,4 +1,7 @@
 {
   "extends": ["@config/typescript/base.json", "@config/typescript/solid.json"],
+  "compilerOptions": {
+    "resolveJsonModule": true
+  },
   "include": ["src", "vite.config.ts", "tests", "vitest.config.ts", "eslint.config.js"]
 }

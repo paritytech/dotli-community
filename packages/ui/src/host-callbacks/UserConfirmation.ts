@@ -23,6 +23,7 @@ import type {
   RawPayload,
   RingLocationJunction,
 } from '@parity/truapi';
+import { hexToBytes } from '@parity/truapi/scale';
 import { iconMarkup, PERMISSION_ICONS } from '../permission-icons.js';
 import { showPreimageSubmitModal } from '../preimage-modal.js';
 import { ERRORS } from '../errors.js';
@@ -122,8 +123,18 @@ function truncateHex(value: string): string {
   return value.length > 80 ? `${value.slice(0, 80)}...` : value;
 }
 
-function formatRawPayload(payload: RawPayload): string {
-  return truncateHex(payload.tag === 'Bytes' ? payload.value.bytes : payload.value.payload);
+function formatRawPayload(payload: RawPayload, watermarked: boolean): string {
+  const value = payload.tag === 'Bytes' ? payload.value.bytes : payload.value.payload;
+  const raw =
+    payload.tag === 'Bytes' || (value.startsWith('0x') && value.length % 2 === 0)
+      ? hexToBytes(value)
+      : new TextEncoder().encode(value);
+  const hex = formatBytes(raw);
+  const prefix = '3c42797465733e';
+  const suffix = '3c2f42797465733e';
+  return watermarked && !(hex.startsWith(`0x${prefix}`) && hex.endsWith(suffix))
+    ? `0x${prefix}${hex.slice(2)}${suffix}`
+    : hex;
 }
 
 function formatDerivationIndex(index: DerivationIndex): string {
@@ -177,7 +188,7 @@ function createSignRawFields(label: string, review: SignRawReview): Confirmation
     { label: 'Signer', value: signer },
     {
       label: 'Message',
-      value: formatRawPayload(review.value.request.payload),
+      value: formatRawPayload(review.value.request.payload, review.value.watermarked),
       mono: true,
     },
   ];
@@ -299,7 +310,9 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
     case 'SignPayload':
       return { title: 'Sign Transaction', action: 'Sign', icon: PEN_ICON };
     case 'SignRaw':
-      return { title: 'Sign Message', action: 'Sign', icon: PEN_ICON };
+      return review.value.value.watermarked
+        ? { title: 'Sign Message', action: 'Sign', icon: PEN_ICON }
+        : { title: 'Sign Unwatermarked Payload', action: 'Sign Unwatermarked', icon: PEN_ICON };
     case 'StatementStoreProductSign':
       return { title: 'Sign Statement', action: 'Sign', icon: PEN_ICON };
     case 'SignVrf':

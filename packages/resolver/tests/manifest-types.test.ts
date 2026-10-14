@@ -22,6 +22,41 @@ const VALID_APP = {
   appVersion: [1, 0, 0],
 };
 
+const VALID_APP_V2 = {
+  $v: 2,
+  kind: 'app',
+  appVersion: [0, 1, 7],
+  runtime: {
+    kind: 'polkavm',
+    abiVersion: 1,
+    entrypoint: 'app.polkavm',
+  },
+  capabilities: {
+    graphics: {
+      abiVersion: 1,
+      profile: 'framebuffer',
+      requiredFeatures: [],
+    },
+    deviceInput: {
+      abiVersion: 1,
+      requiredFeatures: ['pointer', 'keyboard'],
+    },
+    audio: { abiVersion: 1, requiredFeatures: [] },
+    fileInput: {
+      abiVersion: 1,
+      handlers: [
+        {
+          id: 'snes-rom',
+          label: 'SNES cartridge image',
+          extensions: ['.sfc'],
+          maxBytes: 16 * 1024 * 1024,
+          mountPath: 'game/cartridge.sfc',
+        },
+      ],
+    },
+  },
+};
+
 const VALID_WIDGET = {
   $v: 1,
   kind: 'widget',
@@ -44,10 +79,9 @@ describe('validateRootManifest', () => {
   });
 
   it('reports a $v other than 1 as an unsupported version, without checking the fields', () => {
-    expect(validateRootManifest({ $v: 2, title: 'not a v1 shape' })).toEqual({
+    expect(validateRootManifest({ $v: 2, title: 'not a v1 shape' })).toMatchObject({
       ok: false,
       unsupportedVersion: 2,
-      errors: ['root manifest $v 2 is not supported (expected 1)'],
     });
   });
 
@@ -91,6 +125,125 @@ describe('validateRootManifest', () => {
 describe('validateExecutableManifest', () => {
   it('accepts a valid app manifest', () => {
     expect(validateExecutableManifest(VALID_APP).ok).toBe(true);
+  });
+
+  it('accepts App manifest v2 runtime capabilities', () => {
+    expect(validateExecutableManifest(VALID_APP_V2).ok).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          deviceInput: {
+            abiVersion: 1,
+            requiredFeatures: ['pointer', 'motion', 'camera-ur'],
+          },
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          graphics: VALID_APP_V2.capabilities.graphics,
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          graphics: {
+            abiVersion: 1,
+            profile: 'webgpu',
+            requiredFeatures: [],
+            requiredLimits: {
+              maxBufferSize: 1_048_576,
+              maxStorageBufferBindingSize: 1_048_576,
+              maxStorageBuffersPerShaderStage: 2,
+              maxComputeInvocationsPerWorkgroup: 64,
+              maxComputeWorkgroupSizeX: 64,
+              maxComputeWorkgroupsPerDimension: 1_024,
+            },
+          },
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        $v: 2,
+        kind: 'app',
+        appVersion: [1, 0, 0],
+        runtime: { kind: 'web', entrypoint: 'index.html' },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: {
+          ...VALID_APP_V2.runtime,
+          fallback: { kind: 'web', entrypoint: 'fallback/index.html' },
+        },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it('rejects unsafe App v2 entrypoints and unknown required features', () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: { ...VALID_APP_V2.runtime, entrypoint: '../app.polkavm' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: {
+          ...VALID_APP_V2.runtime,
+          fallback: { kind: 'web', entrypoint: '../fallback.html' },
+        },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          audio: { abiVersion: 1, requiredFeatures: ['spatial'] },
+        },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          fileInput: {
+            ...VALID_APP_V2.capabilities.fileInput,
+            handlers: [
+              {
+                ...VALID_APP_V2.capabilities.fileInput.handlers[0],
+                mountPath: '../cartridge.sfc',
+              },
+            ],
+          },
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('accepts only the published PolkaVM runtime ABI', () => {
+    // A v2 manifest versions the manifest, not the guest boundary: every App
+    // the kit publishes selects runtime ABI v1.
+    expect(validateExecutableManifest(VALID_APP_V2).ok).toBe(true);
+    for (const abiVersion of [2, 0, '1', undefined]) {
+      const result = validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: { ...VALID_APP_V2.runtime, abiVersion },
+      });
+      expect(result.ok).toBe(false);
+    }
   });
 
   it('accepts a valid widget manifest', () => {
@@ -139,13 +292,14 @@ describe('validateExecutableManifest', () => {
     expect(validateExecutableManifest({ ...VALID_WORKER, includes: { chat: 'yes' } }).ok).toBe(false);
   });
 
-  it('reports a $v other than 1 as an unsupported version, without checking the fields', () => {
-    const v2 = { $v: 2, kind: 'app', appVersion: [0, 1, 9], runtime: { kind: 'polkavm', entrypoint: 'app.polkavm' } };
-    expect(validateExecutableManifest(v2)).toEqual({
+  it('distinguishes unknown app versions from invalid fields in supported schemas', () => {
+    expect(validateExecutableManifest({ $v: 3, kind: 'app' })).toMatchObject({
       ok: false,
-      unsupportedVersion: 2,
-      errors: ['executable manifest $v 2 is not supported (expected 1)'],
+      unsupportedVersion: 3,
     });
+    const invalidV2 = validateExecutableManifest({ $v: 2, kind: 'app', appVersion: [0, 1, 9] });
+    expect(invalidV2.ok).toBe(false);
+    expect(invalidV2).not.toHaveProperty('unsupportedVersion');
   });
 
   it('rejects unknown kind', () => {

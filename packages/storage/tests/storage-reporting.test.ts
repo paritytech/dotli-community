@@ -12,10 +12,18 @@ vi.mock('@dotli/metrics', async importOriginal => ({
   ...sentry,
 }));
 
-import { evictCachedCid, setCachedCid } from '../src/cid-cache.js';
-import { getDb, isExpectedDbError } from '../src/db.js';
+import {
+  evictCachedInstalledExecutable,
+  getCachedInstalledExecutable,
+  setCachedInstalledExecutable,
+} from '../src/cid-cache.js';
+import { isExpectedDbError } from '../src/db.js';
 
-const MANIFESTS = { root: null, app: null };
+const EXECUTABLE = {
+  contenthash: 'bafy',
+  executableManifest: '{"$v":1,"kind":"app","appVersion":[1,0,0]}',
+  rootManifest: null,
+};
 
 function failTransactions(err: Error): void {
   vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(() => {
@@ -44,9 +52,10 @@ describe('isExpectedDbError', () => {
   });
 });
 
-describe('cid-cache failure reporting', () => {
+describe('installed executable cache failure reporting', () => {
   beforeEach(async () => {
-    await getDb();
+    // Opened before the transactions are made to fail.
+    await getCachedInstalledExecutable('warm', NetworkName.PASEO, 'app');
     sentry.captureException.mockClear();
     sentry.recordExpected.mockClear();
   });
@@ -60,13 +69,13 @@ describe('cid-cache failure reporting', () => {
     failTransactions(new DOMException('The database connection is closing.', 'InvalidStateError'));
 
     // When the cache writes
-    await setCachedCid('myapp', NetworkName.PASEO, 'bafy', MANIFESTS);
+    await setCachedInstalledExecutable('myapp', NetworkName.PASEO, 'app', EXECUTABLE);
 
     // Then the failure is recorded as expected
     expect(sentry.captureException).not.toHaveBeenCalled();
     expect(sentry.recordExpected).toHaveBeenCalledWith(expect.any(DOMException), {
       flow: 'storage',
-      step: 'cid_cache_write',
+      step: 'installed_executable_cache_write',
     });
   });
 
@@ -76,15 +85,15 @@ describe('cid-cache failure reporting', () => {
     failTransactions(failure);
 
     // When it evicts twice
-    await evictCachedCid('a');
-    await evictCachedCid('b');
+    await evictCachedInstalledExecutable('a', NetworkName.PASEO, 'app');
+    await evictCachedInstalledExecutable('b', NetworkName.PASEO, 'app');
 
     // Then one issue names the storage flow and the evict step
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, {
       flow: 'storage',
-      step: 'cid_cache_evict',
-      tags: { kind: 'cid_cache_evict_error' },
+      step: 'installed_executable_cache_evict',
+      tags: { kind: 'installed_executable_cache_evict_error' },
     });
   });
 });

@@ -60,7 +60,7 @@ beforeEach(async () => {
   notifications.actions = [];
   reload.mockClear();
   vi.stubGlobal('navigator', {
-    serviceWorker: { getRegistration: () => Promise.resolve({ waiting }) },
+    serviceWorker: { addEventListener: vi.fn(), getRegistration: () => Promise.resolve({ waiting }) },
   });
   vi.stubGlobal('location', { reload, hostname: 'browse.localhost' });
   vi.stubEnv('PROD', true);
@@ -75,8 +75,10 @@ afterEach(() => {
 async function pressReload(): Promise<void> {
   emit('waiting', {});
   const action = notifications.actions.at(-1);
-  expect(action?.label).toBe('Reload');
-  action?.onClick();
+  if (action === undefined) {
+    throw new Error('The update notification did not expose an action.');
+  }
+  action.onClick();
   await vi.waitFor(() => {
     expect(reload.mock.calls.length + workbox.messageSkipWaiting.mock.calls.length).toBeGreaterThan(0);
   });

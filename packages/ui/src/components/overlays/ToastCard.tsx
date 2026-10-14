@@ -65,17 +65,25 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
           {props.entry.label}
         </span>
         <Show
-          when={props.entry.deeplink}
+          when={props.entry.onActivate}
           fallback={
             <span class={s['body']} data-testid="notif-body">
               {props.entry.text}
             </span>
           }
         >
-          {href => (
-            <a class={s['body']} data-testid="notif-body" href={href()} target="_blank" rel="noopener">
+          {activate => (
+            <button
+              type="button"
+              class={s['body']}
+              data-testid="notif-body"
+              onClick={event => {
+                event.stopPropagation();
+                activate()();
+              }}
+            >
               {props.entry.text}
-            </a>
+            </button>
           )}
         </Show>
       </div>

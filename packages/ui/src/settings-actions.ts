@@ -11,6 +11,7 @@ import {
   setCacheSettings,
   getBackend,
   setBackend,
+  setPolkaVmAppsEnabled,
   BACKEND_LABELS,
   type Backend,
   type CacheSettings,
@@ -21,18 +22,20 @@ import {
   getActiveServicesConfig,
   writeSettingsToSearch,
 } from '@dotli/config';
-import { clearCidCache, clearBlockCache } from '@dotli/storage';
+import { clearInstalledExecutableCache, clearBlockCache } from '@dotli/storage';
 
 import { loadBridge } from './lazy.js';
 import { ALL_PERMISSIONS, getPermissionStatuses } from './permissions.js';
 import { getProductState } from './state/product.js';
 import { THEME_KEY } from './theme-controller.js';
+import { flushSharedModeWrites } from './shared-mode.js';
 
 /** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */
 export interface ModeDraft {
   chain: Backend;
   network: Network;
   cache: CacheSettings;
+  polkaVmAppsEnabled: boolean;
 }
 
 /**
@@ -50,6 +53,7 @@ export async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         sessionStorage.setItem('dotli:pending-reset:protocol', '1');
@@ -62,12 +66,13 @@ export async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
 
       const cidTurnedOff = draft.cache.skipCidCache && !prior.cache.skipCidCache;
       const archiveTurnedOff = draft.cache.skipArchiveCache && !prior.cache.skipArchiveCache;
 
       if (cidTurnedOff) {
-        await clearCidCache();
+        await clearInstalledExecutableCache();
       }
       if (archiveTurnedOff) {
         await clearBlockCache();
@@ -91,6 +96,7 @@ export async function applyAndReset(
       window.history.replaceState(null, '', newUrl);
     }
   } finally {
+    await flushSharedModeWrites();
     markContinuation('settings_change');
     window.location.reload();
   }

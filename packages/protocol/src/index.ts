@@ -54,6 +54,7 @@ export {
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
+  resolveOwnerRemote,
   resolveRootManifestRemote,
   setProtocolSubMode,
   type SharedStoreStatus,

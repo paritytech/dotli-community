@@ -47,9 +47,10 @@ export function presentModal<R extends string>(view: ModalView<R>, signal?: Abor
 }
 
 /** Queue a toast and make sure the overlays are there to show it. */
-export function presentToast(input: ToastInput): void {
-  pushToast(input);
+export function presentToast(input: ToastInput): number {
+  const id = pushToast(input);
   void ensureOverlays();
+  return id;
 }
 
 /** Tests only. */

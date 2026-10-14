@@ -16,6 +16,7 @@ async function main(): Promise<void> {
   }
 
   await startHost(createBootFlowId());
+  performance.mark('dotli:main:end');
   log.event('Route: landing page', { flow: 'boot' });
 }
 

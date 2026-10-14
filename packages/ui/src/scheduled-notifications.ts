@@ -17,7 +17,8 @@ import {
 import { SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS } from '@dotli/config';
 import { captureException, recordExpected } from '@dotli/metrics';
 import { log } from '@dotli/shared';
-import { showNotification } from './notification.js';
+import { findNotification } from '@dotli/storage/notification-activations';
+import { notificationContextIsCurrent, presentProductNotification } from './notification-activation.js';
 
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
@@ -215,11 +216,15 @@ async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'r
   inFlight.add(rec.hostId);
   try {
     const claimAndFire = async (): Promise<void> => {
+      const binding = await findNotification(rec.productId, rec.perProductId);
+      if (!binding || !notificationContextIsCurrent(binding.scope)) {
+        return;
+      }
       const removed = await removeById(rec.hostId);
       if (!removed) {
         return;
       }
-      fire(rec, source);
+      await fire(rec, source);
       bcChannel?.postMessage({
         kind: 'fired',
         hostId: rec.hostId,
@@ -245,12 +250,13 @@ async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'r
   }
 }
 
-function fire(rec: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): void {
-  showNotification({
+async function fire(rec: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): Promise<void> {
+  await presentProductNotification({
     label: rec.title,
+    product: rec.productId,
+    id: rec.perProductId,
     text: rec.text,
-    deeplink: rec.deeplink ?? undefined,
-    // An OS toast for an event the user was not around for is intrusive.
+    // Past-due delivery stays in-page rather than surprising users with an OS toast.
     browserNotification: source === 'realtime',
   });
 }

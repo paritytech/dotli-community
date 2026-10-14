@@ -34,9 +34,12 @@ function fakeApi(): Api {
     destroy: vi.fn<() => void>(),
     onStop: (cb: () => void) => {
       mocks.stops.push(cb);
+      return () => {
+        mocks.stops = mocks.stops.filter(stop => stop !== cb);
+      };
     },
-    readSlot: () => Promise.resolve(null),
-  } as unknown as Api;
+    withContract: (_address, read) => read({ readSlot: () => Promise.resolve(null) }),
+  };
 }
 
 describe('rpc-resolve', () => {

@@ -65,7 +65,7 @@ describe('blocking modal queue', () => {
     scope.dispose();
   });
 
-  it('As a dotli integrator, the host rechecks permission state before showing a queued duplicate', async () => {
+  it('As a dotli integrator, the host rechecks core permission state before showing a queued duplicate', async () => {
     // Given
     let status: 'NotDetermined' | 'Authorized' = 'NotDetermined';
     const unregister = registerPermissionAuthorizationProvider('myapp', {
@@ -90,11 +90,12 @@ describe('blocking modal queue', () => {
       expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
     });
 
-    // When
+    // When: the core reports a grant before the queued callback becomes active.
+    status = 'Authorized';
     byTestId('signing-btn-secondary').click();
 
-    // Then: the duplicate reads the saved grant instead of prompting, and
-    // answers without upgrading what it found.
+    // Then: the duplicate reads the core's grant instead of prompting, and
+    // answers without upgrading what it found. The UI does not persist answers.
     await expect(Promise.all([first, second])).resolves.toEqual(['AllowAlways', 'AllowOnce']);
     await overlaysReady();
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();

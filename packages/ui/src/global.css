@@ -282,6 +282,15 @@ body[data-scroll-locked] {
   overflow: hidden !important;
 }
 
+/* A mounted product owns the viewport, so the page under it neither scrolls
+   nor rubber-bands; the landing page and settings still scroll. */
+html:has(#app iframe:not([aria-hidden='true'])),
+body:has(#app iframe:not([aria-hidden='true'])) {
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 :focus-visible {
   outline: 2px solid var(--text-muted);
   outline-offset: 2px;

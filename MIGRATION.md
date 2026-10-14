@@ -12,17 +12,23 @@ dotli still has two protocol layers:
 2. dotli's internal host-smoldot protocol in `packages/protocol/`, which owns `.dot` resolution and is not replaced by
    TrUAPI.
 
-The active launch path is `packages/ui/src/bridge.ts`:
+The active launch path is `packages/ui/src/bridge.ts`, backed by `packages/ui/src/page-core.ts`:
 
-- imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`;
-- starts a Web Worker that owns the `truapi-server` WASM core;
-- creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`;
-- supplies typed callbacks from `packages/ui/src/host-callbacks/handlers.ts`;
-- creates a product-scoped provider with `runtime.createProvider({ productId })`;
-- calls `createIframeHost(...)` with the product URL, sandbox policy, allowed origin, and the worker-backed provider.
+- the page core owns one native worker runtime shared by shell UI and product connections;
+- it boots the pairing runtime, or the local signing runtime once the debug panel's Wallet tab has switched the domain
+  to a Polkadot App account used locally;
+- it supplies typed callbacks from `packages/ui/src/host-callbacks/handlers.ts`: auth and session storage stay
+  core-owned, while each product connection gets its own prompts, which end with that connection;
+- the bridge acquires a core lease and a product-scoped connection, not a separate native runtime;
+- `createIframeHost(...)` connects the product MessagePort using the exact product URL, sandbox policy, and allowed
+  origin;
+- replacing a product disposes its connection while other core leases remain alive;
+- a faulted core is never handed out again; the next product connection boots a fresh one.
 
-Product frames enter the Rust core through the iframe `MessageChannel`. Account, signing, statement-store, SSO pairing,
-restore, and logout are core-owned and do not cross the JS host callback boundary as Nova-specific routes.
+Product frames enter the page's Rust core through the iframe `MessageChannel`, using the scoped TrUAPI wire envelope.
+Legacy Nova `window.postMessage` frames are rejected with a product-update notice rather than forwarded into an
+incompatible decoder. Products must use a compatible TrUAPI MessagePort transport. Account, signing, statement-store,
+SSO pairing, restore, and logout are core-owned and do not cross the JS host callback boundary as Nova-specific routes.
 
 ## dotli callback boundary
 

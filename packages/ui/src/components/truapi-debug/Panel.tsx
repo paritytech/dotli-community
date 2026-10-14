@@ -28,6 +28,9 @@ import {
   readStoredSection,
   writeStoredSection,
   type PanelSection,
+  clearPolkaVmDebugSnapshot,
+  onPolkaVmDebugSnapshot,
+  type PolkaVmDebugSnapshot,
 } from '@dotli/truapi-debug';
 
 import type { ResolutionRecorder } from '@dotli/truapi-debug';
@@ -44,6 +47,7 @@ import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
 import { ViewTabs, type PanelView } from './ViewTabs.js';
 import { TimelineView } from './TimelineView.js';
+import { RuntimeBadge, RuntimeView } from './RuntimeView.js';
 import { WalletView } from './WalletView.js';
 import s from './Panel.module.css';
 
@@ -184,6 +188,7 @@ export function Panel(props: {
   const stacked = createMemo(() => placement() === 'right' || narrow());
   const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
+  const [runtimeSnapshot, setRuntimeSnapshot] = createSignal<PolkaVmDebugSnapshot | null>(null);
 
   let filtered: {
     events: readonly StoredEvent[];
@@ -385,6 +390,23 @@ export function Panel(props: {
     }
   };
 
+  const unsubscribeRuntime = onPolkaVmDebugSnapshot(next => {
+    // Startup replay can run while this component is mounting; do not force
+    // a nested flush. Solid settles live samples without touching the store.
+    setRuntimeSnapshot(next);
+    // The Runtime tab is never stored, so this returns to the last stored tab.
+    if (next === null && untrack(section) === 'runtime') {
+      untrack(() => {
+        selectSection(readStoredSection());
+      });
+    }
+  });
+  window.addEventListener('dotli:product-loaded', clearPolkaVmDebugSnapshot);
+  onCleanup(() => {
+    unsubscribeRuntime();
+    window.removeEventListener('dotli:product-loaded', clearPolkaVmDebugSnapshot);
+  });
+
   /** Exports carry the filtered view, what the user currently sees. */
   const exportJson = (): string => {
     const all = store.list();
@@ -401,6 +423,22 @@ export function Panel(props: {
       filters: current,
     };
     return buildExport(events, meta);
+  };
+
+  /** The runtime badge opens the Runtime tab, expanding a collapsed panel. */
+  const openRuntime = (): void => {
+    if (collapsed()) {
+      if (panelEl !== undefined && expandedHeight !== '') {
+        panelEl.style.height = expandedHeight;
+      }
+      commit(() => {
+        setCollapsed(false);
+        setCollapsedCounts(null);
+        refreshSnapshot();
+      });
+    }
+    selectSection('runtime');
+    refit();
   };
 
   return (
@@ -420,6 +458,8 @@ export function Panel(props: {
       <Header
         section={section()}
         onSelectSection={selectSection}
+        runtime={runtimeSnapshot() !== null}
+        runtimeEntry={<RuntimeBadge snapshot={runtimeSnapshot()} dock={placement()} onOpen={openRuntime} />}
         counts={counts()}
         paused={paused()}
         collapsed={collapsed()}
@@ -482,6 +522,7 @@ export function Panel(props: {
       <div class={s['body']} data-testid="td-body">
         <div class={s['views']} data-testid="td-views">
           <ViewTabs view={view()} hidden={!events()} onSelect={selectView} />
+          <RuntimeView snapshot={runtimeSnapshot()} active={section() === 'runtime' && !collapsed()} />
           <EventList
             events={visible()}
             allEvents={snapshot().events}

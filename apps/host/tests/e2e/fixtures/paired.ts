@@ -18,45 +18,8 @@ const PRODUCT_IFRAME_TIMEOUT_MS = 60_000;
 const HOST_MODAL_QUIET_MS = 750;
 const HOST_MODAL_SETTLE_TIMEOUT_MS = 15_000;
 
-/** Clicks the lasting grant of every permission modal that appears, until stopped. */
-function startAutoAllow(page: Page): () => void {
-  // A function, since TypeScript would narrow a plain flag set only in the stop closure to `false`.
-  const stop = new AbortController();
-  const stopped = (): boolean => stop.signal.aborted;
-  const POLL_MS = 300;
-  void (async () => {
-    while (!stopped()) {
-      try {
-        // Lasting grants only, so a test's later operations are not prompted again.
-        const allow = page.getByRole('button', {
-          name: /^(Always allow|Allow)$/,
-        });
-        const visible = await allow
-          .first()
-          .isVisible({ timeout: POLL_MS })
-          .catch(() => false);
-        if (visible) {
-          await allow
-            .first()
-            .click({ timeout: 2_000 })
-            .catch(() => {});
-        } else {
-          await page.waitForTimeout(POLL_MS);
-        }
-      } catch {
-        if (!stopped()) {
-          await page.waitForTimeout(POLL_MS);
-        }
-      }
-    }
-  })();
-  return () => {
-    stop.abort();
-  };
-}
-
 /** Found by its heading, since the frame URL is a per-CID subdomain that varies between builds. */
-async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promise<Frame> {
+export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promise<Frame> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const f of page.frames()) {
@@ -77,20 +40,26 @@ async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promis
   throw new Error(`host-playground iframe not visible within ${String(timeoutMs)}ms`);
 }
 
-/** The auto-allow poller answers the prompts meanwhile. */
+/** Startup may request only the playground's own Product Account; tests own all later consent. */
 async function waitForHostModalsSettled(page: Page): Promise<void> {
   const backdrop = page.getByTestId('signing-modal-backdrop');
   const deadline = Date.now() + HOST_MODAL_SETTLE_TIMEOUT_MS;
+  const accountDialog = page.getByTestId('signing-modal').filter({
+    has: page.getByRole('heading', { name: 'Product Account', exact: true }),
+  });
   let quietSince = Date.now();
   while (Date.now() < deadline) {
     if ((await backdrop.count()) > 0) {
+      if (await accountDialog.isVisible()) {
+        await accountDialog.getByRole('button', { name: 'Allow', exact: true }).click();
+      }
       quietSince = Date.now();
     } else if (Date.now() - quietSince >= HOST_MODAL_QUIET_MS) {
       return;
     }
     await page.waitForTimeout(100);
   }
-  console.log(`[productFrame] host modal still open after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`);
+  throw new Error(`Unexpected or unsettled host modal after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`);
 }
 
 /** A test that sends the page to another product calls this to hand the next test a host-playground page. */
@@ -178,13 +147,8 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
 
       await openHostPlayground(page);
 
-      // Plain `runTest` reads don't click the permission modal the first signing-capable call opens, and would
-      // stick behind its backdrop.
-      const stopAutoAllow = startAutoAllow(page);
-
       await use(page);
 
-      stopAutoAllow();
       await ctx.close();
     },
     { scope: 'worker' },

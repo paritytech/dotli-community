@@ -4,6 +4,8 @@
 import {
   getBackend,
   getCacheSettings,
+  getPolkaVmAppsEnabled,
+  SITE_ID,
   isSharedWorkerAvailable,
   isVerifiedSession,
   type Backend,
@@ -19,6 +21,7 @@ export interface SettingsState {
   backend: Backend;
   cache: CacheSettings;
   network: Network;
+  polkaVmAppsEnabled: boolean;
   enabledNetworks: Network[];
   sharedWorkerAvailable: boolean;
   /** Whether the backend verifies chain data. */
@@ -37,6 +40,7 @@ function readSettings(): SettingsState {
     backend,
     cache: getCacheSettings(),
     network: getNetwork(),
+    polkaVmAppsEnabled: getPolkaVmAppsEnabled(SITE_ID),
     enabledNetworks: getEnabledNetworks(),
     sharedWorkerAvailable: isSharedWorkerAvailable(),
     verified: isVerifiedSession(backend),

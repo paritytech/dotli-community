@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/paritytech/polkavm-app-kit.git",
+    "revision": "a341932365d8f3c8ab38fc5b5b926b2a41cf13e4",
+    "guestSdkRevision": "2a8e909086ccce34731375a44f6fb47770dfe12c"
+  },
+  "build": {
+    "playgroundToolchain": "nightly-2025-10-09",
+    "doomToolchain": "nightly-2025-05-10",
+    "polkatoolVersion": "0.31.0",
+    "packagerVersion": "0.18.3"
+  },
+  "freedoom": {
+    "version": "0.13.0",
+    "url": "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip",
+    "archiveSha256": "3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59",
+    "freedoom1Sha256": "7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d",
+    "freedoom2Sha256": "a8772e088847032510d97ba2312406a6998f21cbab44d4ff10696faa9c0ecd4b"
+  },
+  "tools": {
+    "platform": "linux-x64",
+    "node": "v26.7.0",
+    "npm": "12.1.0",
+    "polkatool": "polkatool 0.31.0",
+    "clang": "clang version 22.1.8",
+    "llvmAr": "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.",
+    "llvmRanlib": "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.",
+    "playgroundRustc": "rustc 1.92.0-nightly (b6f0945e4 2025-10-08)",
+    "doomRustc": "rustc 1.89.0-nightly (dcecb9917 2025-05-09)"
+  },
+  "artifacts": {
+    "playground": {
+      "cid": "bafybeigkt455uw47kls27orykudq2go3xfgwc32fue4pfmcfouwtznnik4",
+      "carSha256": "6935ce795b99e9d844ce005375b0a71a2f1c1eee2de09e2aa1ea70b156aaeee0",
+      "manifestSha256": "cabe054b858c19f9b0294bfae726acd583e96e4a4ab6a5af6cb6a0a118fb901f",
+      "programSha256": "b08dcefac8f9e27e0ba6bb3636b2542fb786e295e1454ebb22b0c01dc4b4d245"
+    },
+    "freedoom1": {
+      "cid": "bafybeibso5anyp7rlpvvbger56m2d24p4rjd6mcekeqjnli4zu5zxthnfe",
+      "carSha256": "3c247d50537146cef9b98b3ecca170a6760f9f137d0f0ff864cf4f332fcaf0db",
+      "manifestSha256": "3a2b8f694f49487b9dee5f8778beb6fd985d81b7e3380781f4e82910be844569",
+      "programSha256": "1541a60adcb6883924fc3a9aa06d703beda32bc5b05e41dc511535e1f15218aa"
+    },
+    "freedoom2": {
+      "cid": "bafybeidhgk4a65xbizgic4uzb6dyus6lh2re35hgyp4fivrfknyxmf6l3i",
+      "carSha256": "7136e3a798b31368a90369b37d95df4cd9078d779d51391c8ee972f000eadea2",
+      "manifestSha256": "966f1a856bf1856024e4637f5fe9b9d922b2aede694329cccb7ad7ff44edcd23",
+      "programSha256": "1541a60adcb6883924fc3a9aa06d703beda32bc5b05e41dc511535e1f15218aa"
+    }
+  }
+}

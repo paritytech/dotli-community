@@ -107,10 +107,12 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
     chain: saved.backend,
     network: saved.network,
     cache: saved.cache,
+    polkaVmAppsEnabled: saved.polkaVmAppsEnabled,
   };
   const [chain, setChain] = createSignal<Backend>(persisted.chain);
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
+  const [polkaVmAppsEnabled, setPolkaVmAppsEnabled] = createSignal(persisted.polkaVmAppsEnabled);
   const [category, setCategory] = createSignal<Category>('general');
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
@@ -120,7 +122,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
     return (
       chain() !== persisted.chain ||
       network() !== persisted.network ||
-      CACHES.some(([key]) => draft[key] !== persisted.cache[key])
+      CACHES.some(([key]) => draft[key] !== persisted.cache[key]) ||
+      polkaVmAppsEnabled() !== persisted.polkaVmAppsEnabled
     );
   });
 
@@ -143,6 +146,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         chain: untrack(chain),
         network: untrack(network),
         cache: untrack(cache),
+        polkaVmAppsEnabled: untrack(polkaVmAppsEnabled),
       },
       persisted,
     );
@@ -258,6 +262,14 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
                 {clearing() ? 'Clearing…' : 'Clear all caches'}
               </Button>
             </div>
+          </Stack>
+          <Stack>
+            <SectionLabel text="Experimental" />
+            <Well layout="controls" testId="mode-experimental">
+              <Row label="PolkaVM apps">
+                <Switch label="PolkaVM apps" checked={polkaVmAppsEnabled()} onChange={setPolkaVmAppsEnabled} />
+              </Row>
+            </Well>
           </Stack>
           <Show when={!isTruapiDebugEnabled()}>
             <div data-testid="mode-debug-row">

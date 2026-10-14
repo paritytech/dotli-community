@@ -27,13 +27,20 @@ if (result.status !== 0) {
 
 const productRoot = resolve(process.env['E2E_PRODUCT_REPO'] ?? resolve(dotliRoot, '../../../host-playground'));
 const nestedTruapi = resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
+const productTruapi = resolve(productRoot, 'node_modules/@parity/truapi');
 const linkedProductSdkHost = resolve(productRoot, 'node_modules/@parity/product-sdk-host');
 const isSymlink = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
-if (existsSync(resolve(productRoot, 'package.json')) && (isSymlink(nestedTruapi) || isSymlink(linkedProductSdkHost))) {
+if (
+  existsSync(resolve(productRoot, 'package.json')) &&
+  (isSymlink(productTruapi) || isSymlink(nestedTruapi) || isSymlink(linkedProductSdkHost))
+) {
   if (isSymlink(linkedProductSdkHost)) {
     rmSync(linkedProductSdkHost, { force: true, recursive: true });
   }
   rmSync(nestedTruapi, { force: true, recursive: true });
+  if (isSymlink(productTruapi)) {
+    rmSync(productTruapi, { force: true, recursive: true });
+  }
   const productInstall = spawnSync('yarn', ['install', '--force'], {
     cwd: productRoot,
     stdio: 'inherit',

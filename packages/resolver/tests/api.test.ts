@@ -1,235 +1,719 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Faked at papi's `SubstrateClient.chainHead`, which hands the test the follow's event callback.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createClient, OperationInaccessibleError, type SubstrateClient } from '@polkadot-api/substrate-client';
+import type { JsonRpcMessage, JsonRpcProvider, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
+import { toHex } from '@polkadot-api/utils';
+import { createRawApi, ApiStoppedError, type Api, type ContractStorage } from '../src/api.js';
+import { readMappingAddress, readMappingBytes, readNestedMappingString } from '../src/access-raw-storage.js';
+import { PartialStorageReadError } from '../src/errors.js';
+import { createChainPool } from '@dotli/protocol';
 
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import {
-  OperationInaccessibleError,
-  StopError,
-  type FollowEventWithoutRuntime,
-  type SubstrateClient,
-} from '@polkadot-api/substrate-client';
-import { readMappingAddress, readMappingBytes } from '../src/access-raw-storage.js';
-import { ApiStoppedError, createRawApi } from '../src/api.js';
+const ADDRESS = `0x${'11'.repeat(20)}`;
+const KEY = `0x${'22'.repeat(32)}` as const;
+const ACCOUNT = '0x0004aa'; // Contract, Vec<u8> trie_id = [0xaa].
 
-type StorageFn = (hash: string, type: string, key: string, childTrie: string | null) => Promise<string | null>;
-
-interface FakeFollow {
-  emit: (event: FollowEventWithoutRuntime) => void;
-  stop: () => void;
-  storage: Mock<StorageFn>;
-  unpin: Mock<(hashes: string[]) => Promise<void>>;
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  const { promise, resolve } = Promise.withResolvers<T>();
+  return { promise, resolve };
 }
 
-function fakeClient(): { client: SubstrateClient; follow: FakeFollow } {
-  const follow: FakeFollow = {
-    emit: () => undefined,
-    stop: () => undefined,
-    storage: vi.fn<StorageFn>(() => Promise.resolve(null)),
-    unpin: vi.fn<(hashes: string[]) => Promise<void>>(() => Promise.resolve()),
+function required<T>(value: T | undefined): T {
+  if (value === undefined) {
+    throw new Error('Expected a harness value');
+  }
+  return value;
+}
+
+interface Operation {
+  id: string;
+  hash: string;
+  child: unknown;
+  key: string;
+}
+
+interface Chain {
+  token: string;
+  pinned: Set<string>;
+  operations: Map<string, Operation>;
+  reads: Operation[];
+  active: boolean;
+}
+
+interface StorageServer {
+  client: SubstrateClient;
+  chains: Chain[];
+  violations: string[];
+  event: (chain: Chain, result: Record<string, unknown>) => void;
+  failNextUnpin: () => void;
+  join: () => Promise<Api>;
+  open: (hashes?: string[]) => Promise<{ api: Api; chain: Chain }>;
+  waitReads: (chain: Chain, count: number) => Promise<void>;
+  complete: (chain: Chain, index: number, value: string | null, error?: string) => void;
+  /** End read `index` with `operationInaccessible`: the node cannot serve it yet. */
+  inaccessible: (chain: Chain, index: number) => void;
+  advance: (chain: Chain, hash: string, parent: string, pruned?: string[]) => void;
+}
+
+// Exercise the installed substrate-client, including storage operation events,
+// cancellation and unfollow. The server rejects use-after-unpin and records any
+// unpin while an operation is still active; it is not a follow method mock.
+function server(shared = false): StorageServer {
+  const chains: Chain[] = [];
+  const violations: string[] = [];
+  let listener!: (message: JsonRpcMessage) => void;
+  let counter = 0;
+  let failUnpin = false;
+  const waiters: { chain: Chain; count: number; resolve: () => void }[] = [];
+  function event(chain: Chain, result: Record<string, unknown>): void {
+    if (result['event'] === 'initialized') {
+      for (const hash of result['finalizedBlockHashes'] as string[]) {
+        chain.pinned.add(hash);
+      }
+    } else if (result['event'] === 'newBlock') {
+      chain.pinned.add(result['blockHash'] as string);
+    } else if (result['event'] === 'stop') {
+      chain.active = false;
+      chain.pinned.clear();
+      chain.operations.clear();
+    }
+    listener({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: chain.token, result },
+    });
+  }
+  function reply(request: JsonRpcRequest, result: unknown): void {
+    listener({ jsonrpc: '2.0', id: required(request.id), result });
+  }
+  const provider: JsonRpcProvider = onMessage => {
+    listener = onMessage;
+    return {
+      send(request) {
+        const params = request.params as unknown[];
+        if (request.method === 'chainHead_v1_follow') {
+          const chain: Chain = {
+            token: `follow-${String(chains.length)}`,
+            pinned: new Set(),
+            operations: new Map(),
+            reads: [],
+            active: true,
+          };
+          chains.push(chain);
+          queueMicrotask(() => {
+            reply(request, chain.token);
+          });
+          return;
+        }
+        const chain = chains.find(entry => entry.token === params[0]);
+        // Stale subscription releases are specified no-ops.
+        if (
+          chain === undefined &&
+          (request.method === 'chainHead_v1_unfollow' || request.method === 'chainHead_v1_unpin')
+        ) {
+          return;
+        }
+        if (chain === undefined) {
+          throw new Error('Unknown follow token');
+        }
+        if (request.method === 'chainHead_v1_unfollow') {
+          chain.active = false;
+          chain.pinned.clear();
+          chain.operations.clear();
+          return;
+        }
+        if (request.method === 'chainHead_v1_unpin') {
+          if (failUnpin) {
+            failUnpin = false;
+            queueMicrotask(() => {
+              listener({
+                jsonrpc: '2.0',
+                id: required(request.id),
+                error: { code: -32801, message: 'Unpin failed' },
+              });
+            });
+            return;
+          }
+          for (const hash of params[1] as string[]) {
+            if (!chain.active || !chain.pinned.delete(hash)) {
+              violations.push(`invalid unpin ${hash}`);
+            }
+            if ([...chain.operations.values()].some(op => op.hash === hash)) {
+              violations.push(`active unpin ${hash}`);
+            }
+          }
+          queueMicrotask(() => {
+            reply(request, null);
+          });
+          return;
+        }
+        if (request.method === 'chainHead_v1_stopOperation') {
+          chain.operations.delete(params[1] as string);
+          return;
+        }
+        if (request.method !== 'chainHead_v1_storage') {
+          throw new Error(request.method);
+        }
+        const hash = params[1] as string;
+        if (!chain.active || !chain.pinned.has(hash)) {
+          listener({
+            jsonrpc: '2.0',
+            id: required(request.id),
+            error: { code: -32801, message: 'Block not pinned' },
+          });
+          return;
+        }
+        const op = {
+          id: `op-${String(counter++)}`,
+          hash,
+          child: params[3],
+          key: required((params[2] as { key: string }[])[0]).key,
+        };
+        chain.operations.set(op.id, op);
+        chain.reads.push(op);
+        queueMicrotask(() => {
+          reply(request, {
+            result: 'started',
+            operationId: op.id,
+            discardedItems: 0,
+          });
+          for (let i = waiters.length - 1; i >= 0; i--) {
+            const waiter = required(waiters[i]);
+            if (waiter.chain === chain && chain.reads.length >= waiter.count) {
+              waiters.splice(i, 1);
+              waiter.resolve();
+            }
+          }
+        });
+      },
+      disconnect() {},
+    };
   };
-  const client = {
-    chainHead: (
-      _withRuntime: boolean,
-      onEvent: (event: FollowEventWithoutRuntime) => void,
-      onError: (error: Error) => void,
-    ) => {
-      follow.emit = onEvent;
-      follow.stop = () => {
-        onError(new StopError());
-      };
-      return {
-        storage: follow.storage,
-        unpin: follow.unpin,
-        unfollow: () => undefined,
-      };
+  const manager = shared ? createChainPool({ createTransport: () => provider, destroyDelay: Infinity }) : null;
+  const client = createClient(manager?.getLocalProvider('test-chain') ?? provider);
+  return {
+    client,
+    chains,
+    violations,
+    event,
+    failNextUnpin() {
+      failUnpin = true;
     },
-  } as unknown as SubstrateClient;
-  return { client, follow };
+    async join() {
+      const api = createRawApi(client);
+      await api.whenReady();
+      return api;
+    },
+    async open(hashes = ['root']) {
+      const api = createRawApi(client);
+      const chain = required(chains.at(-1));
+      await Promise.resolve(); // deliver follow token before initialized
+      event(chain, { event: 'initialized', finalizedBlockHashes: hashes });
+      await api.whenReady();
+      return { api, chain };
+    },
+    waitReads(chain: Chain, count: number) {
+      if (chain.reads.length >= count) {
+        return Promise.resolve();
+      }
+      return new Promise<void>(resolve => waiters.push({ chain, count, resolve }));
+    },
+    complete(chain: Chain, index: number, value: string | null, error?: string) {
+      const op = required(chain.reads[index]);
+      if (!chain.operations.delete(op.id)) {
+        throw new Error('Operation already ended');
+      }
+      if (!chain.pinned.has(op.hash)) {
+        throw new Error('Storage block released before completion');
+      }
+      if (error !== undefined) {
+        event(chain, { event: 'operationError', operationId: op.id, error });
+      } else {
+        if (value !== null) {
+          event(chain, {
+            event: 'operationStorageItems',
+            operationId: op.id,
+            items: [{ key: op.key, value }],
+          });
+        }
+        event(chain, { event: 'operationStorageDone', operationId: op.id });
+      }
+    },
+    inaccessible(chain: Chain, index: number) {
+      const op = required(chain.reads[index]);
+      if (!chain.operations.delete(op.id)) {
+        throw new Error('Operation already ended');
+      }
+      event(chain, { event: 'operationInaccessible', operationId: op.id });
+    },
+    advance(chain: Chain, hash: string, parent: string, pruned: string[] = []) {
+      event(chain, {
+        event: 'newBlock',
+        blockHash: hash,
+        parentBlockHash: parent,
+      });
+      event(chain, { event: 'bestBlockChanged', bestBlockHash: hash });
+      event(chain, {
+        event: 'finalized',
+        finalizedBlockHashes: [hash],
+        prunedBlockHashes: pruned,
+      });
+    },
+  };
 }
 
-/** `Revive::AccountInfoOf` for a contract whose child trie id is `0x01`. */
-const CONTRACT_ACCOUNT_INFO = '0x000401';
-
-function newBlock(blockHash: string, parentBlockHash: string): FollowEventWithoutRuntime {
-  return { type: 'newBlock', blockHash, parentBlockHash };
+function longSlot(length: number): string {
+  const bytes = new Uint8Array(32);
+  bytes[31] = length * 2 + 1;
+  return toHex(bytes);
 }
 
-describe('createRawApi', () => {
-  it('As a dotli user on a light client, the resolver unpins blocks once finality leaves them behind', () => {
-    // Given
-    const { client, follow } = fakeClient();
-    createRawApi(client);
-    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x00', '0x0a'] });
-    follow.emit(newBlock('0x1a', '0x0a'));
-    follow.emit(newBlock('0x1b', '0x0a'));
-    follow.emit(newBlock('0x2a', '0x1a'));
-    follow.emit({ type: 'bestBlockChanged', bestBlockHash: '0x2a' });
-
-    // When
-    follow.emit({ type: 'finalized', finalizedBlockHashes: ['0x1a'], prunedBlockHashes: ['0x1b'] });
-    follow.emit({ type: 'finalized', finalizedBlockHashes: ['0x2a'], prunedBlockHashes: [] });
-
-    // Then
-    expect(follow.unpin.mock.calls).toEqual([[['0x00']], [['0x0a', '0x1b']], [['0x1a']]]);
+describe('raw API block ownership', () => {
+  it('bounds finalized history without reads', async () => {
+    const h = server();
+    const { api, chain } = await h.open(['ancestor', 'root']);
+    for (let i = 1; i <= 100; i++) {
+      h.advance(chain, `block-${String(i)}`, i === 1 ? 'root' : `block-${String(i - 1)}`);
+      await Promise.resolve();
+    }
+    expect([...chain.pinned]).toEqual(['block-100']);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
   });
 
-  it('As a dotli user on a light client, a block a read is still using stays pinned until the read finishes', async () => {
-    // Given
-    const { client, follow } = fakeClient();
-    const api = createRawApi(client);
-    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-    let finishRead = (): void => undefined;
-    const read = api.withBestBlock(
-      () =>
-        new Promise<void>(resolve => {
-          finishRead = resolve;
-        }),
-    );
+  it('keeps overlapping multi-slot reads consistent across best, finalization and pruning', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    h.event(chain, {
+      event: 'newBlock',
+      blockHash: 'fork',
+      parentBlockHash: 'root',
+    });
+    h.event(chain, { event: 'bestBlockChanged', bestBlockHash: 'fork' });
+    const first = readMappingBytes(api, ADDRESS, KEY, 0);
+    const second = readNestedMappingString(api, ADDRESS, KEY, 'manifest', 0);
+    await h.waitReads(chain, 2);
+    h.advance(chain, 'winner', 'root', ['fork']);
     await Promise.resolve();
-
-    // When
-    follow.emit(newBlock('0x1a', '0x0a'));
-    follow.emit({ type: 'finalized', finalizedBlockHashes: ['0x1a'], prunedBlockHashes: [] });
-    const unpinnedDuringRead = [...follow.unpin.mock.calls];
-    finishRead();
-    await read;
-
-    // Then
-    expect(unpinnedDuringRead).toEqual([]);
-    expect(follow.unpin.mock.calls).toEqual([[['0x0a']]]);
+    expect(chain.pinned.has('fork')).toBe(true);
+    h.complete(chain, 0, ACCOUNT);
+    h.complete(chain, 1, ACCOUNT);
+    await h.waitReads(chain, 4);
+    h.complete(chain, 2, longSlot(40));
+    h.complete(chain, 3, longSlot(40));
+    await h.waitReads(chain, 6);
+    h.complete(chain, 4, toHex(new Uint8Array(32).fill(65)));
+    await h.waitReads(chain, 7);
+    h.complete(chain, 6, toHex(new Uint8Array(32).fill(66)));
+    expect(await first).toEqual(new Uint8Array([...new Uint8Array(32).fill(65), ...new Uint8Array(8).fill(66)]));
+    expect(chain.pinned.has('fork')).toBe(true);
+    h.complete(chain, 5, toHex(new Uint8Array(32).fill(67)));
+    await h.waitReads(chain, 8);
+    h.complete(chain, 7, toHex(new Uint8Array(32).fill(68)));
+    expect(await second).toBe('C'.repeat(32) + 'D'.repeat(8));
+    expect(new Set(chain.reads.map(op => op.hash))).toEqual(new Set(['fork']));
+    expect([...chain.pinned]).toEqual(['winner']);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
   });
 
-  it("As a dotli user on a light client, a name's multi-slot read keeps its block pinned while finality moves on", async () => {
-    // Given
-    const { client, follow } = fakeClient();
-    const api = createRawApi(client);
-    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-    let answerSlot = (): void => undefined;
-    follow.storage
-      .mockImplementationOnce(() => Promise.resolve(CONTRACT_ACCOUNT_INFO))
-      .mockImplementationOnce(
-        () =>
-          new Promise<string | null>(resolve => {
-            answerSlot = () => {
-              resolve(null);
-            };
-          }),
-      );
-    const read = readMappingBytes(api, '0x0000000000000000000000000000000000000001', `0x${'00'.repeat(32)}`, 0);
-    await vi.waitFor(() => {
-      expect(follow.storage).toHaveBeenCalledTimes(2);
+  it('holds the snapshot between storage operations until its callback settles', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    const entered = deferred<undefined>();
+    const resume = deferred<undefined>();
+    const read = api.withContract(ADDRESS, async storage => {
+      entered.resolve(undefined);
+      await resume.promise;
+      return storage.readSlot(KEY);
     });
-
-    // When
-    follow.emit(newBlock('0x1a', '0x0a'));
-    follow.emit({ type: 'finalized', finalizedBlockHashes: ['0x1a'], prunedBlockHashes: [] });
-    const unpinnedDuringRead = [...follow.unpin.mock.calls];
-    answerSlot();
-    await read;
-
-    // Then
-    expect(unpinnedDuringRead).toEqual([]);
-    expect(follow.storage.mock.calls.map(([hash]) => hash)).toEqual(['0x0a', '0x0a']);
-    expect(follow.unpin.mock.calls).toEqual([[['0x0a']]]);
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await entered.promise;
+    h.advance(chain, 'next', 'root');
+    await Promise.resolve();
+    expect(chain.operations.size).toBe(0);
+    expect([...chain.pinned]).toEqual(['root', 'next']);
+    resume.resolve(undefined);
+    await h.waitReads(chain, 2);
+    h.complete(chain, 1, '0x42');
+    expect(await read).toEqual(new Uint8Array([0x42]));
+    expect(required(chain.reads[1]).hash).toBe('root');
+    expect([...chain.pinned]).toEqual(['next']);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
   });
 
-  it("As a dotli user on a light client, a name's owner lookup keeps its block pinned while finality moves on", async () => {
-    // Given
-    const { client, follow } = fakeClient();
-    const api = createRawApi(client);
-    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-    let answerSlot = (): void => undefined;
-    follow.storage
-      .mockImplementationOnce(() => Promise.resolve(CONTRACT_ACCOUNT_INFO))
-      .mockImplementationOnce(
-        () =>
-          new Promise<string | null>(resolve => {
-            answerSlot = () => {
-              resolve(null);
-            };
-          }),
-      );
-    const read = readMappingAddress(api, '0x0000000000000000000000000000000000000001', `0x${'00'.repeat(32)}`, 0);
-    await vi.waitFor(() => {
-      expect(follow.storage).toHaveBeenCalledTimes(2);
+  it('pins owner lookups while a redeploy gives later reads a fresh contract trie', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    const first = readMappingAddress(api, ADDRESS, KEY, 0);
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await h.waitReads(chain, 2);
+    h.advance(chain, 'redeployed', 'root');
+    const second = readMappingAddress(api, ADDRESS, KEY, 0);
+    await h.waitReads(chain, 3);
+    h.complete(chain, 2, '0x0004bb');
+    await h.waitReads(chain, 4);
+    expect([...chain.pinned]).toEqual(['root', 'redeployed']);
+    expect(chain.reads.map(({ hash, child }) => ({ hash, child }))).toEqual([
+      { hash: 'root', child: null },
+      { hash: 'root', child: '0xaa' },
+      { hash: 'redeployed', child: null },
+      { hash: 'redeployed', child: '0xbb' },
+    ]);
+    h.complete(chain, 1, `0x${'00'.repeat(12)}${'11'.repeat(20)}`);
+    expect(await first).toBe(`0x${'11'.repeat(20)}`);
+    expect([...chain.pinned]).toEqual(['redeployed']);
+    h.complete(chain, 3, `0x${'00'.repeat(12)}${'22'.repeat(20)}`);
+    expect(await second).toBe(`0x${'22'.repeat(20)}`);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
+  });
+
+  it('keeps non-best forks until pruning so a later best switch can read them', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    h.event(chain, {
+      event: 'newBlock',
+      blockHash: 'other',
+      parentBlockHash: 'root',
     });
+    h.event(chain, {
+      event: 'newBlock',
+      blockHash: 'best',
+      parentBlockHash: 'root',
+    });
+    h.event(chain, { event: 'bestBlockChanged', bestBlockHash: 'best' });
+    await Promise.resolve();
+    h.event(chain, { event: 'bestBlockChanged', bestBlockHash: 'other' });
+    const read = api.withContract(ADDRESS, storage => storage.readSlot(KEY));
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await h.waitReads(chain, 2);
+    h.complete(chain, 1, '0x1234');
+    expect(await read).toEqual(new Uint8Array([0x12, 0x34]));
+    expect(required(chain.reads[1]).hash).toBe('other');
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
+  });
 
-    // When
-    follow.emit(newBlock('0x1a', '0x0a'));
-    follow.emit({ type: 'finalized', finalizedBlockHashes: ['0x1a'], prunedBlockHashes: [] });
-    const unpinnedDuringRead = [...follow.unpin.mock.calls];
-    answerSlot();
-    await read;
+  it('releases missing contracts, failed storage and partial multi-slot reads', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    const missing = readMappingBytes(api, ADDRESS, KEY, 0);
+    await h.waitReads(chain, 1);
+    h.advance(chain, 'next', 'root');
+    h.complete(chain, 0, null);
+    expect(await missing).toBeNull();
+    expect([...chain.pinned]).toEqual(['next']);
+    const failed = readMappingBytes(api, ADDRESS, KEY, 0);
+    const rejected = expect(failed).rejects.toThrow('storage unavailable');
+    await h.waitReads(chain, 2);
+    h.advance(chain, 'last', 'next');
+    h.complete(chain, 1, null, 'storage unavailable');
+    await rejected;
+    expect([...chain.pinned]).toEqual(['last']);
+    const partial = readMappingBytes(api, ADDRESS, KEY, 0);
+    const partialRejected = expect(partial).rejects.toBeInstanceOf(PartialStorageReadError);
+    await h.waitReads(chain, 3);
+    h.complete(chain, 2, ACCOUNT);
+    await h.waitReads(chain, 4);
+    h.complete(chain, 3, longSlot(40));
+    await h.waitReads(chain, 5);
+    h.advance(chain, 'tip', 'last');
+    h.complete(chain, 4, null);
+    await partialRejected;
+    expect([...chain.pinned]).toEqual(['tip']);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
+  });
 
-    // Then
-    expect(unpinnedDuringRead).toEqual([]);
-    expect(follow.unpin.mock.calls).toEqual([[['0x0a']]]);
+  it('does not release an outstanding operation when its callback throws', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    let pending!: Promise<Uint8Array | null>;
+    let escaped!: ContractStorage;
+    const failure = new Error('consumer failed');
+    const read = api.withContract(ADDRESS, storage => {
+      escaped = storage;
+      pending = storage.readSlot(KEY);
+      return Promise.reject(failure);
+    });
+    const rejected = expect(read).rejects.toBe(failure);
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await h.waitReads(chain, 2);
+    h.advance(chain, 'next', 'root');
+    await rejected;
+    expect(chain.pinned.has('root')).toBe(true);
+    h.complete(chain, 1, '0x42');
+    expect(await pending).toEqual(new Uint8Array([0x42]));
+    expect([...chain.pinned]).toEqual(['next']);
+    await expect(escaped.readSlot(KEY)).rejects.toBeInstanceOf(Error);
+    expect(chain.reads).toHaveLength(2);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
+  });
+
+  it('destroy cancels operations and callback waits; old continuations cannot touch a replacement', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    let stops = 0;
+    api.onStop(() => {
+      stops++;
+      api.destroy();
+    });
+    const resume = deferred<undefined>();
+    const entered = deferred<undefined>();
+    let staleRead!: Promise<Uint8Array | null>;
+    const waiting = api.withContract(ADDRESS, async storage => {
+      entered.resolve(undefined);
+      await resume.promise;
+      staleRead = storage.readSlot(KEY);
+      return staleRead;
+    });
+    const waitingRejected = expect(waiting).rejects.toBeInstanceOf(ApiStoppedError);
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await entered.promise;
+    const pending = readMappingBytes(api, ADDRESS, KEY, 0);
+    const pendingRejected = expect(pending).rejects.toBeInstanceOf(ApiStoppedError);
+    await h.waitReads(chain, 2);
+    api.destroy();
+    api.destroy();
+    await waitingRejected;
+    await pendingRejected;
+    expect(stops).toBe(1);
+    expect(chain.operations.size).toBe(0);
+    await expect(api.whenReady()).rejects.toBeInstanceOf(ApiStoppedError);
+    const replacement = await h.open(['replacement']);
+    resume.resolve(undefined);
+    await Promise.resolve();
+    await expect(staleRead).rejects.toBeInstanceOf(ApiStoppedError);
+    const fresh = replacement.api.withContract(ADDRESS, storage => storage.readSlot(KEY));
+    await h.waitReads(replacement.chain, 1);
+    h.complete(replacement.chain, 0, ACCOUNT);
+    await h.waitReads(replacement.chain, 2);
+    h.complete(replacement.chain, 1, '0x99');
+    expect(await fresh).toEqual(new Uint8Array([0x99]));
+    expect(chain.reads).toHaveLength(2);
+    expect(h.violations).toEqual([]);
+    replacement.api.destroy();
+    h.client.destroy();
+  });
+
+  it('normalizes server stop and rejects destroy before initialization', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    const read = readMappingBytes(api, ADDRESS, KEY, 0);
+    const rejected = expect(read).rejects.toBeInstanceOf(ApiStoppedError);
+    await h.waitReads(chain, 1);
+    h.event(chain, { event: 'stop' });
+    await rejected;
+    let lateStops = 0;
+    api.onStop(() => {
+      lateStops++;
+    });
+    api.destroy();
+    expect(lateStops).toBe(1);
+    const early = createRawApi(h.client);
+    early.destroy();
+    await expect(early.whenReady()).rejects.toBeInstanceOf(ApiStoppedError);
+    await expect(early.withContract(ADDRESS, storage => storage.readSlot(KEY))).rejects.toBeInstanceOf(ApiStoppedError);
+    h.client.destroy();
+  });
+
+  it.each([false, true])('ends the generation if unpin fails (broker=%s)', async shared => {
+    const h = server(shared);
+    const { api, chain } = await h.open();
+    h.failNextUnpin();
+    h.advance(chain, 'next', 'root');
+    const read = api.withContract(ADDRESS, storage => storage.readSlot(KEY));
+    await expect(read).rejects.toBeInstanceOf(ApiStoppedError);
+    expect(chain.active).toBe(false);
+    expect(chain.operations.size).toBe(0);
+    await expect(api.whenReady()).rejects.toBeInstanceOf(ApiStoppedError);
+    h.client.destroy();
+  });
+
+  it('keeps broker replay bounded and readable for a late follower on a non-best fork', async () => {
+    const h = server(true);
+    const { api, chain } = await h.open(['ancestor', 'root']);
+    for (let i = 1; i <= 30; i++) {
+      h.advance(chain, `b${String(i)}`, i === 1 ? 'root' : `b${String(i - 1)}`);
+      await Promise.resolve();
+    }
+    h.event(chain, {
+      event: 'newBlock',
+      blockHash: 'other',
+      parentBlockHash: 'b30',
+    });
+    h.event(chain, {
+      event: 'newBlock',
+      blockHash: 'best',
+      parentBlockHash: 'b30',
+    });
+    h.event(chain, { event: 'bestBlockChanged', bestBlockHash: 'best' });
+    await Promise.resolve();
+    expect(chain.pinned).toEqual(new Set(['b30', 'other', 'best']));
+    const late = await h.join();
+    h.event(chain, { event: 'bestBlockChanged', bestBlockHash: 'other' });
+    const read = late.withContract(ADDRESS, storage => storage.readSlot(KEY));
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await h.waitReads(chain, 2);
+    h.event(chain, { event: 'bestBlockChanged', bestBlockHash: 'best' });
+    h.event(chain, {
+      event: 'finalized',
+      finalizedBlockHashes: ['best'],
+      prunedBlockHashes: ['other'],
+    });
+    await Promise.resolve();
+    expect(chain.pinned.has('other')).toBe(true);
+    h.complete(chain, 1, '0xabcd');
+    expect(await read).toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(chain.pinned).toEqual(new Set(['best']));
+    expect(h.violations).toEqual([]);
+    late.destroy();
+    api.destroy();
+    h.client.destroy();
+  });
+
+  it('allows synchronous re-follow from a broker stop without reusing dead pins', async () => {
+    const h = server(true);
+    const { api, chain } = await h.open();
+    let replacement!: Promise<Api>;
+    api.onStop(() => {
+      replacement = h.join();
+    });
+    h.event(chain, { event: 'stop' });
+    const next = required(h.chains.at(-1));
+    expect(next).not.toBe(chain);
+    await Promise.resolve();
+    h.event(next, { event: 'initialized', finalizedBlockHashes: ['root'] });
+    const freshApi = await replacement;
+    const read = freshApi.withContract(ADDRESS, storage => storage.readSlot(KEY));
+    await h.waitReads(next, 1);
+    h.complete(next, 0, ACCOUNT);
+    await h.waitReads(next, 2);
+    h.complete(next, 1, '0x42');
+    expect(await read).toEqual(new Uint8Array([0x42]));
+    expect(next.pinned).toEqual(new Set(['root']));
+    expect(h.violations).toEqual([]);
+    freshApi.destroy();
+    h.client.destroy();
   });
 
   describe('a storage read the light client cannot serve yet', () => {
     beforeEach(() => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      // The retry window is measured on performance.now: follow the fake clock.
+      vi.spyOn(performance, 'now').mockImplementation(() => Date.now());
     });
     afterEach(() => {
+      vi.restoreAllMocks();
       vi.useRealTimers();
     });
 
+    /**
+     * Answer each new read `operationInaccessible` until `done`, a step at a
+     * time. A read is answered only after a step, once its operation started.
+     */
+    async function refuseReads(h: StorageServer, chain: Chain, done: () => boolean): Promise<number> {
+      let answered = 0;
+      for (let step = 0; !done() && step < 2000; step++) {
+        await vi.advanceTimersByTimeAsync(50);
+        while (chain.reads.length > answered) {
+          h.inaccessible(chain, answered++);
+        }
+      }
+      return answered;
+    }
+
+    async function untilReads(chain: Chain, count: number): Promise<void> {
+      for (let step = 0; chain.reads.length < count && step < 200; step++) {
+        await vi.advanceTimersByTimeAsync(50);
+      }
+      expect(chain.reads.length).toBeGreaterThanOrEqual(count);
+    }
+
     it('As a dotli user on a freshly synced light client, a name read the node cannot serve yet is retried until it answers', async () => {
       // Given
-      const { client, follow } = fakeClient();
-      const api = createRawApi(client);
-      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-      follow.storage
-        .mockImplementationOnce(() => Promise.reject(new OperationInaccessibleError()))
-        .mockImplementationOnce(() => Promise.resolve(CONTRACT_ACCOUNT_INFO))
-        .mockImplementationOnce(() => Promise.reject(new OperationInaccessibleError()))
-        .mockImplementationOnce(() => Promise.resolve(`0x01${'00'.repeat(30)}02`));
+      const h = server();
+      const { api, chain } = await h.open();
 
-      // When
-      const read = readMappingBytes(api, '0x0000000000000000000000000000000000000001', `0x${'00'.repeat(32)}`, 0);
-      const settled = expect(read).resolves.toEqual(new Uint8Array([0x01]));
-      await vi.runAllTimersAsync();
+      // When: the node refuses the account read once, then the slot read once.
+      const read = readMappingBytes(api, ADDRESS, KEY, 0);
+      await untilReads(chain, 1);
+      h.inaccessible(chain, 0);
+      await untilReads(chain, 2);
+      h.complete(chain, 1, ACCOUNT);
+      await untilReads(chain, 3);
+      h.inaccessible(chain, 2);
+      await untilReads(chain, 4);
+      h.complete(chain, 3, `0x01${'00'.repeat(30)}02`);
 
       // Then
-      await settled;
-      expect(follow.storage).toHaveBeenCalledTimes(4);
+      expect(await read).toEqual(new Uint8Array([0x01]));
+      expect(chain.reads).toHaveLength(4);
+      expect(h.violations).toEqual([]);
+      api.destroy();
+      h.client.destroy();
     });
 
     it('As a dotli user on a light client that never serves a read, the read fails instead of retrying forever', async () => {
       // Given
-      const { client, follow } = fakeClient();
-      const api = createRawApi(client);
-      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-      follow.storage.mockImplementation(() => Promise.reject(new OperationInaccessibleError()));
+      const h = server();
+      const { api, chain } = await h.open();
+      let outcome: unknown;
 
       // When
-      const read = api.resolveTrieId('0x0000000000000000000000000000000000000001', '0x0a');
-      const settled = expect(read).rejects.toBeInstanceOf(OperationInaccessibleError);
-      await vi.runAllTimersAsync();
+      void readMappingBytes(api, ADDRESS, KEY, 0).then(
+        () => {
+          outcome = 'resolved';
+        },
+        (error: unknown) => {
+          outcome = error;
+        },
+      );
+      const answered = await refuseReads(h, chain, () => outcome !== undefined);
 
-      // Then
-      await settled;
+      // Then: it gave up after the retry window, not on the first refusal.
+      expect(outcome).toBeInstanceOf(OperationInaccessibleError);
+      expect(answered).toBeGreaterThan(1);
+      expect(h.violations).toEqual([]);
+      api.destroy();
+      h.client.destroy();
     });
 
     it('As a dotli user on a light client, a read waiting to retry stops when the chain follow stops', async () => {
       // Given
-      const { client, follow } = fakeClient();
-      const api = createRawApi(client);
-      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-      follow.storage.mockImplementation(() => Promise.reject(new OperationInaccessibleError()));
-      const read = api.resolveTrieId('0x0000000000000000000000000000000000000001', '0x0a');
+      const h = server();
+      const { api, chain } = await h.open();
+      const read = readMappingBytes(api, ADDRESS, KEY, 0);
       const settled = expect(read).rejects.toBeInstanceOf(ApiStoppedError);
+      await untilReads(chain, 1);
+      h.inaccessible(chain, 0);
       await vi.advanceTimersByTimeAsync(0);
 
       // When
-      follow.stop();
-      await vi.runAllTimersAsync();
+      api.destroy();
+      await vi.advanceTimersByTimeAsync(2000);
 
       // Then
       await settled;
-      expect(follow.storage).toHaveBeenCalledTimes(1);
+      expect(chain.reads).toHaveLength(1);
+      h.client.destroy();
     });
   });
 });

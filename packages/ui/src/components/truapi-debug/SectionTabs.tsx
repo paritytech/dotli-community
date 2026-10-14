@@ -10,15 +10,21 @@ const SECTIONS: readonly TabOption<PanelSection>[] = [
   { value: 'truapi', label: 'TrUAPI' },
   { value: 'resolution', label: 'Resolution' },
   { value: 'archive', label: 'Archive' },
+  { value: 'runtime', label: 'Runtime' },
   { value: 'diagnostics', label: 'Diagnostics' },
   { value: 'wallet', label: 'Wallet' },
 ];
 
 /** In the header, so they stay in reach while the panel is collapsed. */
-export function SectionTabs(props: { section: PanelSection; onSelect: (section: PanelSection) => void }): JSX.Element {
+export function SectionTabs(props: {
+  section: PanelSection;
+  /** Show the Runtime tab while a PolkaVM product reports diagnostics. */
+  runtime: boolean;
+  onSelect: (section: PanelSection) => void;
+}): JSX.Element {
   return (
     <Tabs
-      tabs={SECTIONS}
+      tabs={props.runtime ? SECTIONS : SECTIONS.filter(tab => tab.value !== 'runtime')}
       selected={props.section}
       onSelect={props.onSelect}
       variant="primary"

@@ -64,6 +64,7 @@ const dotliWebServer = {
 
 const webServer: (typeof dotliWebServer & {
   cwd?: string;
+  env?: Record<string, string>;
 })[] = [dotliWebServer];
 if (localProductUrl !== undefined) {
   const productUrl = new URL(localProductUrl);
@@ -79,6 +80,8 @@ if (localProductUrl !== undefined) {
   webServer.unshift({
     command: `yarn dev --port ${productUrl.port || '80'}`,
     cwd: hostPlaygroundRoot,
+    // The embedded product must use dotli, not the playground's standalone CLI dev bridge.
+    env: { NEXT_PUBLIC_SKIP_HOST_BRIDGE: '1' },
     url: productUrl.origin,
     reuseExistingServer: true,
     timeout: 30_000,

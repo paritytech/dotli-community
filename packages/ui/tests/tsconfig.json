@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "resolveJsonModule": true,
     // The tests run under Node (engines >= 22) with happy-dom, not in the
     // browsers src targets, so they may use ES2024 APIs such as
     // Promise.withResolvers.
