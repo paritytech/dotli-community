@@ -315,7 +315,7 @@ describe('createRemoteChainProvider halts', () => {
     });
 
     // When the host configures a new mode and the new frame reports ready
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const rebuilt = await bootFrame();
 
     // Then that connection was never halted, and its connect reached the new frame
@@ -403,7 +403,7 @@ describe('createRemoteChainProvider halts', () => {
 
     // When
     unsubscribe();
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     await connectRemote();
 
     // Then

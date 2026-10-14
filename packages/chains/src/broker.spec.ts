@@ -1125,7 +1125,7 @@ describe('broker warnings', () => {
   /** A broker with one session on a fresh upstream, and a way for that upstream to answer a request nobody sent. */
   function brokerWithStrayResponses(): (id: string) => void {
     const harness = createProviderHarness();
-    const broker = new ChainBroker(harness.provider, () => undefined);
+    const broker = new ChainBroker(harness.provider);
     broker.connect('session-a', () => undefined);
     return id => {
       harness.emit({ jsonrpc: '2.0', id, result: null });
@@ -1187,7 +1187,7 @@ describe('ChainBroker.halt', () => {
     ) => { send: (message: unknown) => void; disconnect: () => void; messages: unknown[] };
   } {
     const harness = createProviderHarness();
-    const broker = new ChainBroker(harness.provider, () => undefined);
+    const broker = new ChainBroker(harness.provider);
     const open: ReturnType<typeof setup>['open'] = (id, log, throwOnMessage = false) => {
       const messages: unknown[] = [];
       const connection = broker.connect(
@@ -1420,7 +1420,7 @@ describe('upstream follow stop', () => {
   it('As a dApp user, a follow the node stops is followed afresh once, not looped on the dead one', () => {
     // Given: a session following through the broker, with a snapshot cached.
     const harness = createProviderHarness();
-    const broker = new ChainBroker(harness.provider, () => undefined);
+    const broker = new ChainBroker(harness.provider);
     const session = refollowingSession(broker);
     const first = harness.sent[0] as { id: string };
     harness.emit({ jsonrpc: '2.0', id: first.id, result: 'up-1' });
@@ -1446,7 +1446,7 @@ describe('upstream follow stop', () => {
   it('As a dApp user, the fresh follow carries on under its own token and the stopped one hears nothing more', () => {
     // Given
     const harness = createProviderHarness();
-    const broker = new ChainBroker(harness.provider, () => undefined);
+    const broker = new ChainBroker(harness.provider);
     const session = refollowingSession(broker);
     harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
     const oldToken = (session.messages[0] as { result: string }).result;

@@ -41,6 +41,12 @@ export interface SharedSettings {
   cache: string | null;
 }
 
+export interface ResolvedSettings {
+  settings: Settings;
+  /** The shared light client was chosen and this browser cannot start it, so the light client per tab stands in. */
+  sharedWorkerFallback: boolean;
+}
+
 export interface SettingsSources {
   /** This origin's storage. */
   local: Pick<Storage, 'getItem'>;
@@ -61,24 +67,28 @@ export function resolveSettings({
   url,
   sharedWorkerAvailable,
   preferLocal = false,
-}: SettingsSources): Settings {
+}: SettingsSources): ResolvedSettings {
   // On localhost the shared backend never applies, so a fresh origin starts on the default and parallel test workers
   // stay apart. A cache this origin never chose still follows the shared one.
   const wanted =
-    url?.chainBackend ??
+    url?.backend ??
     parseBackend(preferLocal ? local.getItem(BACKEND_KEY) : (shared?.backend ?? local.getItem(BACKEND_KEY))) ??
     legacyBackend(local) ??
     defaultBackend();
+  const sharedWorkerFallback = wanted === 'smoldot-shared-worker' && !sharedWorkerAvailable;
   const ownCache = local.getItem(CACHE_KEY);
   const cache = parseCacheSettings(preferLocal ? (ownCache ?? shared?.cache ?? null) : (shared?.cache ?? ownCache));
   return {
-    network: chooseNetwork(url?.network ?? null, local.getItem(NETWORK_KEY)),
-    backend: wanted === 'smoldot-shared-worker' && !sharedWorkerAvailable ? 'smoldot-direct' : wanted,
-    cache: {
-      skipCidCache: url?.skipCidCache ?? cache.skipCidCache,
-      skipArchiveCache: url?.skipArchiveCache ?? cache.skipArchiveCache,
-      skipWorkerCache: url?.skipWorkerCache ?? cache.skipWorkerCache,
+    settings: {
+      network: chooseNetwork(url?.network ?? null, local.getItem(NETWORK_KEY)),
+      backend: sharedWorkerFallback ? 'smoldot-direct' : wanted,
+      cache: {
+        skipCidCache: url?.skipCidCache ?? cache.skipCidCache,
+        skipArchiveCache: url?.skipArchiveCache ?? cache.skipArchiveCache,
+        skipWorkerCache: url?.skipWorkerCache ?? cache.skipWorkerCache,
+      },
     },
+    sharedWorkerFallback,
   };
 }
 

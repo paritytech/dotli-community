@@ -1,67 +1,45 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, flush, untrack } from 'solid-js';
+import { untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
+import {
+  DEFAULT_SETTINGS,
+  givenSettings,
+  resetStorySettings,
+  storySettings,
+} from '../../../.storybook/settings-fixtures.js';
 import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
-import type { SavedSettings } from './settings.js';
-import { SettingsPopover } from './SettingsPopover.js';
+import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
 
-const VERIFIED: SavedSettings = {
-  backend: 'smoldot-direct',
-  cache: { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false },
-  network: 'paseo-next-v2',
-  enabledNetworks: ['paseo-next-v2', 'previewnet'],
-  sharedWorkerAvailable: true,
-  verified: true,
-};
-
-const [settings, setSettingsSignal] = createSignal<SavedSettings | null>(VERIFIED);
-const [isOpen, setOpenSignal] = createSignal(false);
-
-function givenSettings(next: SavedSettings | null): void {
-  setSettingsSignal(next);
-  flush();
-}
-
-function setOpen(next: boolean): void {
-  setOpenSignal(next);
-  flush();
-}
-
-/** The button, opened as the page would, with a body standing in for the page's panel. */
-function StoryButton(): JSX.Element {
-  return (
-    <SettingsPopover open={isOpen} onOpenChange={setOpen} settings={settings}>
-      <p data-testid="story-settings-body">Transport and cache</p>
-    </SettingsPopover>
-  );
+/** The item as the page gives it its settings and owns whether it is open. */
+function StoryItem(): JSX.Element {
+  return <SettingsItem {...storySettings} />;
 }
 
 const meta = {
-  title: 'Host/Settings/SettingsPopover',
-  component: StoryButton,
+  title: 'Host/Settings/SettingsItem',
+  component: StoryItem,
   parameters: { chrome: true, docs: { story: { inline: false, height: '240px' } } },
   beforeEach: () => {
-    givenSettings(VERIFIED);
-    setOpen(false);
+    resetStorySettings();
   },
   render: () => (
     <TopbarFrame>
-      <StoryButton />
+      <StoryItem />
     </TopbarFrame>
   ),
-} satisfies Meta<typeof StoryButton>;
+} satisfies Meta<typeof StoryItem>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a dotli user, the button announces the settings dialog it opens, which shows the body the page gives it. */
+/** As a dotli user, the button announces the settings dialog it opens, which shows the settings panel. */
 export const OpensBody: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
@@ -75,16 +53,16 @@ export const OpensBody: Story = {
       await expect(button).not.toHaveAttribute('data-badge');
     });
     await open(ctx);
-    await ctx.step('Then the page was told, and it is the open dialog named Settings with the body', async () => {
-      await expect(untrack(isOpen)).toBe(true);
+    await ctx.step('Then the page was told, and it is the open dialog named Settings with the panel', async () => {
+      await expect(untrack(storySettings.open)).toBe(true);
       await expect(button).toHaveAttribute('aria-expanded', 'true');
       const popover = byId('mode-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Settings');
-      await expect(within(popover).getByTestId('story-settings-body')).toHaveTextContent('Transport and cache');
+      await expect(within(popover).getByTestId('mode-version')).toHaveTextContent('v0.0.0');
     });
     await ctx.step('When the page closes it', () => {
-      setOpen(false);
+      storySettings.onOpenChange(false);
     });
     await ctx.step('Then it is closed', async () => {
       await waitFor(() => expect(button).toHaveAttribute('aria-expanded', 'false'));
@@ -103,7 +81,7 @@ export const UnverifiedMark: Story = {
       await expect(byId('mode-button')).not.toHaveAttribute('data-badge');
     });
     await step('When the host reads them on trusted providers', () => {
-      givenSettings({ ...VERIFIED, backend: 'rpc-gateway', verified: false });
+      givenSettings({ ...DEFAULT_SETTINGS, backend: 'rpc-gateway', verified: false });
     });
     await step('Then the button carries the mark', async () => {
       await waitFor(() => expect(byId('mode-button')).toHaveAttribute('data-badge'));

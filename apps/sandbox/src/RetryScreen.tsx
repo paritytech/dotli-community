@@ -15,7 +15,7 @@ export function RetryScreen(props: { standalone: boolean }): JSX.Element {
   return (
     <div class={[s['screen'], props.standalone ? s['standalone'] : undefined]} data-testid="retry-screen">
       <div class={s['column']}>
-        <PetalMark size={56} class={s['mark']} petalClass={s['petal']} testId="retry-screen-mark" />
+        <PetalMark size={56} class={s['mark']} pulse testId="retry-screen-mark" />
         <p id="status" class={s['step']}>
           {STATUS}
         </p>

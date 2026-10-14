@@ -19,11 +19,11 @@
   transform: translateY(100%);
   transition: transform var(--dur-morph) var(--ease-out);
 }
-:global([data-open]) > .sheet {
+.sheet[data-state='open'] {
   transform: translateY(0);
 }
 @starting-style {
-  :global([data-open]) > .sheet {
+  .sheet[data-state='open'] {
     transform: translateY(100%);
   }
 }
@@ -34,11 +34,11 @@
   transition: none;
 }
 /* In a hand-off the leaving sheet goes at once and the coming one starts in place. */
-:global([data-handoff]:not([data-open])) > .sheet {
+.sheet[data-state='closed'][data-handoff] {
   transition: none;
 }
 @starting-style {
-  :global([data-open][data-handoff]) > .sheet {
+  .sheet[data-state='open'][data-handoff] {
     transform: translateY(0);
   }
 }

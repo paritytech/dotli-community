@@ -3,8 +3,8 @@
 
 import { createSignal, lazy, onSettled, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { Button, Popover } from '@dotli/ui';
-import type { MoreRow } from '@dotli/ui';
+import { ActionItem, Button, Popover } from '@dotli/ui';
+import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import { AccountAvatar } from './AccountAvatar.js';
 import { sessionDisplayName, sessionInitials } from './account-names.js';
 import { UserIcon } from '../icons/UserIcon.js';
@@ -49,16 +49,6 @@ function authLabel(account: Account): string {
     return 'Sign in with Polkadot Mobile';
   }
   return accountKind(account);
-}
-
-/** The account button's More row. */
-export function accountRow(props: Pick<AuthButtonProps, 'account'>): MoreRow {
-  return {
-    get label() {
-      return authLabel(props.account);
-    },
-    icon: () => <UserIcon />,
-  };
 }
 
 /**
@@ -157,5 +147,30 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         <AccountPanel account={props.account} onLogout={props.onLogout} />
       </Popover>
     </>
+  );
+}
+
+/** The account button in a bar: never collapses, and ends the bar after a hairline. Outside a bar it stands alone. */
+export function AccountItem(props: AuthButtonProps): JSX.Element {
+  // Read only on a More row's click, so it needs no signal.
+  let button: HTMLButtonElement | undefined;
+  return (
+    <ActionItem
+      name="auth"
+      label={authLabel(props.account)}
+      icon={UserIcon}
+      priority={TOPBAR_PRIORITY.auth}
+      activate={() => {
+        button?.click();
+      }}
+      separated
+    >
+      <AuthButton
+        {...props}
+        buttonRef={el => {
+          button = el;
+        }}
+      />
+    </ActionItem>
   );
 }

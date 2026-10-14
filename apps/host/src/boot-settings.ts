@@ -16,7 +16,7 @@ import {
 } from '@dotli/config';
 import type { SafeStorage } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
-import type { ModeDraft, SettingsActions } from './settings-actions.js';
+import type { SettingsActions } from './settings-actions.js';
 
 export interface SettingsBootDeps {
   /** The page's query string. */
@@ -30,18 +30,16 @@ export interface SettingsBootDeps {
   readShared: () => Promise<SharedSettings | null>;
   /** Mirrors the settings to the cross-subdomain store, reporting its own failures. */
   writeShared: (shared: SharedSettings) => void;
-  /** Configures the protocol frame, through which the shared store is read. */
+  /**
+   * Configures the protocol frame, through which the shared store is read, on the settings set so far. Called again
+   * once the shared store answers, unless a reset reloads the page.
+   */
   configureFrame: (settings: Settings) => void;
   /** Wipes and reloads when the link displaces a saved choice, as Save does. */
   actions: Pick<SettingsActions, 'applyAndReset'>;
   notify: ShowNotification;
   /** Replaces the page's query string without a navigation. */
   replaceSearch: (query: string) => void;
-}
-
-/** The settings as the settings popover edits them. */
-function draftOf(settings: Settings): ModeDraft {
-  return { chain: settings.backend, network: settings.network, cache: settings.cache };
 }
 
 /**
@@ -59,31 +57,24 @@ export async function bootSettings(deps: SettingsBootDeps): Promise<Settings> {
     preferLocal: deps.preferLocal,
   };
 
-  const own = resolveSettings({ ...sources, shared: null, url });
+  const own = resolveSettings({ ...sources, shared: null, url }).settings;
   setSettings(own);
   deps.configureFrame(own);
 
   const shared = await deps.readShared();
-  const prior = resolveSettings({ ...sources, shared });
-  const next = resolveSettings({ ...sources, shared, url });
-  // The choice before this browser's limit applies, so only a shared light client it cannot run is announced.
-  const wanted = resolveSettings({
-    ...sources,
-    sharedWorkerAvailable: true,
-    shared,
-    url,
-  });
+  const prior = resolveSettings({ ...sources, shared }).settings;
+  const { settings: next, sharedWorkerFallback } = resolveSettings({ ...sources, shared, url });
   setSettings(next);
   writeLocalSettings(next, deps.local);
   if (shared !== null) {
     deps.writeShared(sharedSettingsOf(next));
   }
 
-  if (writeSettingsToSearch({ network: next.network, chainBackend: next.backend, cache: next.cache }, search)) {
+  if (writeSettingsToSearch(next, search)) {
     deps.replaceSearch(search.toString());
   }
 
-  if (wanted.backend === 'smoldot-shared-worker' && next.backend !== wanted.backend) {
+  if (sharedWorkerFallback) {
     deps.notify({
       label: 'Light client shared unavailable',
       text: "This browser doesn't support Light client shared. Falling back to Light client per tab.",
@@ -93,10 +84,13 @@ export async function bootSettings(deps: SettingsBootDeps): Promise<Settings> {
   }
 
   // A fresh origin has nothing stale, and a link that matches the saved settings changes nothing. The other two
-  // origins purge themselves on their next boot.
+  // origins purge themselves on their next boot. The frame keeps its config through the reset, since a rebuild would
+  // hold the shared store writes until it listens and the reload could drop them.
   if (returning && !sameSettings(next, prior)) {
-    await deps.actions.applyAndReset(draftOf(next), draftOf(prior), { forceFullWipe: true });
+    await deps.actions.applyAndReset(next, prior, { forceFullWipe: true });
+    return next;
   }
+  deps.configureFrame(next);
   return next;
 }
 

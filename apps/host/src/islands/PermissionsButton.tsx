@@ -10,7 +10,7 @@ import {
   resetProductPermissions,
 } from '../runtime/state/product-permissions.js';
 import { productStore } from '../runtime/state/product.js';
-import { PermissionsItem } from '../components/topbar/items.js';
+import { PermissionsItem } from '../components/permissions/PermissionsItem.js';
 import { usePermissionsPanel } from './permissions.js';
 
 /** The permissions button and its popover, bound to the product on show and its permissions. */

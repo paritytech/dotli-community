@@ -4,7 +4,7 @@
 // The hidden protocol iframe: it boots on demand, publishes where it stands, rebuilds itself when it is lost, and is
 // the only listener for its messages.
 
-import type { Network } from '@dotli/config';
+import type { Backend, Network } from '@dotli/config';
 import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createStatusCell, log, withTimeout } from '@dotli/shared';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
@@ -18,12 +18,24 @@ import { isProtocolEnvelope, type ProtocolEnvelope } from './messages.js';
  */
 export type ProtocolStatus = 'idle' | 'booting' | 'listening' | 'ready' | 'failed';
 
-/** `rpc` bridges chain calls over trusted WSS JSON-RPC instead of smoldot. */
-export type ProtocolFrameMode = 'shared-worker' | 'direct' | 'rpc';
+/**
+ * The frame's URL names the backend in its own words. A host page the service worker cached from an earlier release
+ * still sends them, so they stay. `rpc` bridges chain calls over trusted WSS JSON-RPC instead of smoldot.
+ */
+const FRAME_MODES = {
+  'smoldot-shared-worker': 'shared-worker',
+  'smoldot-direct': 'direct',
+  'rpc-gateway': 'rpc',
+} as const satisfies Record<Backend, string>;
+
+/** The backend a frame URL's `mode` names, or null for a word this build does not know. */
+export function backendOfFrameMode(mode: string): Backend | null {
+  return (Object.keys(FRAME_MODES) as Backend[]).find(backend => FRAME_MODES[backend] === mode) ?? null;
+}
 
 /** What the frame is built with. A change rebuilds it. */
 export interface ProtocolFrameConfig {
-  mode: ProtocolFrameMode;
+  backend: Backend;
   network: Network;
   /** Asks the frame to purge its IndexedDB caches first, forcing a cold start. */
   skipWorkerCache: boolean;
@@ -113,7 +125,7 @@ interface FrameSlot {
 }
 
 function sameFrameConfig(a: ProtocolFrameConfig, b: ProtocolFrameConfig): boolean {
-  return a.mode === b.mode && a.network === b.network && a.skipWorkerCache === b.skipWorkerCache;
+  return a.backend === b.backend && a.network === b.network && a.skipWorkerCache === b.skipWorkerCache;
 }
 
 /** The frame's step that failed, so a failure is counted where it happened. */
@@ -277,7 +289,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   function createIframe(config: ProtocolFrameConfig): HTMLIFrameElement {
     const iframe = frameDocument.createElement('iframe');
     const params = new URLSearchParams();
-    params.set('mode', config.mode);
+    params.set('mode', FRAME_MODES[config.backend]);
     params.set('network', config.network);
     if (config.skipWorkerCache) {
       params.set('skipWorkerCache', '1');
@@ -447,7 +459,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       // Told apart from a fatal in the trail, since both drop the frame.
       log.event('protocol frame reconfigured', {
         flow: 'protocol',
-        mode: config.mode,
+        backend: config.backend,
         network: config.network,
         skipWorkerCache: config.skipWorkerCache,
       });

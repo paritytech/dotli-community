@@ -42,7 +42,7 @@ export function startSandboxContent(deps: SandboxContentDeps): void {
       timestamp: Date.now(),
       payload: { hits, misses },
     });
-    m.count(misses === 0 ? S.CACHE_HIT : S.CACHE_MISS, { surface: 'block_cache' });
+    m.count(S.CACHE_READ, { outcome: misses === 0 ? 'hit' : 'miss', surface: 'block_cache' });
     deps.idle(deps.prune);
   });
 }

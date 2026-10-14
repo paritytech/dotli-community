@@ -17,8 +17,8 @@ import {
   type ChainBrokerManager,
   type StringJsonRpcConnection,
 } from './broker.js';
-import { decodeHeaderNumber } from './header-number.js';
 import { createWatchGuard, type WatchGuard } from './watch-guard.js';
+import { openWatchFollow } from './watch-follow.js';
 
 /** A provider whose connections also hear when their chain's transport halts. */
 export type LeaseProvider = (
@@ -91,14 +91,6 @@ function shortKey(key: string): string {
   return `${key.slice(0, 10)}…`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function stringsOf(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-}
-
 /** What the pool tells its watchers, one listener per watcher. */
 type WatchEvent =
   { kind: 'activity'; activity: ChainActivity } | { kind: 'bestBlock'; genesisHash: string; blockNumber: number };
@@ -159,109 +151,30 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     }
   }
 
-  /**
-   * The watchers' own follow, so a held chain's blocks keep coming while no consumer follows it. With the runtime, as
-   * polkadot-api asks, so a consumer's follow shares it upstream. Each best block is numbered from its header, and a
-   * block stays pinned until finalization passes it.
-   */
-  function openWatchFollow(entry: Entry): { disconnect: () => void } {
-    const sessionId = `watch:${sessionCounter.toString(36)}`;
+  /** The watchers' own follow on a held chain, which reports to them while the entry lives. */
+  function openFollow(entry: Entry): { disconnect: () => void } {
+    // Names the chain, so the follow's debug log says which one refused it.
+    const sessionId = `watch:${shortKey(entry.key)}:${sessionCounter.toString(36)}`;
     sessionCounter += 1;
-    let requests = 0;
-    let followId: string | null = null;
-    let token: string | null = null;
-    // Still pinned, since it can be the best block.
-    let finalized: string | null = null;
-    const headerIds = new Set<string>();
-    let closed = false;
-    const setFollowing = (following: boolean): void => {
-      if (entry.live && entry.following !== following) {
-        entry.following = following;
-        report(entry);
-      }
-    };
-    // The broker can answer inside `send`, when it shares a follow already established, so callers note the id first.
-    const send = (method: string, params: unknown[], noteId?: (id: string) => void): void => {
-      const id = `${sessionId}:${requests.toString(36)}`;
-      requests += 1;
-      noteId?.(id);
-      session.send({ jsonrpc: '2.0', id, method, params });
-    };
-    const follow = (): void => {
-      token = null;
-      finalized = null;
-      headerIds.clear();
-      send('chainHead_v1_follow', [true], id => {
-        followId = id;
-      });
-    };
-    const unpin = (hashes: string[]): void => {
-      if (token !== null && hashes.length > 0) {
-        send('chainHead_v1_unpin', [token, hashes]);
-      }
-    };
-    const onEvent = (result: Record<string, unknown>): void => {
-      if (result['event'] === 'initialized') {
-        const hashes = stringsOf(result['finalizedBlockHashes']);
-        finalized = hashes.at(-1) ?? null;
-        unpin(hashes.slice(0, -1));
-      } else if (result['event'] === 'bestBlockChanged' && token !== null) {
-        send('chainHead_v1_header', [token, result['bestBlockHash']], id => {
-          headerIds.add(id);
-        });
-      } else if (result['event'] === 'finalized') {
-        const hashes = stringsOf(result['finalizedBlockHashes']);
-        unpin([
-          ...(finalized === null ? [] : [finalized]),
-          ...hashes.slice(0, -1),
-          ...stringsOf(result['prunedBlockHashes']),
-        ]);
-        finalized = hashes.at(-1) ?? finalized;
-      } else if (result['event'] === 'stop') {
-        token = null;
-        setFollowing(false);
-        // A halted chain stops it too, and its broker has dropped this session by then.
-        if (!closed && entry.live) {
-          follow();
-        }
-      }
-    };
-    const session = entry.broker.connect(
+    const follow = openWatchFollow({
       sessionId,
-      message => {
-        if (!isRecord(message)) {
-          return;
-        }
-        const id = message['id'];
-        const result = message['result'];
-        if (id === followId) {
-          if (typeof result === 'string') {
-            token = result;
-            setFollowing(true);
-          } else {
-            log.debug(`${POOL_TAG} ${shortKey(entry.key)} refused the network panel's follow`, message['error']);
-          }
-        } else if (typeof id === 'string' && headerIds.delete(id)) {
-          // Refused for a block finalization already unpinned, and the next best block reports instead.
-          const blockNumber = typeof result === 'string' ? decodeHeaderNumber(result) : null;
-          if (blockNumber !== null && entry.live) {
-            watchers.emit({ kind: 'bestBlock', genesisHash: entry.key, blockNumber });
-          }
-        } else if (message['method'] === 'chainHead_v1_followEvent') {
-          const params = message['params'];
-          if (isRecord(params) && params['subscription'] === token && isRecord(params['result'])) {
-            onEvent(params['result']);
-          }
+      connect: onMessage => entry.broker.connect(sessionId, onMessage, 'object', null),
+      live: () => entry.live,
+      onFollowing: following => {
+        if (entry.live && entry.following !== following) {
+          entry.following = following;
+          report(entry);
         }
       },
-      'object',
-      null,
-    );
-    follow();
+      onBestBlock: blockNumber => {
+        if (entry.live) {
+          watchers.emit({ kind: 'bestBlock', genesisHash: entry.key, blockNumber });
+        }
+      },
+    });
     return {
       disconnect: () => {
-        closed = true;
-        session.disconnect();
+        follow.disconnect();
         // Reported by whoever stopped it, with the change that stopped it.
         entry.following = false;
       },
@@ -273,7 +186,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     const wanted = entry.live && watchers.size > 0 && entry.leases > 0;
     if (wanted && entry.watchFollow === null) {
       log.debug(`${POOL_TAG} ${shortKey(entry.key)} held, the network panel follows it`);
-      entry.watchFollow = openWatchFollow(entry);
+      entry.watchFollow = openFollow(entry);
     } else if (!wanted && entry.watchFollow !== null) {
       const watchFollow = entry.watchFollow;
       entry.watchFollow = null;
@@ -313,8 +226,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       key,
       transport,
       guard,
-      // The pool removes its entries itself, in `destroy`.
-      broker: new ChainBroker(guard.provider, () => undefined, warn),
+      broker: new ChainBroker(guard.provider, warn),
       leases: 0,
       destroyTimer: null,
       live: true,

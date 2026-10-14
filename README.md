@@ -298,8 +298,8 @@ sources, views, filters, correlation keys, and how to add a new instrumentation 
 dApps rendered in dotli's sandboxed iframe should communicate exclusively through the container bridge (postMessage),
 not use web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
 
-The checker is activated by defining `VITE_SANDBOX_CHECKER` at build time (e.g. `=true`). When the env var is unset, the
-gated import is statically eliminated, so the checker is tree-shaken out of production builds entirely.
+The checker is activated by setting `VITE_SANDBOX_CHECKER=true` at build time. Otherwise the gated import is statically
+eliminated, so the checker is tree-shaken out of production builds entirely.
 
 ### Monitored APIs
 

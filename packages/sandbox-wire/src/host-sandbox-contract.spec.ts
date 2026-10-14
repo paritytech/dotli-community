@@ -29,7 +29,7 @@ function search(overrides: Record<string, string | null> = {}): URLSearchParams 
 }
 
 describe('validateSandboxParams: v3 cid contract', () => {
-  it('As the sandbox, when I receive a valid contract, I read cid, chainBackend, and network from the params', () => {
+  it('As the sandbox, when I receive a valid contract, I read cid, backend, and network from the params', () => {
     // Given a contract that carries every required v3 param.
     const params = search();
 
@@ -40,7 +40,7 @@ describe('validateSandboxParams: v3 cid contract', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.params.cid).toBe(VALID_CID);
-      expect(result.params.chainBackend).toBe('smoldot-direct');
+      expect(result.params.backend).toBe('smoldot-direct');
       expect(result.params.network).toBe(NetworkName.PASEO);
     }
   });

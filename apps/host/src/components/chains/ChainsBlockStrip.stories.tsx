@@ -14,7 +14,7 @@ import {
 } from '../../../.storybook/network-fixtures.js';
 import { byTestId } from '@dotli/ui/testing';
 import type { ChainView } from './chains.js';
-import { NetworkItem } from '../topbar/items.js';
+import { NetworkItem } from './NetworkItem.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });
 

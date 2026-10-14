@@ -17,7 +17,15 @@ export {
   type ChainPoolWatcher,
   type LeaseProvider,
 } from './chain-pool.js';
-export { enableSyncReporting, onChainDetail, onChainSync, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
+export {
+  enableSyncReporting,
+  onChainDetail,
+  onChainSync,
+  type ChainDetail,
+  type ChainPeer,
+  type ChainSyncEvent,
+  type ChainSyncKind,
+} from './chain-sync.js';
 export {
   createLightClient,
   lightClientDeps,

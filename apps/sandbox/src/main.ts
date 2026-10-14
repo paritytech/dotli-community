@@ -85,7 +85,7 @@ function stripContractParamsFromUrl(): void {
 
 /** Inline, since document.write() replaces the page. */
 async function maybeInjectSandboxChecker(html: string): Promise<string> {
-  if (import.meta.env.VITE_SANDBOX_CHECKER === undefined) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== 'true') {
     return html;
   }
   const { injectSandboxChecker } = await loadSandboxChecker();
@@ -101,9 +101,9 @@ function configure(params: SandboxParams): void {
     setResolutionId(params.resolutionId);
   }
   setActiveNetwork(params.network);
-  m.setDefaults({ chain_backend: params.chainBackend, network: params.network });
+  m.setDefaults({ chain_backend: params.backend, network: params.network });
   listenForArchiveFailures(appWorker.container);
-  if (params.chainBackend !== 'rpc-gateway') {
+  if (params.backend !== 'rpc-gateway') {
     blockSource = createBitswapBridge({
       window,
       parent: window.parent,

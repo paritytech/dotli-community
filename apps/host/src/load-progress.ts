@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Turns what the light client and the content fetch report into the loading bar, its slow-load warnings, the network
-// monitor and the debug panel's chain events. Every source and sink is passed in, and it reads only the clock and the
-// logger itself.
+// monitor and the debug panel's chain events. The reports come from other frames, so they are passed in.
 
 import type { Backend, ChainRole } from '@dotli/config';
 import type { ChainPeer, ChainSyncKind } from '@dotli/chains';
 import type { ResolvePhase } from '@dotli/resolver';
-import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import type { LoadingPhase } from './loading-controller.js';
+import { emitDotliDebugEvent } from '@dotli/truapi-debug';
+import { pageLoading, type LoadingPhase } from './loading-controller.js';
 import { log } from '@dotli/shared';
-import type { ChainPhase } from './state/network-monitor.js';
+import { productStore } from './runtime/state/product.js';
+import { recordChainPhase, recordPeerCount, recordTransfer, type ChainPhase } from './state/network-monitor.js';
 import {
   chainTelemetryName,
   createChainPhaseTracker,
@@ -46,7 +46,7 @@ export interface ContentProgressFacts {
   totalBytes: number | null;
 }
 
-/** Where the load's reports come from. Each returns its unsubscribe. */
+/** Where the load's reports come from: the protocol frame and the sandbox's content fetch. Each returns its unsubscribe. */
 export interface LoadEvents {
   onChainSync: (listener: (event: ChainSyncFacts) => void) => () => void;
   onChainDetail: (listener: (event: ChainDetailFacts) => void) => () => void;
@@ -54,7 +54,7 @@ export interface LoadEvents {
   onContentProgress: (listener: (event: ContentProgressFacts) => void) => () => void;
 }
 
-/** The loading screen's intents this module drives. */
+/** The loading screen this load drives. The page's, unless a spec passes one, since the page's draws on animation frames. */
 export interface LoadingScreen {
   initPhases: (phases: LoadingPhase[]) => void;
   setLoadingDomain: (domain: string) => void;
@@ -68,12 +68,6 @@ export interface LoadingScreen {
   stopStatusTick: () => void;
 }
 
-export interface NetworkMonitor {
-  recordChainPhase: (role: ChainRole, phase: ChainPhase) => void;
-  recordPeerCount: (role: ChainRole, peers: number) => void;
-  recordTransfer: (next: { bytesPerSecond?: number; fetched?: number; total?: number | null }) => void;
-}
-
 /** The part of the resolution trace that hears the load's reports. */
 export interface LoadTrace {
   chainSync: (event: ChainSyncFacts) => void;
@@ -83,18 +77,14 @@ export interface LoadTrace {
   warningShown: () => void;
 }
 
-export interface LoadProgressDeps {
+export interface LoadProgressOptions {
   label: string;
   backend: Backend;
   /** The debug panel's flow for this page load. */
   flowId: string;
   events: LoadEvents;
-  loading: LoadingScreen;
-  monitor: NetworkMonitor;
   trace: LoadTrace;
-  emit: (event: DotliDebugEvent) => void;
-  /** Closes the chain byte stream in the debug panel once the product is on screen. */
-  product: { get: () => { status: string }; subscribe: (listener: () => void) => () => void };
+  loading?: LoadingScreen | undefined;
 }
 
 export interface LoadProgress {
@@ -141,8 +131,8 @@ const GATEWAY_PHASES: LoadingPhase[] = [
 ];
 
 /** Starts the bar for one load. Call it once the label is known and before anything is resolved. */
-export function startLoadProgress(deps: LoadProgressDeps): LoadProgress {
-  const { backend, loading, trace } = deps;
+export function startLoadProgress(options: LoadProgressOptions): LoadProgress {
+  const { backend, trace, loading = pageLoading } = options;
   // Only direct mode relays bitswap through this window, so only it can report a download percentage.
   const countsContentBytes = backend === 'smoldot-direct';
   const gateway = backend === 'rpc-gateway';
@@ -153,36 +143,36 @@ export function startLoadProgress(deps: LoadProgressDeps): LoadProgress {
   );
   // Always the last band.
   const contentFetchPhase = gateway ? 2 : 3;
-  loading.setLoadingDomain(deps.label);
+  loading.setLoadingDomain(options.label);
   loading.advancePhase(0);
 
   // On every backend: a gateway trace with no chain events is the point, not a gap.
-  deps.events.onChainSync(event => {
+  options.events.onChainSync(event => {
     trace.chainSync(event);
   });
-  deps.events.onChainDetail(event => {
+  options.events.onChainDetail(event => {
     trace.chainDetail(event);
     if (event.dbCache !== undefined) {
-      deps.emit({
+      emitDotliDebugEvent({
         layer: 'chain',
         event: 'dbcache',
-        flowId: deps.flowId,
+        flowId: options.flowId,
         timestamp: Date.now(),
         payload: { chain: event.chain, dbCache: event.dbCache },
       });
     }
   });
-  deps.events.onNetBytes(({ received }) => {
+  options.events.onNetBytes(({ received }) => {
     trace.bytes(received);
   });
-  deps.events.onContentProgress(({ bytesFetched, totalBytes }) => {
+  options.events.onContentProgress(({ bytesFetched, totalBytes }) => {
     trace.content(bytesFetched, totalBytes);
   });
 
   // Typed lifecycle milestones from the protocol iframe drive the bar in direct mode. The other backends forward
   // none, so only the resolver's phases move it.
   if (backend === 'smoldot-direct') {
-    followDirectChains(deps);
+    followDirectChains(options, loading);
   }
 
   return {
@@ -201,8 +191,8 @@ export function startLoadProgress(deps: LoadProgressDeps): LoadProgress {
   };
 }
 
-function followDirectChains(deps: LoadProgressDeps): void {
-  const { loading, monitor, trace, emit, flowId } = deps;
+function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen): void {
+  const { trace, flowId } = options;
   // Per chain, since one figure would blank to zero at every handover. Every lifecycle event re-arms that chain's
   // stall timer, so a chain warns only when it sits in one state past the threshold.
   const livePeers = new Map<CriticalChain, number>();
@@ -289,7 +279,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
 
   const trackPhase = createChainPhaseTracker();
 
-  deps.events.onChainSync(event => {
+  options.events.onChainSync(event => {
     const role = event.chain;
     const phase = trackPhase(role, event.syncKind);
     if (event.syncKind === 'peers' && event.peers !== undefined) {
@@ -297,7 +287,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
       const changed = peersByRole.get(role) !== event.peers;
       peersByRole.set(role, event.peers);
       if (changed) {
-        emit({
+        emitDotliDebugEvent({
           layer: 'chain',
           event: 'peers',
           flowId,
@@ -307,7 +297,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
       }
     }
     if (phase !== undefined) {
-      monitor.recordChainPhase(role, phase);
+      recordChainPhase(role, phase);
       const now = Date.now();
       const warpMoved =
         phase === 'syncing' &&
@@ -329,7 +319,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
             ...(event.reason === undefined ? {} : { reason: event.reason }),
           });
         }
-        emit({
+        emitDotliDebugEvent({
           layer: 'chain',
           event: 'phase',
           flowId,
@@ -360,7 +350,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
           return;
         }
         // Every chain, including those the loading screen has no stall wording for.
-        monitor.recordPeerCount(role, event.peers);
+        recordPeerCount(role, event.peers);
         if (isCriticalChain(event.chain)) {
           livePeers.set(event.chain, event.peers);
         }
@@ -417,7 +407,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
     const span = now - oldest.at;
     if (span > 0) {
       liveBytesPerSecond = ((chainBytes - oldest.total) / span) * 1000;
-      monitor.recordTransfer({ bytesPerSecond: liveBytesPerSecond });
+      recordTransfer({ bytesPerSecond: liveBytesPerSecond });
     }
   };
   // Closes once the product is on screen, or it pushes the load's own events out of the debug panel's ring buffer.
@@ -429,10 +419,10 @@ function followDirectChains(deps: LoadProgressDeps): void {
     lastBytesDebugAt = at;
     lastBytesDebugTotal = received;
     bytesDebugSamples++;
-    emit({ layer: 'chain', event: 'bytes', flowId, timestamp: at, payload: { received } });
+    emitDotliDebugEvent({ layer: 'chain', event: 'bytes', flowId, timestamp: at, payload: { received } });
   };
-  const stopBytesDebugOnLoad = deps.product.subscribe(() => {
-    if (deps.product.get().status !== 'loaded') {
+  const stopBytesDebugOnLoad = productStore.subscribe(() => {
+    if (productStore.get().status !== 'loaded') {
       return;
     }
     stopBytesDebugOnLoad();
@@ -441,7 +431,7 @@ function followDirectChains(deps: LoadProgressDeps): void {
     }
     bytesDebugOpen = false;
   });
-  deps.events.onNetBytes(({ received }) => {
+  options.events.onNetBytes(({ received }) => {
     chainBytes = received;
     reportSpeed();
     const now = Date.now();
@@ -456,8 +446,8 @@ function followDirectChains(deps: LoadProgressDeps): void {
   });
 
   // Every block the sandbox needs passes through this window, measured against the total the DAG root declares.
-  deps.events.onContentProgress(({ bytesFetched, totalBytes }) => {
-    monitor.recordTransfer({ fetched: bytesFetched, total: totalBytes });
+  options.events.onContentProgress(({ bytesFetched, totalBytes }) => {
+    recordTransfer({ fetched: bytesFetched, total: totalBytes });
     if (totalBytes === null) {
       // No declared total, so no percentage: the clock takes the bar back.
       loading.releasePhaseProgress();

@@ -24,7 +24,7 @@ import {
 } from '../../../.storybook/network-fixtures.js';
 import type { LiveVerdict } from '../../network-verdict.js';
 import type { ChainView, TransferView } from './chains.js';
-import { NetworkItem } from '../topbar/items.js';
+import { NetworkItem } from './NetworkItem.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });
 

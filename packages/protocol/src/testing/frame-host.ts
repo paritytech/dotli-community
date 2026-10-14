@@ -11,7 +11,11 @@ import type { ProtocolEnvelope } from '../messages.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';
 
-export const FRAME_CONFIG: ProtocolFrameConfig = { mode: 'direct', network: 'paseo-next-v2', skipWorkerCache: false };
+export const FRAME_CONFIG: ProtocolFrameConfig = {
+  backend: 'smoldot-direct',
+  network: 'paseo-next-v2',
+  skipWorkerCache: false,
+};
 
 /** The frame's window as the host sees it: something to post to. */
 export interface FakeFrameWindow {

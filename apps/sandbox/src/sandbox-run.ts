@@ -58,8 +58,8 @@ function isAppSubdomain(hostname: string, baseDomain: string): boolean {
   return false;
 }
 
-function dependencyOf(chainBackend: SandboxParams['chainBackend']): string {
-  return chainBackend === 'rpc-gateway' ? 'ipfs-gateway' : 'smoldot-bitswap';
+function dependencyOf(backend: SandboxParams['backend']): string {
+  return backend === 'rpc-gateway' ? 'ipfs-gateway' : 'smoldot-bitswap';
 }
 
 /** Resolves once the first load has settled, or at once when the contract stops the run. */
@@ -129,7 +129,7 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
   }
   const { params } = parsed;
   deps.configure(params);
-  const dependency = dependencyOf(params.chainBackend);
+  const dependency = dependencyOf(params.backend);
 
   const presentFailure = (step: LoadStep, err: unknown, attempt: number, retry: () => Promise<void>): void => {
     captureException(err, {

@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Kept out of `client.ts`, whose `config` import reads `self.location` at module load,
-// so a budget can be read outside a browser.
+// Kept out of the client, which imports the config barrel, so the Playwright suite can read a budget from Node, where
+// that barrel cannot load.
 
 import type { ProtocolRequestMethod } from './messages.js';
 

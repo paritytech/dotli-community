@@ -17,7 +17,8 @@ timeouts.
   frame and the sandbox set from their URL.
 - Backend (`smoldot-direct`, `smoldot-shared-worker`, `rpc-gateway`) and cache switches are settings beside the network.
   One pure function resolves them from the link, the cross-subdomain store and this origin's storage. A page sets its
-  settings once at boot and the getters return them. A change reloads the page, so nothing sets them after.
+  settings once at boot and the getters return them. A change reloads the page, so nothing sets them after. The resolver
+  also says when the shared light client was chosen and this browser runs the per-tab one instead.
 - A chain is named by its role (`relay`, `assethub`, `bulletin`, `people`) everywhere: the network table, sync events,
   the light client's database outcomes and the UI. A genesis hash maps to its role from the fixed config, so a worker
   that never sees the runtime network config may read it.
@@ -35,9 +36,9 @@ timeouts.
 - Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `getActiveServicesConfig`, `getActiveTldSuffix`,
   `withActiveTld`, the chain role helpers (`CHAIN_ROLES`, `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway
   and genesis hash readers.
-- Settings: `getSettings`, `setSettings`, `getBackend`, `getCacheSettings`, `isSharedWorkerAvailable`,
+- Settings: `getSettings`, `setSettings`, `getBackend`, `parseBackend`, `getCacheSettings`, `isSharedWorkerAvailable`,
   `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`, `setActiveNetwork`,
-  `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `Settings`, `SharedSettings`.
+  `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `ResolvedSettings`, `Settings`, `SharedSettings`.
 
 ### `@dotli/config/fixed`
 

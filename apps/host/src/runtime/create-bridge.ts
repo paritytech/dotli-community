@@ -5,9 +5,8 @@
 // piped to it. Nested products are not modeled separately, so any nested traffic must share the top-level core.
 
 import type { SandboxChannel } from '@dotli/sandbox-wire';
-import type { AuthCommands } from './auth-commands.js';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
-import { createCoreAuthCommands, type CoreAuthCommandsDeps } from './core-login.js';
+import { createCoreAuthCommands, type AuthCommands, type CoreAuthCommandsDeps } from './core-login.js';
 import type { BootCoreRuntime } from './core-runtime.js';
 import { createPageCore, type PageCore, type PageProduct } from './page-core.js';
 import { createProductFrame, type ProductFrame, type ProductFrameDeps } from './product-frame.js';

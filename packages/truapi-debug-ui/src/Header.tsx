@@ -127,7 +127,7 @@ export function Header(props: {
       <Button testId="td-collapse" icon title="Collapse" onClick={props.onToggleCollapse}>
         {props.collapsed ? '▲' : '▼'}
       </Button>
-      <Button testId="td-close" icon title="Hide (Ctrl+Shift+D)" label="Hide" onClick={props.onExit}>
+      <Button testId="td-close" icon title="Hide" label="Hide" onClick={props.onExit}>
         <CloseIcon />
       </Button>
     </div>

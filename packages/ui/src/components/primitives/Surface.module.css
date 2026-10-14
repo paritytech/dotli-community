@@ -1,7 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* No padding or glass: each consumer sets its padding and the frame draws the glass. */
+/* No glass: the frame draws it. A panel asks for its padding with `padded`, and any other consumer sets its own. */
 
 :where(.surface) {
   box-sizing: border-box;
@@ -23,6 +23,12 @@
 }
 .surface[data-sheet] {
   width: 100%;
+}
+.surface[data-padded] {
+  padding: var(--sp-3);
+}
+.surface[data-padded][data-sheet] {
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
 }
 .head {
   display: flex;
@@ -62,6 +68,9 @@
 }
 
 @media (max-width: 560px) {
+  .surface[data-padded] {
+    padding: var(--sp-4);
+  }
   :where(.surface) {
     gap: var(--sp-3);
   }

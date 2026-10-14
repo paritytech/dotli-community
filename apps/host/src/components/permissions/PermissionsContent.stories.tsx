@@ -17,7 +17,7 @@ import {
   STORY_PERMISSIONS,
   storyPermissions,
 } from '../../../.storybook/permissions-fixtures.js';
-import { PermissionsItem } from '../topbar/items.js';
+import { PermissionsItem } from './PermissionsItem.js';
 
 const open = openSurface({ trigger: 'permissions-button', surface: 'permissions-popover' });
 

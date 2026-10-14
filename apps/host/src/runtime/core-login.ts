@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The topbar's login and logout, run on the page core. Each reports its own failures, and session state hears what the
-// core could not say for itself.
+// The topbar's login, logout and cancel, run on the page core. Login and logout share one queue, so overlapping calls
+// never reach the core twice. Each reports its own failures, and session state hears what the core could not say for
+// itself.
 
 import {
   decodeWireMessage,
@@ -18,15 +19,81 @@ import {
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
-import { log, type ReadableStore } from '@dotli/shared';
-import { createAuthCommands, type AuthCommands } from './auth-commands.js';
+import { createAsyncTaskPool, log, type ReadableStore } from '@dotli/shared';
 import { wrapCoreProviderForDebug } from './core-connection.js';
 import type { DotliAuthState } from './session/auth-state.js';
 import type { SessionState } from './session/session-state.js';
+import { isLoginActive } from './state/auth.js';
 import { LoginRequestError } from './login-request-error.js';
 import type { PageCore } from './page-core.js';
 import type { WalletMode } from './state/wallet-mode.js';
 import type { WalletSwitchOutcome } from './wallet-switch.js';
+
+export interface AuthCommands {
+  /** Settles once the login has ended. A no-op while a login is under way or the user is signed in. */
+  login(reason?: string): Promise<void>;
+  /** Settles once the logout has ended. A no-op once the user is signed out. */
+  logout(): Promise<void>;
+  /** Stops the pairing under way, at once and outside the queue, and ends the login round, so a later click logs in. */
+  cancelLogin(): void;
+}
+
+export interface AuthCommandsDeps {
+  auth: ReadableStore<DotliAuthState>;
+  /** One login to its end, reporting its own failures. */
+  login(reason: string | undefined): Promise<void>;
+  /** One logout to its end, reporting its own failures. */
+  logout(): Promise<void>;
+  cancelPairing(): void;
+}
+
+const AUTH_POOL = 'auth';
+
+export function createAuthCommands(deps: AuthCommandsDeps): AuthCommands {
+  const queue = createAsyncTaskPool({ poolSize: 1 });
+  // A login answers every call made in its round, so a click queued behind it starts no second pairing. A round ends
+  // when its login ends or when a cancel or logout is asked for, whichever comes first, so a click after either still
+  // logs in.
+  let round = {};
+  return {
+    login(reason) {
+      const asked = round;
+      return queue.call(
+        async () => {
+          if (asked !== round) {
+            return;
+          }
+          try {
+            if (!isLoginActive(deps.auth.get())) {
+              await deps.login(reason);
+            }
+          } finally {
+            if (round === asked) {
+              round = {};
+            }
+          }
+        },
+        { pool: AUTH_POOL },
+      );
+    },
+    logout() {
+      round = {};
+      return queue.call(
+        async () => {
+          if (deps.auth.get().tag === 'Disconnected') {
+            return;
+          }
+          await deps.logout();
+        },
+        { pool: AUTH_POOL },
+      );
+    },
+    cancelLogin() {
+      round = {};
+      deps.cancelPairing();
+    },
+  };
+}
 
 export interface CoreAuthCommandsDeps {
   auth: ReadableStore<DotliAuthState>;

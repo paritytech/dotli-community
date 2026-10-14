@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Must not import `@dotli/truapi-debug-ui` or `solid-js`. Returns plain data that the components render as JSX text.
+// Imports no Solid, so the spec runs under Node. Returns plain data that the components render as JSX text.
 
 import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
 import { summariseChainMessage } from './chain-summary.js';

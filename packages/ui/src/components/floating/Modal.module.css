@@ -29,7 +29,7 @@
   outline: none;
 }
 /* Fades with the scrim while the layer stays up for the exit. */
-:global([data-modal-layer]:not([data-open])) > .card {
+.card[data-state='closed'] {
   opacity: 0;
 }
 

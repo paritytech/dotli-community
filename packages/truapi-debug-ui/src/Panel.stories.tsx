@@ -78,7 +78,7 @@ export const Default: Story = {
         ['td-export', 'Download as JSON', 'Download as JSON'],
         ['td-copy', 'Copy to clipboard', 'Copy to clipboard'],
         ['td-dock', 'Dock to right', 'Dock to right'],
-        ['td-close', 'Hide', 'Hide (Ctrl+Shift+D)'],
+        ['td-close', 'Hide', 'Hide'],
       ] as const) {
         await expect(header.getByRole('button', { name: label })).toBe(part(id));
         await expect(part(id)).toHaveAttribute('title', title);

@@ -335,7 +335,7 @@ export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwor
 }
 
 function injectSandboxScript(html: string): string {
-  if (import.meta.env.VITE_SANDBOX_CHECKER === undefined) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== 'true') {
     return html;
   }
   return injectSandboxChecker(html);

@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { ShowNotification } from '@dotli/ui';
 import { revalidateCachedCopy, type CacheRevalidationDeps } from './cache-revalidate.js';
@@ -170,5 +171,28 @@ describe('revalidateCachedCopy', () => {
     expect(written).toEqual([]);
     expect(evicted).toEqual([]);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('As the operator, I see every revalidation counted under one name, tagged with what it found', async () => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const unchanged = setup({ doom: 'bafy-served' });
+    const redeployed = setup({ doom: 'bafy-latest' });
+    const cleared = setup({});
+    const unreachable = setup(new Error('Asset Hub went quiet'));
+
+    // When
+    await revalidateCachedCopy('doom', 'bafy-served', true, unchanged.deps);
+    await revalidateCachedCopy('doom', 'bafy-served', true, redeployed.deps);
+    await revalidateCachedCopy('doom', 'bafy-served', false, cleared.deps);
+    await revalidateCachedCopy('doom', 'bafy-served', true, unreachable.deps);
+
+    // Then
+    expect(metrics.counted('cache.revalidate')).toEqual([
+      expect.objectContaining({ outcome: 'match' }),
+      expect.objectContaining({ outcome: 'update' }),
+      expect.objectContaining({ outcome: 'cleared' }),
+      expect.objectContaining({ outcome: 'error' }),
+    ]);
   });
 });

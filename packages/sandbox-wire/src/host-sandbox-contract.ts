@@ -6,14 +6,12 @@
 // The sandbox origin is keyed on the dotNS label, not the CID, so all versions of a product share an origin.
 // A new required param bumps SANDBOX_SCHEMA_VERSION, so a stale host can't feed a fresh sandbox.
 
-import { NetworkName, isValidNetwork, type Network } from '@dotli/config';
+import { NetworkName, isValidNetwork, parseBackend, type Backend, type Network } from '@dotli/config';
 
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from './contract-params.js';
 
 // A cheap charset gate. The sandbox parses the CID and hash-verifies fetched content against it.
 const CID_PATTERN = /^[a-zA-Z0-9]+$/;
-
-const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set(['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway']);
 
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
@@ -21,7 +19,7 @@ const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
 export interface SandboxParams {
   cid: string;
-  chainBackend: 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
+  backend: Backend;
   network: Network;
   fullReset: boolean;
   /** Telemetry only, so never required: no sandbox should fail to boot over a trace id. */
@@ -62,18 +60,19 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
     };
   }
 
-  const chainBackend = search.get(SANDBOX_CONTRACT_PARAMS.chainBackend);
-  if (chainBackend === null) {
+  const rawBackend = search.get(SANDBOX_CONTRACT_PARAMS.chainBackend);
+  if (rawBackend === null) {
     return {
       ok: false,
       recoverable: true,
       reason: 'Missing required URL param `chainBackend`. The host did not specify a backend — reload from dot.li.',
     };
   }
-  if (!VALID_CHAIN_BACKENDS.has(chainBackend)) {
+  const backend = parseBackend(rawBackend);
+  if (backend === null) {
     return {
       ok: false,
-      reason: `Unknown chainBackend "${chainBackend}". Expected "smoldot-direct", "smoldot-shared-worker", or "rpc-gateway".`,
+      reason: `Unknown chainBackend "${rawBackend}". Expected "smoldot-direct", "smoldot-shared-worker", or "rpc-gateway".`,
     };
   }
 
@@ -117,7 +116,7 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
     ok: true,
     params: {
       cid,
-      chainBackend: chainBackend as 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway',
+      backend,
       network,
       fullReset: resetRaw === '1',
       resolutionId,

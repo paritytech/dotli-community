@@ -25,8 +25,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   runs, then call one page start (the chunk and island failure offers and the desktop offer) and share one startup step:
   settings, the protocol iframe, the bridge and auth.
 - Settings are read once at boot from the link, the store every subdomain shares and this origin's storage, and stored
-  back to both stores. A link that changes a saved choice wipes and reloads, as Save does. A store that cannot be read
-  leaves the page on this origin's settings and the link's.
+  back to both stores. The boot configures the protocol frame on this origin's settings and the link's, then again once
+  the shared store answers unless the page resets. The settings popover and the failure screen's backend switch save
+  through the same reset. A link that changes a saved choice wipes and reloads, as Save does. A store that cannot be
+  read leaves the page on this origin's settings and the link's.
 - The shell page has one script. It also binds the static markup of the topbar and the URL pill, which only that page
   renders. The chat dock is off the page until the chat button returns.
 - Static markup is Astro. Interactive controls are Solid islands, one module per island, bound to sync stores that
@@ -53,8 +55,12 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The error page and the no-content page replace the page's content at once, through the shared screen owner. A
   full-page screen ends the loading screen and the landing islands, and the product frame takes the screen down when it
   shows.
-- Flows take their data sources and screens as parameters, so they run under Node without mocks. The bridge chunk is
-  where the page's real dialogs, notifications, frame layout and network monitor are wired in.
+- A flow takes as parameters what sits in another frame or origin (the name source, the product frame and what the
+  sandbox reports through it, the recent list) and what reloads or writes the page (the CID cache and the failure
+  screen). It imports the page's own state (the URL pill, the journey, the network monitor). Load progress takes the
+  loading screen as a parameter that defaults to the page's, since the page's draws on animation frames, so its spec
+  runs under Node. The product loader drives the page and is tested on one, in the functional suite. The bridge chunk is
+  where the page's real dialogs, notifications and frame layout are wired in.
 - The network monitor opens no chain. The bridge reports who holds each host chain and its best blocks to it, and the
   load progress reports phases, peers and transfer.
 - The recently visited names live in the store every subdomain shares, reached through the runtime's shared channel,
@@ -71,7 +77,7 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 
 ```mermaid
 flowchart LR
-  url[URL] --> route --> loader[product loader]
+  url[URL] --> route["route switch"] --> loader[product loader]
   loader --> resolve["protocol iframe: resolve"] --> render["sandbox iframe: render"]
   loader --> checks["manifest gate, block verifier, load-failure screens"]
   startup --> bridge["runtime bridge and auth"]

@@ -5,7 +5,7 @@
 // reported here and leaves the page as it was, so callers only show it.
 
 import { SITE_ID } from '@dotli/config';
-import { forgetSharedLocalWallet, saveSharedLocalWallet } from '@dotli/protocol';
+import { protocolClient } from '@dotli/protocol';
 import { log } from '@dotli/shared';
 import { reportLocalWalletFailure } from './wallet-boot.js';
 
@@ -53,8 +53,8 @@ export function createWalletSwitch({ save, forget, reload }: WalletSwitchDeps): 
 }
 
 export const walletSwitch: WalletSwitch = createWalletSwitch({
-  save: entropy => saveSharedLocalWallet(SITE_ID, entropy),
-  forget: () => forgetSharedLocalWallet(SITE_ID),
+  save: entropy => protocolClient().saveSharedLocalWallet(SITE_ID, entropy),
+  forget: () => protocolClient().forgetSharedLocalWallet(SITE_ID),
   reload: () => {
     window.location.reload();
   },

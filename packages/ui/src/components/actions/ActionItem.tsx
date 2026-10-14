@@ -1,15 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { useContext } from 'solid-js';
+import { useContext, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import type { IconProps } from '../icons/icon-props.js';
 import { ActionsContext, type ActionAlert } from './actions-context.js';
 import s from './ActionItem.module.css';
 
 export interface ActionItemProps {
   name: string;
   label: string;
-  icon: () => JSX.Element;
+  icon: Component<IconProps>;
   /** A status the More button raises while the item is in the menu. */
   alert?: ActionAlert | undefined;
   /** Shown in the item's More row after its label. */
@@ -38,7 +39,9 @@ export function ActionItem(props: ActionItemProps): JSX.Element {
       get label() {
         return props.label;
       },
-      icon: () => props.icon(),
+      get icon() {
+        return props.icon;
+      },
       alert: () => props.alert,
       aside: () => props.aside,
       get priority() {

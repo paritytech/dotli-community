@@ -75,7 +75,11 @@ describe('configureProtocolFrame', () => {
     const host = createFrameHost(undefined, null);
 
     // When
-    host.client.configureProtocolFrame({ mode: 'shared-worker', network: 'previewnet', skipWorkerCache: true });
+    host.client.configureProtocolFrame({
+      backend: 'smoldot-shared-worker',
+      network: 'previewnet',
+      skipWorkerCache: true,
+    });
     await vi.advanceTimersByTimeAsync(0);
     const framesBeforeAsking = host.frames();
     void host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => undefined);
@@ -187,7 +191,7 @@ describe('configureProtocolFrame', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     await vi.advanceTimersByTimeAsync(0);
 
     // Then
@@ -215,12 +219,12 @@ describe('configureProtocolFrame', () => {
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG });
     const eventsForSameConfig = trail.length;
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
 
     // Then
     expect(eventsForSameConfig).toBe(0);
     const reconfigured = trail.find(line => line.message === 'protocol frame reconfigured');
-    expect(reconfigured?.attrs).toMatchObject({ flow: 'protocol', mode: 'rpc' });
+    expect(reconfigured?.attrs).toMatchObject({ flow: 'protocol', backend: 'rpc-gateway' });
   });
 
   it('As the host, I take a pending reset that asks for a clean chain database, and a frame booted without it is rebuilt with it', async () => {
@@ -337,7 +341,7 @@ describe('protocol iframe listening handshake', () => {
   });
 
   it('As a returning user whose protocol iframe keeps dying, I see a new one tried after a wait that doubles each time', async () => {
-    // Given: the first frame never listens (happy-dom fires `load` itself for every rebuild).
+    // Given: the first frame never listens, though its document loads.
     vi.useFakeTimers();
     const failed = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => 'failed');
     await vi.advanceTimersByTimeAsync(0);
@@ -381,7 +385,7 @@ describe('protocol iframe listening handshake', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     await vi.advanceTimersByTimeAsync(0);
     const settledAtReset = [...settled];
     await vi.advanceTimersByTimeAsync(30_000);

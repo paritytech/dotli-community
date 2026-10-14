@@ -101,6 +101,10 @@ export interface SheetFrameProps {
   closeLabel?: string;
   /** Prefix for `-sheet-head`, `-sheet-title`, `-sheet-close`. */
   testId: string;
+  /** Whether its layer is open. The sheet slides on this. */
+  open: boolean;
+  /** Taking another sheet's place, or giving its place to one, so no slide. */
+  handedOff?: boolean | undefined;
   body?:
     | {
         role?: 'menu';
@@ -138,6 +142,8 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         sheet = el;
       }}
       class={s['sheet']}
+      data-state={props.open ? 'open' : 'closed'}
+      data-handoff={props.handedOff === true ? '' : undefined}
       data-modal-surface=""
       data-testid={props.testId}
       tabindex="-1"

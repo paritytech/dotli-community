@@ -47,13 +47,15 @@
   color: var(--chrome-text-muted);
 }
 .localhost-icon {
+  display: none;
   flex-shrink: 0;
   width: 10px;
   height: 10px;
   color: var(--chrome-text-muted);
 }
-.pill:not([data-localhost]) .localhost-icon {
-  display: none;
+/* A flex item, so `block` is what the icon showed as before. */
+.pill[data-localhost] .localhost-icon {
+  display: block;
 }
 .pill[data-localhost] .domain {
   font-family: var(--font-mono);

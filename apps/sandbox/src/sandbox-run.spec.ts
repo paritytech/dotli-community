@@ -190,7 +190,7 @@ describe('runSandbox contract', () => {
 
     // Then
     expect(sandbox.events).toEqual(['configure paseo-next-v2', 'load 1']);
-    expect(sandbox.loads[0]?.params).toMatchObject({ cid: CID, chainBackend: 'rpc-gateway', fullReset: false });
+    expect(sandbox.loads[0]?.params).toMatchObject({ cid: CID, backend: 'rpc-gateway', fullReset: false });
     expect(sandbox.failures).toEqual([]);
   });
 });

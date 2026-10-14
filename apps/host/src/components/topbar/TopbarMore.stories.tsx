@@ -21,7 +21,9 @@ import {
   storySettings,
 } from '../../../.storybook/settings-fixtures.js';
 import { resetStoryNetwork, setHealth, storyNetwork } from '../../../.storybook/network-fixtures.js';
-import { NetworkItem, PermissionsItem, SettingsItem } from './items.js';
+import { NetworkItem } from '../chains/NetworkItem.js';
+import { PermissionsItem } from '../permissions/PermissionsItem.js';
+import { SettingsItem } from '../settings/SettingsItem.js';
 
 function StoryPermissions(): JSX.Element {
   return <PermissionsItem {...storyPermissions} />;

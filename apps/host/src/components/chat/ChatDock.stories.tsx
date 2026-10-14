@@ -9,7 +9,7 @@ import { expectPhone, TopbarFrame } from '../../../.storybook/topbar-frame.js';
 import { type ChatStage, chatStage } from '../../../.storybook/chat-fixtures.js';
 import { GroupFrame, moreRow, openMore } from '../../../.storybook/frames.js';
 import type { ChatPanelModule } from '../../lazy.js';
-import { ChatItem } from '../topbar/items.js';
+import { ChatItem } from './ChatButton.js';
 import { ChatDock } from './ChatDock.js';
 
 // The topbar's chat button over the docked panel, on a story's chat.

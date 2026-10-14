@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { BlockOrigin } from '@dotli/bitswap';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { startSandboxContent, type SandboxContentDeps } from './sandbox-content.js';
 
@@ -103,5 +104,25 @@ describe('startSandboxContent', () => {
     // Then
     expect(debug).toEqual([]);
     expect(deps.prune).not.toHaveBeenCalled();
+  });
+
+  it('As the operator, I see one block cache read per load, a hit only when no block came from the network', () => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const fromCache = setup(true);
+    const mixed = setup(true);
+    fromCache.serve('cache');
+    mixed.serve('cache');
+    mixed.serve('network');
+
+    // When
+    fromCache.sandboxDone();
+    mixed.sandboxDone();
+
+    // Then
+    expect(metrics.counted('cache.read')).toEqual([
+      expect.objectContaining({ outcome: 'hit', surface: 'block_cache' }),
+      expect.objectContaining({ outcome: 'miss', surface: 'block_cache' }),
+    ]);
   });
 });

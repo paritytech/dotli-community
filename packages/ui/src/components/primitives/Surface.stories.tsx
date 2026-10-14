@@ -15,7 +15,6 @@ import { InfoIcon } from '../icons/InfoIcon.js';
 import { ReloadIcon } from '../icons/ReloadIcon.js';
 import { Hint, Surface, SurfaceFoot, SurfaceHead } from './Surface.js';
 import { Callout, Well } from './Well.js';
-import story from './Surface.stories.module.css';
 
 /** A Popover's glass frame around its content, as a bottom sheet with `sheet`. */
 const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
@@ -27,8 +26,8 @@ const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
       </div>
     }
   >
-    <div data-open="" style={{ position: 'fixed', right: 0, bottom: 0, left: 0 }}>
-      <div class={frame['sheet']} data-sheet="">
+    <div style={{ position: 'fixed', right: 0, bottom: 0, left: 0 }}>
+      <div class={frame['sheet']} data-sheet="" data-state="open">
         <div class={frame['body']}>
           <InSheetContext value={() => true}>{props.children}</InSheetContext>
         </div>
@@ -39,12 +38,12 @@ const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
 
 type SurfaceArgs = Parameters<typeof Surface>[0];
 const settings = (args: SurfaceArgs) => (
-  <Surface {...args} class={story['padded']}>
+  <Surface {...args} padded>
     <SurfaceHead title="Settings" aside={<Chip tone="mono">Paseo</Chip>} />
     <Well>
-      <Callout icon={<InfoIcon />}>Surfaces hold a popover's content.</Callout>
+      <Callout icon={InfoIcon}>Surfaces hold a popover's content.</Callout>
     </Well>
-    <SurfaceFoot hint={<Hint icon={<ReloadIcon />}>Transport and cache changes reload the app</Hint>}>
+    <SurfaceFoot hint={<Hint icon={ReloadIcon}>Transport and cache changes reload the app</Hint>}>
       <Button variant="primary" size="sm">
         Save and apply
       </Button>

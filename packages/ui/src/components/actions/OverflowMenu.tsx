@@ -5,6 +5,7 @@ import { createEffect, createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { DropdownMenu, useDropdownMenu } from '../floating/DropdownMenu.js';
 import { ChevronRightIcon } from '../icons/ChevronRightIcon.js';
+import { DrawIcon } from '../icons/DrawIcon.js';
 import { MoreIcon } from '../icons/MoreIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import type { StatusTone } from '../../page/status-tone.js';
@@ -59,7 +60,7 @@ export function OverflowMenu(props: {
               }}
             >
               <span class={s['icon']} aria-hidden="true">
-                {entry.icon()}
+                <DrawIcon icon={entry.icon} />
               </span>
               <span class={s['label']}>{entry.label}</span>
               <Show when={entry.aside()}>

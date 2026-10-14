@@ -47,7 +47,7 @@ export function createProductFrameView(page: FramePage): ProductFrameView {
     },
     // Behind the compile-time flag, so other builds drop the panel's chunk.
     loadCheckerPanel:
-      import.meta.env.VITE_SANDBOX_CHECKER === undefined
+      import.meta.env.VITE_SANDBOX_CHECKER !== 'true'
         ? undefined
         : async () => {
             const { mountViolationPanel } = await loadViolationPanelMount();

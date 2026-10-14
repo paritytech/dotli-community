@@ -79,8 +79,8 @@ function isTeardownAbort(err: unknown): boolean {
 }
 
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {
-  const { cid, chainBackend, resolutionId } = params;
-  const isGateway = chainBackend === 'rpc-gateway';
+  const { cid, backend, resolutionId } = params;
+  const isGateway = backend === 'rpc-gateway';
   // A retry runs on the state the first attempt left, so only the first wipes it.
   const freshStart = params.fullReset && attempt === 1;
   const stopApp = m.timer(S.APP_TOTAL);
@@ -113,7 +113,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       result = await deps.fetchArchive(cid, deps.showStatus, { useGateway: true });
     } else {
       // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
-      contentLog.event(`Fetching ${cid} via bitswap`, { chainBackend, ms: deps.sinceStart() });
+      contentLog.event(`Fetching ${cid} via bitswap`, { backend, ms: deps.sinceStart() });
       deps.showStatus('Fetching via bitswap...');
       step = 'content_fetch';
       result = await deps.fetchArchive(cid, deps.showStatus, { bitswapBlockSource: deps.blockSource });

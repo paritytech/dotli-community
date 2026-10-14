@@ -219,4 +219,49 @@ describe('bootSettings', () => {
     expect(settings.backend).toBe('rpc-gateway');
     expect(boot.notify).not.toHaveBeenCalled();
   });
+
+  it('As the shell, the frame is configured on my own settings first, then once more on what the shared store adds', async () => {
+    // Given
+    const boot = deps('', memoryStorage(), Promise.resolve({ backend: 'rpc-gateway', cache: null }));
+
+    // When
+    await bootSettings(boot);
+
+    // Then
+    expect(boot.configureFrame.mock.calls.map(([settings]) => settings.backend)).toEqual([
+      'smoldot-direct',
+      'rpc-gateway',
+    ]);
+  });
+
+  it('As a returning visitor whose link resets my settings, the shared store is written on the frame that answered it and the reset reloads without rebuilding it', async () => {
+    // Given this origin on the per-tab light client, the shared store on trusted providers, and a link to another network
+    const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct', [NETWORK_KEY]: 'paseo-next-v2' });
+    const boot = deps('?network=previewnet', local, Promise.resolve({ backend: 'rpc-gateway', cache: null }));
+
+    // When
+    await bootSettings(boot);
+
+    // Then the frame keeps the config it read the shared store on, and the write goes out before the reset
+    expect(boot.configureFrame.mock.calls.map(([settings]) => settings.backend)).toEqual(['smoldot-direct']);
+    expect(boot.writeShared).toHaveBeenCalledWith(expect.objectContaining({ backend: 'rpc-gateway' }));
+    expect(boot.writeShared.mock.invocationCallOrder[0]).toBeLessThan(
+      boot.applyAndReset.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('As a visitor without SharedWorker whose link names the shared light client, the frame runs per tab both times', async () => {
+    // Given
+    const boot = { ...deps('?chainBackend=smoldot-shared-worker'), sharedWorkerAvailable: false };
+
+    // When
+    await bootSettings(boot);
+
+    // Then
+    expect(boot.configureFrame.mock.calls.map(([settings]) => settings.backend)).toEqual([
+      'smoldot-direct',
+      'smoldot-direct',
+    ]);
+    expect(boot.notify).toHaveBeenCalledTimes(1);
+  });
 });

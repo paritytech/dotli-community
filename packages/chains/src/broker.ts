@@ -233,7 +233,6 @@ const reportHaltListener = reportListener('protocol', 'chain_halt');
 
 export class ChainBroker {
   private readonly provider: JsonRpcProvider;
-  private readonly onEmpty: () => void;
   private readonly warn: BrokerWarner;
   private upstream: JsonRpcConnection | null = null;
   private readonly sessions = new Map<string, Session>();
@@ -248,9 +247,8 @@ export class ChainBroker {
   private tokenCounter = 0;
 
   /** `warn` is passed by an owner that rebuilds brokers for one chain, so a rebuild keeps that chain's count. */
-  constructor(provider: JsonRpcProvider, onEmpty: () => void, warn: BrokerWarner = createBrokerWarner()) {
+  constructor(provider: JsonRpcProvider, warn: BrokerWarner = createBrokerWarner()) {
     this.provider = provider;
-    this.onEmpty = onEmpty;
     this.warn = warn;
   }
 
@@ -298,7 +296,6 @@ export class ChainBroker {
       this.disconnectSession(sessionId);
     }
     this.disconnectUpstream();
-    this.onEmpty();
   }
 
   /**
@@ -325,7 +322,6 @@ export class ChainBroker {
       }
     }
     this.disconnectUpstream();
-    this.onEmpty();
   }
 
   private answerHaltedSession(session: Session): void {

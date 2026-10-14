@@ -5,7 +5,7 @@
 // wallet mode.
 
 import { SITE_ID } from '@dotli/config';
-import { readSharedLocalWallet, type LocalWalletReadResult } from '@dotli/protocol';
+import { protocolClient, type LocalWalletReadResult } from '@dotli/protocol';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log } from '@dotli/shared';
 import { setWalletModeState, type WalletModeState } from './state/wallet-mode.js';
@@ -74,7 +74,7 @@ export function createWalletBoot({ read, report }: WalletBootDeps): WalletBoot {
 
 /** The page's wallet boot, shared by every core and by session state. */
 const walletBoot: WalletBoot = createWalletBoot({
-  read: () => readSharedLocalWallet(SITE_ID),
+  read: () => protocolClient().readSharedLocalWallet(SITE_ID),
   report: setWalletModeState,
 });
 

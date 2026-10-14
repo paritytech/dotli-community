@@ -6,7 +6,7 @@
 
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
-import { updateSharedLocalWalletIdentity, type LocalWalletIdentity } from '@dotli/protocol';
+import { protocolClient, type LocalWalletIdentity } from '@dotli/protocol';
 import { createAsyncTaskPool, log } from '@dotli/shared';
 import { hexToBytes } from '@parity/truapi/scale';
 import { loadBridge } from '../lazy.js';
@@ -109,7 +109,7 @@ async function readFromPeople(identityAccountId: string): Promise<string | null>
 /** The page's refresh, shared by its local wallet cores. */
 const liteUsernameRefresh: LiteUsernameRefresh = createLiteUsernameRefresh({
   readLiteUsername: readFromPeople,
-  saveIdentity: identity => updateSharedLocalWalletIdentity(SITE_ID, identity),
+  saveIdentity: identity => protocolClient().updateSharedLocalWalletIdentity(SITE_ID, identity),
   reportFailure: reportLocalWalletFailure,
 });
 

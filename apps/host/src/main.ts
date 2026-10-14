@@ -1,67 +1,40 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The shell's entry. It reads the route from the URL and wires each route to the host's real sources and screens.
+// The shell's entry. It reads the route from the URL, starts the host and opens what the route names.
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { startPwa } from './pwa.js';
 import { boot, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
-import { showErrorPage, showNotification } from '@dotli/ui';
-import { showNoContentError } from './no-content-page.js';
-import {
-  initPhases,
-  advancePhase,
-  nudgePhaseProgress,
-  onProgressStall,
-  releasePhaseProgress,
-  setLoadingDomain,
-  setLoadingStage,
-  setLoadingWarning,
-  stopStatusTick,
-  listenForSandboxStatus,
-  onSandboxDone,
-} from './loading-controller.js';
-import { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
+import { listenForSandboxStatus, onSandboxDone } from './loading-controller.js';
+import { showLocalhostPill, showProductPill } from './state/url-pill.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbar-autohide.js';
-import { schedulePendingReset } from './runtime/pending-reset.js';
-import { productStore, setProductError } from './runtime/state/product.js';
 import { loggedInStore } from './runtime/state/auth.js';
-import { loadBridge } from './lazy.js';
+import { loadBridge, loadDebugPanelHost } from './lazy.js';
 import type { ProductFrame } from './runtime/product-frame.js';
-import { bitswapGet, createSandboxBlockRelay } from '@dotli/bitswap';
+import { bitswapGet, createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { protocolClient } from '@dotli/protocol';
 import {
-  getSmoldotDbOutcome,
-  onProtocolChainDetail,
-  onProtocolChainSync,
-  onProtocolNetBytes,
-  resolveDotNameRemote,
-  resolveExecutableManifestRemote,
-  resolveRootManifestRemote,
-} from '@dotli/protocol';
-import {
-  evictCachedCid,
-  getCachedCid,
-  setCachedCid,
   deleteCachedBlock,
+  evictCachedCid,
   getCachedBlock,
+  getCachedCid,
   pruneBlockCache,
   putCachedBlock,
+  setCachedCid,
+  type CachedManifests,
 } from '@dotli/storage';
-import { elapsed, log, pageLocalStorage, randomId } from '@dotli/shared';
-import { markContinuation } from './continuation.js';
+import { showNotification } from '@dotli/ui';
+import { elapsed, log, randomId } from '@dotli/shared';
 import {
   DEBUG,
   getActiveServicesConfig,
+  getActiveTldSuffix,
+  getNetwork,
   isLocalhost,
   isSandboxOrigin,
-  getNetwork,
-  getTldSuffix,
-  isSharedWorkerAvailable,
-  parseSettingsFromSearch,
-  resolveSettings,
 } from '@dotli/config';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
 import {
@@ -72,30 +45,21 @@ import {
 } from '@dotli/truapi-debug';
 import { loadTruapiDebugMount } from '@dotli/truapi-debug-ui';
 import { loadResolve } from '@dotli/resolver';
-import { startResolutionTrace } from './resolution-trace.js';
-import { beginAttempt, endJourney } from './journey.js';
-import { startLoadProgress } from './load-progress.js';
 import { startShellState } from './shell-state.js';
-import { openSettings } from './settings-intent.js';
-import { createProductLoader } from './product-loader.js';
-import { readChatCapability } from './chat-capability.js';
+import { createProductLoader, type LoaderCidCache } from './product-loader.js';
 import { startSandboxContent } from './sandbox-content.js';
 import { startShieldAutoHide } from './shield-autohide.js';
-import { revalidateCachedCopy, type CacheRevalidationDeps } from './cache-revalidate.js';
-import { applyProductBranding } from './product-branding.js';
-import { presentLoadFailure } from './load-failure.js';
-import { trustedProviderHosts } from './errors.js';
-import { createNameSource, type RpcResolver } from './name-source.js';
-import { loadDebugPanelHost } from './lazy.js';
-import { reloadAfterFailure, sessionErrorSightings, switchBackendAndReload } from './show-load-failure.js';
+import { createNameSource, type NameSource, type RpcResolver } from './name-source.js';
+import { revalidateCachedCopy } from './cache-revalidate.js';
+import { markContinuation } from './continuation.js';
+import { loadFailureScreen } from './load-failure-page.js';
 import {
   leaveForLanding,
   localTargetPath,
   readLocalhostUrl,
   readShellRoute,
-  runShell,
   type LocalTarget,
-  type ShellServices,
+  type ShellRoute,
 } from './shell-route.js';
 import { createBlockVerifier } from './block-verifier.js';
 import { reportLazyMiss } from './lazy-miss.js';
@@ -105,14 +69,16 @@ import { listenForSandboxDebugEvents } from './sandbox-debug-events.js';
 import { reportSandboxHandlerFailure } from './sandbox-handler.js';
 import { pageNotifications } from './page-notifications.js';
 import { recordRecentLabel } from './recent-labels.js';
-import { recordChainPhase, recordPeerCount, recordTransfer } from './state/network-monitor.js';
 import { bindTopbar } from './topbar.js';
 import { bindUrlPill } from './url-pill.js';
 
 /** Content block cache cap. After each load the least recently used blocks are dropped until it fits. */
 const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
-interface Shell extends ShellServices {
+/** What every route opens on once the host is up. */
+interface Shell {
+  /** The debug panel's flow for this page load, and the Sentry trace's id. */
+  flowId: string;
   sandboxChannel: SandboxChannel;
   startup: HostStartup;
   productFrame: ProductFrame;
@@ -128,7 +94,8 @@ async function loadRpcResolver(): Promise<RpcResolver> {
   });
 }
 
-async function startShell(): Promise<Shell> {
+/** Starts the debug tools, the sandbox channel, the settings and the bridge. */
+async function startShell(route: ShellRoute): Promise<Shell> {
   log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
 
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays off and every emit returns early.
@@ -156,15 +123,40 @@ async function startShell(): Promise<Shell> {
     report: reportSandboxHandlerFailure,
   });
 
-  const bootFlowId = randomId();
+  const flowId = randomId();
   if (debugMode.enabled) {
-    startMainThreadMonitor(bootFlowId, { emit: emitDotliDebugEvent, watch: watchDotliDebugEvents });
+    startMainThreadMonitor(flowId, { emit: emitDotliDebugEvent, watch: watchDotliDebugEvents });
     listenForSandboxDebugEvents(sandboxChannel, emitDotliDebugEvent);
   }
 
-  const startup = await startHost(bootFlowId, { emitDotliDebugEvent, startShellState });
+  const startup = await startHost(flowId, {
+    emitDotliDebugEvent,
+    startShellState: () => {
+      startShellState();
+      // Drawn from this origin's settings and the link's, set just before and with no await since, so the URL bar
+      // paints with the page. The product's load draws it again once the shared store has answered.
+      if (route.kind === 'product') {
+        showProductPill(route.label, getActiveTldSuffix());
+      }
+    },
+  });
   const productFrame = startup.bridgeModule.startProductFrame(sandboxChannel);
-  return { emit: emitDotliDebugEvent, flowId: bootFlowId, sandboxChannel, startup, productFrame };
+  return { flowId, sandboxChannel, startup, productFrame };
+}
+
+/** Tells the debug panel which route the page took, with the path as the settings left it. */
+function announceRoute(route: Exclude<ShellRoute, { kind: 'nested' }>, flowId: string): void {
+  emitDotliDebugEvent({
+    layer: 'boot',
+    event: 'url_parsed',
+    flowId,
+    timestamp: Date.now(),
+    payload: {
+      label: route.kind === 'product' ? route.label : null,
+      localhostHost: route.kind === 'localhost' ? route.host : null,
+      deepPath: window.location.pathname + window.location.search,
+    },
+  });
 }
 
 async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void> {
@@ -194,7 +186,7 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
   history.replaceState(null, '', localTargetPath(target));
   performance.mark('dotli:main:end');
   if (proxied) {
-    shell.emit({
+    emitDotliDebugEvent({
       layer: 'boot',
       event: 'ready',
       flowId: shell.flowId,
@@ -205,18 +197,76 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
 }
 
 async function openProduct(label: string, shell: Shell): Promise<void> {
-  const { emit, flowId, sandboxChannel, productFrame } = shell;
-  const { chainBackend, cacheSettings, bridgeModule } = shell.startup;
-  const autoHide = startShieldAutoHide({ loggedIn: loggedInStore, arm: armTopbarAutoHide });
-
+  const { settings, bridgeModule } = shell.startup;
+  const protocol = protocolClient();
   boot.step = 'resolve_setup';
 
-  listenForSandboxStatus(sandboxChannel);
-  const blockCache = cacheSettings.skipArchiveCache
-    ? null
-    : { get: getCachedBlock, put: putCachedBlock, delete: deleteCachedBlock };
+  pageNotifications().init({ label });
+  const relay = startProductContent(shell, settings.cache.skipArchiveCache);
+  const names = createNameSource({
+    backend: settings.backend,
+    remote: {
+      resolveDotName: protocol.resolveDotNameRemote,
+      resolveRootManifest: protocol.resolveRootManifestRemote,
+      resolveExecutableManifest: protocol.resolveExecutableManifestRemote,
+    },
+    loadRpc: loadRpcResolver,
+  });
+  const loader = createProductLoader({
+    backend: settings.backend,
+    skipCidCache: settings.cache.skipCidCache,
+    flowId: shell.flowId,
+    startedAt: T0,
+    names,
+    frame: {
+      setPageProduct: bridgeModule.setPageProduct,
+      render: product => shell.productFrame.render(product),
+      onContentDone: onSandboxDone,
+      onContentProgress: listener => relay.onProgress(listener),
+    },
+    cidCache: pageCidCache(names),
+    recents: { record: recordRecentLabel },
+    failureScreen: loadFailureScreen,
+  });
+  await loader.load(label);
+}
+
+/**
+ * The page's CID cache for the active network, checked with `names`, the source the load itself reads. Its writes and
+ * its check against the network wait until the page is idle, so they never hold a render back.
+ */
+function pageCidCache(names: NameSource): LoaderCidCache {
+  const set = (label: string, cid: string, manifests: CachedManifests): Promise<void> =>
+    setCachedCid(label, getNetwork(), cid, manifests);
+  return {
+    get: label => getCachedCid(label, getNetwork()),
+    storeLater: (label, cid, manifests) => {
+      requestIdleCallback(() => {
+        void set(label, cid, manifests);
+      });
+    },
+    revalidateLater: (label, servedCid, onScreen) => {
+      requestIdleCallback(() => {
+        void revalidateCachedCopy(label, servedCid, onScreen, {
+          names,
+          cache: { set, evict: evictCachedCid },
+          notify: showNotification,
+          reload: () => {
+            markContinuation('app_update');
+            window.location.reload();
+          },
+        });
+      });
+    },
+  };
+}
+
+/** Relays the sandbox's blocks through this window, from the block cache while it is on, and counts where they came from. */
+function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBlockRelay {
+  listenForSandboxStatus(shell.sandboxChannel);
+  const blockCache = skipArchiveCache ? null : { get: getCachedBlock, put: putCachedBlock, delete: deleteCachedBlock };
   const relay = createSandboxBlockRelay({
-    channel: sandboxChannel,
+    channel: shell.sandboxChannel,
     blocks: bitswapGet,
     cache: blockCache,
     verify: createBlockVerifier({
@@ -236,160 +286,51 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
     idle: callback => {
       requestIdleCallback(callback);
     },
-    emit,
-    flowId,
+    emit: emitDotliDebugEvent,
+    flowId: shell.flowId,
   });
-
-  const names = createNameSource({
-    backend: chainBackend,
-    remote: {
-      resolveDotName: resolveDotNameRemote,
-      resolveRootManifest: resolveRootManifestRemote,
-      resolveExecutableManifest: resolveExecutableManifestRemote,
-    },
-    loadRpc: loadRpcResolver,
-  });
-  const revalidation: CacheRevalidationDeps = {
-    names,
-    cache: {
-      set: (cachedLabel, cid, manifests) => setCachedCid(cachedLabel, getNetwork(), cid, manifests),
-      evict: evictCachedCid,
-    },
-    notify: showNotification,
-    reload: () => {
-      markContinuation('app_update');
-      window.location.reload();
-    },
-  };
-
-  const loader = createProductLoader({
-    backend: chainBackend,
-    skipCidCache: cacheSettings.skipCidCache,
-    network: getNetwork,
-    flowId,
-    startedAt: T0,
-    emit,
-    frame: { setPageProduct: bridgeModule.setPageProduct, render: product => productFrame.render(product) },
-    names,
-    cidCache: {
-      get: cachedLabel => getCachedCid(cachedLabel, getNetwork()),
-      set: (cachedLabel, cid, manifests) => setCachedCid(cachedLabel, getNetwork(), cid, manifests),
-    },
-    journey: { begin: beginAttempt, end: endJourney },
-    startTrace: startResolutionTrace,
-    startProgress: ({ label: loadLabel, trace }) =>
-      startLoadProgress({
-        label: loadLabel,
-        backend: chainBackend,
-        flowId,
-        events: {
-          onChainSync: onProtocolChainSync,
-          onChainDetail: onProtocolChainDetail,
-          onNetBytes: onProtocolNetBytes,
-          onContentProgress: listener => relay.onProgress(listener),
-        },
-        loading: {
-          initPhases,
-          setLoadingDomain,
-          advancePhase,
-          nudgePhaseProgress,
-          releasePhaseProgress,
-          setLoadingStage,
-          setLoadingWarning,
-          onProgressStall,
-          stopStatusTick,
-        },
-        monitor: { recordChainPhase, recordPeerCount, recordTransfer },
-        trace,
-        emit,
-        product: productStore,
-      }),
-    onContentDone: onSandboxDone,
-    smoldotDbOutcome: getSmoldotDbOutcome,
-    readChat: readChatCapability,
-    scheduleNotifications: options => {
-      pageNotifications().init(options);
-    },
-    revalidate: (cachedLabel, servedCid, onScreen) =>
-      revalidateCachedCopy(cachedLabel, servedCid, onScreen, revalidation),
-    brand: (brandedLabel, manifests) => applyProductBranding(brandedLabel, manifests, { fetchBlock: bitswapGet }),
-    page: {
-      showProductPill,
-      settleShield: state => {
-        setVerificationShieldState(state);
-        autoHide.settle();
-      },
-      showNoContent: label => {
-        showNoContentError(label);
-      },
-      setProductError,
-      setContentShown: setProductContentShown,
-      recordRecentLabel,
-    },
-    presentFailure: failure => {
-      presentLoadFailure(failure, {
-        showErrorPage,
-        openSettings,
-        reload: reloadAfterFailure,
-        switchBackend: switchBackendAndReload,
-        resetProtocolOnReload: () => {
-          try {
-            schedulePendingReset(['protocol']);
-          } catch (err: unknown) {
-            // No session storage, as in a private window, so the reload comes up on the chain database it had.
-            reportExpected(err, {
-              flow: 'resolve',
-              step: 'pending_reset',
-              metric: S.PENDING_RESET_SCHEDULE,
-              reason: 'failure_screen',
-              message: '[dot.li] protocol purge not stored before the reload:',
-            });
-          }
-        },
-        sightings: sessionErrorSightings,
-        trustedProviderHosts,
-        emit,
-      });
-    },
-    forgetFailure: sessionErrorSightings.forget,
-    idle: callback => {
-      requestIdleCallback(callback);
-    },
-  });
-  await loader.load(label);
+  return relay;
 }
 
 async function main(): Promise<void> {
   startPage();
-  await runShell({
-    route: readShellRoute(window.location, {
-      localhost: isLocalhost,
-      framed: window.self !== window.top,
-      // Behind the compile-time flag, so release bundles drop the localhost proxy.
-      localhostProxy: DEBUG ? readLocalhostUrl : undefined,
-    }),
-    // The TLD is a guess until settings apply, from the link and this origin, and the product route sets it again.
-    showProductPill: label => {
-      const { network } = resolveSettings({
-        local: pageLocalStorage,
-        shared: null,
-        url: parseSettingsFromSearch(new URLSearchParams(window.location.search)),
-        sharedWorkerAvailable: isSharedWorkerAvailable(),
-      });
-      showProductPill(label, getTldSuffix(network));
-    },
-    showLocalhostPill,
-    startShell,
-    openLocalTarget,
-    openProduct,
-    leaveForLanding: () =>
-      leaveForLanding({
+  const route = readShellRoute(window.location, {
+    localhost: isLocalhost,
+    framed: window.self !== window.top,
+    // Behind the compile-time flag, so release bundles drop the localhost proxy.
+    localhostProxy: DEBUG ? readLocalhostUrl : undefined,
+  });
+  // A nested dot.li would draw a second topbar.
+  if (route.kind === 'nested') {
+    return;
+  }
+  performance.mark('dotli:main:start');
+  // From the URL alone, before any await, so the URL bar paints with the page.
+  if (route.kind === 'preview' || route.kind === 'localhost') {
+    showLocalhostPill(route.host);
+  }
+  const shell = await startShell(route);
+  switch (route.kind) {
+    case 'preview':
+      await openLocalTarget(route, shell);
+      return;
+    case 'localhost':
+      announceRoute(route, shell.flowId);
+      await openLocalTarget(route, shell);
+      return;
+    case 'product':
+      announceRoute(route, shell.flowId);
+      await openProduct(route.label, shell);
+      return;
+    case 'landing':
+      announceRoute(route, shell.flowId);
+      await leaveForLanding({
         location: window.location,
         localhost: isLocalhost,
         workers: async () => ('serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations() : []),
-      }),
-    deepPath: () => window.location.pathname + window.location.search,
-  });
+      });
+      return;
+  }
 }
 
 // The shell's chrome is static markup that only this page renders, so its bindings run from this one script.

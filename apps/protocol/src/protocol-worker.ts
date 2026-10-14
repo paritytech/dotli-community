@@ -13,6 +13,7 @@ import { errorName, log, serializeError } from '@dotli/shared';
 
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
 import { startLightClientService } from './light-client-service.js';
+import { chainDetailEnvelope, chainSyncEnvelope } from './envelopes.js';
 import { errorResponse } from './error-response.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import type {
@@ -278,15 +279,14 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   function forwardChainSync(port: MessagePort, session: PortSession): void {
     let replaying = true;
     const stopSync = resolver.onChainSync(event => {
-      const { chain, kind, ...rest } = event;
-      sendToPort(port, { namespace: 'dotli:protocol', kind: 'chain-sync', chain, syncKind: kind, ...rest });
+      sendToPort(port, chainSyncEnvelope(event));
     });
     const stopDetail = resolver.onChainDetail(detail => {
       const reported =
         replaying && session.joinedSynced && detail.dbCache !== undefined
           ? { ...detail, dbCache: 'hit' as const }
           : detail;
-      sendToPort(port, { namespace: 'dotli:protocol', kind: 'chain-detail', ...reported });
+      sendToPort(port, chainDetailEnvelope(reported));
     });
     replaying = false;
     const stop = (): void => {

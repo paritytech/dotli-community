@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, type Accessor } from 'solid-js';
+import { createEffect, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ChatIcon } from '@dotli/ui/icons';
-import { Chip, IconButton, type MoreRow } from '@dotli/ui';
-import { focusLostOrInside, focusTrigger } from '@dotli/ui';
+import { ActionItem, ActionsContext, Chip, IconButton, focusLostOrInside, focusTrigger } from '@dotli/ui';
+import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import s from './ChatButton.module.css';
 
 export interface ChatButtonProps {
@@ -20,20 +20,6 @@ export interface ChatButtonProps {
   panel: () => HTMLElement | undefined;
   /** Where focus goes back to while the button is not on show, such as the More button of a bar it collapsed into. */
   fallbackFocus?: (() => HTMLElement | undefined) | undefined;
-}
-
-/** The chat button's More row, which carries the unread count. */
-export function chatRow(props: Pick<ChatButtonProps, 'unread'>): MoreRow {
-  return {
-    label: 'Chat',
-    icon: () => <ChatIcon />,
-    get alert(): MoreRow['alert'] {
-      return props.unread() === undefined ? undefined : { tone: 'info', label: 'chat has unread messages' };
-    },
-    get aside() {
-      return props.unread() === undefined ? undefined : () => <Chip>{props.unread()}</Chip>;
-    },
-  };
 }
 
 /**
@@ -79,5 +65,26 @@ export function ChatButton(props: ChatButtonProps): JSX.Element {
         {props.unread() ?? ''}
       </span>
     </IconButton>
+  );
+}
+
+/** The chat button in a bar. While the bar has collapsed the button, focus coming back from the panel goes to More. */
+export function ChatItem(props: ChatButtonProps): JSX.Element {
+  const bar = useContext(ActionsContext);
+  return (
+    <ActionItem
+      name="chat"
+      label="Chat"
+      icon={ChatIcon}
+      alert={props.unread() === undefined ? undefined : { tone: 'info', label: 'chat has unread messages' }}
+      aside={props.unread() === undefined ? undefined : () => <Chip>{props.unread()}</Chip>}
+      priority={TOPBAR_PRIORITY.chat}
+      visible={props.visible()}
+      activate={() => {
+        props.onToggle();
+      }}
+    >
+      <ChatButton {...props} fallbackFocus={() => bar?.moreButton()} />
+    </ActionItem>
   );
 }

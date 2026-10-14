@@ -8,7 +8,7 @@
 import { withActiveTld } from '@dotli/config';
 import { captureException } from '@dotli/metrics';
 import { log, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
-import type { AuthCommands } from './auth-commands.js';
+import type { AuthCommands } from './core-login.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './blocking-modal-queue.js';
 import type { DotliAuthState } from './session/auth-state.js';
 import { authStore, isLoginActive } from './state/auth.js';

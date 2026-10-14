@@ -1,7 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { DrawIcon } from '../icons/DrawIcon.js';
+import type { IconProps } from '../icons/icon-props.js';
 import s from './Well.module.css';
 
 /**
@@ -41,14 +44,14 @@ export function Row(props: {
 
 /** Supporting information in a well, led by an optional small icon. */
 export function Callout(props: {
-  icon?: JSX.Element;
+  icon?: Component<IconProps> | undefined;
   class?: string | undefined;
   testId?: string;
   children: JSX.Element;
 }): JSX.Element {
   return (
     <div class={[s['well'], s['callout'], props.class]} data-layout="plain" data-testid={props.testId}>
-      {props.icon}
+      <Show when={props.icon}>{icon => <DrawIcon icon={icon()} />}</Show>
       <p class={s['calloutText']}>{props.children}</p>
     </div>
   );

@@ -3,7 +3,6 @@
 
 import type { ChainPeer, ChainSyncKind, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import type { ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
-// Leaf import: the `config` barrel reads `self.location` at module load.
 import { CHAIN_ROLES, TIMEOUTS, type ChainRole } from '@dotli/config';
 
 /** Wire shape of the local wallet's cached identity. */
@@ -246,9 +245,9 @@ const VALID_KINDS = new Set([
   'auth-storage-changed',
 ]);
 
-// postMessage data is untrusted, so the kind is checked at runtime. The list is copied because importing it would pull
-// smoldot into every protocol bundle. As `Record<T, true>`, a value missing here fails typecheck instead of being
-// dropped silently.
+// postMessage data is untrusted, so the kind is checked at runtime. The list is copied, since importing it would bring
+// the chain package's sync reporter, which starts at module load, into every page that talks to the frame. As
+// `Record<T, true>`, a value missing here fails typecheck instead of being dropped silently.
 export const ENVELOPE_SYNC_KINDS = Object.keys({
   firstPeer: true,
   bootstrapComplete: true,

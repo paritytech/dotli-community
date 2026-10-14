@@ -481,7 +481,8 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
   };
 }
 
-const pageLoading = createLoadingController({
+/** The page's loading screen. */
+export const pageLoading = createLoadingController({
   reducedMotion: prefersReducedMotion,
   frames: {
     request: step => requestAnimationFrame(step),
@@ -493,17 +494,4 @@ const pageLoading = createLoadingController({
   pageContent: pageContentStore,
 });
 
-export const {
-  onProgressStall,
-  initPhases,
-  setLoadingDomain,
-  setLoadingStage,
-  advancePhase,
-  nudgePhaseProgress,
-  releasePhaseProgress,
-  stopStatusTick,
-  hideLoading,
-  setLoadingWarning,
-  onSandboxDone,
-  listenForSandboxStatus,
-} = pageLoading;
+export const { hideLoading, onSandboxDone, listenForSandboxStatus } = pageLoading;

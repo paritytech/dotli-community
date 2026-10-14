@@ -20,12 +20,14 @@ flowchart LR
 ```
 
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
-  and is the only listener for its messages. It rebuilds itself when lost. Boot is deduped with a task pool.
+  and is the only listener for its messages. It rebuilds itself when lost. Boot is deduped with a task pool. It is
+  configured with the backend, and names it in its URL in the frame's own words, which a host page of an earlier release
+  still sends.
 - The wire contract holds the envelope guards. Events pass an origin and source check, then a payload check.
 - The rpc layer sends requests and matches answers, with a timeout per method.
 - The client factory builds the frame, the rpc layer and the parts over them (resolution, remote chains, the shared
   store and telemetry) and returns them as one object. Its type is what the factory returns, so each request is declared
-  once. The page's instance is built on first use, and each public function passes through to it.
+  once. The page's instance is `protocolClient()`, built on first use, and callers reach every request through it.
 - Each request method has an answer type, so the rpc layer hands callers typed results. The only cast is where an answer
   arrives over `postMessage`.
 - A remote chain connection answers a request its chain halted under with the chain pool's halt marker, and tells its
@@ -38,18 +40,12 @@ flowchart LR
 
 ### `@dotli/protocol`
 
-- Client: `configureProtocolFrame`, `ensureProtocolFrame`, `warmupProtocol`, `getProtocolOrigin`, `getProtocolStatus`.
-- Resolution: `resolveDotNameRemote`, `resolveRootManifestRemote`, `resolveExecutableManifestRemote`.
-- Remote chains: `createRemoteChainProvider`, `isRemoteChainSupported`, `isRemoteChainConnectable`,
-  `RemoteChainProvider`.
-- Shared store: `readSharedAuthStorage`, `writeSharedAuthStorage`, `clearSharedAuthStorage`,
-  `subscribeSharedAuthStorage`, the matching `*SharedModeStorage` functions, `readSharedLocalWallet`,
-  `saveSharedLocalWallet`, `updateSharedLocalWalletIdentity`, `forgetSharedLocalWallet`, `getSharedStoreStatus`,
-  `subscribeSharedStoreStatus`.
-- Key helpers: `buildSharedAuthStorageKey`, `isSharedAuthOriginAllowed`, `isValidSharedAuthKey`,
-  `SHARED_CORE_SESSION_KEY`.
-- Telemetry: `onProtocolChainSync`, `onProtocolChainDetail`, `onProtocolNetBytes`, `getSmoldotDbOutcome`.
-- Wire and errors: `isProtocolEnvelope`, `ProtocolEnvelope`, `getRequestSyncTimeoutMs`, `ProtocolFatalError`,
-  `ProtocolInitFailedError`.
+- Client: `protocolClient` (the page's client, built on first use: frame, resolution, remote chains, shared store and
+  telemetry as one object), `ProtocolClient`, `ProtocolFrameConfig`, `ProtocolStatus`, `getProtocolOrigin`.
+- Remote chains: `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`.
+- Shared store: `SharedStoreStatus` and the key helpers `buildSharedAuthStorageKey`, `isSharedAuthOriginAllowed`,
+  `isValidSharedAuthKey`, `SHARED_CORE_SESSION_KEY`.
+- Wire and errors: `isProtocolEnvelope`, `ProtocolEnvelope`, `getRequestSyncTimeoutMs`, `backendOfFrameMode`,
+  `ProtocolFatalError`, `ProtocolInitFailedError`.
 
 There is no `testing` export.

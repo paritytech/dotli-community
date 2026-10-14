@@ -98,7 +98,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
   };
 
   return (
-    <Surface width="lg" class={s['panel']}>
+    <Surface width="lg" padded>
       <SurfaceHead
         title="Permissions"
         testId="permissions-popover-header"
@@ -136,7 +136,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
         </Show>
       </div>
       <Show when={props.statuses() !== undefined}>
-        <SurfaceFoot testId="permissions-popover-foot" hint={<Hint icon={<ReloadIcon />}>Changes reload the app</Hint>}>
+        <SurfaceFoot testId="permissions-popover-foot" hint={<Hint icon={ReloadIcon}>Changes reload the app</Hint>}>
           <Button
             ref={el => {
               resetButton = el;

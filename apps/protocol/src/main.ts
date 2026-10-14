@@ -29,18 +29,13 @@ installByteMeter();
 window.addEventListener('vite:preloadError', event => {
   const evt = event as unknown as { payload?: unknown };
   log.error('[dot.li protocol] Asset failed to load', evt.payload);
-  if (window.parent !== window) {
-    // The browser's message names the chunk. Only Safari omits it.
-    const msg = evt.payload === undefined ? 'no detail from the loader' : serializeError(evt.payload);
-    window.parent.postMessage(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'fatal',
-        message: `Protocol iframe asset failed to load: ${msg}`,
-      } as const,
-      '*',
-    );
-  }
+  // The browser's message names the chunk. Only Safari omits it.
+  const msg = evt.payload === undefined ? 'no detail from the loader' : serializeError(evt.payload);
+  postToParent({
+    namespace: 'dotli:protocol',
+    kind: 'fatal',
+    message: `Protocol iframe asset failed to load: ${msg}`,
+  });
 });
 
 import { deleteIdb, log, serializeError } from '@dotli/shared';
@@ -48,17 +43,23 @@ import {
   TIMEOUTS,
   getActiveServicesConfig,
   isLocalhost,
-  isValidNetwork,
+  parseSettingsFromSearch,
   setActiveNetwork,
   type Network,
 } from '@dotli/config';
 
-import { isSharedAuthOriginAllowed, type ProtocolRequestEnvelope } from '@dotli/protocol';
+import {
+  backendOfFrameMode,
+  isSharedAuthOriginAllowed,
+  type ProtocolEnvelope,
+  type ProtocolRequestEnvelope,
+} from '@dotli/protocol';
 import { DB_NAME } from '@dotli/storage';
 
 import type { SWRelayRequest } from './worker-messages.js';
 import { connectSharedWorker } from './shared-worker-link.js';
 import { readSessionTuning } from './session-tuning.js';
+import { chainDetailEnvelope, chainSyncEnvelope } from './envelopes.js';
 import { createEngine, type ResponseCallback } from './engine.js';
 import { startLightClientService } from './light-client-service.js';
 import { handleLocalWalletRequest } from './local-wallet-handler.js';
@@ -69,18 +70,16 @@ import { createRefusalReporter } from './refusal-report.js';
 initSentry('protocol');
 installGlobalErrorHandlers('protocol');
 
+// The host builds this frame's URL from its settings, so it is read once.
+const frameSearch = new URLSearchParams(window.location.search);
+
 // At module scope because auth-only and invalid-mode boots return early from init() yet belong to the resolution.
 adoptResolutionId();
 
 function adoptResolutionId(): void {
-  try {
-    const id = new URLSearchParams(window.location.search).get('resolutionId');
-    if (id !== null && id !== '') {
-      setResolutionId(id);
-    }
-    // eslint-disable-next-line no-restricted-syntax -- telemetry correlation is never a reason to fail a boot. An untagged iframe is the acceptable outcome.
-  } catch {
-    /* URL unparseable, carry on untagged */
+  const id = frameSearch.get('resolutionId');
+  if (id !== null && id !== '') {
+    setResolutionId(id);
   }
 }
 
@@ -126,57 +125,15 @@ const router = createFrameRouter({
   onRefused: createRefusalReporter({ warn: log.warn, count: m.count }),
 });
 
-function signalParent(kind: 'ready' | 'listening'): void {
+/** Every envelope this frame sends its parent, typed, so a shape change in the wire contract fails the build here. */
+function postToParent(envelope: ProtocolEnvelope): void {
   if (window.parent !== window) {
-    window.parent.postMessage({ namespace: 'dotli:protocol', kind } as const, '*');
+    window.parent.postMessage(envelope, '*');
   }
 }
 
-type RequestedMode = 'shared-worker' | 'direct' | 'rpc' | null;
-
-/** No mode means an auth-only iframe. An unknown mode is `invalid` so it errors instead of silently going auth-only. */
-function getRequestedMode(): RequestedMode | 'invalid' {
-  let raw: string | null;
-  try {
-    raw = new URLSearchParams(window.location.search).get('mode');
-  } catch {
-    return 'invalid';
-  }
-  if (raw === null) {
-    return null;
-  }
-  if (raw === 'shared-worker' || raw === 'direct' || raw === 'rpc') {
-    return raw;
-  }
-  return 'invalid';
-}
-
-function getSkipWorkerCache(): boolean {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('skipWorkerCache') === '1';
-  } catch {
-    return false;
-  }
-}
-
-type RequestedNetwork = { kind: 'ok'; network: Network } | { kind: 'missing' } | { kind: 'invalid'; raw: string };
-
-/** Read from the URL because this origin cannot see the host's `dotli:network` in `localStorage`. */
-function getRequestedNetwork(): RequestedNetwork {
-  let raw: string | null;
-  try {
-    raw = new URLSearchParams(window.location.search).get('network');
-  } catch {
-    return { kind: 'invalid', raw: '<unparseable>' };
-  }
-  if (raw === null) {
-    return { kind: 'missing' };
-  }
-  if (isValidNetwork(raw)) {
-    return { kind: 'ok', network: raw };
-  }
-  return { kind: 'invalid', raw };
+function signalParent(kind: 'ready' | 'listening'): void {
+  postToParent({ namespace: 'dotli:protocol', kind });
 }
 
 /** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
@@ -197,47 +154,38 @@ async function purgeWorkerCaches(): Promise<void> {
   log.event('Worker caches purged', { flow: 'protocol', databases: targets.length });
 }
 
+/** A boot that cannot start, which the host answers by dropping this frame and building a new one after a wait. */
+function failInit(message: string): void {
+  log.error(`[dot.li protocol] ${message}`);
+  signalError(message);
+}
+
 async function init(): Promise<void> {
-  const mode = getRequestedMode();
-
-  if (mode === 'invalid') {
-    let raw: string | null = null;
-    try {
-      raw = new URLSearchParams(window.location.search).get('mode');
-      // eslint-disable-next-line no-restricted-syntax -- best-effort extraction of the mode value for the message, the error is signalled below regardless.
-    } catch {
-      /* URL parse failed, fall through with raw=null */
-    }
-    const message = `Unknown protocol mode: ${raw === null ? '<unparseable>' : `"${raw}"`}`;
-    log.error(`[dot.li protocol] ${message}`);
-    signalError(message);
-    return;
-  }
-
+  const mode = frameSearch.get('mode');
+  // No mode means an auth-only iframe.
   if (mode === null) {
     log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
     signalParent('ready');
     return;
   }
-  const requestedNetwork = getRequestedNetwork();
-  if (requestedNetwork.kind === 'invalid') {
-    const message = `Unknown protocol network: "${requestedNetwork.raw}"`;
-    log.error(`[dot.li protocol] ${message}`);
-    signalError(message);
+  // An unknown mode errors instead of silently going auth-only.
+  const backend = backendOfFrameMode(mode);
+  if (backend === null) {
+    failInit(`Unknown protocol mode: "${mode}"`);
     return;
   }
-  if (requestedNetwork.kind === 'missing') {
-    const message = 'Missing required `network` URL param — host shell did not propagate the active network.';
-    log.error(`[dot.li protocol] ${message}`);
-    signalError(message);
+  // From the URL, because this origin cannot see the host's network in its `localStorage`.
+  const { network, skipWorkerCache } = parseSettingsFromSearch(frameSearch);
+  if (network === null) {
+    failInit(`Missing or unknown protocol network: "${frameSearch.get('network') ?? ''}"`);
     return;
   }
-  setActiveNetwork(requestedNetwork.network);
-  m.setDefaults({ network: requestedNetwork.network });
-  log.event('Protocol mode', { flow: 'protocol', mode, network: requestedNetwork.network });
+  setActiveNetwork(network);
+  m.setDefaults({ network });
+  log.event('Protocol mode', { flow: 'protocol', mode, network });
 
   // Before any smoldot init. A failed purge aborts, since a stale DB would silently ignore the user's setting.
-  if (getSkipWorkerCache()) {
+  if (skipWorkerCache === true) {
     try {
       await purgeWorkerCaches();
     } catch (err: unknown) {
@@ -251,18 +199,16 @@ async function init(): Promise<void> {
   const initStart = performance.now();
   let initOutcome: 'ok' | 'error' = 'error';
   try {
-    if (mode === 'shared-worker') {
+    if (backend === 'smoldot-shared-worker') {
       if (typeof SharedWorker === 'undefined') {
-        const msg = 'SharedWorker is not available in this browser';
-        log.error(`[dot.li protocol] ${msg}`);
-        signalError(msg);
+        failInit('SharedWorker is not available in this browser');
         return;
       }
       // Before any further metrics, so every one carries the mode.
       m.setDefaults({ protocol_mode: 'shared-worker' });
-      await initSharedWorkerMode(requestedNetwork.network);
+      await initSharedWorkerMode(network);
       m.count(S.PROTOCOL_MODE, { mode: 'shared-worker' });
-    } else if (mode === 'rpc') {
+    } else if (backend === 'rpc-gateway') {
       m.setDefaults({ protocol_mode: 'rpc' });
       initRpcMode();
       m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
@@ -285,16 +231,7 @@ async function init(): Promise<void> {
 function signalError(message: string): void {
   // No `id`, since no request was in flight. The host rejects everything pending, drops this frame and builds a new one
   // after a wait.
-  if (window.parent !== window) {
-    window.parent.postMessage(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'init-failed',
-        message,
-      } as const,
-      '*',
-    );
-  }
+  postToParent({ namespace: 'dotli:protocol', kind: 'init-failed', message });
 }
 
 async function initSharedWorkerMode(network: Network): Promise<void> {
@@ -306,11 +243,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   const port = await connectSharedWorker({
     worker,
     window,
-    relay: envelope => {
-      if (window.parent !== window) {
-        window.parent.postMessage(envelope, '*');
-      }
-    },
+    relay: postToParent,
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
   });
 
@@ -349,53 +282,27 @@ async function initDirectMode(): Promise<void> {
     if (change.kind === 'fatal') {
       log.error(`[dot.li protocol] Light client died, signaling fatal: ${change.message}`);
     }
-    if (window.parent === window) {
-      return;
-    }
     if (change.kind === 'db') {
       const { chain, outcome } = change;
-      window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'smoldot-db', chain, outcome }, '*');
+      postToParent({ namespace: 'dotli:protocol', kind: 'smoldot-db', chain, outcome });
       return;
     }
-    window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'fatal', message: change.message }, '*');
+    postToParent({ namespace: 'dotli:protocol', kind: 'fatal', message: change.message });
   });
 
   provider.onChainSync(event => {
-    if (window.parent === window) {
-      return;
-    }
-    const { chain, kind, ...rest } = event;
-    window.parent.postMessage(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'chain-sync',
-        chain,
-        syncKind: kind,
-        ...rest,
-      },
-      '*',
-    );
+    postToParent(chainSyncEnvelope(event));
   });
 
   // Telemetry only, attached by the host to the resolution it is tracing.
   provider.onChainDetail(detail => {
-    if (window.parent === window) {
-      return;
-    }
-    window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'chain-detail', ...detail }, '*');
+    postToParent(chainDetailEnvelope(detail));
   });
 
   // Cumulative totals, so the host owns the averaging and a dropped message only widens one window.
   if (window.parent !== window) {
     const postBytes = (): void => {
-      window.parent.postMessage(
-        {
-          namespace: 'dotli:protocol',
-          kind: 'net-bytes',
-          received: chainBytesReceived(),
-        },
-        '*',
-      );
+      postToParent({ namespace: 'dotli:protocol', kind: 'net-bytes', received: chainBytesReceived() });
     };
     // A baseline now, since a rate needs two readings.
     postBytes();

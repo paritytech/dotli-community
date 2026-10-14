@@ -9,7 +9,7 @@ import { fn } from 'storybook/test';
 import type { CacheSettings } from '@dotli/config';
 import type { ThemePref } from '../src/runtime/state/theme.js';
 import type { ApplySettings, SavedSettings } from '../src/components/settings/settings.js';
-import type { SettingsItemProps } from '../src/components/topbar/items.js';
+import type { SettingsItemProps } from '../src/components/settings/SettingsItem.js';
 
 export const DEFAULT_CACHE: CacheSettings = { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false };
 

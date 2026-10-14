@@ -65,7 +65,7 @@ afterEach(() => {
   for (const dispose of mounted.splice(0).reverse()) {
     dispose();
   }
-  ctl.stopStatusTick();
+  ctl.pageLoading.stopStatusTick();
   resetAllStoresForTests();
   app().innerHTML = '';
   vi.useRealTimers();
@@ -75,8 +75,8 @@ afterEach(() => {
 describe('Loading screen island', () => {
   it('As the shell, mounting the island does not dispose the running load', async () => {
     // Given a crawling bar
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 10_000, stage: 'relay' }]);
-    ctl.advancePhase(0);
+    ctl.pageLoading.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 10_000, stage: 'relay' }]);
+    ctl.pageLoading.advancePhase(0);
 
     // When
     await mountScreen();

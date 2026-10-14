@@ -34,7 +34,8 @@ and no data source.
 - `ToastStack` only renders the toast store, which decides how a toast settles. A dialog carries its icon as a
   component. A toast may carry one, and without one the card draws its tone's, so raising a toast imports no component.
 - Text goes into the error page and the notifier as text, so nothing a visitor typed is parsed as markup. An action
-  carries its icon as a component.
+  carries its icon as a component. Every `icon` prop takes the icon component, except `Choice` and `SegmentedControl`,
+  whose slot takes markup.
 - `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
   screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first. `clearScreen`
   takes it down and keeps what the page put beside it, such as the product frame. `pageContentStore` says `screen` while
@@ -61,7 +62,7 @@ and no data source.
 - Floating layers: `Modal`, `Popover` and `usePopover`, `Tooltip`, plus the layer tracking (`LayerTracker`,
   `ModalFocusFallback`).
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
-  `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar`, `ActionEntry` and `MoreRow`.
+  `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar` and `ActionEntry`.
 - Stores: the modal store (`openModal`, `refuseModals`, which answers every dialog with its refusal while the overlays
   cannot render, and the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
   `ModalButtonVariant`) and the toast store (`toastsStore` and the type `ToastEntry`).
@@ -86,8 +87,8 @@ Fakes for other packages' specs, stories and functional tests. Never imported by
 
 ### `@dotli/ui/brand`
 
-`LogoSymbol`, `LogoWordmark` and `PetalMark`, the logo as six petals a stylesheet can pulse. Astro renders them at build
-time with no directive, so there they ship no code.
+`LogoSymbol`, `LogoWordmark` and `PetalMark`, the logo as six petals that pulse one after another with `pulse`. Astro
+renders them at build time with no directive, so there they ship no code.
 
 ### `@dotli/ui/icons`
 

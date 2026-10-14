@@ -43,12 +43,16 @@
 .shield[data-state='verified'] {
   color: var(--chrome-ok);
 }
+/* The verified glyph shows until the host knows the product was only trusted. */
 .glyph {
-  display: none;
+  display: block;
   width: 14px;
   height: 14px;
 }
-.shield:not([data-state='trusted']) .verified-glyph,
+.trusted-glyph,
+.shield[data-state='trusted'] .verified-glyph {
+  display: none;
+}
 .shield[data-state='trusted'] .trusted-glyph {
   display: block;
 }

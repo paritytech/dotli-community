@@ -3,10 +3,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
+import type { Settings } from '@dotli/config';
+import type { Continuation } from './continuation.js';
 import {
   createSettingsActions,
   wipeOriginState,
-  type ModeDraft,
   type SettingsActionsDeps,
   type WipeParts,
 } from './settings-actions.js';
@@ -20,8 +21,8 @@ const CACHE_ON = {
   skipWorkerCache: false,
 };
 
-const prior: ModeDraft = {
-  chain: 'smoldot-direct',
+const prior: Settings = {
+  backend: 'smoldot-direct',
   network: 'paseo-next-v2',
   cache: CACHE_ON,
 };
@@ -30,9 +31,10 @@ const prior: ModeDraft = {
 let page: { pathname: string; search: string; hash: string };
 
 /** Fakes that record, in order, what the reset did. */
-function resetDeps(): { deps: SettingsActionsDeps; steps: string[]; saved: ModeDraft[] } {
+function resetDeps(): { deps: SettingsActionsDeps; steps: string[]; saved: Settings[]; reasons: Continuation[] } {
   const steps: string[] = [];
-  const saved: ModeDraft[] = [];
+  const saved: Settings[] = [];
+  const reasons: Continuation[] = [];
   const deps: SettingsActionsDeps = {
     clearCidCache: () => {
       steps.push('clear dotNS cache');
@@ -49,8 +51,9 @@ function resetDeps(): { deps: SettingsActionsDeps; steps: string[]; saved: ModeD
     schedulePendingReset: targets => {
       steps.push(`schedule ${targets.join(' and ')} purge`);
     },
-    reload: () => {
+    reload: reason => {
       steps.push('reload');
+      reasons.push(reason);
     },
     save: draft => {
       saved.push(draft);
@@ -63,7 +66,7 @@ function resetDeps(): { deps: SettingsActionsDeps; steps: string[]; saved: ModeD
       },
     },
   };
-  return { deps, steps, saved };
+  return { deps, steps, saved, reasons };
 }
 
 describe('applyAndReset', () => {
@@ -86,7 +89,7 @@ describe('applyAndReset', () => {
     // Given
     const { deps, steps, saved } = resetDeps();
     const { applyAndReset } = createSettingsActions(deps);
-    const draft: ModeDraft = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
+    const draft: Settings = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
 
     // When
     await applyAndReset(draft, prior);
@@ -100,7 +103,7 @@ describe('applyAndReset', () => {
     // Given
     const { deps, steps } = resetDeps();
     const { applyAndReset } = createSettingsActions(deps);
-    const draft: ModeDraft = { ...prior, cache: { ...CACHE_ON, skipCidCache: true } };
+    const draft: Settings = { ...prior, cache: { ...CACHE_ON, skipCidCache: true } };
 
     // When
     await applyAndReset(draft, prior);
@@ -113,7 +116,7 @@ describe('applyAndReset', () => {
     // Given
     const { deps, steps } = resetDeps();
     const { applyAndReset } = createSettingsActions(deps);
-    const off: ModeDraft = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
+    const off: Settings = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
 
     // When
     await applyAndReset(prior, off);
@@ -126,14 +129,14 @@ describe('applyAndReset', () => {
     // Given
     const { deps, steps, saved } = resetDeps();
     const { applyAndReset } = createSettingsActions(deps);
-    const draft: ModeDraft = { ...prior, chain: 'rpc-gateway' };
+    const draft: Settings = { ...prior, backend: 'rpc-gateway' };
 
     // When
     await applyAndReset(draft, prior, { forceFullWipe: true });
 
     // Then
     expect(steps).toEqual(['wipe origin', 'schedule protocol and sandbox purge', 'reload']);
-    expect(saved.at(-1)?.chain).toBe('rpc-gateway');
+    expect(saved.at(-1)?.backend).toBe('rpc-gateway');
   });
 
   it('As a user whose cache fails to clear, Save & Apply counts the failure and still reloads with my new settings', async () => {
@@ -141,7 +144,7 @@ describe('applyAndReset', () => {
     const { deps, steps, saved } = resetDeps();
     deps.clearBlockCache = () => Promise.resolve(false);
     const { applyAndReset } = createSettingsActions(deps);
-    const draft: ModeDraft = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
+    const draft: Settings = { ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } };
 
     // When
     await applyAndReset(draft, prior);
@@ -175,11 +178,11 @@ describe('applyAndReset', () => {
     const { applyAndReset } = createSettingsActions(deps);
 
     // When
-    await applyAndReset({ ...prior, chain: 'rpc-gateway' }, prior, { forceFullWipe: true });
+    await applyAndReset({ ...prior, backend: 'rpc-gateway' }, prior, { forceFullWipe: true });
 
     // Then
     expect(steps).toEqual(['schedule protocol and sandbox purge', 'reload']);
-    expect(saved.at(-1)?.chain).toBe('rpc-gateway');
+    expect(saved.at(-1)?.backend).toBe('rpc-gateway');
     expect(captures.exception).not.toHaveBeenCalled();
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'wipe' }]);
   });
@@ -194,11 +197,11 @@ describe('applyAndReset', () => {
     const { applyAndReset } = createSettingsActions(deps);
 
     // When
-    await applyAndReset({ ...prior, chain: 'rpc-gateway' }, prior, { forceFullWipe: true });
+    await applyAndReset({ ...prior, backend: 'rpc-gateway' }, prior, { forceFullWipe: true });
 
     // Then
     expect(steps).toEqual(['wipe origin', 'reload']);
-    expect(saved.at(-1)?.chain).toBe('rpc-gateway');
+    expect(saved.at(-1)?.backend).toBe('rpc-gateway');
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(1);
     expect(captures.expected).toHaveBeenCalledWith(refused, { flow: 'storage', step: 'settings_apply' });
@@ -226,7 +229,7 @@ describe('applyAndReset', () => {
     const { applyAndReset } = createSettingsActions(deps);
 
     // When
-    await applyAndReset({ ...prior, chain: 'rpc-gateway' }, prior, { forceFullWipe: true });
+    await applyAndReset({ ...prior, backend: 'rpc-gateway' }, prior, { forceFullWipe: true });
 
     // Then both steps are counted in order, only the purge left a breadcrumb and a warning, and the page reloads
     expect(steps).toEqual(['reload']);
@@ -266,6 +269,33 @@ describe('applyAndReset', () => {
     // Then
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'ok' }]);
     expect(captures.exception).not.toHaveBeenCalled();
+  });
+
+  it('As a user saving my settings, the reload tells the next boot it follows a settings change', async () => {
+    // Given
+    const { deps, reasons } = resetDeps();
+    const { applyAndReset } = createSettingsActions(deps);
+
+    // When
+    await applyAndReset({ ...prior, network: 'previewnet' }, prior);
+
+    // Then
+    expect(reasons).toEqual(['settings_change']);
+  });
+
+  it('As a visitor switching backend from a failure screen, my choice is saved and carried in the URL, nothing is wiped and the reload says why', async () => {
+    // Given
+    const { deps, steps, saved, reasons } = resetDeps();
+    const { applyAndReset } = createSettingsActions(deps);
+
+    // When
+    await applyAndReset({ ...prior, backend: 'rpc-gateway' }, prior, { reason: 'switch_backend' });
+
+    // Then
+    expect(steps).toEqual(['reload']);
+    expect(saved).toEqual([{ ...prior, backend: 'rpc-gateway' }]);
+    expect(page.search).toBe('?chainBackend=rpc-gateway');
+    expect(reasons).toEqual(['switch_backend']);
   });
 });
 

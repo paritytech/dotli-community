@@ -3,40 +3,29 @@
 
 // Each subdomain is its own origin with its own localStorage, so URL params let a shared link carry settings.
 // Default-valued axes are stripped, so a clean URL means every axis at default.
-// Param names and defaults are inlined because they are the public URL contract.
+// Param names are inlined because they are the public URL contract.
 
 import { defaultNetwork, isValidNetwork, type Network } from './network.js';
-import { defaultBackend, parseBackend, type Backend, type CacheSettings } from './mode.js';
+import { DEFAULT_CACHE, defaultBackend, parseBackend, type Backend } from './mode.js';
+import type { Settings } from './settings.js';
 
 const URL_PARAM_NAMES = {
   network: 'network',
-  chainBackend: 'chainBackend',
+  backend: 'chainBackend',
   skipArchiveCache: 'skipArchiveCache',
   skipCidCache: 'skipCidCache',
   skipWorkerCache: 'skipWorkerCache',
 } as const;
-
-const URL_DEFAULT_CACHE: CacheSettings = {
-  skipCidCache: false,
-  skipArchiveCache: false,
-  skipWorkerCache: false,
-};
 
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
 /** Per-axis URL parse: `null` for absent or invalid, so callers can `?? fallback`. */
 export interface ParsedUrlSettings {
   network: Network | null;
-  chainBackend: Backend | null;
+  backend: Backend | null;
   skipArchiveCache: boolean | null;
   skipCidCache: boolean | null;
   skipWorkerCache: boolean | null;
-}
-
-export interface EffectiveSettings {
-  network: Network;
-  chainBackend: Backend;
-  cache: CacheSettings;
 }
 
 function parseBoolean(raw: string | null): boolean | null {
@@ -51,7 +40,7 @@ export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSetti
   const rawNetwork = search.get(URL_PARAM_NAMES.network);
   return {
     network: rawNetwork !== null && isValidNetwork(rawNetwork) ? rawNetwork : null,
-    chainBackend: parseBackend(search.get(URL_PARAM_NAMES.chainBackend)),
+    backend: parseBackend(search.get(URL_PARAM_NAMES.backend)),
     skipArchiveCache: parseBoolean(search.get(URL_PARAM_NAMES.skipArchiveCache)),
     skipCidCache: parseBoolean(search.get(URL_PARAM_NAMES.skipCidCache)),
     skipWorkerCache: parseBoolean(search.get(URL_PARAM_NAMES.skipWorkerCache)),
@@ -59,26 +48,22 @@ export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSetti
 }
 
 /** Canonicalize `search` in place to mirror `settings`, dropping default-valued axes. Returns true if mutated. */
-export function writeSettingsToSearch(settings: EffectiveSettings, search: URLSearchParams): boolean {
+export function writeSettingsToSearch(settings: Settings, search: URLSearchParams): boolean {
   const before = search.toString();
   applyAxis(search, URL_PARAM_NAMES.network, settings.network === defaultNetwork() ? null : settings.network);
-  applyAxis(
-    search,
-    URL_PARAM_NAMES.chainBackend,
-    settings.chainBackend === defaultBackend() ? null : settings.chainBackend,
-  );
+  applyAxis(search, URL_PARAM_NAMES.backend, settings.backend === defaultBackend() ? null : settings.backend);
   applyBooleanAxis(
     search,
     URL_PARAM_NAMES.skipArchiveCache,
     settings.cache.skipArchiveCache,
-    URL_DEFAULT_CACHE.skipArchiveCache,
+    DEFAULT_CACHE.skipArchiveCache,
   );
-  applyBooleanAxis(search, URL_PARAM_NAMES.skipCidCache, settings.cache.skipCidCache, URL_DEFAULT_CACHE.skipCidCache);
+  applyBooleanAxis(search, URL_PARAM_NAMES.skipCidCache, settings.cache.skipCidCache, DEFAULT_CACHE.skipCidCache);
   applyBooleanAxis(
     search,
     URL_PARAM_NAMES.skipWorkerCache,
     settings.cache.skipWorkerCache,
-    URL_DEFAULT_CACHE.skipWorkerCache,
+    DEFAULT_CACHE.skipWorkerCache,
   );
   return search.toString() !== before;
 }

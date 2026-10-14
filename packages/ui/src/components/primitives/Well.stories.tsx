@@ -126,7 +126,7 @@ export const Callouts: Story = {
     });
   },
   render: () => (
-    <Callout icon={<InfoIcon />} testId="callout">
+    <Callout icon={InfoIcon} testId="callout">
       Trusted providers see which chains you read. Light clients verify everything locally.
     </Callout>
   ),

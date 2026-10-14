@@ -14,7 +14,7 @@ import { createFrameTelemetry } from './telemetry.js';
 export { isRemoteChainConnectable, isRemoteChainSupported } from './remote-chain-support.js';
 export type { RemoteChainProvider } from './remote-chain.js';
 
-export type { ProtocolFrameConfig, ProtocolFrameMode, ProtocolStatus } from './frame.js';
+export type { ProtocolFrameConfig, ProtocolStatus } from './frame.js';
 
 export type { SharedStoreStatus } from './shared-store.js';
 
@@ -63,66 +63,7 @@ export type ProtocolClient = ReturnType<typeof createProtocolClient>;
 let page: ProtocolClient | null = null;
 
 /** The page's one client, built on first use so a worker that imports this package never touches `window`. */
-function client(): ProtocolClient {
+export function protocolClient(): ProtocolClient {
   page ??= createProtocolClient({ origin: getProtocolOrigin(), document, window });
   return page;
 }
-
-// The page's client as plain functions. Each takes its type from the client and passes every argument on, so a
-// signature is written once.
-export const ensureProtocolFrame: ProtocolClient['ensureProtocolFrame'] = (...args) =>
-  client().ensureProtocolFrame(...args);
-export const getProtocolStatus: ProtocolClient['getProtocolStatus'] = (...args) => client().getProtocolStatus(...args);
-export const configureProtocolFrame: ProtocolClient['configureProtocolFrame'] = (...args) => {
-  client().configureProtocolFrame(...args);
-};
-export const getSharedStoreStatus: ProtocolClient['getSharedStoreStatus'] = (...args) =>
-  client().getSharedStoreStatus(...args);
-export const subscribeSharedStoreStatus: ProtocolClient['subscribeSharedStoreStatus'] = (...args) =>
-  client().subscribeSharedStoreStatus(...args);
-export const getSmoldotDbOutcome: ProtocolClient['getSmoldotDbOutcome'] = (...args) =>
-  client().getSmoldotDbOutcome(...args);
-export const warmupProtocol: ProtocolClient['warmupProtocol'] = (...args) => client().warmupProtocol(...args);
-export const resolveDotNameRemote: ProtocolClient['resolveDotNameRemote'] = (...args) =>
-  client().resolveDotNameRemote(...args);
-/**
- * Reads a name's owner through the protocol frame.
- * @public Kept with the frame's `resolveOwner` request, which pages embedding the frame may send, though no dotli page
- * calls it today.
- */
-export const resolveOwnerRemote: ProtocolClient['resolveOwnerRemote'] = (...args) =>
-  client().resolveOwnerRemote(...args);
-export const resolveExecutableManifestRemote: ProtocolClient['resolveExecutableManifestRemote'] = (...args) =>
-  client().resolveExecutableManifestRemote(...args);
-export const resolveRootManifestRemote: ProtocolClient['resolveRootManifestRemote'] = (...args) =>
-  client().resolveRootManifestRemote(...args);
-export const readSharedAuthStorage: ProtocolClient['readSharedAuthStorage'] = (...args) =>
-  client().readSharedAuthStorage(...args);
-export const writeSharedAuthStorage: ProtocolClient['writeSharedAuthStorage'] = (...args) =>
-  client().writeSharedAuthStorage(...args);
-export const clearSharedAuthStorage: ProtocolClient['clearSharedAuthStorage'] = (...args) =>
-  client().clearSharedAuthStorage(...args);
-export const readSharedModeStorage: ProtocolClient['readSharedModeStorage'] = (...args) =>
-  client().readSharedModeStorage(...args);
-export const writeSharedModeStorage: ProtocolClient['writeSharedModeStorage'] = (...args) =>
-  client().writeSharedModeStorage(...args);
-export const clearSharedModeStorage: ProtocolClient['clearSharedModeStorage'] = (...args) =>
-  client().clearSharedModeStorage(...args);
-export const readSharedLocalWallet: ProtocolClient['readSharedLocalWallet'] = (...args) =>
-  client().readSharedLocalWallet(...args);
-export const saveSharedLocalWallet: ProtocolClient['saveSharedLocalWallet'] = (...args) =>
-  client().saveSharedLocalWallet(...args);
-export const updateSharedLocalWalletIdentity: ProtocolClient['updateSharedLocalWalletIdentity'] = (...args) =>
-  client().updateSharedLocalWalletIdentity(...args);
-export const forgetSharedLocalWallet: ProtocolClient['forgetSharedLocalWallet'] = (...args) =>
-  client().forgetSharedLocalWallet(...args);
-export const subscribeSharedAuthStorage: ProtocolClient['subscribeSharedAuthStorage'] = (...args) =>
-  client().subscribeSharedAuthStorage(...args);
-export const onProtocolChainSync: ProtocolClient['onProtocolChainSync'] = (...args) =>
-  client().onProtocolChainSync(...args);
-export const onProtocolChainDetail: ProtocolClient['onProtocolChainDetail'] = (...args) =>
-  client().onProtocolChainDetail(...args);
-export const onProtocolNetBytes: ProtocolClient['onProtocolNetBytes'] = (...args) =>
-  client().onProtocolNetBytes(...args);
-export const createRemoteChainProvider: ProtocolClient['createRemoteChainProvider'] = (...args) =>
-  client().createRemoteChainProvider(...args);

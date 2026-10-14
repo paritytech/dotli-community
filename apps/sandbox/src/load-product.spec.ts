@@ -13,7 +13,7 @@ const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
 function params(overrides: Partial<SandboxParams> = {}): SandboxParams {
   return {
     cid: CID,
-    chainBackend: 'rpc-gateway',
+    backend: 'rpc-gateway',
     network: 'paseo-next-v2',
     fullReset: false,
     resolutionId: 'flow-1',
@@ -109,7 +109,7 @@ describe('loadProduct', () => {
     const page = harness({ type: 'single', content: enc('<h1>hi</h1>') }, { blockSource: BLOCK_SOURCE });
 
     // When the first attempt loads it
-    const outcome = await loadProduct({ params: params({ chainBackend: 'smoldot-direct' }), attempt: 1 }, page.deps);
+    const outcome = await loadProduct({ params: params({ backend: 'smoldot-direct' }), attempt: 1 }, page.deps);
 
     // Then the fetch reads its blocks from the relay
     expect(outcome).toEqual({ outcome: 'loaded' });
@@ -202,7 +202,7 @@ describe('loadProduct', () => {
       const page = harness(fetched, { blockSource: BLOCK_SOURCE, ...breaks(broken) });
 
       // When the first attempt loads it
-      const outcome = await loadProduct({ params: params({ chainBackend: 'smoldot-direct' }), attempt: 1 }, page.deps);
+      const outcome = await loadProduct({ params: params({ backend: 'smoldot-direct' }), attempt: 1 }, page.deps);
 
       // Then the failure names that step, and nothing is written
       expect(outcome).toEqual({ outcome: 'failed', step, error: broken });
@@ -215,7 +215,7 @@ describe('loadProduct', () => {
     const page = harness(new Error('bitswap-relay: aborted, the sandbox frame was torn down'));
 
     // When the first attempt loads it
-    const outcome = await loadProduct({ params: params({ chainBackend: 'smoldot-direct' }), attempt: 1 }, page.deps);
+    const outcome = await loadProduct({ params: params({ backend: 'smoldot-direct' }), attempt: 1 }, page.deps);
 
     // Then the load ends as torn down, not failed
     expect(outcome).toEqual({ outcome: 'torn_down' });

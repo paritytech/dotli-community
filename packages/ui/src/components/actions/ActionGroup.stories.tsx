@@ -15,6 +15,7 @@ import { ActionsContext, type ActionAlert, type ActionBar } from './actions-cont
 import { PINNED } from './fit.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { GlobeIcon } from '../icons/GlobeIcon.js';
+import type { IconProps } from '../icons/icon-props.js';
 
 const GROUP = 'story-actions';
 const MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-popover' };
@@ -54,7 +55,7 @@ function Item(props: {
     <ActionItem
       name={props.name}
       label={props.name.toUpperCase()}
-      icon={() => <GlobeIcon testId={`icon-${props.name}`} />}
+      icon={(iconProps: IconProps) => <GlobeIcon {...iconProps} testId={`icon-${props.name}`} />}
       priority={props.priority}
       visible={props.visible ?? true}
       alert={props.alert}

@@ -179,7 +179,8 @@ export type BootEvent =
       event: 'protocol_warmup_started';
       flowId: string;
       timestamp: number;
-      payload: { subMode: 'shared-worker' | 'direct' | 'rpc' };
+      /** The backend the frame boots on. The key is kept for saved archives. */
+      payload: { subMode: string };
     }
   | {
       layer: 'boot';

@@ -241,8 +241,9 @@ export const config = defineConfig([
     },
   },
   {
-    // `.astro` holds the types Astro generates for a site (apps/host).
-    ignores: ['dist/**', 'node_modules/**', '.astro/**'],
+    // `.astro` holds the types Astro generates for a site (apps/host). Playwright writes its run output under
+    // `test-results`, which a lint during a run would otherwise parse.
+    ignores: ['dist/**', 'node_modules/**', '.astro/**', '**/test-results/**', '**/playwright-report/**'],
   },
   {
     files: ['**/*.tsx'],

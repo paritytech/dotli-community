@@ -9,7 +9,7 @@ import type { NetworkHealth } from '../src/components/chains/network-health.js';
 import type { ChainBar } from '../src/components/chains/chain.js';
 import type { ChainView, NetworkView, TransferView } from '../src/components/chains/chains.js';
 import type { LiveVerdict } from '../src/network-verdict.js';
-import type { NetworkItemProps } from '../src/components/topbar/items.js';
+import type { NetworkItemProps } from '../src/components/chains/NetworkItem.js';
 
 const NO_TRANSFER: TransferView = { bytesPerSecond: null, fetched: null, total: null };
 

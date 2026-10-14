@@ -35,9 +35,8 @@ export const RESOLVE_STORAGE_READ = 'resolve.storage_read';
  */
 export const RESOLVE_MANIFEST_READ = 'resolve.manifest_read';
 
-export const CACHE_HIT = 'cache.hit';
-
-export const CACHE_MISS = 'cache.miss';
+/** A cache read. Tag `outcome` (`hit, miss`) and `surface` (`cid_cache, block_cache`). */
+export const CACHE_READ = 'cache.read';
 
 export const CONTENT_GATEWAY = 'content.gateway';
 
@@ -63,17 +62,12 @@ export const CACHE_READ_LATENCY = 'cache.read_latency';
 
 export const CACHE_WRITE_LATENCY = 'cache.write_latency';
 
-/** The fresh CID matches the served one. */
-export const CACHE_REVALIDATE_MATCH = 'cache.revalidate_match';
-
-/** The fresh CID differs and the user gets a reload notice. */
-export const CACHE_REVALIDATE_UPDATE = 'cache.revalidate_update';
-
-/** The network pointer was cleared, so the cache is evicted and the page reloaded. */
-export const CACHE_REVALIDATE_CLEARED = 'cache.revalidate_cleared';
-
-/** The resolver threw. The cache entry is left intact. */
-export const CACHE_REVALIDATE_ERROR = 'cache.revalidate_error';
+/**
+ * A cached copy checked against the network. Tag `outcome`: `match` (unchanged), `update` (the visitor is offered a
+ * reload onto the newer version), `cleared` (evicted, and the page reloads when it showed the copy) or `error` (the
+ * check failed and the entry is left as it was).
+ */
+export const CACHE_REVALIDATE = 'cache.revalidate';
 
 export const CACHE_REVALIDATE_LATENCY = 'cache.revalidate_latency';
 
@@ -183,9 +177,9 @@ export const DIAGNOSTICS_SHARE = 'diagnostics.share';
 export const AUTH_QR_RENDER = 'auth.qr_render';
 
 /**
- * One Save & Apply or Clear all in the settings. Tagged `outcome` and, on error, `reason` (the step that failed:
- * `wipe`, `cid_cache`, `block_cache` or `pending_reset`, or the error's name for a step that threw), as the reload
- * follows either way.
+ * One settings reset: Save & Apply or Clear all in the settings, a link that changes a saved choice, or the failure
+ * screen's backend switch. Tagged `outcome` and, on error, `reason` (the step that failed: `wipe`, `cid_cache`,
+ * `block_cache` or `pending_reset`, or the error's name for a step that threw), as the reload follows either way.
  */
 export const SETTINGS_APPLY = 'settings.apply';
 

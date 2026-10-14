@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { onSettled, untrack } from 'solid-js';
+import { onSettled, untrack, type Component } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
 import type { IconProps } from '../../icons.js';
 import s from './ErrorPage.module.css';
@@ -11,7 +11,7 @@ export interface ErrorFrameProps {
   /** On the centred column, for a screen's own layout of what sits under the title. */
   class?: string | undefined;
   /** Drawn in the circle above the title. */
-  icon: (props: IconProps) => JSX.Element;
+  icon: Component<IconProps>;
   /** Tints the circle as a warning. */
   warning?: boolean | undefined;
   title: string;

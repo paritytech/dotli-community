@@ -14,7 +14,7 @@ const DEFAULT_CACHE = { skipCidCache: false, skipArchiveCache: false, skipWorker
 describe('resolveSettings', () => {
   it('As a first-time visitor, I get the default network, the per-tab light client and every cache on', () => {
     // When
-    const settings = resolveSettings({ local: memoryStorage(), shared: null, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local: memoryStorage(), shared: null, sharedWorkerAvailable: true });
 
     // Then
     expect(settings).toEqual({ network: 'paseo-next-v2', backend: 'smoldot-direct', cache: DEFAULT_CACHE });
@@ -25,7 +25,7 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ [NETWORK_KEY]: 'previewnet', [BACKEND_KEY]: 'rpc-gateway' });
 
     // When
-    const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
 
     // Then
     expect(settings).toMatchObject({ network: 'previewnet', backend: 'rpc-gateway' });
@@ -37,7 +37,7 @@ describe('resolveSettings', () => {
     const shared = { backend: 'rpc-gateway', cache: CACHE_OFF };
 
     // When
-    const settings = resolveSettings({ local, shared, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local, shared, sharedWorkerAvailable: true });
 
     // Then
     expect(settings.backend).toBe('rpc-gateway');
@@ -49,7 +49,7 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct' });
 
     // When
-    const settings = resolveSettings({
+    const { settings } = resolveSettings({
       local,
       shared: { backend: 'rpc-gateway', cache: CACHE_OFF },
       sharedWorkerAvailable: true,
@@ -67,7 +67,7 @@ describe('resolveSettings', () => {
     const url = parseSettingsFromSearch(new URLSearchParams('network=previewnet&chainBackend=rpc-gateway'));
 
     // When
-    const settings = resolveSettings({
+    const { settings } = resolveSettings({
       local,
       shared: { backend: 'smoldot-direct', cache: null },
       url,
@@ -83,7 +83,7 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ [NETWORK_KEY]: 'kusama' });
 
     // When
-    const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
 
     // Then
     expect(settings.network).toBe('paseo-next-v2');
@@ -94,7 +94,7 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ 'dotli:mode': 'gateway' });
 
     // When
-    const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
 
     // Then
     expect(settings.backend).toBe('rpc-gateway');
@@ -105,7 +105,7 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-shared-worker' });
 
     // When
-    const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: false });
+    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: false });
 
     // Then
     expect(settings.backend).toBe('smoldot-direct');
@@ -117,7 +117,7 @@ describe('resolveSettings', () => {
     const url = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
 
     // When
-    const settings = resolveSettings({ local, shared: null, url, sharedWorkerAvailable: false });
+    const { settings } = resolveSettings({ local, shared: null, url, sharedWorkerAvailable: false });
 
     // Then
     expect(settings.backend).toBe('smoldot-direct');
@@ -128,7 +128,7 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ [CACHE_KEY]: '{"skipCidCache":' });
 
     // When
-    const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
 
     // Then
     expect(settings.cache).toEqual(DEFAULT_CACHE);
@@ -136,7 +136,7 @@ describe('resolveSettings', () => {
 
   it('As a first visit on a localhost origin, I get the default backend whatever the shared store holds', () => {
     // When
-    const settings = resolveSettings({
+    const { settings } = resolveSettings({
       local: memoryStorage(),
       shared: { backend: 'rpc-gateway', cache: null },
       sharedWorkerAvailable: true,
@@ -153,7 +153,7 @@ describe('resolveSettings', () => {
     const url = parseSettingsFromSearch(new URLSearchParams('skipCidCache=0&skipWorkerCache=1'));
 
     // When
-    const settings = resolveSettings({
+    const { settings } = resolveSettings({
       local,
       shared: { backend: null, cache: CACHE_OFF },
       url,
@@ -169,14 +169,14 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ [NETWORK_KEY]: 'previewnet' });
     const url = {
       network: 'kusama',
-      chainBackend: null,
+      backend: null,
       skipArchiveCache: null,
       skipCidCache: null,
       skipWorkerCache: null,
     };
 
     // When
-    const settings = resolveSettings({
+    const { settings } = resolveSettings({
       local,
       shared: null,
       url: url as unknown as ParsedUrlSettings,
@@ -192,10 +192,24 @@ describe('resolveSettings', () => {
     const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct', 'dotli:mode': 'gateway' });
 
     // When
-    const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
 
     // Then
     expect(settings.backend).toBe('smoldot-direct');
+  });
+
+  it('As a visitor whose browser lacks SharedWorker, I am told only when the shared light client was my choice', () => {
+    // Given
+    const sharedChoice = memoryStorage({ [BACKEND_KEY]: 'smoldot-shared-worker' });
+    const perTabChoice = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct' });
+
+    // When
+    const fellBack = resolveSettings({ local: sharedChoice, shared: null, sharedWorkerAvailable: false });
+    const kept = resolveSettings({ local: perTabChoice, shared: null, sharedWorkerAvailable: false });
+
+    // Then
+    expect(fellBack).toMatchObject({ settings: { backend: 'smoldot-direct' }, sharedWorkerFallback: true });
+    expect(kept).toMatchObject({ settings: { backend: 'smoldot-direct' }, sharedWorkerFallback: false });
   });
 });
 
@@ -203,7 +217,7 @@ describe('writeLocalSettings', () => {
   it('As a visitor from an old build, my settings are stored under the current keys and the old key is gone', () => {
     // Given
     const local = memoryStorage({ 'dotli:mode': 'gateway' });
-    const settings = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
+    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
 
     // When
     writeLocalSettings(settings, local);

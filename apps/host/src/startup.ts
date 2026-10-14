@@ -9,20 +9,13 @@ import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
 import { listenForChunkFailures, refuseModals, showError, showNotification } from '@dotli/ui';
-import { configureProtocolFrame, ensureProtocolFrame, warmupProtocol, type ProtocolFrameConfig } from '@dotli/protocol';
+import { protocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktop-offer.js';
 import { pageStandIns, reportIslandErrors } from './island-errors.js';
 import { log, pageLocalStorage } from '@dotli/shared';
 import { markContinuation } from './continuation.js';
-import {
-  getBackend,
-  isLocalhost,
-  isSharedWorkerAvailable,
-  type Backend,
-  type CacheSettings,
-  type Settings,
-} from '@dotli/config';
+import { getBackend, isLocalhost, isSharedWorkerAvailable, type Settings } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { loadBridge, type BridgeModule } from './lazy.js';
 import { createBlockingModalCoordinator } from './runtime/blocking-modal-queue.js';
@@ -93,25 +86,23 @@ export type EmitFn = (e: DotliDebugEvent) => void;
 
 /** A pending reset forces a clean chain DB whatever the cache says. */
 function protocolFrameConfig(settings: Settings, pendingReset: boolean): ProtocolFrameConfig {
-  const { backend } = settings;
   return {
-    mode: backend === 'smoldot-shared-worker' ? 'shared-worker' : backend === 'smoldot-direct' ? 'direct' : 'rpc',
+    backend: settings.backend,
     network: settings.network,
     skipWorkerCache: pendingReset || settings.cache.skipWorkerCache,
   };
 }
 
 export interface HostStartup {
-  chainBackend: Backend;
-  cacheSettings: CacheSettings;
+  settings: Settings;
   bridgeModule: BridgeModule;
 }
 
-/** What only the shell has. The landing page renders neither, so it passes neither. */
+/** What only the shell has. The landing page renders no chrome and shows no debug panel, so it passes neither. */
 export interface StartHostOptions {
-  /** Feeds the shell's debug panel. */
+  /** The shell's debug bus. An option, so the landing page's first load does not carry the bus. */
   emitDotliDebugEvent?: EmitFn;
-  /** Starts the state the shell's chrome renders. */
+  /** Starts the state the shell's chrome renders, right after this origin's settings and the link's are set. */
   startShellState?: () => void;
 }
 
@@ -136,7 +127,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
       writeSharedSettings(shared);
     },
     configureFrame: settings => {
-      configureProtocolFrame(protocolFrameConfig(settings, protocolPendingReset));
+      protocolClient().configureProtocolFrame(protocolFrameConfig(settings, protocolPendingReset));
     },
     actions: pageSettingsActions,
     notify: showNotification,
@@ -151,54 +142,52 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
   const settings = await settingsBoot;
   initSettingsStore();
 
-  const chainBackend = settings.backend;
-  const cacheSettings = settings.cache;
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'started',
     flowId: bootFlowId,
     timestamp: Date.now(),
     payload: {
-      chainBackend,
-      skipCidCache: cacheSettings.skipCidCache,
-      skipArchiveCache: cacheSettings.skipArchiveCache,
+      chainBackend: settings.backend,
+      skipCidCache: settings.cache.skipCidCache,
+      skipArchiveCache: settings.cache.skipArchiveCache,
     },
   });
   log.event('Settings applied', {
     flow: 'boot',
     network: settings.network,
-    backend: chainBackend,
-    skip_cid_cache: cacheSettings.skipCidCache,
-    skip_archive_cache: cacheSettings.skipArchiveCache,
-    skip_worker_cache: cacheSettings.skipWorkerCache,
+    backend: settings.backend,
+    skip_cid_cache: settings.cache.skipCidCache,
+    skip_archive_cache: settings.cache.skipArchiveCache,
+    skip_worker_cache: settings.cache.skipWorkerCache,
   });
   m.setDefaults({
     network: settings.network,
-    chain_backend: chainBackend,
-    skip_cid_cache: String(cacheSettings.skipCidCache),
-    skip_archive_cache: String(cacheSettings.skipArchiveCache),
-    skip_worker_cache: String(cacheSettings.skipWorkerCache),
+    chain_backend: settings.backend,
+    skip_cid_cache: String(settings.cache.skipCidCache),
+    skip_archive_cache: String(settings.cache.skipArchiveCache),
+    skip_worker_cache: String(settings.cache.skipWorkerCache),
   });
 
-  // On every backend, so a sandboxed app's `chainConnect` finds a handler waiting.
-  {
-    const frameConfig = protocolFrameConfig(settings, protocolPendingReset);
-    configureProtocolFrame(frameConfig);
-    // The first request that needs the frame awaits these again and reports a failure there, so here it is a crumb.
-    ensureProtocolFrame().catch((err: unknown) => {
+  // On every backend, so a sandboxed app's `chainConnect` finds a handler waiting. The boot configured the frame.
+  // The first request that needs the frame awaits these again and reports a failure there, so here it is a crumb.
+  protocolClient()
+    .ensureProtocolFrame()
+    .catch((err: unknown) => {
       recordExpected(err, { flow: 'protocol', step: 'frame_prewarm' });
     });
-    warmupProtocol().catch((err: unknown) => {
+  protocolClient()
+    .warmupProtocol()
+    .catch((err: unknown) => {
       recordExpected(err, { flow: 'protocol', step: 'warmup' });
     });
-    emitDotliDebugEvent({
-      layer: 'boot',
-      event: 'protocol_warmup_started',
-      flowId: bootFlowId,
-      timestamp: Date.now(),
-      payload: { subMode: frameConfig.mode },
-    });
-  }
+  emitDotliDebugEvent({
+    layer: 'boot',
+    event: 'protocol_warmup_started',
+    flowId: bootFlowId,
+    timestamp: Date.now(),
+    payload: { subMode: settings.backend },
+  });
 
   const blockingModalCoordinator = createBlockingModalCoordinator({ report: reportBlockingModals });
   // The bridge chunk brings the dialogs it asks with, so they never join the boot chunk.
@@ -226,11 +215,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
     payload: {},
   });
 
-  return {
-    chainBackend,
-    cacheSettings,
-    bridgeModule,
-  };
+  return { settings, bridgeModule };
 }
 
 /** For a failure before either page had anything to show. */

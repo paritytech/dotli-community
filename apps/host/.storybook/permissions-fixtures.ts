@@ -8,7 +8,7 @@ import { createSignal, flush } from 'solid-js';
 import { fn } from 'storybook/test';
 import type { EnforceablePermissionName, PermissionStatus } from '../src/runtime/permissions.js';
 import type { MenuPermission, PermissionsNotice } from '../src/components/permissions/permissions.js';
-import type { PermissionsItemProps } from '../src/components/topbar/items.js';
+import type { PermissionsItemProps } from '../src/components/permissions/PermissionsItem.js';
 
 /** The runtime's menu, in its order. */
 export const STORY_PERMISSIONS: readonly MenuPermission[] = [

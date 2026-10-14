@@ -19,6 +19,7 @@ export {
   getCacheSettings,
   isSharedWorkerAvailable,
   isVerifiedSession,
+  parseBackend,
   type Backend,
   type CacheSettings,
 } from './mode.js';
@@ -57,6 +58,7 @@ export {
   setActiveNetwork,
   sharedSettingsOf,
   writeLocalSettings,
+  type ResolvedSettings,
   type Settings,
   type SettingsSources,
   type SharedSettings,

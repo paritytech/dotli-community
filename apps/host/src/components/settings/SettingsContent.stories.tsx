@@ -22,7 +22,7 @@ import {
   settingsAsked,
   storySettings,
 } from '../../../.storybook/settings-fixtures.js';
-import { SettingsItem } from '../topbar/items.js';
+import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
 
@@ -45,7 +45,7 @@ async function showCategory(click: (el: Element) => Promise<void>, category: Cat
 
 /** What the popover shows for. */
 interface Shown {
-  chain: Backend;
+  backend: Backend;
   network: Network;
   cache: CacheSettings;
   enabledNetworks: Network[];
@@ -109,7 +109,7 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
       await expectChoice('dotli-backend', value, {
         label: BACKEND_LABELS[value],
         description: disabled ? 'Unavailable in this browser or private window' : description,
-        selected: value === shown.chain,
+        selected: value === shown.backend,
         disabled,
         ...(value === 'smoldot-direct' ? { chip: 'Recommended' } : {}),
       });
@@ -167,7 +167,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const DEFAULTS: Shown = {
-  chain: 'smoldot-direct',
+  backend: 'smoldot-direct',
   network: 'paseo-next-v2',
   cache: DEFAULT_CACHE,
   enabledNetworks: ['paseo-next-v2', 'previewnet'],
@@ -366,7 +366,7 @@ export const OneNetworkDebugTrusted: Story = {
   },
   play: async ctx => {
     const shown: Shown = {
-      chain: 'rpc-gateway',
+      backend: 'rpc-gateway',
       network: 'previewnet',
       cache: DEFAULT_CACHE,
       enabledNetworks: ['previewnet'],
@@ -416,8 +416,8 @@ export const DraftEnablesSave: Story = {
     await ctx.step('Then the draft was applied against the saved settings, and the button says so', async () => {
       await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
       await expect(settingsAsked.apply).toHaveBeenCalledWith(
-        { chain: 'rpc-gateway', network: 'previewnet', cache: { ...DEFAULT_CACHE, skipWorkerCache: true } },
-        { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
+        { backend: 'rpc-gateway', network: 'previewnet', cache: { ...DEFAULT_CACHE, skipWorkerCache: true } },
+        { backend: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
       );
       await expect(applyButton()).toBeDisabled();
       await expect(applyButton()).toHaveTextContent('Resetting…');
@@ -447,8 +447,8 @@ export const DraftSurvivesCategories: Story = {
     await ctx.step('Then the network change was applied', async () => {
       await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
       await expect(settingsAsked.apply).toHaveBeenCalledWith(
-        { chain: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
-        { chain: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
+        { backend: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
+        { backend: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
       );
     });
   },
@@ -554,7 +554,7 @@ export const ClearAllUsesSaved: Story = {
     const clear = (): HTMLButtonElement =>
       query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
     await ctx.step('Then the full wipe ran with the saved settings, and the button says so', async () => {
-      const saved = { chain: 'rpc-gateway', network: 'paseo-next-v2', cache: DEFAULT_CACHE };
+      const saved = { backend: 'rpc-gateway', network: 'paseo-next-v2', cache: DEFAULT_CACHE };
       await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
       await expect(settingsAsked.apply).toHaveBeenCalledWith(saved, saved, { forceFullWipe: true });
       await expect(clear()).toBeDisabled();

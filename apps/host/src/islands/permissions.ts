@@ -5,7 +5,7 @@ import type { ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
 import type { EnforceablePermissionName, PermissionStatus } from '../runtime/permissions.js';
 import type { MenuPermission, PermissionsNotice } from '../components/permissions/permissions.js';
-import type { PermissionsItemProps } from '../components/topbar/items.js';
+import type { PermissionsItemProps } from '../components/permissions/PermissionsItem.js';
 
 /** The product on show, as the panel reads it. */
 export type ShownProduct =

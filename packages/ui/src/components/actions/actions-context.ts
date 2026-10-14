@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, type Accessor } from 'solid-js';
+import { createContext, type Accessor, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import type { IconProps } from '../icons/icon-props.js';
 import type { StatusTone } from '../../page/status-tone.js';
 
 /** A status a collapsed item raises on More: the badge's tone, and words for More's accessible name. */
@@ -15,8 +16,8 @@ export interface ActionEntry {
   /** A stable key, also the menu row's `data-item`. */
   readonly name: string;
   readonly label: string;
-  /** Rendered afresh for each row. */
-  readonly icon: () => JSX.Element;
+  /** Drawn afresh for each row. */
+  readonly icon: Component<IconProps>;
   /** Raised on the More button while the item is in the menu. */
   readonly alert: Accessor<ActionAlert | undefined>;
   /** Shown after the menu row's label. */

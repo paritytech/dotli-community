@@ -27,7 +27,6 @@ export {
   type ActionEntry,
 } from './components/actions/actions-context.js';
 export { PINNED } from './components/actions/fit.js';
-export type { MoreRow } from './components/actions/more-row.js';
 export { LayerTracker, ModalFocusFallback, type TrackedLayer } from './components/floating/layer-context.js';
 export { useStore } from './components/use-store.js';
 export { startDrag } from './components/drag.js';

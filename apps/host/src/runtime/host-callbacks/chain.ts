@@ -15,8 +15,7 @@ import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getActiveServicesConfig, getBackend, type Backend } from '@dotli/config';
 import {
-  createRemoteChainProvider,
-  getProtocolStatus,
+  protocolClient,
   isRemoteChainConnectable,
   type ProtocolStatus,
   type RemoteChainProvider,
@@ -53,7 +52,7 @@ export interface HostChainSources {
 
 const pageSources: HostChainSources = {
   backend: getBackend,
-  remoteChain: createRemoteChainProvider,
+  remoteChain: genesisHash => protocolClient().createRemoteChainProvider(genesisHash),
   isRemoteChainConnectable,
   rpcChain: createCoreRpcChainProvider,
   isRpcChainSupported: isCoreRpcChainSupported,
@@ -86,7 +85,7 @@ export interface FrameStatusSource {
   getProtocolStatus(): ProtocolStatus;
 }
 
-const protocolFrame: FrameStatusSource = { getProtocolStatus };
+const protocolFrame: FrameStatusSource = { getProtocolStatus: () => protocolClient().getProtocolStatus() };
 
 const hostChainPool = createHostChainPool();
 

@@ -30,7 +30,7 @@ export function LoadingScreen(props: LoadingScreenProps): JSX.Element {
       <div class={s['screen']} id="app-loading" data-dismissing={dismissing() ? '' : undefined}>
         <div class={s['column']}>
           <div class={s['logo']} id="loading-logo">
-            <PetalMark class={s['mark']} petalClass={s['petal']} />
+            <PetalMark pulse />
           </div>
           <div class={s['text']} id="loading-text">
             <div class={s['status']} id="loading-status">

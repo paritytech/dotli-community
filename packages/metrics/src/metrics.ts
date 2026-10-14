@@ -18,7 +18,11 @@ export type MetricOutcome =
   // Manifest reader
   | 'empty'
   | 'invalid'
-  | 'unsupported-version';
+  | 'unsupported-version'
+  // Cache revalidation
+  | 'match'
+  | 'update'
+  | 'cleared';
 
 /** Dashboards slice on the named keys, so keep new attributes within them. */
 export type MetricAttributes = {

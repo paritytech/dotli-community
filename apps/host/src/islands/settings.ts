@@ -6,7 +6,7 @@ import type { ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
 import type { ThemePref } from '../runtime/state/theme.js';
 import type { ApplySettings, SavedSettings } from '../components/settings/settings.js';
-import type { SettingsItemProps } from '../components/topbar/items.js';
+import type { SettingsItemProps } from '../components/settings/SettingsItem.js';
 
 /** The page's settings and theme, and what acts on them. */
 export interface SettingsBinding {

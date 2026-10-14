@@ -93,6 +93,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
           <div
             class={[s['card'], props.class]}
             data-modal-surface=""
+            data-state={props.open ? 'open' : 'closed'}
             data-testid={props.testId}
             data-placement={props.placement ?? 'center'}
             tabindex="-1"
@@ -107,6 +108,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
             props.onOpenChange(false, 'close');
           }}
           testId={props.testId}
+          open={props.open}
           closeLabel="Close"
           body={{ class: s['sheetScroll'] }}
         >

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For, type Accessor } from 'solid-js';
+import { For, type Accessor, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { MonitorIcon, MoonIcon, SunIcon, type IconProps } from '@dotli/ui/icons';
 import type { ThemePref } from '../../runtime/state/theme.js';
@@ -15,7 +15,7 @@ const THEME_LABEL: Record<ThemePref, string> = {
 
 const PREFS: readonly ThemePref[] = ['light', 'dark', 'system'];
 
-const ICON: Record<ThemePref, (props: IconProps) => JSX.Element> = {
+const ICON: Record<ThemePref, Component<IconProps>> = {
   light: SunIcon,
   dark: MoonIcon,
   system: MonitorIcon,

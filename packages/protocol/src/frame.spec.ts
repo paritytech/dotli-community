@@ -9,7 +9,7 @@ import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS } from './errors.js';
-import { createProtocolFrame } from './frame.js';
+import { backendOfFrameMode, createProtocolFrame } from './frame.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from './messages.js';
 import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameHost } from './testing/frame-host.js';
 
@@ -347,7 +347,7 @@ describe('protocol status', () => {
     host.client.subscribeSharedStoreStatus(status => statuses.push(status));
 
     // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     await frameSays('listening');
 
     // Then
@@ -371,7 +371,7 @@ describe('protocol status', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
 
     // Then
     expect(onHalt).toHaveBeenCalledTimes(1);
@@ -390,7 +390,7 @@ describe('protocol status', () => {
     });
 
     // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const read = settledWith(host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY));
     await frameSays('listening');
     const posted = await frameSays();
@@ -416,7 +416,7 @@ describe('protocol status', () => {
     host.client.subscribeProtocolStatus(next => heard[1]?.push(next));
 
     // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const framesAfterChange = host.frames();
     await frameSays('listening', 'ready');
 
@@ -436,7 +436,7 @@ describe('protocol status', () => {
         void host.client.ensureProtocolFrame().catch(() => undefined);
       }
     });
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     await frameSays('listening', 'ready');
 
     // When
@@ -488,7 +488,7 @@ describe('protocol status', () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     // When
-    host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const mode = new URL(host.iframe().src).searchParams.get('mode');
     await frameSays('listening', 'ready');
     host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
@@ -509,7 +509,7 @@ describe('protocol status', () => {
     let request: Promise<void> | null = null;
     host.client.subscribeProtocolStatus(next => {
       if (next === 'failed' && request === null) {
-        host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+        host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
         request = host.client.ensureProtocolFrame();
       }
     });
@@ -529,7 +529,7 @@ describe('protocol status', () => {
     host.client.subscribeProtocolStatus(next => {
       if (next === 'booting' && changes === 0) {
         changes += 1;
-        host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+        host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
       }
     });
 
@@ -589,7 +589,7 @@ describe('protocol status', () => {
     let unsubscribe: (() => void) | null = null;
     host.client.subscribeProtocolStatus(next => {
       if (next === 'failed') {
-        host.client.configureProtocolFrame({ ...FRAME_CONFIG, mode: 'rpc' });
+        host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
         unsubscribe?.();
       }
     });
@@ -601,5 +601,15 @@ describe('protocol status', () => {
 
     // Then
     expect(heard).toEqual(['failed']);
+  });
+});
+
+describe('backendOfFrameMode', () => {
+  it('As the protocol frame, I read each backend from the word a host page of any release puts in my URL, and no other word', () => {
+    // When
+    const read = ['shared-worker', 'direct', 'rpc', 'smoldot-direct', ''].map(backendOfFrameMode);
+
+    // Then
+    expect(read).toEqual(['smoldot-shared-worker', 'smoldot-direct', 'rpc-gateway', null, null]);
   });
 });

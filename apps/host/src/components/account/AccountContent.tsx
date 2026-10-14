@@ -37,7 +37,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
     props.onLogout();
   };
   return (
-    <Surface width="sm" class={s['panel']} testId="account-content">
+    <Surface width="sm" padded testId="account-content">
       <div class={s['identity']}>
         <AccountAvatar session={props.account.session()} size="lg" decorative />
         <div class={s['text']}>
@@ -59,7 +59,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
       </div>
       {/* A bare address with no explanation reads as a rendering bug. */}
       <Show when={props.account.loggedIn() && (username() ?? '').length === 0}>
-        <Callout icon={<InfoIcon />}>
+        <Callout icon={InfoIcon}>
           <span id={id('hint')}>No username found for this account on this network.</span>
         </Callout>
       </Show>

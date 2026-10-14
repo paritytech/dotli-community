@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { memoryStorage } from '@dotli/shared/testing';
-import { createSessionErrorSightings } from './show-load-failure.js';
+import { createSessionErrorSightings } from './load-failure-page.js';
 
 describe('sessionErrorSightings', () => {
   it('As a visitor reloading after a failure, I find the sighting kept for this tab until it is forgotten', () => {

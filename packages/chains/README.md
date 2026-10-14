@@ -47,7 +47,7 @@ flowchart LR
 - Light client: `createLightClient`, `lightClientDeps`, `LightClient`, `LightClientDeps`, `LightClientStatus`,
   `LightClientChange`, `SmoldotDbChain`, `SmoldotDbOutcome`.
 - Sync and metering: `enableSyncReporting`, `onChainSync`, `onChainDetail`, `chainBytesReceived`, `installByteMeter`,
-  `ChainPeer`, `ChainSyncKind`.
+  `ChainDetail`, `ChainPeer`, `ChainSyncEvent`, `ChainSyncKind`.
 - Gateway chains: `createCoreRpcChainProvider`, `getConnectedAssetHubRpcEndpoint`, `isCoreRpcChainSupported`,
   `ChainTransportHooks`, `ConnectionStatus`.
 - Chain pool: `createChainPool`, `ChainPool`, `ChainPoolWatcher`, `LeaseProvider`, `ChainActivity`,

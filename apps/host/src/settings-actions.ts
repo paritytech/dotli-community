@@ -6,29 +6,14 @@
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import { errorName, log, pageLocalStorage, pageSessionStorage, type SafeStorage } from '@dotli/shared';
-import { markContinuation } from './continuation.js';
-import {
-  sharedSettingsOf,
-  writeLocalSettings,
-  writeSettingsToSearch,
-  type Backend,
-  type CacheSettings,
-  type Network,
-  type Settings,
-} from '@dotli/config';
+import { markContinuation, type Continuation } from './continuation.js';
+import { sharedSettingsOf, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
 import { clearCidCache, clearBlockCache } from '@dotli/storage';
 import { isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
 
 import { schedulePendingReset, type PendingResetTarget } from './runtime/pending-reset.js';
 import { writeSharedSettings } from './runtime/shared-mode.js';
 import { THEME_KEY } from './theme-controller.js';
-
-/** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */
-export interface ModeDraft {
-  chain: Backend;
-  network: Network;
-  cache: CacheSettings;
-}
 
 /** Each step reports its own failures and resolves, so a rejection here is a fault `applyAndReset` reports. */
 export interface SettingsActionsDeps {
@@ -38,9 +23,10 @@ export interface SettingsActionsDeps {
   /** Resolves the parts that failed, which it has reported itself. */
   wipeOrigin: () => Promise<readonly WipeFailure[]>;
   schedulePendingReset: (targets: readonly PendingResetTarget[]) => void;
-  reload: () => void;
+  /** Reloads the page, telling the next boot why. */
+  reload: (reason: Continuation) => void;
   /** Stores the settings on this origin and for the other subdomains, so the reload boots with them. */
-  save: (draft: ModeDraft) => void;
+  save: (settings: Settings) => void;
   /** The page URL, which carries the settings into the reload. */
   url: SettingsUrl;
 }
@@ -51,19 +37,27 @@ export interface SettingsUrl {
   replace: (url: string) => void;
 }
 
+export interface ApplyOptions {
+  /** Clears every cache, whatever the settings say. */
+  forceFullWipe?: boolean;
+  /** Why the page reloads, for the next boot's telemetry. `settings_change` unless given. */
+  reason?: Continuation;
+}
+
 export interface SettingsActions {
   /**
    * Deletes only caches the user just turned off. The persisted `skipWorkerCache` flag makes the protocol
    * iframe purge itself on its next boot. Settings persist before the deletes so the reload boots with them. Never
-   * rejects: a step that fails is counted, and the rest of the reset and the reload still run.
+   * rejects: a step that fails is counted, and the rest of the reset and the reload still run. The reload carries
+   * `reason`.
    */
-  applyAndReset: (draft: ModeDraft, prior: ModeDraft, options?: { forceFullWipe?: boolean }) => Promise<void>;
+  applyAndReset: (next: Settings, prior: Settings, options?: ApplyOptions) => Promise<void>;
 }
 
 type ApplyStep = 'wipe' | 'cid_cache' | 'block_cache' | 'pending_reset';
 
 export function createSettingsActions(deps: SettingsActionsDeps): SettingsActions {
-  async function apply(draft: ModeDraft, prior: ModeDraft, forceFullWipe: boolean): Promise<void> {
+  async function apply(next: Settings, prior: Settings, forceFullWipe: boolean): Promise<void> {
     const failed: ApplyStep[] = [];
     /** `expected` is the environment failure this step caught, left as a breadcrumb and a warning beside its count. */
     const fail = (step: ApplyStep, expected?: { err: unknown; message: string }): void => {
@@ -85,7 +79,7 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
       if ((await deps.wipeOrigin()).length > 0) {
         fail('wipe');
       }
-      deps.save(draft);
+      deps.save(next);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         deps.schedulePendingReset(['protocol', 'sandbox']);
@@ -94,11 +88,11 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
         fail('pending_reset', { err, message: '[dot.li settings] purge request not stored:' });
       }
     } else {
-      deps.save(draft);
-      if (draft.cache.skipCidCache && !prior.cache.skipCidCache && !(await deps.clearCidCache())) {
+      deps.save(next);
+      if (next.cache.skipCidCache && !prior.cache.skipCidCache && !(await deps.clearCidCache())) {
         fail('cid_cache');
       }
-      if (draft.cache.skipArchiveCache && !prior.cache.skipArchiveCache && !(await deps.clearBlockCache())) {
+      if (next.cache.skipArchiveCache && !prior.cache.skipArchiveCache && !(await deps.clearBlockCache())) {
         fail('block_cache');
       }
     }
@@ -106,7 +100,7 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
     // The URL carries the settings too, so the reload boots with them. Defaults drop off.
     const location = deps.url.read();
     const search = new URLSearchParams(location.search);
-    if (writeSettingsToSearch({ network: draft.network, chainBackend: draft.chain, cache: draft.cache }, search)) {
+    if (writeSettingsToSearch(next, search)) {
       const query = search.toString();
       deps.url.replace(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
     }
@@ -116,24 +110,23 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
   }
 
   return {
-    async applyAndReset(draft, prior, { forceFullWipe = false } = {}) {
+    async applyAndReset(next, prior, { forceFullWipe = false, reason = 'settings_change' } = {}) {
       try {
-        await apply(draft, prior, forceFullWipe);
+        await apply(next, prior, forceFullWipe);
       } catch (err: unknown) {
         captureException(err, { flow: 'ui', step: 'settings_apply' });
         log.error('[dot.li settings] Save & Apply failed:', err);
         m.count(S.SETTINGS_APPLY, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
       } finally {
         // The settings the user chose take effect only on the reload, so it runs whatever failed.
-        markContinuation('settings_change');
-        deps.reload();
+        deps.reload(reason);
       }
     },
   };
 }
 
 /** Stores `settings` on this origin and for the other subdomains, so the next boot reads them. */
-export function saveSettings(settings: Settings): void {
+function saveSettings(settings: Settings): void {
   writeLocalSettings(settings, pageLocalStorage);
   writeSharedSettings(sharedSettingsOf(settings));
 }
@@ -144,12 +137,11 @@ export const pageSettingsActions: SettingsActions = createSettingsActions({
   clearBlockCache,
   wipeOrigin: wipeOriginState,
   schedulePendingReset,
-  reload: () => {
+  reload: reason => {
+    markContinuation(reason);
     window.location.reload();
   },
-  save: draft => {
-    saveSettings({ network: draft.network, backend: draft.chain, cache: draft.cache });
-  },
+  save: saveSettings,
   url: {
     read: () => window.location,
     replace: url => {

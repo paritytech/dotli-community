@@ -2,77 +2,78 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Takes a `.dot` label to a product on screen, or to the screen that says why not: the CID cache or the name, the
-// manifests' verdict, the render and the content's outcome. Every source and screen is passed in.
+// manifests' verdict, the render and the content's outcome. What sits in another frame or origin (the name source, the
+// product frame, the recent list) and what reloads or writes the page (the CID cache, the failure screen) is passed in.
+// The page's own state is imported.
 
-import { getActiveTldSuffix, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
+import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
+import { bitswapGet } from '@dotli/bitswap';
 import { captureException, m, spans as S } from '@dotli/metrics';
+import { protocolClient } from '@dotli/protocol';
 import { createAsyncTaskPool, dur, elapsed, log, randomId, serializeError } from '@dotli/shared';
-import type { SmoldotDbChain } from '@dotli/protocol';
 import type { CachedManifests } from '@dotli/storage';
-import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import type { ShieldState } from './state/url-pill.js';
-import type { ProductFrame } from './runtime/product-frame.js';
+import { emitDotliDebugEvent } from '@dotli/truapi-debug';
+import { readChatCapability } from './chat-capability.js';
 import { describeError } from './errors.js';
-import type { Attempt } from './journey.js';
+import { beginAttempt, endJourney } from './journey.js';
 import type { LoadFailure } from './load-failure.js';
-import type { LoadProgress } from './load-progress.js';
+import { startLoadProgress, type LoadEvents } from './load-progress.js';
 import { assertLaunchable, fromCache, manifestFacts, toCache, type ProductManifests } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
-import type { CidCacheResult, ResolutionTrace, ResolutionTraceOptions } from './resolution-trace.js';
+import { showNoContentError } from './no-content-page.js';
+import { applyProductBranding } from './product-branding.js';
+import type { RecentLabels } from './recent-labels.js';
+import { startResolutionTrace, type CidCacheResult } from './resolution-trace.js';
+import type { ProductFrame } from './runtime/product-frame.js';
+import { loggedInStore } from './runtime/state/auth.js';
+import { setProductError } from './runtime/state/product.js';
+import { startShieldAutoHide } from './shield-autohide.js';
+import { setVerificationShieldState, showProductPill, type ShieldState } from './state/url-pill.js';
+import { armTopbarAutoHide, setProductContentShown } from './topbar-autohide.js';
 
-/** What the loader draws the product with. */
+/** The sandbox's one report on the content it was handed. */
+export type ContentOutcome = 'loaded' | 'failed';
+
 export interface LoaderFrame {
   /** Names the product before anything resolves, so a login clicked meanwhile boots its core rather than a second one. */
   setPageProduct: (product: { label: string }) => void;
   /** Mounts the product's sandbox on this content. Settles once the sandbox owns the download. */
   render: ProductFrame['render'];
+  /** Called once, for the first outcome the sandbox reports on its content. */
+  onContentDone: (callback: (outcome: ContentOutcome, failedStep: string | undefined) => void) => void;
+  /** The content fetch's progress, as the sandbox's blocks pass through this window. Returns its unsubscribe. */
+  onContentProgress: LoadEvents['onContentProgress'];
 }
 
-/** The sandbox's one report on the content it was handed. */
-export type ContentOutcome = 'loaded' | 'failed';
+/** The CID cache for this network. Writes and checks wait for the page to be idle, so they never hold a render back. */
+export interface LoaderCidCache {
+  get: (label: string) => Promise<{ cid: string; manifests: CachedManifests } | null>;
+  /** Keeps the label's content for the next load. */
+  storeLater: (label: string, cid: string, manifests: CachedManifests) => void;
+  /** Checks a served copy against the network. `onScreen` is false when the copy was refused rather than rendered. */
+  revalidateLater: (label: string, servedCid: string, onScreen: boolean) => void;
+}
 
-export interface ProductLoaderDeps {
+/** The failure's screen, and the sighting that lets a failure a reload did not fix offer more. */
+export interface LoaderFailureScreen {
+  show: (failure: LoadFailure) => void;
+  /** The previous attempt's failure is behind the visitor. */
+  forget: () => void;
+}
+
+export interface ProductLoaderOptions {
   backend: Backend;
   skipCidCache: boolean;
-  network: () => string;
   /** The debug panel's flow for this page load. */
   flowId: string;
   /** `performance.now()` at page load. */
   startedAt: number;
-  emit: (event: DotliDebugEvent) => void;
-  frame: LoaderFrame;
   names: NameSource;
-  cidCache: {
-    get: (label: string) => Promise<{ cid: string; manifests: CachedManifests } | null>;
-    set: (label: string, cid: string, manifests: CachedManifests) => Promise<void>;
-  };
-  journey: { begin: (label: string) => Attempt; end: () => void };
-  startTrace: (options: ResolutionTraceOptions) => ResolutionTrace;
-  startProgress: (load: { label: string; trace: ResolutionTrace }) => LoadProgress;
-  /** Called once, for the first outcome the sandbox reports. */
-  onContentDone: (callback: (outcome: ContentOutcome, failedStep: string | undefined) => void) => void;
-  smoldotDbOutcome: (chain: SmoldotDbChain) => string;
-  /** Whether the product's worker manifest asks for chat, read alongside the name and cached for the next load. */
-  readChat: (label: string, read: () => Promise<boolean>) => Promise<boolean>;
-  scheduleNotifications: (options: { label: string }) => void;
-  /** Never rejects. */
-  revalidate: (label: string, servedCid: string, onScreen: boolean) => Promise<void>;
-  /** Never rejects. */
-  brand: (label: string, manifests: ProductManifests) => Promise<void>;
-  page: {
-    showProductPill: (label: string, tld: string) => void;
-    /** The shield shows how the content was checked, and the topbar may fold from here on. */
-    settleShield: (state: ShieldState) => void;
-    showNoContent: (label: string) => void;
-    setProductError: () => void;
-    setContentShown: (shown: boolean) => void;
-    recordRecentLabel: (label: string) => Promise<void>;
-  };
-  /** Shows the failure's screen. */
-  presentFailure: (failure: LoadFailure) => void;
-  /** The previous attempt's failure is behind the visitor. */
-  forgetFailure: () => void;
-  idle: (callback: () => void) => void;
+  frame: LoaderFrame;
+  cidCache: LoaderCidCache;
+  /** The names this visitor opened, kept in the store every subdomain shares. */
+  recents: Pick<RecentLabels, 'record'>;
+  failureScreen: LoaderFailureScreen;
 }
 
 export interface ProductLoader {
@@ -80,7 +81,7 @@ export interface ProductLoader {
   load: (label: string) => Promise<void>;
 }
 
-export function createProductLoader(deps: ProductLoaderDeps): ProductLoader {
+export function createProductLoader(options: ProductLoaderOptions): ProductLoader {
   const loads = createAsyncTaskPool({ poolSize: 1 });
   const loaded = new Set<string>();
   return {
@@ -90,14 +91,15 @@ export function createProductLoader(deps: ProductLoaderDeps): ProductLoader {
           return;
         }
         loaded.add(label);
-        await loadProduct(label, deps);
+        await loadProduct(label, options);
       }),
   };
 }
 
-async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void> {
-  const { backend, names, emit, flowId, startedAt } = deps;
-  const attempt = deps.journey.begin(label);
+async function loadProduct(label: string, options: ProductLoaderOptions): Promise<void> {
+  const { backend, names, frame, cidCache, flowId, startedAt } = options;
+  const protocol = protocolClient();
+  const attempt = beginAttempt(label);
   log.event('Route: app', { flow: 'boot', label, attempt: attempt.attemptNumber, entry: attempt.entry });
   // On every event, so errors and the resolution span join into journeys without a second id.
   m.setDefaults({
@@ -105,23 +107,27 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     attempt_number: String(attempt.attemptNumber),
     entry: attempt.entry,
   });
-  deps.frame.setPageProduct({ label });
-
-  deps.scheduleNotifications({ label });
+  frame.setPageProduct({ label });
 
   // In parallel with the CID. The frame awaits it before it connects the product, whose execution kind it picks.
-  const chat = deps.readChat(label, async () => {
+  const chat = readChatCapability(label, async () => {
     const result = await names.readWorkerManifest(label);
     return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
   });
 
-  deps.page.showProductPill(label, getActiveTldSuffix());
+  showProductPill(label, getActiveTldSuffix());
 
+  // The shield shows how the content was checked, and the topbar may fold from then on.
   const shieldState: ShieldState = isVerifiedSession(backend) ? 'verified' : 'trusted';
+  const autoHide = startShieldAutoHide({ loggedIn: loggedInStore, arm: armTopbarAutoHide });
+  const settleShield = (): void => {
+    setVerificationShieldState(shieldState);
+    autoHide.settle();
+  };
 
-  const trace = deps.startTrace({
+  const trace = startResolutionTrace({
     domain: withActiveTld(label),
-    network: deps.network(),
+    network: getNetwork(),
     backend,
     attempt,
     startedAt,
@@ -132,18 +138,24 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     step = next;
     trace.step(next);
   };
-  const progress = deps.startProgress({ label, trace });
+  const events: LoadEvents = {
+    onChainSync: protocol.onProtocolChainSync,
+    onChainDetail: protocol.onProtocolChainDetail,
+    onNetBytes: protocol.onProtocolNetBytes,
+    onContentProgress: frame.onContentProgress,
+  };
+  const progress = startLoadProgress({ label, backend, flowId, events, trace });
 
   // Read in the catch below, so a warm-path failure is not counted against the cold path.
-  let cidCache: CidCacheResult | 'unknown' = 'unknown';
+  let cidCacheResult: CidCacheResult | 'unknown' = 'unknown';
 
   // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
   const smoldotDbCacheTags = (): Record<string, string> => {
-    const inapplicable = cidCache === 'hit' || backend === 'rpc-gateway';
+    const inapplicable = cidCacheResult === 'hit' || backend === 'rpc-gateway';
     return {
-      smoldotdb_relay_cache: inapplicable ? 'n/a' : deps.smoldotDbOutcome('relay'),
-      smoldotdb_hub_cache: inapplicable ? 'n/a' : deps.smoldotDbOutcome('assethub'),
-      smoldotdb_bulletin_cache: inapplicable ? 'n/a' : deps.smoldotDbOutcome('bulletin'),
+      smoldotdb_relay_cache: inapplicable ? 'n/a' : protocol.getSmoldotDbOutcome('relay'),
+      smoldotdb_hub_cache: inapplicable ? 'n/a' : protocol.getSmoldotDbOutcome('assethub'),
+      smoldotdb_bulletin_cache: inapplicable ? 'n/a' : protocol.getSmoldotDbOutcome('bulletin'),
     };
   };
 
@@ -151,14 +163,14 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
   // handoff, since a cached archive can report before it returns.
   let resolveFailed = false;
   const settleOnContent = (): void => {
-    deps.onContentDone((outcome, failedStep) => {
+    frame.onContentDone((outcome, failedStep) => {
       if (resolveFailed) {
         return;
       }
-      deps.page.setContentShown(outcome === 'loaded');
+      setProductContentShown(outcome === 'loaded');
       if (outcome === 'loaded') {
         log.event('Content loaded', { flow: 'content' });
-        deps.journey.end();
+        endJourney();
         trace.finish('rendered');
         return;
       }
@@ -170,24 +182,19 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     progress.contentFetch();
     enterStep('render_handoff');
     settleOnContent();
-    await deps.frame.render({ mode: 'subdomain', label, cid, chat, ...manifestFacts(manifests) });
+    await frame.render({ mode: 'subdomain', label, cid, chat, ...manifestFacts(manifests) });
   };
   const rendered = (manifests: ProductManifests): void => {
-    deps.forgetFailure();
-    void deps.page.recordRecentLabel(label);
-    void deps.brand(label, manifests);
-  };
-  const revalidateLater = (servedCid: string, onScreen: boolean): void => {
-    deps.idle(() => {
-      void deps.revalidate(label, servedCid, onScreen);
-    });
+    options.failureScreen.forget();
+    void options.recents.record(label);
+    void applyProductBranding(label, manifests, { fetchBlock: bitswapGet });
   };
   const handedOff = (): void => {
     trace.handedOff();
     enterStep('content');
   };
   const ready = (path: 'fast' | 'slow'): void => {
-    emit({
+    emitDotliDebugEvent({
       layer: 'boot',
       event: 'ready',
       flowId,
@@ -198,19 +205,19 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
 
   try {
     enterStep('cid_cache_read');
-    const cached = deps.skipCidCache ? null : await deps.cidCache.get(label);
+    const cached = options.skipCidCache ? null : await cidCache.get(label);
     const cachedCid = cached?.cid ?? null;
-    emit({
+    emitDotliDebugEvent({
       layer: 'boot',
       event: 'cid_cache_checked',
       flowId,
       timestamp: Date.now(),
       payload: { label, hit: cachedCid !== null, ...(cachedCid !== null ? { cid: cachedCid } : {}) },
     });
-    cidCache = cachedCid !== null ? 'hit' : deps.skipCidCache ? 'skipped' : 'miss';
-    trace.cidCache(cidCache);
+    cidCacheResult = cachedCid !== null ? 'hit' : options.skipCidCache ? 'skipped' : 'miss';
+    trace.cidCache(cidCacheResult);
     if (cached !== null) {
-      m.count(S.CACHE_HIT);
+      m.count(S.CACHE_READ, { outcome: 'hit', surface: 'cid_cache' });
       log.event('CID cache hit', { flow: 'resolve', cid: cached.cid });
       trace.nameResolved(cached.cid);
       // A copy that no longer passes is refused but kept: only a cleanup or a redeploy drops cached manifests.
@@ -219,11 +226,11 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
       try {
         assertLaunchable(cachedManifests.root, cachedManifests.app);
       } catch (err) {
-        revalidateLater(cached.cid, false);
+        cidCache.revalidateLater(label, cached.cid, false);
         throw err;
       }
       await m.span(S.E2E_FAST, async () => {
-        deps.page.settleShield(shieldState);
+        settleShield();
         await render(cached.cid, cachedManifests);
       });
       rendered(cachedManifests);
@@ -236,13 +243,13 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
       ready('fast');
       handedOff();
       // Keeps the cache honest without blocking the render.
-      revalidateLater(cached.cid, true);
+      cidCache.revalidateLater(label, cached.cid, true);
       return;
     }
-    if (cidCache === 'miss') {
-      m.count(S.CACHE_MISS);
+    if (cidCacheResult === 'miss') {
+      m.count(S.CACHE_READ, { outcome: 'miss', surface: 'cid_cache' });
     }
-    log.event(cidCache === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
+    log.event(cidCacheResult === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
 
     // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
     const coldStartMs = performance.now();
@@ -257,7 +264,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
 
     const resolveFlowId = randomId();
     const resolveSource: 'smoldot' | 'rpc-gateway' = backend !== 'rpc-gateway' ? 'smoldot' : 'rpc-gateway';
-    emit({
+    emitDotliDebugEvent({
       layer: 'resolve',
       event: 'started',
       flowId: resolveFlowId,
@@ -268,7 +275,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend });
     const cid = await names.resolveProduct(label, phase => {
       progress.resolvePhase(phase);
-      emit({
+      emitDotliDebugEvent({
         layer: 'resolve',
         event: 'phase',
         flowId: resolveFlowId,
@@ -277,7 +284,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
       });
     });
 
-    emit({
+    emitDotliDebugEvent({
       layer: 'resolve',
       event: 'completed',
       flowId: resolveFlowId,
@@ -301,9 +308,9 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     // Nothing to launch whatever the manifests say, so it does not wait on them.
     if (cid === null) {
       // Its recent pill stays: the name may still resolve on another network.
-      deps.page.showNoContent(label);
-      deps.page.setProductError();
-      deps.journey.end();
+      showNoContentError(label);
+      setProductError();
+      endJourney();
       trace.finish('no_content');
       performance.mark('dotli:main:end');
       return;
@@ -315,13 +322,11 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
     enterStep('launch_gate');
     assertLaunchable(manifests.root, manifests.app);
 
-    if (!deps.skipCidCache) {
-      deps.idle(() => {
-        void deps.cidCache.set(label, cid, toCache(manifests));
-      });
+    if (!options.skipCidCache) {
+      cidCache.storeLater(label, cid, toCache(manifests));
     }
 
-    deps.page.settleShield(shieldState);
+    settleShield();
     await render(cid, manifests);
     rendered(manifests);
 
@@ -352,14 +357,14 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
         outcome: 'error',
         error_kind: error.kind,
         dependency,
-        cid_cache: cidCache,
+        cid_cache: cidCacheResult,
         ...smoldotDbCacheTags(),
         chain_backend: backend,
       },
     });
     trace.finish('error', { reason: err instanceof Error ? err.message : String(err), errorKind: error.kind });
     log.debug(`[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`);
-    emit({
+    emitDotliDebugEvent({
       layer: 'boot',
       event: 'failed',
       flowId,
@@ -367,7 +372,7 @@ async function loadProduct(label: string, deps: ProductLoaderDeps): Promise<void
       payload: { label, reason: err instanceof Error ? err.message : String(err), dependency },
     });
     // Once for the failed load, however many times the user moves between its error screens.
-    deps.page.setProductError();
-    deps.presentFailure({ error, cause: err, label, backend });
+    setProductError();
+    options.failureScreen.show({ error, cause: err, label, backend });
   }
 }

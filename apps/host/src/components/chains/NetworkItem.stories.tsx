@@ -1,51 +1,39 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, flush } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
+import { resetStoryNetwork, setHealth, storyNetwork } from '../../../.storybook/network-fixtures.js';
 import { openSurface, TopbarFrame } from '../../../.storybook/topbar-frame.js';
-import type { NetworkHealth } from './network-health.js';
-import { ChainsPopover } from './ChainsPopover.js';
+import { NetworkItem } from './NetworkItem.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });
 
-const [health, setHealthSignal] = createSignal<NetworkHealth>('quiet');
-
-function setHealth(next: NetworkHealth): void {
-  setHealthSignal(next);
-  flush();
-}
-
-/** The button with a body standing in for the page's panel. */
-function StoryButton(): JSX.Element {
-  return (
-    <ChainsPopover health={health}>
-      <p data-testid="story-chains-body">Relay chain</p>
-    </ChainsPopover>
-  );
+/** The item as the page gives it its network. */
+function StoryItem(): JSX.Element {
+  return <NetworkItem {...storyNetwork} />;
 }
 
 const meta = {
-  title: 'Host/Network/ChainsPopover',
-  component: StoryButton,
+  title: 'Host/Network/NetworkItem',
+  component: StoryItem,
   parameters: { chrome: true, docs: { story: { inline: false, height: '240px' } } },
   beforeEach: () => {
-    setHealth('quiet');
+    resetStoryNetwork();
   },
   render: () => (
     <TopbarFrame>
-      <StoryButton />
+      <StoryItem />
     </TopbarFrame>
   ),
-} satisfies Meta<typeof StoryButton>;
+} satisfies Meta<typeof StoryItem>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a visitor, the network button announces the dialog named Network it opens, which shows the page's body. */
+/** As a visitor, the network button announces the dialog named Network it opens, which shows the network panel. */
 export const OpensBody: Story = {
   tags: ['!autodocs'],
   play: async ctx => {
@@ -58,12 +46,12 @@ export const OpensBody: Story = {
       await expect(button).toHaveAttribute('aria-controls', 'chains-popover');
     });
     await open(ctx);
-    await ctx.step('Then it announces the open dialog named Network, showing the body', async () => {
+    await ctx.step('Then it announces the open dialog named Network, showing the panel', async () => {
       const popover = byId('chains-popover');
       await expect(button).toHaveAttribute('aria-expanded', 'true');
       await expect(popover).toHaveAttribute('role', 'dialog');
       await expect(popover).toHaveAttribute('aria-label', 'Network');
-      await expect(within(popover).getByTestId('story-chains-body')).toHaveTextContent('Relay chain');
+      await expect(within(popover).getByTestId('chains-content')).toBeInTheDocument();
     });
   },
 };

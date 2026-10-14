@@ -6,7 +6,7 @@ import type { ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
 import type { NetworkHealth } from '../components/chains/network-health.js';
 import type { NetworkView } from '../components/chains/chains.js';
-import type { NetworkItemProps } from '../components/topbar/items.js';
+import type { NetworkItemProps } from '../components/chains/NetworkItem.js';
 
 export interface NetworkStores {
   health: ReadableStore<NetworkHealth>;

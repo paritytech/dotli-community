@@ -23,7 +23,7 @@ import { ALL_PERMISSIONS, getPermissionStatuses } from './permissions.js';
 import { dotliVersion } from './runtime-config.js';
 import { getProductState } from './state/product.js';
 
-// Defined by `apps/host/vite.config.ts`, so undefined in tests and other bundles.
+// Defined in the host's Astro config, so undefined in tests and other bundles.
 declare const __LIGHT_CLIENT_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__: { name: string; version: string }[] | undefined;

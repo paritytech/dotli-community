@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Which page the shell is: a product by its `.dot` label, a local or preview target in debug builds, or no product at
-// all. Read from the URL alone, then handed to the route's own wiring.
+// all. Read from the URL alone.
 
 import { BASE_DOMAIN } from '@dotli/config';
 import { dotNsUrl } from '@dotli/resolver';
 import { log } from '@dotli/shared';
-import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { parseDotLabel } from './dot-label.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 
@@ -112,66 +111,6 @@ export function localTargetPath(target: LocalTarget): string {
   return target.productId === undefined
     ? `/${target.host}`
     : `/${target.host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(target.productId)}`;
-}
-
-/** What every route shares once the host is up. */
-export interface ShellServices {
-  emit: (event: DotliDebugEvent) => void;
-  flowId: string;
-}
-
-export interface ShellDeps<Services extends ShellServices> {
-  route: ShellRoute;
-  /** Drawn from the URL alone, before any await, so the URL bar paints with the page. */
-  showProductPill: (label: string) => void;
-  showLocalhostPill: (host: string) => void;
-  /** Starts the debug tools, the sandbox channel, the settings and the bridge. */
-  startShell: () => Promise<Services>;
-  openLocalTarget: (target: LocalTarget, services: Services) => Promise<void>;
-  openProduct: (label: string, services: Services) => Promise<void>;
-  leaveForLanding: () => Promise<void>;
-  /** The path the page is on once settings apply, for the debug panel. */
-  deepPath: () => string;
-}
-
-export async function runShell<Services extends ShellServices>(deps: ShellDeps<Services>): Promise<void> {
-  const { route } = deps;
-  if (route.kind === 'nested') {
-    return;
-  }
-  performance.mark('dotli:main:start');
-  if (route.kind === 'product') {
-    deps.showProductPill(route.label);
-  } else if (route.kind !== 'landing') {
-    deps.showLocalhostPill(route.host);
-  }
-
-  const services = await deps.startShell();
-
-  if (route.kind === 'preview') {
-    await deps.openLocalTarget(route, services);
-    return;
-  }
-  services.emit({
-    layer: 'boot',
-    event: 'url_parsed',
-    flowId: services.flowId,
-    timestamp: Date.now(),
-    payload: {
-      label: route.kind === 'product' ? route.label : null,
-      localhostHost: route.kind === 'localhost' ? route.host : null,
-      deepPath: deps.deepPath(),
-    },
-  });
-  if (route.kind === 'landing') {
-    await deps.leaveForLanding();
-    return;
-  }
-  if (route.kind === 'product') {
-    await deps.openProduct(route.label, services);
-    return;
-  }
-  await deps.openLocalTarget(route, services);
 }
 
 export interface LandingDeps {

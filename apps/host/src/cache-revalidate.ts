@@ -40,12 +40,12 @@ export async function revalidateCachedCopy(
     );
     stopTimer();
     if (decision.kind === 'keep') {
-      m.count(S.CACHE_REVALIDATE_MATCH);
+      m.count(S.CACHE_REVALIDATE, { outcome: 'match' });
       return;
     }
     if (decision.kind === 'update') {
       await deps.cache.set(label, decision.cid, decision.manifests);
-      m.count(S.CACHE_REVALIDATE_UPDATE);
+      m.count(S.CACHE_REVALIDATE, { outcome: 'update' });
       log.event('Cached app is outdated', { flow: 'resolve', served: servedCid, latest: decision.cid });
       deps.notify({
         label: 'New version available',
@@ -57,14 +57,14 @@ export async function revalidateCachedCopy(
     }
     // Cleared, or redeployed with manifests this host cannot read. Reloading takes the cold path, which shows why.
     await deps.cache.evict(label);
-    m.count(S.CACHE_REVALIDATE_CLEARED);
+    m.count(S.CACHE_REVALIDATE, { outcome: 'cleared' });
     log.event('Cached app evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
     if (onScreen) {
       deps.reload();
     }
   } catch (err) {
     stopTimer();
-    m.count(S.CACHE_REVALIDATE_ERROR);
+    m.count(S.CACHE_REVALIDATE, { outcome: 'error' });
     captureException(err, {
       flow: 'resolve',
       step: 'cache_revalidate',

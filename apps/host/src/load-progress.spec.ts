@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Backend } from '@dotli/config';
-import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
+import { enableDotliDebugBuffering, watchDotliDebugEvents, type DotliDebugEvent } from '@dotli/truapi-debug';
 import type { LoadingPhase } from './loading-controller.js';
 import {
   startLoadProgress,
@@ -12,6 +13,8 @@ import {
   type LoadProgress,
 } from './load-progress.js';
 import type { ChainSyncFacts } from './resolution-trace.js';
+import { setProductLoaded } from './runtime/state/product.js';
+import { networkMonitor } from './state/network-monitor.js';
 
 /** A report source the test sends on, as the protocol client and the content fetch would. */
 function source<T>(): { on: (listener: (event: T) => void) => () => void; send: (event: T) => void } {
@@ -31,30 +34,8 @@ function source<T>(): { on: (listener: (event: T) => void) => () => void; send: 
   };
 }
 
-function productState(): {
-  store: { get: () => { status: string }; subscribe: (listener: () => void) => () => void };
-  set: (status: string) => void;
-} {
-  let status = 'loading';
-  const listeners = new Set<() => void>();
-  return {
-    store: {
-      get: () => ({ status }),
-      subscribe: listener => {
-        listeners.add(listener);
-        return () => {
-          listeners.delete(listener);
-        };
-      },
-    },
-    set: next => {
-      status = next;
-      for (const listener of [...listeners]) {
-        listener();
-      }
-    },
-  };
-}
+// Each load has its own flow, since an earlier test's subscription to the product store outlives it.
+let flows = 0;
 
 function setup(backend: Backend): {
   progress: LoadProgress;
@@ -73,11 +54,6 @@ function setup(backend: Backend): {
     onProgressStall: ReturnType<typeof vi.fn<(listener: () => void) => void>>;
     stopStatusTick: ReturnType<typeof vi.fn<() => void>>;
   };
-  monitor: {
-    recordChainPhase: ReturnType<typeof vi.fn>;
-    recordPeerCount: ReturnType<typeof vi.fn>;
-    recordTransfer: ReturnType<typeof vi.fn>;
-  };
   trace: {
     chainSync: ReturnType<typeof vi.fn>;
     chainDetail: ReturnType<typeof vi.fn>;
@@ -86,7 +62,6 @@ function setup(backend: Backend): {
     warningShown: ReturnType<typeof vi.fn>;
   };
   debug: DotliDebugEvent[];
-  product: ReturnType<typeof productState>;
 } {
   const chainSync = source<ChainSyncFacts>();
   const chainDetail = source<ChainDetailFacts>();
@@ -103,7 +78,6 @@ function setup(backend: Backend): {
     onProgressStall: vi.fn<(listener: () => void) => void>(),
     stopStatusTick: vi.fn<() => void>(),
   };
-  const monitor = { recordChainPhase: vi.fn(), recordPeerCount: vi.fn(), recordTransfer: vi.fn() };
   const trace = {
     chainSync: vi.fn(),
     chainDetail: vi.fn(),
@@ -111,12 +85,19 @@ function setup(backend: Backend): {
     content: vi.fn(),
     warningShown: vi.fn(),
   };
+  const flowId = `flow-${String(++flows)}`;
   const debug: DotliDebugEvent[] = [];
-  const product = productState();
+  onTestFinished(
+    watchDotliDebugEvents(event => {
+      if ('layer' in event && event.flowId === flowId) {
+        debug.push(event);
+      }
+    }),
+  );
   const progress = startLoadProgress({
     label: 'doom',
     backend,
-    flowId: 'flow-1',
+    flowId,
     events: {
       onChainSync: chainSync.on,
       onChainDetail: chainDetail.on,
@@ -124,14 +105,9 @@ function setup(backend: Backend): {
       onContentProgress: content.on,
     },
     loading,
-    monitor,
     trace,
-    emit: event => {
-      debug.push(event);
-    },
-    product: product.store,
   });
-  return { progress, chainSync, chainDetail, netBytes, content, loading, monitor, trace, debug, product };
+  return { progress, chainSync, chainDetail, netBytes, content, loading, trace, debug };
 }
 
 function bands(phases: LoadingPhase[] | undefined): string[] {
@@ -141,6 +117,8 @@ function bands(phases: LoadingPhase[] | undefined): string[] {
 describe('startLoadProgress', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    resetAllStoresForTests();
+    enableDotliDebugBuffering();
   });
 
   afterEach(() => {
@@ -242,7 +220,7 @@ describe('startLoadProgress', () => {
 
   it('As a visitor in direct mode, I see the bar follow Asset Hub and the relay warp, and the network monitor follows each chain', () => {
     // Given
-    const { chainSync, loading, monitor, debug } = setup('smoldot-direct');
+    const { chainSync, loading, debug } = setup('smoldot-direct');
 
     // When
     chainSync.send({ chain: 'relay', syncKind: 'warpSyncProgress', at: 50, target: 100 });
@@ -258,18 +236,16 @@ describe('startLoadProgress', () => {
     ]);
     expect(loading.advancePhase.mock.calls).toEqual([[0], [1], [2]]);
     expect(loading.releasePhaseProgress).toHaveBeenCalledTimes(1);
-    expect(monitor.recordChainPhase.mock.calls).toEqual([
-      ['relay', 'syncing'],
-      ['relay', 'ready'],
-      ['assethub', 'ready'],
-    ]);
-    expect(monitor.recordPeerCount).toHaveBeenCalledWith('bulletin', 3);
+    const chains = networkMonitor.getNetworkStatus();
+    expect(chains.find(chain => chain.key === 'relay')?.phase).toBe('ready');
+    expect(chains.find(chain => chain.key === 'assethub')?.phase).toBe('ready');
+    expect(chains.find(chain => chain.key === 'bulletin')?.peers).toBe(3);
     expect(debug.map(event => event.event)).toEqual(['phase', 'phase', 'phase', 'peers']);
   });
 
   it('As a visitor in direct mode, I see the download fill its band by bytes and hand over to preparing once complete', () => {
     // Given
-    const { content, loading, monitor } = setup('smoldot-direct');
+    const { content, loading } = setup('smoldot-direct');
 
     // When
     content.send({ bytesFetched: 0, totalBytes: null });
@@ -283,17 +259,17 @@ describe('startLoadProgress', () => {
       [1, 'content'],
     ]);
     expect(loading.setLoadingStage.mock.calls).toEqual([['preparing']]);
-    expect(monitor.recordTransfer).toHaveBeenCalledWith({ fetched: 100, total: 100 });
+    expect(networkMonitor.getTransfer()).toMatchObject({ fetched: 100, total: 100 });
   });
 
   it('As a developer with the debug panel, I see byte totals stop once the product is on screen, the last total included', () => {
     // Given
-    const { netBytes, product, debug } = setup('smoldot-direct');
+    const { netBytes, debug } = setup('smoldot-direct');
     netBytes.send({ received: 100 });
     netBytes.send({ received: 200 });
 
     // When
-    product.set('loaded');
+    setProductLoaded('doom', 'doom.dot');
     vi.advanceTimersByTime(5_000);
     netBytes.send({ received: 300 });
 

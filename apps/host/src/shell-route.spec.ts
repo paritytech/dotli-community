@@ -3,19 +3,14 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { BASE_DOMAIN } from '@dotli/config';
-import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import {
   leaveForLanding,
   localTargetPath,
   readLocalhostUrl,
   readShellRoute,
-  runShell,
   type LandingDeps,
   type RouteOptions,
-  type ShellDeps,
   type ShellLocation,
-  type ShellRoute,
-  type ShellServices,
 } from './shell-route.js';
 
 const RELEASE: RouteOptions = { localhost: false, framed: false, localhostProxy: undefined };
@@ -135,149 +130,6 @@ describe('localTargetPath', () => {
 
     // Then
     expect(path).toBe('/localhost:3000?dotliProductId=doom.dot');
-  });
-});
-
-interface ShellHarness {
-  deps: ShellDeps<ShellServices>;
-  calls: string[];
-  debug: DotliDebugEvent[];
-}
-
-function shell(route: ShellRoute): ShellHarness {
-  const calls: string[] = [];
-  const debug: DotliDebugEvent[] = [];
-  const services: ShellServices = {
-    emit: event => {
-      debug.push(event);
-    },
-    flowId: 'boot-1',
-  };
-  const record =
-    (name: string) =>
-    (arg?: unknown): Promise<void> => {
-      calls.push(arg === undefined ? name : `${name} ${typeof arg === 'string' ? arg : JSON.stringify(arg)}`);
-      return Promise.resolve();
-    };
-  return {
-    deps: {
-      route,
-      showProductPill: label => {
-        calls.push(`productPill ${label}`);
-      },
-      showLocalhostPill: host => {
-        calls.push(`localhostPill ${host}`);
-      },
-      startShell: () => {
-        calls.push('startShell');
-        return Promise.resolve(services);
-      },
-      openLocalTarget: target => record('openLocalTarget')(target.kind),
-      openProduct: label => record('openProduct')(label),
-      leaveForLanding: () => record('leaveForLanding')(),
-      deepPath: () => '/deep?x=1',
-    },
-    calls,
-    debug,
-  };
-}
-
-describe('runShell', () => {
-  it('As a visitor on a product host, I see its name in the URL bar before the host starts, then the product loads', async () => {
-    // Given
-    const { deps, calls, debug } = shell({ kind: 'product', label: 'doom' });
-
-    // When
-    await runShell(deps);
-
-    // Then
-    expect(calls).toEqual(['productPill doom', 'startShell', 'openProduct doom']);
-    expect(debug.map(event => event.payload)).toEqual([{ label: 'doom', localhostHost: null, deepPath: '/deep?x=1' }]);
-  });
-
-  it('As a developer previewing a web container, I see its host in the URL bar and the preview renders', async () => {
-    // Given
-    const { deps, calls, debug } = shell({ kind: 'preview', url: PREVIEW, host: 'abc.io', productId: undefined });
-
-    // When
-    await runShell(deps);
-
-    // Then
-    expect(calls).toEqual(['localhostPill abc.io', 'startShell', 'openLocalTarget preview']);
-    expect(debug).toEqual([]);
-  });
-
-  it('As a developer on my localhost, I see it proxied after the host starts', async () => {
-    // Given
-    const { deps, calls, debug } = shell({
-      kind: 'localhost',
-      url: 'http://localhost:3000/',
-      host: 'localhost:3000',
-      productId: undefined,
-    });
-
-    // When
-    await runShell(deps);
-
-    // Then
-    expect(calls).toEqual(['localhostPill localhost:3000', 'startShell', 'openLocalTarget localhost']);
-    expect(debug.map(event => event.payload)).toEqual([
-      { label: null, localhostHost: 'localhost:3000', deepPath: '/deep?x=1' },
-    ]);
-  });
-
-  it('As a visitor on a URL that names no product, I am sent on to the landing page once the host has started', async () => {
-    // Given
-    const { deps, calls } = shell({ kind: 'landing' });
-
-    // When
-    await runShell(deps);
-
-    // Then
-    expect(calls).toEqual(['startShell', 'leaveForLanding']);
-  });
-
-  it('As a page framed by another page, I start nothing', async () => {
-    // Given
-    const { deps, calls } = shell({ kind: 'nested' });
-
-    // When
-    await runShell(deps);
-
-    // Then
-    expect(calls).toEqual([]);
-  });
-
-  it('As a visitor whose settings rewrite the URL as the host starts, I see the debug panel get the path after that rewrite', async () => {
-    // Given a page whose path changes once the host has started and applied its settings
-    const { deps, debug } = shell({ kind: 'product', label: 'doom' });
-    let path = '/deep?network=previewnet&x=1';
-    const startShell = deps.startShell;
-    deps.startShell = async () => {
-      const services = await startShell();
-      path = '/deep?x=1';
-      return services;
-    };
-    deps.deepPath = () => path;
-
-    // When
-    await runShell(deps);
-
-    // Then
-    expect(debug.map(event => event.payload)).toEqual([{ label: 'doom', localhostHost: null, deepPath: '/deep?x=1' }]);
-  });
-
-  it('As a visitor whose host fails to start, I get that failure reported and no product starts', async () => {
-    // Given
-    const { deps, calls } = shell({ kind: 'product', label: 'doom' });
-    deps.startShell = () => Promise.reject(new Error('bridge chunk failed'));
-
-    // When
-    const outcome = await runShell(deps).catch((err: unknown) => err);
-
-    // Then
-    expect(outcome).toEqual(new Error('bridge chunk failed'));
-    expect(calls).toEqual(['productPill doom']);
   });
 });
 

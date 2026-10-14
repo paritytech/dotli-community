@@ -31,11 +31,8 @@
 .layer[data-layout='sheet'] .scrim {
   bottom: var(--content-bottom);
 }
-.layer[data-layout='topbar-end'] {
+.layer[data-layout='topbar-end'][data-open] {
   display: block;
-}
-.layer[data-layout='topbar-end']:not([data-open]) {
-  display: none;
 }
 
 .scrim {
@@ -68,7 +65,7 @@
   }
 }
 /* A hand-off's leaving frame plays no exit, so it keeps no `display` through one. */
-.layer[data-handoff]:not([data-open]) {
+.layer[data-handoff] {
   transition: none;
 }
 

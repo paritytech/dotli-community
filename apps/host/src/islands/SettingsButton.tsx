@@ -4,7 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import { dotliVersion } from '../runtime/runtime-config.js';
 import { themeStore } from '../runtime/state/theme.js';
-import { SettingsItem } from '../components/topbar/items.js';
+import { SettingsItem } from '../components/settings/SettingsItem.js';
 import { isTruapiDebugEnabled, openInDebugMode, pageSettingsActions } from '../settings-actions.js';
 import { registerSettingsOpener } from '../settings-intent.js';
 import { settingsStore } from '../state/settings.js';

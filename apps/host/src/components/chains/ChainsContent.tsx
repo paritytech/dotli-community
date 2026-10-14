@@ -77,7 +77,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
         };
   };
   return (
-    <Surface width="md" class={s['panel']} testId="chains-content">
+    <Surface width="md" padded testId="chains-content">
       <SurfaceHead title="Network" />
       <Well class={s['status']} testId="chains-status">
         <StatusDot tone={status().tone} testId="chains-status-dot" />
@@ -123,7 +123,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
       </div>
       {/* Trusted providers have no peers to steady. */}
       <Show when={props.backend() !== 'rpc-gateway'}>
-        <Callout icon={<InfoIcon />} testId="chains-tips">
+        <Callout icon={InfoIcon} testId="chains-tips">
           {TIP}
         </Callout>
       </Show>

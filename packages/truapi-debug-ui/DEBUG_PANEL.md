@@ -1,6 +1,6 @@
 # Debug panel
 
-The debug panel is a docked overlay that aggregates host-side activity from three independent event sources into one
+The debug panel is a docked overlay that aggregates host-side activity from two independent event sources into one
 time-aligned inspector. It's gated as `EXPERIMENTAL` because the SDK hooks it consumes aren't a stable public surface
 yet.
 
@@ -15,7 +15,7 @@ worker leaves it out of its precache.
 
 - [What you see](#what-you-see)
 - [Enabling and disabling](#enabling-and-disabling)
-- [The three event sources](#the-three-event-sources)
+- [The two event sources](#the-two-event-sources)
 - [Views](#views)
   - [List view](#list-view)
   - [Timeline view](#timeline-view)
@@ -67,8 +67,8 @@ panel mounts.
 
 Two ways to explicitly turn the panel on (mounts **expanded**):
 
-1. **Settings button:** click **Open in debug mode** at the bottom of the host Settings menu (below "Share diagnostic").
-   The button reloads the current tab with `?debug=true` appended.
+1. **Settings button:** click **Open in debug mode** in the host Settings panel, under **Clear all caches**. The button
+   reloads the current tab with `?debug=true` appended.
 2. **URL param:** visit any page with `?debug=true`. The flag is persisted to `sessionStorage` and stripped from the URL
    (so it doesn't leak into the sandbox iframe's strict param validator).
 
@@ -77,10 +77,8 @@ reloads until the tab closes or you toggle the other way.
 
 To turn it off:
 
-- Click **Exit debug mode** in the host Settings menu — same row as "Open in debug mode" (the button toggles based on
-  current state).
-- Click the `×` button on the panel header. Both paths set `sessionStorage["dotli:truapi-debug"]` to `"0"` and reload,
-  which fully exits debug mode and discards the in-memory event store.
+- Click the `×` button on the panel header. It sets `sessionStorage["dotli:truapi-debug"]` to `"0"` and reloads, which
+  fully exits debug mode and discards the in-memory event store.
 - Visit any page with `?debug=off`. Also persisted + URL-stripped.
 - Close the tab — the choice is sessionStorage-scoped, so a fresh tab starts clean regardless.
 

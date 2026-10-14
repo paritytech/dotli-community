@@ -6,12 +6,7 @@
 // each `*.localhost` is its own site with partitioned storage, and dev uses the preview server's HTTP store.
 
 import { SITE_ID, isLocalhost, BACKEND_KEY, CACHE_KEY, type SharedSettings } from '@dotli/config';
-import {
-  getProtocolOrigin,
-  readSharedModeStorage,
-  writeSharedModeStorage,
-  clearSharedModeStorage,
-} from '@dotli/protocol';
+import { getProtocolOrigin, protocolClient } from '@dotli/protocol';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 
@@ -60,9 +55,9 @@ function devHttpChannel(): SharedChannel {
 
 function iframeChannel(): SharedChannel {
   return {
-    read: key => readSharedModeStorage(SITE_ID, key),
-    write: (key, value) => writeSharedModeStorage(SITE_ID, key, value),
-    clear: key => clearSharedModeStorage(SITE_ID, key),
+    read: key => protocolClient().readSharedModeStorage(SITE_ID, key),
+    write: (key, value) => protocolClient().writeSharedModeStorage(SITE_ID, key, value),
+    clear: key => protocolClient().clearSharedModeStorage(SITE_ID, key),
   };
 }
 

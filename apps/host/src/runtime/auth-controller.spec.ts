@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { withActiveTld } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
-import type { AuthCommands } from './auth-commands.js';
+import type { AuthCommands } from './core-login.js';
 import {
   createAuthController,
   disableAuthModal,

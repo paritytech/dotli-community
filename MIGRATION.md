@@ -73,7 +73,7 @@ The future usefulness of independent nested-product semantics is tracked in the 
 
 These areas remain dotli-owned and are intentionally outside the host-product replacement:
 
-- `apps/host/src/main.ts`: landing shell, `.dot` resolution, iframe mounting.
+- `apps/host/src/main.ts` and the product loader: the route, `.dot` resolution and sandbox mounting.
 - `apps/sandbox/src/main.ts`: content renderer.
 - `packages/protocol/`: smoldot protocol client/broker/session plumbing.
 - `packages/resolver/`: `.dot` name resolution.

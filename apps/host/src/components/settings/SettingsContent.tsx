@@ -3,7 +3,13 @@
 
 import { createMemo, createSignal, For, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
+import {
+  BACKEND_LABELS,
+  type Backend,
+  NETWORK_NAME_TO_SERVICES_CONFIG,
+  type Network,
+  type Settings,
+} from '@dotli/config';
 import { ReloadIcon, TerminalIcon, TrashIcon } from '@dotli/ui/icons';
 import {
   Button,
@@ -24,7 +30,7 @@ import {
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
 import type { ThemePref } from '../../runtime/state/theme.js';
-import type { ApplySettings, SavedSettings, SettingsDraft } from './settings.js';
+import type { ApplySettings, SavedSettings } from './settings.js';
 import s from './SettingsContent.module.css';
 
 interface Transport {
@@ -80,12 +86,8 @@ export interface SettingsContentProps {
 function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): JSX.Element {
   const popover = usePopover();
   const saved = untrack(() => props.saved);
-  const persisted: SettingsDraft = {
-    chain: saved.backend,
-    network: saved.network,
-    cache: saved.cache,
-  };
-  const [chain, setChain] = createSignal<Backend>(persisted.chain);
+  const persisted: Settings = { backend: saved.backend, network: saved.network, cache: saved.cache };
+  const [backend, setBackend] = createSignal<Backend>(persisted.backend);
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
   const [category, setCategory] = createSignal<Category>('general');
@@ -95,7 +97,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   const dirty = createMemo(() => {
     const draft = cache();
     return (
-      chain() !== persisted.chain ||
+      backend() !== persisted.backend ||
       network() !== persisted.network ||
       CACHES.some(([key]) => draft[key] !== persisted.cache[key])
     );
@@ -117,7 +119,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
     setApplying(true);
     void props.onApply(
       {
-        chain: untrack(chain),
+        backend: untrack(backend),
         network: untrack(network),
         cache: untrack(cache),
       },
@@ -129,7 +131,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;
 
   return (
-    <Surface width="lg" class={s['panel']}>
+    <Surface width="lg" padded>
       <SurfaceHead
         title="Settings"
         aside={
@@ -190,13 +192,13 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                         : transport.description
                     }
                     chip={transport.recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
-                    selected={chain() === transport.value}
+                    selected={backend() === transport.value}
                     radio={{
                       name: 'dotli-backend',
                       value: transport.value,
                       disabled: unavailable(transport.value),
                       onChoose: () => {
-                        setChain(transport.value);
+                        setBackend(transport.value);
                       },
                     }}
                   />
@@ -252,7 +254,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
       </div>
       <SurfaceFoot
         hint={
-          <Hint icon={<ReloadIcon />} testId="mode-apply-warning">
+          <Hint icon={ReloadIcon} testId="mode-apply-warning">
             Transport and cache changes reload the app
           </Hint>
         }

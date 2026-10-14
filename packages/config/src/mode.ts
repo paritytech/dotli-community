@@ -45,7 +45,7 @@ const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
   'rpc-gateway',
 ]);
 
-/** A stored backend, or null when the value names none this build knows. */
+/** A backend as written in storage, the link or the sandbox's URL, or null when it names none this build knows. */
 export function parseBackend(raw: string | null): Backend | null {
   return raw !== null && VALID_BACKENDS.has(raw) ? (raw as Backend) : null;
 }
@@ -80,11 +80,11 @@ export function legacyBackend(target: Pick<Storage, 'getItem'>): Backend | null 
 }
 
 /** Verified means smoldot end to end. rpc-gateway trusts operators for chain access and content. */
-export function isVerifiedSession(chainBackend: Backend): boolean {
-  return chainBackend !== 'rpc-gateway';
+export function isVerifiedSession(backend: Backend): boolean {
+  return backend !== 'rpc-gateway';
 }
 
-const DEFAULT_CACHE: CacheSettings = {
+export const DEFAULT_CACHE: CacheSettings = {
   skipCidCache: false,
   skipArchiveCache: false,
   skipWorkerCache: false,
