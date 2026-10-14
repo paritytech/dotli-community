@@ -221,7 +221,7 @@ describe('auth controller: login requests', () => {
     });
   });
 
-  it('As a user whose login could not reach the bridge, I see why and the failure is reported', async () => {
+  it('As a user whose bridge chunk failed at boot, my sign-in clicks show the failure but open no new issue', async () => {
     // Given
     const exceptions: [unknown, CaptureContext][] = [];
     disposers.push(
@@ -242,6 +242,34 @@ describe('auth controller: login requests', () => {
     // Then
     await changes.until(() => getAuthModalState().view.kind === 'error');
     expect(getAuthModalState().view).toMatchObject({ kind: 'error', title: 'The login service did not start' });
+    expect(exceptions).toEqual([]);
+  });
+
+  it('As a user whose sign-in fails inside the bridge, the failure is still reported', async () => {
+    // Given
+    const exceptions: [unknown, CaptureContext][] = [];
+    disposers.push(
+      bindCaptureSink({
+        exception: (error, context) => {
+          exceptions.push([error, context]);
+        },
+        expected: () => undefined,
+      }),
+    );
+    const failure = new Error('login exploded');
+    const failing: AuthCommands = {
+      login: () => Promise.reject(failure),
+      logout: () => Promise.resolve(),
+      cancelLogin: () => undefined,
+    };
+    const { controller, auth, changes } = start({ commands: () => Promise.resolve(failing) });
+    auth.set({ tag: 'Disconnected' });
+
+    // When
+    controller.startLogin();
+
+    // Then
+    await changes.until(() => exceptions.length === 1);
     expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'login' }]]);
   });
 

@@ -46,16 +46,22 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
 
   // The getter resolves to the chunk boot already awaited, so a failure here is a wiring fault boot reported first.
   const runCommand = (step: CommandStep, run: (commands: AuthCommands) => unknown): void => {
-    void deps
-      .commands()
-      .then(run)
-      .catch((error: unknown) => {
-        log.error(`[dot.li auth] ${step} failed:`, error);
-        captureException(error, { flow: 'wallet', step });
-        if (step === 'login') {
-          showFailure('Other', error instanceof Error ? error.message : String(error));
-        }
-      });
+    const fail = (error: unknown): void => {
+      log.error(`[dot.li auth] ${step} failed:`, error);
+      if (step === 'login') {
+        showFailure('Other', error instanceof Error ? error.message : String(error));
+      }
+    };
+    void deps.commands().then(
+      commands =>
+        Promise.resolve()
+          .then(() => run(commands))
+          .catch((error: unknown) => {
+            captureException(error, { flow: 'wallet', step });
+            fail(error);
+          }),
+      fail,
+    );
   };
 
   const cancelTruapiLogin = (): void => {

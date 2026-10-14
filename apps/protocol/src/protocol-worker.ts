@@ -75,6 +75,8 @@ export interface ProtocolWorkerDeps {
   openSpan?: typeof m.open;
   /** Defaults to a `HEARTBEAT_INTERVAL_MS` interval. */
   heartbeat?: HeartbeatClock;
+  /** Sends buffered telemetry before the worker closes. Never rejects. */
+  flush: () => Promise<void>;
 }
 
 /**
@@ -267,11 +269,20 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     }
     closing = 'scheduled';
     // A worker cannot see the connects queued for it, and a close drops them unserved. Closing in a later task lets
-    // each queued connect run first and hear the latched failure.
+    // each queued connect run first and hear the latched failure. A worker has no page-hide flush, so the telemetry
+    // of the failure goes out before the close drops it.
     setTimeout(() => {
-      swEvent('Worker closing', { ports: sessions.size });
-      stopHeartbeat();
-      scope.close();
+      const closeNow = (): void => {
+        swEvent('Worker closing', { ports: sessions.size });
+        stopHeartbeat();
+        scope.close();
+      };
+      // A flush that fails still closes, after it is reported.
+      void deps.flush().then(closeNow, (err: unknown) => {
+        captureException(err, { flow: 'protocol', step: 'worker_flush' });
+        log.error(`${TAG} Telemetry flush failed`, err);
+        closeNow();
+      });
     }, 0);
   }
 

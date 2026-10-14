@@ -34,6 +34,8 @@ compile time.
   `ExpectedReport`, `Flow`.
 - `reportListener`: the one report of a throwing listener, counted as `listener.delivery` with its `owner`.
 - `initSentry`, `installGlobalErrorHandlers`.
+- `flushTelemetry`: sends buffered telemetry within a timeout, for a context that closes without a page-hide flush. It
+  resolves at once when metrics are off and never rejects.
 - `getResolutionId`, `setResolutionId`: the id that ties a resolution's events together.
 
 ### `@dotli/metrics/testing`

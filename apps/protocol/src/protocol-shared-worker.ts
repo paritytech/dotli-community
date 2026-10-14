@@ -8,7 +8,7 @@
 declare const self: SharedWorkerGlobalScope;
 
 import { isLocalhost, setActiveNetwork } from '@dotli/config';
-import { initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
+import { flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { createLightClient, enableSyncReporting, lightClientDeps, onChainDetail, onChainSync } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
 
@@ -29,6 +29,7 @@ if (network.ok) {
 startProtocolWorker({
   scope: self,
   network,
+  flush: () => flushTelemetry(2_000),
   // A worker has no session to tune it from.
   lightClient: createLightClient(lightClientDeps(null, isLocalhost)),
   // The functions, not the namespace, so the worker bundle keeps only what it calls.

@@ -45,6 +45,15 @@ export interface CoreLease {
  */
 export type CoreDownReason = 'refused' | 'closed' | 'stale';
 
+/** A replacement core that could not boot, already reported by the page core. */
+export class CoreRedialError extends Error {
+  override name = 'CoreRedialError';
+
+  constructor(error: unknown) {
+    super('The replacement wallet core could not boot', { cause: error });
+  }
+}
+
 export interface PageCoreDeps {
   bootRuntime: BootCoreRuntime;
   /** Returns the unsubscribe. */
@@ -148,18 +157,11 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           const followStore = (): void => {
             booted.runtime.notifySessionStoreChanged();
             // The store coming back can answer a wallet read that failed when this core booted.
-            booted.stale().then(
-              stale => {
-                if (stale) {
-                  wentDown(core, 'stale');
-                }
-              },
-              (error: unknown) => {
-                log.error('[dot.li page-core] wallet core stale check failed:', error);
-                captureException(error, { flow: 'wallet', step: 'core_stale_check' });
-                m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'error', reason: 'read' });
-              },
-            );
+            void booted.stale().then(stale => {
+              if (stale) {
+                wentDown(core, 'stale');
+              }
+            });
           };
           // Other tabs' logins land in the shared session store. Once now too, for a session stored or a store that
           // came back before this core subscribed, which no store event reports.
@@ -191,6 +193,8 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           log.error('[dot.li page-core] wallet core redial failed:', error);
           captureException(error, { flow: 'wallet', step: 'core_redial', tags: { reason: redial } });
           m.count(S.WALLET_CORE_REDIAL, { outcome: 'error', reason: redial });
+          // The page core has reported it, so a caller that hears of it must not report it again.
+          throw new CoreRedialError(error);
         }
         throw error;
       },

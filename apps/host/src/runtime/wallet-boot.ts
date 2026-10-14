@@ -41,6 +41,8 @@ export function createWalletBoot({ read, report }: WalletBootDeps): WalletBoot {
   const reads = createAsyncTaskPool({ poolSize: 1 });
   // Undefined until the frame answers. A read it could not answer tells no mode, so the next caller reads again.
   let answer: LocalWalletBoot | null | undefined;
+  // Every answer is kept, so a failed read is always the first of its outage until one is reported.
+  let outageReported = false;
 
   const readOnce = async (): Promise<LocalWalletBoot | null> => {
     if (answer !== undefined) {
@@ -50,7 +52,12 @@ export function createWalletBoot({ read, report }: WalletBootDeps): WalletBoot {
     try {
       result = await read();
     } catch (error) {
-      reportLocalWalletFailure(error, 'read');
+      if (outageReported) {
+        log.event('wallet read still failing', { flow: 'wallet' });
+      } else {
+        outageReported = true;
+        reportLocalWalletFailure(error, 'read');
+      }
       report({ mode: 'app', failure: UNAVAILABLE });
       return null;
     }

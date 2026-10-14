@@ -4,10 +4,19 @@
 // The one module that imports the SDK. Its calls sit behind the compile-time metrics flag.
 
 import * as Sentry from '@sentry/browser';
-import { bindLogSink, log, type LogLevel, serializeError, fullErrorChain, StoreListenerError } from '@dotli/shared';
+import {
+  bindLogSink,
+  errorName,
+  log,
+  type LogLevel,
+  serializeError,
+  fullErrorChain,
+  StoreListenerError,
+} from '@dotli/shared';
 
-import { bindCaptureSink, type CaptureSink } from './capture.js';
+import { bindCaptureSink, captureException, type CaptureSink } from './capture.js';
 import { m, sentrySpanOf } from './metrics.js';
+import * as S from './spans.js';
 
 // Compile-time, so a build without metrics drops every SDK call with these branches.
 const ENABLED = import.meta.env.VITE_METRICS === 'true';
@@ -86,8 +95,9 @@ function sentryRelease(): string | undefined {
  * Listed rather than filtered from the defaults, so the bundle carries only these. Left out on purpose:
  * `globalHandlers` (`installGlobalErrorHandlers` owns uncaught errors, and with both on Dedupe drops our tagged copy),
  * `browserApiErrors` (`@polkadot-api/utils` registers `Function.prototype` as a listener, and once Sentry marks it
- * wrapped every later callback looks wrapped and becomes a no-op), and on pages the automatic breadcrumbs and console
- * capture, since DOM selectors and console output can carry user data. `addBreadcrumb` works without them.
+ * wrapped every later callback looks wrapped and becomes a no-op), and on pages the console capture, since console output
+ * can carry user data. Pages keep the breadcrumb trail of earlier events and drop its automatic DOM, history and
+ * network capture. `addBreadcrumb` works without them.
  * Unlike `Sentry.init`, this skips the SDK's own stringifier for Window, Document and elements in `extra`, which dotli
  * never sends.
  */
@@ -101,7 +111,9 @@ function integrationsFor(source: SentrySource) {
     Sentry.cultureContextIntegration(),
     Sentry.browserSessionIntegration(),
   ];
-  return source === 'worker' ? [...kept, Sentry.breadcrumbsIntegration(), Sentry.consoleIntegration()] : kept;
+  return source === 'worker'
+    ? [...kept, Sentry.breadcrumbsIntegration(), Sentry.consoleIntegration()]
+    : [...kept, Sentry.breadcrumbsIntegration({ dom: false, fetch: false, history: false, xhr: false })];
 }
 
 /** Initialize Sentry and bind it to `m`. Safe without a DSN, where a non-development build warns once. */
@@ -175,6 +187,23 @@ export function initSentry(source: SentrySource): void {
 }
 
 /**
+ * Sends what Sentry has buffered, waiting at most `timeoutMs`. Resolves at once when metrics are off, and never
+ * rejects, since its callers are on their way out. A failure is reported best effort.
+ */
+export async function flushTelemetry(timeoutMs: number): Promise<void> {
+  if (!ENABLED) {
+    return;
+  }
+  try {
+    await Sentry.flush(timeoutMs);
+  } catch (err: unknown) {
+    log.error('[dot.li sentry] flush failed', err);
+    captureException(err, { flow: 'protocol', step: 'flush_telemetry' });
+    m.count(S.TELEMETRY_FLUSH, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+  }
+}
+
+/**
  * Route uncaught errors and rejections to Sentry.
  * An `Error` passes unwrapped to keep its stack, and an `ErrorEvent` keeps its location even when
  * `event.error` is null (resource-load failures, CORS-tainted scripts).
@@ -200,7 +229,8 @@ export function installGlobalErrorHandlers(source: SentrySource): void {
   self.addEventListener('error', (event: ErrorEvent) => {
     if (event.error instanceof StoreListenerError) {
       log.error(`[dot.li ${source}] store listener failed:`, event.error);
-      sentrySink.exception(event.error, {
+      // The listener's own error keeps the issue title and grouping of its real type, and the log line names the store.
+      sentrySink.exception(event.error.cause instanceof Error ? event.error.cause : event.error, {
         flow: 'ui',
         step: 'store_listener',
         tags: { store: event.error.store, kind: 'store_listener_error', source },

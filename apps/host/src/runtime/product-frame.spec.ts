@@ -31,7 +31,7 @@ import {
   type FakeCoreProvider,
   type FakePageCore,
 } from './page-core.fake.js';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
 import { fakeIframe, fakeProductFrameView, type FakeProductFrameView } from './product-frame.fake.js';
 
@@ -982,6 +982,25 @@ describe('product frame and the page core', () => {
     await fakes.changes.until(() => frameView.statuses.at(-1) === 'failed');
     expect(fakes.statuses()).toEqual(['connecting', 'connected', 'lost', 'connecting', 'failed']);
     expect(fakes.connections).toHaveLength(1);
+  });
+
+  it('As a product whose replacement core cannot boot, the failure is reported once, as the redial', async () => {
+    // Given
+    const fakes = harness();
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished, onRecord: fakes.changes.notify });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const rendered = fakes.frame.render(subdomainProduct('product'));
+    const dead = await answerConnection(fakes, 0);
+    await rendered;
+    fakes.nextBoots.push(() => new Error('worker fatal error: redial'));
+
+    // When
+    dead.closeListener?.(new Error('worker fatal error: boom'));
+
+    // Then
+    await fakes.changes.until(() => metrics.counted('product.rerender').length === 1);
+    expect(metrics.counted('product.rerender')).toEqual([{ outcome: 'error', reason: 'replacement' }]);
+    expect(captured.map(c => c.step)).toEqual(['core_redial']);
   });
 
   it('As a dApp user naming another product after a redial failed, the new product is not reported lost', async () => {

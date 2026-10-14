@@ -237,3 +237,6 @@ export const DEBUG_PANEL_LOAD = 'debug_panel.load';
 
 /** A lazy chunk a caller could not load and went on without. Tagged `outcome` and `reason` (the caller's step). */
 export const LAZY_CHUNK_LOAD = 'lazy_chunk.load';
+
+/** One flush of buffered telemetry before a context closes. Counted only when the flush threw, tagged `outcome` and `reason` (the error's name). */
+export const TELEMETRY_FLUSH = 'telemetry.flush';

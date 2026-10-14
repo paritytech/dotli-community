@@ -244,7 +244,11 @@ interface Worker {
  * Starts a worker on a fake scope, as the browser does when the first tab names it. Settles once the worker has acted
  * on a pre-sync that is already done, as it awaited that promise first.
  */
-async function bootWorker(light: FakeLightClient, name = 'dotli-protocol-paseo-next-v2'): Promise<Worker> {
+async function bootWorker(
+  light: FakeLightClient,
+  name = 'dotli-protocol-paseo-next-v2',
+  flush: () => Promise<void> = () => Promise.resolve(),
+): Promise<Worker> {
   let beat: () => void = () => undefined;
   const heartbeat: HeartbeatClock = {
     start: onBeat => {
@@ -285,6 +289,7 @@ async function bootWorker(light: FakeLightClient, name = 'dotli-protocol-paseo-n
     resolver: light.resolver,
     openSpan: open,
     heartbeat,
+    flush,
   });
   await light.presyncDone;
   return {
@@ -398,6 +403,38 @@ describe('protocol SharedWorker', () => {
     expect(heard(tab)).toEqual([{ type: 'ready' }, fatalRelay]);
     expect(worker.close).toHaveBeenCalledTimes(1);
     expect(closedAfterTelling(worker, tab)).toBe(true);
+  });
+
+  it('As a dead shared worker, I send my buffered telemetry before I close', async () => {
+    // Given a worker whose telemetry flush holds
+    const light = fakeLightClient();
+    const flushing = deferred<undefined>();
+    const worker = await bootWorker(light, undefined, () => flushing.promise);
+    worker.connect();
+
+    // When the light client dies and the timers queued behind the fatal have run
+    light.fatal(FATAL);
+    await afterQueuedTimers();
+
+    // Then the worker stays open while the flush holds, and closes once it is done
+    expect(worker.close).not.toHaveBeenCalled();
+    flushing.resolve(undefined);
+    await worker.closedOnce;
+    expect(worker.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dead shared worker, I close even when the flush gives up', async () => {
+    // Given a worker whose telemetry flush fails
+    const light = fakeLightClient();
+    const worker = await bootWorker(light, undefined, () => Promise.reject(new Error('flush failed')));
+    worker.connect();
+
+    // When the light client dies
+    light.fatal(FATAL);
+    await worker.closedOnce;
+
+    // Then the worker closed once
+    expect(worker.close).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli user on the shared light client, I hear why pre-sync failed and the worker then closes, so my reconnect starts a fresh one', async () => {

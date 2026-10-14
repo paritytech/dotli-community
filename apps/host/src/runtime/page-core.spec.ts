@@ -8,7 +8,7 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime, CoreRuntimeRequest } from './core-runtime.js';
-import { createPageCore, type PageCore } from './page-core.js';
+import { CoreRedialError, createPageCore, type PageCore } from './page-core.js';
 import { labelToProductId } from './runtime-config.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
@@ -101,8 +101,6 @@ interface HarnessOptions {
   local?: boolean;
   /** Whether a wallet read now finds the local wallet, which makes a pairing core stale. */
   walletFound?: () => boolean;
-  /** Replaces the stale check, for a check that fails. */
-  stale?: () => Promise<boolean>;
 }
 
 function harness(options: HarnessOptions = {}): Harness {
@@ -122,9 +120,7 @@ function harness(options: HarnessOptions = {}): Harness {
       runtime: runtime.runtime,
       local,
       stale: () => {
-        const check = local
-          ? Promise.resolve(false)
-          : (options.stale?.() ?? Promise.resolve(options.walletFound?.() ?? false));
+        const check = local ? Promise.resolve(false) : Promise.resolve(options.walletFound?.() ?? false);
         staleChecks.push(check);
         return check;
       },
@@ -488,6 +484,25 @@ describe('page core', () => {
     expect(outcomes.at(-1)).toBe('ok');
   });
 
+  it('As a product whose replacement core cannot boot, the failure is reported once, as the redial', async () => {
+    // Given
+    const { core, runtimes, nextBoots, captures, changes } = reportingHarness();
+    const lease = await core.acquire();
+    await lease.connect();
+    nextBoots.push(failingBoot(), failingBoot(), failingBoot());
+
+    // When
+    nthRuntime(runtimes, 0).providers[0]?.goDown();
+    const asked = core.acquire();
+
+    // Then
+    const error: unknown = await asked.catch((rejected: unknown) => rejected);
+    expect(error).toBeInstanceOf(CoreRedialError);
+    expect(error).toMatchObject({ name: 'CoreRedialError', cause: { message: 'worker failed to start' } });
+    await changes.until(() => captures.exception.mock.calls.length === 1);
+    expect(captures.exception).toHaveBeenCalledTimes(1);
+  });
+
   it('As a user who opened another product before the old core went down, I get a redial for the product on screen', async () => {
     // Given
     const { core, runtimes, requests } = harness();
@@ -764,22 +779,6 @@ describe('page core redial reports', () => {
     // Then
     await changes.until(() => counted('wallet.core_redial').length === 1);
     expect(counted('wallet.core_redial')).toEqual([{ outcome: 'ok', reason: 'stale' }]);
-  });
-
-  it('As an operator, I see a stale check that failed captured and counted, and the core stays in service', async () => {
-    // Given
-    const failure = new Error('wallet read broke');
-    const { core, requests, counted, captures, changes } = reportingHarness({ stale: () => Promise.reject(failure) });
-
-    // When
-    const lease = await core.acquire();
-
-    // Then
-    await changes.until(() => captures.exception.mock.calls.length > 0);
-    expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'core_stale_check' });
-    expect(counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'read' }]);
-    expect(requests).toHaveLength(1);
-    expect((await core.acquire()).runtime).toBe(lease.runtime);
   });
 
   it('As an operator, I see a redial that a product change dropped counted as aborted', async () => {

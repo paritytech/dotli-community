@@ -147,4 +147,17 @@ describe('wallet boot', () => {
     expect(boots).toEqual([null, null]);
     expect(read).toHaveBeenCalledTimes(2);
   });
+
+  it('As a page whose protocol frame cannot answer, I report the outage once however many readers ask', async () => {
+    // Given
+    const { walletBoot } = bootWith(() => Promise.reject(new Error('frame unavailable')));
+
+    // When
+    await walletBoot.read();
+    await walletBoot.read();
+    await walletBoot.read();
+
+    // Then
+    expect(captures.exception).toHaveBeenCalledTimes(1);
+  });
 });

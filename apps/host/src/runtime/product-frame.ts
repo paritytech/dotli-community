@@ -9,13 +9,13 @@ import { createMessagePortProvider, type WireProvider as Provider } from '@parit
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
-import { captureException, getResolutionId, m, spans as S } from '@dotli/metrics';
+import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log, randomId } from '@dotli/shared';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/chat-store.js';
 import { wrapCoreProviderForDebug } from './core-connection.js';
 import { ERRORS } from './errors.js';
-import type { CoreConnection, CoreLease, PageCore } from './page-core.js';
+import { CoreRedialError, type CoreConnection, type CoreLease, type PageCore } from './page-core.js';
 import { takePendingReset } from './pending-reset.js';
 import { createPermissionResponseGate } from './permission-response-gate.js';
 import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
@@ -565,6 +565,11 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
 /** Nobody asked for a render the frame starts on its own, so the frame is the one to report it. */
 function reportRerenderFailure(error: unknown, reason: RerenderReason | 'core_deaths'): void {
   log.error('[dot.li] Product iframe reload failed:', error);
+  if (error instanceof CoreRedialError) {
+    // The page core captured the redial, so the frame only records that its render fell with it.
+    reportExpected(error, { flow: 'ui', step: 'product_rerender', metric: S.PRODUCT_RERENDER, reason });
+    return;
+  }
   captureException(error, { flow: 'ui', step: 'product_rerender', tags: { reason } });
   m.count(S.PRODUCT_RERENDER, { outcome: 'error', reason });
 }
