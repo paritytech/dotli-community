@@ -104,9 +104,18 @@ provision-renewal: _require-env
 
 # certbot renews only when the cert is due. nginx reloads either way, since the timer's renewals never reload it.
 # The keepalive holds the connection while certbot is silent, which the runner's idle timeout otherwise cuts.
+# A hung certbot holds the box-wide lock and blocks every renewal, so one older than 15 minutes is listed and killed.
+# timeout keeps this run from leaving one behind when the connection drops.
 renew-cert: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
-	ssh -o ServerAliveInterval=30 $(REMOTE_TARGET) 'sudo certbot renew -v --non-interactive --cert-name $(SITE_$(ENV)) && sudo nginx -t && sudo systemctl reload nginx && sudo certbot certificates --cert-name $(SITE_$(ENV))'
+	ssh -o ServerAliveInterval=30 $(REMOTE_TARGET) 'set -euo pipefail; \
+		sudo ps -o pid,etime,args -C certbot || true; \
+		sudo pkill -KILL --older 900 -x certbot || true; \
+		sudo pidwait --older 900 -x certbot || true; \
+		sudo timeout 600 certbot renew -v --non-interactive --cert-name $(SITE_$(ENV)); \
+		sudo nginx -t; \
+		sudo systemctl reload nginx; \
+		sudo certbot certificates --cert-name $(SITE_$(ENV))'
 
 # Builds locally, then rsyncs only the dist directories.
 deploy: _require-env build
