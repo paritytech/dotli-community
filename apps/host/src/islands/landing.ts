@@ -2,17 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSignal, onSettled, untrack, type Accessor } from 'solid-js';
-import { getActiveTldSuffix } from '@dotli/config';
+import { getActiveTldSuffix, subscribeSettings } from '@dotli/config';
 import type { RecentLabels } from '../recent-labels.js';
 
 /**
  * The TLD the visitor's network registers names under. The visitor's network decides it, so the browser reads it once
- * settled and the build renders null.
+ * settled and the build renders null. It reads again when boot sets the settings after the island settled.
  */
-export function useActiveTld(read: () => string = getActiveTldSuffix): Accessor<string | null> {
+export function useActiveTld(
+  read: () => string = getActiveTldSuffix,
+  subscribe: (listener: () => void) => () => void = subscribeSettings,
+): Accessor<string | null> {
   const [suffix, setSuffix] = createSignal<string | null>(null);
   onSettled(() => {
     setSuffix(read());
+    return subscribe(() => {
+      setSuffix(read());
+    });
   });
   return suffix;
 }

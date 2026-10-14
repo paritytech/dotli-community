@@ -22,11 +22,6 @@ auth.subscribe(() => {
 export const authStore: ReadableStore<DotliAuthState> = auth;
 export const getAuthState = auth.get;
 
-/** A login under way or done, so another one has nothing to do. */
-export function isLoginActive(state: DotliAuthState): boolean {
-  return state.tag === 'Pairing' || state.tag === 'Authenticating' || state.tag === 'Connected';
-}
-
 export function setAuthState(next: DotliAuthState): void {
   auth.set(next);
 }

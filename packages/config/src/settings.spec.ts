@@ -44,6 +44,18 @@ describe('resolveSettings', () => {
     expect(settings.cache).toEqual({ skipCidCache: true, skipArchiveCache: true, skipWorkerCache: false });
   });
 
+  it("As a page reading a shared backend this build does not know, I keep this origin's backend", () => {
+    // Given a newer deploy's backend in the shared store
+    const local = memoryStorage({ [BACKEND_KEY]: 'rpc-gateway' });
+    const shared = { backend: 'a-backend-from-a-newer-deploy', cache: null };
+
+    // When
+    const { settings } = resolveSettings({ local, shared, sharedWorkerAvailable: true });
+
+    // Then
+    expect(settings.backend).toBe('rpc-gateway');
+  });
+
   it('As a parallel test worker on localhost, this origin keeps its own choice over the shared one', () => {
     // Given
     const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct' });

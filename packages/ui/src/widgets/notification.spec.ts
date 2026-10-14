@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { pushToast, toastsStore } from '../page/state/toasts.js';
+import { pushToast, showToasts, toastsStore } from '../page/state/toasts.js';
 import { FakePage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { bindToastPage } from '../testing/index.js';
 import { createNotifier, NOTIFICATION_DISMISS_MS, type SystemNotifications } from './notification.js';
@@ -58,8 +58,9 @@ describe('showNotification', () => {
   });
 
   it('As a dotli user, a notification leaves after the default delay', () => {
-    // Given
+    // Given a toast view is mounted
     vi.useFakeTimers();
+    showToasts();
     showNotification({ label: 'Timed', text: 'Body' });
 
     // When

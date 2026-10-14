@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { SandboxChannel, SandboxMessageOf, SandboxMessageType, SandboxSender } from '@dotli/sandbox-wire';
 import {
@@ -392,8 +393,10 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(cache.blocks.get('bafyBlock')).toEqual(BLOCK);
   });
 
-  it('As a user, I am served bytes that do not match their CID, but they are never kept', async () => {
+  it('As a sandbox asking for a block a peer forged, I get a verification failure and the block is not served', async () => {
     // Given a network that hands back bytes of some other block
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const cache = memoryCache();
     const { channel, send } = fakeChannel();
     createSandboxBlockRelay({
@@ -408,9 +411,38 @@ describe('createSandboxBlockRelay with a block cache', () => {
     send(frame, get('req-1'));
     await until(frame.replies);
 
-    // Then
-    expect(frame.replies[0]).toMatchObject({ ok: true });
+    // Then the sandbox gets a failure named for verification, nothing is kept, and the mismatch is counted
+    expect(frame.replies).toEqual([
+      {
+        type: 'dotli:bitswap-result',
+        id: 'req-1',
+        ok: false,
+        error: expect.stringContaining('bafyBlock') as unknown,
+        errorName: 'ContentVerificationError',
+      },
+    ]);
     expect(cache.writes).toBe(0);
+    expect(captured).toEqual([{ flow: 'content', step: 'relay_verify', tags: { cid: 'bafyBlock' } }]);
+    expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'mismatch', step: 'verify' }]);
+  });
+
+  it('As a sandbox with the archive cache off, I get a verification failure for a forged block too', async () => {
+    // Given
+    const { channel, send } = fakeChannel();
+    createSandboxBlockRelay({
+      channel,
+      blocks: fakeNetwork(() => new Uint8Array([0x01, 0x02])).blocks,
+      cache: null,
+      verify: matchesBlock,
+    });
+
+    // When
+    const frame = fakeFrame();
+    send(frame, get('req-1'));
+    await until(frame.replies);
+
+    // Then
+    expect(frame.replies[0]).toMatchObject({ ok: false, errorName: 'ContentVerificationError' });
   });
 
   it('As a user, I still load the app when the block cache cannot be read', async () => {
@@ -482,12 +514,38 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(cache.writes).toBe(0);
     expect(cache.deleted).toEqual([]);
     expect(cache.blocks.get('bafyBlock')).toEqual(BLOCK);
-    // The verifier failed twice, on the cached copy and on the fetched one
+    // The verifier failed twice, on the cached copy and on the fetched one, and reports its own load miss
     const verifyFailure = { outcome: 'error', reason: 'Error', step: 'verify' };
-    expect(captured).toEqual([
-      { flow: 'content', step: 'relay_verify', tags: { cid: 'bafyBlock' } },
-      { flow: 'content', step: 'relay_verify', tags: { cid: 'bafyBlock' } },
-    ]);
+    expect(captured).toEqual([]);
+    expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
+  });
+
+  it('As an operator, a verifier that cannot load is counted for each block but not captured again, with the archive cache off', async () => {
+    // Given a verifier whose chunk cannot load, which reports that miss itself
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const missing = new Error('verify chunk failed to load');
+    const { channel, send } = fakeChannel();
+    createSandboxBlockRelay({
+      channel,
+      blocks: fakeNetwork().blocks,
+      cache: null,
+      verify: () => Promise.reject(missing),
+    });
+
+    // When two blocks are asked for
+    const frame = fakeFrame();
+    send(frame, get('req-1'));
+    send(frame, get('req-2'));
+    await until(frame.replies, 2);
+
+    // Then both are served, each miss leaves a breadcrumb and a count, and none is captured
+    expect(frame.replies).toMatchObject([{ ok: true }, { ok: true }]);
+    expect(captures.exception).not.toHaveBeenCalled();
+    expect(captures.expected).toHaveBeenCalledTimes(2);
+    expect(captures.expected).toHaveBeenCalledWith(missing, { flow: 'content', step: 'relay_verify' });
+    const verifyFailure = { outcome: 'error', reason: 'Error', step: 'verify' };
     expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
   });
 
@@ -554,6 +612,8 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
 describe('createSandboxBlockRelay progress', () => {
   /** A dag-pb root whose two links carry a Tsize of 100 and 50. */
+  /** These blocks are sized for the progress count, so they are not any one real block. */
+  const acceptsAnyBlock: SandboxBlockRelayDeps['verify'] = () => Promise.resolve(true);
   const ROOT = new Uint8Array([0x12, 0x02, 0x18, 100, 0x12, 0x02, 0x18, 50]);
 
   it('As a user, I see the loading bar keep moving while the trace listens along', async () => {
@@ -563,7 +623,7 @@ describe('createSandboxBlockRelay progress', () => {
       channel,
       blocks: fakeNetwork(() => new Uint8Array(100)).blocks,
       cache: null,
-      verify: matchesBlock,
+      verify: acceptsAnyBlock,
     });
     const first = recording<number>();
     const second: number[] = [];
@@ -590,7 +650,7 @@ describe('createSandboxBlockRelay progress', () => {
       channel,
       blocks: fakeNetwork(cid => (cid === 'bafyRoot' ? ROOT.slice() : new Uint8Array(100))).blocks,
       cache: null,
-      verify: matchesBlock,
+      verify: acceptsAnyBlock,
       now: () => clock,
     });
     const progress = recording<ContentProgress>();
@@ -617,7 +677,7 @@ describe('createSandboxBlockRelay progress', () => {
       channel: first.channel,
       blocks: fakeNetwork(() => new Uint8Array(100)).blocks,
       cache: null,
-      verify: matchesBlock,
+      verify: acceptsAnyBlock,
     });
     const firstFrame = fakeFrame();
     first.send(firstFrame, get('req-1'));
@@ -630,7 +690,7 @@ describe('createSandboxBlockRelay progress', () => {
       channel: second.channel,
       blocks: fakeNetwork(() => new Uint8Array(30)).blocks,
       cache: null,
-      verify: matchesBlock,
+      verify: acceptsAnyBlock,
     });
     const progress = recording<number>();
     secondRelay.onProgress(({ bytesFetched }) => progress.push(bytesFetched));
@@ -649,7 +709,7 @@ describe('createSandboxBlockRelay progress', () => {
       channel,
       blocks: fakeNetwork().blocks,
       cache: null,
-      verify: matchesBlock,
+      verify: acceptsAnyBlock,
     });
     relay.onProgress(() => {
       throw new TypeError('progress broke');

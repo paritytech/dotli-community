@@ -5,8 +5,8 @@
 // origin loses its storage on every reload, so the host fetches and keeps the blocks.
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
-import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { createListenerSet, errorName, log, serializeError } from '@dotli/shared';
+import { captureException, m, recordExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createListenerSet, errorName, log, named, serializeError } from '@dotli/shared';
 
 import { readDagTotal } from './dag-total.js';
 
@@ -35,7 +35,7 @@ export interface SandboxBlockRelayDeps {
   cache: BlockCache | null;
   /**
    * Whether the bytes hash to the CID. A rejection leaves that unknown, so nothing unverified is trusted or written, and
-   * a cached copy is kept for a verifier that loads later.
+   * a cached copy is kept for a verifier that loads later. The verifier reports why it could not run.
    */
   verify: (cid: string, bytes: Uint8Array) => Promise<boolean>;
   /** The clock the transfer speed is measured on. */
@@ -59,13 +59,18 @@ interface ServedBlock {
   from: BlockOrigin;
 }
 
+/**
+ * Spelled as `CONTENT_ERRORS.VERIFICATION`, which bitswap may not import. The sandbox branches on this name.
+ */
+const VERIFICATION_ERROR = 'ContentVerificationError';
+
 type RelayStep = 'verify' | 'cache_read' | 'cache_delete' | 'cache_write';
 
 /** A relay step that failed and was worked around, reported so the workaround does not hide it. */
-function reportRelayFailure(step: RelayStep, err: unknown, cid?: string): void {
+function reportRelayFailure(step: RelayStep, err: unknown, cid?: string, reason = errorName(err)): void {
   captureException(err, { flow: 'content', step: `relay_${step}`, ...(cid === undefined ? {} : { tags: { cid } }) });
   log.error(`[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}: ${serializeError(err)}`);
-  m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: errorName(err) ?? 'unknown', step });
+  m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: reason ?? 'unknown', step });
 }
 
 function errorCode(err: unknown): number | null {
@@ -117,7 +122,9 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     try {
       return (await deps.verify(cid, bytes)) ? 'match' : 'mismatch';
     } catch (err) {
-      reportRelayFailure('verify', err, cid);
+      // The verifier reported why it could not run, so each block it leaves unchecked is a breadcrumb and a count.
+      recordExpected(err, { flow: 'content', step: 'relay_verify' });
+      m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: errorName(err) ?? 'unknown', step: 'verify' });
       return 'unknown';
     }
   }
@@ -156,8 +163,15 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
       }
     }
     const bytes = await blocks(cid, signal);
-    // Served whatever the verdict, as the sandbox checks it too. Only a verified block is kept.
-    if (cache !== null && (await check(cid, bytes)) === 'match') {
+    // The sandbox re-hashes only the root block, so this is the check for every other block a peer sends.
+    const verdict = await check(cid, bytes);
+    if (verdict === 'mismatch') {
+      const err = named(new Error(`Block ${cid} does not hash to its CID`), VERIFICATION_ERROR);
+      reportRelayFailure('verify', err, cid, 'mismatch');
+      throw err;
+    }
+    // An unknown verdict is served, since the verifier could not run, but never kept.
+    if (cache !== null && verdict === 'match') {
       // The reply detaches `bytes.buffer` before the IndexedDB write clones it.
       void cache.put(cid, bytes.slice()).catch((err: unknown) => {
         reportRelayFailure('cache_write', err);

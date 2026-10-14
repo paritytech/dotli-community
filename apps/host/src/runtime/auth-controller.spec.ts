@@ -184,6 +184,41 @@ describe('auth controller: login requests', () => {
     expect(calls.logins).toEqual([undefined]);
   });
 
+  it('As a user who closed the QR code, I click Sign in before the core reports the cancel and get a new QR code', async () => {
+    // Given: a QR code the user closed, while the core still reports the pairing
+    const { controller, auth, calls, changes } = start();
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin();
+    auth.set(pairing);
+    await changes.until(() => calls.logins.length === 1);
+    controller.closeAuthModal();
+    await changes.until(() => calls.cancels === 1);
+
+    // When
+    controller.startLogin();
+
+    // Then: the modal opens and the core is asked again, so its next pairing shows a new QR code
+    await changes.until(() => calls.logins.length === 2);
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'spinner' } });
+    auth.set({ ...pairing, deeplink: 'polkadotapp://pair?handshake=again' });
+    expect(getAuthModalState().view).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=again' });
+  });
+
+  it('As a user with the QR code open, a second Sign in click starts no second pairing', async () => {
+    // Given: the QR code of a pairing the core started
+    const { controller, auth, calls, changes } = start();
+    auth.set({ tag: 'Disconnected' });
+    auth.set(pairing);
+
+    // When: Sign in is clicked, then the modal is closed
+    controller.startLogin();
+    controller.closeAuthModal();
+
+    // Then: the cancel the close asked for arrived, and no login came before it
+    await changes.until(() => calls.cancels === 1);
+    expect(calls.logins).toEqual([]);
+  });
+
   it('As the error view, retryLogin re-opens the spinner and asks the core to log in again', async () => {
     // Given
     const { controller, auth, calls, changes } = start();

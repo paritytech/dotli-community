@@ -23,13 +23,15 @@ function page(href: string, entries: Record<string, string> = {}): FakePage {
 }
 
 /** A page whose tab storage throws, as in Safari private mode. */
-function pageWithoutStorage(href: string): DebugModePage {
+function pageWithoutStorage(href: string): DebugModePage & { replaceState: FakePage['replaceState'] } {
   const unavailable = (): never => {
     throw new Error('SecurityError');
   };
+  const replaceState = vi.fn<(data: unknown, unused: string, url: string) => void>();
   return {
+    replaceState,
     location: { href },
-    history: { replaceState: vi.fn() },
+    history: { replaceState },
     sessionStorage: { getItem: unavailable, setItem: unavailable },
   };
 }
@@ -95,6 +97,17 @@ describe('debug mode', () => {
 
     // Then
     expect(mode).toEqual({ enabled: false, explicit: false });
+  });
+
+  it('As a visitor whose storage throws, the debug param still leaves the URL', () => {
+    // Given
+    const tab = pageWithoutStorage('https://app.dot.li/path?x=1&debug=true#top');
+
+    // When
+    resolveDebugMode(tab, false);
+
+    // Then
+    expect(tab.replaceState).toHaveBeenCalledWith(null, '', '/path?x=1#top');
   });
 
   it('As a dotli developer, I close the panel and debug mode is off for the tab', () => {

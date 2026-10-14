@@ -18,21 +18,23 @@ import {
   type WireProvider as Provider,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
-import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
+import { captureException, m, recordExpected, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log, type ReadableStore } from '@dotli/shared';
 import { wrapCoreProviderForDebug } from './core-connection.js';
 import type { DotliAuthState } from './session/auth-state.js';
 import type { SessionState } from './session/session-state.js';
-import { isLoginActive } from './state/auth.js';
 import { LoginRequestError } from './login-request-error.js';
-import type { PageCore } from './page-core.js';
+import { CoreRedialError, type PageCore } from './page-core.js';
 import type { WalletMode } from './state/wallet-mode.js';
 import type { WalletSwitchOutcome } from './wallet-switch.js';
 
 export interface AuthCommands {
-  /** Settles once the login has ended. A no-op while a login is under way or the user is signed in. */
+  /** Settles once the login has ended. A click queued behind a login shares it. A no-op once the user is signed in. */
   login(reason?: string): Promise<void>;
-  /** Settles once the logout has ended. A no-op once the user is signed out. */
+  /**
+   * Settles once the logout has ended. Cancels a pairing under way first, since the core may never answer it. A no-op
+   * once the user is signed out.
+   */
   logout(): Promise<void>;
   /** Stops the pairing under way, at once and outside the queue, and ends the login round, so a later click logs in. */
   cancelLogin(): void;
@@ -64,7 +66,7 @@ export function createAuthCommands(deps: AuthCommandsDeps): AuthCommands {
             return;
           }
           try {
-            if (!isLoginActive(deps.auth.get())) {
+            if (deps.auth.get().tag !== 'Connected') {
               await deps.login(reason);
             }
           } finally {
@@ -78,6 +80,11 @@ export function createAuthCommands(deps: AuthCommandsDeps): AuthCommands {
     },
     logout() {
       round = {};
+      // The logout queues behind the open login, which only the cancel ends when the core never answers it.
+      const { tag } = deps.auth.get();
+      if (tag === 'Pairing' || tag === 'Authenticating') {
+        deps.cancelPairing();
+      }
       return queue.call(
         async () => {
           if (deps.auth.get().tag === 'Disconnected') {
@@ -181,9 +188,15 @@ export function createCoreAuthCommands(deps: CoreAuthCommandsDeps): AuthCommands
   });
 }
 
-/** A cancelled or denied login is an outcome, not a fault. The core's other refusals are still reported. */
+/**
+ * A cancelled or denied login is an outcome, not a fault, and the page core already captured a redial it gave up on.
+ * The core's other refusals are still reported.
+ */
 function captureLoginFailure(error: unknown): void {
-  if (error instanceof LoginRequestError && (error.error.tag === 'Cancelled' || error.error.tag === 'Denied')) {
+  if (
+    error instanceof CoreRedialError ||
+    (error instanceof LoginRequestError && (error.error.tag === 'Cancelled' || error.error.tag === 'Denied'))
+  ) {
     recordExpected(error, { flow: 'wallet', step: 'login' });
     return;
   }
@@ -196,6 +209,11 @@ function captureLoginFailure(error: unknown): void {
 
 function reportLogoutFailure(error: unknown, reason: LogoutFailureReason): void {
   log.error(`[dot.li] logout ${reason} failed:`, error);
+  if (error instanceof CoreRedialError) {
+    // The page core captured the redial, so the logout only records that it fell with it.
+    reportExpected(error, { flow: 'wallet', step: 'logout', metric: S.WALLET_LOGOUT, reason });
+    return;
+  }
   captureException(error, { flow: 'wallet', step: 'logout', tags: { reason } });
   m.count(S.WALLET_LOGOUT, { outcome: 'error', reason });
 }

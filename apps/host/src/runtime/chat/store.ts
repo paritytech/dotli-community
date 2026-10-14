@@ -17,6 +17,7 @@ import {
   createAsyncTaskPool,
   createListenerSet,
   createSyncStore,
+  randomId,
   shallowEqual,
   type ReadableStore,
 } from '@dotli/shared';
@@ -332,7 +333,7 @@ export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore
     },
 
     async postProductMessage(productId, roomId, content) {
-      const messageId = crypto.randomUUID();
+      const messageId = randomId();
       await repo.appendMessage({
         productId,
         roomId,
@@ -351,7 +352,7 @@ export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore
       await repo.appendMessage({
         productId,
         roomId,
-        messageId: crypto.randomUUID(),
+        messageId: randomId(),
         author: 'user',
         content,
         timestamp: Date.now(),

@@ -24,20 +24,28 @@ export interface DebugModePage {
  * stored choice, then `buildDefault`.
  */
 export function resolveDebugMode(page: DebugModePage, buildDefault: boolean): DebugMode {
+  let param: string | null = null;
   try {
     const url = new URL(page.location.href);
-    const param = url.searchParams.get('debug');
+    param = url.searchParams.get('debug');
     if (param === 'true' || param === 'off') {
-      page.sessionStorage.setItem(DEBUG_MODE_KEY, param === 'off' ? '0' : '1');
       url.searchParams.delete('debug');
       const search = url.searchParams.toString();
       page.history.replaceState(null, '', url.pathname + (search === '' ? '' : `?${search}`) + url.hash);
+    }
+    // eslint-disable-next-line no-restricted-syntax -- the URL or history may be unavailable, so fall through to the stored choice.
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (param === 'true' || param === 'off') {
+      page.sessionStorage.setItem(DEBUG_MODE_KEY, param === 'off' ? '0' : '1');
     }
     const stored = page.sessionStorage.getItem(DEBUG_MODE_KEY);
     if (stored === '1' || stored === '0') {
       return { enabled: stored === '1', explicit: true };
     }
-    // eslint-disable-next-line no-restricted-syntax -- URL or sessionStorage may be unavailable, as in Safari private mode, so fall through to the build's default.
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable, as in Safari private mode, so fall through to the build's default.
   } catch {
     /* ignore */
   }

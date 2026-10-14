@@ -17,6 +17,7 @@ import {
   requestIdFromFrame,
   type FakePageCore,
 } from './page-core.fake.js';
+import { CoreRedialError } from './page-core.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
 
@@ -157,6 +158,21 @@ describe('topbar login over the page core', () => {
     expect(fakes.captures.exception).not.toHaveBeenCalled();
     expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
   });
+
+  it('As an operator, a login that falls with a core redial the page core reported is recorded as expected, not captured again', async () => {
+    // Given: the page core gave up redialing the wallet core
+    const fakes = harness();
+    const failure = new CoreRedialError(new Error('worker fatal error: boot'));
+    fakes.nextBoots.push(() => failure);
+
+    // When
+    await fakes.commands.login();
+
+    // Then
+    expect(fakes.captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'login' });
+    expect(fakes.captures.exception).not.toHaveBeenCalled();
+    expect(fakes.session.reportLoginFailure).toHaveBeenCalledWith(failure.message);
+  });
 });
 
 describe('topbar logout over the page core', () => {
@@ -209,6 +225,22 @@ describe('topbar logout over the page core', () => {
       step: 'logout',
       tags: { reason: 'boot' },
     });
+    expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'boot' }]);
+    expect(fakes.session.reportLogoutWithoutCore).toHaveBeenCalledTimes(1);
+  });
+
+  it('As an operator, a logout that falls with a core redial the page core reported is counted but not captured again', async () => {
+    // Given
+    const fakes = harness({ auth: SIGNED_IN });
+    const failure = new CoreRedialError(new Error('worker fatal error: boot'));
+    fakes.nextBoots.push(() => failure);
+
+    // When
+    await fakes.commands.logout();
+
+    // Then
+    expect(fakes.captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'logout' });
+    expect(fakes.captures.exception).not.toHaveBeenCalled();
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'boot' }]);
     expect(fakes.session.reportLogoutWithoutCore).toHaveBeenCalledTimes(1);
   });
@@ -384,11 +416,12 @@ const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true
 
 /**
  * A core stand-in. Every login and logout waits for the one wallet answer the test gives with `end`, together with
- * the state the core would publish, and a run that starts after it ends at once.
+ * the state the core would publish, and a run that starts after it ends at once. With `cancelEndsLogin`, a cancel
+ * gives that answer too, without a state, as the core ends a pairing it was told to drop.
  */
 function queueHarness(
   initial: DotliAuthState,
-  options: { logoutSignsOut?: boolean } = {},
+  options: { logoutSignsOut?: boolean; cancelEndsLogin?: boolean } = {},
 ): {
   auth: SyncStore<DotliAuthState>;
   commands: AuthCommands;
@@ -413,6 +446,9 @@ function queueHarness(
     },
     cancelPairing: () => {
       calls.cancels += 1;
+      if (options.cancelEndsLogin === true) {
+        answer.resolve(undefined);
+      }
     },
   });
   const end = (state: DotliAuthState): void => {
@@ -535,19 +571,44 @@ describe('auth commands', () => {
     expect(core.calls.logins).toEqual(['first', 'second']);
   });
 
-  it.each([PAIRING, { tag: 'Authenticating' } as const, CONNECTED])(
-    'As a user, Sign in does nothing while the auth state is $tag',
-    async state => {
-      // Given
-      const core = queueHarness(state);
+  it('As a user whose pairing the core never answers, I log out and the logout runs', async () => {
+    // Given: a login whose pairing only a cancel ends
+    const core = queueHarness({ tag: 'Disconnected' }, { cancelEndsLogin: true });
+    const login = core.commands.login();
+    core.auth.set(PAIRING);
 
-      // When
-      await core.commands.login();
+    // When
+    await core.commands.logout();
+    await login;
 
-      // Then
-      expect(core.calls.logins).toEqual([]);
-    },
-  );
+    // Then
+    expect(core.calls.cancels).toBe(1);
+    expect(core.calls.logouts).toBe(1);
+  });
+
+  it('As a user who closed the QR code, I click Sign in before the core reports the cancel and get a new QR code', async () => {
+    // Given: the cancelled login has settled, but the core still reports its pairing
+    const core = queueHarness(PAIRING);
+
+    // When
+    const login = core.commands.login();
+    core.end(CONNECTED);
+    await login;
+
+    // Then
+    expect(core.calls.logins).toEqual([undefined]);
+  });
+
+  it('As a signed-in user, Sign in does nothing', async () => {
+    // Given
+    const core = queueHarness(CONNECTED);
+
+    // When
+    await core.commands.login();
+
+    // Then
+    expect(core.calls.logins).toEqual([]);
+  });
 
   it('As a user whose login failed, Retry starts a new login', async () => {
     // Given

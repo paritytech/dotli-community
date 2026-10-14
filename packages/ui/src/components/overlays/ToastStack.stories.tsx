@@ -296,3 +296,22 @@ export const ActionInPileRunsOnce: Story = {
     });
   },
 };
+
+/** As a dotli user, I see a toast with a short time leave on its own once the stack shows it. */
+export const TimedToastLeavesOnItsOwn: Story = {
+  // Its play empties the stack, which a docs page would show as a blank block.
+  tags: ['!autodocs'],
+  beforeEach: showLabelled(['Saved'], { dismissMs: 1000 }),
+  play: async ({ canvas, step }) => {
+    await step('Given the stack shows the toast', async () => {
+      await expect(canvas.getByTestId('notif-card')).toBeInTheDocument();
+    });
+    await step(
+      'Then the toast counts down once the stack shows it, plays its exit and leaves the stack empty',
+      async () => {
+        await waitFor(() => expect(canvas.queryByTestId('notif-stack')).toBeNull(), { timeout: 3000 });
+        await expect(toastsStore.get().items).toEqual([]);
+      },
+    );
+  },
+};

@@ -12,6 +12,7 @@ import {
   pushToast as pushToastTo,
   removeToast,
   setToastsExpanded,
+  showToasts,
   toastsStore,
   type ToastInput,
 } from './toasts.js';
@@ -52,6 +53,10 @@ afterEach(() => {
 });
 
 describe('toast store', () => {
+  beforeEach(() => {
+    showToasts();
+  });
+
   it('As a dotli user, a toast without a tone reads as info, and a toast given one keeps it', () => {
     // When
     pushToast(input());
@@ -249,6 +254,7 @@ describe('toast store', () => {
     resetAllStoresForTests();
     bindToastPage(again.document);
     bindToastPage(again.document);
+    showToasts();
     const onDismiss = vi.fn();
     pushToast(input({ onDismiss }));
 
@@ -279,5 +285,82 @@ describe('toast store', () => {
     // Then
     expect(notified).toBe(0);
     stop();
+  });
+});
+
+describe('toast views', () => {
+  it('As a visitor, a toast pushed before any toast view exists waits until one shows it, then counts down', () => {
+    // Given
+    pushToast(input({ dismissMs: 1000 }));
+
+    // When
+    vi.advanceTimersByTime(5000);
+
+    // Then
+    expect(leaving()).toEqual([false]);
+
+    // When
+    showToasts();
+    vi.advanceTimersByTime(1000);
+
+    // Then
+    expect(leaving()).toEqual([true]);
+  });
+
+  it('As a visitor, a toast shown in a mounted view dismisses itself after its time', () => {
+    // Given
+    showToasts();
+
+    // When
+    pushToast(input({ dismissMs: 1000 }));
+    vi.advanceTimersByTime(999);
+
+    // Then
+    expect(leaving()).toEqual([false]);
+
+    // When
+    vi.advanceTimersByTime(1);
+
+    // Then
+    expect(leaving()).toEqual([true]);
+  });
+
+  it('As a visitor, the countdown pauses when the last view unmounts and runs while any view stays', () => {
+    // Given
+    const hideFirst = showToasts();
+    const hideSecond = showToasts();
+    pushToast(input({ dismissMs: 1000 }));
+
+    // When
+    hideFirst();
+    vi.advanceTimersByTime(400);
+    hideSecond();
+    vi.advanceTimersByTime(5000);
+
+    // Then
+    expect(leaving()).toEqual([false]);
+
+    // When
+    showToasts();
+    vi.advanceTimersByTime(600);
+
+    // Then
+    expect(leaving()).toEqual([true]);
+  });
+
+  it('As a page reset between stories, a view mounted before the reset unmounts after it and the next view still counts down', () => {
+    // Given: a view mounted, then the page reset under it
+    const hideStale = showToasts();
+    resetAllStoresForTests();
+    bindToastPage(page.document);
+
+    // When: the stale view unmounts, and the next story mounts its own
+    hideStale();
+    showToasts();
+    pushToast(input({ dismissMs: 1000 }));
+    vi.advanceTimersByTime(1000);
+
+    // Then
+    expect(leaving()).toEqual([true]);
   });
 });

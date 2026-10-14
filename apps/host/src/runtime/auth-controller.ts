@@ -11,8 +11,8 @@ import { log, registerStoreStateReset, type ReadableStore } from '@dotli/shared'
 import type { AuthCommands } from './core-login.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './blocking-modal-queue.js';
 import type { DotliAuthState } from './session/auth-state.js';
-import { authStore, isLoginActive } from './state/auth.js';
-import { resetAuthModal, updateAuthModal } from '../state/auth-modal.js';
+import { authStore } from './state/auth.js';
+import { authModalStore, resetAuthModal, updateAuthModal } from '../state/auth-modal.js';
 
 export interface AuthControllerDeps {
   coordinator: BlockingModalCoordinator;
@@ -22,7 +22,7 @@ export interface AuthControllerDeps {
 }
 
 export interface AuthController {
-  /** Opens the modal and asks the core to log in, unless a login is under way or done. */
+  /** Opens the modal and asks the core to log in, unless the modal already shows a login or the user is signed in. */
   startLogin(reason?: string, label?: string): void;
   logout(): void;
   /** Returns false when the modal is disabled, having cancelled the login instead. */
@@ -200,8 +200,12 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
         log.event('sign-in refused while the saved session is unreachable', { flow: 'wallet' });
         return;
       }
-      // The modal already shows that login, and a reset would swap its QR for a spinner that never resolves.
-      if (isLoginActive(state)) {
+      if (state.tag === 'Connected') {
+        return;
+      }
+      // The modal already shows that login, and a reset would swap its QR for a spinner that never resolves. An error
+      // shows none, so its Retry logs in again.
+      if (authModalScope !== null && authModalStore.get().view.kind !== 'error') {
         return;
       }
       if (openAuthModal(reason, label)) {

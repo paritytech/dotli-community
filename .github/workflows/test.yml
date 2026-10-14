@@ -82,6 +82,7 @@ jobs:
     name: Functional
     runs-on: ubuntu-latest
     needs: [unit, build]
+    timeout-minutes: 35
     if: ${{ github.event.sender.type != 'Bot' }}
     steps:
       - name: Checkout

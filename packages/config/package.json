@@ -15,10 +15,12 @@
     "lint": "eslint .",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@dotli/shared": "*"
+  },
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@config/vite": "*",
-    "@dotli/shared": "*"
+    "@config/vite": "*"
   }
 }

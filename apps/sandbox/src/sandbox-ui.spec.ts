@@ -21,8 +21,9 @@ function setup(load: () => Promise<PageUiModule>, queued: readonly unknown[] = [
   onTestFinished(bindCaptureSink(captures));
   const toasts = createSyncStore<{ items: readonly unknown[] }>('test-toasts', { items: queued });
   const texts: string[] = [];
-  const ui = createSandboxUi({ load, toasts, showText: text => texts.push(text) });
-  return { ui, toasts, texts, captures };
+  const hideFallback = vi.fn<() => void>();
+  const ui = createSandboxUi({ load, toasts, showFallback: text => texts.push(text), hideFallback });
+  return { ui, toasts, texts, captures, hideFallback };
 }
 
 describe('sandbox UI', () => {
@@ -115,7 +116,20 @@ describe('sandbox UI', () => {
     expect(module.showError).toHaveBeenCalledWith('Failed to load content', 'The network did not answer', retry);
   });
 
-  it('As a visitor whose page UI cannot load, I still read why the product stopped', async () => {
+  it('As a visitor whose page UI cannot load, the miss is counted once however many screens wait on it', async () => {
+    // Given
+    const { ui, captures } = setup(() => Promise.reject(new Error('chunk missing')));
+
+    // When
+    ui.showError('Failed to load content', 'The network did not answer');
+    ui.showRetryScreen();
+    await ui.ready().catch(() => undefined);
+
+    // Then
+    expect(captures.expected).toHaveBeenCalledOnce();
+  });
+
+  it('As a visitor whose network dropped, I get the failure text and a Reload button when the page UI cannot load', async () => {
     // Given
     const missing = new Error('chunk missing');
     const { ui, texts, captures } = setup(() => Promise.reject(missing));
@@ -132,16 +146,94 @@ describe('sandbox UI', () => {
     );
   });
 
-  it('As a visitor whose page UI cannot load, the miss is counted once however many screens wait on it', async () => {
+  it('As a visitor, a failure after the page UI failed to load tries to load it again', async () => {
     // Given
-    const { ui, captures } = setup(() => Promise.reject(new Error('chunk missing')));
+    const module = fakeUi();
+    const load = vi.fn<() => Promise<PageUiModule>>();
+    load.mockRejectedValueOnce(new Error('chunk missing'));
+    load.mockResolvedValueOnce(module);
+    const { ui, texts, captures } = setup(load);
+    ui.showError('First', 'failure');
+    await ui.ready().catch(() => undefined);
 
     // When
-    ui.showError('Failed to load content', 'The network did not answer');
+    ui.showError('Second', 'failure');
+    await ui.ready();
+
+    // Then
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(texts).toEqual(['First. failure']);
+    expect(module.showError).toHaveBeenCalledWith('Second', 'failure', undefined);
+    expect(captures.expected).toHaveBeenCalledOnce();
+  });
+
+  it('As a visitor shown the fallback screen, a later page UI load that succeeds takes it away', async () => {
+    // Given
+    const load = vi.fn<() => Promise<PageUiModule>>();
+    load.mockRejectedValueOnce(new Error('chunk missing'));
+    load.mockResolvedValueOnce(fakeUi());
+    const { ui, texts, hideFallback } = setup(load);
+    ui.showError('First', 'failure');
+    await ui.ready().catch(() => undefined);
+    expect(texts).toEqual(['First. failure']);
+
+    // When
+    ui.showError('Second', 'failure');
+    await ui.ready();
+
+    // Then
+    expect(hideFallback).toHaveBeenCalledOnce();
+  });
+
+  it('As a visitor, a retry screen asked for while the UI cannot load still offers Reload', async () => {
+    // Given
+    const { ui, texts } = setup(() => Promise.reject(new Error('chunk missing')));
+
+    // When
     ui.showRetryScreen();
     await ui.ready().catch(() => undefined);
 
     // Then
-    expect(captures.expected).toHaveBeenCalledOnce();
+    expect(texts).toEqual(['Failed to load content.']);
+  });
+
+  it('As a product, no sandbox failure draws into my page once it is written, even from a load in flight', async () => {
+    // Given
+    const module = fakeUi();
+    let reject: (err: Error) => void = () => undefined;
+    const failing = new Promise<PageUiModule>((_, fail) => {
+      reject = fail;
+    });
+    const { ui, texts } = setup(() => failing);
+    ui.showError('Late', 'failure');
+    ui.showRetryScreen();
+
+    // When
+    ui.close();
+    reject(new Error('chunk missing'));
+    await ui.ready().catch(() => undefined);
+
+    // Then
+    expect(texts).toEqual([]);
+    expect(module.showError).not.toHaveBeenCalled();
+  });
+
+  it('As a product, a load in flight that resolves after my page is written draws no error', async () => {
+    // Given
+    const module = fakeUi();
+    let resolve: (ui: PageUiModule) => void = () => undefined;
+    const pending = new Promise<PageUiModule>(done => {
+      resolve = done;
+    });
+    const { ui } = setup(() => pending);
+    ui.showError('Late', 'failure');
+
+    // When
+    ui.close();
+    resolve(module);
+    await ui.ready();
+
+    // Then
+    expect(module.showError).not.toHaveBeenCalled();
   });
 });

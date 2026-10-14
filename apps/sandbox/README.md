@@ -28,8 +28,9 @@ resolution. See the root [README](../../README.md) for the product as a whole.
 - After a load the origin's stores are purged of anything the product left behind.
 - The password dialog comes with the sandbox's own UI. Its dialogs are `ModalView` data, with an icon component, that
   the shared dialog renders.
-- The error page and the retry screen come with that chunk. Without it the reason shows as plain text. The retry screen
-  draws the brand's petal mark.
+- The error page and the retry screen come with that chunk. A failed chunk load is not cached, so the next need loads it
+  again. While it is unavailable, a failure or retry shows a message with a Reload button from the static page, which
+  needs no chunk. The retry screen draws the brand's petal mark.
 - A small helper for product sub-pages is a real module that the service worker inlines as a classic script. The service
   worker is built by the page's own config, after the page, into one file at the root.
 - The checker is a real module inlined as a classic script, so it runs before any product script. Its reports use the

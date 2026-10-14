@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dismissAllToasts, setToastsExpanded, toastsStore } from '../../page/state/toasts.js';
+import { dismissAllToasts, setToastsExpanded, showToasts, toastsStore } from '../../page/state/toasts.js';
 import { useStore } from '../use-store.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { ToastCard } from './ToastCard.js';
@@ -15,6 +15,9 @@ export function ToastStack(): JSX.Element {
   const expanded = useStore(toastsStore, state => state.expanded);
   let root: HTMLDivElement | undefined;
   let cards: HTMLDivElement | undefined;
+
+  // Countdowns start only once a view shows the toasts.
+  onSettled(showToasts);
 
   // Worked out once per update, not once per card.
   const active = createMemo(() => items().filter(t => !t.leaving));

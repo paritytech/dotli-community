@@ -61,7 +61,7 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     }
   }
 
-  /** `null` covers both a miss and a storage error. Prefer `getCachedCidResult`. */
+  /** `null` covers both a miss and a storage error, which is reported here. */
   async function getCachedCid(label: string, network: Network): Promise<CachedCid | null> {
     const result = await getCachedCidResult(label, network);
     if (result.kind === 'error') {

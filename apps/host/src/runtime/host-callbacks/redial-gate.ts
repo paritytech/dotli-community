@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Each product's papi client re-follows every 250 ms and each dial would rebuild a chain, so redials
-// after a chain halt go through one gate shared by every core connection.
+// Each product's papi client re-follows every 250 ms and each dial would boot a frame or rebuild a chain, so redials
+// after a halt go through one gate shared by every core connection.
 
 const REDIAL_FIRST_MS = 1_000;
 const REDIAL_MAX_MS = 30_000;

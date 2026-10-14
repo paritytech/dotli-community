@@ -121,7 +121,12 @@ export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
       // The host's relay gives up at its own budget, so a reply that never comes is dropped, not awaited forever.
       return withTimeout(reply, TIMEOUTS.BITSWAP_TOTAL_BUDGET + TIMEOUTS.RESPONSE_DELIVERY_GRACE, () => {
         pending.delete(id);
-        postToHost(parent, { type: 'dotli:bitswap-abort', ids: [id], frame });
+        // A throw here would escape the timer and leave the request unsettled, so the abort is only best effort.
+        try {
+          postToHost(parent, { type: 'dotli:bitswap-abort', ids: [id], frame });
+        } catch (err) {
+          log.error('[dot.li sandbox] bitswap bridge abort postMessage failed:', err);
+        }
         return new BitswapBridgeTimeoutError(`bitswap-bridge: no reply for ${cid} from the host`);
       });
     },

@@ -36,9 +36,10 @@ timeouts.
 - Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `getActiveServicesConfig`, `getActiveTldSuffix`,
   `withActiveTld`, the chain role helpers (`CHAIN_ROLES`, `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway
   and genesis hash readers.
-- Settings: `getSettings`, `setSettings`, `getBackend`, `parseBackend`, `getCacheSettings`, `isSharedWorkerAvailable`,
-  `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`, `setActiveNetwork`,
-  `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `ResolvedSettings`, `Settings`, `SharedSettings`.
+- Settings: `getSettings`, `setSettings`, `subscribeSettings`, `getBackend`, `parseBackend`, `getCacheSettings`,
+  `isSharedWorkerAvailable`, `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`,
+  `setActiveNetwork`, `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `ResolvedSettings`, `Settings`,
+  `SharedSettings`.
 
 ### `@dotli/config/fixed`
 

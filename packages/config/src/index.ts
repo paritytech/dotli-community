@@ -50,7 +50,7 @@ export {
   type FixedServicesConfig,
   type Network,
 } from './network.js';
-export { setSettings } from './active-settings.js';
+export { setSettings, subscribeSettings } from './active-settings.js';
 export {
   getSettings,
   hasStoredSettings,

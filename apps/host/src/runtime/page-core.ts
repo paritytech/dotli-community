@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The page's one refcounted TrUAPI core, under its product's label. The core goes with its last lease, a faulted one
-// is never handed out again, and one that goes down while it is the page's core is replaced at once.
+// is never handed out again, and one that goes down while it is the page's core is replaced at once when it is held.
+// One nobody holds just goes, and the next request dials.
 
 import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
@@ -231,15 +232,20 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
     return core;
   }
 
-  /** Idempotent, so a refused connection and the close that follows it, or two stale checks, redial once. */
+  /** Idempotent, so a refused connection and the close that follows it, or two stale checks, take the core down once. */
   function wentDown(core: Core, reason: CoreDownReason): void {
     if (core.faulted) {
       return;
     }
     core.faulted = true;
     if (current === core) {
-      // The page's product, which a product change may have moved on from the core that went down.
-      dial(pageProduct, reason);
+      if (core.leases > 0) {
+        // A holder waits on the replacement, for the page's product, which a product change may have moved on from.
+        dial(pageProduct, reason);
+      } else {
+        // Redialing a core nobody holds would boot a crashing one forever, so the next request dials instead.
+        core.dispose();
+      }
     }
     // Once only, as the guard above holds, and a holder that subscribes after this hears it at once instead.
     core.downListeners.emit(undefined);

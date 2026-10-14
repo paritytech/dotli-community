@@ -14,7 +14,12 @@ import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getActiveServicesConfig, getBackend, type Backend } from '@dotli/config';
-import { protocolClient, isRemoteChainConnectable, type RemoteChainProvider } from '@dotli/protocol';
+import {
+  protocolClient,
+  isRemoteChainConnectable,
+  type ProtocolStatus,
+  type RemoteChainProvider,
+} from '@dotli/protocol';
 import {
   chainHaltedError,
   createChainPool,
@@ -75,6 +80,13 @@ export function createHostChainPool({
   });
 }
 
+/** The protocol frame's status, read when a lease that died with the frame would be taken again. */
+export interface FrameStatusSource {
+  getProtocolStatus(): ProtocolStatus;
+}
+
+const protocolFrame: FrameStatusSource = { getProtocolStatus: () => protocolClient().getProtocolStatus() };
+
 const hostChainPool = createHostChainPool();
 
 /**
@@ -122,28 +134,38 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
 }
 
 /**
- * A chain that halts each time it is rebuilt would otherwise be re-synced on each re-follow. Kept per pool, since the
- * pool owns the chains they hold back.
+ * A chain that halts each time it is rebuilt would otherwise be re-synced on each re-follow, and a frame that fails
+ * each boot booted again. Kept per pool, since they hold back that pool's leases.
  */
-const chainGates = new WeakMap<ChainPool, Map<string, RedialGate>>();
+interface PoolGates {
+  frame: RedialGate;
+  chains: Map<string, RedialGate>;
+}
+
+const poolGates = new WeakMap<ChainPool, PoolGates>();
+
+function gatesOf(pool: ChainPool): PoolGates {
+  let gates = poolGates.get(pool);
+  if (gates === undefined) {
+    gates = { frame: createRedialGate(), chains: new Map() };
+    poolGates.set(pool, gates);
+  }
+  return gates;
+}
 
 function chainGate(pool: ChainPool, genesisHash: string): RedialGate {
-  let gates = chainGates.get(pool);
-  if (gates === undefined) {
-    gates = new Map();
-    chainGates.set(pool, gates);
-  }
+  const { chains } = gatesOf(pool);
   const key = genesisHash.toLowerCase();
-  let gate = gates.get(key);
+  let gate = chains.get(key);
   if (gate === undefined) {
     gate = createRedialGate();
-    gates.set(key, gate);
+    chains.set(key, gate);
   }
   return gate;
 }
 
 /** Takes one lease at once and another on the first send after a halt. */
-function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConnection {
+function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSource): PlatformJsonRpcConnection {
   const first = pool.getLocalProvider(genesisHash, 'truapi-core');
   if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
@@ -152,7 +174,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
   let wake: (() => void) | null = null;
   let closed = false;
   let lease: JsonRpcConnection | null = null;
-  // Why the last lease halted, so the next one waits for the frame or for the chain's gate.
+  // Why the last lease halted, so the next one waits for that reason's gate.
   let haltedBy: RemoteChainHalt | null = null;
 
   const deliver = (message: unknown): void => {
@@ -164,7 +186,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     wake = null;
   };
   // A halt drops the lease but the stream stays open, since truapi-host ignores its end and keeps
-  // sending. The next send takes a new lease once the frame is back, or behind the chain gate.
+  // sending. The next send takes a new lease, behind the frame gate or the chain gate.
   const open = (provider: LeaseProvider): void => {
     // Per lease, so a halt heard while `provider` still runs, or a late one from a replaced lease,
     // never touches another lease.
@@ -175,9 +197,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
         lease = null;
       }
       haltedBy = haltReasonOf(error);
-      if (haltedBy === 'chain') {
-        chainGate(pool, genesisHash).noteHalt();
-      }
+      (haltedBy === 'frame' ? gatesOf(pool).frame : chainGate(pool, genesisHash)).noteHalt();
     });
     if (!slot.halted) {
       slot.connection = lease = connection;
@@ -186,10 +206,12 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     }
   };
   const reopen = (): JsonRpcConnection | null => {
-    // A lease taken while the frame is down boots it at once and waits for that boot, and the frame boots at most once
-    // per loss, so a frame halt always dials.
+    // Only a failed frame holds a lease back. A lease taken then boots it, so a frame that fails every boot is dialled
+    // only as its gate allows.
     const mayDial =
-      haltedBy === 'frame' || pool.status(genesisHash) !== 'disconnected' || chainGate(pool, genesisHash).tryDial();
+      haltedBy === 'frame'
+        ? frame.getProtocolStatus() !== 'failed' || gatesOf(pool).frame.tryDial()
+        : pool.status(genesisHash) !== 'disconnected' || chainGate(pool, genesisHash).tryDial();
     if (!mayDial) {
       // Answered at once, as the product's own retry is.
       return null;
@@ -267,6 +289,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
 
 export function createChainConnect(
   pool: ChainPool = hostChainPool,
+  frame: FrameStatusSource = protocolFrame,
   sources: Partial<Pick<HostChainSources, 'backend' | 'isRemoteChainConnectable' | 'isRpcChainSupported'>> = {},
 ): ChainProvider['connect'] {
   const {
@@ -284,6 +307,6 @@ export function createChainConnect(
       log.warn(`[dot.li truapi-chain] ${backend} backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported ${backend} chain: ${genesisHash}`);
     }
-    return Promise.resolve(toConnection(genesisHash, pool));
+    return Promise.resolve(toConnection(genesisHash, pool, frame));
   };
 }

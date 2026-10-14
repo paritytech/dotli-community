@@ -5,6 +5,8 @@
 
 import { decodeWireMessage, type WireProvider } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet } from '@dotli/shared';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import { loadWireDescriber } from '../lazy.js';
 import { reportLazyMiss } from '../lazy-miss.js';
@@ -71,16 +73,16 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
 /** Disposing it closes the connection, which the page core reads as deliberate. */
 export function wrapCoreProviderForDebug(connection: CoreConnection): CoreProvider {
   const { provider, productId } = connection;
-  const listeners = new Set<(message: Uint8Array) => void>();
+  const listeners = createListenerSet<Uint8Array>({
+    onListenerError: reportListener('wallet', 'core_connection.frame'),
+  });
   let disposed = false;
   const unsubscribeCore = provider.subscribe(message => {
     if (disposed) {
       return;
     }
     emitWireFrameDebug('outgoing', productId, message);
-    for (const listener of [...listeners]) {
-      listener(message);
-    }
+    listeners.emit(message);
   });
 
   return {
@@ -92,10 +94,7 @@ export function wrapCoreProviderForDebug(connection: CoreConnection): CoreProvid
       provider.postMessage(message);
     },
     subscribe(callback) {
-      listeners.add(callback);
-      return () => {
-        listeners.delete(callback);
-      };
+      return listeners.subscribe(callback);
     },
     subscribeClose(callback) {
       return provider.subscribeClose?.(callback) ?? noop;
@@ -115,7 +114,6 @@ export function wrapCoreProviderForDebug(connection: CoreConnection): CoreProvid
       }
       disposed = true;
       unsubscribeCore();
-      listeners.clear();
       connection.close();
     },
   };

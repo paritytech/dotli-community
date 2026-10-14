@@ -18,7 +18,7 @@ export default defineConfig([
   ...importBans([
     onlyAllowedScopes(
       ['@dotli/shared', '@config/eslint', '@config/vite'],
-      'config is configuration only, and takes nothing but the shared test helpers.',
+      'config is configuration only, and takes nothing but the shared primitives and test helpers.',
     ),
   ]),
 ]);

@@ -940,3 +940,85 @@ describe('page core retirement', () => {
     expect(outcomes).toEqual(['ok', 'ok']);
   });
 });
+
+describe('page core with nobody holding it', () => {
+  /** A replacement core nobody took a lease on, since its only holder released the core that went down. */
+  async function unheldReplacement(): Promise<
+    ReturnType<typeof reportingHarness> & { setWalletFound: (found: boolean) => void }
+  > {
+    let walletFound = false;
+    const fakes = reportingHarness({ walletFound: () => walletFound });
+    const lease = await fakes.core.acquire();
+    await lease.connect();
+    nthRuntime(fakes.runtimes, 0).providers[0]?.goDown();
+    await fakes.changes.until(() => fakes.outcomes.length === 2);
+    lease.release();
+    // The replacement follows the store, and checks itself, once as it boots.
+    await fakes.changes.until(() => nthRuntime(fakes.runtimes, 1).notifySessionStoreChanged.mock.calls.length === 1);
+    return {
+      ...fakes,
+      setWalletFound: found => {
+        walletFound = found;
+      },
+    };
+  }
+
+  it('As a page whose unheld core dies, no replacement is booted until someone asks for one', async () => {
+    // Given
+    const { runtimes, requests, storeListeners, staleChecks, counted, changes, setWalletFound } =
+      await unheldReplacement();
+
+    // When the replacement turns stale, as another tab logs in with the local wallet
+    setWalletFound(true);
+    for (const listener of [...storeListeners]) {
+      listener();
+    }
+    await Promise.all(staleChecks);
+
+    // Then it goes, and nothing is booted in its place
+    await changes.until(() => nthRuntime(runtimes, 1).dispose.mock.calls.length === 1);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.isLive()).toBe(false);
+    expect(storeListeners.size).toBe(0);
+    expect(counted('wallet.core_redial')).toEqual([{ outcome: 'ok', reason: 'closed' }]);
+  });
+
+  it('As a sign-in after the unheld core died, I get a fresh core', async () => {
+    // Given an unheld replacement that turned stale and went
+    const { core, runtimes, requests, storeListeners, staleChecks, changes, setWalletFound } =
+      await unheldReplacement();
+    setWalletFound(true);
+    for (const listener of [...storeListeners]) {
+      listener();
+    }
+    await Promise.all(staleChecks);
+    await changes.until(() => nthRuntime(runtimes, 1).dispose.mock.calls.length === 1);
+
+    // When
+    const lease = await core.acquire();
+
+    // Then
+    expect(requests).toHaveLength(3);
+    expect(lease.runtime).toBe(nthRuntime(runtimes, 2).runtime);
+    expect(requests[2]?.inService()).toBe(true);
+  });
+
+  it('As a product holding the core when it dies, I get a replacement at once', async () => {
+    // Given a product that took the unheld replacement and connected on it
+    const { core, runtimes, requests, outcomes, changes } = await unheldReplacement();
+    const lease = await core.acquire();
+    await lease.connect();
+    const heard: number[] = [];
+    lease.subscribeDown(() => {
+      heard.push(requests.length);
+    });
+
+    // When
+    nthRuntime(runtimes, 1).providers[0]?.goDown();
+
+    // Then
+    expect(heard).toEqual([3]);
+    await changes.until(() => outcomes.length === 3 && outcomes.at(-1) === 'ok');
+    expect((await core.acquire()).runtime).toBe(nthRuntime(runtimes, 2).runtime);
+  });
+});

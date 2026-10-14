@@ -150,4 +150,25 @@ describe('wire describer', () => {
     expect(load).toHaveBeenCalledOnce();
     expect(loaded).toEqual([module, module, module]);
   });
+
+  it('As a second listener of the core connection, I still hear it when the first listener throws', () => {
+    // Given a first listener that throws and a second that collects
+    onTestFinished(bindCaptureSink({ exception: vi.fn(), expected: vi.fn() }));
+    const core = makeProvider();
+    const wrapped = wrapCoreProviderForDebug(connectionOver(core).connection);
+    const heard: Uint8Array[] = [];
+    wrapped.subscribe(() => {
+      throw new Error('first listener broke');
+    });
+    wrapped.subscribe(message => {
+      heard.push(message);
+    });
+    const frame = loginResponseFrame('from-core', { success: true, value: 'Success' });
+
+    // When the core sends a frame
+    core.listener?.(frame);
+
+    // Then the second listener heard it
+    expect(heard).toEqual([frame]);
+  });
 });

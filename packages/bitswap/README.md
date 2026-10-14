@@ -26,8 +26,9 @@ flowchart LR
 - The relay listens on the host's sandbox channel. It takes the cache and the client through `SandboxBlockRelayDeps` and
   tags each block with its `BlockOrigin`. The host holds the blocks because the sandbox's credentialless origin loses
   its storage on reload.
-- A relay step that fails and is worked around (the verifier, or a block cache read, delete or write) is captured,
-  logged as an error and counted as `content.block_relay` with its `step`, so the fallback never hides it.
+- A block cache read, delete or write that fails and is worked around is captured, logged as an error and counted as
+  `content.block_relay` with its `step`, so the fallback never hides it. A verifier that cannot run reports why itself,
+  so each block it leaves unchecked is a breadcrumb and a `verify` count.
 - Progress totals come from a hand-decoded dag-pb root that sums link sizes, which keeps the `@ipld/dag-pb` decoder out
   of the eager host bundle.
 - Errors carry stable names. The sandbox rebuilds errors by name across `postMessage`, so callers branch on

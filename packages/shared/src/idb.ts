@@ -3,6 +3,8 @@
 
 // IndexedDB's callbacks as promises, for every store dotli keeps in a browser database.
 
+import { withTimeout } from './with-timeout.js';
+
 /** Opens `name` at `version`, rejecting rather than hanging when an older tab blocks the upgrade. */
 export function openIdb(
   factory: IDBFactory,
@@ -87,9 +89,19 @@ export function idbTransaction(
   });
 }
 
-/** Deletes `name`, rejecting rather than hanging when an open connection blocks the delete. */
-export function deleteIdb(factory: Pick<IDBFactory, 'deleteDatabase'>, name: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+/** Long enough for another tab to close its connection, short enough that a stuck one does not hold up init. */
+const DELETE_TIMEOUT_MS = 3_000;
+
+/**
+ * Deletes `name`. A delete an open connection blocks stays queued in the browser and runs once that connection closes,
+ * so it waits for that, rejecting if `timeoutMs` pass first.
+ */
+export function deleteIdb(
+  factory: Pick<IDBFactory, 'deleteDatabase'>,
+  name: string,
+  timeoutMs = DELETE_TIMEOUT_MS,
+): Promise<void> {
+  const deleted = new Promise<void>((resolve, reject) => {
     const req = factory.deleteDatabase(name);
     req.onsuccess = () => {
       resolve();
@@ -99,9 +111,10 @@ export function deleteIdb(factory: Pick<IDBFactory, 'deleteDatabase'>, name: str
       const cause = req.error;
       reject(new Error(`Failed to delete ${name} DB: ${cause?.name ?? 'unknown'}`, cause ? { cause } : undefined));
     };
-    // Blocked fires neither onsuccess nor onerror until the other connection closes.
-    req.onblocked = () => {
-      reject(new Error(`Failed to delete ${name} DB: blocked by another connection`));
-    };
   });
+  return withTimeout(
+    deleted,
+    timeoutMs,
+    () => new Error(`Failed to delete ${name} DB: still blocked by another connection after ${String(timeoutMs)}ms`),
+  );
 }

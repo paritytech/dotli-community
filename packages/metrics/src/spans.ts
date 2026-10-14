@@ -84,7 +84,7 @@ export const APP_ORIGIN_PURGE = 'app.origin_purge';
 
 /**
  * A sandbox run whose load rejected or whose failure could not be shown, both outside the load's own handling. Tagged
- * `outcome` and `reason` (`load_rejected` or `show_threw`).
+ * `outcome` and `reason` (`load_rejected`, `show_threw` or `fallback_missing`).
  */
 export const APP_RUN = 'app.run';
 
@@ -222,7 +222,7 @@ export const RECENT_LABELS_UPDATE = 'recent_labels.update';
 
 /**
  * A chunk Vite's preload helper failed to load, mostly a deploy that replaced it. Tagged `outcome` and `reason` (the
- * error's name). The caller of the import reports the failure itself, so this reads as the rate behind those reports.
+ * error's name). The caller of the import counts the failure with a breadcrumb, so this reads as the rate behind those.
  */
 export const CHUNK_PRELOAD = 'chunk.preload';
 

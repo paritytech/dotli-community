@@ -52,6 +52,35 @@ describe('useActiveTld', () => {
     expect(read).toHaveBeenCalledTimes(1);
     dispose();
   });
+
+  it('As a visitor on previewnet, the name form shows .testnet once boot has read my settings, even when it settled first', () => {
+    // Given
+    let tld = '.paseo';
+    const listeners = new Set<() => void>();
+    const subscribe = (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    };
+    const { suffix, dispose } = createRoot(d => ({ suffix: useActiveTld(() => tld, subscribe), dispose: d }));
+    flush();
+    expect(suffix()).toBe('.paseo');
+
+    // When
+    tld = '.testnet';
+    for (const listener of listeners) {
+      listener();
+    }
+    flush();
+
+    // Then
+    expect(suffix()).toBe('.testnet');
+
+    // When
+    dispose();
+
+    // Then
+    expect(listeners.size).toBe(0);
+  });
 });
 
 describe('useRecents', () => {

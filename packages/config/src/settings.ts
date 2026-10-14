@@ -72,7 +72,8 @@ export function resolveSettings({
   // stay apart. A cache this origin never chose still follows the shared one.
   const wanted =
     url?.backend ??
-    parseBackend(preferLocal ? local.getItem(BACKEND_KEY) : (shared?.backend ?? local.getItem(BACKEND_KEY))) ??
+    parseBackend(preferLocal ? null : (shared?.backend ?? null)) ??
+    parseBackend(local.getItem(BACKEND_KEY)) ??
     legacyBackend(local) ??
     defaultBackend();
   const sharedWorkerFallback = wanted === 'smoldot-shared-worker' && !sharedWorkerAvailable;

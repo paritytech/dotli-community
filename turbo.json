@@ -14,12 +14,16 @@
     },
     "build:prod": {
       "dependsOn": ["transit"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*", "$TURBO_ROOT$/scripts/compress-dist.ts"],
       "outputs": ["dist/**"],
       "env": ["SENTRY_AUTH_TOKEN"]
     },
     "test": {
       "dependsOn": ["transit"]
+    },
+    "@config/vite#test": {
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/nginx/snippets/**"]
     },
     "lint": {
       "dependsOn": ["transit"],
@@ -34,12 +38,15 @@
       "persistent": true
     },
     "//#lint:root": {
+      "dependsOn": ["^transit"],
       "outputs": []
     },
     "//#typecheck:root": {
+      "dependsOn": ["^transit"],
       "outputs": []
     },
     "//#test:root": {
+      "dependsOn": ["^transit"],
       "outputs": []
     }
   }

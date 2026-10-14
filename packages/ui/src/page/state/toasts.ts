@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A countdown pauses while the tab is hidden or the stack is expanded and resumes from what was left.
+// A countdown runs only while a view shows the toasts. It pauses while the tab is hidden or the stack is expanded and
+// resumes from what was left.
 
 import { captureException } from '@dotli/metrics';
 import { createSyncStore, registerStoreStateReset, shallowEqual, type ReadableStore } from '@dotli/shared';
@@ -63,6 +64,9 @@ export interface ToastPage extends EventTarget {
 
 const timers = new Map<number, Timer>();
 let nextId = 0;
+let views = 0;
+// Bumped by a reset, so a view mounted before it releases nothing when it unmounts after it.
+let viewGeneration = 0;
 let page: ToastPage | undefined;
 // Removes the bound page's listener, so a rebind or a reset never leaves one behind.
 let pageBinding: AbortController | undefined;
@@ -76,7 +80,7 @@ function currentPage(): ToastPage {
 }
 
 function shouldPause(): boolean {
-  return toasts.get().expanded || currentPage().visibilityState !== 'visible';
+  return views === 0 || toasts.get().expanded || currentPage().visibilityState !== 'visible';
 }
 
 function start(id: number): void {
@@ -142,6 +146,26 @@ export function bindToastPage(source: ToastPage): void {
     },
     { signal: binding.signal },
   );
+}
+
+/** A view calls it on mount and the returned function on unmount. The first view starts the countdowns, the last pauses them. */
+export function showToasts(): () => void {
+  views++;
+  if (views === 1) {
+    resumeAll();
+  }
+  const generation = viewGeneration;
+  let shown = true;
+  return () => {
+    if (!shown || generation !== viewGeneration) {
+      return;
+    }
+    shown = false;
+    views--;
+    if (views === 0) {
+      pauseAll();
+    }
+  };
 }
 
 function finishTimer(id: number): void {
@@ -253,5 +277,7 @@ export function clearToasts(): void {
 registerStoreStateReset(() => {
   clearToasts();
   nextId = 0;
+  views = 0;
+  viewGeneration++;
   unbindToastPage();
 });

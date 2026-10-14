@@ -16,6 +16,7 @@ import { createDecryptIfNeeded } from './decrypt-prompt.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { listenForChunkFailures, showNotification, toastsStore } from '@dotli/ui';
 import { loadPageUi, loadSandboxChecker } from './lazy.js';
+import { hideFallbackScreen, showFallbackScreen } from './fallback-screen.js';
 import { createSandboxUi } from './sandbox-ui.js';
 import { showPasswordPrompt } from './show-password-prompt.js';
 import {
@@ -49,8 +50,13 @@ listenForChunkFailures({
 const ui = createSandboxUi({
   load: loadPageUi,
   toasts: toastsStore,
-  showText: text => {
-    document.body.textContent = text;
+  showFallback: text => {
+    showFallbackScreen(document, text, () => {
+      window.location.reload();
+    });
+  },
+  hideFallback: () => {
+    hideFallbackScreen(document);
   },
 });
 

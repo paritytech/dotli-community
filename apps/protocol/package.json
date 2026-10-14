@@ -16,7 +16,8 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@config/vite": "*"
+    "@config/vite": "*",
+    "@polkadot-api/json-rpc-provider": "^0.2.0"
   },
   "dependencies": {
     "@dotli/chains": "*",
@@ -25,7 +26,6 @@
     "@dotli/protocol": "*",
     "@dotli/resolver": "*",
     "@dotli/shared": "*",
-    "@dotli/storage": "*",
-    "@polkadot-api/json-rpc-provider": "^0.2.0"
+    "@dotli/storage": "*"
   }
 }

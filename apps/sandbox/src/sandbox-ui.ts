@@ -12,14 +12,16 @@ export interface SandboxUiDeps {
   load: () => Promise<PageUiModule>;
   /** Toasts queue here before the UI is up, and show once it mounts. */
   toasts: ReadableStore<{ readonly items: readonly unknown[] }>;
-  /** Says why the page stopped, as plain text, when the UI itself cannot load. */
-  showText: (text: string) => void;
+  /** Says why the page stopped, with a Reload, when the UI itself cannot load. */
+  showFallback: (text: string) => void;
+  /** Takes that screen away once a later load brings the UI up. Safe when it is not shown. */
+  hideFallback: () => void;
 }
 
 export interface SandboxUi {
   /**
-   * The UI with its overlays mounted. One load serves every caller. A failed load is not retried, since a deploy
-   * replaced the chunk, and a reload is the way out.
+   * The UI with its overlays mounted. One load serves every caller while it is in flight. A failed load is not
+   * cached, so the next call loads again.
    */
   ready: () => Promise<PageUiModule>;
   showError: (title: string, message: string, retry?: () => void) => void;
@@ -31,18 +33,20 @@ export interface SandboxUi {
   close: () => void;
 }
 
-export function createSandboxUi({ load, toasts, showText }: SandboxUiDeps): SandboxUi {
+export function createSandboxUi({ load, toasts, showFallback, hideFallback }: SandboxUiDeps): SandboxUi {
   let loaded: Promise<PageUiModule> | undefined;
   let closed = false;
   const ready = (): Promise<PageUiModule> =>
     (loaded ??= load().then(
       ui => {
         if (!closed) {
+          hideFallback();
           ui.mountOverlays();
         }
         return ui;
       },
       (err: unknown) => {
+        loaded = undefined;
         // A missing chunk is a deploy race, counted as the host counts its own (owner's call: metric only).
         reportExpected(err, {
           flow: 'content',
@@ -60,12 +64,19 @@ export function createSandboxUi({ load, toasts, showText }: SandboxUiDeps): Sand
     if (closed) {
       return;
     }
-    ready().then(show, () => {
-      // Reported once where it loads.
-      if (text !== undefined) {
-        showText(text);
-      }
-    });
+    ready().then(
+      ui => {
+        if (!closed) {
+          show(ui);
+        }
+      },
+      () => {
+        // Reported once where it loads.
+        if (text !== undefined && !closed) {
+          showFallback(text);
+        }
+      },
+    );
   };
 
   const showQueued = (): void => {
@@ -87,7 +98,7 @@ export function createSandboxUi({ load, toasts, showText }: SandboxUiDeps): Sand
     showRetryScreen: () => {
       withUi(ui => {
         ui.showRetryScreen();
-      });
+      }, 'Failed to load content.');
     },
     close: () => {
       closed = true;

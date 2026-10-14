@@ -27,7 +27,7 @@ import s from './index.module.css';
     <TopbarReveal client:idle />
     {/* Marked, so a full-page screen keeps it. */}
     <div data-overlays>
-      <Overlays client:idle />
+      <Overlays client:idle={{ timeout: 1000 }} />
     </div>
     <script src="../main.ts"></script>
   </body>

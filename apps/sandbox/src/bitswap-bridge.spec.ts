@@ -19,12 +19,15 @@ interface Harness {
   pagehide: (persisted: boolean) => void;
 }
 
-/** The sandbox's window and its host parent, as fakes the test drives. */
-function harness(): Harness {
+/** The sandbox's window and its host parent, as fakes the test drives. `refuseAborts` makes posting an abort throw. */
+function harness({ refuseAborts = false }: { refuseAborts?: boolean } = {}): Harness {
   const target = new EventTarget();
   const posted: unknown[] = [];
   const parent = {
     postMessage: (message: unknown) => {
+      if (refuseAborts && (message as { type?: unknown }).type === 'dotli:bitswap-abort') {
+        throw new Error('the host window is gone');
+      }
       posted.push(message);
     },
   } as unknown as Window;
@@ -189,6 +192,41 @@ describe('sandbox bitswap bridge', () => {
     // Then the request failed by name and the host was told to drop that fetch
     await settled;
     expect(abortMessages(sandbox.posted)[0]?.ids).toEqual([id]);
+  });
+
+  it('As a sandbox whose host never answers and cannot be told to stop, my request still fails after the budget', async () => {
+    // Given a block request the host never answers, on a parent that refuses the abort
+    vi.useFakeTimers();
+    const sandbox = harness({ refuseAborts: true });
+    const pending = sandbox.bridge.requestBlock('bafyT');
+    const settled = expect(pending).rejects.toMatchObject({ name: 'BitswapBridgeTimeoutError' });
+
+    // When the relay's whole budget and the delivery grace pass
+    vi.advanceTimersByTime(TIMEOUTS.BITSWAP_TOTAL_BUDGET + TIMEOUTS.RESPONSE_DELIVERY_GRACE);
+
+    // Then
+    await settled;
+  });
+
+  it('As a sandbox, a reply the host sends after my request timed out is ignored', async () => {
+    // Given a block request that timed out
+    vi.useFakeTimers();
+    const sandbox = harness();
+    const pending = sandbox.bridge.requestBlock('bafyT');
+    const settled = expect(pending).rejects.toMatchObject({ name: 'BitswapBridgeTimeoutError' });
+    const id = requestId(sandbox.posted);
+    vi.advanceTimersByTime(TIMEOUTS.BITSWAP_TOTAL_BUDGET + TIMEOUTS.RESPONSE_DELIVERY_GRACE);
+    await settled;
+
+    // When the host's answer arrives late
+    sandbox.receive({ type: 'dotli:bitswap-result', id, ok: true, bytes: new Uint8Array([1]) }, sandbox.parent);
+
+    // Then the request keeps its timeout, and a later request is still answered
+    await expect(pending).rejects.toMatchObject({ name: 'BitswapBridgeTimeoutError' });
+    const next = sandbox.bridge.requestBlock('bafyU');
+    const nextId = getMessages(sandbox.posted).at(-1)?.id;
+    sandbox.receive({ type: 'dotli:bitswap-result', id: nextId, ok: true, bytes: new Uint8Array([2]) }, sandbox.parent);
+    await expect(next).resolves.toEqual(new Uint8Array([2]));
   });
 
   it('As an operator, a teardown with nothing in flight stays silent', async () => {

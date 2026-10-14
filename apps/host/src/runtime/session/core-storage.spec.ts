@@ -605,4 +605,22 @@ describe('core storage', () => {
     expect(shared.entries.get(SESSION_KEY)).toBe('0x010203');
     expect(shared.entries.get(UI_STATE_CACHE_KEY)).toBe(CACHED_UI_STATE);
   });
+
+  it("As a second listener of the core's storage, I still hear a change when the first listener throws", async () => {
+    // Given a first listener that throws and a second that counts
+    onTestFinished(bindCaptureSink({ exception: vi.fn(), expected: vi.fn() }));
+    const heard = vi.fn();
+    onTestFinished(
+      coreStorage.onStoredSessionChanged(() => {
+        throw new Error('first listener broke');
+      }),
+    );
+    onTestFinished(coreStorage.onStoredSessionChanged(heard));
+
+    // When the session is written
+    await coreStorage.adapters().writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
+
+    // Then the write succeeded and the second listener heard it
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
 });

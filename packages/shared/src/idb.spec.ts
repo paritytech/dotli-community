@@ -169,7 +169,33 @@ describe('deleteIdb', () => {
     expect((await factory.databases()).map(info => info.name)).not.toContain('gone');
   });
 
-  it('As a purge, I delete a database another connection holds open and the delete rejects rather than hangs', async () => {
+  it('As a page deleting a database another tab holds open, the delete completes once that tab closes it', async () => {
+    // Given another tab holding the database open
+    const factory = new IDBFactory();
+    const otherTab = await openIdb(factory, 'held', 1, created => {
+      created.createObjectStore(STORE);
+    });
+
+    // When the delete reports blocked and the other tab then closes its connection
+    const deleted = deleteIdb(
+      {
+        deleteDatabase(name) {
+          const req = factory.deleteDatabase(name);
+          req.addEventListener('blocked', () => {
+            otherTab.close();
+          });
+          return req;
+        },
+      },
+      'held',
+    );
+
+    // Then the delete completes
+    await deleted;
+    expect((await factory.databases()).map(info => info.name)).not.toContain('held');
+  });
+
+  it('As a purge, I delete a database another connection never releases and the delete rejects rather than hangs', async () => {
     // Given
     const factory = new IDBFactory();
     await openIdb(factory, 'held', 1, created => {
@@ -177,9 +203,9 @@ describe('deleteIdb', () => {
     });
 
     // When
-    const deleted = deleteIdb(factory, 'held');
+    const deleted = deleteIdb(factory, 'held', 20);
 
     // Then
-    await expect(deleted).rejects.toThrow('Failed to delete held DB: blocked by another connection');
+    await expect(deleted).rejects.toThrow('Failed to delete held DB: still blocked by another connection');
   });
 });

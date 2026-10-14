@@ -23,7 +23,8 @@ and no data source.
 ## Design
 
 - The stores are sync stores built on `createSyncStore`. The overlays render their state and everything else opens,
-  pushes and settles through them. A toast's countdown pauses while the tab is hidden or the stack is expanded.
+  pushes and settles through them. A toast's countdown runs only while a toast view is mounted and pauses while the tab
+  is hidden or the stack is expanded.
 - Every component has a CSS module beside it. Colors come only from the tokens.
 - Floating layers share one stack that tracks shown modal layers and makes the page inert under the top one.
 - `Popover` and `DropdownMenu` render their surface from its first opening on and share the trigger wiring. A popover's

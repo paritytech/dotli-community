@@ -9,8 +9,8 @@ import { bytesToHex, hexToBytes } from '@parity/truapi/scale';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
 import type { CoreStorage, CoreStorageKey } from '@parity/truapi-host';
 import { SHARED_CORE_SESSION_KEY, protocolClient, type SharedStoreStatus } from '@dotli/protocol';
-import { m, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, idbRequest, idbTransaction, log, openIdb } from '@dotli/shared';
+import { m, reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createListenerSet, idbRequest, idbTransaction, log, openIdb } from '@dotli/shared';
 
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
@@ -85,19 +85,19 @@ export function createCoreStorage({
   keyDb = () => indexedDB,
 }: CoreStorageDeps): HostCoreStorage {
   // Writes in this tab, which the shared store's subscription does not report.
-  const localChangeListeners = new Set<() => void>();
-  const sessionReadListeners = new Set<(failed: boolean) => void>();
+  const localChangeListeners = createListenerSet<undefined>({
+    onListenerError: reportListener('storage', 'core_storage.local_change'),
+  });
+  const sessionReadListeners = createListenerSet<boolean>({
+    onListenerError: reportListener('storage', 'core_storage.session_read'),
+  });
 
   const emitLocalChange = (): void => {
-    for (const listener of [...localChangeListeners]) {
-      listener();
-    }
+    localChangeListeners.emit(undefined);
   };
 
   const emitSessionRead = (failed: boolean): void => {
-    for (const listener of [...sessionReadListeners]) {
-      listener(failed);
-    }
+    sessionReadListeners.emit(failed);
   };
 
   // Hits and misses are counted too, so failures read as a rate. An unreachable shared store is the environment's
@@ -268,25 +268,15 @@ export function createCoreStorage({
       };
     },
     readSession,
-    subscribeSessionReads(listener) {
-      // Wrapped, so one listener subscribed twice is two subscriptions, as each unsubscribe expects.
-      const onRead = (failed: boolean): void => {
-        listener(failed);
-      };
-      sessionReadListeners.add(onRead);
-      return () => {
-        sessionReadListeners.delete(onRead);
-      };
-    },
+    subscribeSessionReads: listener => sessionReadListeners.subscribe(listener),
     readUiCache,
     writeUiCache,
     getStatus: () => shared.getStatus(),
     subscribeStatus: listener => shared.subscribeStatus(listener),
     onStoredSessionChanged(listener) {
-      const onLocalChange = (): void => {
+      const unsubscribeLocal = localChangeListeners.subscribe(() => {
         listener();
-      };
-      localChangeListeners.add(onLocalChange);
+      });
       const unsubscribeShared = shared.subscribe(key => {
         if (key === SHARED_CORE_SESSION_KEY) {
           listener();
@@ -302,7 +292,7 @@ export function createCoreStorage({
         }
       });
       return () => {
-        localChangeListeners.delete(onLocalChange);
+        unsubscribeLocal();
         unsubscribeShared();
         unsubscribeStatus();
       };

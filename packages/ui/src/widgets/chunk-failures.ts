@@ -29,7 +29,7 @@ export function offerReload(notify: ShowNotification, reload: () => void): void 
 export function listenForChunkFailures({ target, notify, reload }: ChunkFailureDeps): () => void {
   const onPreloadError = (event: Event): void => {
     const error = (event as Event & { payload?: unknown }).payload ?? new Error('vite:preloadError');
-    // The caller that imported the chunk reports the failure, so here it is a breadcrumb and one count.
+    // The caller that imported the chunk counts the failure with its own breadcrumb, so this adds only the rate.
     reportExpected(error, { flow: 'boot', step: 'chunk_preload', metric: S.CHUNK_PRELOAD });
     offerReload(notify, reload);
   };
