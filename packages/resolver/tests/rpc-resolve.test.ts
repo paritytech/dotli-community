@@ -94,6 +94,52 @@ describe('rpc-resolve', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dotli user, a stop heard from a follow already replaced leaves the new RPC client alone', async () => {
+    // Given
+    setRpcAssetHubProvider(factory);
+    await resolveOwnerViaRpc('alice');
+    destroyRpcClient();
+    await resolveOwnerViaRpc('alice');
+
+    // When
+    must(mocks.stops[0], 'first stop callback')();
+    await resolveOwnerViaRpc('alice');
+
+    // Then
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user, a connection abandoned by a network switch cannot make the next resolve open a duplicate client', async () => {
+    // Given: a first connection still syncing when the client is destroyed, and its replacement syncing too
+    setRpcAssetHubProvider(factory);
+    let failAbandoned!: (err: Error) => void;
+    let readyReplacement!: () => void;
+    const abandonedReady = new Promise<void>((_resolve, reject) => {
+      failAbandoned = reject;
+    });
+    const replacementReady = new Promise<void>(resolve => {
+      readyReplacement = resolve;
+    });
+    mocks.createRawApi
+      .mockImplementationOnce(() => ({ ...fakeApi(), whenReady: () => abandonedReady }))
+      .mockImplementationOnce(() => ({ ...fakeApi(), whenReady: () => replacementReady }));
+    const first = resolveOwnerViaRpc('alice').catch(() => undefined);
+    destroyRpcClient();
+    const second = resolveOwnerViaRpc('alice');
+
+    // When: the abandoned connection fails, and another resolve arrives while the replacement still syncs
+    failAbandoned(new Error('socket closed'));
+    await first;
+    const third = resolveOwnerViaRpc('alice');
+    readyReplacement();
+
+    // Then
+    await Promise.all([second, third]);
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
   it('As a dotli user, destroying the RPC client releases the provider and the next resolve takes a new one', async () => {
     // Given
     setRpcAssetHubProvider(factory);

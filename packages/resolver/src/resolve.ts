@@ -53,19 +53,21 @@ export function setResolverPeopleProvider(factory: (() => JsonRpcProvider) | nul
 
 /** The next resolution rebuilds against a fresh client. */
 export function destroyResolverClient(): void {
-  if (clientInstance !== null) {
+  const api = apiInstance;
+  const client = clientInstance;
+  clientInstance = null;
+  apiInstance = null;
+  clientPromise = null;
+  if (client !== null) {
     log.event('Resolver client destroyed', { flow: 'resolve' });
     try {
-      apiInstance?.destroy();
-      clientInstance.destroy();
-      // eslint-disable-next-line no-restricted-syntax -- a panicked smoldot may throw here, and the references below must still clear.
+      api?.destroy();
+      client.destroy();
+      // eslint-disable-next-line no-restricted-syntax -- a panicked smoldot may throw here; the references were already cleared.
     } catch {
       /* already dead, clear references anyway */
     }
   }
-  clientInstance = null;
-  apiInstance = null;
-  clientPromise = null;
 }
 
 function ensureClient(opts: ResolveOptions = {}): Promise<Api> {
@@ -122,14 +124,20 @@ async function doCreateClient(onStatus?: StatusCallback, onPhase?: PhaseCallback
       throw err;
     }
 
-    // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
+    // A dead follow would otherwise make every later read return `null`, which reads as "name not found". Cached
+    // before subscribing, so a follow that stopped since it was ready drops this client, not a later one.
+    clientInstance = client;
+    apiInstance = api;
     api.onStop(() => {
+      if (apiInstance !== api) {
+        return;
+      }
       log.warn('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
       destroyResolverClient();
     });
+    // Rejects if the follow stopped in the meantime, so the caller retries on a rebuilt chain.
+    await api.whenReady();
 
-    clientInstance = client;
-    apiInstance = api;
     outcome = 'ok';
     log.event('Asset Hub client ready', {
       flow: 'resolve',
@@ -138,7 +146,7 @@ async function doCreateClient(onStatus?: StatusCallback, onPhase?: PhaseCallback
     });
     onPhase?.('asset-hub-ready');
     onStatus?.('Connected to Asset Hub Paseo');
-    return apiInstance;
+    return api;
   } catch (err) {
     if (err instanceof NetworkSyncTimeoutError) {
       outcome = 'timeout';
@@ -166,11 +174,13 @@ let peopleApiInstance: Api | null = null;
 let peoplePromise: Promise<Api> | null = null;
 
 function destroyPeopleClient(): void {
-  peopleApiInstance?.destroy();
-  peopleClientInstance?.destroy();
+  const api = peopleApiInstance;
+  const client = peopleClientInstance;
   peopleApiInstance = null;
   peopleClientInstance = null;
   peoplePromise = null;
+  api?.destroy();
+  client?.destroy();
 }
 
 export async function waitForPeopleFinalized(onStatus?: StatusCallback): Promise<void> {
@@ -203,13 +213,18 @@ export async function waitForPeopleFinalized(onStatus?: StatusCallback): Promise
       throw err;
     }
 
+    // A dead follow would otherwise be kept warm. Cached before subscribing, as for Asset Hub.
+    peopleClientInstance = client;
+    peopleApiInstance = api;
     api.onStop(() => {
+      if (peopleApiInstance !== api) {
+        return;
+      }
       log.warn('[dot.li resolve] People chainHead follow stopped, invalidating warm client');
       destroyPeopleClient();
     });
+    await api.whenReady();
 
-    peopleClientInstance = client;
-    peopleApiInstance = api;
     log.event('People chain warmed', { flow: 'resolve', ms: Math.round(performance.now() - initStart) });
     return api;
   })();

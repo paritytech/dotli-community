@@ -101,6 +101,11 @@ through a Service Worker that acts as a virtual file system.
 4. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
 5. Create an iframe to `<label>.app.paseo.li?cid=<cid>` which fetches and renders the content
 
+A resolver read never outlives its chain follow. When the follow stops, is torn down, or the node refuses to unpin a
+block the resolver no longer needs, every read still in flight fails as stopped instead of reporting the name as not
+found: the light-client resolver reads it again on a rebuilt client, and both backends redial for the next read. A stop
+heard from a follow that was already replaced leaves the replacement alone.
+
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
@@ -114,6 +119,12 @@ When a CID points to an IPFS directory (not a single file):
 4. The iframe loads from `/dotli-app/index.html` — the SW intercepts all requests and serves files from the in-memory
    archive
 5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) just work
+
+Files larger than one chunk are read in full, however deeply the importer nested their chunks, and a file node's own
+inline bytes come before its linked chunks. Gateway CAR requests select their representation with `?format=car`, leaving
+the browser's default Accept header intact: a media-specific Accept header bypasses the gateway's immutable-content
+cache despite returning the same archive. URL-based format selection follows
+[IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block verification are unchanged.
 
 ## Caching and verification
 

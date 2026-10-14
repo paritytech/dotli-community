@@ -118,6 +118,49 @@ describe('resolve', () => {
     expect(warn).toHaveBeenCalledWith('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
   });
 
+  it('As a dotli user on a light client, a stop heard from a follow already replaced leaves the new Asset Hub lease alone', async () => {
+    // Given: the first client was torn down and a second one serves names
+    setResolverAssetHubProvider(factory);
+    await resolveOwner('alice');
+    destroyResolverClient();
+    await resolveOwner('alice');
+    expect(disconnect).toHaveBeenCalledTimes(1);
+
+    // When: the first follow's stop arrives late
+    must(mocks.stops[0], 'first stop callback')();
+    await resolveOwner('alice');
+
+    // Then
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user on a light client, a follow that stops between becoming ready and serving a name is rebuilt, not read', async () => {
+    // Given: a follow that is ready once, then already stopped by the time the resolver subscribes
+    setResolverAssetHubProvider(factory);
+    const deadRead = vi.fn<() => Promise<null>>(() => Promise.resolve(null));
+    let ready = true;
+    mocks.createRawApi.mockImplementationOnce(() => ({
+      ...fakeApi(),
+      whenReady: () => (ready ? Promise.resolve() : Promise.reject(apiStopped())),
+      onStop: (cb: () => void) => {
+        ready = false;
+        cb();
+      },
+      readSlot: deadRead,
+    }));
+
+    // When
+    await resolveOwner('alice');
+
+    // Then
+    expect(deadRead).not.toHaveBeenCalled();
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(RETRY_LOG, expect.anything());
+  });
+
   it.each([
     [
       'the halted answer to a read in flight',

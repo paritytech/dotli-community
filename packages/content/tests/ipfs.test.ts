@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { fetchFromIpfs, fetchCarFromIpfs } from '../src/ipfs.js';
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 const GATEWAY = 'https://gw.example';
 
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: Mock;
 
 beforeEach(() => {
   fetchMock = vi.fn();
@@ -65,31 +65,15 @@ describe('fetchFromIpfs', () => {
 });
 
 describe('fetchCarFromIpfs', () => {
-  it('As the gateway fetcher, I fetch a dag-pb archive requesting format=car with the ipld.car Accept header', async () => {
-    // Given a gateway that returns some archive bytes
-    fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
-
-    // When it fetches the archive
-    await fetchCarFromIpfs(CID, GATEWAY);
-
-    // Then it asks for the CAR archive as a binary type (immune to gateway
-    // text/html rewriting, same discipline as the raw block path)
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${GATEWAY}/ipfs/${CID}?format=car`,
-      expect.objectContaining({
-        headers: { Accept: 'application/vnd.ipld.car' },
-      }),
-    );
-  });
-
-  it('As the gateway fetcher, I fetch a CAR archive and return its raw bytes', async () => {
+  it("As a user on a repeat visit, the archive is asked for by URL alone, so the gateway's immutable cache can serve it", async () => {
     // Given a gateway that returns CAR bytes
     fetchMock.mockResolvedValue(new Response(new Uint8Array([0xca, 0xfe]), { status: 200 }));
 
     // When it fetches the archive
     const data = await fetchCarFromIpfs(CID, GATEWAY);
 
-    // Then it gets the response bytes back
+    // Then the URL selects the CAR format, no media-specific Accept header splits the cache, and the bytes come back
+    expect(fetchMock.mock.calls).toEqual([[`${GATEWAY}/ipfs/${CID}?format=car`]]);
     expect(Array.from(data)).toEqual([0xca, 0xfe]);
   });
 

@@ -40,9 +40,12 @@ function ensureClient(onStatus?: StatusCallback): Promise<Api> {
   if (clientPromise !== null) {
     return clientPromise;
   }
-  clientPromise = doCreateClient(onStatus).finally(() => {
-    clientPromise = null;
+  const creating = doCreateClient(onStatus).finally(() => {
+    if (clientPromise === creating) {
+      clientPromise = null;
+    }
   });
+  clientPromise = creating;
   return clientPromise;
 }
 
@@ -74,16 +77,22 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
     throw err;
   }
 
-  // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
+  // A dead follow would otherwise make every later read return `null`, which reads as "name not found". Cached
+  // before subscribing, so a follow that stopped since it was ready drops this client, not a later one.
+  clientInstance = client;
+  apiInstance = api;
   api.onStop(() => {
+    if (apiInstance !== api) {
+      return;
+    }
     log.warn('[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client');
     destroyRpcClient();
   });
+  // Rejects if the follow stopped in the meantime.
+  await api.whenReady();
 
-  clientInstance = client;
-  apiInstance = api;
   onStatus?.('Connected to Asset Hub RPC');
-  return apiInstance;
+  return api;
 }
 
 export async function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
@@ -161,15 +170,19 @@ export function getConnectedAssetHubRpcEndpoint(): string | null {
 
 /** Idempotent. A network switch must call it, so the old network's follow cannot answer new reads. */
 export function destroyRpcClient(): void {
-  if (clientInstance !== null) {
+  const api = apiInstance;
+  const client = clientInstance;
+  clientInstance = null;
+  apiInstance = null;
+  clientPromise = null;
+
+  if (client !== null) {
     try {
-      apiInstance?.destroy();
-      clientInstance.destroy();
-      // eslint-disable-next-line no-restricted-syntax -- the socket may already be gone, and the references below must still clear.
+      api?.destroy();
+      client.destroy();
+      // eslint-disable-next-line no-restricted-syntax -- the socket may already be gone; the references were already cleared.
     } catch {
       /* already dead */
     }
-    clientInstance = null;
-    apiInstance = null;
   }
 }

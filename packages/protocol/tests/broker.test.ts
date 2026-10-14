@@ -253,6 +253,49 @@ describe('chain pool brokering', () => {
     });
   });
 
+  it('routes legacy author_submitAndWatchExtrinsic updates and unwatch', () => {
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote('people', 'conn-a', message => messages.push(message));
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'author_submitAndWatchExtrinsic',
+        params: ['0x0102'],
+      }),
+    );
+    const upstreamRequest = harness.sent[0] as { id: string };
+    harness.emit({ jsonrpc: '2.0', id: upstreamRequest.id, result: 'up-ext' });
+    const response = JSON.parse(messages[0] ?? '{}') as { result: string };
+    const localToken = response.result;
+
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'author_extrinsicUpdate',
+      params: { subscription: 'up-ext', result: { inBlock: '0xabc' } },
+    });
+    expect(JSON.parse(messages[1] ?? '{}')).toEqual({
+      jsonrpc: '2.0',
+      method: 'author_extrinsicUpdate',
+      params: { subscription: localToken, result: { inBlock: '0xabc' } },
+    });
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'author_unwatchExtrinsic',
+        params: [localToken],
+      }),
+    );
+    const release = harness.sent[1] as { method: string; params: string[] };
+    expect(release.method).toBe('author_unwatchExtrinsic');
+    expect(release.params[0]).toBe('up-ext');
+  });
+
   it('fans out same-token statement notifications to every local owner', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
@@ -1315,5 +1358,161 @@ describe('upstream follow stop', () => {
     expect(ack?.result).not.toBe(oldToken);
     const best = session.messages.filter(m => m.params?.result?.event === 'bestBlockChanged');
     expect(best.map(m => m.params?.subscription)).toEqual([ack?.result]);
+  });
+});
+
+describe('broker-owned follow guarantees', () => {
+  interface Event {
+    id?: unknown;
+    result?: unknown;
+    error?: unknown;
+    params?: { subscription?: string; result?: Record<string, unknown> };
+  }
+
+  interface FollowingSession {
+    messages: Event[];
+    token: string;
+    send: (message: unknown) => void;
+  }
+
+  interface Fixture {
+    sent: JsonRpcRequest[];
+    emit: (message: JsonRpcMessage) => void;
+    /** Connects a session and follows; the upstream follow, if one is sent, is answered with `up-1`. */
+    follow: (id: string) => FollowingSession;
+    event: (upstreamToken: string, result: Record<string, unknown>) => void;
+  }
+
+  function setup(): Fixture {
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider, () => undefined);
+    return {
+      sent: harness.sent,
+      emit: harness.emit,
+      follow(id) {
+        const messages: Event[] = [];
+        const connection = broker.connect(
+          id,
+          message => messages.push(message as Event),
+          'object',
+          () => undefined,
+        );
+        connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+        const upstream = harness.sent.at(-1);
+        if (upstream?.method === 'chainHead_v1_follow') {
+          harness.emit({ jsonrpc: '2.0', id: upstream.id, result: 'up-1' } as JsonRpcMessage);
+        }
+        const token = messages.find(message => message.id === 1)?.result;
+        return { messages, token: typeof token === 'string' ? token : '', send: connection.send };
+      },
+      event(upstreamToken, result) {
+        harness.emit({
+          jsonrpc: '2.0',
+          method: 'chainHead_v1_followEvent',
+          params: { subscription: upstreamToken, result },
+        });
+      },
+    };
+  }
+
+  const followEvents = (messages: Event[]): Record<string, unknown>[] =>
+    messages.flatMap(message => (message.params?.result === undefined ? [] : [message.params.result]));
+
+  const releaseId = (sent: JsonRpcRequest[]): unknown => sent.find(m => m.method === 'chainHead_v1_unpin')?.id;
+
+  it('As a dApp user, a block the broker fails to release upstream stops the follow instead of staying pinned unseen', () => {
+    // Given: a follower that unpins a finalized block nobody else holds
+    const { sent, emit, follow, event } = setup();
+    const session = follow('a');
+    event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event('up-1', { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event('up-1', { event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+    session.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_unpin', params: [session.token, ['0xf0']] });
+
+    // When: the node refuses the release
+    emit({
+      jsonrpc: '2.0',
+      id: releaseId(sent),
+      error: { code: -32801, message: 'Invalid block hash' },
+    } as JsonRpcMessage);
+
+    // Then: the node is told to unfollow, and the follower hears a stop under its own token
+    expect(sent.filter(m => m.method === 'chainHead_v1_unfollow').map(m => m.params as unknown)).toEqual([['up-1']]);
+    expect(session.messages.at(-1)).toEqual({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: session.token, result: { event: 'stop' } },
+    });
+  });
+
+  it('As a dApp user, a release refused after its follow already ended does not stop my next follow', () => {
+    // Given: a release in flight when the node stops the follow, and a fresh follow under the same upstream token
+    const { sent, emit, follow, event } = setup();
+    const first = follow('a');
+    event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0', '0xf1'] });
+    first.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_unpin', params: [first.token, ['0xf0']] });
+    const release = releaseId(sent);
+    event('up-1', { event: 'stop' });
+    const second = follow('b');
+    event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf1'] });
+
+    // When: the old release is refused
+    emit({ jsonrpc: '2.0', id: release, error: { code: -32801, message: 'Invalid block hash' } } as JsonRpcMessage);
+
+    // Then
+    expect(sent.filter(m => m.method === 'chainHead_v1_unfollow')).toEqual([]);
+    expect(followEvents(second.messages).map(result => result['event'])).toEqual(['initialized']);
+  });
+
+  it('As a dApp user joining a follow late, I hear every live fork, so a later best switch names a block I know', () => {
+    // Given: two forks above the finalized block, best on the second
+    const { follow, event } = setup();
+    follow('a');
+    event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event('up-1', { event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' });
+    event('up-1', { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event('up-1', { event: 'newBlock', blockHash: '0xb2', parentBlockHash: '0xb1' });
+    event('up-1', { event: 'bestBlockChanged', bestBlockHash: '0xb2' });
+
+    // When: a second session joins, then the node switches best to the other fork
+    const late = follow('b');
+    event('up-1', { event: 'bestBlockChanged', bestBlockHash: '0xa1' });
+
+    // Then: the fork it switches to was replayed, parent before child
+    expect(followEvents(late.messages)).toEqual([
+      { event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: null },
+      { event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' },
+      { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' },
+      { event: 'newBlock', blockHash: '0xb2', parentBlockHash: '0xb1' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xb2' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xa1' },
+    ]);
+  });
+
+  it('As a dApp user, an operation racing the end of my follow never reaches the node under my old token', () => {
+    // Given: a follow the node has stopped
+    const { sent, follow, event } = setup();
+    const session = follow('a');
+    event('up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    event('up-1', { event: 'stop' });
+    const sentBefore = sent.length;
+
+    // When: the session still reads, cancels and unpins under the retired token
+    session.send({
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'chainHead_v1_storage',
+      params: [session.token, '0xf0', [{ key: '0x00', type: 'value' }], null],
+    });
+    session.send({ jsonrpc: '2.0', id: 6, method: 'chainHead_v1_stopOperation', params: [session.token, 'op-1'] });
+    session.send({ jsonrpc: '2.0', id: 7, method: 'chainHead_v1_unpin', params: [session.token, ['0xf0']] });
+
+    // Then: nothing goes upstream; the read and unpin fail, and the cancellation has nothing left to stop
+    expect(sent.slice(sentBefore)).toEqual([]);
+    expect(session.messages.slice(-3)).toEqual([
+      { jsonrpc: '2.0', id: 5, error: { code: -32603, message: 'Unknown subscription/token' } },
+      { jsonrpc: '2.0', id: 6, result: null },
+      { jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'Unknown subscription/token' } },
+    ]);
   });
 });

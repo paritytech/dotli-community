@@ -70,6 +70,7 @@ const MAX_PARALLEL_BLOCK_FETCHES = 8;
 export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
 
+  /** A file chunk's bytes. Large files nest dag-pb stems under the file node, so a stem's links are read in turn. */
   async function getChunkData(cid: CID): Promise<Uint8Array> {
     const bytes = await blockSource(cid);
 
@@ -79,7 +80,15 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
 
     if (cid.code === DAG_PB) {
       const node = dagPb.decode(bytes);
-      return node.Data ? (UnixFS.unmarshal(node.Data).data ?? new Uint8Array(0)) : new Uint8Array(0);
+      const inline = node.Data ? (UnixFS.unmarshal(node.Data).data ?? new Uint8Array(0)) : new Uint8Array(0);
+      if (node.Links.length === 0) {
+        return inline;
+      }
+      const chunks = new Array<Uint8Array>(node.Links.length);
+      await runBounded(node.Links, async (link, i) => {
+        chunks[i] = await getChunkData(link.Hash);
+      });
+      return inline.byteLength > 0 ? concatBytes(inline, ...chunks) : concatBytes(...chunks);
     }
 
     throw new Error(`Unsupported chunk codec 0x${cid.code.toString(16)} for ${cid.toString()}`);
@@ -143,7 +152,9 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
         await runBounded(node.Links, async (link, i) => {
           chunks[i] = await getChunkData(link.Hash);
         });
-        content = concatBytes(...chunks);
+        const inline = uf?.data;
+        content =
+          inline !== undefined && inline.byteLength > 0 ? concatBytes(inline, ...chunks) : concatBytes(...chunks);
       }
 
       // A CAR at the root, uploaded as a chunked file.
