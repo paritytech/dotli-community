@@ -36,7 +36,7 @@ CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
 
 VALID_ENVS := polkadot paseo dev-paseo fyi-paseo dev-test
 
-RATE_LIMITED_ENVS := paseo dev-test
+RATE_LIMITED_ENVS := polkadot paseo dev-test
 
 # Cut from SENTRY_DSN, shaped https://<key>@<ingest-host>/<project-id>.
 SENTRY_DSN ?=

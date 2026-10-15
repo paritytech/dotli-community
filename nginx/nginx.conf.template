@@ -5,8 +5,8 @@
 #   *.${DOMAIN}       host build
 #   *.app.${DOMAIN}   app build
 
-# /assets/ gets its own zone with a larger burst, because a cold load fetches ~150 chunks at once and a domain's
-# three origins share the per-IP bucket. Each map gives the other zone's paths an empty key, which nginx does not
+# /assets/ gets its own zone with a larger burst, because a cold load fetches ~150 chunks at once and all of a domain's
+# origins share the per-IP bucket. Each map gives the other zone's paths an empty key, which nginx does not
 # count. Map variables are per domain because every site shares one http block. 429 so rejections read as rate
 # limiting, not a server fault.
 ${RL}map $uri $${ZONE}_key {
@@ -33,6 +33,10 @@ server {
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
+
+    ${RL}limit_req zone=${ZONE} burst=30 nodelay;
+    ${RL}limit_req zone=${ZONE}_assets burst=512 nodelay;
+    ${RL}limit_req_status 429;
 
     root ${WEBROOT}/host;
     index index.html;
