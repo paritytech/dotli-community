@@ -19,3 +19,6 @@ export function copyText(writeClipboard: PanelEffects['writeClipboard'], text: s
     },
   );
 }
+
+/** What a copy control says when it is done, shown and spoken. */
+export const COPY_STATUS: Readonly<Record<CopyOutcome, string>> = { copied: 'Copied', failed: 'Copy failed' };

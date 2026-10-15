@@ -159,7 +159,9 @@ export const CopyFlashes: Story = {
     });
     await step('Then its value is copied and the row reads Copied', async () => {
       await expect(effects.writeClipboard).toHaveBeenCalledWith('app.dot.li');
-      await expect(await within(rowValue(canvasElement, 'Site')).findByText('Copied')).toBeVisible();
+      const site = within(rowValue(canvasElement, 'Site'));
+      await waitFor(() => expect(site.getByRole('button')).toHaveTextContent('Copied'));
+      await expect(site.getByRole('status')).toHaveTextContent('Copied');
     });
     await step('Then after a second it reads its value again', async () => {
       await waitFor(() => expect(rowValue(canvasElement, 'Site')).toHaveTextContent('app.dot.li'), { timeout: 3000 });
@@ -183,7 +185,9 @@ export const CopyRefused: Story = {
       await userEvent.click(canvas.getByRole('button', { description: 'Click to copy Site' }));
     });
     await step('Then the row reads Copy failed', async () => {
-      await expect(await within(rowValue(canvasElement, 'Site')).findByText('Copy failed')).toBeVisible();
+      const site = within(rowValue(canvasElement, 'Site'));
+      await waitFor(() => expect(site.getByRole('button')).toHaveTextContent('Copy failed'));
+      await expect(site.getByRole('status')).toHaveTextContent('Copy failed');
       await expect(canvas.getByRole('button', { description: 'Click to copy Site' })).toHaveAttribute(
         'data-copy-failed',
       );

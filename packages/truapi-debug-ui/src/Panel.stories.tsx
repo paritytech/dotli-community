@@ -412,6 +412,7 @@ export const CopyFlashesCheck: Story = {
     });
     await step('Then the filtered JSON is on the clipboard and the button flashes a check mark', async () => {
       await waitFor(() => expect(copy()).toHaveTextContent('✓'));
+      await expect(part('td-copy-status')).toHaveTextContent('Copied');
       await expect(copy()).toBeDisabled();
       await expect(effects.writeClipboard).toHaveBeenCalledTimes(1);
       const exported = JSON.parse(effects.writeClipboard.mock.calls[0]?.[0] ?? '{}') as {
@@ -428,6 +429,7 @@ export const CopyFlashesCheck: Story = {
     await step('Then the button comes back after the flash', async () => {
       await waitFor(() => expect(copy()).toBeEnabled());
       await expect(copy()).not.toHaveTextContent('✓');
+      await expect(part('td-copy-status').textContent).toBe('');
       await expect(copy().querySelector('svg')).not.toBeNull();
     });
   },
@@ -447,6 +449,7 @@ export const CopyRefusedFlashesCross: Story = {
     });
     await step('Then the button flashes a cross', async () => {
       await waitFor(() => expect(copy()).toHaveTextContent('✕'));
+      await expect(part('td-copy-status')).toHaveTextContent('Copy failed');
       await expect(copy()).toBeDisabled();
     });
     await step('Then the button comes back after the flash', async () => {
