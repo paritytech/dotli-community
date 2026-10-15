@@ -1152,6 +1152,64 @@ describe('product frame and the page core', () => {
     }
   });
 
+  it('As a dApp user whose cores keep dying, the frame that gives up keeps my product on screen and lets its core go', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    try {
+      // Given a product whose core died twice and was rendered again each time
+      const fakes = harness();
+      const rendered = fakes.frame.render(subdomainProduct('product'));
+      const first = await answerConnection(fakes, 0);
+      await rendered;
+      crash(first);
+      const second = await reconnect(fakes, 1);
+      crash(second);
+      await vi.advanceTimersByTimeAsync(5_000);
+      const third = await reconnect(fakes, 2);
+
+      // When the third core dies as well
+      crash(third);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      // Then the frame reports failed, the product stays, and the dead core goes with its last lease
+      expect(frameView.statuses.at(-1)).toBe('failed');
+      expect(fakes.onScreen()).toHaveLength(1);
+      expect(fakes.runtimes[2]?.dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("As a dApp user whose frame gave up on its cores, I grant a device permission in the app's own prompt and the app is rebuilt", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    try {
+      // Given a product left on screen by a frame that gave up on its dying cores
+      const fakes = harness();
+      const rendered = fakes.frame.render(subdomainProduct('product'));
+      const first = await answerConnection(fakes, 0);
+      await rendered;
+      crash(first);
+      const second = await reconnect(fakes, 1);
+      crash(second);
+      await vi.advanceTimersByTimeAsync(5_000);
+      crash(await reconnect(fakes, 2));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(frameView.statuses.at(-1)).toBe('failed');
+
+      // When the user grants the camera in the app's prompt, whose answer can no longer reach the product
+      fakes.announce({ label: 'product', permissions: ['Camera'], fromPrompt: true });
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      // Then the app is rebuilt in a new frame once the wait for the answer is over, and the frame it replaced goes alone
+      await reconnect(fakes, 3);
+      expect(fakes.onScreen()).toHaveLength(1);
+      expect(fakes.onScreen()[0]).toBe(fakes.hosts.at(-1));
+      expect(nth(fakes.hosts, 2).dispose).toHaveBeenCalledTimes(1);
+      expect(fakes.runtimes[2]?.dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('As a dApp user whose core outlives the window before it dies, I see my product rendered again with a fresh budget', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
     try {

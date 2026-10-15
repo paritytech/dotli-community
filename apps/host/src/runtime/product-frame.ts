@@ -104,6 +104,11 @@ interface MountedHost {
   chat: boolean;
   /** Runs `run` once the product's pending permission answer has reached it. */
   afterPermissionResponse: (run: () => void) => void;
+  /**
+   * Lets go of the core under the product, which stays on screen until a render replaces it. Idempotent, and `dispose`
+   * after it only removes the frame.
+   */
+  releaseCore: () => void;
   dispose: () => void;
 }
 
@@ -236,6 +241,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     coreDeaths += 1;
     if (coreDeaths >= CORE_DEATH_BUDGET) {
       setStatus('failed');
+      // The product stays on screen under the reload notice, but its core is down for good, so its lease goes.
+      mounted?.releaseCore();
       reportRerenderFailure(
         new Error(`The wallet core went down ${String(coreDeaths)} times in a row under the product`),
         'core_deaths',
@@ -424,7 +431,13 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       disposePipe = null;
       productProvider = null;
     };
+    // Runs once, from a dispose, a failed build or a frame that gave up on its core.
+    let coreSideHeld = true;
     const cleanupCoreSide = (): void => {
+      if (!coreSideHeld) {
+        return;
+      }
+      coreSideHeld = false;
       unsubscribeDown();
       unregisterPermissions();
       unregisterChat();
@@ -448,6 +461,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
         iframe: host.iframe,
         chat: chatCapable,
         afterPermissionResponse: responses.afterResponse,
+        // The frame's lifetime runs on, so a device grant the product's prompt answered still rebuilds it.
+        releaseCore: cleanupCoreSide,
         dispose() {
           lifetime.abort();
           cleanupCoreSide();
