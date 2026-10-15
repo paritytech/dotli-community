@@ -60,14 +60,8 @@ function joinPath(base: string, name: string): string {
   return base ? `${base}/${name}` : name;
 }
 
-/** Per node, so one big file or directory cannot saturate the smoldot bitswap queue. */
+/** At most this many block fetches run at once in one walk, so a wide or deep DAG cannot saturate the bitswap queue. */
 const MAX_PARALLEL_BLOCK_FETCHES = 8;
-
-/** Runs `work` over `items` with at most `MAX_PARALLEL_BLOCK_FETCHES` at once, in their order. */
-function eachBounded<T, R>(items: readonly T[], work: (item: T) => Promise<R>): Promise<R[]> {
-  const pool = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
-  return Promise.all(items.map(item => pool.call(() => work(item))));
-}
 
 /** A directory node's links that name an entry. */
 function namedLinks(node: dagPb.PBNode): (dagPb.PBLink & { Name: string })[] {
@@ -82,10 +76,13 @@ function namedLinks(node: dagPb.PBNode): (dagPb.PBLink & { Name: string })[] {
  */
 export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
+  // The pool bounds only the fetches, so a node waiting on its children never holds a slot they need.
+  const fetches = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
+  const fetchBlock = (cid: CID): Promise<Uint8Array> => fetches.call(() => blockSource(cid));
 
   /** One chunk of a file and everything under it. */
   async function readFileTree(cid: CID): Promise<Uint8Array> {
-    const bytes = await blockSource(cid);
+    const bytes = await fetchBlock(cid);
     if (cid.code === RAW) {
       return bytes;
     }
@@ -105,7 +102,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
     if (node.Links.length === 0) {
       return own;
     }
-    const content = concatBytes(own, ...(await eachBounded(node.Links, link => readFileTree(link.Hash))));
+    const content = concatBytes(own, ...(await Promise.all(node.Links.map(link => readFileTree(link.Hash)))));
     if (uf !== null && BigInt(content.length) !== uf.fileSize()) {
       throw new Error(
         `File ${cid.toString()} came to ${String(content.length)} bytes but declares ${uf.fileSize().toString()}`,
@@ -123,22 +120,24 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
       throw new Error(`HAMT shard at path="${path}" declares no fanout`);
     }
     const bucketLength = (fanout - 1n).toString(16).length;
-    await eachBounded(namedLinks(node), async link => {
-      if (link.Name.length === bucketLength) {
-        const child = dagPb.decode(await blockSource(link.Hash));
-        const shard = child.Data ? UnixFS.unmarshal(child.Data) : null;
-        if (shard?.type !== 'hamt-sharded-directory') {
-          throw new Error(`HAMT bucket "${link.Name}" at path="${path}" is not a shard (${link.Hash.toString()})`);
+    await Promise.all(
+      namedLinks(node).map(async link => {
+        if (link.Name.length === bucketLength) {
+          const child = dagPb.decode(await fetchBlock(link.Hash));
+          const shard = child.Data ? UnixFS.unmarshal(child.Data) : null;
+          if (shard?.type !== 'hamt-sharded-directory') {
+            throw new Error(`HAMT bucket "${link.Name}" at path="${path}" is not a shard (${link.Hash.toString()})`);
+          }
+          await processShard(child, shard.fanout, path);
+          return;
         }
-        await processShard(child, shard.fanout, path);
-        return;
-      }
-      await processNode(link.Hash, joinPath(path, link.Name.slice(bucketLength)));
-    });
+        await processNode(link.Hash, joinPath(path, link.Name.slice(bucketLength)));
+      }),
+    );
   }
 
   async function processNode(cid: CID, path: string): Promise<void> {
-    const bytes = await blockSource(cid);
+    const bytes = await fetchBlock(cid);
     const isRoot = path === '';
 
     // A CAR at the root is a whole site packed as one block. Deeper CAR-shaped blocks stay content.
@@ -162,7 +161,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
     const uf = node.Data ? UnixFS.unmarshal(node.Data) : null;
 
     if (uf?.type === 'directory') {
-      await eachBounded(namedLinks(node), link => processNode(link.Hash, joinPath(path, link.Name)));
+      await Promise.all(namedLinks(node).map(link => processNode(link.Hash, joinPath(path, link.Name))));
       return;
     }
 

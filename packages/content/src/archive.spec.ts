@@ -339,25 +339,19 @@ async function drive<T>(walk: Promise<T>, held: HeldSource, discovery: readonly 
 }
 
 describe('walkUnixFsDag', () => {
-  it('As a visitor loading a site of several chunked files, its chunks download with up to 8 per file at once', async () => {
+  it('As a visitor loading a site of several chunked files, at most 8 blocks download at once across the whole walk', async () => {
     // Given
     const blocks: Blocks = new Map();
     const files = ['a.bin', 'b.bin', 'c.bin'].map(name => putChunkedFile(blocks, name, 8));
     const root = putNode(blocks, '', new UnixFS({ type: 'directory' }), files);
     const held = heldSource(blocks);
 
-    // When the root and the file nodes are released and every chunk fetch is held
-    const walk = walkUnixFsDag(root.Hash, held.source);
-    for (const size of [1, 3]) {
-      await Promise.race([held.untilHeld(size), walk]);
-      held.releaseAll();
-    }
-    await Promise.race([held.untilHeld(24), walk]);
+    // When the root, then the file nodes, then the chunks are released wave by wave
+    const walked = await drive(walkUnixFsDag(root.Hash, held.source), held, [1, 3], 8);
 
     // Then
-    expect(held.maxInFlight()).toBe(24);
-    held.releaseAll();
-    expect(Object.keys(await walk)).toHaveLength(3);
+    expect(held.maxInFlight()).toBe(8);
+    expect(Object.keys(walked)).toHaveLength(3);
   });
 
   it('As a visitor loading one big file, at most 8 of its chunks download at once', async () => {
@@ -379,10 +373,18 @@ describe('walkUnixFsDag', () => {
     const { root, blocks, paths } = deepSite(4);
 
     // When
-    const files = await walkUnixFsDag(root, cid => {
-      const bytes = blocks.get(cid.toString());
-      return bytes === undefined ? Promise.reject(new Error('missing block')) : Promise.resolve(bytes);
-    });
+    const files = await walkUnixFsDag(root, sourceOf(blocks));
+
+    // Then
+    expect(Object.keys(files).sort()).toEqual(paths.sort());
+  });
+
+  it('As a visitor, I load a site nested deeper than the download budget and the walk finishes', async () => {
+    // Given a folder chain twice as deep as the 8 downloads the walk runs at once
+    const { root, blocks, paths } = deepSite(16);
+
+    // When
+    const files = await walkUnixFsDag(root, sourceOf(blocks));
 
     // Then
     expect(Object.keys(files).sort()).toEqual(paths.sort());
@@ -403,7 +405,7 @@ describe('walkUnixFsDag', () => {
     expect(text(files['index.html'])).toBe('a1;a2;b1;b2;b3;');
   });
 
-  it('As a visitor, a file that comes to another size than it declares fails instead of loading truncated', async () => {
+  it('As a visitor, I load a file that comes to another size than it declares and the load fails instead of truncating', async () => {
     // Given a file whose root declares more bytes than its chunks hold
     const blocks: Blocks = new Map();
     const file = putTwoLevelFile(blocks, 'big.bin', [['a1;'], ['b1;']], [3n, 100n]);
@@ -429,7 +431,7 @@ describe('walkUnixFsDag', () => {
     expect(text(files['app.js'])).toBe('run()');
   });
 
-  it('As a visitor loading a site with a HAMT-sharded folder inside a plain one, its files keep the folder path', async () => {
+  it('As a visitor, I load a site with a HAMT-sharded folder inside a plain one and its files keep the folder path', async () => {
     // Given a plain root holding a sharded `docs` folder
     const blocks: Blocks = new Map();
     const docs = putShard(blocks, 'docs', [putRaw(blocks, '7Bintro.html', enc('intro'))]);
