@@ -7,7 +7,7 @@
 
 /* eslint-disable no-console -- a CLI script: stdout is its output. */
 
-import { chromium, type Browser, type BrowserContext, type Request } from '@playwright/test';
+import { chromium, errors, type Browser, type BrowserContext, type Request } from '@playwright/test';
 
 interface Envelope {
   body: string;
@@ -25,6 +25,14 @@ type Json = Record<string, unknown>;
 function record(value: unknown): Json {
   return typeof value === 'object' && value !== null ? (value as Json) : {};
 }
+
+/** Whether a request body carries what the report below counts: a resolution transaction or a resolution id. */
+function carriesResolution(r: Request): boolean {
+  const body = r.postData() ?? '';
+  return /"transaction":"[^"]*resolution/.test(body) || body.includes('dotli.resolution');
+}
+
+const isEnvelope = (r: Request): boolean => r.url().endsWith('/t') && r.method() === 'POST';
 
 async function journey(name: string, warm: Warm | null): Promise<Warm> {
   const b = warm?.b ?? (await chromium.launch());
@@ -50,22 +58,26 @@ async function journey(name: string, warm: Warm | null): Promise<Warm> {
     }
   });
   const t0 = Date.now();
-  // Listens before the load so a transaction envelope that flushes early is not missed.
-  const transactionSent = p.waitForResponse(
-    r => r.url().endsWith('/t') && (r.request().postData() ?? '').includes('"transaction"'),
-    {
-      timeout: 180000,
-    },
-  );
+  // Listens before the load so a resolution envelope that flushes early is not missed.
+  const resolutionSent = p.waitForRequest(r => isEnvelope(r) && carriesResolution(r), { timeout: 180000 });
   await p.goto('https://host-playground.paseoli.dev/', { waitUntil: 'commit' });
   // The network button is the topbar item that shows once the host has rendered.
   const rendered = p
     .locator('#chains-button')
     .waitFor({ state: 'visible', timeout: 180000 })
     .then(() => ((Date.now() - t0) / 1000).toFixed(1));
-  const [dur] = await Promise.all([rendered, transactionSent]);
-  // Navigate away to fire pagehide-driven flushes too. Their requests are recorded as they start.
+  const [dur] = await Promise.all([rendered, resolutionSent]);
+  // Navigating away fires the pagehide flush that carries the late resolution spans.
+  const flushed = p.waitForRequest(r => isEnvelope(r) && carriesResolution(r), { timeout: 10000 });
   await p.goto('about:blank');
+  try {
+    await flushed;
+  } catch (e) {
+    if (!(e instanceof errors.TimeoutError)) {
+      throw e;
+    }
+    console.log(`${name}: no pagehide flush carried a resolution`);
+  }
 
   const resolutions: Json[] = [];
   for (const e of envelopes) {
