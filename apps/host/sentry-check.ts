@@ -50,14 +50,22 @@ async function journey(name: string, warm: Warm | null): Promise<Warm> {
     }
   });
   const t0 = Date.now();
+  // Listens before the load so a transaction envelope that flushes early is not missed.
+  const transactionSent = p.waitForResponse(
+    r => r.url().endsWith('/t') && (r.request().postData() ?? '').includes('"transaction"'),
+    {
+      timeout: 180000,
+    },
+  );
   await p.goto('https://host-playground.paseoli.dev/', { waitUntil: 'commit' });
-  await p.locator('#chains-button.visible').waitFor({ timeout: 180000 });
-  const dur = ((Date.now() - t0) / 1000).toFixed(1);
-  // Give the transaction envelope time to flush after render.
-  await p.waitForTimeout(8000);
-  // Navigate away to fire pagehide-driven flushes too.
+  // The network button is the topbar item that shows once the host has rendered.
+  const rendered = p
+    .locator('#chains-button')
+    .waitFor({ state: 'visible', timeout: 180000 })
+    .then(() => ((Date.now() - t0) / 1000).toFixed(1));
+  const [dur] = await Promise.all([rendered, transactionSent]);
+  // Navigate away to fire pagehide-driven flushes too. Their requests are recorded as they start.
   await p.goto('about:blank');
-  await p.waitForTimeout(1500);
 
   const resolutions: Json[] = [];
   for (const e of envelopes) {
