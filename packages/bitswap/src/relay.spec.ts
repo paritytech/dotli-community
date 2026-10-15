@@ -665,7 +665,7 @@ describe('createSandboxBlockRelay progress', () => {
     send(fakeFrame(), get('req-1'));
     await until(first);
     unsubscribe();
-    send(fakeFrame(), get('req-2'));
+    send(fakeFrame(), get('req-2', 'bafyLeaf'));
     await until(first, 2);
 
     // Then
@@ -698,6 +698,34 @@ describe('createSandboxBlockRelay progress', () => {
     expect(progress).toEqual([
       { bytesFetched: ROOT.length, totalBytes: 150, bytesPerSecond: 0 },
       { bytesFetched: ROOT.length + 100, totalBytes: 150, bytesPerSecond: ((ROOT.length + 100) / 500) * 1000 },
+    ]);
+  });
+
+  it('As a user whose load is retried, I see the bar count from zero again rather than past the total', async () => {
+    // Given a relay that served a root and one leaf
+    const { channel, send } = fakeChannel();
+    const relay = createSandboxBlockRelay({
+      channel,
+      blocks: fakeNetwork(cid => (cid === 'bafyRoot' ? ROOT.slice() : new Uint8Array(100))).blocks,
+      cache: null,
+      verify: acceptsAnyBlock,
+    });
+    const progress = recording<ContentProgress>();
+    relay.onProgress(update => progress.push(update));
+    send(fakeFrame(), get('req-1', 'bafyRoot'));
+    await until(progress);
+    send(fakeFrame(), get('req-2', 'bafyLeaf'));
+    await until(progress, 2);
+
+    // When the retry walks from the root again
+    send(fakeFrame(), get('req-3', 'bafyRoot'));
+    await until(progress, 3);
+
+    // Then
+    expect(progress.map(({ bytesFetched, totalBytes }) => ({ bytesFetched, totalBytes }))).toEqual([
+      { bytesFetched: ROOT.length, totalBytes: 150 },
+      { bytesFetched: ROOT.length + 100, totalBytes: 150 },
+      { bytesFetched: ROOT.length, totalBytes: 150 },
     ]);
   });
 

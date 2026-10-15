@@ -33,7 +33,8 @@ flowchart LR
   so each block it leaves unchecked is a breadcrumb and a `verify` count. That block is refused with
   `ContentVerificationError`, never served and never kept.
 - Progress totals come from a hand-decoded dag-pb root that sums link sizes, which keeps the `@ipld/dag-pb` decoder out
-  of the eager host bundle.
+  of the eager host bundle. A walk asks for its root once, so the root asked again, by a retry or a frame rendered
+  again, starts the count from zero.
 - Errors carry stable names. The sandbox rebuilds errors by name across `postMessage`, so callers branch on
   `error.name`.
 
