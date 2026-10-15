@@ -257,7 +257,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
         frame = el;
       }}
     >
-      <div class={s['content']}>
+      <div>
         <Surface class={s['panel']}>
           <div class={s['head']}>
             <h2 class={s['title']} id="auth-modal-title">
