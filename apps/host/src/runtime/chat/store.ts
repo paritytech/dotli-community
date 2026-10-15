@@ -56,23 +56,35 @@ export interface ChatConnection {
 }
 
 export interface ChatConnections {
-  /** A stale unregister, after a newer registration for the same product, is a no-op. */
+  /**
+   * The newest registration answers. Unregistering one leaves the others, so a render that failed hands chat back to
+   * the product still on screen.
+   */
   register(productId: string, connection: ChatConnection): () => void;
   get(productId: string): ChatConnection | undefined;
 }
 
 export function createChatConnections(): ChatConnections {
-  const connections = new Map<string, ChatConnection>();
+  // A stack per product, as a render registers before the one on screen goes.
+  const connections = new Map<string, ChatConnection[]>();
   return {
     register(productId, connection) {
-      connections.set(productId, connection);
+      const stack = connections.get(productId) ?? [];
+      stack.push(connection);
+      connections.set(productId, stack);
       return () => {
-        if (connections.get(productId) === connection) {
+        const registered = connections.get(productId);
+        const index = registered?.lastIndexOf(connection) ?? -1;
+        if (registered === undefined || index < 0) {
+          return;
+        }
+        registered.splice(index, 1);
+        if (registered.length === 0) {
           connections.delete(productId);
         }
       };
     },
-    get: productId => connections.get(productId),
+    get: productId => connections.get(productId)?.at(-1),
   };
 }
 

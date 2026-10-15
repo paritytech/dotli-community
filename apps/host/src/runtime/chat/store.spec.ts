@@ -151,6 +151,20 @@ describe('chat store', () => {
     expect(fresh.published).toHaveLength(1);
   });
 
+  it('As the bridge, a newer registration that unregisters hands chat back to the connection still on screen', () => {
+    // Given the product on screen, and a render of it that registered and then failed
+    const { connections } = setup();
+    const onScreen = recordingConnection();
+    connections.register(PRODUCT, onScreen);
+    const unregisterFailed = connections.register(PRODUCT, recordingConnection());
+
+    // When
+    unregisterFailed();
+
+    // Then
+    expect(connections.get(PRODUCT)).toBe(onScreen);
+  });
+
   it('As a user without a live connection, a custom message fails its render at once', () => {
     // Given
     const { chat } = setup();
