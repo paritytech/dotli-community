@@ -117,6 +117,20 @@ describe('readArchiveFiles', () => {
     // Then
     await expect(read).rejects.toMatchObject({ name: 'ContentVerificationError' });
   });
+
+  it('As a dotli developer, I read a directory whose leaf block was tampered with and the read is refused', async () => {
+    // Given a source that bypasses the host relay and swaps the bytes of one file
+    const { root, blocks } = directory({ 'index.html': '<h1>hi</h1>', 'app.js': 'run()' });
+    const leaf = cidOf(enc('run()'), RAW).toString();
+    blocks.set(leaf, enc('steal()'));
+
+    // When
+    const read = readArchiveFiles(root.toString(), { blockSource: sourceOf(blocks) });
+
+    // Then
+    await expect(read).rejects.toMatchObject({ name: 'ContentVerificationError' });
+  });
+
   it('As a visitor on the gateway backend, a site packed as one CAR under a raw CID opens as its files, as over bitswap', async () => {
     // Given
     const { root, car } = packedSite({ 'index.html': '<h1>hi</h1>', 'app.js': 'run()' });

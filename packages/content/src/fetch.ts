@@ -12,7 +12,7 @@ export type BitswapBlockSource = (cid: string) => Promise<Uint8Array>;
 
 import { isCarFile, parseIpfsResponse, walkUnixFsDag, type ArchiveFiles, type BlockSource } from './archive.js';
 import { defaultGateway, fetchFromIpfs, fetchCarFromIpfs, gatewayHost } from './ipfs.js';
-import { assertBlockMatchesCid, rootVerifyingBlockSource } from './verify.js';
+import { assertBlockMatchesCid, rootVerifyingBlockSource, verifyingBlockSource } from './verify.js';
 
 const CODEC_DAG_PB = 0x70;
 const CODEC_RAW = 0x55;
@@ -49,23 +49,26 @@ async function fetchViaBitswapRpc(
     }
   };
 
-  const result = await readViaBitswap(rootCid, tracedSource, onStatus);
+  // The host's relay checked every block. Re-hashing the root ties the walk to the CID this sandbox was given.
+  const result = await readViaBitswap(rootCid, rootVerifyingBlockSource(rootCid, tracedSource), onStatus);
   m.distribution(S.CONTENT_BITSWAP_BLOCKS, blockCount, 'none');
   return result;
 }
 
-async function readViaBitswap(rootCid: CID, blockSource: BlockSource, onStatus?: StatusCallback): Promise<FetchResult> {
-  // The host's relay checked every block. Re-hashing the root ties the walk to the CID this sandbox was given.
-  const rootVerifyingSource = rootVerifyingBlockSource(rootCid, blockSource);
-
+/** Walks from the root over a source that already verifies what it returns. */
+async function readViaBitswap(
+  rootCid: CID,
+  verifiedSource: BlockSource,
+  onStatus?: StatusCallback,
+): Promise<FetchResult> {
   if (rootCid.code === CODEC_RAW) {
     onStatus?.('Fetching block via bitswap...');
-    return readRawRoot(await rootVerifyingSource(rootCid));
+    return readRawRoot(await verifiedSource(rootCid));
   }
 
   if (rootCid.code === CODEC_DAG_PB) {
     onStatus?.('Walking dag-pb via bitswap...');
-    return toFetchResult(await walkUnixFsDag(rootCid, rootVerifyingSource));
+    return toFetchResult(await walkUnixFsDag(rootCid, verifiedSource));
   }
 
   throw new Error(`bitswap-rpc: unsupported root CID codec 0x${rootCid.code.toString(16)} (${rootCid.toString()})`);
@@ -183,14 +186,21 @@ export async function fetchArchive(
   }
 }
 
-/** Like `fetchArchive` but without marks and metrics, for reads that are not a product load. */
+/**
+ * Like `fetchArchive` but without marks and metrics, for reads that are not a product load.
+ *
+ * Its block source may bypass the host's relay, so every block is hashed here.
+ */
 export async function readArchiveFiles(
   cidString: string,
   transport: { blockSource: BitswapBlockSource } | { gateway: true; fetch?: typeof fetch },
 ): Promise<ArchiveFiles> {
   const result =
     'blockSource' in transport
-      ? await readViaBitswap(CID.parse(cidString), cid => transport.blockSource(cid.toString()))
+      ? await readViaBitswap(
+          CID.parse(cidString),
+          verifyingBlockSource(cid => transport.blockSource(cid.toString())),
+        )
       : await readViaGateway(cidString, transport.fetch ?? fetch);
   return result.type === 'single' ? { 'index.html': result.content } : result.files;
 }
