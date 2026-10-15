@@ -75,8 +75,9 @@ ssh <user>@<DEPLOY_HOST> 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'  # m
 4. `provision-cert` — issues a Let's Encrypt cert via DNS-01 covering the apex, `*.<base>`, and `*.app.<base>`.
    `--keep-until-expiring --expand` makes re-runs cheap.
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
-6. `deploy` — runs `npm run build:prod` on your machine, forced since a linked TrUAPI checkout is invisible to Turbo,
-   and rsyncs the `dist/` outputs into the env's web root.
+6. `deploy` — reinstalls the pinned dependencies with `npm ci`, which also drops a local TrUAPI link, runs
+   `npm run build:prod` on your machine, forced so Turbo cannot reuse a dist cached from a linked build, and rsyncs the
+   `dist/` outputs into the env's web root.
 7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst) and installs it plus `nginx/snippets/`
    into `/etc/nginx/`, runs `nginx -t`, and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
 
