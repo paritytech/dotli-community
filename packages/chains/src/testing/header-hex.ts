@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { toHex } from '@dotli/shared';
+
 /** A SCALE header: a zero parent hash, the number as a compact, then bytes the decoder never reads. */
 export function headerHex(blockNumber: number): string {
   let compact: number[];
@@ -15,6 +17,6 @@ export function headerHex(blockNumber: number): string {
   } else {
     compact = [0b11, ...[0, 1, 2, 3].map(i => Math.floor(blockNumber / 256 ** i) % 256)];
   }
-  const hex = compact.map(byte => byte.toString(16).padStart(2, '0')).join('');
+  const hex = toHex(Uint8Array.from(compact)).slice(2);
   return `0x${'00'.repeat(32)}${hex}${'00'.repeat(64)}`;
 }

@@ -7,7 +7,7 @@
 import { createSignal, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { HexString, RenderContext, RendererNode } from '@parity/truapi';
-import { bytesToHex } from '@parity/truapi/scale';
+import { toHex } from '@dotli/shared';
 import { CustomNode } from './CustomNode.js';
 import type { ChatMessageActions } from './chat.js';
 import { visibilityWatcher, type WatchVisibility } from './visibility.js';
@@ -50,7 +50,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
       .triggerRendererAction(mount.productId, {
         context,
         actionId,
-        payload: payload === undefined ? '0x' : bytesToHex(payload),
+        payload: payload === undefined ? '0x' : toHex(payload),
       })
       .catch(() => {
         if (!shown.signal.aborted) {

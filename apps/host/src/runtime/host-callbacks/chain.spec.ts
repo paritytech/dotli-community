@@ -10,6 +10,7 @@ import type { ChainActivity, ChainPool, LeaseProvider, RemoteChainHalt } from '@
 import type { ProtocolStatus, RemoteChainProvider } from '@dotli/protocol';
 import { createCoreRpcChainProvider } from '@dotli/chains';
 import { FakeWebSocket } from '@dotli/chains/testing';
+import { fromHex } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
 import {
   createChainConnect,
@@ -20,7 +21,7 @@ import {
   type HostChainSources,
   watchHostChains,
 } from './chain.js';
-import { hexBytes, yielded } from '../../testing/fixtures.js';
+import { yielded } from '../../testing/fixtures.js';
 
 /** Trusted Providers' sockets, over the fake server. */
 const fakeSocketChain: HostChainSources['rpcChain'] = (genesisHash, hooks) =>
@@ -117,7 +118,7 @@ describe('createChainConnect', () => {
   it('As an operator, a re-lease that finds no transport is counted', async () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const connection = await connectOn(sources)(hexBytes(people));
+    const connection = await connectOn(sources)(fromHex(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(sources.upstreams[0], 'upstream').halt();
     sources.remoteChain.mockReturnValue(null);
@@ -136,7 +137,7 @@ describe('createChainConnect', () => {
     const captures = { exception: vi.fn(), expected: vi.fn() };
     onTestFinished(bindCaptureSink(captures));
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const connection = await connectOn(sources)(hexBytes(people));
+    const connection = await connectOn(sources)(fromHex(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(sources.upstreams[0], 'upstream').halt();
     sources.remoteChain.mockImplementation(() => {
@@ -159,7 +160,7 @@ describe('createChainConnect', () => {
 
   it("As a dotli integrator, the host routes chain connections on a light client backend through the protocol frame's light client", async () => {
     // When
-    await connectOn(sources)(hexBytes(people));
+    await connectOn(sources)(fromHex(people));
 
     // Then
     expect(sources.remoteChain).toHaveBeenCalledWith(people.toLowerCase());
@@ -171,7 +172,7 @@ describe('createChainConnect', () => {
     sources.setBackend('rpc-gateway');
 
     // When
-    await connectOn(sources)(hexBytes(assetHub));
+    await connectOn(sources)(fromHex(assetHub));
 
     // Then
     expect(sources.rpcChain).toHaveBeenCalledWith(assetHub.toLowerCase(), expect.any(Object));
@@ -183,8 +184,8 @@ describe('createChainConnect', () => {
     const connect = connectOn(sources);
 
     // When
-    await connect(hexBytes(people));
-    await connect(hexBytes(people));
+    await connect(fromHex(people));
+    await connect(fromHex(people));
 
     // Then
     expect(sources.upstreams).toHaveLength(1);
@@ -194,8 +195,8 @@ describe('createChainConnect', () => {
   it('As a dotli integrator, two core connections using the same request id each get only their own response', async () => {
     // Given
     const connect = connectOn(sources);
-    const first = await connect(hexBytes(people));
-    const second = await connect(hexBytes(people));
+    const first = await connect(fromHex(people));
+    const second = await connect(fromHex(people));
     const request = { jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_genesisHash', params: [] };
     first.send(JSON.stringify(request));
     second.send(JSON.stringify(request));
@@ -225,7 +226,7 @@ describe('createChainConnect', () => {
 
   it('As a dotli integrator, a halted chain transport leaves the core connection stream open', async () => {
     // Given
-    const connection = await connectOn(sources)(hexBytes(people));
+    const connection = await connectOn(sources)(fromHex(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     const pending = responses.next();
 
@@ -254,7 +255,7 @@ describe('createChainConnect', () => {
       return live;
     };
     const pool = { getLocalProvider: () => provider, status: () => 'disconnected' } as unknown as ChainPool;
-    const connection = await createChainConnect(pool, readyFrame, sources)(hexBytes(people));
+    const connection = await createChainConnect(pool, readyFrame, sources)(fromHex(people));
 
     // When
     connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
@@ -268,7 +269,7 @@ describe('createChainConnect', () => {
 
   it('As a dotli integrator, a request after a halt that no new transport can serve is answered at once', async () => {
     // Given
-    const connection = await connectOn(sources)(hexBytes(people));
+    const connection = await connectOn(sources)(fromHex(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(sources.upstreams[0], 'upstream').halt();
     sources.remoteChain.mockReturnValue(null);
@@ -289,7 +290,7 @@ describe('createChainConnect', () => {
 
   it('As a dotli integrator, a halted chain transport still delivers the messages queued before it', async () => {
     // Given
-    const connection = await connectOn(sources)(hexBytes(people));
+    const connection = await connectOn(sources)(fromHex(people));
     connection.send(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -319,7 +320,7 @@ describe('createChainConnect', () => {
 
   it('As a dotli integrator, a halted chain transport answers a request in flight', async () => {
     // Given
-    const connection = await connectOn(sources)(hexBytes(people));
+    const connection = await connectOn(sources)(fromHex(people));
     connection.send(
       JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainHead_v1_header', params: ['tok', '0xabc'] }),
     );
@@ -342,7 +343,7 @@ describe('createChainConnect', () => {
   it('As a dotli integrator, closing a halted core connection releases its lease once', async () => {
     // Given
     const pool = createHostChainPool({ ...sources, destroyDelay: 0 });
-    const connection = await createChainConnect(pool, readyFrame, sources)(hexBytes(people));
+    const connection = await createChainConnect(pool, readyFrame, sources)(fromHex(people));
     const upstream = must(sources.upstreams[0], 'upstream');
     upstream.halt();
 
@@ -352,7 +353,7 @@ describe('createChainConnect', () => {
 
     // Then: the transport is torn down once, and a new lease builds a fresh one
     expect(upstream.disconnect).toHaveBeenCalledTimes(1);
-    await createChainConnect(pool, readyFrame, sources)(hexBytes(people));
+    await createChainConnect(pool, readyFrame, sources)(fromHex(people));
     expect(sources.upstreams).toHaveLength(2);
     expect(upstream.disconnect).toHaveBeenCalledTimes(1);
   });
@@ -368,7 +369,7 @@ describe('createChainConnect', () => {
 
     it('As a dotli user on a light client backend, a chain closes a minute after its last connection closes', async () => {
       // Given
-      const connection = await connectOn(sources, {})(hexBytes(people));
+      const connection = await connectOn(sources, {})(fromHex(people));
       const upstream = must(sources.upstreams[0], 'upstream');
 
       // When
@@ -384,7 +385,7 @@ describe('createChainConnect', () => {
     it('As a dotli user on Trusted Providers, an RPC chain closes after its last connection closes', async () => {
       // Given
       sources.setBackend('rpc-gateway');
-      const connection = await connectOn(sources, {})(hexBytes(people));
+      const connection = await connectOn(sources, {})(fromHex(people));
       const upstream = must(sources.upstreams[0], 'upstream');
 
       // When
@@ -398,7 +399,7 @@ describe('createChainConnect', () => {
 
   it('As a dotli integrator, closing a core connection releases its lease once', async () => {
     // Given
-    const connection = await connectOn(sources)(hexBytes(people));
+    const connection = await connectOn(sources)(fromHex(people));
 
     // When
     connection.close();
@@ -414,7 +415,7 @@ describe('createChainConnect', () => {
     sources.isRpcChainSupported.mockReturnValue(false);
 
     // When
-    const connect = (): unknown => connectOn(sources)(hexBytes(people));
+    const connect = (): unknown => connectOn(sources)(fromHex(people));
 
     // Then
     expect(connect).toThrow(`Unsupported RPC chain: ${people.toLowerCase()}`);
@@ -426,7 +427,7 @@ describe('createChainConnect', () => {
     sources.isRemoteChainConnectable.mockReturnValue(false);
 
     // When
-    const connect = (): unknown => connectOn(sources)(hexBytes(people));
+    const connect = (): unknown => connectOn(sources)(fromHex(people));
 
     // Then
     expect(connect).toThrow(`Unsupported smoldot chain: ${people.toLowerCase()}`);
@@ -517,8 +518,8 @@ describe('host chain pool on a light client backend', () => {
     // Given
     const pool = createHostChainPool({ remoteChain });
     const connect = createChainConnect(pool, frame);
-    const first = await connect(hexBytes(people));
-    const second = await connect(hexBytes(people));
+    const first = await connect(fromHex(people));
+    const second = await connect(fromHex(people));
 
     // When
     const bar = must(hostChainProvider(people, pool), 'provider')(() => undefined);
@@ -536,7 +537,7 @@ describe('host chain pool on a light client backend', () => {
     async reason => {
       // Given
       const pool = createHostChainPool({ remoteChain });
-      const product = await createChainConnect(pool, frame)(hexBytes(people));
+      const product = await createChainConnect(pool, frame)(fromHex(people));
       const onHalt = vi.fn<(reason: RemoteChainHalt) => void>();
       must(hostChainProvider(people, pool), 'provider')(() => undefined, onHalt);
 
@@ -563,7 +564,7 @@ describe('host chain pool on a light client backend', () => {
     "As a dotli user, a product's chain connection outlives a %s halt: what was queued arrives, and its next request opens a fresh connection to the frame",
     async reason => {
       // Given: a product request answered by the frame, not yet read.
-      const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+      const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
       const responses = connection.responses()[Symbol.asyncIterator]();
       connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
       const first = must(remotes[0], 'first remote');
@@ -592,7 +593,7 @@ describe('host chain pool on a light client backend', () => {
 
   it('As a product whose chain halted with the frame, my next request while the frame is down boots it and waits instead of failing at once', async () => {
     // Given
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(remotes[0], 'first remote').halt('frame');
     frameStatus = 'failed';
@@ -615,7 +616,7 @@ describe('host chain pool on a light client backend', () => {
 
   it('As a product retrying against a frame that fails every boot, my retries dial at most once per gate window', async () => {
     // Given: the frame died, and every boot of it fails at once.
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
     must(remotes[0], 'first remote').halt('frame');
     frameStatus = 'failed';
     refuse = 'frame';
@@ -633,7 +634,7 @@ describe('host chain pool on a light client backend', () => {
 
   it('As a dotli user, a re-lease after a frame halt that finds no transport answers the request at once', async () => {
     // Given: a frame halt, the frame back, and no transport to be had.
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(remotes[0], 'first remote').halt('frame');
     remoteChain.mockReturnValue(null);
@@ -650,7 +651,7 @@ describe('host chain pool on a light client backend', () => {
 
   it('As a dotli user, a product retrying on a chain that halts right after each rebuild rebuilds it only as the backoff allows', async () => {
     // Given: the chain halted, and every rebuild of it halts at once.
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
     must(remotes[0], 'first remote').halt('chain');
     refuse = 'chain';
 
@@ -668,7 +669,7 @@ describe('host chain pool on a light client backend', () => {
 
   it('As a dotli user, a request on a chain whose backoff is shut is answered at once', async () => {
     // Given: the chain halted, was rebuilt at once, and halted again.
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
     must(remotes[0], 'first remote').halt('chain');
     ask(connection, 'truapi:1');
@@ -690,7 +691,7 @@ describe('host chain pool on a light client backend', () => {
 
   it('As a dotli user, a chain that halts again within 30 s of its rebuild is rebuilt 1 s later', async () => {
     // Given: the chain halted, was rebuilt at once, and the rebuild lived 10 s.
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
     must(remotes[0], 'first remote').halt('chain');
     ask(connection, 'truapi:1');
     expect(remotes).toHaveLength(2);
@@ -713,7 +714,7 @@ describe('host chain pool on a light client backend', () => {
   it('As a dotli user, a chain whose rebuild lived past 30 s is rebuilt at once after its next halt', async () => {
     // Given: the chain halted twice in a row, so its backoff has grown, and
     // the rebuild after that lived 31 s.
-    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(hexBytes(people));
+    const connection = await createChainConnect(createHostChainPool({ remoteChain }), frame)(fromHex(people));
     must(remotes[0], 'first remote').halt('chain');
     ask(connection, 'truapi:1');
     must(remotes[1], 'second remote').halt('chain');
@@ -741,8 +742,8 @@ describe('host chain pool on a light client backend', () => {
   it("As a dotli user, one chain's backoff does not hold back another chain", async () => {
     // Given: People halted, was rebuilt at once, and halted again.
     const connect = createChainConnect(createHostChainPool({ remoteChain }), frame);
-    const onPeople = await connect(hexBytes(people));
-    const onAssetHub = await connect(hexBytes(assetHub));
+    const onPeople = await connect(fromHex(people));
+    const onAssetHub = await connect(fromHex(assetHub));
     const peopleRemotes = (): RemoteConnection[] => remotes.filter(r => r.genesisHash === people.toLowerCase());
     const assetHubRemotes = (): RemoteConnection[] => remotes.filter(r => r.genesisHash === assetHub.toLowerCase());
     must(peopleRemotes()[0], 'People').halt('chain');
@@ -764,8 +765,8 @@ describe('host chain pool on a light client backend', () => {
   it('As a dotli user, two products after a chain halt share its rebuild, and wait together when it halts again', async () => {
     // Given
     const connect = createChainConnect(createHostChainPool({ remoteChain }), frame);
-    const first = await connect(hexBytes(people));
-    const second = await connect(hexBytes(people));
+    const first = await connect(fromHex(people));
+    const second = await connect(fromHex(people));
     must(remotes[0], 'first remote').halt('chain');
 
     // When: both products ask.
@@ -815,8 +816,8 @@ describe('host chain pool on a light client backend', () => {
   it('As a dotli user, the connection to the protocol frame closes 60 seconds after the last of two leases', async () => {
     // Given
     const connect = createChainConnect(createHostChainPool({ remoteChain }), frame);
-    const first = await connect(hexBytes(people));
-    const second = await connect(hexBytes(people));
+    const first = await connect(fromHex(people));
+    const second = await connect(fromHex(people));
     const remote = must(remotes[0], 'remote');
 
     // When: one lease is released, and the other a while later.
@@ -869,7 +870,7 @@ describe('host chain pool over Trusted Providers', () => {
     // Given
     const people = getActiveServicesConfig().people.genesis;
     const pool = createHostChainPool({ rpcChain: fakeSocketChain });
-    const product = await createChainConnect(pool)(hexBytes(people));
+    const product = await createChainConnect(pool)(fromHex(people));
     const bar = must(hostChainProvider(people, pool), 'provider')(() => undefined);
 
     // When
@@ -920,7 +921,7 @@ describe('host chain connection over Trusted Providers', () => {
     // Given: a core connection to the People chain and an acknowledged subscription.
     const people = getActiveServicesConfig().people.genesis;
     const connection = await createChainConnect(createHostChainPool({ destroyDelay: 0, rpcChain: fakeSocketChain }))(
-      hexBytes(people),
+      fromHex(people),
     );
     const responses = connection.responses()[Symbol.asyncIterator]();
     const next = async (): Promise<unknown> => JSON.parse(yielded(await responses.next())) as unknown;

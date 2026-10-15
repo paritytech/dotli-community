@@ -8,7 +8,6 @@
 // still deliver what was queued and stay open, since truapi-host ignores a stream's end. The next
 // request takes a new lease, which rebuilds the chain through a backoff.
 
-import { bytesToHex } from '@parity/truapi/scale';
 import type { JsonRpcConnection, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider } from '@parity/truapi-host';
@@ -35,7 +34,7 @@ import {
   type RemoteChainHalt,
 } from '@dotli/chains';
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { errorName, log, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport, type RemoteChainFactory } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
@@ -305,7 +304,7 @@ export function createChainConnect(
     isRpcChainSupported: isRpcSupported = pageSources.isRpcChainSupported,
   } = sources;
   return genesisHashBytes => {
-    const genesisHash = bytesToHex(genesisHashBytes);
+    const genesisHash = toHex(genesisHashBytes);
     // Core-owned Bulletin operations also come through here, so this cannot enforce the subset
     // `featureSupported` advertises.
     const [isSupported, backend] =

@@ -3,10 +3,9 @@
 
 import type { ProductStorage } from '@parity/truapi-host';
 import type { HostLocalStorageChangeItem } from '@parity/truapi';
-import { bytesToHex } from '@parity/truapi/scale';
 import { base64 } from '@scure/base';
 import { reportExpected, reportListener, spans as S } from '@dotli/metrics';
-import { createListenerSet } from '@dotli/shared';
+import { createListenerSet, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createResultStream } from './result-stream.js';
 
@@ -77,7 +76,7 @@ export function createLocalStorageSubscribe({
       const emit = (): void => {
         try {
           const raw = storage().getItem(storageKey(key));
-          push(raw === null ? {} : { value: bytesToHex(base64.decode(raw)) });
+          push(raw === null ? {} : { value: toHex(base64.decode(raw)) });
         } catch (err) {
           // The browser blocking storage is the environment, so the product hears a read failure and the page keeps
           // the cause as a breadcrumb.

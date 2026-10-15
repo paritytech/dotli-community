@@ -7,8 +7,7 @@
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { reportExpected, spans as S } from '@dotli/metrics';
 import { protocolClient, type LocalWalletIdentity } from '@dotli/protocol';
-import { createAsyncTaskPool } from '@dotli/shared';
-import { hexToBytes } from '@parity/truapi/scale';
+import { createAsyncTaskPool, fromHex } from '@dotli/shared';
 import { loadPolkadotApi } from '../lazy.js';
 import { hostChainProvider } from './host-callbacks/chain.js';
 import { reportLocalWalletFailure, type LocalWalletBoot, type LocalWalletFailureReason } from './wallet-boot.js';
@@ -94,7 +93,7 @@ async function readFromPeople(identityAccountId: string): Promise<string | null>
   const papi = await loadPolkadotApi();
   const client = papi.createClient(provider);
   try {
-    const account = papi.AccountId().dec(hexToBytes(identityAccountId));
+    const account = papi.AccountId().dec(fromHex(identityAccountId));
     const consumers = client.getUnsafeApi().query['Resources']?.['Consumers'];
     if (consumers === undefined) {
       throw new Error('People has no Resources.Consumers storage');

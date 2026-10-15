@@ -5,12 +5,20 @@
 // one session. Every other slot lives in this origin's localStorage, with secrets encrypted at rest.
 
 import { SITE_ID } from '@dotli/config';
-import { bytesToHex, hexToBytes } from '@parity/truapi/scale';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
 import type { CoreStorage, CoreStorageKey } from '@parity/truapi-host';
 import { SHARED_CORE_SESSION_KEY, protocolClient, type SharedStoreStatus } from '@dotli/protocol';
 import { m, reportExpected, reportListener, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, idbRequest, idbTransaction, log, openIdb } from '@dotli/shared';
+import {
+  createAsyncTaskPool,
+  createListenerSet,
+  fromHex,
+  idbRequest,
+  idbTransaction,
+  log,
+  openIdb,
+  toHex,
+} from '@dotli/shared';
 
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
@@ -149,7 +157,7 @@ export function createCoreStorage({
 
   const encodeCoreStorageValue = async (key: CoreStorageKey, value: Uint8Array): Promise<string> => {
     if (!storesSecretMaterial(key)) {
-      return bytesToHex(value);
+      return toHex(value);
     }
     const nonce = crypto.getRandomValues(new Uint8Array(CORE_SECRET_NONCE_LENGTH));
     const ciphertext = new Uint8Array(
@@ -158,7 +166,7 @@ export function createCoreStorage({
     const stored = new Uint8Array(nonce.length + ciphertext.length);
     stored.set(nonce);
     stored.set(ciphertext, nonce.length);
-    return ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
+    return ENCRYPTED_VALUE_PREFIX + toHex(stored);
   };
 
   const decodeCoreStorageValue = async (key: CoreStorageKey, raw: string): Promise<Uint8Array | undefined> => {
@@ -213,7 +221,7 @@ export function createCoreStorage({
 
   const writeCoreStorageValue = async (key: CoreStorageKey, value: Uint8Array): Promise<void> => {
     if (key.tag === 'AuthSession') {
-      await shared.write(SHARED_CORE_SESSION_KEY, bytesToHex(value));
+      await shared.write(SHARED_CORE_SESSION_KEY, toHex(value));
       emitLocalChange();
       return;
     }
@@ -340,7 +348,7 @@ export function onStoredSessionChanged(listener: () => void): () => void {
 
 function decodeStoredBytes(raw: string, description: string): Uint8Array | undefined {
   try {
-    return hexToBytes(raw);
+    return fromHex(raw);
   } catch (err) {
     log.warn(`[dot.li] ignoring corrupt ${description}:`, err);
     return undefined;
@@ -447,5 +455,5 @@ function isCryptoKey(value: unknown): value is CryptoKey {
 }
 
 function hexNoPrefix(bytes: Uint8Array): string {
-  return bytesToHex(bytes).slice(2);
+  return toHex(bytes).slice(2);
 }
