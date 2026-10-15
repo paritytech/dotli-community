@@ -266,6 +266,7 @@ export function requestCoreLogin(core: Provider, reason?: string): Promise<Login
 
   return new Promise<LoginResponse>((resolve, reject) => {
     let settled = false;
+    let reportedUndecodable = false;
     let cleanupRequested = false;
     let unsubscribeMessage: (() => void) | undefined;
     let unsubscribeClose: (() => void) | undefined;
@@ -308,7 +309,17 @@ export function requestCoreLogin(core: Provider, reason?: string): Promise<Login
         const decoded = decodeWireMessage(message);
         if (decoded.isErr()) {
           // Every frame the core sends this connection lands here, so one that does not decode is not this answer.
-          log.warn('[dot.li login] ignored a frame that does not decode:', decoded.error);
+          // The connection is the login's alone, so it is a protocol fault, reported once per request.
+          if (!reportedUndecodable) {
+            reportedUndecodable = true;
+            reportExpected(decoded.error, {
+              flow: 'wallet',
+              step: 'login_frame',
+              metric: S.WALLET_LOGIN,
+              reason: 'undecodable_frame',
+              message: '[dot.li login] ignored a frame that does not decode:',
+            });
+          }
           return;
         }
         const { payload } = decoded.value;

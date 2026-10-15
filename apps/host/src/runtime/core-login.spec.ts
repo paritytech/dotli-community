@@ -427,6 +427,27 @@ describe('requestCoreLogin', () => {
     expect(provider.listener).toBeNull();
   });
 
+  it('As an operator, frames that do not decode during a login are reported once and the login still resolves', async () => {
+    // Given a core that sends two frames that do not decode before its answer
+    const { requestCoreLogin, captures, counted } = harness();
+    const provider = makeProvider({
+      onPostMessage(message) {
+        provider.listener?.(new Uint8Array([0xff, 0x00]));
+        provider.listener?.(new Uint8Array([0xfe]));
+        provider.listener?.(loginResponseFrame(requestIdFromFrame(message), { success: true, value: 'Success' }));
+      },
+    });
+
+    // When
+    const login = requestCoreLogin(provider);
+
+    // Then
+    await expect(login).resolves.toBe('Success');
+    expect(captures.expected).toHaveBeenCalledTimes(1);
+    expect(captures.expected).toHaveBeenCalledWith(expect.anything(), { flow: 'wallet', step: 'login_frame' });
+    expect(counted('wallet.login')).toEqual([{ outcome: 'error', reason: 'undecodable_frame' }]);
+  });
+
   it('As a dotli integrator, the host rejects send failures and unsubscribes', async () => {
     // Given
     const { requestCoreLogin } = harness();

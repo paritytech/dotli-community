@@ -161,6 +161,12 @@ export const WALLET_CORE_REDIAL = 'wallet.core_redial';
  */
 export const PRODUCT_RERENDER = 'product.rerender';
 
+/**
+ * A fault in the topbar's login that the login itself survives. Tagged `outcome` (error) and `reason`
+ * (`undecodable_frame`, a frame on the login's own connection that did not decode, counted once per login).
+ */
+export const WALLET_LOGIN = 'wallet.login';
+
 /** A topbar logout of a paired session. Tagged `outcome` and, on error, `reason`, as a failed one leaves the user in. */
 export const WALLET_LOGOUT = 'wallet.logout';
 
