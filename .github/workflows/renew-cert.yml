@@ -50,13 +50,10 @@ jobs:
           esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+      - uses: ./.github/actions/setup-ssh
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-
-      - run: ssh-keyscan "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
 
       - name: Renew certificate
         run: make renew-cert ENV="$ENV_TAG" REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
