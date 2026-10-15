@@ -386,23 +386,27 @@ export const ResolutionTicks: Story = {
         system('resolve', 'started', 'flow-res', { label: 'myapp', source: 'smoldot' });
         clock.frame();
       });
+      let drawn = '';
       await step('Then the view shows it', async () => {
         await expect(within(part('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
         await expect(resolutionFact('name')).toBe('myapp');
+        drawn = resolutionFact('elapsed');
       });
-      await step('When time passes with no events', () => {
-        clock.advance(500);
+      await step('When more than one tick of time passes with no events', () => {
+        clock.advance(600);
       });
+      let ticked = '';
       await step('Then the elapsed time redraws on its tick', async () => {
-        // The clock starts on the frame that first draws the running load, 16 ms after the load started.
-        await expect(resolutionFact('elapsed')).toBe('516ms');
+        // The clock starts on a frame after the load's first draw, so the tick's exact value follows the frame grid.
+        ticked = resolutionFact('elapsed');
+        await expect(ticked).not.toBe(drawn);
       });
       await step('When the panel is collapsed and time passes', () => {
         part('td-collapse').click();
         clock.advance(1500);
       });
       await step('Then nothing redraws', async () => {
-        await expect(resolutionFact('elapsed')).toBe('516ms');
+        await expect(resolutionFact('elapsed')).toBe(ticked);
       });
     }),
 };

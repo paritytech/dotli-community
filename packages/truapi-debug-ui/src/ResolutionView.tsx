@@ -59,9 +59,18 @@ export function ResolutionView(props: {
   );
 
   // Only a running load grows with time, and only a shown one needs redrawing. A new load arrives through the refresh
-  // effect.
+  // effect. The empty model also reads as running, so the clock waits for a recorded load.
   createEffect(
-    () => props.active && !props.collapsed && model()?.summary.outcome === 'running',
+    () => {
+      const shown = model();
+      return (
+        props.active &&
+        !props.collapsed &&
+        shown !== null &&
+        shown.flowId !== null &&
+        shown.summary.outcome === 'running'
+      );
+    },
     running => {
       if (!running) {
         return;
