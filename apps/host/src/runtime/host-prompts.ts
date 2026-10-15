@@ -17,8 +17,8 @@ export interface HostPrompts {
     signal: AbortSignal,
     options: { allowOnce: boolean },
   ) => Promise<PermissionPromptDecision>;
-  /** Resolves true when the user allows storing a preimage of `size` bytes. */
-  confirmPreimage: (size: number, signal: AbortSignal) => Promise<boolean>;
+  /** Resolves true when the user allows `label` to store a preimage of `size` bytes. */
+  confirmPreimage: (label: string, size: number, signal: AbortSignal) => Promise<boolean>;
   /** Resolves the result of the button the user chose. */
   confirmReview: <R extends string>(dialog: ModalView<R>, signal: AbortSignal) => Promise<R>;
   notify: ShowNotification;

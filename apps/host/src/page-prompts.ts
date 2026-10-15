@@ -32,7 +32,8 @@ export function createHostPrompts({
       });
       return (await present(dialog, signal)).result;
     },
-    confirmPreimage: async (size, signal) => (await present(preimageSubmitDialog(size), signal)).result === 'allow',
+    confirmPreimage: async (label, size, signal) =>
+      (await present(preimageSubmitDialog({ app: withActiveTld(label), dataSize: size }), signal)).result === 'allow',
     confirmReview: async (dialog, signal) => (await present(dialog, signal)).result,
     notify,
   };

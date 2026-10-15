@@ -621,7 +621,7 @@ describe('user confirmation modal', () => {
     await modalShown();
 
     // Then
-    expect(page.shown()).toEqual({ kind: 'preimage', size: 2048 });
+    expect(page.shown()).toEqual({ kind: 'preimage', label: 'localhost:3000', size: 2048 });
 
     // When
     page.allowPreimage(true);

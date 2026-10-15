@@ -11,7 +11,7 @@ import type { HostPrompts, PermissionPromptDecision } from './host-prompts.js';
 
 export type FakePrompt =
   | { kind: 'permission'; label: string; permission: EnforceablePermissionName; allowOnce: boolean }
-  | { kind: 'preimage'; size: number }
+  | { kind: 'preimage'; label: string; size: number }
   | { kind: 'review'; dialog: ModalView<string> };
 
 interface Pending {
@@ -107,7 +107,7 @@ export function createFakePrompts(): FakePrompts {
     prompts: {
       askPermission: (label, permission, signal, { allowOnce }) =>
         ask({ kind: 'permission', label, permission, allowOnce }, signal),
-      confirmPreimage: (size, signal) => ask({ kind: 'preimage', size }, signal),
+      confirmPreimage: (label, size, signal) => ask({ kind: 'preimage', label, size }, signal),
       confirmReview: (dialog, signal) => ask({ kind: 'review', dialog }, signal),
       notify: notice => {
         notices.push(notice);

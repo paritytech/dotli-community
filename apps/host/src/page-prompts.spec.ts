@@ -156,10 +156,11 @@ describe('permission request', () => {
 describe('preimage submit', () => {
   it('As a dotli user, I see the data size and can allow the submission', async () => {
     // Given
-    const decision = prompts.confirmPreimage(2048, live());
+    const decision = prompts.confirmPreimage('myapp', 2048, live());
 
     // Then
     expect(shownModal().view.title).toBe('Submit Preimage');
+    expect(shownModal().view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });
 
     // When
     chooseModalButton('Allow');
@@ -170,7 +171,7 @@ describe('preimage submit', () => {
 
   it('As a dotli user, cancelling refuses the submission, and the backdrop does nothing', async () => {
     // Given
-    const decision = prompts.confirmPreimage(512, live());
+    const decision = prompts.confirmPreimage('myapp', 512, live());
 
     // When
     dismissModal();
@@ -188,7 +189,7 @@ describe('preimage submit', () => {
   it('As a dotli integrator, an abort rejects with AbortError and closes the dialog', async () => {
     // Given
     const controller = new AbortController();
-    const decision = prompts.confirmPreimage(10, controller.signal);
+    const decision = prompts.confirmPreimage('myapp', 10, controller.signal);
 
     // When
     controller.abort();

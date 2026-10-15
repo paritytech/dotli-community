@@ -8,12 +8,21 @@ import { permissionIcon } from './permission-icons.js';
 /** `allow` lets the app submit the preimage. */
 export type PreimageDecision = 'cancel' | 'allow';
 
-/** The dialog that asks before an app stores `dataSize` bytes of preimage data. */
-export function preimageSubmitDialog(dataSize: number): ModalView<PreimageDecision> {
+export interface PreimageRequest {
+  /** The app's name as the user reads it. */
+  app: string;
+  dataSize: number;
+}
+
+/** The dialog that asks before `app` stores `dataSize` bytes of preimage data. */
+export function preimageSubmitDialog({ app, dataSize }: PreimageRequest): ModalView<PreimageDecision> {
   return {
     icon: permissionIcon('PreimageSubmit'),
     title: 'Submit Preimage',
-    fields: [{ label: 'Data size', value: formatSize(dataSize) }],
+    fields: [
+      { label: 'Application', value: app },
+      { label: 'Data size', value: formatSize(dataSize) },
+    ],
     buttons: [
       { label: 'Cancel', variant: 'cancel', result: 'cancel' },
       { label: 'Allow', variant: 'primary', result: 'allow' },

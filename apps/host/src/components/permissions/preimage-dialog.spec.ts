@@ -6,22 +6,25 @@ import { permissionIcon } from './permission-icons.js';
 import { preimageSubmitDialog } from './preimage-dialog.js';
 
 describe('preimage submit dialog', () => {
-  it('As a dotli user, I see the data size under the upload glyph', () => {
+  it('As a dotli user, I see which app asks and the data size under the upload glyph', () => {
     // When
-    const view = preimageSubmitDialog(2048);
+    const view = preimageSubmitDialog({ app: 'myapp.dot', dataSize: 2048 });
 
     // Then
     expect(view.title).toBe('Submit Preimage');
     expect(view.icon).toBe(permissionIcon('PreimageSubmit'));
-    expect(view.fields).toEqual([{ label: 'Data size', value: '2 kB' }]);
+    expect(view.fields).toEqual([
+      { label: 'Application', value: 'myapp.dot' },
+      { label: 'Data size', value: '2 kB' },
+    ]);
   });
 
   it('As a dotli user, a small preimage shows its bytes, and only Cancel or Allow answers it', () => {
     // When
-    const view = preimageSubmitDialog(512);
+    const view = preimageSubmitDialog({ app: 'myapp.dot', dataSize: 512 });
 
     // Then
-    expect(view.fields).toEqual([{ label: 'Data size', value: '512 B' }]);
+    expect(view.fields.at(-1)).toEqual({ label: 'Data size', value: '512 B' });
     expect(view.buttons.map(b => [b.label, b.variant])).toEqual([
       ['Cancel', 'cancel'],
       ['Allow', 'primary'],

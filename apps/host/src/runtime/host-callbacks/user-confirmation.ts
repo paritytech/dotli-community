@@ -339,11 +339,12 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
 }
 
 function handlePreimageSubmitReview(
+  label: string,
   review: PreimageSubmitReview,
   signal: AbortSignal,
   prompts: ConfirmationPrompts,
 ): Promise<boolean> {
-  return prompts.confirmPreimage(Number(review.size), signal);
+  return prompts.confirmPreimage(label, Number(review.size), signal);
 }
 
 async function handleConfirmationReview(
@@ -385,7 +386,7 @@ export function createUserConfirmationAdapters(
     confirmUserAction: review =>
       modalScope.enqueue(async signal =>
         review.tag === 'PreimageSubmit'
-          ? handlePreimageSubmitReview(review.value, signal, prompts)
+          ? handlePreimageSubmitReview(label, review.value, signal, prompts)
           : (await handleConfirmationReview(label, review, signal, false, prompts)) === 'accepted',
       ),
     // The core stores AllowAlways and Deny, and honours AllowOnce for this request only.
@@ -395,7 +396,7 @@ export function createUserConfirmationAdapters(
           return permissionDecision(await handleConfirmationReview(label, review, signal, true, prompts));
         }
         // The dialog's Allow lasts one request, so its Cancel does too, where a Deny would be stored for good.
-        if (!(await handlePreimageSubmitReview(review.value, signal, prompts))) {
+        if (!(await handlePreimageSubmitReview(label, review.value, signal, prompts))) {
           throw new Error(ERRORS.PREIMAGE_SUBMIT_CANCELLED);
         }
         return 'AllowOnce';
