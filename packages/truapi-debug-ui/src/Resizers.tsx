@@ -7,7 +7,7 @@
 import { onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DockPosition } from './model/dock-storage.js';
-import { clampPanelSize, clampSplit } from './resize-clamp.js';
+import { clampPanelSize, clampSplit, panelSizeBounds, splitBounds, stepPanelSize } from './resize-clamp.js';
 import { Resizer } from './shared/Resizer.js';
 import s from './Resizers.module.css';
 
@@ -49,15 +49,45 @@ export function ResizeHandle(props: {
     });
   };
 
+  const viewport = (): { width: number; height: number } => ({ width: window.innerWidth, height: window.innerHeight });
+  const sizeOf = (panel: HTMLElement): number => (props.dock === 'right' ? panel.offsetWidth : panel.offsetHeight);
+
   return (
     <Resizer
       testId="td-resize-handle"
       class={s['handle']}
       orientation={props.dock === 'right' ? 'vertical' : 'horizontal'}
+      label="Resize the panel"
       disabled={props.collapsed}
       onDrag={move}
+      onKeyMove={delta => {
+        const panel = panelEl();
+        if (panel === undefined) {
+          return;
+        }
+        // The edge is the panel's start, so moving it up or left grows the panel.
+        const size = stepPanelSize(props.dock, sizeOf(panel), -delta, viewport());
+        panel.style[props.dock === 'right' ? 'width' : 'height'] = `${String(size)}px`;
+        props.onResize(size);
+      }}
+      measure={() => {
+        const panel = panelEl();
+        return { now: panel === undefined ? 0 : sizeOf(panel), ...panelSizeBounds(props.dock, viewport()) };
+      }}
     />
   );
+}
+
+/** The views pane before the splitter and the body around both, along the split axis. */
+function splitOf(el: HTMLElement, stacked: boolean): { now: number; span: number } {
+  const body = el.parentElement;
+  const pane = el.previousElementSibling;
+  if (body === null || !(pane instanceof HTMLElement)) {
+    return { now: 0, span: 0 };
+  }
+  return stacked
+    ? { now: pane.offsetHeight, span: body.clientHeight }
+    : { now: pane.offsetWidth, span: body.clientWidth };
 }
 
 /** Divider between the views and the detail pane. Double-click restores the default. */
@@ -88,11 +118,27 @@ export function BodySplitter(props: {
       class={s['splitter']}
       orientation={props.stacked ? 'horizontal' : 'vertical'}
       hidden={props.hidden}
+      label="Resize the panes"
       title="Drag to resize"
       onDragStart={el => {
         body = el.parentElement?.getBoundingClientRect();
       }}
       onDrag={move}
+      onKeyMove={(delta, el) => {
+        const panel = panelEl();
+        if (panel === undefined) {
+          return;
+        }
+        const { now, span } = splitOf(el, props.stacked);
+        panel.style.setProperty(
+          props.stacked ? '--td-top-height' : '--td-left-width',
+          `${String(clampSplit(now + delta, span))}px`,
+        );
+      }}
+      measure={el => {
+        const { now, span } = splitOf(el, props.stacked);
+        return { now, ...splitBounds(span) };
+      }}
       onReset={() => {
         const panel = panelEl();
         panel?.style.removeProperty('--td-left-width');

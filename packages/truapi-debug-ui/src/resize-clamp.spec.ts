@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { clampPanelSize, clampSplit } from './resize-clamp.js';
+import { clampPanelSize, clampSplit, keyDelta, panelSizeBounds, splitBounds, stepPanelSize } from './resize-clamp.js';
 
 const VIEWPORT = { width: 1024, height: 768 };
 
@@ -34,5 +34,71 @@ describe('debug panel resize bounds', () => {
 
     // Then the list keeps 220px and the detail keeps 260px plus the 6px splitter
     expect(sizes).toEqual([500, 220, 734]);
+  });
+
+  it('As a keyboard user of the debug panel, I move a divider 16px with an arrow and 64px with Shift, along its own axis', () => {
+    // Given a divider of each orientation
+
+    // When
+    const moves = [
+      keyDelta('ArrowUp', 'horizontal', false),
+      keyDelta('ArrowDown', 'horizontal', true),
+      keyDelta('ArrowLeft', 'vertical', true),
+      keyDelta('ArrowRight', 'vertical', false),
+    ];
+
+    // Then
+    expect(moves).toEqual([-16, 64, -64, 16]);
+  });
+
+  it('As a keyboard user of the debug panel, I keep Tab, Enter, letters and the cross-axis arrows for the page', () => {
+    // Given a divider that runs across the panel
+
+    // When
+    const others = ['Tab', 'Enter', 'a', 'ArrowLeft', 'ArrowRight'].map(key => keyDelta(key, 'horizontal', false));
+
+    // Then
+    expect(others).toEqual([null, null, null, null, null]);
+  });
+
+  it('As a keyboard user of the debug panel, I keep Alt, Ctrl and Cmd with an arrow for the browser history', () => {
+    // Given an arrow pressed with a browser shortcut modifier held
+
+    // When
+    const move = keyDelta('ArrowLeft', 'vertical', false, true);
+
+    // Then
+    expect(move).toBeNull();
+  });
+
+  it('As a keyboard user of the debug panel, I grow and shrink the docked panel only within the bounds a drag keeps to', () => {
+    // Given a bottom-docked panel 360px tall
+
+    // When
+    const sizes = [
+      stepPanelSize('bottom', 360, 16, VIEWPORT),
+      stepPanelSize('bottom', 130, -64, VIEWPORT),
+      stepPanelSize('right', 800, 64, VIEWPORT),
+    ];
+
+    // Then
+    expect(sizes.slice(0, 2)).toEqual([376, 120]);
+    expect(sizes[2]).toBeCloseTo(819.2);
+    const bounds = panelSizeBounds('bottom', VIEWPORT);
+    expect(bounds.min).toBe(120);
+    expect(bounds.max).toBeCloseTo(614.4);
+  });
+
+  it('As a keyboard user of the debug panel, I see the splitter bounds a drag keeps to', () => {
+    // Given a body 1000px wide, and one too narrow for both minimums
+
+    // When
+    const bounds = [splitBounds(1000), splitBounds(300)];
+
+    // Then
+    expect(bounds).toEqual([
+      { min: 220, max: 734 },
+      { min: 220, max: 220 },
+    ]);
   });
 });
