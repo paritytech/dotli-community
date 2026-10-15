@@ -16,8 +16,9 @@ scheduled notifications.
 - One connection is made from a `DotliIdb` port with `connect` and `keyRange`. Stores take the port as an optional
   argument, so tests pass an in-memory database. The default is `pageIdb`.
 - The stores use the shared IndexedDB helper, so a blocked upgrade or an aborted commit rejects instead of hanging.
-- A cache reporter reports a cache's failures once per action. Expected errors (`isExpectedDbError`, such as quota or a
-  blocked upgrade) count as outcomes. Others go to Sentry.
+- A cache reporter counts every failure of a cache as one outcome metric. Expected ones (`isExpectedDbError`, such as a
+  closing connection or a blocked upgrade, and a full quota) leave a breadcrumb. Others are logged and go to Sentry once
+  per action.
 - The block cache keeps bitswap blocks on the host, since the credentialless sandbox loses its storage on reload. It
   does not hash-check. Bookkeeping sits apart from the bytes so touch and prune skip them.
 - The CID cache maps a label to its CID and raw manifest text for instant repeat visits. A hit is validated by today's

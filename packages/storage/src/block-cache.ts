@@ -6,7 +6,7 @@
 
 import { createCacheReporter } from './cache-reporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbTransaction, log } from '@dotli/shared';
+import { idbTransaction } from '@dotli/shared';
 
 const BLOCKS = 'blocks';
 const META = 'block_meta';
@@ -25,16 +25,6 @@ interface BlockMeta {
 
 // Module scope is the page, so each action's fault is captured once per page.
 const reportFailure = createCacheReporter('block_cache', '[dot.li block-cache]');
-
-function report(action: string, err: unknown): void {
-  const name = err instanceof Error ? err.name : undefined;
-  if (name === 'QuotaExceededError') {
-    // Expected under storage pressure, so it is logged but never reported.
-    log.warn(`[dot.li block-cache] ${action} error:`, err);
-    return;
-  }
-  reportFailure(action, err);
-}
 
 function meta(cid: string, size: number): BlockMeta {
   return { cid, size, lastUsed: Date.now() };
@@ -75,7 +65,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
         const fail = (err: Error): void => {
           if (!reported) {
             reported = true;
-            report(settled ? 'touch' : 'read', err);
+            reportFailure(settled ? 'touch' : 'read', err);
           }
           settle(null);
         };
@@ -89,7 +79,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
         };
       });
     } catch (err) {
-      report('read', err);
+      reportFailure('read', err);
       return null;
     }
   }
@@ -104,7 +94,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
         tx.objectStore(META).put(meta(cid, bytes.byteLength));
       });
     } catch (err) {
-      report('write', err);
+      reportFailure('write', err);
     }
   }
 
@@ -117,7 +107,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
         tx.objectStore(META).delete(cid);
       });
     } catch (err) {
-      report('delete', err);
+      reportFailure('delete', err);
     }
   }
 
@@ -131,7 +121,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
       });
       return true;
     } catch (err) {
-      report('clear', err);
+      reportFailure('clear', err);
       return false;
     }
   }
@@ -162,7 +152,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb) {
       });
       return evicted;
     } catch (err) {
-      report('prune', err);
+      reportFailure('prune', err);
       return 0;
     }
   }
