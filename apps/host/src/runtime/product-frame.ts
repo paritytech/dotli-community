@@ -10,7 +10,7 @@ import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log, randomId } from '@dotli/shared';
+import { createAsyncTaskPool, log, randomId, sleep } from '@dotli/shared';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/chat-store.js';
 import { ownCoreConnection } from './core-connection.js';
@@ -260,9 +260,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
         }
         replacedAt = Date.now();
         await rerender('replacement');
-        await new Promise<void>(resolve => {
-          setTimeout(resolve, RECOVER_MIN_INTERVAL_MS);
-        });
+        await sleep(RECOVER_MIN_INTERVAL_MS);
       })
       .catch((error: unknown) => {
         reportRerenderFailure(error, 'replacement');
@@ -558,9 +556,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
             return;
           }
           await rerender('recover');
-          await new Promise<void>(resolve => {
-            setTimeout(resolve, RECOVER_MIN_INTERVAL_MS);
-          });
+          await sleep(RECOVER_MIN_INTERVAL_MS, ask.signal);
         },
         { signal: ask.signal },
       )

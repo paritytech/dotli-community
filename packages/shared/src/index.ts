@@ -36,4 +36,5 @@ export {
 } from './sync-store.js';
 export { pageLocalStorage, pageSessionStorage, safeStorage, type SafeStorage } from './safe-storage.js';
 export { realTimers, type Timers } from './timers.js';
+export { sleep } from './sleep.js';
 export { withTimeout } from './with-timeout.js';
