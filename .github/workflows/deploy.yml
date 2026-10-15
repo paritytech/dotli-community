@@ -8,9 +8,8 @@ on:
   release:
     types: [published]
 
-concurrency:
-  group: deploy-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   plan:
@@ -64,8 +63,15 @@ jobs:
     needs: plan
     if: needs.plan.outputs.environments != '[]'
     runs-on: ubuntu-latest
+    # A newer push to the same PR or branch cancels this gate, so the superseded run never deploys.
+    concurrency:
+      group: deploy-gate-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+      cancel-in-progress: true
     steps:
+      # The commit the deploy builds. A PR's default checkout is its merge commit, which the deploy never builds.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.ref || github.sha }}
 
       - uses: ./.github/actions/setup-node
 
@@ -90,6 +96,10 @@ jobs:
     needs: [plan, quality-gate]
     runs-on: ubuntu-latest
     environment: ${{ matrix.environment }}
+    # One deploy per environment at a time, whichever event started it. A running deploy is never cut mid-rsync.
+    concurrency:
+      group: deploy-env-${{ matrix.environment }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -105,13 +115,15 @@ jobs:
 
       - name: Sync package versions to release tag
         if: github.event_name == 'release'
-        run: node scripts/set-version.ts "${{ github.event.release.tag_name }}"
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: node scripts/set-version.ts "$RELEASE_TAG"
 
+      # No VITE_COMMIT_SHA: the build reads it from the checkout, which is the PR head on a PR deploy.
       - run: npx turbo run build:prod
         env:
           VITE_APP_URL: ${{ vars.APP_URL }}
           VITE_APP_DEBUG: ${{ vars.APP_DEBUG }}
-          VITE_COMMIT_SHA: ${{ github.sha }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_METRICS: ${{ secrets.VITE_METRICS }}
           VITE_NETWORKS: ${{ vars.NETWORKS }}
