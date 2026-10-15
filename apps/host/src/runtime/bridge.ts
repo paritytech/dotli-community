@@ -14,12 +14,11 @@ import { createBridge } from './create-bridge.js';
 import { createCoreRuntimeBoot } from './core-runtime.js';
 import { createRuntimeLoader } from './runtime-loader.js';
 import { watchHostChains } from './host-callbacks/chain.js';
-import { pagePermissions } from './page-permissions.js';
+import { pagePermissions, productPermissions } from './page-permissions.js';
 import { onStoredSessionChanged } from './session/core-storage.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { sessionState } from './session/session-state.js';
 import { authStore } from './state/auth.js';
-import { onPermissionsChanged } from './state/product-permissions.js';
 import { getWalletMode } from './state/wallet-mode.js';
 import { readWalletBoot } from './wallet-boot.js';
 import { walletSwitch } from './wallet-switch.js';
@@ -53,7 +52,12 @@ const bootRuntime = createCoreRuntimeBoot({
     return { createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime, HostWorker };
   },
   createCallbacks: options =>
-    createHostCallbacks({ ...options, prompts: hostPrompts, notifications: pageNotifications() }),
+    createHostCallbacks({
+      ...options,
+      prompts: hostPrompts,
+      notifications: pageNotifications(),
+      permissions: { registry: pagePermissions, product: productPermissions },
+    }),
   loadLocalWalletCore,
 });
 
@@ -62,7 +66,7 @@ export const { initBridge, setPageProduct, startProductFrame, authCommands } = c
   onStoredSessionChanged,
   createIframeHost: async options =>
     (await hostRuntime()).web.createIframeHost({ ...options, container: productFrameContainer() }),
-  onPermissionsChanged,
+  onPermissionsChanged: productPermissions.onChanged,
   permissions: pagePermissions,
   frameView: productFrameView,
   notify: hostPrompts.notify,

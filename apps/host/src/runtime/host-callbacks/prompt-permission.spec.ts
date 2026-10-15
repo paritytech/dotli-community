@@ -4,8 +4,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
-import { pagePermissions } from '../page-permissions.js';
-import { onPermissionsChanged, type PermissionsChange } from '../state/product-permissions.js';
+import { createPermissionAuthorizations, type PermissionAuthorizations } from '../permissions.js';
+import {
+  createProductPermissions,
+  type PermissionsChange,
+  type ProductPermissions,
+} from '../state/product-permissions.js';
+import { productStore } from '../state/product.js';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
 import { createPromptPermission } from './prompt-permission.js';
 import type { PermissionPromptDecision } from '../host-prompts.js';
@@ -17,13 +22,23 @@ const PRODUCT: ProductContext = {
 };
 
 let page: FakePrompts = createFakePrompts();
+// Each test builds its own registry and store, so no registration carries over.
+let registry: PermissionAuthorizations;
+let store: ProductPermissions;
 
-/** The prompt adapters for myapp, over the page's fake prompts. */
-function prompts(): ReturnType<typeof createPromptPermission> {
+/** The prompt adapters for `label`, over the fake prompts and this test's permissions. */
+function prompts(
+  label = 'myapp',
+  scope = createBlockingModalCoordinator().createScope(),
+): ReturnType<typeof createPromptPermission> {
   return createPromptPermission(
-    'myapp',
-    { ask: page.prompts.askPermission, notify: page.prompts.notify },
-    createBlockingModalCoordinator().createScope(),
+    label,
+    {
+      ask: page.prompts.askPermission,
+      notify: page.prompts.notify,
+      permissions: { registry, product: store },
+    },
+    scope,
   );
 }
 
@@ -33,6 +48,8 @@ let unregisterMyapp: (() => void) | null = null;
 let myappStore: Store;
 
 beforeEach(() => {
+  registry = createPermissionAuthorizations();
+  store = createProductPermissions({ registry, product: productStore });
   myappStore = new Map();
   page = createFakePrompts();
   unregisterMyapp = registerTestProvider('myapp', myappStore);
@@ -44,7 +61,7 @@ afterEach(() => {
 });
 
 function registerTestProvider(label: string, store: Store): () => void {
-  return pagePermissions.register(label, {
+  return registry.register(label, {
     getPermissionAuthorizationStatuses(requests) {
       return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
     },
@@ -76,7 +93,7 @@ function requestKey(request: PermissionAuthorizationRequest): string {
 describe('device permission prompts', () => {
   async function grantAndRecordChanges(permission: 'Camera' | 'Notifications'): Promise<PermissionsChange[]> {
     const changes: PermissionsChange[] = [];
-    const stop = onPermissionsChanged(change => {
+    const stop = store.onChanged(change => {
       changes.push(change);
     });
 
@@ -121,13 +138,13 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(await pagePermissions.status('myapp', 'ChainSubmit')).toBe('ask');
+    expect(await registry.status('myapp', 'ChainSubmit')).toBe('ask');
   });
 
   it('As a dotli user, always allowing transactions saves the grant', async () => {
     // Given
     const changes: PermissionsChange[] = [];
-    const stop = onPermissionsChanged(change => {
+    const stop = store.onChanged(change => {
       changes.push(change);
     });
     const response = prompts().remotePermission(PRODUCT, {
@@ -139,7 +156,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowAlways');
-    expect(await pagePermissions.status('myapp', 'ChainSubmit')).toBe('granted');
+    expect(await registry.status('myapp', 'ChainSubmit')).toBe('granted');
     expect(changes).toEqual([{ label: 'myapp', permissions: ['ChainSubmit'], device: false, fromPrompt: true }]);
     stop();
   });
@@ -155,7 +172,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('Deny');
-    expect(await pagePermissions.status('myapp', 'ChainSubmit')).toBe('denied');
+    expect(await registry.status('myapp', 'ChainSubmit')).toBe('denied');
   });
 
   it('As a dotli user, I can allow a single notification', async () => {
@@ -167,7 +184,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(await pagePermissions.status('myapp', 'Notifications')).toBe('ask');
+    expect(await registry.status('myapp', 'Notifications')).toBe('ask');
   });
 
   it('As a dotli user, a camera prompt offers no one-time grant because granting reloads the app', async () => {
@@ -184,7 +201,7 @@ describe('three-way permission prompts', () => {
   it('As a product, an existing grant is answered without being upgraded to a lasting one', async () => {
     // Given: the status can reflect a pending one-time grant, so answering
     // AllowAlways here would quietly make it permanent.
-    await pagePermissions.setStatus('myapp', 'ChainSubmit', 'granted');
+    await registry.setStatus('myapp', 'ChainSubmit', 'granted');
 
     // When
     const response = prompts().remotePermission(PRODUCT, {
@@ -198,7 +215,7 @@ describe('three-way permission prompts', () => {
 
   it('As a dotli user, a stored notification denial is answered without a prompt and with a quiet blocked notice', async () => {
     // Given
-    await pagePermissions.setStatus('myapp', 'Notifications', 'denied');
+    await registry.setStatus('myapp', 'Notifications', 'denied');
 
     // When
     const response = prompts().devicePermission(PRODUCT, 'Notifications');
@@ -224,7 +241,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).rejects.toThrow('User dismissed permission dialog');
-    expect(await pagePermissions.status('myapp', 'Notifications')).toBe('ask');
+    expect(await registry.status('myapp', 'Notifications')).toBe('ask');
   });
 });
 
@@ -232,7 +249,7 @@ describe('queued permission prompts', () => {
   it('As a dotli integrator, I queue a duplicate permission prompt and the host rechecks the permission before showing it', async () => {
     // Given
     let status: 'NotDetermined' | 'Authorized' = 'NotDetermined';
-    const unregister = pagePermissions.register('queued-app', {
+    const unregister = registry.register('queued-app', {
       getPermissionAuthorizationStatuses(requests) {
         return Promise.resolve(requests.map(() => status));
       },
@@ -244,11 +261,7 @@ describe('queued permission prompts', () => {
       },
     });
     const scope = createBlockingModalCoordinator().createScope();
-    const permissions = createPromptPermission(
-      'queued-app',
-      { ask: page.prompts.askPermission, notify: page.prompts.notify },
-      scope,
-    );
+    const permissions = prompts('queued-app', scope);
 
     // When
     const first = permissions.devicePermission(PRODUCT, 'Notifications');

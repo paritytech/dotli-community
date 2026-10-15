@@ -8,13 +8,17 @@
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions } from '@parity/truapi-host';
 import type { RemotePermission } from '@parity/truapi';
-import { isDevicePermission, isEnforceableDevicePermission, type EnforceablePermissionName } from '../permissions.js';
+import {
+  isDevicePermission,
+  isEnforceableDevicePermission,
+  type EnforceablePermissionName,
+  type PermissionAuthorizations,
+} from '../permissions.js';
 import { throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
-import { pagePermissions } from '../page-permissions.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
 import type { Notify } from './push-notification.js';
 import { ERRORS } from '../errors.js';
-import { recordPromptDecision } from '../state/product-permissions.js';
+import type { ProductPermissions } from '../state/product-permissions.js';
 import type { HostPrompts } from '../host-prompts.js';
 
 // The host cannot enforce `Remote` (HTTP/WS) or `WebRtc`, since the sandbox cannot reliably intercept either. A prompt
@@ -31,24 +35,34 @@ function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePer
   }
 }
 
+/** The page's permissions, which a prompt reads before it asks and records the answer in. */
+export interface PromptPermissionStores {
+  /** The core's permission store, whose status decides whether the user is asked at all. */
+  registry: Pick<PermissionAuthorizations, 'status'>;
+  /** The product's permissions, which show the answer in the menu and rebuild the frame for a device grant. */
+  product: Pick<ProductPermissions, 'recordPromptDecision'>;
+}
+
 export interface PromptPermissionDeps {
   ask: HostPrompts['askPermission'];
   notify: Notify;
+  permissions: PromptPermissionStores;
   /** Shared by device and remote prompts. */
   limiter?: SubmitRateLimiter | undefined;
 }
 
 export function createPromptPermission(
   label: string,
-  { ask, notify, limiter = createSubmitRateLimiter() }: PromptPermissionDeps,
+  { ask, notify, permissions, limiter = createSubmitRateLimiter() }: PromptPermissionDeps,
   modalScope: BlockingModalScope,
 ): Permissions {
+  const options = { limiter, ask, notify, permissions };
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
     // OpenUrl has no host-side enforcement point, so a deny button could not block it.
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, tag, { kind: 'Device', limiter, ask, notify }, modalScope);
+    return decidePromptPermission(label, tag, { kind: 'Device', ...options }, modalScope);
   };
 
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
@@ -56,7 +70,7 @@ export function createPromptPermission(
     if (name === null) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, name, { kind: 'Remote', limiter, ask, notify }, modalScope);
+    return decidePromptPermission(label, name, { kind: 'Remote', ...options }, modalScope);
   };
 
   return { devicePermission, remotePermission };
@@ -67,6 +81,7 @@ interface PromptOptions {
   limiter: { allow: () => boolean };
   ask: HostPrompts['askPermission'];
   notify: Notify;
+  permissions: PromptPermissionStores;
 }
 
 function decidePromptPermission(
@@ -84,10 +99,10 @@ async function decidePromptPermissionWhenActive(
   options: PromptOptions,
   signal: AbortSignal,
 ): Promise<PermissionDecision> {
-  const { kind, limiter, ask, notify } = options;
+  const { kind, limiter, ask, notify, permissions } = options;
   // A grant reloads the product.
   const gatedByIframe = isDevicePermission(name);
-  const status = await pagePermissions.status(label, name);
+  const status = await permissions.registry.status(label, name);
   throwIfAborted(signal);
   if (status === 'granted') {
     // The status also reflects a pending one-time grant, which AllowAlways would quietly make permanent.
@@ -116,7 +131,7 @@ async function decidePromptPermissionWhenActive(
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
-  await recordPromptDecision(label, name, decision, signal);
+  await permissions.product.recordPromptDecision(label, name, decision, signal);
   if (decision === 'denied') {
     return 'Deny';
   }

@@ -3,12 +3,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { ALL_PERMISSIONS } from '../runtime/permissions.js';
-import {
-  chooseProductPermission,
-  productPermissionsStore,
-  refreshProductPermissions,
-  resetProductPermissions,
-} from '../runtime/state/product-permissions.js';
+import { productPermissions } from '../runtime/page-permissions.js';
 import { productStore } from '../runtime/state/product.js';
 import { PermissionsItem } from '../components/permissions/PermissionsItem.js';
 import { usePermissionsPanel } from './permissions.js';
@@ -18,10 +13,10 @@ export function PermissionsButton(): JSX.Element {
   const panel = usePermissionsPanel({
     permissions: ALL_PERMISSIONS,
     product: productStore,
-    state: productPermissionsStore,
-    refresh: refreshProductPermissions,
-    choose: chooseProductPermission,
-    reset: resetProductPermissions,
+    state: productPermissions.state,
+    refresh: productPermissions.refresh,
+    choose: productPermissions.choose,
+    reset: productPermissions.reset,
   });
   return <PermissionsItem {...panel} />;
 }

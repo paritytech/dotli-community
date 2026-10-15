@@ -5,20 +5,10 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
-import { pagePermissions } from '../page-permissions.js';
-import { ALL_PERMISSIONS } from '../permissions.js';
+import { ALL_PERMISSIONS, createPermissionAuthorizations, type PermissionAuthorizations } from '../permissions.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { setProductError, setProductLoaded } from './product.js';
-import {
-  chooseProductPermission,
-  onPermissionsChanged,
-  productPermissionsStore,
-  recordPromptDecision,
-  refreshProductPermissions,
-  resetProductPermissions,
-  startProductPermissions,
-  type PermissionsChange,
-} from './product-permissions.js';
+import { productStore, setProductError, setProductLoaded } from './product.js';
+import { createProductPermissions, type PermissionsChange, type ProductPermissions } from './product-permissions.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
@@ -58,6 +48,10 @@ interface FakeCore {
 
 const cleanups: (() => void)[] = [];
 
+// Each test builds its own registry and store, so no registration or read carries over.
+let registry: PermissionAuthorizations;
+let permissions: ProductPermissions;
+
 function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorizationStatus> = {}): FakeCore {
   const readWaiters: ((held: ReadonlyMap<string, PermissionAuthorizationStatus>) => void)[] = [];
   const core: FakeCore = {
@@ -74,7 +68,7 @@ function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorization
       }),
   };
   cleanups.push(
-    pagePermissions.register(label, {
+    registry.register(label, {
       getPermissionAuthorizationStatuses: requests => {
         core.reads += 1;
         for (const woken of readWaiters.splice(0)) {
@@ -114,7 +108,7 @@ function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorization
 function recordChanges(): PermissionsChange[] {
   const changes: PermissionsChange[] = [];
   cleanups.push(
-    onPermissionsChanged(change => {
+    permissions.onChanged(change => {
       changes.push(change);
     }),
   );
@@ -123,12 +117,14 @@ function recordChanges(): PermissionsChange[] {
 
 async function loaded(label = LABEL): Promise<void> {
   setProductLoaded(label, `${label}.dot`);
-  await refreshProductPermissions();
+  await permissions.refresh();
 }
 
 beforeEach(() => {
   captures.exception.mockClear();
-  cleanups.push(startProductPermissions());
+  registry = createPermissionAuthorizations();
+  permissions = createProductPermissions({ registry, product: productStore });
+  cleanups.push(permissions.start());
 });
 
 afterEach(() => {
@@ -147,7 +143,7 @@ describe('product permissions store', () => {
     await loaded();
 
     // Then
-    expect(productPermissionsStore.get()).toEqual({
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
       statuses: statuses({ Camera: 'granted', ChainSubmit: 'denied' }),
@@ -172,7 +168,7 @@ describe('product permissions store', () => {
     setProductError();
 
     // Then
-    expect(productPermissionsStore.get()).toEqual({ status: 'none' });
+    expect(permissions.state.get()).toEqual({ status: 'none' });
   });
 
   it("As the permissions menu, the previous product's statuses never land for the next one", async () => {
@@ -187,10 +183,10 @@ describe('product permissions store', () => {
     for (const answer of first.heldReads.splice(0)) {
       answer();
     }
-    await refreshProductPermissions();
+    await permissions.refresh();
 
     // Then
-    expect(productPermissionsStore.get()).toEqual({ status: 'read', label: 'second', statuses: statuses() });
+    expect(permissions.state.get()).toEqual({ status: 'read', label: 'second', statuses: statuses() });
   });
 
   it('As the permissions menu, refreshes asked for while a read runs share one later read', async () => {
@@ -199,11 +195,11 @@ describe('product permissions store', () => {
     await loaded();
     const readsBefore = core.reads;
     core.holdReads = true;
-    const running = refreshProductPermissions();
+    const running = permissions.refresh();
     expect(core.heldReads).toHaveLength(1);
 
     // When
-    const queued = [refreshProductPermissions(), refreshProductPermissions(), refreshProductPermissions()];
+    const queued = [permissions.refresh(), permissions.refresh(), permissions.refresh()];
     core.holdReads = false;
     for (const answer of core.heldReads.splice(0)) {
       answer();
@@ -220,11 +216,11 @@ describe('product permissions store', () => {
     await loaded();
     core.stored.set('Camera', 'Denied');
     core.holdReads = true;
-    const refreshing = refreshProductPermissions();
+    const refreshing = permissions.refresh();
     expect(core.heldReads).toHaveLength(1);
 
     // Then
-    expect(productPermissionsStore.get()).toEqual({
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
       statuses: statuses({ Camera: 'granted' }),
@@ -237,7 +233,7 @@ describe('product permissions store', () => {
     await refreshing;
 
     // Then
-    expect(productPermissionsStore.get()).toEqual({
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
       statuses: statuses({ Camera: 'denied' }),
@@ -247,7 +243,7 @@ describe('product permissions store', () => {
   it('As the permissions menu, a read that cannot reach the core is reported and leaves the product without statuses', async () => {
     // Given
     cleanups.push(
-      pagePermissions.register(LABEL, {
+      registry.register(LABEL, {
         getPermissionAuthorizationStatuses: () => Promise.reject(new Error('core down')),
         setPermissionAuthorizationStatus: () => Promise.resolve(),
       }),
@@ -257,7 +253,7 @@ describe('product permissions store', () => {
     await loaded();
 
     // Then
-    expect(productPermissionsStore.get()).toEqual({ status: 'failed', label: LABEL });
+    expect(permissions.state.get()).toEqual({ status: 'failed', label: LABEL });
     expect(captures.exception).toHaveBeenCalledWith(new Error('core down'), {
       flow: 'wallet',
       step: 'permissions_read',
@@ -271,15 +267,15 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    await chooseProductPermission(LABEL, 'Notifications', 'granted');
-    await chooseProductPermission(LABEL, 'Camera', 'denied');
+    await permissions.choose(LABEL, 'Notifications', 'granted');
+    await permissions.choose(LABEL, 'Camera', 'denied');
 
     // Then
     expect(core.writes).toEqual([
       { name: 'Notifications', status: 'Authorized' },
       { name: 'Camera', status: 'Denied' },
     ]);
-    expect(productPermissionsStore.get()).toEqual({
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
       statuses: statuses({ Notifications: 'granted', Camera: 'denied' }),
@@ -295,7 +291,7 @@ describe('product permissions store', () => {
     fakeCore();
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     cleanups.push(
-      onPermissionsChanged(() => {
+      permissions.onChanged(() => {
         throw new TypeError('listener broke');
       }),
     );
@@ -303,7 +299,7 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    await chooseProductPermission(LABEL, 'Notifications', 'granted');
+    await permissions.choose(LABEL, 'Notifications', 'granted');
 
     // Then
     expect(changes).toHaveLength(1);
@@ -323,7 +319,7 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    await chooseProductPermission(LABEL, 'Camera', 'granted');
+    await permissions.choose(LABEL, 'Camera', 'granted');
 
     // Then
     expect(core.writes).toEqual([]);
@@ -339,7 +335,7 @@ describe('product permissions store', () => {
     const readsBefore = core.reads;
 
     // When
-    await chooseProductPermission(LABEL, 'Camera', 'denied');
+    await permissions.choose(LABEL, 'Camera', 'denied');
 
     // Then
     expect(captures.exception).toHaveBeenCalledWith(new Error('core down'), {
@@ -348,7 +344,7 @@ describe('product permissions store', () => {
       tags: { reason: 'choose' },
     });
     expect(core.reads).toBe(readsBefore + 1);
-    expect(productPermissionsStore.get()).toEqual({
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
       statuses: statuses({ Camera: 'granted' }),
@@ -364,13 +360,13 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    await resetProductPermissions(LABEL);
+    await permissions.reset(LABEL);
 
     // Then
     expect(changes).toEqual([
       { label: LABEL, permissions: ['Microphone', 'ChainSubmit'], device: true, fromPrompt: false },
     ]);
-    expect(productPermissionsStore.get()).toEqual({
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
       statuses: statuses({ Camera: 'granted' }),
@@ -390,7 +386,7 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    await Promise.all([resetProductPermissions(LABEL), resetProductPermissions(LABEL)]);
+    await Promise.all([permissions.reset(LABEL), permissions.reset(LABEL)]);
 
     // Then
     expect(core.writes).toEqual([{ name: 'Camera', status: 'NotDetermined' }]);
@@ -404,11 +400,11 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    await recordPromptDecision(LABEL, 'Camera', 'granted', new AbortController().signal);
-    await recordPromptDecision(LABEL, 'ChainSubmit', 'granted', new AbortController().signal);
+    await permissions.recordPromptDecision(LABEL, 'Camera', 'granted', new AbortController().signal);
+    await permissions.recordPromptDecision(LABEL, 'ChainSubmit', 'granted', new AbortController().signal);
 
     // Then
-    expect(productPermissionsStore.get()).toEqual({
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: LABEL,
       statuses: statuses({ Camera: 'granted', ChainSubmit: 'granted' }),
@@ -426,7 +422,7 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    await recordPromptDecision(LABEL, 'Camera', 'denied', new AbortController().signal);
+    await permissions.recordPromptDecision(LABEL, 'Camera', 'denied', new AbortController().signal);
 
     // Then
     expect(core.writes).toEqual([{ name: 'Camera', status: 'Denied' }]);
@@ -441,11 +437,11 @@ describe('product permissions store', () => {
     await loaded();
 
     // When
-    const decision = recordPromptDecision(LABEL, 'Camera', 'granted', new AbortController().signal);
+    const decision = permissions.recordPromptDecision(LABEL, 'Camera', 'granted', new AbortController().signal);
 
     // Then
     await expect(decision).rejects.toThrow('core down');
-    expect(productPermissionsStore.get()).toEqual({ status: 'read', label: LABEL, statuses: statuses() });
+    expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: statuses() });
     expect(changes).toEqual([]);
   });
 
@@ -457,7 +453,7 @@ describe('product permissions store', () => {
     const prompt = new AbortController();
 
     // When
-    const decision = recordPromptDecision(LABEL, 'Camera', 'granted', prompt.signal);
+    const decision = permissions.recordPromptDecision(LABEL, 'Camera', 'granted', prompt.signal);
     prompt.abort(new DOMException('Blocking modal scope disposed', 'AbortError'));
 
     // Then
@@ -472,12 +468,12 @@ describe('product permissions store', () => {
     const write = Promise.withResolvers<undefined>();
     core.writeGate = write.promise;
     const prompt = new AbortController();
-    const decision = recordPromptDecision(LABEL, 'Camera', 'granted', prompt.signal);
+    const decision = permissions.recordPromptDecision(LABEL, 'Camera', 'granted', prompt.signal);
     decision.catch(() => undefined);
     prompt.abort(new DOMException('Blocking modal scope disposed', 'AbortError'));
     const readsBefore = core.reads;
     const refreshRead = core.nextRead();
-    const refresh = refreshProductPermissions();
+    const refresh = permissions.refresh();
 
     // When
     write.resolve(undefined);
@@ -487,15 +483,15 @@ describe('product permissions store', () => {
     await expect(decision).rejects.toThrow('Blocking modal scope disposed');
     await refresh;
     expect(core.reads).toBe(readsBefore + 1);
-    expect(productPermissionsStore.get()).toMatchObject({ statuses: statuses({ Camera: 'granted' }) });
+    expect(permissions.state.get()).toMatchObject({ statuses: statuses({ Camera: 'granted' }) });
   });
 
   it('As the shell, starting the store again hands back the one already following the product', () => {
     // Given
-    const running = startProductPermissions();
+    const running = permissions.start();
 
     // When
-    const again = startProductPermissions();
+    const again = permissions.start();
 
     // Then
     expect(again).toBe(running);
@@ -508,8 +504,8 @@ describe('product permissions store, as the permissions popover reads it', () =>
     fakeCore('first', { Camera: 'Authorized' });
     fakeCore('other');
     setProductLoaded('first', 'first.dot');
-    await refreshProductPermissions();
-    expect(productPermissionsStore.get()).toEqual({
+    await permissions.refresh();
+    expect(permissions.state.get()).toEqual({
       status: 'read',
       label: 'first',
       statuses: statuses({ Camera: 'granted' }),
@@ -519,9 +515,9 @@ describe('product permissions store, as the permissions popover reads it', () =>
     setProductLoaded('other', 'other.dot');
 
     // Then nothing shows until the new app's read lands, then its statuses
-    expect(productPermissionsStore.get()).toEqual({ status: 'reading', label: 'other' });
-    await refreshProductPermissions();
-    expect(productPermissionsStore.get()).toEqual({ status: 'read', label: 'other', statuses: statuses() });
+    expect(permissions.state.get()).toEqual({ status: 'reading', label: 'other' });
+    await permissions.refresh();
+    expect(permissions.state.get()).toEqual({ status: 'read', label: 'other', statuses: statuses() });
   });
 
   it('As a user whose app has only permissions the iframe does not gate decided, Reset all to Ask applies them without a reload', async () => {
@@ -529,20 +525,20 @@ describe('product permissions store, as the permissions popover reads it', () =>
     fakeCore('app', { Notifications: 'Authorized', ChainSubmit: 'Denied' });
     const changes: PermissionsChange[] = [];
     cleanups.push(
-      onPermissionsChanged(change => {
+      permissions.onChanged(change => {
         changes.push(change);
       }),
     );
     setProductLoaded('app', 'app.dot');
-    await refreshProductPermissions();
+    await permissions.refresh();
 
     // When
-    await resetProductPermissions('app');
+    await permissions.reset('app');
 
     // Then
     expect(changes).toEqual([
       { label: 'app', permissions: ['Notifications', 'ChainSubmit'], device: false, fromPrompt: false },
     ]);
-    expect(productPermissionsStore.get()).toEqual({ status: 'read', label: 'app', statuses: statuses() });
+    expect(permissions.state.get()).toEqual({ status: 'read', label: 'app', statuses: statuses() });
   });
 });

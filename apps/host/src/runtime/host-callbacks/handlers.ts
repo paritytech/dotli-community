@@ -7,7 +7,7 @@
 import type { RequiredHostCallbacks } from '@parity/truapi-host';
 import { createNavigateTo } from './open-url.js';
 import { createNotificationAdapters, type NotificationScheduler } from './push-notification.js';
-import { createPromptPermission } from './prompt-permission.js';
+import { createPromptPermission, type PromptPermissionStores } from './prompt-permission.js';
 import {
   createLocalStorageRead,
   createLocalStorageWrite,
@@ -41,10 +41,14 @@ export interface CreateHostCallbacksOptions {
   inService?: (() => boolean) | undefined;
 }
 
-/** What the callbacks ask the page for: the user's answers, and where push notifications wait until due. */
+/**
+ * What the callbacks ask the page for: the user's answers, where push notifications wait until due, and the
+ * permissions a prompt reads and records.
+ */
 export interface HostCallbackDeps {
   prompts: HostPrompts;
   notifications: NotificationScheduler;
+  permissions: PromptPermissionStores;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCallbackDeps): RequiredHostCallbacks {
@@ -58,13 +62,14 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCa
     inService,
     prompts,
     notifications,
+    permissions,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
     notifications: createNotificationAdapters(label, notifications, prompts.notify),
     permissions: createPromptPermission(
       label,
-      { ask: prompts.askPermission, notify: prompts.notify },
+      { ask: prompts.askPermission, notify: prompts.notify, permissions },
       blockingModalScope,
     ),
     features: {

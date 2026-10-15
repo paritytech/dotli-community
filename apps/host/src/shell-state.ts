@@ -4,7 +4,7 @@
 // The state the shell's chrome renders. Framework-free because it runs at boot, so each island finds a live store
 // whenever it mounts.
 
-import { startProductPermissions } from './runtime/state/product-permissions.js';
+import { productPermissions } from './runtime/page-permissions.js';
 import { setTopbarPresent } from './state/topbar.js';
 import { startChatPanelState } from './state/chat-panel.js';
 import { startNetworkStore } from './state/network.js';
@@ -19,6 +19,6 @@ export function startShellState(): void {
   startNetworkStore();
   startNetworkHealth();
   startChatPanelState();
-  startProductPermissions();
+  productPermissions.start();
   startTopbarAutoHide();
 }

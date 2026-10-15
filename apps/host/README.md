@@ -44,6 +44,8 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   apart from the TrUAPI host callbacks. State the runtime reads or writes (auth, product, permissions, theme, wallet
   mode) lives with the runtime, and the page chrome's own state (topbar, URL pill, chat panel, network) lives with the
   page.
+- The page builds one route to the core's permission store and one permissions store over it, and passes both to the
+  product frame, the permission prompts, the menu and the diagnostics. A product's newest connection answers.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time.
 - The toasts and dialogs are one idle island on each page. What boot queues before it hydrates shows once it does.

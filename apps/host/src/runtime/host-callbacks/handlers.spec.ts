@@ -9,6 +9,10 @@ import { SUBMIT_MAX_PER_WINDOW } from './rate-limit.js';
 import type { NotificationScheduler } from './push-notification.js';
 import type { HostPrompts } from '../host-prompts.js';
 import { createFakePrompts } from '../host-prompts.fake.js';
+import { createPermissionAuthorizations } from '../permissions.js';
+import { createProductPermissions } from '../state/product-permissions.js';
+import { productStore } from '../state/product.js';
+import type { PromptPermissionStores } from './prompt-permission.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -20,6 +24,12 @@ type PermissionAsk = HostPrompts['askPermission'];
 /** Prompts that answer permissions with `ask` and leave every other ask waiting. */
 function promptsWith(ask: PermissionAsk): HostPrompts {
   return { ...createFakePrompts().prompts, askPermission: ask };
+}
+
+/** A registry with no connection, so every prompt reaches the ask, and a store over it. */
+function permissionsOfTest(): PromptPermissionStores {
+  const registry = createPermissionAuthorizations();
+  return { registry, product: createProductPermissions({ registry, product: productStore }) };
 }
 
 /** Schedules for later with id 7, so delivering shows nothing. */
@@ -34,6 +44,7 @@ describe('blocking modal queue across host callbacks', () => {
     const scope = createBlockingModalCoordinator().createScope();
     const page = createFakePrompts();
     const callbacks = createHostCallbacks({
+      permissions: permissionsOfTest(),
       label: 'localhost:3000',
       blockingModalScope: scope,
       prompts: page.prompts,
@@ -90,6 +101,7 @@ describe('notifications across host callbacks', () => {
     const { scheduler, schedule } = fakeScheduler();
     const ask = vi.fn<PermissionAsk>(() => Promise.resolve('granted'));
     const { notifications } = createHostCallbacks({
+      permissions: permissionsOfTest(),
       label: 'myapp',
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
@@ -118,6 +130,7 @@ describe('prompt rate limiting across host callbacks', () => {
     // Given: a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
     const { permissions } = createHostCallbacks({
+      permissions: permissionsOfTest(),
       label: 'myapp',
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
@@ -140,6 +153,7 @@ describe('prompt rate limiting across host callbacks', () => {
   it('As a dotli user, I get many notifications delivered and my prompts still pass', async () => {
     // Given: one callback surface, whose prompts and notifications share its one limiter
     const { permissions, notifications } = createHostCallbacks({
+      permissions: permissionsOfTest(),
       label: 'myapp',
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
