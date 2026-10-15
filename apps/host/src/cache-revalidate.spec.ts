@@ -25,7 +25,10 @@ function nameSource(published: Record<string, string> | Error): NameSource {
   });
 }
 
-function setup(published: Record<string, string> | Error): {
+function setup(
+  published: Record<string, string> | Error,
+  evictWorks = true,
+): {
   deps: CacheRevalidationDeps;
   written: { label: string; cid: string; manifests: CachedManifests }[];
   evicted: string[];
@@ -46,7 +49,7 @@ function setup(published: Record<string, string> | Error): {
         },
         evict: label => {
           evicted.push(label);
-          return Promise.resolve();
+          return Promise.resolve(evictWorks);
         },
       },
       notify: notice => {
@@ -143,6 +146,21 @@ describe('revalidateCachedCopy', () => {
     // Then
     expect(evicted).toEqual(['doom']);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor on a cached app whose name was cleared, I stay on it when the stale copy cannot be dropped, so no reload loop starts', async () => {
+    // Given an evict that fails
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { deps, reload } = setup({}, false);
+
+    // When
+    await revalidateCachedCopy('doom', 'bafy-served', true, deps);
+
+    // Then
+    expect(reload).not.toHaveBeenCalled();
+    expect(metrics.counted('cache.revalidate')).toEqual([
+      expect.objectContaining({ outcome: 'error', reason: 'evict_failed' }),
+    ]);
   });
 
   it('As a visitor shown why a cached copy was refused, I stay on that screen while the stale entry is dropped', async () => {

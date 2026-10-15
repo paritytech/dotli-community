@@ -135,9 +135,10 @@ describe('evictCachedCid', () => {
     expect((await cache.getCachedCid('myapp', PASEO))?.cid).toBe('bafy-doomed');
 
     // When
-    await cache.evictCachedCid('myapp');
+    const worked = await cache.evictCachedCid('myapp');
 
     // Then
+    expect(worked).toBe(true);
     expect(await cache.getCachedCidResult('myapp', PASEO)).toEqual({ kind: 'miss' });
   });
 
@@ -146,9 +147,10 @@ describe('evictCachedCid', () => {
     await cache.setCachedCid('kept', PASEO, 'bafy-kept', NO_MANIFESTS);
 
     // When
-    await cache.evictCachedCid('never-stored');
+    const worked = await cache.evictCachedCid('never-stored');
 
     // Then
+    expect(worked).toBe(true);
     expect(await cache.getCachedCidResult('kept', PASEO)).toEqual({
       kind: 'hit',
       cid: 'bafy-kept',
@@ -245,9 +247,10 @@ describe('cid-cache writes and the commit', () => {
     refusing = true;
 
     // When
-    await flaky.evictCachedCid('myapp');
+    const worked = await flaky.evictCachedCid('myapp');
 
-    // Then the evict is counted as failed, and the label still reads its old CID
+    // Then the evict is counted as failed, resolves false, and the label still reads its old CID
+    expect(worked).toBe(false);
     expect(sentry.counted(S.CACHE_STORAGE)).toEqual([
       expect.objectContaining({ outcome: 'error', surface: 'cid_cache', step: 'evict' }),
     ]);

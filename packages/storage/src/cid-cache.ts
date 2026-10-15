@@ -109,9 +109,9 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
 
   /**
    * Resolves once the delete commits, so a reload right after cannot bring the label back. A failure is reported here,
-   * and the label keeps its old CID.
+   * so the caller only learns from the result (false) that the label keeps its old CID.
    */
-  async function evictCachedCid(label: string): Promise<void> {
+  async function evictCachedCid(label: string): Promise<boolean> {
     const stop = m.timer(S.CACHE_WRITE_LATENCY);
     try {
       const db = await idb.connect();
@@ -119,9 +119,11 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
         tx.objectStore(STORE).delete(label);
       });
       stop();
+      return true;
     } catch (err) {
       stop();
       reportFailure('evict', err);
+      return false;
     }
   }
 

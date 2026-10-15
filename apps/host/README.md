@@ -64,10 +64,11 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   shows.
 - A flow takes as parameters what sits in another frame or origin (the name source, the product frame and what the
   sandbox reports through it, the recent list) and what reloads or writes the page (the CID cache and the failure
-  screen). It imports the page's own state (the URL pill, the journey, the network monitor). Load progress takes the
-  loading screen as a parameter that defaults to the page's, since the page's draws on animation frames, so its spec
-  runs under Node. The product loader drives the page and is tested on one, in the functional suite. The bridge chunk is
-  where the page's real dialogs, notifications and frame layout are wired in.
+  screen). A cached copy that revalidation finds cleared is evicted, and the page reloads onto the cold path only once
+  the stale copy is gone. It imports the page's own state (the URL pill, the journey, the network monitor). Load
+  progress takes the loading screen as a parameter that defaults to the page's, since the page's draws on animation
+  frames, so its spec runs under Node. The product loader drives the page and is tested on one, in the functional suite.
+  The bridge chunk is where the page's real dialogs, notifications and frame layout are wired in.
 - The network monitor opens no chain. The bridge reports who holds each host chain and its best blocks to it, and the
   load progress reports phases, peers and transfer.
 - The recently visited names live in the store every subdomain shares, reached through the runtime's shared channel,

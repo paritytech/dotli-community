@@ -35,7 +35,8 @@ scheduled notifications.
 
 - Schema: `DB_NAME`, `isExpectedDbError`.
 - Block cache: `getCachedBlock`, `putCachedBlock`, `deleteCachedBlock`, `pruneBlockCache`, `clearBlockCache`.
-- CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`.
+- CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`. The last two resolve to whether they
+  worked.
 - Local wallet: `createLocalWalletStore`, `saveLocalWallet`, `loadLocalWallet`, `forgetLocalWallet`,
   `updateLocalWalletIdentity`, `LocalWalletUnreadableError`.
 - Chat: `createRoom`, `setRoomFooter`, `listRooms`, `appendMessage`, `listMessages`, `latestMessageTimestamps`,

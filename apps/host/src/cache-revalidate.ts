@@ -16,7 +16,8 @@ export interface CacheRevalidationDeps {
   /** The CID cache entry for this network. */
   cache: {
     set: (label: string, cid: string, manifests: CachedManifests) => Promise<void>;
-    evict: (label: string) => Promise<void>;
+    /** Resolves to whether the entry is gone. */
+    evict: (label: string) => Promise<boolean>;
   };
   notify: ShowNotification;
   /** Reloads onto the newer version. */
@@ -56,7 +57,13 @@ export async function revalidateCachedCopy(
       return;
     }
     // Cleared, or redeployed with manifests this host cannot read. Reloading takes the cold path, which shows why.
-    await deps.cache.evict(label);
+    const evicted = await deps.cache.evict(label);
+    if (!evicted) {
+      // The label still holds the stale CID, so a reload would serve it again and loop. Storage reported the failure.
+      m.count(S.CACHE_REVALIDATE, { outcome: 'error', reason: 'evict_failed' });
+      log.event('Cached app could not be evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
+      return;
+    }
     m.count(S.CACHE_REVALIDATE, { outcome: 'cleared' });
     log.event('Cached app evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
     if (onScreen) {
