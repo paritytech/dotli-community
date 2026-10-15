@@ -17,7 +17,6 @@ jobs:
   bundle-size:
     name: Continuous Integration
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.sender.type != 'Bot'
 
     steps:
       - name: Checkout
