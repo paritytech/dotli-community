@@ -308,7 +308,7 @@ describe('auth controller: login requests', () => {
     expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'login' }]]);
   });
 
-  it('As the account popover, Log out asks the core to log out', async () => {
+  it('As the account popover, Sign out asks the core to log out', async () => {
     // Given
     const { controller, calls, changes } = start();
 

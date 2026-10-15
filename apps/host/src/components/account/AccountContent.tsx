@@ -66,7 +66,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
       <hr class={s['divider']} />
       <Button id={id('disconnect')} block onClick={onDisconnect}>
         <LogOutIcon class={s['icon']} />
-        Log out
+        Sign out
       </Button>
     </Surface>
   );

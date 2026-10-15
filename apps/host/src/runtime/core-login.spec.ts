@@ -649,7 +649,7 @@ describe('auth commands', () => {
     const first = core.commands.login('first');
     core.auth.set(PAIRING);
 
-    // When: Log out, then Sign in, are pressed before the first login ends signed in
+    // When: Sign out, then Sign in, are pressed before the first login ends signed in
     const logout = core.commands.logout();
     const second = core.commands.login('second');
     core.end(CONNECTED);
@@ -712,7 +712,7 @@ describe('auth commands', () => {
     expect(core.calls.logins).toEqual([undefined]);
   });
 
-  it('As a user who presses Log out twice, the session is cleared once', async () => {
+  it('As a user who presses Sign out twice, the session is cleared once', async () => {
     // Given
     const core = queueHarness(CONNECTED);
     const first = core.commands.logout();
@@ -726,7 +726,7 @@ describe('auth commands', () => {
     expect(core.calls.logouts).toBe(1);
   });
 
-  it('As a signed-out user, Log out does nothing', async () => {
+  it('As a signed-out user, Sign out does nothing', async () => {
     // Given
     const core = queueHarness({ tag: 'Disconnected' });
 
@@ -737,7 +737,7 @@ describe('auth commands', () => {
     expect(core.calls.logouts).toBe(0);
   });
 
-  it('As a user whose logout the core refused, Log out tries again', async () => {
+  it('As a user whose logout the core refused, Sign out tries again', async () => {
     // Given: a logout that left the session in place
     const core = queueHarness(CONNECTED);
     const first = core.commands.logout();

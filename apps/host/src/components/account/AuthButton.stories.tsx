@@ -121,7 +121,7 @@ export const Open: Story = {
       await expect(popover).toHaveAttribute('tabindex', '-1');
       await expectAccount('Alice Smith', false);
       await expect(popover.querySelector('[data-testid="account-content"]')).toHaveTextContent(/^ASWelcome back/);
-      await expect(byId('user-popover-disconnect')).toHaveTextContent('Log out');
+      await expect(byId('user-popover-disconnect')).toHaveTextContent('Sign out');
       await expect(document.querySelector('[data-testid="account-local"]')).toBeNull();
     });
   },
@@ -389,15 +389,15 @@ export const LoggedOutNoHint: Story = {
   },
 };
 
-/** As a logged-in user, Log out requests a disconnect and closes the popover. */
-export const LogOutClosesPopover: Story = {
+/** As a logged-in user, Sign out requests a disconnect and closes the popover. */
+export const SignOutClosesPopover: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     connect(PG);
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('When I press Log out', async () => {
+    await ctx.step('When I press Sign out', async () => {
       await ctx.userEvent.click(byId('user-popover-disconnect'));
     });
     await ctx.step('Then one logout was asked for, no login, and the popover closed', async () => {
@@ -416,7 +416,7 @@ export const SessionDropReturnsFocus: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Given focus on Log out', () => {
+    await ctx.step('Given focus on Sign out', () => {
       byId('user-popover-disconnect').focus();
     });
     await ctx.step('When the session drops', () => {

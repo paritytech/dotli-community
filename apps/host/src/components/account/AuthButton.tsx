@@ -20,7 +20,7 @@ export interface AuthButtonProps {
   modalOpen: Accessor<boolean>;
   /** A click while not `Connected`. */
   onSignIn: () => void;
-  /** Log out in the account popover. */
+  /** Sign out in the account popover. */
   onLogout: () => void;
   /** Hands the button to the auth modal, which gives it focus back as it closes. Returns the hand back. */
   handOver?: ((button: HTMLElement) => () => void) | undefined;
