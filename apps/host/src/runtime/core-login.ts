@@ -307,7 +307,8 @@ export function requestCoreLogin(core: Provider, reason?: string): Promise<Login
       core.subscribe(message => {
         const decoded = decodeWireMessage(message);
         if (decoded.isErr()) {
-          rejectRequest(decoded.error);
+          // Every frame the core sends this connection lands here, so one that does not decode is not this answer.
+          log.warn('[dot.li login] ignored a frame that does not decode:', decoded.error);
           return;
         }
         const { payload } = decoded.value;
@@ -319,17 +320,15 @@ export function requestCoreLogin(core: Provider, reason?: string): Promise<Login
         ) {
           return;
         }
-        cleanup();
         try {
           const result = responseCodec.dec(payload.value);
           if (result.success) {
             resolveRequest(result.value.value);
           } else {
-            const error = new LoginRequestError(result.value);
-            rejectRequest(error);
+            rejectRequest(new LoginRequestError(result.value));
           }
         } catch (error) {
-          rejectRequest(error instanceof Error ? error : new Error(String(error)));
+          rejectRequest(new Error('The login answer did not decode', { cause: error }));
         }
       }),
       unsubscribe => {

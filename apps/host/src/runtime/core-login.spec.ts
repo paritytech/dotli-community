@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { decodeWireMessage } from '@parity/truapi';
 import { bindCaptureSink } from '@dotli/metrics';
 import { createAuthCommands, createCoreAuthCommands, requestCoreLogin, type AuthCommands } from './core-login.js';
 import type { DotliAuthState } from './session/auth-state.js';
@@ -410,21 +409,21 @@ describe('requestCoreLogin', () => {
     expect(provider.listener).toBeNull();
   });
 
-  it('As a dotli integrator, the host rejects malformed response frames and unsubscribes', async () => {
-    // Given
+  it('As a dotli integrator, the host skips a frame that does not decode and still takes the login answer after it', async () => {
+    // Given a core that sends a frame that does not decode before its answer
     const { requestCoreLogin } = harness();
-    const malformed = new Uint8Array([0xff, 0x00]);
     const provider = makeProvider({
-      onPostMessage() {
-        provider.listener?.(malformed);
+      onPostMessage(message) {
+        provider.listener?.(new Uint8Array([0xff, 0x00]));
+        provider.listener?.(loginResponseFrame(requestIdFromFrame(message), { success: true, value: 'Success' }));
       },
     });
 
     // When
     const login = requestCoreLogin(provider);
 
-    // Then: the login fails with the envelope's own decode error
-    await expect(login).rejects.toThrow(decodeWireMessage(malformed)._unsafeUnwrapErr().message);
+    // Then
+    await expect(login).resolves.toBe('Success');
     expect(provider.listener).toBeNull();
   });
 
