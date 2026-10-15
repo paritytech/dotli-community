@@ -222,6 +222,34 @@ function putChunkedFile(blocks: Blocks, name: string, count: number): dagPb.PBLi
   );
 }
 
+/** A file whose chunks sit two levels down: the root links one inner file node per group, each linking raw chunks. */
+function putTwoLevelFile(blocks: Blocks, name: string, groups: string[][], blockSizes?: bigint[]): dagPb.PBLink {
+  const inner = groups.map(group => {
+    const chunks = group.map(enc);
+    return putNode(
+      blocks,
+      '',
+      new UnixFS({ type: 'file', blockSizes: chunks.map(chunk => BigInt(chunk.length)) }),
+      chunks.map(chunk => putRaw(blocks, '', chunk)),
+    );
+  });
+  const sizes = blockSizes ?? groups.map(group => BigInt(enc(group.join('')).length));
+  return putNode(blocks, name, new UnixFS({ type: 'file', blockSizes: sizes }), inner);
+}
+
+/** A HAMT shard with a fanout of 256, so each link name starts with a two-digit hex bucket. */
+function putShard(blocks: Blocks, name: string, links: dagPb.PBLink[]): dagPb.PBLink {
+  return putNode(blocks, name, new UnixFS({ type: 'hamt-sharded-directory', fanout: 256n }), links);
+}
+
+/** A block source over `blocks` that answers at once. */
+function sourceOf(blocks: Blocks): BlockSource {
+  return cid => {
+    const bytes = blocks.get(cid.toString());
+    return bytes === undefined ? Promise.reject(new Error('missing block')) : Promise.resolve(bytes);
+  };
+}
+
 /** A directory chain `depth` deep, each level holding eight files and the next level, so nine entries. */
 function deepSite(depth: number): { root: CID; blocks: Blocks; paths: string[] } {
   const blocks: Blocks = new Map();
@@ -358,5 +386,62 @@ describe('walkUnixFsDag', () => {
 
     // Then
     expect(Object.keys(files).sort()).toEqual(paths.sort());
+  });
+
+  it('As a visitor loading a file whose chunk tree is two levels deep, I get every byte of it', async () => {
+    // Given
+    const blocks: Blocks = new Map();
+    const file = putTwoLevelFile(blocks, 'big.bin', [
+      ['a1;', 'a2;'],
+      ['b1;', 'b2;', 'b3;'],
+    ]);
+
+    // When
+    const files = await walkUnixFsDag(file.Hash, sourceOf(blocks));
+
+    // Then
+    expect(text(files['index.html'])).toBe('a1;a2;b1;b2;b3;');
+  });
+
+  it('As a visitor, a file that comes to another size than it declares fails instead of loading truncated', async () => {
+    // Given a file whose root declares more bytes than its chunks hold
+    const blocks: Blocks = new Map();
+    const file = putTwoLevelFile(blocks, 'big.bin', [['a1;'], ['b1;']], [3n, 100n]);
+
+    // When
+    const walk = walkUnixFsDag(file.Hash, sourceOf(blocks));
+
+    // Then
+    await expect(walk).rejects.toThrow(/declares 103/);
+  });
+
+  it('As a visitor loading a site whose directory is HAMT-sharded, I get each file under its own name', async () => {
+    // Given a root shard with one entry and one deeper shard holding another
+    const blocks: Blocks = new Map();
+    const deeper = putShard(blocks, '1F', [putRaw(blocks, 'C0app.js', enc('run()'))]);
+    const root = putShard(blocks, '', [putRaw(blocks, 'A3index.html', enc('<h1>hi</h1>')), deeper]);
+
+    // When
+    const files = await walkUnixFsDag(root.Hash, sourceOf(blocks));
+
+    // Then
+    expect(Object.keys(files).sort()).toEqual(['app.js', 'index.html']);
+    expect(text(files['app.js'])).toBe('run()');
+  });
+
+  it('As a visitor loading a site with a HAMT-sharded folder inside a plain one, its files keep the folder path', async () => {
+    // Given a plain root holding a sharded `docs` folder
+    const blocks: Blocks = new Map();
+    const docs = putShard(blocks, 'docs', [putRaw(blocks, '7Bintro.html', enc('intro'))]);
+    const root = putNode(blocks, '', new UnixFS({ type: 'directory' }), [
+      putRaw(blocks, 'index.html', enc('home')),
+      docs,
+    ]);
+
+    // When
+    const files = await walkUnixFsDag(root.Hash, sourceOf(blocks));
+
+    // Then
+    expect(Object.keys(files).sort()).toEqual(['docs/intro.html', 'index.html']);
   });
 });

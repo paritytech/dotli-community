@@ -69,26 +69,72 @@ function eachBounded<T, R>(items: readonly T[], work: (item: T) => Promise<R>): 
   return Promise.all(items.map(item => pool.call(() => work(item))));
 }
 
+/** A directory node's links that name an entry. */
+function namedLinks(node: dagPb.PBNode): (dagPb.PBLink & { Name: string })[] {
+  return node.Links.filter(
+    (link): link is dagPb.PBLink & { Name: string } => link.Name !== undefined && link.Name !== '',
+  );
+}
+
 /**
- * Walk a UnixFS DAG into a flat map of path to bytes. Missing blocks and unknown codecs throw.
- * HAMT-sharded directories are walked as plain ones, so past about 256 entries they appear truncated.
+ * Walk a UnixFS DAG into a flat map of path to bytes. Plain and HAMT-sharded directories are read, and a file is read
+ * through every level of its chunk tree and must come to the size it declares. Missing blocks and unknown codecs throw.
  */
 export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
 
-  async function getChunkData(cid: CID): Promise<Uint8Array> {
+  /** One chunk of a file and everything under it. */
+  async function readFileTree(cid: CID): Promise<Uint8Array> {
     const bytes = await blockSource(cid);
-
     if (cid.code === RAW) {
       return bytes;
     }
-
     if (cid.code === DAG_PB) {
-      const node = dagPb.decode(bytes);
-      return node.Data ? (UnixFS.unmarshal(node.Data).data ?? new Uint8Array(0)) : new Uint8Array(0);
+      return readFileNode(cid, dagPb.decode(bytes));
     }
-
     throw new Error(`Unsupported chunk codec 0x${cid.code.toString(16)} for ${cid.toString()}`);
+  }
+
+  /** A file node's own bytes followed by its children's, which must add up to the size it declares. */
+  async function readFileNode(cid: CID, node: dagPb.PBNode): Promise<Uint8Array> {
+    const uf = node.Data ? UnixFS.unmarshal(node.Data) : null;
+    if (uf !== null && uf.type !== 'file' && uf.type !== 'raw') {
+      throw new Error(`Unexpected UnixFS node type "${uf.type}" inside a file (${cid.toString()})`);
+    }
+    const own = uf?.data ?? new Uint8Array(0);
+    if (node.Links.length === 0) {
+      return own;
+    }
+    const content = concatBytes(own, ...(await eachBounded(node.Links, link => readFileTree(link.Hash))));
+    if (uf !== null && BigInt(content.length) !== uf.fileSize()) {
+      throw new Error(
+        `File ${cid.toString()} came to ${String(content.length)} bytes but declares ${uf.fileSize().toString()}`,
+      );
+    }
+    return content;
+  }
+
+  /**
+   * A HAMT shard's link names start with their bucket in hex. A link that is only a bucket is a deeper shard of the same
+   * directory, and any other link is an entry whose name follows its bucket.
+   */
+  async function processShard(node: dagPb.PBNode, fanout: bigint | undefined, path: string): Promise<void> {
+    if (fanout === undefined) {
+      throw new Error(`HAMT shard at path="${path}" declares no fanout`);
+    }
+    const bucketLength = (fanout - 1n).toString(16).length;
+    await eachBounded(namedLinks(node), async link => {
+      if (link.Name.length === bucketLength) {
+        const child = dagPb.decode(await blockSource(link.Hash));
+        const shard = child.Data ? UnixFS.unmarshal(child.Data) : null;
+        if (shard?.type !== 'hamt-sharded-directory') {
+          throw new Error(`HAMT bucket "${link.Name}" at path="${path}" is not a shard (${link.Hash.toString()})`);
+        }
+        await processShard(child, shard.fanout, path);
+        return;
+      }
+      await processNode(link.Hash, joinPath(path, link.Name.slice(bucketLength)));
+    });
   }
 
   async function processNode(cid: CID, path: string): Promise<void> {
@@ -114,25 +160,19 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
 
     const node = dagPb.decode(bytes);
     const uf = node.Data ? UnixFS.unmarshal(node.Data) : null;
-    const isDirectory = uf?.type === 'directory' || uf?.type === 'hamt-sharded-directory';
-    const isFile = !uf || uf.type === 'file' || uf.type === 'raw';
 
-    if (isDirectory) {
-      const entries = node.Links.filter(
-        (link): link is typeof link & { Name: string } => link.Name !== undefined && link.Name !== '',
-      );
-      await eachBounded(entries, link => processNode(link.Hash, joinPath(path, link.Name)));
+    if (uf?.type === 'directory') {
+      await eachBounded(namedLinks(node), link => processNode(link.Hash, joinPath(path, link.Name)));
       return;
     }
 
-    if (isFile) {
-      let content: Uint8Array;
-      if (node.Links.length === 0) {
-        content = uf?.data ?? new Uint8Array(0);
-      } else {
-        content = concatBytes(...(await eachBounded(node.Links, link => getChunkData(link.Hash))));
-      }
+    if (uf?.type === 'hamt-sharded-directory') {
+      await processShard(node, uf.fanout, path);
+      return;
+    }
 
+    if (uf === null || uf.type === 'file' || uf.type === 'raw') {
+      const content = await readFileNode(cid, node);
       // A CAR at the root, uploaded as a chunked file.
       if (isRoot && isCarFile(content)) {
         const inner = await parseCarFile(content);
