@@ -173,6 +173,41 @@ describe('topbar login over the page core', () => {
     expect(fakes.captures.exception).not.toHaveBeenCalled();
     expect(fakes.session.reportLoginFailure).toHaveBeenCalledWith(failure.message);
   });
+
+  it('As a user who closes the sign-in while the wallet core still starts, no pairing starts once it is up', async () => {
+    // Given: a login waiting for its connection to the core
+    const fakes = harness();
+    const done = fakes.commands.login();
+    await fakes.changes.until(() => fakes.connections.length === 1);
+
+    // When: the user closes the modal, then the core comes up
+    fakes.commands.cancelLogin();
+    const login = await answerConnection(fakes, 0);
+    await fakes.changes.until(() => login.dispose.mock.calls.length === 1 || login.postMessage.mock.calls.length === 1);
+    await done;
+
+    // Then: nothing was asked of the core, and nothing is reported
+    expect(login.postMessage).not.toHaveBeenCalled();
+    expect(login.dispose).toHaveBeenCalledTimes(1);
+    expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
+    expect(fakes.captures.exception).not.toHaveBeenCalled();
+  });
+
+  it('As a user who logs out while a login still waits for the wallet core, no pairing starts once it is up', async () => {
+    // Given: a login waiting for its connection to the core
+    const fakes = harness();
+    const done = fakes.commands.login();
+    await fakes.changes.until(() => fakes.connections.length === 1);
+
+    // When
+    void fakes.commands.logout();
+    const login = await answerConnection(fakes, 0);
+    await fakes.changes.until(() => login.dispose.mock.calls.length === 1 || login.postMessage.mock.calls.length === 1);
+    await done;
+
+    // Then
+    expect(login.postMessage).not.toHaveBeenCalled();
+  });
 });
 
 describe('topbar logout over the page core', () => {
@@ -425,16 +460,17 @@ function queueHarness(
 ): {
   auth: SyncStore<DotliAuthState>;
   commands: AuthCommands;
-  calls: { logins: (string | undefined)[]; logouts: number; cancels: number };
+  calls: { logins: (string | undefined)[]; signals: AbortSignal[]; logouts: number; cancels: number };
   end: (state: DotliAuthState) => void;
 } {
   const auth = createSyncStore<DotliAuthState>('auth-test', initial, { equals: () => false });
-  const calls = { logins: [] as (string | undefined)[], logouts: 0, cancels: 0 };
+  const calls = { logins: [] as (string | undefined)[], signals: [] as AbortSignal[], logouts: 0, cancels: 0 };
   const answer = Promise.withResolvers<undefined>();
   const commands = createAuthCommands({
     auth,
-    login: reason => {
+    login: (reason, signal) => {
       calls.logins.push(reason);
+      calls.signals.push(signal);
       return answer.promise;
     },
     logout: async () => {
@@ -459,6 +495,18 @@ function queueHarness(
 }
 
 describe('auth commands', () => {
+  it('As a user who closes the modal, the login under way hears the cancel', () => {
+    // Given
+    const core = queueHarness({ tag: 'Disconnected' });
+    void core.commands.login();
+
+    // When
+    core.commands.cancelLogin();
+
+    // Then
+    expect(core.calls.signals[0]?.aborted).toBe(true);
+  });
+
   it('As a user who clicks Sign in twice before the wallet answers, I get one pairing', async () => {
     // Given: a login waiting for the wallet
     const core = queueHarness({ tag: 'Disconnected' });
