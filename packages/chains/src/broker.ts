@@ -43,10 +43,30 @@ interface SubscriptionMessage {
   };
 }
 
-interface PendingRequest {
-  sessionId: string;
-  clientId: JsonRpcId;
-  method: string;
+/**
+ * Who the answer to an upstream request goes to. Each request the broker sends upstream with an id has exactly one
+ * owner, so an answer is never routed by guessing what its id holds.
+ */
+type RequestOwner =
+  /** A session's own request, answered under the session's id for it. */
+  | { kind: 'session'; sessionId: string; clientId: JsonRpcId; method: string }
+  /** The upstream follow a shared follow waits on, answered to every session waiting on it. */
+  | { kind: 'follow'; follow: SharedFollow }
+  /** A request whose session left before the answer. A subscription the answer opens is released at once. */
+  | { kind: 'orphan'; method: string };
+
+function methodOf(owner: RequestOwner): string {
+  return owner.kind === 'follow' ? 'chainHead_v1_follow' : owner.method;
+}
+
+function previewResponse(response: JsonRpcResponse): string {
+  if ('error' in response) {
+    return `error=${JSON.stringify(response.error)}`;
+  }
+  if (typeof response.result === 'string' && response.result.length > 200) {
+    return `result=${response.result.slice(0, 200)}... (${String(response.result.length)} chars)`;
+  }
+  return `result=${JSON.stringify(response.result)}`;
 }
 
 interface OwnedToken {
@@ -59,7 +79,6 @@ interface OwnedToken {
 interface SharedFollow {
   key: string;
   upstreamToken: string | null;
-  requestInFlight: boolean;
   localTokens: Set<string>;
   pendingLocals: {
     sessionId: string;
@@ -209,7 +228,7 @@ export class ChainBroker {
   private readonly warn: BrokerWarner;
   private upstream: JsonRpcConnection | null = null;
   private readonly sessions = new Map<string, Session>();
-  private readonly pending = new Map<string, PendingRequest>();
+  private readonly pending = new Map<string, RequestOwner>();
   private readonly localToOwned = new Map<string, OwnedToken>();
   private readonly upstreamToOwned = new Map<string, Set<string>>();
   private readonly earlySubscriptions = new Map<string, SubscriptionMessage[]>();
@@ -231,6 +250,29 @@ export class ChainBroker {
 
   private sendUpstream(obj: unknown): void {
     this.upstream?.send(obj as UpstreamJsonRpcRequest);
+  }
+
+  /** Sends `request` upstream under a fresh broker id, owned by `owner` until its answer arrives. */
+  private sendTracked(owner: RequestOwner, request: JsonRpcRequest): void {
+    const upstreamId = `broker:${this.requestCounter.toString(36)}`;
+    this.requestCounter += 1;
+    this.pending.set(upstreamId, owner);
+    this.sendUpstream({ ...request, id: upstreamId });
+  }
+
+  /** Forwards a session's request, owned by the session when it expects an answer. */
+  private forwardForSession(session: Session, request: JsonRpcRequest, method: string): void {
+    if (request.id === undefined) {
+      this.sendUpstream(request);
+      return;
+    }
+    this.sendTracked({ kind: 'session', sessionId: session.id, clientId: request.id, method }, request);
+  }
+
+  /** A release the broker sends itself, for something no session holds anymore. */
+  private sendRelease(method: string, params: unknown[]): void {
+    this.sendUpstream({ jsonrpc: '2.0', id: `broker-release:${this.requestCounter.toString(36)}`, method, params });
+    this.requestCounter += 1;
   }
 
   connect(
@@ -298,9 +340,9 @@ export class ChainBroker {
   }
 
   private answerHaltedSession(session: Session): void {
-    for (const entry of this.pending.values()) {
-      if (entry.sessionId === session.id && entry.clientId !== null) {
-        this.sendToSession(session, buildJsonRpcError(entry.clientId, chainHaltedError()));
+    for (const owner of this.pending.values()) {
+      if (owner.kind === 'session' && owner.sessionId === session.id && owner.clientId !== null) {
+        this.sendToSession(session, buildJsonRpcError(owner.clientId, chainHaltedError()));
       }
     }
     for (const sharedFollow of this.sharedFollows.values()) {
@@ -407,19 +449,7 @@ export class ChainBroker {
       return;
     }
 
-    if (request.id === undefined) {
-      this.sendUpstream(rewritten);
-      return;
-    }
-
-    const upstreamId = `broker:${this.requestCounter.toString(36)}:${session.id}`;
-    this.requestCounter += 1;
-    this.pending.set(upstreamId, {
-      sessionId: session.id,
-      clientId: request.id ?? null,
-      method,
-    });
-    this.sendUpstream({ ...rewritten, id: upstreamId });
+    this.forwardForSession(session, rewritten, method);
   }
 
   private routeOwnedReleaseRequest(session: Session, request: JsonRpcRequest, method: string): void {
@@ -445,20 +475,7 @@ export class ChainBroker {
       return;
     }
 
-    const rewritten = cloneWithRewrittenFirstParam(request, upstreamToken);
-    if (request.id === undefined) {
-      this.sendUpstream(rewritten);
-      return;
-    }
-
-    const upstreamId = `broker:${this.requestCounter.toString(36)}:${session.id}`;
-    this.requestCounter += 1;
-    this.pending.set(upstreamId, {
-      sessionId: session.id,
-      clientId: request.id ?? null,
-      method,
-    });
-    this.sendUpstream({ ...rewritten, id: upstreamId });
+    this.forwardForSession(session, cloneWithRewrittenFirstParam(request, upstreamToken), method);
   }
 
   /** Ref-counted unpin, forwarded only once no session holds the block. Replies success locally at once. */
@@ -481,22 +498,12 @@ export class ChainBroker {
 
     const orphaned = sharedFollow.snapshot.release(token, normalizeUnpinHashes(params[1]));
     if (orphaned.length > 0) {
-      this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
+      this.sendRelease('chainHead_v1_unpin', [sharedFollow.upstreamToken, orphaned]);
     }
 
     if (request.id !== undefined) {
       this.sendToSession(session, buildJsonRpcResult(request.id ?? null, null));
     }
-  }
-
-  private sendUpstreamUnpin(upstreamToken: string, hashes: string[]): void {
-    this.sendUpstream({
-      jsonrpc: '2.0',
-      id: `broker-release:${this.requestCounter.toString(36)}`,
-      method: 'chainHead_v1_unpin',
-      params: [upstreamToken, hashes],
-    });
-    this.requestCounter += 1;
   }
 
   private rewriteOwnedToken(session: Session, request: JsonRpcRequest): JsonRpcRequest | null {
@@ -544,24 +551,13 @@ export class ChainBroker {
       const size = typeof message === 'string' ? message.length : JSON.stringify(message).length;
       this.warn('upstream_unparseable', `← upstream: unparseable message of ${String(size)} chars (${reason})`);
       if (typeof message === 'string') {
-        const idMatch = /"id"\s*:\s*("?)([^",}\s]+)\1/.exec(message);
-        const matchedId = idMatch?.[2];
-        if (matchedId !== undefined) {
-          const candidates = [matchedId];
-          for (const idKey of candidates) {
-            const pending = this.pending.get(idKey);
-            if (pending !== undefined) {
-              this.pending.delete(idKey);
-              const session = this.sessions.get(pending.sessionId);
-              if (session !== undefined) {
-                this.sendToSession(
-                  session,
-                  buildJsonRpcError(pending.clientId, `Upstream returned unparseable response: ${reason}`),
-                );
-              }
-              break;
-            }
-          }
+        const matchedId = /"id"\s*:\s*("?)([^",}\s]+)\1/.exec(message)?.[2];
+        if (matchedId !== undefined && this.pending.has(matchedId)) {
+          this.handleUpstreamResponse({
+            jsonrpc: '2.0',
+            id: matchedId,
+            error: { code: -32603, message: `Upstream returned unparseable response: ${reason}` },
+          });
         }
       }
       return;
@@ -606,85 +602,127 @@ export class ChainBroker {
   }
 
   private handleUpstreamResponse(response: JsonRpcResponse): void {
-    const pending = this.pending.get(String(response.id));
-    if (!pending) {
-      this.warn('response_unknown_id', `← upstream response for unknown id=${String(response.id)}`);
+    const id = String(response.id);
+    const owner = this.pending.get(id);
+    if (owner === undefined) {
+      this.warn('response_unknown_id', `← upstream response for unknown id=${id}`);
       return;
     }
-    this.pending.delete(String(response.id));
-
-    const hasError = 'error' in response;
-    const resultPreview = hasError
-      ? `error=${JSON.stringify(response.error)}`
-      : typeof response.result === 'string' && response.result.length > 200
-        ? `result=${response.result.slice(0, 200)}... (${String(response.result.length)} chars)`
-        : `result=${JSON.stringify(response.result)}`;
-    brokerLog(`← upstream [${pending.sessionId}] method=${pending.method} ${resultPreview}`);
-
-    // chainHead_v1_follow responses use the follow key (not a session ID)
-    // as pending.sessionId, so handle before the session connectivity check.
-    if (pending.method === 'chainHead_v1_follow' && typeof response.result === 'string') {
-      const sharedFollow = this.sharedFollows.get(pending.sessionId);
-      if (!sharedFollow) {
-        this.warn('follow_state_missing', `Missing shared follow state for key ${pending.sessionId}`);
-        return;
-      }
-      sharedFollow.requestInFlight = false;
-      sharedFollow.upstreamToken = response.result;
-      this.upstreamFollowTokens.set(response.result, sharedFollow);
-      for (const pendingLocal of sharedFollow.pendingLocals.splice(0)) {
-        const pendingSession = this.sessions.get(pendingLocal.sessionId);
-        if (pendingSession?.connected !== true) {
-          continue;
-        }
-        this.sendToSession(pendingSession, buildJsonRpcResult(pendingLocal.requestId, pendingLocal.localToken));
-      }
-      this.flushEarlySubscriptions(response.result);
-      return;
+    this.pending.delete(id);
+    brokerLog(
+      `Upstream answer for ${owner.kind === 'session' ? owner.sessionId : owner.kind}, method=${methodOf(owner)} ${previewResponse(response)}`,
+    );
+    if (owner.kind === 'follow') {
+      this.answerFollow(owner.follow, response);
+    } else if (owner.kind === 'orphan') {
+      this.answerOrphan(owner.method, response);
+    } else {
+      this.answerSession(owner, response);
     }
+  }
 
-    const session = this.sessions.get(pending.sessionId);
+  private answerSession(owner: Extract<RequestOwner, { kind: 'session' }>, response: JsonRpcResponse): void {
+    const session = this.sessions.get(owner.sessionId);
     if (session?.connected !== true) {
       this.warn(
         'response_disconnected_session',
-        `← upstream response for disconnected session: sessionId=${JSON.stringify(pending.sessionId)}, method=${pending.method}, responseId=${String(response.id)}, sessions=[${[...this.sessions.keys()].join(',')}]`,
+        `upstream response for disconnected session: sessionId=${JSON.stringify(owner.sessionId)}, method=${owner.method}, responseId=${String(response.id)}`,
       );
       return;
     }
-
-    let result: unknown = response.result;
-    const releaseMethod = TOKEN_METHODS.get(pending.method);
-    if (releaseMethod !== undefined && typeof response.result === 'string') {
-      const localToken = `token:${this.tokenCounter.toString(36)}:${pending.sessionId}`;
-      this.tokenCounter += 1;
-      const owned: OwnedToken = {
-        sessionId: pending.sessionId,
-        localToken,
-        upstreamToken: response.result,
-        releaseMethod,
-      };
-      this.localToOwned.set(localToken, owned);
-      let localTokens = this.upstreamToOwned.get(response.result);
-      if (localTokens === undefined) {
-        localTokens = new Set<string>();
-        this.upstreamToOwned.set(response.result, localTokens);
-      }
-      localTokens.add(localToken);
-      session.ownedTokens.add(localToken);
-      brokerLog(`Token mapped: ${localToken} ↔ ${response.result} (${pending.method})`);
-      result = localToken;
-    }
-
-    const rewritten: Record<string, unknown> = {
-      ...response,
-      id: pending.clientId,
-    };
-    if ('result' in response) {
-      rewritten['result'] = result;
+    const releaseMethod = TOKEN_METHODS.get(owner.method);
+    const upstreamToken = releaseMethod !== undefined && typeof response.result === 'string' ? response.result : null;
+    const rewritten: Record<string, unknown> = { ...response, id: owner.clientId };
+    if (upstreamToken !== null && releaseMethod !== undefined) {
+      rewritten['result'] = this.mapOwnedToken(session, upstreamToken, releaseMethod, owner.method);
     }
     this.sendToSession(session, rewritten);
-    if (releaseMethod !== undefined && typeof response.result === 'string') {
-      this.flushEarlySubscriptions(response.result);
+    if (upstreamToken !== null) {
+      this.flushEarlySubscriptions(upstreamToken);
+    }
+  }
+
+  /** Maps an upstream subscription to a new local token `session` owns, and returns that token. */
+  private mapOwnedToken(session: Session, upstreamToken: string, releaseMethod: string, method: string): string {
+    const localToken = `token:${this.tokenCounter.toString(36)}:${session.id}`;
+    this.tokenCounter += 1;
+    this.localToOwned.set(localToken, { sessionId: session.id, localToken, upstreamToken, releaseMethod });
+    let localTokens = this.upstreamToOwned.get(upstreamToken);
+    if (localTokens === undefined) {
+      localTokens = new Set<string>();
+      this.upstreamToOwned.set(upstreamToken, localTokens);
+    }
+    localTokens.add(localToken);
+    session.ownedTokens.add(localToken);
+    brokerLog(`Token mapped: ${localToken} to ${upstreamToken} (${method})`);
+    return localToken;
+  }
+
+  /** The upstream's answer to a shared follow, told to every session waiting on it. */
+  private answerFollow(follow: SharedFollow, response: JsonRpcResponse): void {
+    if (typeof response.result !== 'string') {
+      this.failFollow(follow, response);
+      return;
+    }
+    const upstreamToken = response.result;
+    follow.upstreamToken = upstreamToken;
+    this.upstreamFollowTokens.set(upstreamToken, follow);
+    for (const pendingLocal of follow.pendingLocals.splice(0)) {
+      const pendingSession = this.sessions.get(pendingLocal.sessionId);
+      if (pendingSession?.connected !== true) {
+        continue;
+      }
+      this.sendToSession(pendingSession, buildJsonRpcResult(pendingLocal.requestId, pendingLocal.localToken));
+    }
+    this.flushEarlySubscriptions(upstreamToken);
+  }
+
+  /**
+   * The upstream refused the follow. It is dropped before any session hears the refusal, so a session that follows
+   * again from inside its delivery, as papi does, asks the upstream afresh instead of waiting on the refused one.
+   */
+  private failFollow(follow: SharedFollow, response: JsonRpcResponse): void {
+    this.dropSharedFollow(follow);
+    const error =
+      'error' in response ? response.error : { code: -32603, message: 'Invalid chainHead_v1_follow answer' };
+    for (const localToken of follow.localTokens) {
+      const followToken = this.localFollowTokens.get(localToken);
+      this.localFollowTokens.delete(localToken);
+      if (followToken !== undefined) {
+        this.sessions.get(followToken.sessionId)?.ownedTokens.delete(localToken);
+      }
+    }
+    follow.localTokens.clear();
+    for (const pendingLocal of follow.pendingLocals.splice(0)) {
+      const session = this.sessions.get(pendingLocal.sessionId);
+      if (session?.connected === true && pendingLocal.requestId !== null) {
+        this.sendToSession(session, { jsonrpc: '2.0', id: pendingLocal.requestId, error });
+      }
+    }
+  }
+
+  /**
+   * The answer to a request whose session left while it was in flight. A subscription it opened would run upstream
+   * for the broker's life, so it is released at once, unless a session still holds the same upstream subscription.
+   */
+  private answerOrphan(method: string, response: JsonRpcResponse): void {
+    const releaseMethod = TOKEN_METHODS.get(method);
+    if (releaseMethod === undefined || typeof response.result !== 'string') {
+      brokerLog(`Dropped the answer to ${method} for a session that left`);
+      return;
+    }
+    const upstreamToken = response.result;
+    if ((this.upstreamToOwned.get(upstreamToken)?.size ?? 0) > 0) {
+      return;
+    }
+    this.earlySubscriptions.delete(upstreamToken);
+    this.sendRelease(releaseMethod, [upstreamToken]);
+  }
+
+  /** Forgets `follow`, unless a newer follow on the same key replaced it already. */
+  private dropSharedFollow(follow: SharedFollow): void {
+    if (this.sharedFollows.get(follow.key) === follow) {
+      this.sharedFollows.delete(follow.key);
     }
   }
 
@@ -704,7 +742,7 @@ export class ChainBroker {
       }
       const orphaned = sharedFollow.snapshot.record(eventResult);
       if (orphaned.length > 0) {
-        this.sendUpstreamUnpin(upstreamToken, orphaned);
+        this.sendRelease('chainHead_v1_unpin', [upstreamToken, orphaned]);
       }
       // Every session holds the event's blocks before any hears it. A session that unpins inside its own delivery, as
       // polkadot-api does on `initialized`, would otherwise release them upstream under a session not yet told.
@@ -790,9 +828,7 @@ export class ChainBroker {
   }
 
   private hasPendingSubscriptionRequest(): boolean {
-    return [...this.pending.values()].some(
-      ({ method }) => method === 'chainHead_v1_follow' || TOKEN_METHODS.has(method),
-    );
+    return [...this.pending.values()].some(owner => owner.kind === 'follow' || TOKEN_METHODS.has(methodOf(owner)));
   }
 
   private bufferEarlySubscription(upstreamToken: string, message: SubscriptionMessage): void {
@@ -842,9 +878,10 @@ export class ChainBroker {
     session.connected = false;
     this.sessions.delete(sessionId);
 
-    for (const requestId of [...this.pending.keys()]) {
-      if (this.pending.get(requestId)?.sessionId === sessionId) {
-        this.pending.delete(requestId);
+    // An answer still on its way may open a subscription, which nobody would release once its session has gone.
+    for (const [requestId, owner] of this.pending) {
+      if (owner.kind === 'session' && owner.sessionId === sessionId) {
+        this.pending.set(requestId, { kind: 'orphan', method: owner.method });
       }
     }
 
@@ -879,18 +916,9 @@ export class ChainBroker {
     }
 
     this.upstreamToOwned.delete(owned.upstreamToken);
-
-    if (!notifyUpstream) {
-      return { lastOwner: true };
+    if (notifyUpstream) {
+      this.sendRelease(owned.releaseMethod, [owned.upstreamToken]);
     }
-
-    this.sendUpstream({
-      jsonrpc: '2.0',
-      id: `broker-release:${this.requestCounter.toString(36)}`,
-      method: owned.releaseMethod,
-      params: [owned.upstreamToken],
-    });
-    this.requestCounter += 1;
     return { lastOwner: true };
   }
 
@@ -908,25 +936,21 @@ export class ChainBroker {
 
   private handleLocalFollowRequest(session: Session, request: JsonRpcRequest): void {
     const followKey = JSON.stringify(request.params ?? []);
-    let sharedFollow = this.sharedFollows.get(followKey);
-    if (!sharedFollow) {
-      sharedFollow = {
-        key: followKey,
-        upstreamToken: null,
-        requestInFlight: false,
-        localTokens: new Set<string>(),
-        pendingLocals: [],
-        snapshot: createFollowSnapshot(),
-      };
+    const existing = this.sharedFollows.get(followKey);
+    const sharedFollow: SharedFollow = existing ?? {
+      key: followKey,
+      upstreamToken: null,
+      localTokens: new Set<string>(),
+      pendingLocals: [],
+      snapshot: createFollowSnapshot(),
+    };
+    if (existing === undefined) {
       this.sharedFollows.set(followKey, sharedFollow);
     }
 
     const localToken = `follow:${this.tokenCounter.toString(36)}:${session.id}`;
     this.tokenCounter += 1;
-    this.localFollowTokens.set(localToken, {
-      sessionId: session.id,
-      followKey,
-    });
+    this.localFollowTokens.set(localToken, { sessionId: session.id, followKey });
     session.ownedTokens.add(localToken);
     sharedFollow.localTokens.add(localToken);
 
@@ -938,25 +962,11 @@ export class ChainBroker {
       return;
     }
 
-    sharedFollow.pendingLocals.push({
-      sessionId: session.id,
-      requestId: request.id ?? null,
-      localToken,
-    });
-
-    if (sharedFollow.requestInFlight) {
-      return;
+    sharedFollow.pendingLocals.push({ sessionId: session.id, requestId: request.id ?? null, localToken });
+    // Asked for once, as it is created. Until the answer, every later session waits on that one request.
+    if (existing === undefined) {
+      this.sendTracked({ kind: 'follow', follow: sharedFollow }, request);
     }
-
-    sharedFollow.requestInFlight = true;
-    const upstreamId = `broker:${this.requestCounter.toString(36)}:${followKey}`;
-    this.requestCounter += 1;
-    this.pending.set(upstreamId, {
-      sessionId: followKey,
-      clientId: request.id ?? null,
-      method: 'chainHead_v1_follow',
-    });
-    this.sendUpstream({ ...request, id: upstreamId });
   }
 
   private handleLocalUnfollowRequest(session: Session, request: JsonRpcRequest): void {
@@ -984,19 +994,7 @@ export class ChainBroker {
       this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
-    if (request.id === undefined) {
-      this.sendUpstream(rewritten);
-      return;
-    }
-
-    const upstreamId = `broker:${this.requestCounter.toString(36)}:${session.id}`;
-    this.requestCounter += 1;
-    this.pending.set(upstreamId, {
-      sessionId: session.id,
-      clientId: request.id ?? null,
-      method: request.method as string,
-    });
-    this.sendUpstream({ ...rewritten, id: upstreamId });
+    this.forwardForSession(session, rewritten, request.method as string);
   }
 
   /**
@@ -1044,28 +1042,21 @@ export class ChainBroker {
       pendingLocal => pendingLocal.localToken !== localToken,
     );
 
-    const followStaysAlive = sharedFollow.localTokens.size > 0 || sharedFollow.requestInFlight;
-
-    // A live follow unpins orphaned blocks upstream. For the last token the unfollow below releases them all.
+    const upstreamToken = sharedFollow.upstreamToken;
     const orphaned = sharedFollow.snapshot.release(localToken, null);
-    if (followStaysAlive) {
-      if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
-        this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
+    // Not answered yet, so it stays for the sessions that join before its answer.
+    if (upstreamToken === null) {
+      return;
+    }
+    // A live follow unpins orphaned blocks upstream. For the last token the unfollow below releases them all.
+    if (sharedFollow.localTokens.size > 0) {
+      if (orphaned.length > 0) {
+        this.sendRelease('chainHead_v1_unpin', [upstreamToken, orphaned]);
       }
       return;
     }
-
-    if (sharedFollow.upstreamToken !== null) {
-      this.upstreamFollowTokens.delete(sharedFollow.upstreamToken);
-      this.sendUpstream({
-        jsonrpc: '2.0',
-        id: `broker-release:${this.requestCounter.toString(36)}`,
-        method: 'chainHead_v1_unfollow',
-        params: [sharedFollow.upstreamToken],
-      });
-      this.requestCounter += 1;
-    }
-
+    this.upstreamFollowTokens.delete(upstreamToken);
+    this.sendRelease('chainHead_v1_unfollow', [upstreamToken]);
     this.sharedFollows.delete(followToken.followKey);
   }
 
