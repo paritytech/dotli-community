@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { deferred, manualTimers } from '@dotli/shared/testing';
 import { type BlockCache, createBlockCache } from './block-cache.js';
 import { abortAtCommit } from './testing/abort-at-commit.js';
@@ -24,10 +24,6 @@ function isTouchWrite(tx: IDBTransaction): boolean {
 }
 
 describe('block cache', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('As a user, a block the host fetched before comes back on the next load', async () => {
     // Given
     await cache.putCachedBlock('bafyA', new Uint8Array([1, 2, 3]));
@@ -60,24 +56,24 @@ describe('block cache', () => {
 
   it('As a user whose cache outgrew its limit, the blocks I used longest ago go first', async () => {
     // Given three 3-byte blocks stored in order, and the oldest read again last
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(1_000);
-    await cache.putCachedBlock('bafyOld', new Uint8Array(3));
-    vi.setSystemTime(2_000);
-    await cache.putCachedBlock('bafyStale', new Uint8Array(3));
-    vi.setSystemTime(3_000);
-    await cache.putCachedBlock('bafyRecent', new Uint8Array(3));
-    vi.setSystemTime(4_000);
-    await cache.getCachedBlock('bafyOld');
+    const clock = manualTimers(1_000);
+    const timed = createBlockCache(idb, clock);
+    await timed.putCachedBlock('bafyOld', new Uint8Array(3));
+    await clock.advance(1_000);
+    await timed.putCachedBlock('bafyStale', new Uint8Array(3));
+    await clock.advance(1_000);
+    await timed.putCachedBlock('bafyRecent', new Uint8Array(3));
+    await clock.advance(1_000);
+    await timed.getCachedBlock('bafyOld');
 
     // When the cache is pruned to room for two of them
-    const evicted = await cache.pruneBlockCache(6);
+    const evicted = await timed.pruneBlockCache(6);
 
     // Then only the one nobody used since it was stored is dropped
     expect(evicted).toBe(1);
-    expect(await cache.getCachedBlock('bafyStale')).toBeNull();
-    expect(await cache.getCachedBlock('bafyOld')).not.toBeNull();
-    expect(await cache.getCachedBlock('bafyRecent')).not.toBeNull();
+    expect(await timed.getCachedBlock('bafyStale')).toBeNull();
+    expect(await timed.getCachedBlock('bafyOld')).not.toBeNull();
+    expect(await timed.getCachedBlock('bafyRecent')).not.toBeNull();
   });
 
   it('As a user who turns the archive cache off, nothing the host kept survives', async () => {
