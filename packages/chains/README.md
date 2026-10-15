@@ -43,8 +43,9 @@ flowchart LR
   frame stopped. The halt module imports nothing, so an eager client takes it without the broker.
 - The byte meter wraps the socket constructors, since resource timing misses WebSocket and WebRTC. It is installed
   before any socket opens.
-- The light client is heavy, so it loads through a lazy loader. The entry is pure re-exports. Only the light client may
-  read a fixed services config, because it also runs in a worker that the runtime network config never reaches.
+- The light client is heavy, so it loads through a lazy loader. The entry is pure re-exports. The light client and its
+  sync reporting read only the fixed services config, because they also run in a worker that the runtime network config
+  never reaches. Lint enforces it for both.
 
 ## Public API
 

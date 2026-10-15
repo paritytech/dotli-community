@@ -21,5 +21,5 @@ export default defineConfig([
     },
   },
   ...importBans([scopeBan]),
-  ...importBans([scopeBan, fixedConfigOnly], ['src/provider.ts']),
+  ...importBans([scopeBan, fixedConfigOnly], ['src/provider.ts', 'src/chain-sync.ts']),
 ]);
