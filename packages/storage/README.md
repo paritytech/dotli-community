@@ -21,7 +21,9 @@ scheduled notifications.
   closing connection or a blocked upgrade, and a full quota) leave a breadcrumb. Others are logged and go to Sentry once
   per action.
 - The block cache keeps bitswap blocks on the host, since the credentialless sandbox loses its storage on reload. It
-  does not hash-check. Bookkeeping sits apart from the bytes so touch and prune skip them.
+  does not hash-check. Bookkeeping sits apart from the bytes so touch and prune skip them. A read takes no write lock,
+  so reads run side by side. It marks its block used afterwards, in one bookkeeping write with the reads around it, and
+  a prune writes those marks before it ranks blocks.
 - The CID cache maps a label to its CID and raw manifest text for instant repeat visits. A hit is validated by today's
   validator.
 - The local wallet stores root entropy encrypted under a key this origin can use but not export.
