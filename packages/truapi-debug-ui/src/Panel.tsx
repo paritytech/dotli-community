@@ -44,7 +44,7 @@ import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
 
-/** Below this the panel docks at the bottom with panes stacked, whatever dock was picked. */
+/** Below this the panel docks at the bottom with panes stacked. Its own copy of the page's phone breakpoint, since the panel keeps its own kit. */
 export const NARROW_QUERY = '(max-width: 560px)';
 
 /** The first row still in view at `scrollTop`, by bisection over offsets relative to the first row. */

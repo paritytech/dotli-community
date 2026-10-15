@@ -33,7 +33,7 @@
   margin-left: auto;
 }
 
-/* Matches `NARROW_QUERY` in Panel.tsx, where the panel always docks at the bottom. */
+/* On a phone the panel always docks at the bottom, so the dock button goes and the header tightens. */
 @media (max-width: 560px) {
   .header {
     gap: 6px;
