@@ -781,6 +781,48 @@ describe('chain pool brokering', () => {
     });
   });
 
+  it('As a dApp user, I unfollow inside the answer to my join and hear no replay, and my blocks stay unpinned by me', () => {
+    // Given a follow A holds, and a session B that unfollows as soon as it hears its token
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const messagesA: unknown[] = [];
+    const messagesB: unknown[] = [];
+    const connectionA = broker.connect('a', message => messagesA.push(message), 'object');
+    connectionA.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
+    const tokenA = (messagesA[0] as { result: string }).result;
+    const event = (result: Record<string, unknown>): void => {
+      harness.emit({ jsonrpc: '2.0', method: 'chainHead_v1_followEvent', params: { subscription: 'up-1', result } });
+    };
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    const connectionB = broker.connect(
+      'b',
+      message => {
+        messagesB.push(message);
+        const result = (message as { id?: unknown; result?: unknown }).result;
+        if ((message as { id?: unknown }).id === 2 && typeof result === 'string') {
+          connectionB.send({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_unfollow', params: [result] });
+        }
+      },
+      'object',
+    );
+
+    // When B joins and unfollows inside the answer, the chain finalizes past 0xf0, and A unpins it
+    connectionB.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] });
+    event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event({ event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+    connectionA.send({ jsonrpc: '2.0', id: 4, method: 'chainHead_v1_unpin', params: [tokenA, ['0xf0']] });
+
+    // Then B heard only its token and its unfollow answer, and 0xf0 is unpinned upstream
+    expect(messagesB).toEqual([
+      { jsonrpc: '2.0', id: 2, result: expect.any(String) as string },
+      { jsonrpc: '2.0', id: 3, result: null },
+    ]);
+    expect(
+      harness.sent.filter(message => message.method === 'chainHead_v1_unpin').map(message => message.params as unknown),
+    ).toEqual([['up-1', ['0xf0']]]);
+  });
+
   it('As the host page, I get a local provider on the same upstream as remote sessions and each gets its own answers', () => {
     // Given
     const harness = createProviderHarness();
@@ -1252,6 +1294,46 @@ describe('chain pool brokering', () => {
     },
   );
 
+  it('As a session, I unwatch as I hear my transaction finalized and get an unknown subscription error with nothing sent upstream', () => {
+    // Given an answered watch whose session unwatches from inside the final event's delivery
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const messages: unknown[] = [];
+    let localToken = '';
+    const connection = broker.connect(
+      'a',
+      message => {
+        messages.push(message);
+        const { method } = message as { method?: unknown };
+        if (method === 'transactionWatch_v1_watchEvent') {
+          connection.send({ jsonrpc: '2.0', id: 2, method: 'transactionWatch_v1_unwatch', params: [localToken] });
+        }
+      },
+      'object',
+    );
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x0102'] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-tx' });
+    localToken = (messages[0] as { result: string }).result;
+
+    // When the node ends the watch
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'transactionWatch_v1_watchEvent',
+      params: { subscription: 'up-tx', result: { event: 'finalized', block: { hash: '0xabc', index: 0 } } },
+    });
+
+    // Then the unwatch is answered locally after the final event, and the node is not asked to unwatch
+    expect(messages.slice(1)).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'transactionWatch_v1_watchEvent',
+        params: { subscription: localToken, result: { event: 'finalized', block: { hash: '0xabc', index: 0 } } },
+      },
+      { jsonrpc: '2.0', id: 2, error: { code: -32603, message: 'Unknown subscription/token' } },
+    ]);
+    expect(harness.sent.filter(message => message.method === 'transactionWatch_v1_unwatch')).toEqual([]);
+  });
+
   it('As a session whose transaction watch already ended, I unwatch it and get an unknown subscription error without an upstream call', () => {
     // Given a watch the node ended with a final event
     const harness = createProviderHarness();
@@ -1481,6 +1563,65 @@ describe('broker warnings', () => {
 
     // Then
     expect(warnings).toEqual([expect.stringMatching(/refused chainHead_v1_unfollow/) as string]);
+  });
+
+  it('As a dotli maintainer, I see no warning for follow events the node sends before it reads the unfollow the broker sent', () => {
+    // Given a follow whose only session left before the node answered, so the broker unfollows it at the answer
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const connection = broker.connect('a', () => undefined, 'object');
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    connection.disconnect();
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
+
+    // When the node still delivers events for that follow
+    const warnings = warningsDuring(() => {
+      harness.emit({
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: 'up-1', result: { event: 'initialized', finalizedBlockHashes: ['0xf0'] } },
+      });
+    });
+
+    // Then
+    expect(harness.sent.map(message => message.method)).toEqual(['chainHead_v1_follow', 'chainHead_v1_unfollow']);
+    expect(warnings).toEqual([]);
+  });
+
+  it('As a dotli maintainer, I see no warning when many released watches still deliver events while a follow waits on its answer', () => {
+    // Given a follow in flight, and a session that leaves with more watches than the early buffer keeps tokens for
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    broker
+      .connect('a', () => undefined, 'object')
+      .send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'chainHead_v1_follow',
+        params: [true],
+      });
+    const connection = broker.connect('b', () => undefined, 'object');
+    const tokens = Array.from({ length: 33 }, (_, index) => `up-tx-${String(index)}`);
+    for (const [index, token] of tokens.entries()) {
+      connection.send({ jsonrpc: '2.0', id: index, method: 'transactionWatch_v1_submitAndWatch', params: ['0x01'] });
+      harness.emit({ jsonrpc: '2.0', id: (harness.sent.at(-1) as { id: string }).id, result: token });
+    }
+    connection.disconnect();
+
+    // When the node still delivers an event for each watch before it reads the unwatches
+    const warnings = warningsDuring(() => {
+      for (const token of tokens) {
+        harness.emit({
+          jsonrpc: '2.0',
+          method: 'transactionWatch_v1_watchEvent',
+          params: { subscription: token, result: { event: 'validated' } },
+        });
+      }
+    });
+
+    // Then each watch was unwatched upstream, and none of its late events was buffered or warned about
+    expect(harness.sent.filter(message => message.method === 'transactionWatch_v1_unwatch')).toHaveLength(33);
+    expect(warnings).toEqual([]);
   });
 });
 

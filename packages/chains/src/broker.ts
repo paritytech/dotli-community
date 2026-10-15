@@ -56,8 +56,11 @@ type RequestOwner =
   | { kind: 'follow'; follow: SharedFollow }
   /** A request whose session left before the answer. A subscription the answer opens is released at once. */
   | { kind: 'orphan'; method: string }
-  /** A release the broker sent itself. Nobody waits on its answer. */
-  | { kind: 'release'; method: string };
+  /**
+   * A release the broker sent itself for `upstreamToken`. Nobody waits on its answer, and until it comes the node may
+   * still send events it queued for that subscription.
+   */
+  | { kind: 'release'; method: string; upstreamToken: string };
 
 function methodOf(owner: RequestOwner): string {
   return owner.kind === 'follow' ? 'chainHead_v1_follow' : owner.method;
@@ -282,8 +285,15 @@ export class ChainBroker {
   }
 
   /** A release the broker sends itself, for something no session holds anymore. */
-  private sendRelease(method: string, params: unknown[]): void {
-    this.sendTracked({ kind: 'release', method }, { jsonrpc: '2.0', method, params });
+  private sendRelease(method: string, upstreamToken: string, ...rest: unknown[]): void {
+    this.sendTracked(
+      { kind: 'release', method, upstreamToken },
+      { jsonrpc: '2.0', method, params: [upstreamToken, ...rest] },
+    );
+  }
+
+  private isReleasing(upstreamToken: string): boolean {
+    return [...this.pending.values()].some(owner => owner.kind === 'release' && owner.upstreamToken === upstreamToken);
   }
 
   connect(
@@ -509,7 +519,7 @@ export class ChainBroker {
 
     const orphaned = sharedFollow.snapshot.release(token, normalizeUnpinHashes(params[1]));
     if (orphaned.length > 0) {
-      this.sendRelease('chainHead_v1_unpin', [sharedFollow.upstreamToken, orphaned]);
+      this.sendRelease('chainHead_v1_unpin', sharedFollow.upstreamToken, orphaned);
     }
 
     if (request.id !== undefined) {
@@ -682,7 +692,7 @@ export class ChainBroker {
     if (follow.localTokens.size === 0) {
       this.dropSharedFollow(follow);
       this.earlySubscriptions.delete(upstreamToken);
-      this.sendRelease('chainHead_v1_unfollow', [upstreamToken]);
+      this.sendRelease('chainHead_v1_unfollow', upstreamToken);
       return;
     }
     follow.upstreamToken = upstreamToken;
@@ -736,7 +746,7 @@ export class ChainBroker {
       return;
     }
     this.earlySubscriptions.delete(upstreamToken);
-    this.sendRelease(releaseMethod, [upstreamToken]);
+    this.sendRelease(releaseMethod, upstreamToken);
   }
 
   /** Nobody waits on a release, so the node refusing one is all there is to tell. */
@@ -778,7 +788,7 @@ export class ChainBroker {
       }
       const orphaned = sharedFollow.snapshot.record(eventResult);
       if (orphaned.length > 0) {
-        this.sendRelease('chainHead_v1_unpin', [upstreamToken, orphaned]);
+        this.sendRelease('chainHead_v1_unpin', upstreamToken, orphaned);
       }
       // Every session holds the event's blocks before any hears it. A session that unpins inside its own delivery, as
       // polkadot-api does on `initialized`, would otherwise release them upstream under a session not yet told.
@@ -814,6 +824,11 @@ export class ChainBroker {
 
     const ownedLocals = this.upstreamToOwned.get(upstreamToken);
     if (ownedLocals === undefined || ownedLocals.size === 0) {
+      // Queued by the node before it read the release, so expected, and nobody will ever map this token again.
+      if (this.isReleasing(upstreamToken)) {
+        brokerLog(`Dropped an event for released subscription ${upstreamToken}`);
+        return;
+      }
       if (this.hasPendingSubscriptionRequest()) {
         this.bufferEarlySubscription(upstreamToken, message);
         return;
@@ -829,12 +844,12 @@ export class ChainBroker {
         : 'unknown'
       : '?';
     const localTokens = [...ownedLocals];
+    const recipients: { session: Session; owned: OwnedToken }[] = [];
     for (const localToken of localTokens) {
       const owned = this.localToOwned.get(localToken);
       if (owned === undefined) {
         continue;
       }
-
       const session = this.sessions.get(owned.sessionId);
       if (session?.connected !== true) {
         this.warn(
@@ -843,9 +858,26 @@ export class ChainBroker {
         );
         continue;
       }
+      recipients.push({ session, owned });
+    }
 
+    // Released before anyone hears the final event, as a stopped follow is, so a release sent from inside that
+    // delivery is answered locally instead of going upstream for a subscription the node already ended.
+    const ends = isRecord(eventResult) && endsSubscription(message.method, eventResult['event']);
+    if (ends) {
+      brokerLog(`Token ended by upstream: ${upstreamToken}`);
+      for (const localToken of localTokens) {
+        this.releaseOwnedToken(localToken, false);
+      }
+    }
+
+    for (const { session, owned } of recipients) {
+      // An earlier delivery can end this session or release its token. A final event still reaches every token it
+      // ended.
+      if (!session.connected || (!ends && !this.localToOwned.has(owned.localToken))) {
+        continue;
+      }
       brokerLog(`← subscription [${owned.sessionId}] event=${eventType} method=${String(message.method)}`);
-
       this.sendToSession(session, {
         ...message,
         params: {
@@ -853,13 +885,6 @@ export class ChainBroker {
           subscription: owned.localToken,
         },
       });
-    }
-
-    if (isRecord(eventResult) && endsSubscription(message.method, eventResult['event'])) {
-      brokerLog(`Token ended by upstream: ${upstreamToken}`);
-      for (const localToken of localTokens) {
-        this.releaseOwnedToken(localToken, false);
-      }
     }
   }
 
@@ -953,7 +978,7 @@ export class ChainBroker {
 
     this.upstreamToOwned.delete(owned.upstreamToken);
     if (notifyUpstream) {
-      this.sendRelease(owned.releaseMethod, [owned.upstreamToken]);
+      this.sendRelease(owned.releaseMethod, owned.upstreamToken);
     }
     return { lastOwner: true };
   }
@@ -993,6 +1018,10 @@ export class ChainBroker {
     if (sharedFollow.upstreamToken !== null) {
       if (request.id !== undefined) {
         this.sendToSession(session, buildJsonRpcResult(request.id ?? null, localToken));
+      }
+      // A session that unfollowed or left inside that answer would be pinned blocks it can never unpin.
+      if (!this.localFollowTokens.has(localToken)) {
+        return;
       }
       this.replayFollowSnapshot(session, localToken, sharedFollow);
       return;
@@ -1086,12 +1115,12 @@ export class ChainBroker {
     // A live follow unpins orphaned blocks upstream. For the last token the unfollow below releases them all.
     if (sharedFollow.localTokens.size > 0) {
       if (orphaned.length > 0) {
-        this.sendRelease('chainHead_v1_unpin', [upstreamToken, orphaned]);
+        this.sendRelease('chainHead_v1_unpin', upstreamToken, orphaned);
       }
       return;
     }
     this.dropSharedFollow(sharedFollow);
-    this.sendRelease('chainHead_v1_unfollow', [upstreamToken]);
+    this.sendRelease('chainHead_v1_unfollow', upstreamToken);
   }
 
   private replayFollowSnapshot(session: Session, localToken: string, sharedFollow: SharedFollow): void {

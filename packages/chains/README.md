@@ -33,9 +33,9 @@ flowchart LR
   each held chain's activity and best block.
 - The broker multiplexes JSON-RPC sessions over one connection. Every request it sends upstream with an id has one owner
   its answer goes to: a session, a shared follow, a release the broker sent itself, or a session that left, whose
-  answered subscription is released at once. A follow the node refuses is answered to every session waiting on it, and
-  the next follow asks afresh. The watch guard ends transaction watches that a disconnect drops, so a replay never
-  resubmits them.
+  answered subscription is released at once. Events the node still sends for a subscription the broker is releasing are
+  dropped quietly. A follow the node refuses is answered to every session waiting on it, and the next follow asks
+  afresh. The watch guard ends transaction watches that a disconnect drops, so a replay never resubmits them.
 - Identical follows share one upstream follow. Its snapshot keeps the newest finalized block, every unfinalized block
   above it, forks included, and the best block, so a session that joins late is replayed from it. A block is unpinned
   upstream only once no session and no snapshot holds it.
