@@ -57,7 +57,7 @@ export const Recents: Story = {
   play: async ({ canvas, step }) => {
     await step('Then my recent names show as a group under a Recent heading', async () => {
       const heading = await canvas.findByRole('heading', { level: 2, name: 'Recent' });
-      await expect(heading).toBeVisible();
+      await waitFor(() => expect(heading).toBeVisible());
       await expect(canvas.getByRole('group', { name: 'Recent' })).toBe(canvas.getByTestId('landing-recent-list'));
       await expect(labelsShown(canvas)).toEqual(['alpha', 'beta']);
     });

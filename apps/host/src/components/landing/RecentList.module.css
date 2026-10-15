@@ -1,13 +1,29 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The gap above is padding, so the reveal grows it with the list. */
 .recent {
   box-sizing: border-box;
   width: 100%;
   max-width: var(--w-landing);
-  margin: var(--sp-10) 0 0;
-  padding: 0;
+  margin: 0;
+  padding: var(--sp-10) 0 0;
   text-align: left;
+  animation: reveal var(--dur-morph) var(--ease-out);
+}
+
+/* max-height takes a length, since a percentage of the page's auto height does not animate. */
+@keyframes reveal {
+  from {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+  }
+  to {
+    max-height: 640px;
+    overflow: hidden;
+    opacity: 1;
+  }
 }
 
 .list {
@@ -111,6 +127,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .recent {
+    animation: none;
+  }
   .remove {
     transition: none;
   }
