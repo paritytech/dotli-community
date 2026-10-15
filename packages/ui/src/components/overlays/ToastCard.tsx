@@ -42,13 +42,15 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
 
   return (
     <div
-      class={[s['card'], props.expanded ? s['expanded'] : s['stacked'], props.single && s['single']]}
+      class={s['card']}
+      data-layout={props.expanded ? 'expanded' : 'stacked'}
+      data-piled={!props.expanded && !props.single ? '' : undefined}
+      data-depth={String(depth())}
       data-testid="notif-card"
       data-id={String(id)}
       data-entering={entering() ? '' : undefined}
       data-leaving={props.entry.leaving ? '' : undefined}
       data-hidden={hidden() ? '' : undefined}
-      style={{ '--i': String(depth()) }}
       onAnimationEnd={() => {
         if (props.entry.leaving) {
           removeToast(id);

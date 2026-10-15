@@ -84,9 +84,7 @@ export function ToastStack(): JSX.Element {
           data-testid="notif-cards"
           role="status"
           aria-live="polite"
-          style={{
-            cursor: !expanded() && many() ? 'pointer' : '',
-          }}
+          data-expandable={!expanded() && many() ? '' : undefined}
         >
           <For each={items()} keyed={t => t.id}>
             {entry => (
@@ -105,7 +103,7 @@ export function ToastStack(): JSX.Element {
           class={s['closeAll']}
           data-testid="notif-close-all"
           aria-label="Dismiss all"
-          style={{ display: many() ? '' : 'none' }}
+          hidden={!many()}
           onClick={event => {
             event.stopPropagation();
             dismissAllToasts();

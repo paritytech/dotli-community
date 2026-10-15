@@ -21,7 +21,7 @@
 }
 
 /* Collapsed cards pile in one cell, older ones behind. */
-.stacked {
+.card[data-layout='stacked'] {
   grid-area: 1 / 1;
   align-self: end;
   transform: translateY(calc(var(--i, 0) * -1 * var(--pile-step))) scale(calc(1 - var(--i, 0) * 0.04));
@@ -31,9 +31,20 @@
     filter var(--dur) ease;
 }
 
-.expanded {
+.card[data-layout='expanded'] {
   opacity: 1;
   transition: opacity var(--dur) ease;
+}
+
+/* How far back a piled card sits. A card past the third is hidden. */
+.card[data-depth='1'] {
+  --i: 1;
+}
+.card[data-depth='2'] {
+  --i: 2;
+}
+.card[data-depth='3'] {
+  --i: 3;
 }
 
 .card[data-hidden] {
@@ -110,8 +121,8 @@ a.body:focus-visible {
   flex: none;
 }
 
-/* The stack's close-all badge stands in for the cards' close buttons. */
-.stacked:not(.single) .close {
+/* While cards pile up, one badge dismisses them all in place of each card's close button. */
+.card[data-piled] .close {
   display: none;
 }
 
@@ -157,8 +168,7 @@ a.body:focus-visible {
 
 /* Cards are removed on animationend, so the animations shrink instead of going away. */
 @media (prefers-reduced-motion: reduce) {
-  .stacked,
-  .expanded {
+  .card[data-layout] {
     transition: none;
   }
   .card[data-entering],

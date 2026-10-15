@@ -27,6 +27,9 @@
   margin: 0;
   padding: 0;
 }
+.cards[data-expandable] {
+  cursor: pointer;
+}
 /* The padding keeps the cards' shadows inside the scroll box, the margin
    keeps the cards where they were. */
 .stack[data-expanded] .cards {
@@ -67,6 +70,10 @@
   width: 10px;
   height: 10px;
   stroke-width: 2.5;
+}
+/* Its own `display` would beat the browser's rule for `hidden`. */
+.close-all[hidden] {
+  display: none;
 }
 .close-all:hover {
   color: var(--chrome-text);
