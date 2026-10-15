@@ -34,7 +34,7 @@ export const EmptyForm: Story = {
     const field = canvas.getByRole('textbox', { name: `Search a ${SUFFIX} name` });
     await step('Then I see a name field for the network, ready once the page knows it, and a Go button', async () => {
       await waitFor(() => expect(field).toBeEnabled());
-      await expect(field).toHaveAttribute('aria-describedby', 'dotli-nav-error');
+      await expect(field).not.toHaveAttribute('aria-describedby');
       await expect(field).toHaveAttribute('spellcheck', 'false');
       await expect(field).toHaveAttribute('autocomplete', 'off');
       await expect(canvas.getByRole('button', { name: 'Go' })).toHaveAttribute('type', 'submit');
@@ -67,6 +67,7 @@ export const InvalidNameInline: Story = {
     await step('Then I see why inline, the field is marked and keeps focus, and I stay on the page', async () => {
       await expect(canvas.getByRole('alert')).toHaveTextContent('Names can only contain a-z, 0-9 and hyphens');
       await expect(field).toHaveAttribute('aria-invalid', 'true');
+      await expect(field).toHaveAccessibleDescription('Names can only contain a-z, 0-9 and hyphens');
       await expect(canvas.getByTestId('story-root').querySelector('[data-invalid]')).not.toBeNull();
       await expect(field).toHaveFocus();
       await expect(window.location.href).toBe(href);
@@ -78,6 +79,8 @@ export const InvalidNameInline: Story = {
     await step('Then the error clears', async () => {
       await expect(canvas.queryByRole('alert')).toBeNull();
       await expect(field).not.toHaveAttribute('aria-invalid');
+      await expect(field).not.toHaveAttribute('aria-describedby');
+      await expect(field).toHaveAccessibleDescription('');
       await expect(canvas.getByTestId('story-root').querySelector('[data-invalid]')).toBeNull();
     });
   },

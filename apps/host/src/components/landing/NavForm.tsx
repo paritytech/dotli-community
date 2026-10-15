@@ -78,6 +78,7 @@ export function NavForm(props: NavFormProps): JSX.Element {
           }}
           onInput={() => {
             setInvalid(false);
+            setMessage('');
             placeholder?.resume();
           }}
           id="dotli-nav-input"
@@ -87,7 +88,7 @@ export function NavForm(props: NavFormProps): JSX.Element {
           spellcheck="false"
           autocomplete="off"
           aria-label={`Search a ${suffix() ?? ''} name`}
-          aria-describedby="dotli-nav-error"
+          aria-describedby={invalid() ? 'dotli-nav-error' : undefined}
           aria-invalid={invalid() ? 'true' : undefined}
           disabled={suffix() === null}
         />
