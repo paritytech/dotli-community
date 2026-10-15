@@ -314,35 +314,40 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   /**
    * Mounts the frame and resolves once its request listeners are bound, not on `load`, which also fires when its
    * script failed and would leave every request to its full timeout. `ready` counts too, since the frame binds before
-   * init.
+   * init. The deadline restarts at `load`, since a loaded frame has only its listeners left to bind.
    */
-  function untilListening(iframe: HTMLIFrameElement, signal: AbortSignal): Promise<void> {
-    return untilStatus(
+  async function untilListening(iframe: HTMLIFrameElement, signal: AbortSignal): Promise<void> {
+    let onLoad = (): void => undefined;
+    const loaded = new Promise<void>(resolve => {
+      onLoad = () => {
+        resolve();
+      };
+    });
+    iframe.addEventListener('load', onLoad, { once: true });
+    const listening = untilStatus(
       next => next === 'listening' || next === 'ready',
       signal,
       fail => {
-        let timer = setTimeout(() => {
-          fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
-        }, timeouts.loadMs);
-        const onLoad = (): void => {
-          clearTimeout(timer);
-          timer = setTimeout(() => {
-            fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING));
-          }, timeouts.listenMs);
-        };
         const onError = (): void => {
           fail(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
         };
-        iframe.addEventListener('load', onLoad, { once: true });
         iframe.addEventListener('error', onError, { once: true });
         frameDocument.body.appendChild(iframe);
         return () => {
-          clearTimeout(timer);
-          iframe.removeEventListener('load', onLoad);
           iframe.removeEventListener('error', onError);
         };
       },
     );
+    try {
+      await withTimeout(
+        Promise.race([loaded, listening]),
+        timeouts.loadMs,
+        () => new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT),
+      );
+      await withTimeout(listening, timeouts.listenMs, () => new Error(PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING));
+    } finally {
+      iframe.removeEventListener('load', onLoad);
+    }
   }
 
   /**
@@ -368,17 +373,10 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       phase = 'ready';
       const stopReady = m.timer(S.PROTOCOL_IFRAME_READY);
       try {
-        await untilStatus(
-          next => next === 'ready',
-          loss.signal,
-          fail => {
-            const timer = setTimeout(() => {
-              fail(new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT));
-            }, timeouts.readyMs);
-            return () => {
-              clearTimeout(timer);
-            };
-          },
+        await withTimeout(
+          untilStatus(next => next === 'ready', loss.signal),
+          timeouts.readyMs,
+          () => new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT),
         );
       } finally {
         stopReady();

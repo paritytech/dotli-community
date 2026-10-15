@@ -5,7 +5,7 @@
 
 import { captureException, m, spans as S } from '@dotli/metrics';
 import type { ProtocolEnvelope } from '@dotli/protocol';
-import { log } from '@dotli/shared';
+import { log, withTimeout } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { disconnectOnPageHide, relayFromWorker, type SWOutbound } from './worker-messages.js';
@@ -45,40 +45,51 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Message
   // Before the ready wait too, so a frame removed while the worker syncs still frees its port at once.
   disconnectOnPageHide(deps.window, port);
 
-  return new Promise<MessagePort>((resolve, reject) => {
-    function settle(outcome: 'ok' | 'error' | 'timeout', error?: Error, reason?: string): void {
-      clearTimeout(timer);
-      port.removeEventListener('message', onMessage);
-      failReadyWait = null;
-      const waitMs = performance.now() - startedAt;
-      m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
-        outcome,
-        ...(reason !== undefined ? { reason } : {}),
-      });
-      if (error !== undefined) {
-        reject(error);
-        return;
-      }
-      m.measure(S.PROTOCOL_SW_READY, waitMs);
-      resolve(port);
-    }
-
-    function onMessage(event: MessageEvent): void {
+  // Why the wait failed, for the metric. A timeout carries none.
+  let reason: string | undefined;
+  let onMessage = (_event: MessageEvent): void => undefined;
+  const ready = new Promise<MessagePort>((resolve, reject) => {
+    const fail = (error: Error, why: string): void => {
+      reason = why;
+      reject(error);
+    };
+    onMessage = event => {
       const data = event.data as SWOutbound | null;
       if (data?.type === 'ready') {
-        settle('ok');
+        resolve(port);
       } else if (data?.type === 'error') {
-        settle('error', new Error(`SharedWorker error: ${data.message}`), 'worker_reported');
+        fail(new Error(`SharedWorker error: ${data.message}`), 'worker_reported');
       }
-    }
-
-    const timer = setTimeout(() => {
-      settle('timeout', new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
-    }, readyTimeoutMs);
+    };
     failReadyWait = error => {
-      settle('error', error, 'load_failed');
+      fail(error, 'load_failed');
     };
     port.addEventListener('message', onMessage);
     port.start();
   });
+
+  let timedOut: Error | undefined;
+  const record = (outcome: 'ok' | 'error' | 'timeout'): number => {
+    port.removeEventListener('message', onMessage);
+    failReadyWait = null;
+    const waitMs = performance.now() - startedAt;
+    m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
+      outcome,
+      ...(reason !== undefined ? { reason } : {}),
+    });
+    return waitMs;
+  };
+  return withTimeout(ready, readyTimeoutMs, () => {
+    timedOut = new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT);
+    return timedOut;
+  }).then(
+    readyPort => {
+      m.measure(S.PROTOCOL_SW_READY, record('ok'));
+      return readyPort;
+    },
+    (error: unknown) => {
+      record(error === timedOut ? 'timeout' : 'error');
+      throw error;
+    },
+  );
 }
