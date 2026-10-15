@@ -11,6 +11,7 @@ import { log } from '@dotli/shared';
 import { chainHaltedError } from './chain-halted.js';
 import { createFollowSnapshot, type FollowSnapshot } from './follow-snapshot.js';
 import { isRecord, stringsOf } from './json-shape.js';
+import { TERMINAL_WATCH_EVENTS } from './watch-guard.js';
 
 /** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
 export interface StringJsonRpcConnection {
@@ -170,6 +171,14 @@ function cloneWithRewrittenFirstParam(request: JsonRpcRequest, rewrittenToken: s
 
 function releaseResultFor(method: string): unknown {
   return method === 'statement_unsubscribeStatement' ? true : null;
+}
+
+/** Whether `event` ends its subscription on the node's side, so nothing is sent upstream to end it again. */
+function endsSubscription(method: unknown, event: unknown): boolean {
+  if (event === 'stop') {
+    return true;
+  }
+  return method === 'transactionWatch_v1_watchEvent' && typeof event === 'string' && TERMINAL_WATCH_EVENTS.has(event);
 }
 
 export interface ChainBrokerManager {
@@ -830,8 +839,8 @@ export class ChainBroker {
       });
     }
 
-    if (isRecord(eventResult) && eventResult['event'] === 'stop') {
-      brokerLog(`Token stopped by upstream: ${upstreamToken}`);
+    if (isRecord(eventResult) && endsSubscription(message.method, eventResult['event'])) {
+      brokerLog(`Token ended by upstream: ${upstreamToken}`);
       for (const localToken of localTokens) {
         this.releaseOwnedToken(localToken, false);
       }

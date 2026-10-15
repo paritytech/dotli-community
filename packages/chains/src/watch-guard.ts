@@ -12,7 +12,8 @@ import { isRecord } from './json-shape.js';
 const SUBMIT_AND_WATCH = 'transactionWatch_v1_submitAndWatch';
 const UNWATCH = 'transactionWatch_v1_unwatch';
 const WATCH_EVENT = 'transactionWatch_v1_watchEvent';
-const TERMINAL_EVENTS = new Set(['finalized', 'error', 'invalid', 'dropped']);
+/** The watch events after which the node ends the watch on its own. */
+export const TERMINAL_WATCH_EVENTS: ReadonlySet<string> = new Set(['finalized', 'error', 'invalid', 'dropped']);
 
 export interface WatchGuard {
   /** The transport, with the watches it carries tracked. */
@@ -38,7 +39,7 @@ export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
         typeof subscription === 'string' &&
         isRecord(result) &&
         typeof result['event'] === 'string' &&
-        TERMINAL_EVENTS.has(result['event'])
+        TERMINAL_WATCH_EVENTS.has(result['event'])
       ) {
         watches.delete(subscription);
       }

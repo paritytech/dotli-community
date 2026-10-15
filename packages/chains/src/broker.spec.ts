@@ -1219,6 +1219,67 @@ describe('chain pool brokering', () => {
     expect(harness.sent.filter(message => message.method === 'statement_unsubscribeStatement')).toEqual([]);
     expect(messagesB).toHaveLength(2);
   });
+
+  it.each(['finalized', 'invalid', 'dropped', 'error'])(
+    'As a session whose transaction watch ended with %s, I disconnect and no unwatch goes upstream for it',
+    terminal => {
+      // Given an answered watch
+      const harness = createProviderHarness();
+      const manager = createManager(() => harness.provider);
+      const messages: string[] = [];
+      const connection = manager.connectRemote('asset-hub', 'conn-a', message => messages.push(message));
+      connection?.send(
+        JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x0102'] }),
+      );
+      harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-tx' });
+
+      // When the node ends the watch and the session leaves
+      harness.emit({
+        jsonrpc: '2.0',
+        method: 'transactionWatch_v1_watchEvent',
+        params: { subscription: 'up-tx', result: { event: terminal } },
+      });
+      connection?.disconnect();
+
+      // Then the session heard the end, and nothing went upstream for a watch the node already ended
+      const localToken = (JSON.parse(messages[0] ?? '{}') as { result: string }).result;
+      expect(JSON.parse(messages[1] ?? '{}')).toEqual({
+        jsonrpc: '2.0',
+        method: 'transactionWatch_v1_watchEvent',
+        params: { subscription: localToken, result: { event: terminal } },
+      });
+      expect(harness.sent.filter(message => message.method === 'transactionWatch_v1_unwatch')).toEqual([]);
+    },
+  );
+
+  it('As a session whose transaction is only included in a best block, I keep my watch and my disconnect unwatches it upstream', () => {
+    // Given an answered watch
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const connection = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+    connection?.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x0102'] }),
+    );
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-tx' });
+
+    // When a non-final event arrives and the session leaves
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'transactionWatch_v1_watchEvent',
+      params: {
+        subscription: 'up-tx',
+        result: { event: 'bestChainBlockIncluded', block: { hash: '0xabc', index: 0 } },
+      },
+    });
+    connection?.disconnect();
+
+    // Then
+    expect(
+      harness.sent
+        .filter(message => message.method === 'transactionWatch_v1_unwatch')
+        .map(message => message.params as unknown),
+    ).toEqual([['up-tx']]);
+  });
 });
 
 describe('broker warnings', () => {
