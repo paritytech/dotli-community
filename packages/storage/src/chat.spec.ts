@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { type ChatRecords, createChatRecords } from './chat.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
+import { abortAtCommit } from './testing/abort-at-commit.js';
 
 // Each test gets a fresh database, so no test sees another's records.
 let idb: MemoryIdb;
@@ -139,6 +140,25 @@ describe('chat messages', () => {
 
     // Then
     expect(messages.map(m => m.messageId)).toEqual(['m3', 'm4']);
+  });
+
+  it('As a product, a message the browser refuses at commit fails to send and is not listed', async () => {
+    // Given a database that refuses every commit, as a full quota does
+    const refusing = createChatRecords(memoryIdb({ onTransaction: abortAtCommit }));
+
+    // When
+    const sent = refusing.appendMessage({
+      productId: 'quota.dot',
+      roomId: 'main',
+      messageId: 'm1',
+      author: 'user',
+      content: textContent('kept?'),
+      timestamp: 1,
+    });
+
+    // Then
+    await expect(sent).rejects.toBeInstanceOf(Error);
+    expect(await refusing.listMessages('quota.dot', 'main')).toEqual([]);
   });
 });
 

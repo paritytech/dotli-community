@@ -15,7 +15,8 @@ scheduled notifications.
 - The schema holds the name, version and upgrade. The page opens the database on its first read.
 - One connection is made from a `DotliIdb` port with `connect` and `keyRange`. Stores take the port as an optional
   argument, so tests pass an in-memory database. The default is `pageIdb`.
-- The stores use the shared IndexedDB helper, so a blocked upgrade or an aborted commit rejects instead of hanging.
+- The stores write through the shared IndexedDB helper, so a write resolves once it commits, and a blocked upgrade or an
+  aborted commit rejects instead of hanging.
 - A cache reporter counts every failure of a cache as one outcome metric. Expected ones (`isExpectedDbError`, such as a
   closing connection or a blocked upgrade, and a full quota) leave a breadcrumb. Others are logged and go to Sentry once
   per action.
