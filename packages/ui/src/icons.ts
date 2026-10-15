@@ -11,6 +11,7 @@ export { BanIcon } from './components/icons/BanIcon.js';
 export { BellIcon } from './components/icons/BellIcon.js';
 export { ChatIcon } from './components/icons/ChatIcon.js';
 export { CheckIcon } from './components/icons/CheckIcon.js';
+export { ChevronDownIcon } from './components/icons/ChevronDownIcon.js';
 export { ChevronLeftIcon } from './components/icons/ChevronLeftIcon.js';
 export { ChevronRightIcon } from './components/icons/ChevronRightIcon.js';
 export { ClockIcon } from './components/icons/ClockIcon.js';

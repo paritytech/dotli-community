@@ -154,15 +154,18 @@ export const ShowCollapseExpandResizesFrame: Story = {
     await step('When the first violation shows the panel, the app frame ends above it', async () => {
       violate('x', {});
       await waitFor(() => expect(panel(canvasElement)).toBeVisible());
-      await expect(canvas.getByRole('button', { name: 'Toggle panel' })).toHaveTextContent('▼');
+      // Hidden until the first violation, so the toggle is only reachable by role from here.
+      const toggle = canvas.getByRole('button', { name: 'Violation log' });
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(toggle).toHaveAttribute('aria-controls', 'sandbox-checker-log');
       await waitFor(() => frameClearsPanel(canvasElement));
       openHeight = panel(canvasElement).getBoundingClientRect().height;
     });
-    const toggle = canvas.getByRole('button', { name: 'Toggle panel' });
+    const toggle = canvas.getByRole('button', { name: 'Violation log' });
     await step('When I collapse the panel, the app frame grows down to its header', async () => {
       await userEvent.click(toggle);
       await waitFor(() => expect(panel(canvasElement)).toHaveAttribute('data-collapsed'));
-      await expect(toggle).toHaveTextContent('▲');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
       await waitFor(() => frameClearsPanel(canvasElement));
     });
     await step('When chat opens, the frame keeps clear of the panel', async () => {
@@ -179,7 +182,7 @@ export const ShowCollapseExpandResizesFrame: Story = {
     await step('When I expand it, it opens at its own height and the frame follows', async () => {
       await userEvent.click(toggle);
       await waitFor(() => expect(panel(canvasElement)).not.toHaveAttribute('data-collapsed'));
-      await expect(toggle).toHaveTextContent('▼');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       await expect(panel(canvasElement).getBoundingClientRect().height).toBe(openHeight);
       await waitFor(() => frameClearsPanel(canvasElement));
     });

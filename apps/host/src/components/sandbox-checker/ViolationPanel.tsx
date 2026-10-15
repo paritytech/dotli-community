@@ -7,6 +7,7 @@
 import { createEffect, createSignal, For, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { startDrag } from '@dotli/ui';
+import { ChevronDownIcon } from '@dotli/ui/icons';
 import { appendViolation, clampPanelHeight, violationFrom } from './violations.js';
 import s from './ViolationPanel.module.css';
 
@@ -131,7 +132,9 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
           type="button"
           class={s['toggle']}
           data-testid="sc-toggle"
-          aria-label="Toggle panel"
+          aria-label="Violation log"
+          aria-expanded={collapsed() ? 'false' : 'true'}
+          aria-controls="sandbox-checker-log"
           onClick={() => {
             if (!collapsed()) {
               setHeight(null);
@@ -139,10 +142,11 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
             setCollapsed(!collapsed());
           }}
         >
-          {collapsed() ? '▲' : '▼'}
+          <ChevronDownIcon class={s['chevron']} size={12} />
         </button>
       </div>
       <div
+        id="sandbox-checker-log"
         class={s['log']}
         data-testid="sc-log"
         // A region, not a log, so a frame-rate burst of violations is not read aloud.

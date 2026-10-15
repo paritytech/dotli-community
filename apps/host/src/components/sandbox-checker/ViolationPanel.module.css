@@ -81,6 +81,15 @@
   color: var(--text-strong);
 }
 
+.chevron {
+  display: block;
+}
+
+/* Folded, the chevron points up, to the way the panel opens. */
+.panel[data-collapsed] .chevron {
+  transform: rotate(180deg);
+}
+
 .log {
   box-sizing: border-box;
   max-height: 160px;
