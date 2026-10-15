@@ -12,6 +12,7 @@ import type { ProtocolRequestEnvelope } from '@dotli/protocol';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+import type { Ticker } from './net-bytes.js';
 import {
   HEARTBEAT_MISSED_BEATS,
   startProtocolWorker,
@@ -232,6 +233,8 @@ interface Worker {
   connect: (port?: FakePort) => FakePort;
   /** One heartbeat interval passes, if the worker has not stopped its heartbeat. */
   beat: () => void;
+  /** One byte-report interval passes, if the worker reports bytes and has not stopped. */
+  tickNetBytes: () => void;
   close: Mock<() => void>;
   closed: Promise<void>;
   /** Settles one timer turn after the worker closes, so a second close scheduled alongside the first has run too. */
@@ -248,6 +251,7 @@ async function bootWorker(
   light: FakeLightClient,
   name = 'dotli-protocol-paseo-next-v2',
   flush: () => Promise<void> = () => Promise.resolve(),
+  readNetBytes?: () => number,
 ): Promise<Worker> {
   let beat: () => void = () => undefined;
   const heartbeat: HeartbeatClock = {
@@ -257,6 +261,13 @@ async function bootWorker(
         beat = () => undefined;
       };
     },
+  };
+  let tickNetBytes: () => void = () => undefined;
+  const netBytesTicker: Ticker = onTick => {
+    tickNetBytes = onTick;
+    return () => {
+      tickNetBytes = () => undefined;
+    };
   };
   const logs: LogLine[] = [];
   bindLogSink({
@@ -290,6 +301,7 @@ async function bootWorker(
     openSpan: open,
     heartbeat,
     flush,
+    ...(readNetBytes === undefined ? {} : { netBytes: { read: readNetBytes, ticker: netBytesTicker } }),
   });
   await light.presyncDone;
   return {
@@ -301,6 +313,9 @@ async function bootWorker(
     },
     beat: () => {
       beat();
+    },
+    tickNetBytes: () => {
+      tickNetBytes();
     },
     close,
     closed: closing.promise,
@@ -1260,6 +1275,39 @@ describe('protocol SharedWorker', () => {
     // Then no beat runs after the close
     expect(worker.close).toHaveBeenCalledTimes(1);
     expect(tab.posted).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user on the shared light client, my tab hears the light client byte total for its speed readout', async () => {
+    // Given a tab on a worker whose light client has received bytes
+    let total = 1_000;
+    const worker = await bootWorker(fakeLightClient(), undefined, undefined, () => total);
+    const tab = worker.connect();
+
+    // When the next report interval passes
+    total = 4_000;
+    worker.tickNetBytes();
+
+    // Then the tab hears the cumulative total
+    expect(envelopes(tab, 'net-bytes')).toEqual([{ namespace: 'dotli:protocol', kind: 'net-bytes', received: 4_000 }]);
+  });
+
+  it("As a dotli user on the shared light client, I hear no byte reports after the worker's light client dies", async () => {
+    // Given a tab on a worker that reports bytes, which heard one report
+    const light = fakeLightClient();
+    const worker = await bootWorker(light, undefined, undefined, () => 1_000);
+    const tab = worker.connect();
+    worker.tickNetBytes();
+    const heardBefore = envelopes(tab, 'net-bytes').length;
+
+    // When the light client dies, the worker closes, and an interval passes
+    light.fatal(FATAL);
+    await worker.closedOnce;
+    tab.posted.mockClear();
+    worker.tickNetBytes();
+
+    // Then no byte report reached the tab after the close
+    expect(heardBefore).toBe(1);
+    expect(envelopes(tab, 'net-bytes')).toEqual([]);
   });
 
   it('As a dotli user on the shared light client, a busy tab that never answers a ping keeps its port', async () => {

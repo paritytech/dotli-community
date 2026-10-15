@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Counts the light client's inbound bytes at the socket constructors, since resource timing misses
-// WebSocket and WebRTC. Install before smoldot starts, or its earlier connections go uncounted.
+// WebSocket and WebRTC. It patches its own global scope, a page or a worker. Install before smoldot starts, or its
+// earlier connections go uncounted.
 
 let received = 0;
 let installed = false;
@@ -30,13 +31,13 @@ function sizeOf(data: unknown): number {
 
 /** Idempotent. Adds listeners rather than replacing `onmessage`, so smoldot's own handler stays. */
 export function installByteMeter(): void {
-  if (installed || typeof window === 'undefined') {
+  if (installed || typeof globalThis.WebSocket !== 'function') {
     return;
   }
   installed = true;
 
   // A subclass keeps the construct signature, statics and prototype that `new WebSocket()` callers need.
-  class MeteredWebSocket extends window.WebSocket {
+  class MeteredWebSocket extends globalThis.WebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
       this.addEventListener('message', (event: MessageEvent) => {
@@ -44,7 +45,7 @@ export function installByteMeter(): void {
       });
     }
   }
-  window.WebSocket = MeteredWebSocket;
+  globalThis.WebSocket = MeteredWebSocket;
 
   // webrtc-direct bootnodes carry a real share of the sync where a network publishes them.
   if (typeof RTCPeerConnection !== 'undefined') {

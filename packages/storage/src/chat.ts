@@ -118,11 +118,17 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
     return rooms.sort((a, b) => a.createdAt - b.createdAt);
   }
 
+  /** Resolves the message's `seq` once it commits, so a sent message is one that was kept. */
   async function appendMessage(message: NewChatMessage): Promise<number> {
     const db = await idb.connect();
-    const store = db.transaction(MESSAGE_STORE, 'readwrite').objectStore(MESSAGE_STORE);
-    const seq = await idbRequest(store.add(message));
-    return seq as number;
+    let seq = 0;
+    await idbTransaction(db, MESSAGE_STORE, 'readwrite', tx => {
+      const request = tx.objectStore(MESSAGE_STORE).add(message);
+      request.onsuccess = () => {
+        seq = request.result as number;
+      };
+    });
+    return seq;
   }
 
   async function latestMessageTimestamps(productId: string): Promise<Map<string, number>> {

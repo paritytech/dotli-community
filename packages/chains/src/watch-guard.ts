@@ -7,21 +7,19 @@
 
 import type { JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ConnectionStatus } from './transport-hooks.js';
+import { isRecord } from './json-shape.js';
 
 const SUBMIT_AND_WATCH = 'transactionWatch_v1_submitAndWatch';
 const UNWATCH = 'transactionWatch_v1_unwatch';
 const WATCH_EVENT = 'transactionWatch_v1_watchEvent';
-const TERMINAL_EVENTS = new Set(['finalized', 'error', 'invalid', 'dropped']);
+/** The watch events after which the node ends the watch on its own. */
+export const TERMINAL_WATCH_EVENTS: ReadonlySet<string> = new Set(['finalized', 'error', 'invalid', 'dropped']);
 
 export interface WatchGuard {
   /** The transport, with the watches it carries tracked. */
   provider: JsonRpcProvider;
   /** `disconnected` ends every tracked watch. */
   onStatus: (status: ConnectionStatus) => void;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
@@ -41,7 +39,7 @@ export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
         typeof subscription === 'string' &&
         isRecord(result) &&
         typeof result['event'] === 'string' &&
-        TERMINAL_EVENTS.has(result['event'])
+        TERMINAL_WATCH_EVENTS.has(result['event'])
       ) {
         watches.delete(subscription);
       }

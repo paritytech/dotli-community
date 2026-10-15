@@ -66,6 +66,12 @@ export const CACHE_READ_LATENCY = 'cache.read_latency';
 export const CACHE_WRITE_LATENCY = 'cache.write_latency';
 
 /**
+ * A cache's storage step that failed. Counted only on failure, tagged `outcome` (error), `reason` (the error's name),
+ * `surface` (`cid_cache, block_cache`) and `step` (`read, write, touch, delete, evict, prune, clear`).
+ */
+export const CACHE_STORAGE = 'cache.storage';
+
+/**
  * A cached copy checked against the network. Tag `outcome`: `match` (unchanged), `update` (the visitor is offered a
  * reload onto the newer version), `cleared` (evicted, and the page reloads when it showed the copy) or `error` (the
  * check failed and the entry is left as it was).

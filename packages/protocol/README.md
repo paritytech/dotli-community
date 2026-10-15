@@ -44,9 +44,13 @@ flowchart LR
 - Client: `protocolClient` (the page's client, built on first use: frame, resolution, remote chains, shared store and
   telemetry as one object), `ProtocolClient`, `ProtocolFrameConfig`, `ProtocolStatus`, `getProtocolOrigin`.
 - Remote chains: `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`.
-- Shared store: `SharedStoreStatus` and the key helpers `buildSharedAuthStorageKey`, `isSharedAuthOriginAllowed`,
-  `isValidSharedAuthKey`, `SHARED_CORE_SESSION_KEY`.
-- Wire and errors: `isProtocolEnvelope`, `ProtocolEnvelope`, `getRequestSyncTimeoutMs`, `backendOfFrameMode`,
-  `ProtocolFatalError`, `ProtocolInitFailedError`.
+- Shared store: `SharedStoreStatus`, `SharedWalletRequestMethod`, `SHARED_CORE_SESSION_KEY`, the key helpers
+  `buildSharedAuthStorageKey`, `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`, and the
+  request guards `isSharedAuthOriginAllowed`, `isSharedAuthSiteId`, `isSharedAuthRequestMethod`,
+  `isSharedModeRequestMethod`, `isSharedWalletRequestMethod`.
+- Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult`.
+- Light client telemetry: `SmoldotDbChain`, `SmoldotDbOutcome`.
+- Wire and errors: `isProtocolEnvelope`, `ProtocolEnvelope`, `ProtocolRequestEnvelope`, `ProtocolRequestMap`,
+  `getRequestSyncTimeoutMs`, `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`.
 
 There is no `testing` export.

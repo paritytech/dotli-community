@@ -71,19 +71,15 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     return result.kind === 'hit' ? { cid: result.cid, manifests: result.manifests } : null;
   }
 
+  /** Resolves once the write commits. A failure, such as a full quota, is reported here. */
   async function setCachedCid(label: string, network: Network, cid: string, manifests: CachedManifests): Promise<void> {
     const stop = m.timer(S.CACHE_WRITE_LATENCY);
+    const entry: CidEntry = { label, network, cid, manifests, timestamp: Date.now() };
     try {
       const db = await idb.connect();
-      const tx = db.transaction(STORE, 'readwrite');
-      const entry: CidEntry = {
-        label,
-        network,
-        cid,
-        manifests,
-        timestamp: Date.now(),
-      };
-      tx.objectStore(STORE).put(entry);
+      await idbTransaction(db, STORE, 'readwrite', tx => {
+        tx.objectStore(STORE).put(entry);
+      });
       stop();
     } catch (err) {
       stop();
@@ -111,13 +107,17 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     }
   }
 
-  /** Best-effort, failures are only logged. */
+  /**
+   * Resolves once the delete commits, so a reload right after cannot bring the label back. A failure is reported here,
+   * and the label keeps its old CID.
+   */
   async function evictCachedCid(label: string): Promise<void> {
     const stop = m.timer(S.CACHE_WRITE_LATENCY);
     try {
       const db = await idb.connect();
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).delete(label);
+      await idbTransaction(db, STORE, 'readwrite', tx => {
+        tx.objectStore(STORE).delete(label);
+      });
       stop();
     } catch (err) {
       stop();

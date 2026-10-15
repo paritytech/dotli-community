@@ -15,6 +15,7 @@ import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js
 import { startLightClientService } from './light-client-service.js';
 import { chainDetailEnvelope, chainSyncEnvelope } from './envelopes.js';
 import { errorResponse } from './error-response.js';
+import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import type {
   SWDisconnect,
@@ -75,6 +76,8 @@ export interface ProtocolWorkerDeps {
   openSpan?: typeof m.open;
   /** Defaults to a `HEARTBEAT_INTERVAL_MS` interval. */
   heartbeat?: HeartbeatClock;
+  /** The light client's inbound byte total, which every tab hears for its speed readout. Unset, nothing is reported. */
+  netBytes?: { read: () => number; ticker?: Ticker };
   /** Sends buffered telemetry before the worker closes. Never rejects. */
   flush: () => Promise<void>;
 }
@@ -188,6 +191,12 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     networkInitFailure === null ? { phase: 'syncing' } : { phase: 'failed', message: networkInitFailure, told: false },
   );
   const stopHeartbeat = (deps.heartbeat ?? intervalClock(HEARTBEAT_INTERVAL_MS)).start(beat);
+  // Only this worker can meter the light client every tab shares, so every tab hears its total.
+  const netBytes = deps.netBytes;
+  const stopNetBytes =
+    netBytes === undefined
+      ? (): void => undefined
+      : reportNetBytes(netBytes.read, broadcastToPorts, netBytes.ticker ?? intervalTicker(NET_BYTES_INTERVAL_MS));
 
   /** Lets go of a port its message cannot reach, so one bad port never stops the worker telling the others. */
   function deliver(port: MessagePort, message: SWOutbound, tags: Record<string, string>): boolean {
@@ -275,6 +284,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       const closeNow = (): void => {
         swEvent('Worker closing', { ports: sessions.size });
         stopHeartbeat();
+        stopNetBytes();
         scope.close();
       };
       // A flush that fails still closes, after it is reported.
@@ -490,7 +500,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       const service = startLightClientService({ lightClient, resolver, services: getActiveFixedServicesConfig() });
       const { dotns } = service;
       engine = createEngine({
-        broker: service.broker,
+        pool: service.pool,
         isChainSupported: lightClient.isChainSupported,
         resolver: dotns,
         log: swEvent,

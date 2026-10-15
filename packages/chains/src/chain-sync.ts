@@ -7,7 +7,7 @@
 import type { ChainLifecycle } from '@parity/truapi-provider';
 import { m, reportListener } from '@dotli/metrics';
 import { createListenerSet, log } from '@dotli/shared';
-import { chainRoleForGenesis, type ChainRole } from '@dotli/config';
+import { chainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
 export const CHAIN_SYNC_KINDS = [

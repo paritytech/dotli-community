@@ -7,6 +7,7 @@
 
 import { log } from '@dotli/shared';
 import { decodeHeaderNumber } from './header-number.js';
+import { isRecord, stringsOf } from './json-shape.js';
 
 /** A broker session as the follow uses it. */
 export interface FollowSession {
@@ -24,14 +25,6 @@ export interface WatchFollowOptions {
   onBestBlock: (blockNumber: number) => void;
   /** Whether a follow the chain stopped is started again. False once the chain closed. */
   live: () => boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function stringsOf(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 export function openWatchFollow(options: WatchFollowOptions): { disconnect: () => void } {

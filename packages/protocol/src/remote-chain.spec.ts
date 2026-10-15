@@ -53,6 +53,66 @@ describe('createRemoteChains', () => {
     return connects.map(connect => (connect.payload as { connectionId: string }).connectionId);
   }
 
+  it('As a dotli integrator, I disconnect a connection and a chain message still on its way is dropped without a warning', async () => {
+    // Given a connection the frame accepted, then closed
+    const warnings: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'warn') {
+            warnings.push(message);
+          }
+        },
+      }),
+    );
+    const received: JsonRpcMessage[] = [];
+    const connection = people(message => received.push(message));
+    await settle();
+    const [connectionId] = acceptConnects();
+    await settle();
+    connection.disconnect();
+
+    // When a message for it still arrives
+    fake.send({
+      namespace: 'dotli:protocol',
+      kind: 'chain-message',
+      connectionId: connectionId ?? '',
+      message: JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }),
+    });
+
+    // Then
+    expect(received).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('As a dotli integrator, I receive a malformed chain message and it is reported as a failure while the consumer hears nothing', async () => {
+    // Given a live connection and a recorder of captured exceptions and logged errors
+    const errors: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'error') {
+            errors.push(message);
+          }
+        },
+      }),
+    );
+    const captures = recordCaptures({ onFinished: onTestFinished });
+    const received: JsonRpcMessage[] = [];
+    people(message => received.push(message));
+    await settle();
+    const [connectionId] = acceptConnects();
+    await settle();
+
+    // When the frame sends a message that is not JSON
+    fake.send({ namespace: 'dotli:protocol', kind: 'chain-message', connectionId: connectionId ?? '', message: '{' });
+
+    // Then
+    expect(received).toEqual([]);
+    expect(captures).toEqual([{ flow: 'protocol', step: 'chain_message_parse', tags: undefined }]);
+    expect(errors).toEqual([expect.stringMatching(/chain-message JSON parse failed/) as string]);
+  });
+
   it('As a product, I connect while the frame is down, the connection waits for the boot it asked for, and halts as a dead frame if that boot fails', async () => {
     // Given
     fake.lose(new Error('Fatal: boom'));

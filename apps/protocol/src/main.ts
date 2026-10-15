@@ -15,22 +15,6 @@ import {
 import { chainBytesReceived, installByteMeter, loadProvider } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
-// Before anything opens a socket. Smoldot traffic is invisible to resource timing, so the speed readout needs this.
-installByteMeter();
-
-// No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
-window.addEventListener('vite:preloadError', event => {
-  const evt = event as unknown as { payload?: unknown };
-  log.error('[dot.li protocol] Asset failed to load', evt.payload);
-  // The browser's message names the chunk. Only Safari omits it.
-  const msg = evt.payload === undefined ? 'no detail from the loader' : serializeError(evt.payload);
-  postToParent({
-    namespace: 'dotli:protocol',
-    kind: 'fatal',
-    message: `Protocol iframe asset failed to load: ${msg}`,
-  });
-});
-
 import { deleteIdb, log, serializeError } from '@dotli/shared';
 import {
   TIMEOUTS,
@@ -59,6 +43,24 @@ import { handleLocalWalletRequest } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
 import { createFrameRouter } from './frame-router.js';
 import { createRefusalReporter } from './refusal-report.js';
+import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes } from './net-bytes.js';
+
+// Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
+// invisible to resource timing, so the speed readout needs this.
+installByteMeter();
+
+// No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
+window.addEventListener('vite:preloadError', event => {
+  const evt = event as unknown as { payload?: unknown };
+  log.error('[dot.li protocol] Asset failed to load', evt.payload);
+  // The browser's message names the chunk. Only Safari omits it.
+  const msg = evt.payload === undefined ? 'no detail from the loader' : serializeError(evt.payload);
+  postToParent({
+    namespace: 'dotli:protocol',
+    kind: 'fatal',
+    message: `Protocol iframe asset failed to load: ${msg}`,
+  });
+});
 
 initSentry('protocol');
 installGlobalErrorHandlers('protocol');
@@ -292,21 +294,13 @@ async function initDirectMode(): Promise<void> {
     postToParent(chainDetailEnvelope(detail));
   });
 
-  // Cumulative totals, so the host owns the averaging and a dropped message only widens one window.
   if (window.parent !== window) {
-    const postBytes = (): void => {
-      postToParent({ namespace: 'dotli:protocol', kind: 'net-bytes', received: chainBytesReceived() });
-    };
-    // A baseline now, since a rate needs two readings.
-    postBytes();
-    const reportBytes = setInterval(postBytes, 500);
-    window.addEventListener('pagehide', () => {
-      clearInterval(reportBytes);
-    });
+    const stopNetBytes = reportNetBytes(chainBytesReceived, postToParent, intervalTicker(NET_BYTES_INTERVAL_MS));
+    window.addEventListener('pagehide', stopNetBytes);
   }
 
   const engine = createEngine({
-    broker: service.broker,
+    pool: service.pool,
     isChainSupported: lightClient.isChainSupported,
     onWarmup: () => {
       // Legacy-account auth reads People, which would race a cold warp sync. Resolution does not need it.

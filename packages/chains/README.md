@@ -31,14 +31,21 @@ flowchart LR
 - The chain pool holds one connection per chain in a JS context, over whichever transport it is given. Each lease is a
   broker session. An entry closes after its last lease is released, and at once when its transport halts. A watcher sees
   each held chain's activity and best block.
-- The broker multiplexes JSON-RPC sessions over one connection. The watch guard ends transaction watches that a
-  disconnect drops, so a replay never resubmits them.
+- The broker multiplexes JSON-RPC sessions over one connection. Each request it sends upstream with an id has one owner,
+  which gets the answer: a session, a shared follow, a release the broker sent itself, or a session that left, whose
+  answered subscription is released at once. Events the node still sends for a subscription the broker is releasing are
+  dropped quietly. A follow the node refuses is answered to every session waiting on it, and the next follow asks
+  afresh. The watch guard ends transaction watches that a disconnect drops, so a replay never resubmits them.
+- Identical follows share one upstream follow. Its snapshot keeps the newest finalized block, every unfinalized block
+  above it, forks included, and the best block, so a session that joins late is replayed from it. A block is unpinned
+  upstream only once no session and no snapshot holds it.
 - A request a halted chain leaves unanswered gets a marked error, and a typed error says whether the chain or the whole
   frame stopped. The halt module imports nothing, so an eager client takes it without the broker.
-- The byte meter wraps the socket constructors, since resource timing misses WebSocket and WebRTC. It is installed
-  before any socket opens.
-- The light client is heavy, so it loads through a lazy loader. The entry is pure re-exports. Only the light client may
-  read a fixed services config, because it also runs in a worker that the runtime network config never reaches.
+- The byte meter wraps the socket constructors of its own global scope, a page or a worker, since resource timing misses
+  WebSocket and WebRTC. It is installed before any socket opens.
+- The light client is heavy, so it loads through a lazy loader. The entry is pure re-exports. The light client and its
+  sync reporting read only the fixed services config, because they also run in a worker that the runtime network config
+  never reaches. Lint enforces it for both.
 
 ## Public API
 
