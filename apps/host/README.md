@@ -50,8 +50,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
 - The bridge, and what a visit may never open, load on demand through a lazy loader, each in its own chunk: the bridge,
   the panel bodies (chat, account, chains, permissions, settings), the violation panel, the debug panel and its wire
-  describer, the local wallet and workbox. The small pieces of a product load (branding, the cache check, the failure
-  screen, the verification tooltip) are plain imports.
+  describer, the local wallet and workbox, the host runtime and its worker, the chain client and the QR encoder. The
+  small pieces of a product load (branding, the cache check, the failure screen, the verification tooltip) are plain
+  imports.
 - The error page and the no-content page replace the page's content at once, through the shared screen owner. A
   full-page screen ends the loading screen and the landing islands, and the product frame takes the screen down when it
   shows.

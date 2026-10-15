@@ -461,7 +461,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
         iframe: host.iframe,
         chat: chatCapable,
         afterPermissionResponse: responses.afterResponse,
-        // The frame's lifetime runs on, so a device grant the product's prompt answered still rebuilds it.
+        // The frame's lifetime runs on, so a device grant still waiting for its answer when the frame gives up still
+        // rebuilds it.
         releaseCore: cleanupCoreSide,
         dispose() {
           lifetime.abort();
