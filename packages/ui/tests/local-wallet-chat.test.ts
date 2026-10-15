@@ -90,6 +90,35 @@ describe('native Chat beside the local wallet core', () => {
     chat.dispose();
   });
 
+  it('As a local wallet, Chat access I granted one Chat app is visible to every product page, and only to this wallet', async () => {
+    // Given
+    const chatAccess = {
+      tag: 'PermissionAuthorization',
+      value: { productId: 'echat-new.paseo', request: { tag: 'ChatAuthority' } },
+    } satisfies CoreStorageKey;
+    const otherGrant = {
+      tag: 'PermissionAuthorization',
+      value: { productId: 'echat-new.paseo', request: { tag: 'IdentityDisclosure' } },
+    } satisfies CoreStorageKey;
+    const chatPage = createLocalWalletChat(WALLET, () => true);
+    const chatPageBase = memoryStorage();
+
+    // When
+    await chatPage.coreStorage(chatPageBase).writeCoreStorage(chatAccess, new Uint8Array([2]));
+    await chatPage.coreStorage(chatPageBase).writeCoreStorage(otherGrant, new Uint8Array([2]));
+    chatPage.dispose();
+    const otherPage = createLocalWalletChat(WALLET, () => true);
+    const otherWallet = createLocalWalletChat({ ...WALLET, entropy: new Uint8Array(16).fill(2) }, () => true);
+
+    // Then
+    expect(chatPageBase.values.has('PermissionAuthorization')).toBe(true);
+    expect(custody.records.size).toBe(1);
+    expect(await otherPage.coreStorage(memoryStorage()).readCoreStorage(chatAccess)).toEqual(new Uint8Array([2]));
+    expect(await otherWallet.coreStorage(memoryStorage()).readCoreStorage(chatAccess)).toBeUndefined();
+    otherPage.dispose();
+    otherWallet.dispose();
+  });
+
   it('As a core disposed while custody is still being acquired, I release the late lease and refuse new Chat writes', async () => {
     // Given
     const { promise, resolve } = Promise.withResolvers<string>();
