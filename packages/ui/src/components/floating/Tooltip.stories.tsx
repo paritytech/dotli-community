@@ -30,6 +30,28 @@ function Harness() {
   );
 }
 
+function SwapHarness() {
+  const [first, setFirst] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  const [second, setSecond] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  const [onSecond, setOnSecond] = createSignal(false);
+  return (
+    <div style={{ display: 'flex', gap: '8px' }}>
+      <button ref={setFirst} type="button" data-testid="tip-first">
+        First
+      </button>
+      <button ref={setSecond} type="button" data-testid="tip-second">
+        Second
+      </button>
+      <button type="button" data-testid="tip-swap" onClick={() => setOnSecond(true)}>
+        Swap
+      </button>
+      <Tooltip id="swap-tip" trigger={onSecond() ? second() : first()}>
+        <p style={{ margin: 0, padding: '12px' }}>Loaded through a light client.</p>
+      </Tooltip>
+    </div>
+  );
+}
+
 const meta = {
   title: 'Floating/Tooltip',
   component: Harness,
@@ -158,6 +180,28 @@ export const TapToggles: Story = {
     });
     await step('Then the second tap hid it', async () => {
       await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
+    });
+  },
+};
+
+/** As a screen reader user, I meet a tooltip moved to another trigger, and the old trigger refers to nothing. */
+export const MovedTriggerKeepsNoAria: Story = {
+  render: () => <SwapHarness />,
+  play: async ({ step }) => {
+    const first = () => body.getByTestId('tip-first');
+    const second = () => body.getByTestId('tip-second');
+    await step('Given the tooltip on the first trigger', async () => {
+      await waitFor(() => expect(first()).toHaveAttribute('aria-describedby', 'swap-tip'));
+      await expect(first()).toHaveAttribute('aria-expanded', 'false');
+    });
+    await step('When it moves to the second trigger', async () => {
+      await (await trustedInput()).click(body.getByTestId('tip-swap'));
+    });
+    await step('Then only the second trigger refers to it', async () => {
+      await waitFor(() => expect(second()).toHaveAttribute('aria-describedby', 'swap-tip'));
+      await expect(second()).toHaveAttribute('aria-expanded', 'false');
+      await expect(first()).not.toHaveAttribute('aria-describedby');
+      await expect(first()).not.toHaveAttribute('aria-expanded');
     });
   },
 };

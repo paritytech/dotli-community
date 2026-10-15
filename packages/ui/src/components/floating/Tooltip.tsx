@@ -126,6 +126,9 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         el.removeEventListener('blur', hide);
         el.removeEventListener('click', onClick);
         el.style.removeProperty('anchor-name');
+        // The next trigger gets them from the effects that run for it.
+        el.removeAttribute('aria-describedby');
+        el.removeAttribute('aria-expanded');
       };
     },
   );
