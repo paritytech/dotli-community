@@ -88,4 +88,122 @@ describe('createFollowSnapshot', () => {
     expect(onFinalized).toEqual([]);
     expect(snapshot.release('late', null)).toEqual(['0xf0']);
   });
+
+  it('As a session joining a follow on a fork, I am replayed every unfinalized block, parents first', () => {
+    // Given two branches above the finalized block
+    const snapshot = createFollowSnapshot();
+    snapshot.record({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    snapshot.record({ event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' });
+    snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    snapshot.record({ event: 'newBlock', blockHash: '0xa2', parentBlockHash: '0xa1' });
+    snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xa2' });
+
+    // When
+    const replay = snapshot.replayFor('late');
+
+    // Then
+    expect(replay).toEqual([
+      { event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: null },
+      { event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' },
+      { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' },
+      { event: 'newBlock', blockHash: '0xa2', parentBlockHash: '0xa1' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xa2' },
+    ]);
+  });
+
+  it('As a session joining before any best block was reported, I am still replayed the unfinalized blocks', () => {
+    // Given
+    const snapshot = createFollowSnapshot();
+    snapshot.record({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+
+    // When
+    const replay = snapshot.replayFor('late');
+
+    // Then
+    expect(replay).toEqual([
+      { event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: null },
+      { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' },
+    ]);
+  });
+
+  it('As a session joining after a fork was pruned, I am replayed only the blocks that survived', () => {
+    // Given a fork that finalization pruned
+    const snapshot = createFollowSnapshot();
+    snapshot.record({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    snapshot.record({ event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' });
+    snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    snapshot.record({ event: 'newBlock', blockHash: '0xa2', parentBlockHash: '0xa1' });
+    snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xa2' });
+    snapshot.record({ event: 'finalized', finalizedBlockHashes: ['0xa1'], prunedBlockHashes: ['0xb1'] });
+
+    // When
+    const replay = snapshot.replayFor('late');
+
+    // Then
+    expect(replay).toEqual([
+      { event: 'initialized', finalizedBlockHashes: ['0xa1'], finalizedBlockRuntime: null },
+      { event: 'newBlock', blockHash: '0xa2', parentBlockHash: '0xa1' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xa2' },
+    ]);
+  });
+
+  it('As a session joining a follow whose node announced blocks before initialized, I am replayed nothing and hold no pins', () => {
+    // Given a node that broke the protocol and announced blocks with no finalized base
+    const snapshot = createFollowSnapshot();
+    snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xb1' });
+
+    // When
+    const replay = snapshot.replayFor('late');
+
+    // Then there is no base to replay from, and nothing pinned for the session to release
+    expect(replay).toEqual([]);
+    expect(snapshot.release('late', null)).toEqual([]);
+  });
+
+  it('As the broker, I hear a pruned block as orphaned only when no session pins it', () => {
+    // Given a session told of the finalized block and one of two forks
+    const snapshot = createFollowSnapshot();
+    const initialized = { event: 'initialized', finalizedBlockHashes: ['0xf0'] };
+    const pinnedFork = { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' };
+    snapshot.record(initialized);
+    snapshot.pinEvent('a', initialized);
+    snapshot.record({ event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' });
+    snapshot.record(pinnedFork);
+    snapshot.pinEvent('a', pinnedFork);
+    snapshot.record({ event: 'newBlock', blockHash: '0xc1', parentBlockHash: '0xf0' });
+
+    // When finalization prunes both forks
+    const orphaned = snapshot.record({
+      event: 'finalized',
+      finalizedBlockHashes: ['0xa1'],
+      prunedBlockHashes: ['0xb1', '0xc1'],
+    });
+
+    // Then only the fork no session pins is orphaned
+    expect(orphaned).toEqual(['0xc1']);
+  });
+
+  it('As a session replayed a fork, I free my pin on it when I release it', () => {
+    // Given a session replayed a side fork that finalization then pruned
+    const snapshot = createFollowSnapshot();
+    snapshot.record({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    snapshot.record({ event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' });
+    snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xa1' });
+    snapshot.replayFor('late');
+    const onFinalized = snapshot.record({
+      event: 'finalized',
+      finalizedBlockHashes: ['0xa1'],
+      prunedBlockHashes: ['0xb1'],
+    });
+
+    // When the session releases the fork
+    const released = snapshot.release('late', ['0xb1']);
+
+    // Then the fork stayed pinned for the session until then, and its release orphans it
+    expect(onFinalized).toEqual([]);
+    expect(released).toEqual(['0xb1']);
+  });
 });

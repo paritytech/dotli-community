@@ -136,24 +136,8 @@ export function createFollowSnapshot(): FollowSnapshot {
     const events: Record<string, unknown>[] = [
       { event: 'initialized', finalizedBlockHashes: [finalizedBlockHash], finalizedBlockRuntime },
     ];
-    // The path from the best block down to the newest finalized one.
-    const path: Record<string, unknown>[] = [];
-    const seen = new Set<string>();
-    let cursor = bestBlockHash;
-    while (cursor !== null && !seen.has(cursor)) {
-      seen.add(cursor);
-      const block = blocks.get(cursor);
-      if (block === undefined) {
-        break;
-      }
-      path.push(block);
-      const parent = typeof block['parentBlockHash'] === 'string' ? block['parentBlockHash'] : null;
-      if (parent === null || parent === finalizedBlockHash) {
-        break;
-      }
-      cursor = parent;
-    }
-    for (const block of path.reverse()) {
+    // The node announces a parent before its children, so announcement order is parents first, forks included.
+    for (const block of blocks.values()) {
       pinEvent(holder, block);
       events.push({ ...block });
     }
