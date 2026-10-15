@@ -18,7 +18,7 @@ and no data source.
   and the reload offer for a page chunk that fails to load.
 - The generic icons, those with no domain.
 - Design tokens, global styles and the logo.
-- Not owned: domain views. Failures it recovers from go to the metrics package's capture, which tests rebind.
+- Not owned: domain views. Failures it recovers from go to the shared error capture, which tests rebind.
 
 ## Design
 

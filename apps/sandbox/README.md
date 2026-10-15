@@ -10,7 +10,7 @@ resolution. See the root [README](../../README.md) for the product as a whole.
 - Ask for a password when content is encrypted, and show a retry screen when a load fails.
 - In a checker build, inject a script first in the product's page that reports each browser API the product reaches
   around the host.
-- Not name resolution or the chain connection: the host and the protocol app do that. Block requests go to the host,
+- Not name resolution or the chain connection: the host and the protocol iframe do that. Block requests go to the host,
   which proxies them to the protocol iframe.
 
 ## Design

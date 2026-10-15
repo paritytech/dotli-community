@@ -24,9 +24,9 @@ Build plugins and options shared by the host, sandbox and protocol builds, plus 
 
 ## Entry points
 
-Imported by the apps' Vite and Astro configs. Beyond them, the test and Storybook configs take the test-defines entry,
-the Storybook config takes the inline-script entry, the host's page head takes the social meta entry, the dev scripts
-take the mode sync, runtime network config and serving entries, and the host runtime takes the signing worker entry.
+Imported by the apps' Vite and Astro configs. Beyond them, test and Storybook configs take the test-defines and
+inline-script entries, a page head takes the social meta entry, the dev scripts take the mode sync, runtime network
+config and serving entries, and an app runtime takes the signing worker entry.
 
 - `./app`: `dotliApp`, which returns each app's Vite config: the shared preset (env directory, wasm, the runtime network
   config, the build info, the dev isolation headers, CSS modules, the worker and build options, and the compile-time

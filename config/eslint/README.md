@@ -6,7 +6,7 @@ Shared ESLint flat configs and the import-layer helpers that enforce the package
 ## Responsibility
 
 - Hold the lint rules every package shares: type-aware strict TypeScript, Solid, Astro and the repo's code-style bans.
-- Hold the helpers that turn the layering in `AGENTS.md` into import bans a package's `eslint.config.js` applies.
+- Hold the helpers that turn the repo's package layering into import bans a package's lint config applies.
 - Not a package's own allow-list: each package lists what it may import in its own lint config.
 
 ## Design
@@ -27,11 +27,11 @@ Shared ESLint flat configs and the import-layer helpers that enforce the package
 
 ## Entry points
 
-| Entry                  | Use                                                          |
-| ---------------------- | ------------------------------------------------------------ |
-| `@config/eslint/base`  | `config`: the base config.                                   |
-| `@config/eslint/vite`  | `config` and the helpers below.                              |
-| `@config/eslint/astro` | `config`: the vite config plus Astro rules, for `apps/host`. |
+| Entry                  | Use                                                         |
+| ---------------------- | ----------------------------------------------------------- |
+| `@config/eslint/base`  | `config`: the base config.                                  |
+| `@config/eslint/vite`  | `config` and the helpers below.                             |
+| `@config/eslint/astro` | `config`: the vite config plus Astro rules, for Astro apps. |
 
 Helpers from `@config/eslint/vite`:
 

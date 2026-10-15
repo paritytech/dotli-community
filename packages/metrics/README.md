@@ -9,7 +9,7 @@ compile time.
 - `captureException` and `reportExpected`, which forward to one bound sink and do not import the SDK.
 - Sentry setup and global error handlers, in a module apart from the rest.
 - A recording Sentry for tests.
-- Not logging. This package binds a sink to the shared `log`.
+- Not logging. This package binds a sink to the logger.
 
 ## Design
 

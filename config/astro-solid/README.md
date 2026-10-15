@@ -7,7 +7,7 @@ the client.
 
 - The Astro renderer (client and server entrypoints) and the integration that adds it.
 - Handing the client build's asset manifest to server renders, so `lazy()` boundaries inside islands resolve.
-- Not owned: the components and islands themselves, which live in the apps and UI packages.
+- Not owned: the components and islands themselves, which live where they are used.
 
 ## Design
 
@@ -30,4 +30,4 @@ the client.
 | `@config/astro-solid/client.js` | The client entrypoint Astro loads for islands.                            |
 | `@config/astro-solid/server.js` | The server entrypoint Astro loads for rendering.                          |
 
-The host app adds the integration to its Astro config.
+An Astro app adds the integration to its Astro config.

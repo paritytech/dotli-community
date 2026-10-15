@@ -1,3 +1,8 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Undoes the local truapi link and reinstalls the published packages.
+
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
