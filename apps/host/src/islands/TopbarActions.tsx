@@ -4,7 +4,7 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { LayerTracker, ModalFocusFallback } from '@dotli/ui';
+import { LayerTracker, ModalFocusFallback, RootBoundary } from '@dotli/ui';
 import { productFrameFocus } from '../product-frame-layout.js';
 import { TopbarActions as Actions } from '../components/topbar/TopbarActions.js';
 import { registerTopbarSurface } from '../state/topbar-surfaces.js';
@@ -32,15 +32,17 @@ function TopbarProviders(props: { children: JSX.Element }): JSX.Element {
  */
 export function TopbarActions(): JSX.Element {
   return (
-    <TopbarProviders>
-      <Actions
-        room={topbarActionRoom}
-        morph={topbarMorph}
-        network={<NetworkButton />}
-        permissions={<PermissionsButton />}
-        settings={<SettingsButton />}
-        account={<AccountButton />}
-      />
-    </TopbarProviders>
+    <RootBoundary root="island:TopbarActions">
+      <TopbarProviders>
+        <Actions
+          room={topbarActionRoom}
+          morph={topbarMorph}
+          network={<NetworkButton />}
+          permissions={<PermissionsButton />}
+          settings={<SettingsButton />}
+          account={<AccountButton />}
+        />
+      </TopbarProviders>
+    </RootBoundary>
   );
 }
