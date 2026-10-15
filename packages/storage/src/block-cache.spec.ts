@@ -220,17 +220,20 @@ describe('block cache', () => {
   });
 
   it('As a user, a block the relay deletes right after reading it leaves nothing that crowds out the blocks I keep', async () => {
-    // Given two 3-byte blocks, the first read and then deleted as corrupt
+    // Given two 3-byte blocks, the older one fetched twice at once
     const clock = manualTimers(1_000);
     const timed = createBlockCache(idb, clock);
     await timed.putCachedBlock('bafyBad', new Uint8Array(3));
     await clock.advance(1_000);
     await timed.putCachedBlock('bafyGood', new Uint8Array(3));
     await clock.advance(1_000);
-    await timed.getCachedBlock('bafyBad');
-    await timed.deleteCachedBlock('bafyBad');
+    const fetches = [timed.getCachedBlock('bafyBad'), timed.getCachedBlock('bafyBad')];
 
-    // When the cache is pruned to room for one block
+    // When the relay deletes it as corrupt once the first fetch returns, and the cache is pruned to room for one block
+    // The first fetch's mark is still being written then, so the other fetch's mark goes out after the delete.
+    await Promise.race(fetches);
+    await timed.deleteCachedBlock('bafyBad');
+    await Promise.all(fetches);
     const evicted = await timed.pruneBlockCache(3);
 
     // Then the block I keep stays
