@@ -51,18 +51,6 @@ If neither is set, `make deploy` / `make provision` fails fast with a message te
 deploys do not use these: the GitHub Actions path reads `DEPLOY_HOST` / `DEPLOY_USER` from repository secrets via the
 `ci-deploy` target.
 
-CI trusts only the host key in the `DEPLOY_KNOWN_HOSTS` secret (masked in logs, so the host stays as private as
-`DEPLOY_HOST`), set for the repository, or per GitHub environment when environments deploy to different boxes. Without
-it every deploy, nginx deploy and certificate renewal stops at the trust step. Its host field must be exactly the
-`DEPLOY_HOST` secret. Take the line from a machine you trust and check its fingerprint against the box's own key before
-saving it:
-
-```sh
-ssh-keyscan -t ed25519 <DEPLOY_HOST>                             # the line to save
-ssh-keyscan -t ed25519 <DEPLOY_HOST> | ssh-keygen -lf -          # its fingerprint
-ssh <user>@<DEPLOY_HOST> 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'  # must match
-```
-
 ## What `make provision` does
 
 `Makefile:81` chains these targets in order:
