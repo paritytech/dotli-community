@@ -7,5 +7,4 @@ export { CONTENT_ERRORS } from './errors.js';
 export { fetchArchive, readArchiveFiles, type FetchResult } from './fetch.js';
 export { fetchFromIpfs } from './ipfs.js';
 export { hashToCid } from './preimage.js';
-export { assertBlockMatchesCid } from './verify.js';
 export { loadVerify } from './lazy.js';

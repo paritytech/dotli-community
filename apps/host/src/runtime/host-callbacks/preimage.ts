@@ -5,7 +5,7 @@
 
 import type { PreimageHost } from '@parity/truapi-host';
 import { bitswapGet } from '@dotli/bitswap';
-import { hashToCid, fetchFromIpfs, assertBlockMatchesCid } from '@dotli/content';
+import { hashToCid, fetchFromIpfs, loadVerify } from '@dotli/content';
 import { getBackend, type Backend } from '@dotli/config';
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, serializeError, log, noop, toHex } from '@dotli/shared';
@@ -112,6 +112,8 @@ function createPreimageLookupSubscribe(label: string, deps: PreimageDeps): Requi
         if (block.data.length === 0) {
           throw new PreimageMiss(`Preimage not found via ${block.source}`);
         }
+        // On first use, so the bridge chunk carries no hashing code. A failed load is retried with the poll.
+        const { assertBlockMatchesCid } = await loadVerify();
         try {
           assertBlockMatchesCid(cid, block.data);
         } catch (err) {

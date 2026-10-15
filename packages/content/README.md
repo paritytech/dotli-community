@@ -44,6 +44,6 @@ flowchart LR
 
 - Fetch and archive: `fetchArchive`, `readArchiveFiles`, `fetchFromIpfs`, `packArchive`, `parseIpfsResponse`,
   `ArchiveFiles`, `FetchResult`.
-- Verification: `assertBlockMatchesCid`, `CONTENT_ERRORS`.
+- Verification: `CONTENT_ERRORS`.
 - Encryption and CIDs: `isEncrypted`, `decryptContent`, `hashToCid`.
-- Lazy loader: `loadVerify` loads the verify module on first use.
+- Lazy loader: `loadVerify` loads the verify module on first use, with `assertBlockMatchesCid` and `blockMatchesCid`.
