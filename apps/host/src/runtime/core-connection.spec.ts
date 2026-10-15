@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi, type Mock } from '
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { bindCaptureSink } from '@dotli/metrics';
 import { enableDotliDebugBuffering, onDotliDebugEvent, type DotliDebugBusEvent } from '@dotli/truapi-debug';
-import { createWireDescriber, preloadWireDescriber, wrapCoreProviderForDebug } from './core-connection.js';
+import { createWireDescriber, preloadWireDescriber, ownCoreConnection } from './core-connection.js';
 import type { CoreConnection } from './page-core.js';
 import type * as WireDescribe from './debug-wire-describe.js';
 import { loginResponseFrame, makeProvider, type FakeCoreProvider } from './page-core.fake.js';
@@ -41,7 +41,7 @@ describe('core connection debug tap', () => {
     const events = openDebugPanel();
     await preloadWireDescriber();
     const core = makeProvider();
-    const wrapped = wrapCoreProviderForDebug(connectionOver(core).connection);
+    const wrapped = ownCoreConnection(connectionOver(core).connection);
     const toProduct: Uint8Array[] = [];
     wrapped.subscribe(message => {
       toProduct.push(message);
@@ -79,7 +79,7 @@ describe('core connection debug tap', () => {
     await preloadWireDescriber();
     const core = makeProvider();
     const { connection, close } = connectionOver(core);
-    const wrapped = wrapCoreProviderForDebug(connection);
+    const wrapped = ownCoreConnection(connection);
 
     // When it is disposed, then frames still arrive from either side
     wrapped.dispose();
@@ -98,7 +98,7 @@ describe('core connection debug tap', () => {
     const events = openDebugPanel();
     await preloadWireDescriber();
     const core = makeProvider();
-    const wrapped = wrapCoreProviderForDebug(connectionOver(core).connection);
+    const wrapped = ownCoreConnection(connectionOver(core).connection);
 
     // When two frames cross back to back
     wrapped.postMessage(loginResponseFrame('first', { success: true, value: 'Success' }));
@@ -155,7 +155,7 @@ describe('wire describer', () => {
     // Given a first listener that throws and a second that collects
     onTestFinished(bindCaptureSink({ exception: vi.fn(), expected: vi.fn() }));
     const core = makeProvider();
-    const wrapped = wrapCoreProviderForDebug(connectionOver(core).connection);
+    const wrapped = ownCoreConnection(connectionOver(core).connection);
     const heard: Uint8Array[] = [];
     wrapped.subscribe(() => {
       throw new Error('first listener broke');

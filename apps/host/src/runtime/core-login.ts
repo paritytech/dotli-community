@@ -20,7 +20,7 @@ import {
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { captureException, m, recordExpected, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log, type ReadableStore } from '@dotli/shared';
-import { wrapCoreProviderForDebug } from './core-connection.js';
+import { ownCoreConnection } from './core-connection.js';
 import type { DotliAuthState } from './session/auth-state.js';
 import type { SessionState } from './session/session-state.js';
 import { LoginRequestError } from './login-request-error.js';
@@ -152,7 +152,7 @@ export function createCoreAuthCommands(deps: CoreAuthCommandsDeps): AuthCommands
       if (ended()) {
         return false;
       }
-      const core = wrapCoreProviderForDebug(await lease.connect());
+      const core = ownCoreConnection(await lease.connect());
       try {
         if (ended()) {
           return false;

@@ -70,8 +70,11 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
   );
 }
 
-/** Disposing it closes the connection, which the page core reads as deliberate. */
-export function wrapCoreProviderForDebug(connection: CoreConnection): CoreProvider {
+/**
+ * Takes over `connection`: the provider shows every frame to the debug panel, and its dispose closes the connection,
+ * which the page core reads as deliberate.
+ */
+export function ownCoreConnection(connection: CoreConnection): CoreProvider {
   const { provider, productId } = connection;
   const listeners = createListenerSet<Uint8Array>({
     onListenerError: reportListener('wallet', 'core_connection.frame'),

@@ -13,7 +13,7 @@ import { captureException, getResolutionId, m, reportExpected, spans as S } from
 import { createAsyncTaskPool, log, randomId } from '@dotli/shared';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/chat-store.js';
-import { wrapCoreProviderForDebug } from './core-connection.js';
+import { ownCoreConnection } from './core-connection.js';
 import { ERRORS } from './errors.js';
 import { CoreRedialError, type CoreConnection, type CoreLease, type PageCore } from './page-core.js';
 import { takePendingReset } from './pending-reset.js';
@@ -414,7 +414,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       pool: args.debugFlowId,
     });
     const unsubscribeDown = lease.subscribeDown(args.onCoreDown);
-    const coreProvider = wrapCoreProviderForDebug(connection);
+    const coreProvider = ownCoreConnection(connection);
     const unregisterChat = chatCapable ? registerProductChat(connection) : noop;
     const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
     let productProvider: Provider | null = null;
