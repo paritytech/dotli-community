@@ -133,7 +133,15 @@ export function createCoreStorage({
   const coreSecretStorageKey = (): Promise<CryptoKey> =>
     secretKeyLoads.call(async () => {
       secretKey ??= await loadOrCreateCoreSecretKey(keyDb).catch((err: unknown) => {
-        log.warn('[dot.li] falling back to a session-ephemeral core-secret storage key:', err);
+        // A browser that refuses IndexedDB, as a private window may, cannot keep the key. Secrets written now will
+        // not decrypt after a reload, which is the environment's limit, not a fault.
+        reportExpected(err, {
+          flow: 'storage',
+          step: 'core_secret_key',
+          metric: S.CORE_STORAGE_SECRET,
+          reason: 'ephemeral_key',
+          message: '[dot.li] falling back to a session-ephemeral core-secret storage key:',
+        });
         return generateCoreSecretKey();
       });
       return secretKey;
@@ -182,7 +190,13 @@ export function createCoreStorage({
     } catch (err) {
       // Written under a key we no longer hold, or corrupt. Returning the raw bytes would hand
       // ciphertext to the core as key material.
-      log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
+      reportExpected(err, {
+        flow: 'storage',
+        step: 'core_secret_decrypt',
+        metric: S.CORE_STORAGE_SECRET,
+        reason: 'undecryptable',
+        message: `[dot.li] dropping undecryptable core storage ${key.tag}:`,
+      });
       local().removeItem(coreLocalStorageKey(key));
       return undefined;
     }

@@ -138,7 +138,7 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
 /** Stores `settings` on this origin and for the other subdomains, so the next boot reads them. */
 function saveSettings(settings: Settings): void {
   writeLocalSettings(settings, pageLocalStorage);
-  writeSharedSettings(sharedSettingsOf(settings));
+  void writeSharedSettings(sharedSettingsOf(settings));
 }
 
 /** This page's, which reloads it. */

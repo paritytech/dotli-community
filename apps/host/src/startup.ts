@@ -124,7 +124,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions = 
     preferLocal: isLocalhost,
     readShared: () => readSharedSettings(),
     writeShared: shared => {
-      writeSharedSettings(shared);
+      void writeSharedSettings(shared);
     },
     configureFrame: settings => {
       protocolClient().configureProtocolFrame(protocolFrameConfig(settings, protocolPendingReset));

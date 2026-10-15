@@ -45,17 +45,36 @@ describe('readSharedSettings', () => {
 });
 
 describe('writeSharedSettings', () => {
-  it('As a visitor, my backend and caches are mirrored for my other subdomains', () => {
+  it('As a visitor, my backend and caches are mirrored for my other subdomains', async () => {
     // Given
     const store = memorySharedChannel();
 
     // When
-    writeSharedSettings({ backend: 'rpc-gateway', cache: CACHE }, store);
+    await writeSharedSettings({ backend: 'rpc-gateway', cache: CACHE }, store);
 
     // Then
     expect(store.writes).toEqual([
       ['dotli:chain-backend', 'rpc-gateway'],
       ['dotli:cache-settings', CACHE],
     ]);
+  });
+
+  it('As an operator, a shared setting that cannot be written is reported and counted, and the save still settles', async () => {
+    // Given
+    const store = memorySharedChannel();
+    store.writeFails = true;
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const { counted } = bindRecordingSentry({ onFinished: onTestFinished });
+
+    // When
+    await writeSharedSettings({ backend: 'rpc-gateway', cache: null }, store);
+
+    // Then
+    expect(captures.exception).toHaveBeenCalledWith(expect.objectContaining({ message: 'shared store unreachable' }), {
+      flow: 'storage',
+      step: 'shared_mode_write',
+    });
+    expect(counted('shared_mode.write')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 });

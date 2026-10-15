@@ -623,4 +623,49 @@ describe('core storage', () => {
     // Then the write succeeded and the second listener heard it
     expect(heard).toHaveBeenCalledTimes(1);
   });
+
+  it('As an operator, a browser that cannot keep the at-rest key is recorded once, and this session still round-trips its secrets', async () => {
+    // Given a key store the browser refuses
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const storage = createCoreStorage({
+      shared,
+      local: () => local,
+      keyDb: () => {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    }).adapters();
+    const key = { tag: 'AllowanceKeys', value: { sessionId: 'session-1' } } satisfies CoreStorageKey;
+
+    // When
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+
+    // Then
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([1, 2, 3, 4]);
+    expect(captures.expected).toHaveBeenCalledTimes(1);
+    expect(captures.expected).toHaveBeenCalledWith(expect.any(DOMException), {
+      flow: 'storage',
+      step: 'core_secret_key',
+    });
+    expect(metrics.counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'ephemeral_key' }]);
+  });
+
+  it('As an operator, a secret slot that no longer decrypts is recorded and counted as it is dropped', async () => {
+    // Given an encrypted slot whose ciphertext no longer authenticates
+    const { counted, captures, coreStorage: reporting } = loadWithMetrics(shared);
+    const storage = reporting.adapters();
+    const key = { tag: 'AllowanceKeys', value: { sessionId: 'session-1' } } satisfies CoreStorageKey;
+    const storageKey = 'dotli:core:allowance-keys:session-1';
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    const stored = local.getItem(storageKey) ?? '';
+    local.setItem(storageKey, stored.slice(0, -2) + (stored.endsWith('00') ? 'ff' : '00'));
+
+    // When
+    await storage.readCoreStorage(key);
+
+    // Then
+    expect(captures.expected).toHaveBeenCalledWith(expect.anything(), { flow: 'storage', step: 'core_secret_decrypt' });
+    expect(counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'undecryptable' }]);
+  });
 });

@@ -246,3 +246,22 @@ export const LAZY_CHUNK_LOAD = 'lazy_chunk.load';
 
 /** One flush of buffered telemetry before a context closes. Counted only when the flush threw, tagged `outcome` and `reason` (the error's name). */
 export const TELEMETRY_FLUSH = 'telemetry.flush';
+
+/**
+ * The at-rest key of the core's secret slots. Tagged `outcome` (error) and `reason`: `ephemeral_key` when IndexedDB
+ * cannot keep it, so this session's secrets will not decrypt after a reload, or `undecryptable` for a slot dropped
+ * because it no longer decrypts.
+ */
+export const CORE_STORAGE_SECRET = 'core_storage.secret';
+
+/**
+ * A read of a product's storage for its subscription that failed. Tagged `outcome` (error) and `reason` (the error's
+ * name), as the product then hears only a read failure.
+ */
+export const PRODUCT_STORAGE_WATCH = 'product_storage.watch';
+
+/**
+ * One write of a mode setting shared across subdomains. Tagged `outcome` and, on error, `reason`, as a failed one leaves
+ * the other subdomains on the old setting.
+ */
+export const SHARED_MODE_WRITE = 'shared_mode.write';

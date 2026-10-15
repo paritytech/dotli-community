@@ -80,18 +80,34 @@ export async function readSharedSettings(channel: SharedChannel = getSharedChann
   }
 }
 
-/** Mirrors the settings other subdomains share. A failed write is logged, since this origin keeps its own copy. */
-export function writeSharedSettings(shared: SharedSettings, channel: SharedChannel = getSharedChannel()): void {
+/**
+ * Mirrors the settings other subdomains share, and settles once every write did. Never rejects, as this origin keeps
+ * its own copy, so a failed write is reported here.
+ */
+export async function writeSharedSettings(
+  shared: SharedSettings,
+  channel: SharedChannel = getSharedChannel(),
+): Promise<void> {
   const entries: [string, string | null][] = [
     [BACKEND_KEY, shared.backend],
     [CACHE_KEY, shared.cache],
   ];
-  for (const [key, value] of entries) {
-    if (value === null) {
-      continue;
-    }
-    void channel.write(key, value).catch((err: unknown) => {
-      log.warn('[dot.li shared-mode] Write failed for', key, err);
-    });
-  }
+  await Promise.all(
+    entries.flatMap(([key, value]) =>
+      value === null
+        ? []
+        : [
+            channel.write(key, value).then(
+              () => {
+                m.count(S.SHARED_MODE_WRITE, { outcome: 'ok' });
+              },
+              (err: unknown) => {
+                log.error(`[dot.li shared-mode] write of ${key} failed:`, err);
+                captureException(err, { flow: 'storage', step: 'shared_mode_write' });
+                m.count(S.SHARED_MODE_WRITE, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+              },
+            ),
+          ],
+    ),
+  );
 }

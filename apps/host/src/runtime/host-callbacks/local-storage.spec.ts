@@ -1,7 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { bindCaptureSink } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { memoryStorage } from '@dotli/shared/testing';
 import { yielded } from '../../testing/fixtures.js';
 import * as page from './local-storage.js';
@@ -92,5 +94,31 @@ describe('local-storage host callbacks', () => {
 
     // Then
     expect(yielded(fromOtherTab)._unsafeUnwrap()).toEqual({ value: '0x04' });
+  });
+
+  it('As a product whose storage the browser blocks, my subscription hears a read failure and the page records why', async () => {
+    // Given
+    const blocked = new DOMException('The operation is insecure.', 'SecurityError');
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    deps = {
+      storage: () => {
+        throw blocked;
+      },
+      events: () => otherTabs,
+    };
+
+    // When
+    const items = createLocalStorageSubscribe()('truapi:product-storage:v1:9:myapp.dot:watched')[
+      Symbol.asyncIterator
+    ]();
+    const first = await items.next();
+    await items.return?.();
+
+    // Then
+    expect(yielded(first)._unsafeUnwrapErr()).toEqual({ reason: 'Failed to read from storage' });
+    expect(captures.expected).toHaveBeenCalledWith(blocked, { flow: 'storage', step: 'product_storage_watch' });
+    expect(metrics.counted('product_storage.watch')).toEqual([{ outcome: 'error', reason: 'SecurityError' }]);
   });
 });
