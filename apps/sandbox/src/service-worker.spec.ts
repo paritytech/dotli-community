@@ -15,6 +15,42 @@ function workerAt(version: string): ServiceWorker {
   } as unknown as ServiceWorker;
 }
 
+/** A container with no controller yet, counting the `controllerchange` listeners still attached. */
+class FreshContainer extends EventTarget {
+  readonly controller = null;
+  readonly ready = new Promise<ServiceWorkerRegistration>(() => undefined);
+  listening = 0;
+  /** Resolves once something listens for `controllerchange`. */
+  readonly listened: Promise<void>;
+  private heard: () => void = () => undefined;
+
+  constructor() {
+    super();
+    this.listened = new Promise(resolve => {
+      this.heard = resolve;
+    });
+  }
+
+  register(): Promise<ServiceWorkerRegistration> {
+    return Promise.resolve({ active: null, update: () => Promise.resolve() } as unknown as ServiceWorkerRegistration);
+  }
+
+  override addEventListener(...args: Parameters<EventTarget['addEventListener']>): void {
+    if (args[0] === 'controllerchange') {
+      this.listening += 1;
+      this.heard();
+    }
+    super.addEventListener(...args);
+  }
+
+  override removeEventListener(...args: Parameters<EventTarget['removeEventListener']>): void {
+    if (args[0] === 'controllerchange') {
+      this.listening -= 1;
+    }
+    super.removeEventListener(...args);
+  }
+}
+
 describe('registerAppServiceWorker', () => {
   it('As a visitor after a deploy, an outdated service worker is updated and I am offered a reload', async () => {
     // Given a page controlled by a worker from the build before
@@ -37,5 +73,22 @@ describe('registerAppServiceWorker', () => {
 
     // Then
     expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor after a full reset, the wait for the fresh worker leaves no listener once it takes control', async () => {
+    // Given a page whose fresh worker has not taken control yet
+    const container = new FreshContainer();
+    const registered = registerAppServiceWorker(
+      { container: container as unknown as ServiceWorkerContainer, version: undefined, offerReload: () => undefined },
+      { waitForFreshController: true },
+    );
+    await container.listened;
+
+    // When the fresh worker takes control
+    container.dispatchEvent(new Event('controllerchange'));
+    await registered;
+
+    // Then
+    expect(container.listening).toBe(0);
   });
 });

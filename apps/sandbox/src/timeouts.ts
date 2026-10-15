@@ -9,4 +9,6 @@ export const SANDBOX_TIMEOUTS = {
   SW_READY: 10_000,
   /** The service worker's acknowledgement of the archive the sandbox hands it. */
   SW_ARCHIVE_ACK: 10_000,
+  /** The service worker's answer to the version check. A worker from an older build never answers. */
+  SW_VERSION_ANSWER: 1_000,
 } as const;

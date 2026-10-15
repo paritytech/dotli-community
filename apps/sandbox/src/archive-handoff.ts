@@ -5,6 +5,7 @@
 
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import type { packArchive } from '@dotli/content';
+import { withTimeout } from '@dotli/shared';
 
 import { SANDBOX_ERRORS } from './errors.js';
 
@@ -39,34 +40,21 @@ export function handOverArchive(
   timeoutMs: number = SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK,
 ): Promise<void> {
   const channel = new MessageChannel();
-  return new Promise<void>((resolve, reject) => {
-    const settle = (error: Error | null): void => {
-      clearTimeout(timer);
-      channel.port1.close();
-      legacyReplies?.removeEventListener('message', onLegacyReply);
-      if (error === null) {
-        resolve();
-      } else {
-        reject(error);
-      }
-    };
+  let onLegacyReply = (_event: Event): void => undefined;
+  const answered = new Promise<void>((resolve, reject) => {
     const onReply = (data: unknown): void => {
       const msg = data as { type?: unknown; reason?: unknown } | null;
       if (msg?.type === 'ARCHIVE_READY') {
-        settle(null);
+        resolve();
       } else if (msg?.type === 'ARCHIVE_ERROR') {
         // The real cause rather than a timeout, so the retry flow has something to act on.
         const reason = typeof msg.reason === 'string' ? msg.reason : 'unknown';
-        settle(new Error(`Service worker rejected archive: ${reason}`));
+        reject(new Error(`Service worker rejected archive: ${reason}`));
       }
     };
-    const onLegacyReply = (event: Event): void => {
+    onLegacyReply = event => {
       onReply((event as MessageEvent).data);
     };
-    const timer = setTimeout(() => {
-      settle(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED));
-    }, timeoutMs);
-
     channel.port1.onmessage = (event: MessageEvent) => {
       onReply(event.data);
     };
@@ -80,8 +68,12 @@ export function handOverArchive(
     try {
       worker.postMessage(message, [packed, channel.port2]);
     } catch (cause) {
-      // Settled here, so the timer, the port and the page-wide listener go now rather than at the timeout.
-      settle(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_SENT, { cause }));
+      reject(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_SENT, { cause }));
     }
+  });
+  // Every exit closes the port and drops the page-wide listener, so a late answer finds nothing to settle.
+  return withTimeout(answered, timeoutMs, () => new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED)).finally(() => {
+    channel.port1.close();
+    legacyReplies?.removeEventListener('message', onLegacyReply);
   });
 }

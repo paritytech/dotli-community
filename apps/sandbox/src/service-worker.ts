@@ -6,7 +6,7 @@
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { packArchive, type ArchiveFiles } from '@dotli/content';
 import { captureException, recordExpected } from '@dotli/metrics';
-import { log } from '@dotli/shared';
+import { log, withTimeout } from '@dotli/shared';
 
 import { handOverArchive } from './archive-handoff.js';
 import { showNotification } from '@dotli/ui';
@@ -26,20 +26,29 @@ export interface AppServiceWorker {
 
 /** `null` when the SW does not answer, as an older build does not. */
 function querySwVersion(sw: ServiceWorker): Promise<string | null> {
-  return new Promise(resolve => {
-    const channel = new MessageChannel();
-    const timer = setTimeout(() => {
-      channel.port1.close();
-      resolve(null);
-    }, 1_000);
+  const channel = new MessageChannel();
+  let silent: Error | undefined;
+  const answer = new Promise<string | null>(resolve => {
     channel.port1.onmessage = (event: MessageEvent) => {
-      clearTimeout(timer);
-      channel.port1.close();
       const data = event.data as { type?: string; version?: string } | null;
       resolve(data?.type === 'SW_VERSION' && typeof data.version === 'string' ? data.version : null);
     };
     sw.postMessage({ type: 'GET_SW_VERSION' }, [channel.port2]);
   });
+  return withTimeout(answer, SANDBOX_TIMEOUTS.SW_VERSION_ANSWER, () => {
+    silent = new Error('the service worker did not answer the version check');
+    return silent;
+  })
+    .catch((error: unknown) => {
+      // Silence is an older build's answer, not a failure.
+      if (error === silent) {
+        return null;
+      }
+      throw error;
+    })
+    .finally(() => {
+      channel.port1.close();
+    });
 }
 
 /** A mismatched SW updates at once and self-promotes, so any reload gets fresh assets. The page reloads on request. */
@@ -114,24 +123,26 @@ export async function registerAppServiceWorker(
       return;
     }
 
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE));
-      }, SANDBOX_TIMEOUTS.SW_READY);
-      container.addEventListener('controllerchange', () => {
-        clearTimeout(timeout);
+    let onControllerChange = (): void => undefined;
+    const controlled = new Promise<void>(resolve => {
+      onControllerChange = () => {
         resolve();
-      });
+      };
+      container.addEventListener('controllerchange', onControllerChange);
       void container.ready.then(readyRegistration => {
         // In the reset path only a `controllerchange` counts, so prod the new SW to claim clients sooner.
         if (!waitForFreshController && container.controller) {
-          clearTimeout(timeout);
           resolve();
         } else if (readyRegistration.active) {
           readyRegistration.active.postMessage({ type: 'SW_CLAIM_EVENT' });
         }
       });
     });
+    try {
+      await withTimeout(controlled, SANDBOX_TIMEOUTS.SW_READY, () => new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE));
+    } finally {
+      container.removeEventListener('controllerchange', onControllerChange);
+    }
 
     void ensureFreshServiceWorker(app, container, registration);
   } catch (err) {
