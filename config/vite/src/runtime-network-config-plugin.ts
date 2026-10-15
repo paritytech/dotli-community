@@ -66,6 +66,8 @@ export function runtimeNetworkConfigScript(): Plugin {
           next();
           return;
         }
+        // Vite's own CORS middleware runs first and allows loopback origins, which this script must not.
+        res.removeHeader('Access-Control-Allow-Origin');
         for (const [name, value] of Object.entries(RUNTIME_NETWORK_CONFIG_HEADERS)) {
           res.setHeader(name, value);
         }
