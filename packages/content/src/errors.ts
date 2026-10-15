@@ -7,4 +7,8 @@
 export const CONTENT_ERRORS = {
   /** Fetched bytes are not the content the CID names, or cannot be checked. */
   VERIFICATION: 'ContentVerificationError',
+  /** The IPFS gateway sent nothing for longer than the fetch waits. */
+  GATEWAY_STALLED: 'ContentGatewayStalledError',
+  /** The IPFS gateway sent more bytes than one response may hold. */
+  GATEWAY_TOO_LARGE: 'ContentGatewayTooLargeError',
 } as const;

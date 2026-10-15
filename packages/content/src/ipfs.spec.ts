@@ -97,3 +97,56 @@ describe('fetchCarFromIpfs', () => {
     await expect(fetchCarFromIpfs(CID, GATEWAY, fetchMock)).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
   });
 });
+
+describe('gateway limits', () => {
+  const TIGHT = { stallMs: 1, maxBytes: 4 };
+
+  it('As a visitor, a gateway that never answers fails my load as stalled, so I can retry', async () => {
+    // Given a gateway that never sends its headers
+    fetchMock.mockReturnValue(new Promise<Response>(() => undefined));
+
+    // When
+    const fetched = fetchFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+
+    // Then
+    await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayStalledError' });
+  });
+
+  it('As a visitor, a gateway that stops sending mid-body fails my load as stalled', async () => {
+    // Given a gateway that sends one part of the body and then nothing
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+      },
+    });
+    fetchMock.mockResolvedValue(new Response(body, { status: 200 }));
+
+    // When
+    const fetched = fetchCarFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+
+    // Then
+    await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayStalledError' });
+  });
+
+  it('As a visitor, a gateway response larger than the cap fails instead of filling memory', async () => {
+    // Given a gateway that sends more bytes than allowed
+    fetchMock.mockResolvedValue(new Response(new Uint8Array(10), { status: 200 }));
+
+    // When
+    const fetched = fetchCarFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+
+    // Then
+    await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayTooLargeError' });
+  });
+
+  it('As a visitor, a response within the limits arrives whole', async () => {
+    // Given
+    fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 }));
+
+    // When
+    const { data } = await fetchFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+
+    // Then
+    expect(Array.from(data)).toEqual([1, 2, 3, 4]);
+  });
+});
