@@ -66,4 +66,19 @@ describe('withTimeout', () => {
     await tightSettled;
     await expect(loose).resolves.toBe(3);
   });
+
+  it('As a caller whose timeout error cannot be made, I still get an answer: what stopped it', async () => {
+    // Given
+    const broken = new TypeError('the abort could not be posted');
+    const timed = withTimeout(new Promise<never>(() => undefined), 1_000, () => {
+      throw broken;
+    });
+    const settled = expect(timed).rejects.toBe(broken);
+
+    // When
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then
+    await settled;
+  });
 });

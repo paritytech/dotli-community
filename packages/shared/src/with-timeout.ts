@@ -8,7 +8,13 @@
 export function withTimeout<T>(work: Promise<T>, ms: number, timeoutError: () => Error): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(timeoutError());
+      // A factory that throws still settles the call, with what it threw. A non-Error throw is wrapped so the
+      // rejection is always an Error and the original value stays on `cause`.
+      try {
+        reject(timeoutError());
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error('timeout error factory threw', { cause: error }));
+      }
     }, ms);
     // Cleared before the caller hears the outcome, so no timer outlives a settled call.
     void work
