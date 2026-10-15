@@ -272,6 +272,10 @@ The image is built on native runners per architecture (`linux/amd64`,
 platform — Apple Silicon runs `linux/arm64`. `latest` only moves for a real,
 non-prerelease publish, so backfilling an old tag by hand cannot repoint it.
 
+The image has no `.git`, so the workflow passes the tag's version and commit as the `RELEASE_VERSION` and
+`RELEASE_COMMIT` build arguments, and `host_version.json` and the diagnostics report the release. A local
+`docker build` without them reports the package version and `dev`. The tarball reads both from its tag checkout.
+
 ## Related
 
 - `nginx/nginx.docker.conf.template` — container nginx profile; sibling of

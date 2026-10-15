@@ -100,11 +100,11 @@ jobs:
         uses: ./.github/actions/setup-node
 
       # build:prod, because only it writes the .br/.gz siblings the server negotiates. Without
-      # VITE_RUNTIME_NETWORK_CONFIG the app silently ignores $DOTLI_NETWORK and points at the public chain.
+      # VITE_RUNTIME_NETWORK_CONFIG the app silently ignores $DOTLI_NETWORK and points at the public chain. The commit
+      # comes from the tag checkout, since a backfill's github.sha is the dispatching branch.
       - name: Build
         env:
           VITE_RUNTIME_NETWORK_CONFIG: 'true'
-          VITE_COMMIT_SHA: ${{ github.sha }}
         run: npm run build:prod
 
       - name: Assemble tarball
@@ -202,9 +202,13 @@ jobs:
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           ARCH: ${{ matrix.arch }}
+        # The image has no .git, so the version and commit come in as build arguments.
         run: |
           set -euo pipefail
-          docker build -t "$IMAGE:$VERSION-$ARCH" .
+          docker build \
+            --build-arg RELEASE_VERSION="$VERSION" \
+            --build-arg RELEASE_COMMIT="$(git rev-parse HEAD)" \
+            -t "$IMAGE:$VERSION-$ARCH" .
           docker push "$IMAGE:$VERSION-$ARCH"
 
   manifest:

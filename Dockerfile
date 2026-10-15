@@ -15,7 +15,13 @@ RUN npm install -g "$(node -p 'require("./package.json").packageManager')" \
 # hashes, a hook into the trust root for name resolution.
 ENV VITE_NETWORKS=paseo-next-v2,previewnet \
     VITE_RUNTIME_NETWORK_CONFIG=true
-RUN npm run build:prod
+# The image has no .git to read them from, so a release passes its version and commit. A local build reports the
+# package version and "dev".
+ARG RELEASE_VERSION
+ARG RELEASE_COMMIT
+RUN if [ -n "${RELEASE_VERSION:-}" ]; then node scripts/set-version.ts "$RELEASE_VERSION"; fi \
+ && if [ -n "${RELEASE_COMMIT:-}" ]; then export VITE_COMMIT_SHA="$RELEASE_COMMIT"; fi \
+ && npm run build:prod
 
 FROM nginx:alpine
 ENV DOMAIN=localhost WEBROOT=/srv/dotli PORT=5173
