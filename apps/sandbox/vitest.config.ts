@@ -7,7 +7,7 @@ import { inlineScript } from '@config/vite/inline-script';
 import { TEST_DEFINES } from '@config/vite/test-defines';
 
 export default defineConfig({
-  // The service worker inlines its head scripts, bundled as the build does.
+  // The checker injector inlines its head script, bundled as the build does.
   plugins: [inlineScript(), solid()],
   test: {
     globals: false,

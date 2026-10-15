@@ -7,9 +7,7 @@
 /// <reference lib="webworker" />
 
 import { idbRequest, idbTransaction, openIdb } from '@dotli/shared';
-import { injectSandboxChecker } from './inject-checker.js';
 import { getMimeType } from './mime.js';
-import stripAppPrefixScript from './head/strip-app-prefix.js?inline-script';
 
 // The page reads it through `GET_SW_VERSION` to detect a stale worker. A build inlines it as a literal, so the worker's
 // bytes change between releases and the browser never skips the update as byte-identical.
@@ -98,7 +96,6 @@ export interface AppServiceWorkerDeps {
 /** Serves the archive the page hands it, from this scope's events. Each call is a fresh worker start. */
 export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwork }: AppServiceWorkerDeps): void {
   const BASE = scope.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
-  const DOTLI_APP_PREFIX = `${BASE}dotli-app/`;
 
   let servedFiles: Record<string, ArrayBuffer> | null = null;
 
@@ -217,8 +214,10 @@ export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwor
       return;
     }
 
-    // SW infrastructure goes to the network. An archive that ships its own `node_modules/` is not served from it.
+    // The sandbox page and this worker come from the network. So does every navigation, since the page writes the
+    // product's index.html into its own window. An archive that ships its own `node_modules/` is not served from it.
     if (
+      event.request.mode === 'navigate' ||
       url.pathname === BASE ||
       url.pathname === BASE.slice(0, -1) ||
       url.pathname === `${BASE}app-sw.js` ||
@@ -229,12 +228,8 @@ export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwor
       return;
     }
 
-    if (event.request.mode === 'navigate' && !url.pathname.startsWith(DOTLI_APP_PREFIX)) {
-      return;
-    }
-
     if (hasArchive()) {
-      const result = lookupArchive(url.pathname, event.request.mode);
+      const result = lookupArchive(url.pathname);
       if (result !== null) {
         event.respondWith(result);
       }
@@ -242,50 +237,22 @@ export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwor
     }
 
     if (nothingPersisted) {
-      const result = noArchiveResponse(url.pathname);
-      if (result !== null) {
-        event.respondWith(result);
-      }
       return;
     }
 
     // A restarted worker reads the archive back first, since nginx answers every path with the shell as `text/html`.
     const { request } = event;
     event.respondWith(
-      restoreArchive().then(
-        () =>
-          (hasArchive() ? lookupArchive(url.pathname, request.mode) : noArchiveResponse(url.pathname)) ??
-          fetchFromNetwork(request),
-      ),
+      restoreArchive().then(() => (hasArchive() ? lookupArchive(url.pathname) : null) ?? fetchFromNetwork(request)),
     );
   });
-
-  /**
-   * App paths get a 503 rather than nginx's shell HTML under the wrong MIME type. `null` lets the sandbox's own assets
-   * reach the network.
-   */
-  function noArchiveResponse(pathname: string): Response | null {
-    if (!pathname.startsWith(DOTLI_APP_PREFIX)) {
-      return null;
-    }
-    return new Response(null, {
-      status: 503,
-      statusText: 'App archive not yet loaded',
-    });
-  }
 
   /**
    * `null` means the path is not the archive's and must reach the network: the origin also serves the shell's own
    * assets, and a 404 for them strands a refresh on the loader.
    */
-  function lookupArchive(pathname: string, requestMode: RequestMode): Response | null {
-    let filePath = pathname.startsWith(DOTLI_APP_PREFIX)
-      ? pathname.slice(DOTLI_APP_PREFIX.length)
-      : pathname.startsWith(BASE)
-        ? pathname.slice(BASE.length)
-        : pathname.slice(1);
-
-    filePath = decodeURIComponent(filePath);
+  function lookupArchive(pathname: string): Response | null {
+    let filePath = decodeURIComponent(pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname.slice(1));
 
     let content = getFile(filePath);
 
@@ -311,34 +278,11 @@ export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwor
       }
     }
 
-    if (content !== undefined) {
-      const mime = getMimeType(filePath);
-      if (mime === 'text/html') {
-        if (pathname === `${DOTLI_APP_PREFIX}index.html` || pathname === DOTLI_APP_PREFIX) {
-          return makePrimaryHtmlResponse(content, mime);
-        }
-        return makeHtmlResponse(content, mime, DOTLI_APP_PREFIX);
-      }
-      return new Response(content, archiveResponseInit(mime));
+    if (content === undefined) {
+      return null;
     }
-
-    // Only navigations fall back to the SPA index, so shell assets still reach nginx.
-    if (requestMode === 'navigate') {
-      const indexHtml = getFile('index.html');
-      if (!hasExtension(filePath) && indexHtml !== undefined) {
-        return makeHtmlResponse(indexHtml, 'text/html', DOTLI_APP_PREFIX);
-      }
-    }
-
-    return null;
+    return new Response(content, archiveResponseInit(getMimeType(filePath)));
   }
-}
-
-function injectSandboxScript(html: string): string {
-  if (import.meta.env.VITE_SANDBOX_CHECKER !== 'true') {
-    return html;
-  }
-  return injectSandboxChecker(html);
 }
 
 /** One source, so a new header lands on every served body. */
@@ -351,23 +295,4 @@ function archiveResponseInit(mime: string): ResponseInit {
       'Cache-Control': 'no-cache',
     },
   };
-}
-
-/** No base href or prefix stripping, which only sub-pages need. */
-function makePrimaryHtmlResponse(content: ArrayBuffer | Uint8Array, mime: string): Response {
-  let html = new TextDecoder().decode(content);
-  html = injectSandboxScript(html);
-  return new Response(new TextEncoder().encode(html), archiveResponseInit(mime));
-}
-
-function makeHtmlResponse(content: ArrayBuffer | Uint8Array, mime: string, appPrefix: string): Response {
-  let html = new TextDecoder().decode(content);
-  const prefixNoSlash = appPrefix.slice(0, -1);
-  // A replacer function, so no `$` pattern in the script is read as a replacement pattern.
-  html = html.replace(
-    '<head>',
-    () => `<head><base href="${appPrefix}"><script data-prefix="${prefixNoSlash}">${stripAppPrefixScript}</script>`,
-  );
-  html = injectSandboxScript(html);
-  return new Response(new TextEncoder().encode(html), archiveResponseInit(mime));
 }

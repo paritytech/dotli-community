@@ -165,10 +165,10 @@ function quotaAbortingIndexedDb(): IDBFactory {
 }
 
 /** `undefined` means the worker let the request through to the network. */
-async function request(scope: WorkerScope, path: string): Promise<Response | undefined> {
+async function request(scope: WorkerScope, path: string, mode: RequestMode = 'no-cors'): Promise<Response | undefined> {
   let answer: Response | Promise<Response> | undefined;
   const event = Object.assign(new Event('fetch'), {
-    request: { url: `${ORIGIN}${path}`, mode: 'no-cors' },
+    request: { url: `${ORIGIN}${path}`, mode },
     respondWith: (response: Response | Promise<Response>) => {
       answer = response;
     },
@@ -259,12 +259,10 @@ describe('app service worker', () => {
 
     // When
     const shellAsset = await request(scope, '/assets/index.js');
-    const appPath = await request(scope, '/dotli-app/main.js');
 
     // Then
     expect(await shellAsset?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
-    expect(appPath?.status).toBe(503);
   });
 
   it('As an operator, an archive the worker could not keep for its next restart is reported to the page', async () => {
@@ -311,10 +309,10 @@ describe('app service worker', () => {
     const reported = nextPageMessage();
 
     // When the app asks it for a file
-    const response = await request(scope, '/dotli-app/main.js');
+    const response = await request(scope, '/main.js');
 
-    // Then the request fails as before, and the page hears why
-    expect(response?.status).toBe(503);
+    // Then the request goes to the network, and the page hears why
+    expect(await response?.text()).toBe('<!doctype html>shell');
     await reported;
     expect(pageInbox).toEqual([
       {
@@ -324,5 +322,31 @@ describe('app service worker', () => {
         message: 'The quota has been exceeded.',
       },
     ]);
+  });
+
+  it('As a product, an HTML file I fetch from my archive comes back byte for byte', async () => {
+    // Given
+    const scope = startWorker(origin);
+    const template = '<html><head><title>part</title></head><body>part</body></html>';
+    await setArchive(scope, { 'index.html': '<html></html>', 'template.html': template });
+
+    // When
+    const response = await request(scope, '/template.html');
+
+    // Then
+    expect(response?.headers.get('Content-Type')).toBe('text/html');
+    expect(await response?.text()).toBe(template);
+  });
+
+  it('As a user, a navigation inside the product loads the sandbox page from the network', async () => {
+    // Given
+    const scope = startWorker(origin);
+    await setArchive(scope, { 'index.html': '<html></html>', 'docs/index.html': '<p>docs</p>' });
+
+    // When
+    const response = await request(scope, '/docs/', 'navigate');
+
+    // Then
+    expect(response).toBeUndefined();
   });
 });

@@ -113,9 +113,10 @@ When a CID points to an IPFS directory (not a single file):
 1. The gateway returns a CAR (Content-Addressable aRchive) containing all files
 2. `archive.ts` parses the CAR using `@ipld/car` + `@ipld/dag-pb` + `ipfs-unixfs` to extract a file map
 3. The file map is sent to the app Service Worker via `postMessage`
-4. The iframe loads from `/dotli-app/index.html` — the SW intercepts all requests and serves files from the in-memory
-   archive
-5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) just work
+4. The sandbox writes the product's `index.html` into its own window, and the Service Worker serves every other file
+   from the in-memory archive
+5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) resolve from the archive root, deep links
+   included
 
 ## Caching and verification
 

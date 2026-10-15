@@ -24,8 +24,8 @@ export default defineConfig(
         image: '/icon-512.png',
         imageAlt: 'Polkadot logo',
       }),
-      // The sub-page helper reaches the worker as a classic script's text, and the worker loads wasm.
-      serviceWorker({ srcDir: 'src', filename: 'app-sw.ts', plugins: () => [inlineScript(), app.wasm()] }),
+      // The worker loads wasm.
+      serviceWorker({ srcDir: 'src', filename: 'app-sw.ts', plugins: () => [app.wasm()] }),
     ],
     server: {
       // Must match DEV_SANDBOX_PORT in @dotli/config.
