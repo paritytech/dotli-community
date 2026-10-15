@@ -6,4 +6,4 @@ declare const self: ServiceWorkerGlobalScope;
 
 import { startAppServiceWorker } from './app-service-worker.js';
 
-startAppServiceWorker({ scope: self, indexedDB, fetch });
+startAppServiceWorker({ scope: self, indexedDB, fetch, devServer: import.meta.env.DEV });

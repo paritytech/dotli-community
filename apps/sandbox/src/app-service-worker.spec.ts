@@ -34,7 +34,7 @@ interface Origin {
 }
 
 /** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
-function startWorker(origin: Origin): WorkerScope {
+function startWorker(origin: Origin, devServer = false): WorkerScope {
   const scope = Object.assign(new EventTarget(), {
     location: new URL(`${ORIGIN}/app-sw.js`),
     skipWaiting: () => Promise.resolve(),
@@ -53,7 +53,7 @@ function startWorker(origin: Origin): WorkerScope {
         ]),
     },
   });
-  startAppServiceWorker({ scope: scope as unknown as AppServiceWorkerDeps['scope'], ...origin });
+  startAppServiceWorker({ scope: scope as unknown as AppServiceWorkerDeps['scope'], ...origin, devServer });
   return scope;
 }
 
@@ -375,5 +375,31 @@ describe('app service worker', () => {
 
     // Then
     expect(await response?.text()).toBe('spaced()');
+  });
+
+  it('As a product that ships a src folder, its files come from my archive', async () => {
+    // Given
+    const scope = startWorker(origin);
+    await setArchive(scope, { 'index.html': '<html></html>', 'src/main.js': 'main()', '@scope/x.js': 'x()' });
+
+    // When
+    const source = await request(scope, '/src/main.js');
+    const scoped = await request(scope, '/@scope/x.js');
+
+    // Then
+    expect(await source?.text()).toBe('main()');
+    expect(await scoped?.text()).toBe('x()');
+  });
+
+  it("As a dotli developer on the dev server, the sandbox's own modules reach the network", async () => {
+    // Given
+    const scope = startWorker(origin, true);
+    await setArchive(scope, { 'index.html': '<html></html>', 'src/main.js': 'main()' });
+
+    // When
+    const source = await request(scope, '/src/main.js');
+
+    // Then
+    expect(source).toBeUndefined();
   });
 });

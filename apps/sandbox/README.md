@@ -25,8 +25,9 @@ resolution. See the root [README](../../README.md) for the product as a whole.
   relative assets resolve to the archive.
 - Blocks come from the host parent through a bridge. Progress and completion go back to the host the same way.
 - The service worker serves the archive's files byte for byte and keeps the archive in IndexedDB for restarts.
-  Navigations go to the network, since the page writes the product's index.html into its own window. The page side
-  registers it and checks its version. The packed archive reaches the controlling worker by a handoff.
+  Navigations go to the network, since the page writes the product's index.html into its own window. Only on the dev
+  server do the sandbox's own module paths skip the archive. The page side registers it and checks its version. The
+  packed archive reaches the controlling worker by a handoff.
 - After a load the origin's stores are purged of anything the product left behind.
 - The password dialog comes with the sandbox's own UI. Its dialogs are `ModalView` data, with an icon component, that
   the shared dialog renders.

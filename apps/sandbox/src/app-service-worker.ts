@@ -104,10 +104,17 @@ export interface AppServiceWorkerDeps {
   /** The origin's storage, which outlives the worker across idle restarts. */
   indexedDB: IDBFactory;
   fetch: typeof fetch;
+  /** The dev server serves the sandbox's own modules under `src/`, `@` paths and `node_modules/`. */
+  devServer: boolean;
 }
 
 /** Serves the archive the page hands it, from this scope's events. Each call is a fresh worker start. */
-export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwork }: AppServiceWorkerDeps): void {
+export function startAppServiceWorker({
+  scope,
+  indexedDB,
+  fetch: fetchFromNetwork,
+  devServer,
+}: AppServiceWorkerDeps): void {
   const BASE = scope.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 
   let servedFiles: Record<string, ArrayBuffer> | null = null;
@@ -228,15 +235,16 @@ export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwor
     }
 
     // The sandbox page and this worker come from the network. So does every navigation, since the page writes the
-    // product's index.html into its own window. An archive that ships its own `node_modules/` is not served from it.
+    // product's index.html into its own window. On the dev server the sandbox's own modules do too.
     if (
       event.request.mode === 'navigate' ||
       url.pathname === BASE ||
       url.pathname === BASE.slice(0, -1) ||
       url.pathname === `${BASE}app-sw.js` ||
-      url.pathname.startsWith(`${BASE}src/`) ||
-      url.pathname.startsWith(`${BASE}node_modules/`) ||
-      url.pathname.startsWith(`${BASE}@`)
+      (devServer &&
+        (url.pathname.startsWith(`${BASE}src/`) ||
+          url.pathname.startsWith(`${BASE}node_modules/`) ||
+          url.pathname.startsWith(`${BASE}@`)))
     ) {
       return;
     }
