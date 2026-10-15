@@ -12,6 +12,8 @@ export type AuthModalView =
       kind: 'error';
       message: string;
       retry: boolean;
+      /** The account is still being set up, so the failure is a wait rather than a fault. */
+      pending: boolean;
       title: string;
       subtitle: string;
       /** Raw reason for bug reports, absent when the copy hides it. */

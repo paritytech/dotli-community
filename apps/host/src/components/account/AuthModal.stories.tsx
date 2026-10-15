@@ -25,7 +25,7 @@ import {
   storyModal,
 } from '../../testing/stories/auth-modal-fixtures.js';
 import { AuthButton } from './AuthButton.js';
-import type { AuthModalState } from '../../state/auth-modal.js';
+import type { AuthModalState, AuthModalView } from '../../state/auth-modal.js';
 import { AuthModal } from './AuthModal.js';
 import type { DrawQr } from './qr-code.js';
 
@@ -52,8 +52,10 @@ function pairing(extra: Partial<AuthModalState> = {}): void {
   });
 }
 
-/** A login that failed for a reason the copy does not know. */
-function failed(): void {
+type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
+
+/** A login that failed for a reason the copy does not know, unless `view` says otherwise. */
+function failed(view: Partial<ErrorView> = {}): void {
   showModal({
     open: true,
     productLabel: null,
@@ -62,10 +64,12 @@ function failed(): void {
       kind: 'error',
       message: 'Host failure',
       retry: true,
+      pending: false,
       title: 'Login did not complete',
       subtitle:
         'Something interrupted the connection to Polkadot Mobile. Try again, and make sure the app is installed and up to date.',
       detail: 'Host failure',
+      ...view,
     },
   });
 }
@@ -414,6 +418,38 @@ export const ErrorViewRetry: Story = {
       await waitFor(() => expect(modalCalls.retries).toBe(1));
       await expect(isOpen()).toBe(true);
       await waitFor(expectSpinner);
+    });
+  },
+};
+
+/** As a new user whose sign-in failed, I see a warning, not the clock that says my account is still being set up. */
+export const ErrorViewFailedIcon: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    failed({ title: 'Login was declined', subtitle: 'The request was declined.' });
+  },
+  play: async ({ step }) => {
+    const failure = (): HTMLElement => within(qrBox()).getByTestId('auth-modal-failure');
+    await step('Then the failure shows a warning and no clock', async () => {
+      await opened();
+      await expect(within(failure()).getByTestId('auth-modal-failure-alert')).toBeInTheDocument();
+      await expect(within(failure()).queryByTestId('auth-modal-failure-clock')).toBeNull();
+    });
+  },
+};
+
+/** As a new user whose account is still being set up, I see the clock, since I only have to wait. */
+export const ErrorViewPendingIcon: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    failed({ pending: true, title: 'Your account is still being set up', subtitle: 'Please try again later' });
+  },
+  play: async ({ step }) => {
+    const failure = (): HTMLElement => within(qrBox()).getByTestId('auth-modal-failure');
+    await step('Then the failure shows the clock and no warning', async () => {
+      await opened();
+      await expect(within(failure()).getByTestId('auth-modal-failure-clock')).toBeInTheDocument();
+      await expect(within(failure()).queryByTestId('auth-modal-failure-alert')).toBeNull();
     });
   },
 };

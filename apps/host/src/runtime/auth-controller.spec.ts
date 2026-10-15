@@ -635,10 +635,26 @@ describe('auth controller: auth states', () => {
         kind: 'error',
         message: 'User declined the request',
         retry: true,
+        pending: false,
         title: 'Login was declined',
         subtitle: 'The request was declined in Polkadot Mobile. Start again and approve it on your phone.',
         detail: 'User declined the request',
       },
+    });
+  });
+
+  it('As a new user whose account is still being set up, the failure is shown as a wait', () => {
+    // Given
+    const { auth } = start();
+
+    // When
+    auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'OriginPersonProviderError: not yet' });
+
+    // Then
+    expect(getAuthModalState().view).toMatchObject({
+      kind: 'error',
+      pending: true,
+      title: 'Your account is still being set up',
     });
   });
 

@@ -147,6 +147,7 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
         kind: 'error',
         message: reason,
         retry: friendly.retryable !== false,
+        pending: friendly.pending === true,
         title: friendly.title,
         subtitle: friendly.subtitle,
         detail: friendly.detail,
@@ -235,6 +236,7 @@ export interface FriendlyAuthError {
   subtitle: string;
   detail?: string | undefined;
   retryable?: boolean | undefined;
+  pending?: boolean | undefined;
 }
 
 interface AuthErrorRule {
@@ -242,6 +244,7 @@ interface AuthErrorRule {
   title: string;
   subtitle: string;
   retryable?: boolean;
+  pending?: boolean;
   hideDetail?: boolean;
 }
 
@@ -262,6 +265,7 @@ const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
     match: /OriginPersonProviderError/,
     title: 'Your account is still being set up',
     subtitle: 'Please try again later',
+    pending: true,
     hideDetail: true,
   },
   {
@@ -335,6 +339,7 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
     subtitle: rule.subtitle,
     detail: rule.hideDetail === true ? undefined : message,
     retryable: rule.retryable,
+    pending: rule.pending,
   };
 }
 

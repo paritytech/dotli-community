@@ -14,7 +14,7 @@ import {
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { shallowEqual } from '@dotli/shared';
-import { ClockIcon, PolkadotIcon } from '@dotli/ui/icons';
+import { AlertTriangleIcon, ClockIcon, PolkadotIcon } from '@dotli/ui/icons';
 import {
   Button,
   ButtonLink,
@@ -90,12 +90,13 @@ function QrCode(props: { qr: DrawnQr; link: boolean }): JSX.Element {
 function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
   return (
     <div class={s['errorView']} data-testid="auth-modal-failure">
-      <IconTile class={s['pendingIcon']} testId="auth-modal-failure-icon">
-        {/* The account is still being set up. */}
-        <ClockIcon />
+      <IconTile class={s['failureIcon']} testId="auth-modal-failure-icon">
+        <Show when={props.view.pending} fallback={<AlertTriangleIcon testId="auth-modal-failure-alert" />}>
+          <ClockIcon testId="auth-modal-failure-clock" />
+        </Show>
       </IconTile>
-      <div class={s['pendingTitle']}>{props.view.title}</div>
-      <div class={s['pendingSubtitle']}>{props.view.subtitle}</div>
+      <div class={s['failureTitle']}>{props.view.title}</div>
+      <div class={s['failureSubtitle']}>{props.view.subtitle}</div>
       <Show when={(props.view.detail ?? '').length > 0}>
         <Well class={s['error']} testId="auth-modal-error">
           {props.view.detail}

@@ -182,17 +182,17 @@
   text-align: center;
 }
 /* IconTile, a little further from the title than the view's gap. */
-.pending-icon {
+.failure-icon {
   margin: 0 0 var(--sp-1);
 }
-.pending-title {
+.failure-title {
   margin: 0;
   color: var(--chrome-text);
   font-size: var(--fs-pop-title);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
 }
-.pending-subtitle {
+.failure-subtitle {
   margin: 0;
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
