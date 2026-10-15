@@ -31,7 +31,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
   const name = (): string =>
     props.account.session() === undefined
       ? ''
-      : (displayName() ?? (local() ? 'Connected' : 'Connected with Polkadot Mobile'));
+      : (displayName() ?? (local() ? 'Connected' : 'Connected with Polkadot App'));
   const onDisconnect = (): void => {
     popover.close();
     props.onLogout();

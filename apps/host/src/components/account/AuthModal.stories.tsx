@@ -32,9 +32,9 @@ import type { DrawQr } from './qr-code.js';
 const open = openSurface({ surface: 'auth-modal-backdrop' });
 
 const DEEPLINK = 'polkadotapp://pair?handshake=test';
-const DESKTOP_HINT = 'Scan with Polkadot Mobile to connect';
-const MOBILE_HINT = 'Sign in with the Polkadot app on this device';
-const HOST_GLOBAL_TITLE = 'Login with Polkadot Mobile';
+const DESKTOP_HINT = 'Scan with Polkadot App to sign in';
+const MOBILE_HINT = 'Sign in with Polkadot App on this device';
+const HOST_GLOBAL_TITLE = 'Sign in with Polkadot App';
 
 /** The QR renderer the modal is given, which draws nothing and records what it was asked. */
 const drawQr = fn<DrawQr>(() => Promise.resolve());
@@ -65,9 +65,9 @@ function failed(view: Partial<ErrorView> = {}): void {
       message: 'Host failure',
       retry: true,
       pending: false,
-      title: 'Login did not complete',
+      title: 'Sign-in did not complete',
       subtitle:
-        'Something interrupted the connection to Polkadot Mobile. Try again, and make sure the app is installed and up to date.',
+        'Something interrupted the connection to Polkadot App. Try again, and make sure the app is installed and up to date.',
       detail: 'Host failure',
       ...view,
     },
@@ -104,7 +104,7 @@ async function expectHead(want: {
   await expect(getApp).toHaveAttribute('href', 'https://docs.polkadot.com/apps/');
   await expect(getApp).toHaveAttribute('target', '_blank');
   await expect(getApp).toHaveAttribute('rel', 'noopener noreferrer');
-  await expect(getApp).toHaveTextContent("Don't have the app? Get Polkadot Mobile");
+  await expect(getApp).toHaveTextContent("Don't have the app? Get Polkadot App");
   await expect(byId('auth-modal-close')).toHaveTextContent('Cancel');
 }
 
@@ -383,7 +383,7 @@ export const ProgressView: Story = {
       showModal({ view: { kind: 'authenticating' } });
     });
     await step('Then login progress replaces the QR, with the modal still open', async () => {
-      await waitFor(() => expect(qrBox()).toHaveTextContent('Logging in...'));
+      await waitFor(() => expect(qrBox()).toHaveTextContent('Signing in...'));
       await expect(within(qrBox()).getByTestId('auth-modal-spinner')).toBeInTheDocument();
       await expect(qrCanvas()).toBeNull();
       await expect(isOpen()).toBe(true);
@@ -404,9 +404,9 @@ export const ErrorViewRetry: Story = {
       await opened();
       await expectHead({ title: HOST_GLOBAL_TITLE, hint: DESKTOP_HINT, getAppHidden: true });
       await expect(within(failure()).getByTestId('auth-modal-failure-icon')).toHaveAttribute('aria-hidden', 'true');
-      await expect(failure()).toHaveTextContent('Login did not complete');
+      await expect(failure()).toHaveTextContent('Sign-in did not complete');
       await expect(failure()).toHaveTextContent(
-        'Something interrupted the connection to Polkadot Mobile. Try again, and make sure the app is installed and up to date.',
+        'Something interrupted the connection to Polkadot App. Try again, and make sure the app is installed and up to date.',
       );
       await expect(within(qrBox()).getByTestId('auth-modal-error')).toHaveTextContent('Host failure');
       await expect(within(qrBox()).getByTestId('auth-modal-retry')).toHaveTextContent('Retry');
@@ -426,7 +426,7 @@ export const ErrorViewRetry: Story = {
 export const ErrorViewFailedIcon: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    failed({ title: 'Login was declined', subtitle: 'The request was declined.' });
+    failed({ title: 'Sign-in was declined', subtitle: 'The request was declined.' });
   },
   play: async ({ step }) => {
     const failure = (): HTMLElement => within(qrBox()).getByTestId('auth-modal-failure');
@@ -646,7 +646,7 @@ export const QueuedSignInDrawsQrOnce: Story = {
   },
 };
 
-/** As a new user on a phone without the app, I see where to get Polkadot Mobile until the wallet approves. */
+/** As a new user on a phone without the app, I see where to get Polkadot App until the wallet approves. */
 export const PhoneAppInstallLink: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -681,7 +681,7 @@ export const DeeplinkFirst: Story = {
     const openApp = (): HTMLElement => within(qrBox()).getByTestId('auth-modal-open-app');
     const deeplinkLeads = async (): Promise<void> => {
       await waitFor(() => expect(openApp()).toHaveAttribute('href', DEEPLINK));
-      await expect(openApp()).toHaveTextContent('Login With Polkadot App');
+      await expect(openApp()).toHaveTextContent('Sign in with Polkadot App');
       await expectBefore(openApp(), within(qrBox()).getByTestId('auth-modal-qr-toggle'));
       const toggle = within(qrBox()).getByTestId('auth-modal-qr-toggle');
       await expect(toggle).toHaveAttribute('type', 'button');
@@ -714,7 +714,7 @@ export const DeeplinkFirst: Story = {
       showModal({ view: { kind: 'authenticating' } });
     });
     await step("Then progress shows, the QR's hint stays and the install link goes", async () => {
-      await waitFor(() => expect(qrBox()).toHaveTextContent('Logging in...'));
+      await waitFor(() => expect(qrBox()).toHaveTextContent('Signing in...'));
       await expectHead({ title: 'localhost:3000 wants you to sign in', hint: DESKTOP_HINT, getAppHidden: true });
     });
     await step('When a new pairing starts', () => {

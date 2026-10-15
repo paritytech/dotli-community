@@ -46,7 +46,7 @@ function authLabel(account: Account): string {
     return 'Reconnecting to your sign-in';
   }
   if (!account.loggedIn()) {
-    return 'Sign in with Polkadot Mobile';
+    return 'Sign in with Polkadot App';
   }
   return accountKind(account);
 }

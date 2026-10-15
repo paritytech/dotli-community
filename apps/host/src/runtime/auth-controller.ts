@@ -253,13 +253,12 @@ const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
   {
     match: /Invalid Transaction|rejected by the node|re-broadcast rejected/,
     title: 'Statement Store transaction rejected',
-    subtitle:
-      'Polkadot Mobile could not register this browser because the chain rejected the registration transaction.',
+    subtitle: 'Polkadot App could not register this browser because the chain rejected the registration transaction.',
   },
   {
     match: /SubstrateSdk\.JSONRPCError error 1/,
     title: 'Statement Store registration failed',
-    subtitle: 'Polkadot Mobile reported a JSON-RPC failure while registering this browser as a device.',
+    subtitle: 'Polkadot App reported a JSON-RPC failure while registering this browser as a device.',
   },
   {
     match: /OriginPersonProviderError/,
@@ -270,46 +269,46 @@ const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
   },
   {
     match: /version mismatch|unsupported version|incompatible|malformed ?frame/i,
-    title: 'Update Polkadot Mobile',
-    subtitle: 'This browser and your Polkadot Mobile app are out of step. Update the app and try again.',
+    title: 'Update Polkadot App',
+    subtitle: 'This browser and Polkadot App are out of step. Update the app and try again.',
   },
   {
     match: /denied|rejected|declined/i,
-    title: 'Login was declined',
-    subtitle: 'The request was declined in Polkadot Mobile. Start again and approve it on your phone.',
+    title: 'Sign-in was declined',
+    subtitle: 'The request was declined in Polkadot App. Start again and approve it on your phone.',
   },
   {
     match: /cancel/i,
-    title: 'Login was cancelled',
+    title: 'Sign-in was cancelled',
     subtitle: 'The pairing stopped before it finished. Try again when you are ready.',
   },
   {
     match: /timed? ?out|timeout/i,
-    title: 'Login timed out',
-    subtitle: 'Polkadot Mobile did not answer in time. Check that your phone is online and try again.',
+    title: 'Sign-in timed out',
+    subtitle: 'Polkadot App did not answer in time. Check that your phone is online and try again.',
   },
   {
     match: /not supported|unsupported/i,
-    title: 'Login is not available here',
-    subtitle: 'This page cannot sign you in with Polkadot Mobile.',
+    title: 'Sign-in is not available here',
+    subtitle: 'This page cannot sign you in with Polkadot App.',
     retryable: false,
   },
   {
     match: /worker init failed|wasm|webassembly|dynamically imported module|auth host was disposed/i,
-    title: 'The login service did not start',
-    subtitle: 'This page could not start its login runtime. Reload the page and try again.',
+    title: 'The sign-in service did not start',
+    subtitle: 'This page could not start its sign-in runtime. Reload the page and try again.',
   },
   {
     match:
       /disconnected|connection is closed|transport closed|not connected|connection (refused|reset|aborted)|network (unreachable|down)|host unreachable|failed to fetch|networkerror|load failed/i,
-    title: 'Connection to Polkadot Mobile was lost',
+    title: 'Connection to Polkadot App was lost',
     subtitle:
-      'The link between this browser and your phone dropped before login finished. Check that both are online and try again.',
+      'The link between this browser and your phone dropped before sign-in finished. Check that both are online and try again.',
   },
   {
     match: /handshake|statement[- ]store|allowance/i,
     title: 'Pairing could not complete',
-    subtitle: 'This browser and Polkadot Mobile could not exchange their pairing messages. Try again in a moment.',
+    subtitle: 'This browser and Polkadot App could not exchange their pairing messages. Try again in a moment.',
   },
 ];
 
@@ -317,7 +316,7 @@ function exhaustedAllowanceError(message: string): FriendlyAuthError {
   return {
     title: 'No Statement Store slots left',
     subtitle:
-      'Polkadot Mobile has no free slot to register this browser. Try again once the current allowance period rolls over.',
+      'Polkadot App has no free slot to register this browser. Try again once the current allowance period rolls over.',
     detail: message,
     retryable: false,
   };
@@ -328,9 +327,9 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
   const rule = AUTH_ERROR_RULES.find(candidate => candidate.match.test(message));
   if (rule === undefined) {
     return {
-      title: 'Login did not complete',
+      title: 'Sign-in did not complete',
       subtitle:
-        'Something interrupted the connection to Polkadot Mobile. Try again, and make sure the app is installed and up to date.',
+        'Something interrupted the connection to Polkadot App. Try again, and make sure the app is installed and up to date.',
       detail: message,
     };
   }

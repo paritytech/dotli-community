@@ -52,7 +52,7 @@ function StoryButton(props: { idPrefix?: string; showName?: boolean }): JSX.Elem
 /** Everything the button carries apart from styling, logged out or logged in. */
 async function expectButton(state: 'logged-out' | { initials: string | undefined }): Promise<void> {
   const b = button();
-  const label = state === 'logged-out' ? 'Sign in with Polkadot Mobile' : 'Account';
+  const label = state === 'logged-out' ? 'Sign in with Polkadot App' : 'Account';
   await expect(b).toHaveAttribute('title', label);
   await expect(b).toHaveAttribute(
     'aria-label',
@@ -166,7 +166,7 @@ export const LocalWallet: Story = {
   },
 };
 
-/** As a logged-out user in the bar, I see an enabled Sign in button named for Polkadot Mobile. */
+/** As a logged-out user in the bar, I see an enabled Sign in button named for Polkadot App. */
 export const LoggedOut: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -340,7 +340,7 @@ export const MarkupName: Story = {
   },
 };
 
-/** As a user restored from a bare session, my account says I am connected with Polkadot Mobile. */
+/** As a user restored from a bare session, my account says I am connected with Polkadot App. */
 export const BareSession: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -348,13 +348,13 @@ export const BareSession: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Then it says Connected with Polkadot Mobile, with the hint', async () => {
-      await expectAccount('Connected with Polkadot Mobile', true);
+    await ctx.step('Then it says Connected with Polkadot App, with the hint', async () => {
+      await expectAccount('Connected with Polkadot App', true);
     });
   },
 };
 
-/** As a local wallet user restored from a bare session, my account says I am connected, not through Polkadot Mobile. */
+/** As a local wallet user restored from a bare session, my account says I am connected, not through Polkadot App. */
 export const LocalBareSession: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {

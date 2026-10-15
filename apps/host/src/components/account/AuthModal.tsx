@@ -33,10 +33,10 @@ import { drawQrCode, type DrawQr } from './qr-code.js';
 import { presentQr } from './qr-drawer.js';
 import s from './AuthModal.module.css';
 
-// Lists the current Polkadot Mobile store listings for phones without the app.
+// Lists the current Polkadot App store listings for phones without the app.
 const POLKADOT_MOBILE_DOWNLOAD_URL = 'https://docs.polkadot.com/apps/';
 
-const SCAN_HINT = 'Scan with Polkadot Mobile to connect';
+const SCAN_HINT = 'Scan with Polkadot App to sign in';
 
 /** The drawn code's side, quiet zone included. The stylesheet owns it, so the code follows the layout's breakpoint. */
 function qrSize(box: HTMLElement): number {
@@ -208,7 +208,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
   const hint = (): string =>
     mobile() && !qrShown()
       ? // Mobile leads with the deeplink button.
-        'Sign in with the Polkadot app on this device'
+        'Sign in with Polkadot App on this device'
       : SCAN_HINT;
   // Desktop users scan with a phone that already has the app, so the install link only helps on a phone.
   const getAppHidden = (): boolean => {
@@ -261,7 +261,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
         <Surface class={s['panel']}>
           <div class={s['head']}>
             <h2 class={s['title']} id="auth-modal-title">
-              <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
+              <Show when={state().productLabel} fallback="Sign in with Polkadot App">
                 {label => (
                   <>
                     {label()}
@@ -288,7 +288,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
               <Match when={view()?.kind === 'authenticating'}>
                 <div class={s['progress']}>
                   <Spinner class={s['spinner']} testId="auth-modal-spinner" />
-                  <p class={s['progressText']}>Logging in...</p>
+                  <p class={s['progressText']}>Signing in...</p>
                 </div>
               </Match>
               <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
@@ -311,7 +311,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
             rel="noopener noreferrer"
             hidden={getAppHidden()}
           >
-            Don't have the app? Get Polkadot Mobile
+            Don't have the app? Get Polkadot App
           </a>
           <Button
             id="auth-modal-close"
@@ -340,7 +340,7 @@ function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): J
         <>
           <ButtonLink href={props.qr.payload} variant="primary" size="lg" block testId="auth-modal-open-app">
             <PolkadotIcon />
-            Login With Polkadot App
+            Sign in with Polkadot App
           </ButtonLink>
           <Button
             block
@@ -356,7 +356,7 @@ function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): J
     >
       <QrCode qr={props.qr} link />
       <a href={props.qr.payload} class={s['link']} data-testid="auth-modal-open-app">
-        Login With Polkadot App
+        Sign in with Polkadot App
       </a>
     </Show>
   );
