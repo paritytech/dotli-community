@@ -1,11 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { deferred, manualTimers } from '@dotli/shared/testing';
 import { type BlockCache, createBlockCache } from './block-cache.js';
+import { abortAtCommit } from './testing/abort-at-commit.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
-import { bindCaptureSink } from '@dotli/metrics';
+import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 
 // Each test gets a fresh database, so no test sees another's records.
 let idb: MemoryIdb;
@@ -239,6 +241,36 @@ describe('block cache', () => {
     // Then the block I keep stays
     expect(evicted).toBe(0);
     expect(await timed.getCachedBlock('bafyGood')).toEqual(new Uint8Array(3));
+  });
+});
+
+describe('block cache touch failures', () => {
+  it('As an operator, a touch the browser refuses at commit is counted, and the block is still served', async () => {
+    // Given a block cached a while ago, and a database that refuses every write that marks a block used
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const clock = manualTimers(1_000);
+    const refusing = createBlockCache(
+      memoryIdb({
+        onTransaction: tx => {
+          if (isTouchWrite(tx)) {
+            abortAtCommit(tx);
+          }
+        },
+      }),
+      clock,
+    );
+    await refusing.putCachedBlock('bafyA', new Uint8Array([1, 2, 3]));
+    await clock.advance(1_000);
+
+    // When I read it, and a prune that keeps everything drains the bookkeeping
+    const bytes = await refusing.getCachedBlock('bafyA');
+    await refusing.pruneBlockCache(Number.MAX_SAFE_INTEGER);
+
+    // Then the refused mark is counted, and the read still had the bytes
+    expect(sentry.counted(S.CACHE_STORAGE)).toContainEqual(
+      expect.objectContaining({ outcome: 'error', surface: 'block_cache', step: 'touch' }),
+    );
+    expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
   });
 });
 
