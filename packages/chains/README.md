@@ -31,8 +31,8 @@ flowchart LR
 - The chain pool holds one connection per chain in a JS context, over whichever transport it is given. Each lease is a
   broker session. An entry closes after its last lease is released, and at once when its transport halts. A watcher sees
   each held chain's activity and best block.
-- The broker multiplexes JSON-RPC sessions over one connection. Every request it sends upstream with an id has one owner
-  its answer goes to: a session, a shared follow, a release the broker sent itself, or a session that left, whose
+- The broker multiplexes JSON-RPC sessions over one connection. Each request it sends upstream with an id has one owner,
+  which gets the answer: a session, a shared follow, a release the broker sent itself, or a session that left, whose
   answered subscription is released at once. Events the node still sends for a subscription the broker is releasing are
   dropped quietly. A follow the node refuses is answered to every session waiting on it, and the next follow asks
   afresh. The watch guard ends transaction watches that a disconnect drops, so a replay never resubmits them.

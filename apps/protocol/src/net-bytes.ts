@@ -11,6 +11,7 @@ export const NET_BYTES_INTERVAL_MS = 500;
 /** Calls `tick` once per interval until the returned stop runs. */
 export type Ticker = (tick: () => void) => () => void;
 
+/** A `Ticker` on a real interval of `intervalMs`. */
 export function intervalTicker(intervalMs: number): Ticker {
   return tick => {
     const timer = setInterval(tick, intervalMs);

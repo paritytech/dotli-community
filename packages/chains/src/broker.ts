@@ -708,8 +708,9 @@ export class ChainBroker {
   }
 
   /**
-   * The upstream refused the follow. It is dropped before any session hears the refusal, so a session that follows
-   * again from inside its delivery, as papi does, asks the upstream afresh instead of waiting on the refused one.
+   * The upstream refused the follow or answered it without a token. It is dropped before any session hears the
+   * refusal, so a session that follows again from inside its delivery, as papi does, asks the upstream afresh instead
+   * of waiting on the refused one.
    */
   private failFollow(follow: SharedFollow, response: JsonRpcResponse): void {
     this.dropSharedFollow(follow);

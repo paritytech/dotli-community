@@ -1291,7 +1291,7 @@ describe('protocol SharedWorker', () => {
     expect(envelopes(tab, 'net-bytes')).toEqual([{ namespace: 'dotli:protocol', kind: 'net-bytes', received: 4_000 }]);
   });
 
-  it('As a dotli user on the shared light client, a worker whose light client died stops its byte reports', async () => {
+  it("As a dotli user on the shared light client, I hear no byte reports after the worker's light client dies", async () => {
     // Given a tab on a worker that reports bytes, which heard one report
     const light = fakeLightClient();
     const worker = await bootWorker(light, undefined, undefined, () => 1_000);
