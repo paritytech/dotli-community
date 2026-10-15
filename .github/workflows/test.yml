@@ -194,7 +194,7 @@ jobs:
         with:
           header: e2e-product
           message: |
-            ❌ **E2E Product suite failed** on `${{ github.event.pull_request.head.sha }}}}`: ${{{{ steps.failed.outputs.summary }}.
+            ❌ **E2E Product suite failed** on `${{ github.event.pull_request.head.sha }}`: ${{ steps.failed.outputs.summary }}.
 
             Failed tests:
             ${{ steps.failed.outputs.list }}
