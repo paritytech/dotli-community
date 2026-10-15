@@ -21,7 +21,8 @@ resolution. See the root [README](../../README.md) for the product as a whole.
 - A runner performs the load once, and again on each retry the visitor asks for, up to a limit. Every failure is
   reported and shown. It refuses to run as a top-level page.
 - One load fetches and verifies the content, hands an archive to the service worker and writes the page. It never
-  throws, so the caller learns which step failed.
+  throws, so the caller learns which step failed. A page written at a deep link gets a base at the archive root, so its
+  relative assets resolve to the archive.
 - Blocks come from the host parent through a bridge. Progress and completion go back to the host the same way.
 - The service worker serves the archive, injects the sandbox checker and keeps the archive in IndexedDB for restarts.
   The page side registers it and checks its version. The packed archive reaches the controlling worker by a handoff.
