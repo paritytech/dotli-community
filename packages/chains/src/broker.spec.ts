@@ -1623,6 +1623,119 @@ describe('broker warnings', () => {
     expect(harness.sent.filter(message => message.method === 'transactionWatch_v1_unwatch')).toHaveLength(33);
     expect(warnings).toEqual([]);
   });
+
+  it.each([
+    {
+      subscribe: 'transactionWatch_v1_submitAndWatch',
+      params: ['0x01'],
+      release: 'transactionWatch_v1_unwatch',
+      releaseResult: null,
+      event: 'transactionWatch_v1_watchEvent',
+    },
+    {
+      subscribe: 'statement_subscribeStatement',
+      params: [{ matchAll: ['0xtopic'] }],
+      release: 'statement_unsubscribeStatement',
+      releaseResult: true,
+      event: 'statement_statement',
+    },
+  ])(
+    'As a dApp that sends $release, I see no warning and no event the node sent before it read my release',
+    ({ subscribe, params, release, releaseResult, event }) => {
+      // Given a session that subscribed, then released its subscription, which the node has not answered yet
+      const harness = createProviderHarness();
+      const broker = new ChainBroker(harness.provider);
+      const messages: unknown[] = [];
+      const connection = broker.connect('a', message => messages.push(message), 'object');
+      connection.send({ jsonrpc: '2.0', id: 1, method: subscribe, params });
+      harness.emit({ jsonrpc: '2.0', id: (harness.sent.at(-1) as { id: string }).id, result: 'up-sub' });
+      const localToken = (messages[0] as { result: string }).result;
+      connection.send({ jsonrpc: '2.0', id: 2, method: release, params: [localToken] });
+      const releaseId = (harness.sent.at(-1) as { id: string }).id;
+
+      // When the node still delivers an event it queued before it read the release
+      const warnings = warningsDuring(() => {
+        harness.emit({
+          jsonrpc: '2.0',
+          method: event,
+          params: { subscription: 'up-sub', result: { event: 'validated' } },
+        });
+      });
+      harness.emit({ jsonrpc: '2.0', id: releaseId, result: releaseResult });
+
+      // Then the event was dropped, and the session only got its two answers
+      expect(warnings).toEqual([]);
+      expect(messages).toEqual([
+        { jsonrpc: '2.0', id: 1, result: localToken },
+        { jsonrpc: '2.0', id: 2, result: releaseResult },
+      ]);
+    },
+  );
+
+  it('As a dApp that leaves while its unwatch is in flight, I leave no warning for an event the node sent before it read the unwatch', () => {
+    // Given a session that watched a transaction, unwatched it and left before the node answered the unwatch
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const messages: unknown[] = [];
+    const connection = broker.connect('a', message => messages.push(message), 'object');
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x01'] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent.at(-1) as { id: string }).id, result: 'up-tx' });
+    const localToken = (messages[0] as { result: string }).result;
+    connection.send({ jsonrpc: '2.0', id: 2, method: 'transactionWatch_v1_unwatch', params: [localToken] });
+    const unwatchId = (harness.sent.at(-1) as { id: string }).id;
+    connection.disconnect();
+
+    // When the node still delivers an event it queued before it read the unwatch
+    const warnings = warningsDuring(() => {
+      harness.emit({
+        jsonrpc: '2.0',
+        method: 'transactionWatch_v1_watchEvent',
+        params: { subscription: 'up-tx', result: { event: 'validated' } },
+      });
+      harness.emit({ jsonrpc: '2.0', id: unwatchId, result: null });
+    });
+
+    // Then
+    expect(warnings).toEqual([]);
+    expect(harness.sent.map(message => message.method)).toEqual([
+      'transactionWatch_v1_submitAndWatch',
+      'transactionWatch_v1_unwatch',
+    ]);
+  });
+
+  it('As a dotli maintainer, I see no warning when many watches a session unwatched still deliver events while a follow waits on its answer', () => {
+    // Given a follow in flight, and a session that unwatches more watches than the early buffer keeps tokens for
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    broker
+      .connect('a', () => undefined, 'object')
+      .send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    const messages: unknown[] = [];
+    const connection = broker.connect('b', message => messages.push(message), 'object');
+    const tokens = Array.from({ length: 33 }, (_, index) => `up-tx-${String(index)}`);
+    for (const [index, token] of tokens.entries()) {
+      connection.send({ jsonrpc: '2.0', id: index, method: 'transactionWatch_v1_submitAndWatch', params: ['0x01'] });
+      harness.emit({ jsonrpc: '2.0', id: (harness.sent.at(-1) as { id: string }).id, result: token });
+    }
+    for (const [index, message] of [...messages].entries()) {
+      const localToken = (message as { result: string }).result;
+      connection.send({ jsonrpc: '2.0', id: 100 + index, method: 'transactionWatch_v1_unwatch', params: [localToken] });
+    }
+
+    // When the node still delivers an event for each watch before it reads the unwatches
+    const warnings = warningsDuring(() => {
+      for (const token of tokens) {
+        harness.emit({
+          jsonrpc: '2.0',
+          method: 'transactionWatch_v1_watchEvent',
+          params: { subscription: token, result: { event: 'validated' } },
+        });
+      }
+    });
+
+    // Then none of the late events was buffered or warned about
+    expect(warnings).toEqual([]);
+  });
 });
 
 describe('ChainBroker.halt', () => {

@@ -50,12 +50,18 @@ interface SubscriptionMessage {
  * routed by guessing what its id holds.
  */
 type RequestOwner =
-  /** A session's own request, answered under the session's id for it. */
-  | { kind: 'session'; sessionId: string; clientId: JsonRpcId; method: string }
+  /**
+   * A session's own request, answered under the session's id for it. A release it sends as the last owner carries
+   * `upstreamToken`, since the node may still send events it queued for that subscription.
+   */
+  | { kind: 'session'; sessionId: string; clientId: JsonRpcId; method: string; upstreamToken?: string | undefined }
   /** The upstream follow a shared follow waits on, answered to every session waiting on it. */
   | { kind: 'follow'; follow: SharedFollow }
-  /** A request whose session left before the answer. A subscription the answer opens is released at once. */
-  | { kind: 'orphan'; method: string }
+  /**
+   * A request whose session left before the answer. A subscription the answer opens is released at once. A release
+   * keeps its `upstreamToken` for the events the node may still send for it.
+   */
+  | { kind: 'orphan'; method: string; upstreamToken?: string | undefined }
   /**
    * A release the broker sent itself for `upstreamToken`. Nobody waits on its answer, and until it comes the node may
    * still send events it queued for that subscription.
@@ -269,12 +275,12 @@ export class ChainBroker {
   }
 
   /** Forwards a session's request, owned by the session when it expects an answer. */
-  private forwardForSession(session: Session, request: JsonRpcRequest, method: string): void {
+  private forwardForSession(session: Session, request: JsonRpcRequest, method: string, upstreamToken?: string): void {
     if (request.id === undefined) {
       this.sendUpstream(request);
       return;
     }
-    this.sendTracked({ kind: 'session', sessionId: session.id, clientId: request.id, method }, request);
+    this.sendTracked({ kind: 'session', sessionId: session.id, clientId: request.id, method, upstreamToken }, request);
   }
 
   /** A release the broker sends itself, for something no session holds anymore. */
@@ -286,7 +292,12 @@ export class ChainBroker {
   }
 
   private isReleasing(upstreamToken: string): boolean {
-    return [...this.pending.values()].some(owner => owner.kind === 'release' && owner.upstreamToken === upstreamToken);
+    return [...this.pending.values()].some(
+      owner =>
+        owner.kind !== 'follow' &&
+        owner.upstreamToken === upstreamToken &&
+        (owner.kind === 'release' || RELEASE_METHODS.has(owner.method)),
+    );
   }
 
   connect(
@@ -489,7 +500,7 @@ export class ChainBroker {
       return;
     }
 
-    this.forwardForSession(session, cloneWithRewrittenFirstParam(request, upstreamToken), method);
+    this.forwardForSession(session, cloneWithRewrittenFirstParam(request, upstreamToken), method, upstreamToken);
   }
 
   /** Ref-counted unpin, forwarded only once no session holds the block. Replies success locally at once. */
@@ -936,7 +947,7 @@ export class ChainBroker {
     // An answer still on its way may open a subscription, which nobody would release once its session has gone.
     for (const [requestId, owner] of this.pending) {
       if (owner.kind === 'session' && owner.sessionId === sessionId) {
-        this.pending.set(requestId, { kind: 'orphan', method: owner.method });
+        this.pending.set(requestId, { kind: 'orphan', method: owner.method, upstreamToken: owner.upstreamToken });
       }
     }
 
