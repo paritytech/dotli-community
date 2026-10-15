@@ -207,6 +207,27 @@ describe('topbar login over the page core', () => {
 
     // Then
     expect(login.postMessage).not.toHaveBeenCalled();
+    expect(login.dispose).toHaveBeenCalledTimes(1);
+    expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
+  });
+
+  it('As a user who closes the sign-in while the wallet core still boots, no pairing starts once it has booted', async () => {
+    // Given: a login waiting for a cold wallet core to boot
+    const fakes = harness();
+    fakes.holdBoots();
+    const done = fakes.commands.login();
+    await fakes.changes.until(() => fakes.heldBoots.length === 1);
+
+    // When: the user closes the modal, then the core finishes booting
+    fakes.commands.cancelLogin();
+    nth(fakes.heldBoots, 0).resolve(undefined);
+    await done;
+
+    // Then: no connection was opened, nothing was reported, and the login let the core go
+    expect(fakes.connections).toHaveLength(0);
+    expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
+    expect(fakes.captures.exception).not.toHaveBeenCalled();
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
   });
 });
 

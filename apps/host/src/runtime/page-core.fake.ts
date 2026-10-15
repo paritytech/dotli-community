@@ -15,6 +15,7 @@ import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
+import type { BootedCoreRuntime } from './core-runtime.js';
 import { createPageCore, type PageCore } from './page-core.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
@@ -52,6 +53,10 @@ export interface FakePageCore {
   connections: PromiseWithResolvers<FakeCoreProvider>[];
   /** Queues how the next boots end: a runtime to adjust, or an error to fail with. */
   nextBoots: ((runtime: FakeCoreRuntime) => Error | undefined)[];
+  /** Every boot held by {@link FakePageCore.holdBoots}, in order, each let through by the test. */
+  heldBoots: PromiseWithResolvers<undefined>[];
+  /** Holds every later boot until the test lets it through, as a cold wallet core still starting. */
+  holdBoots(): void;
   /** The local wallet turning up, as another tab logged in, so pairing cores turn stale and later boots are local. */
   findLocalWallet(): void;
   /** Notified at each connection asked and each call on a runtime or an answered connection. */
@@ -116,23 +121,34 @@ export function createFakePageCore(): FakePageCore {
   const connections: PromiseWithResolvers<FakeCoreProvider>[] = [];
   const nextBoots: ((runtime: FakeCoreRuntime) => Error | undefined)[] = [];
   const storeListeners = new Set<() => void>();
+  const heldBoots: PromiseWithResolvers<undefined>[] = [];
   const changes = createChanges();
   let walletFound = false;
+  let holding = false;
+  const boot = (): Promise<BootedCoreRuntime> => {
+    const runtime = makeRuntime(connections, changes);
+    const failure = nextBoots.shift()?.(runtime);
+    if (failure !== undefined) {
+      return Promise.reject(failure);
+    }
+    runtimes.push(runtime);
+    changes.notify();
+    const local = walletFound;
+    return Promise.resolve({
+      runtime: runtime as unknown as WorkerPairingHostRuntime,
+      local,
+      stale: () => Promise.resolve(!local && walletFound),
+    });
+  };
   const core = createPageCore({
     bootRuntime: () => {
-      const runtime = makeRuntime(connections, changes);
-      const failure = nextBoots.shift()?.(runtime);
-      if (failure !== undefined) {
-        return Promise.reject(failure);
+      if (!holding) {
+        return boot();
       }
-      runtimes.push(runtime);
+      const held = Promise.withResolvers<undefined>();
+      heldBoots.push(held);
       changes.notify();
-      const local = walletFound;
-      return Promise.resolve({
-        runtime: runtime as unknown as WorkerPairingHostRuntime,
-        local,
-        stale: () => Promise.resolve(!local && walletFound),
-      });
+      return held.promise.then(boot);
     },
     onStoredSessionChanged: listener => {
       storeListeners.add(listener);
@@ -148,6 +164,10 @@ export function createFakePageCore(): FakePageCore {
     runtimes,
     connections,
     nextBoots,
+    heldBoots,
+    holdBoots() {
+      holding = true;
+    },
     changes,
     findLocalWallet() {
       walletFound = true;
