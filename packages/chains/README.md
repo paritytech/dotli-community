@@ -33,6 +33,9 @@ flowchart LR
   each held chain's activity and best block.
 - The broker multiplexes JSON-RPC sessions over one connection. The watch guard ends transaction watches that a
   disconnect drops, so a replay never resubmits them.
+- Identical follows share one upstream follow. Its snapshot keeps the newest finalized block, the blocks above it and
+  the best block, so a session that joins late is replayed from it. A block is unpinned upstream only once no session
+  and no snapshot holds it.
 - A request a halted chain leaves unanswered gets a marked error, and a typed error says whether the chain or the whole
   frame stopped. The halt module imports nothing, so an eager client takes it without the broker.
 - The byte meter wraps the socket constructors, since resource timing misses WebSocket and WebRTC. It is installed

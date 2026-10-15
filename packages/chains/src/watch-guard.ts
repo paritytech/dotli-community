@@ -7,6 +7,7 @@
 
 import type { JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ConnectionStatus } from './transport-hooks.js';
+import { isRecord } from './json-shape.js';
 
 const SUBMIT_AND_WATCH = 'transactionWatch_v1_submitAndWatch';
 const UNWATCH = 'transactionWatch_v1_unwatch';
@@ -18,10 +19,6 @@ export interface WatchGuard {
   provider: JsonRpcProvider;
   /** `disconnected` ends every tracked watch. */
   onStatus: (status: ConnectionStatus) => void;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {

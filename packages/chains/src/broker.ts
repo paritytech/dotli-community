@@ -9,6 +9,8 @@ import type {
 import { reportListener } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { chainHaltedError } from './chain-halted.js';
+import { createFollowSnapshot, type FollowSnapshot } from './follow-snapshot.js';
+import { isRecord, stringsOf } from './json-shape.js';
 
 /** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
 export interface StringJsonRpcConnection {
@@ -64,25 +66,8 @@ interface SharedFollow {
     requestId: JsonRpcId;
     localToken: string;
   }[];
-  /** The newest finalized block alone, the base a later session's replay starts from. */
-  finalizedBlockHashes: string[];
-  finalizedBlockRuntime: unknown;
-  bestBlockHash: string | null;
-  /** The unfinalized blocks above the newest finalized one. */
-  blocks: Map<string, CachedBlock>;
-  /** Per block hash, the local follow tokens (and the snapshot) still pinning it. */
-  pins: Map<string, Set<string>>;
-}
-
-/**
- * Pins the blocks a later session is replayed. Sessions unpin freely, and without this the next
- * session to join would be told of a block the node already unpinned and refuses to read.
- */
-const SNAPSHOT_HOLDER = 'snapshot';
-
-interface CachedBlock {
-  result: Record<string, unknown>;
-  parentBlockHash: string | null;
+  /** What the follow told its sessions so far, and who still pins each of its blocks. */
+  snapshot: FollowSnapshot;
 }
 
 type WireMode = 'string' | 'object';
@@ -115,10 +100,6 @@ const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
 const MAX_EARLY_SUBSCRIPTION_TOKENS = 32;
 const MAX_EARLY_SUBSCRIPTION_EVENTS_PER_TOKEN = 16;
 
-function isJsonRpcObject(value: unknown): value is Record<string, unknown> & { jsonrpc?: string } {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function buildJsonRpcError(
   id: JsonRpcId,
   error: string | ReturnType<typeof chainHaltedError>,
@@ -131,17 +112,15 @@ function buildJsonRpcResult(id: JsonRpcId, result: unknown): Record<string, unkn
 }
 
 function isRequestMessage(value: unknown): value is JsonRpcRequest {
-  return isJsonRpcObject(value) && typeof value['method'] === 'string';
+  return isRecord(value) && typeof value['method'] === 'string';
 }
 
 function isResponseMessage(value: unknown): value is JsonRpcResponse {
-  return isJsonRpcObject(value) && 'id' in value && !('method' in value);
+  return isRecord(value) && 'id' in value && !('method' in value);
 }
 
 function isSubscriptionMessage(value: unknown): value is SubscriptionMessage {
-  return (
-    isJsonRpcObject(value) && 'method' in value && isJsonRpcObject(value['params']) && 'subscription' in value['params']
-  );
+  return isRecord(value) && 'method' in value && isRecord(value['params']) && 'subscription' in value['params'];
 }
 
 /** Parses strings on the object wire too, since some substrate clients serialize inconsistently. */
@@ -158,13 +137,7 @@ function encode(value: unknown, mode: WireMode): unknown {
 
 /** `chainHead_v1_unpin` takes its hash arg as a string or an array. */
 function normalizeUnpinHashes(param: unknown): string[] {
-  if (typeof param === 'string') {
-    return [param];
-  }
-  if (Array.isArray(param)) {
-    return param.filter((hash): hash is string => typeof hash === 'string');
-  }
-  return [];
+  return typeof param === 'string' ? [param] : stringsOf(param);
 }
 
 function cloneWithRewrittenFirstParam(request: JsonRpcRequest, rewrittenToken: string): JsonRpcRequest {
@@ -506,7 +479,7 @@ export class ChainBroker {
       return;
     }
 
-    const orphaned = this.releasePins(sharedFollow, token, normalizeUnpinHashes(params[1]));
+    const orphaned = sharedFollow.snapshot.release(token, normalizeUnpinHashes(params[1]));
     if (orphaned.length > 0) {
       this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
     }
@@ -514,54 +487,6 @@ export class ChainBroker {
     if (request.id !== undefined) {
       this.sendToSession(session, buildJsonRpcResult(request.id ?? null, null));
     }
-  }
-
-  private registerPin(sharedFollow: SharedFollow, localToken: string, hash: string): void {
-    let holders = sharedFollow.pins.get(hash);
-    if (!holders) {
-      holders = new Set<string>();
-      sharedFollow.pins.set(hash, holders);
-    }
-    holders.add(localToken);
-  }
-
-  /** Pin the blocks a follow event implies: `initialized` finalized blocks and `newBlock`. */
-  private registerPinsFromEvent(sharedFollow: SharedFollow, localToken: string, eventResult: unknown): void {
-    if (!isJsonRpcObject(eventResult)) {
-      return;
-    }
-    if (eventResult['event'] === 'initialized') {
-      const hashes = Array.isArray(eventResult['finalizedBlockHashes']) ? eventResult['finalizedBlockHashes'] : [];
-      for (const hash of hashes) {
-        if (typeof hash === 'string') {
-          this.registerPin(sharedFollow, localToken, hash);
-        }
-      }
-      return;
-    }
-    if (eventResult['event'] === 'newBlock' && typeof eventResult['blockHash'] === 'string') {
-      this.registerPin(sharedFollow, localToken, eventResult['blockHash']);
-    }
-  }
-
-  /** Drops `localToken`'s hold on `hashes` (all when null) and returns those no session holds anymore. */
-  private releasePins(sharedFollow: SharedFollow, localToken: string, hashes: string[] | null): string[] {
-    const orphaned: string[] = [];
-    const entries = hashes ?? [...sharedFollow.pins.keys()];
-    for (const hash of entries) {
-      const holders = sharedFollow.pins.get(hash);
-      if (!holders) {
-        continue;
-      }
-      if (!holders.delete(localToken)) {
-        continue;
-      }
-      if (holders.size === 0) {
-        sharedFollow.pins.delete(hash);
-        orphaned.push(hash);
-      }
-    }
-    return orphaned;
   }
 
   private sendUpstreamUnpin(upstreamToken: string, hashes: string[]): void {
@@ -649,7 +574,7 @@ export class ChainBroker {
 
     if (isSubscriptionMessage(parsed)) {
       const result = parsed.params?.result;
-      if (isJsonRpcObject(result)) {
+      if (isRecord(result)) {
         const event = result['event'];
         const rawSub = parsed.params?.subscription;
         const token = typeof rawSub === 'string' ? rawSub : '?';
@@ -773,22 +698,25 @@ export class ChainBroker {
     const sharedFollow = this.upstreamFollowTokens.get(upstreamToken);
     if (sharedFollow) {
       const eventResult = message.params?.result;
-      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
+      if (isRecord(eventResult) && eventResult['event'] === 'stop') {
         this.stopSharedFollow(sharedFollow, upstreamToken, message);
         return;
       }
-      this.cacheSharedFollowEvent(sharedFollow, eventResult);
+      const orphaned = sharedFollow.snapshot.record(eventResult);
+      if (orphaned.length > 0) {
+        this.sendUpstreamUnpin(upstreamToken, orphaned);
+      }
       // Every session holds the event's blocks before any hears it. A session that unpins inside its own delivery, as
       // polkadot-api does on `initialized`, would otherwise release them upstream under a session not yet told.
       const recipients: { session: Session; localToken: string }[] = [];
       for (const localToken of sharedFollow.localTokens) {
         const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
         if (session?.connected === true) {
-          this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
+          sharedFollow.snapshot.pinEvent(localToken, eventResult);
           recipients.push({ session, localToken });
         }
       }
-      const eventType = isJsonRpcObject(eventResult)
+      const eventType = isRecord(eventResult)
         ? typeof eventResult['event'] === 'string'
           ? eventResult['event']
           : 'unknown'
@@ -821,7 +749,7 @@ export class ChainBroker {
     }
 
     const eventResult = message.params?.result;
-    const eventType = isJsonRpcObject(eventResult)
+    const eventType = isRecord(eventResult)
       ? typeof eventResult['event'] === 'string'
         ? eventResult['event']
         : 'unknown'
@@ -853,7 +781,7 @@ export class ChainBroker {
       });
     }
 
-    if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
+    if (isRecord(eventResult) && eventResult['event'] === 'stop') {
       brokerLog(`Token stopped by upstream: ${upstreamToken}`);
       for (const localToken of localTokens) {
         this.releaseOwnedToken(localToken, false);
@@ -988,11 +916,7 @@ export class ChainBroker {
         requestInFlight: false,
         localTokens: new Set<string>(),
         pendingLocals: [],
-        finalizedBlockHashes: [],
-        finalizedBlockRuntime: null,
-        bestBlockHash: null,
-        blocks: new Map<string, CachedBlock>(),
-        pins: new Map<string, Set<string>>(),
+        snapshot: createFollowSnapshot(),
       };
       this.sharedFollows.set(followKey, sharedFollow);
     }
@@ -1123,7 +1047,7 @@ export class ChainBroker {
     const followStaysAlive = sharedFollow.localTokens.size > 0 || sharedFollow.requestInFlight;
 
     // A live follow unpins orphaned blocks upstream. For the last token the unfollow below releases them all.
-    const orphaned = this.releasePins(sharedFollow, localToken, null);
+    const orphaned = sharedFollow.snapshot.release(localToken, null);
     if (followStaysAlive) {
       if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
         this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
@@ -1145,135 +1069,12 @@ export class ChainBroker {
     this.sharedFollows.delete(followToken.followKey);
   }
 
-  private cacheSharedFollowEvent(sharedFollow: SharedFollow, eventResult: unknown): void {
-    if (!isJsonRpcObject(eventResult)) {
-      return;
-    }
-
-    const eventType = typeof eventResult['event'] === 'string' ? eventResult['event'] : '';
-    if (eventType === 'initialized') {
-      const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
-        ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
-        : [];
-      const newest = hashes.at(-1);
-      sharedFollow.finalizedBlockHashes = newest === undefined ? [] : [newest];
-      sharedFollow.finalizedBlockRuntime = eventResult['finalizedBlockRuntime'] ?? null;
-      sharedFollow.blocks.clear();
-      sharedFollow.bestBlockHash = null;
-      if (newest !== undefined) {
-        this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
-      }
-      return;
-    }
-
-    if (eventType === 'newBlock') {
-      const blockHash = typeof eventResult['blockHash'] === 'string' ? eventResult['blockHash'] : null;
-      if (blockHash === null) {
-        return;
-      }
-      sharedFollow.blocks.set(blockHash, {
-        result: { ...eventResult },
-        parentBlockHash: typeof eventResult['parentBlockHash'] === 'string' ? eventResult['parentBlockHash'] : null,
-      });
-      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, blockHash);
-      return;
-    }
-
-    if (eventType === 'bestBlockChanged') {
-      sharedFollow.bestBlockHash =
-        typeof eventResult['bestBlockHash'] === 'string' ? eventResult['bestBlockHash'] : null;
-      return;
-    }
-
-    if (eventType === 'finalized') {
-      const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
-        ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
-        : [];
-      const newest = hashes.at(-1);
-      if (newest === undefined) {
-        return;
-      }
-      for (const hash of hashes) {
-        const newRuntime = sharedFollow.blocks.get(hash)?.result['newRuntime'];
-        if (newRuntime !== undefined && newRuntime !== null) {
-          sharedFollow.finalizedBlockRuntime = newRuntime;
-        }
-      }
-      const pruned = Array.isArray(eventResult['prunedBlockHashes'])
-        ? eventResult['prunedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
-        : [];
-      const dropped = [...sharedFollow.finalizedBlockHashes, ...hashes.slice(0, -1), ...pruned];
-      for (const hash of [...dropped, newest]) {
-        sharedFollow.blocks.delete(hash);
-      }
-      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
-      sharedFollow.finalizedBlockHashes = [newest];
-      const orphaned = this.releasePins(sharedFollow, SNAPSHOT_HOLDER, dropped);
-      if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
-        this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
-      }
-    }
-  }
-
   private replayFollowSnapshot(session: Session, localToken: string, sharedFollow: SharedFollow): void {
-    if (sharedFollow.finalizedBlockHashes.length > 0) {
-      for (const hash of sharedFollow.finalizedBlockHashes) {
-        this.registerPin(sharedFollow, localToken, hash);
-      }
+    for (const result of sharedFollow.snapshot.replayFor(localToken)) {
       this.sendToSession(session, {
         jsonrpc: '2.0',
         method: 'chainHead_v1_followEvent',
-        params: {
-          subscription: localToken,
-          result: {
-            event: 'initialized',
-            finalizedBlockHashes: sharedFollow.finalizedBlockHashes,
-            finalizedBlockRuntime: sharedFollow.finalizedBlockRuntime,
-          },
-        },
-      });
-    }
-
-    const replayBlocks: Record<string, unknown>[] = [];
-    let cursor = sharedFollow.bestBlockHash;
-    const seen = new Set<string>();
-    while (cursor !== null && !seen.has(cursor)) {
-      seen.add(cursor);
-      const cached = sharedFollow.blocks.get(cursor);
-      if (!cached) {
-        break;
-      }
-      replayBlocks.push(cached.result);
-      if (cached.parentBlockHash === null || sharedFollow.finalizedBlockHashes.includes(cached.parentBlockHash)) {
-        break;
-      }
-      cursor = cached.parentBlockHash;
-    }
-
-    replayBlocks.reverse();
-    for (const result of replayBlocks) {
-      this.registerPinsFromEvent(sharedFollow, localToken, result);
-      this.sendToSession(session, {
-        jsonrpc: '2.0',
-        method: 'chainHead_v1_followEvent',
-        params: {
-          subscription: localToken,
-          result,
-        },
-      });
-    }
-
-    if (sharedFollow.bestBlockHash !== null) {
-      this.sendToSession(session, {
-        jsonrpc: '2.0',
-        method: 'chainHead_v1_followEvent',
-        params: {
-          subscription: localToken,
-          result: {
-            event: 'bestBlockChanged',
-            bestBlockHash: sharedFollow.bestBlockHash,
-          },
-        },
+        params: { subscription: localToken, result },
       });
     }
   }
