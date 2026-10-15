@@ -38,6 +38,49 @@ flowchart LR
   mount fills.
 - The panel imports no chain library. It reads keys and chains through its port, and lint enforces it.
 
+## Using the panel
+
+### Turning it on and off
+
+Builds made with `VITE_APP_DEBUG=true` mount the panel collapsed. Other builds keep it off until Settings, Advanced,
+**Open in debug mode**, or `?debug=true` on any URL. The choice lasts for the tab, and `?debug=off` or the panel's
+**Hide** button leaves debug mode and reloads without the panel. The panel's code loads only in debug mode.
+
+### Sections
+
+- **TrUAPI**: the messages between host and product, and the host's own boot, resolve, render, bridge and failover
+  events, as a list or a timeline beside a detail pane.
+- **Resolution**: how the last page load went, phase by phase, with the open block and the chains that never started.
+- **Archive**: the files of the loaded product.
+- **Diagnostics**: the site, backend and package versions, to paste into a bug report.
+- **Wallet**: switches every app on the domain between Polkadot App and a local wallet.
+
+### Reading the TrUAPI section
+
+- A TrUAPI message groups with the others of its request id, a host event with the others of its flow id. Selecting an
+  event highlights its group, and the detail pane shows the group with each event's time from the first.
+- A request with no reply yet shows a pending badge that counts up and turns slow after three seconds.
+- **Pause** stops recording new events. The reply that closes a call the panel already recorded still lands, once, so
+  that call does not read pending for good. **Clear** drops the recorded events, or on the Resolution section the
+  recorded load.
+- The filters pick the kind (TrUAPI or System), the direction, the product, and the methods to include by text or
+  `/regex/`, and the methods to exclude. Export and Copy take what the filters show. Copy announces its outcome as a
+  status text for assistive technology.
+- In the timeline, time runs downwards. Each chain that is followed gets a swimlane, then the host's events, then other
+  TrUAPI traffic. A box spans a call from its request to its reply and has a dashed edge while it waits. A rail is a
+  chain head subscription, and its ticks are the subscription's block events.
+- Keyboard: the section and view tabs move focus with the left and right arrows, Home and End, and Enter or Space picks
+  one. The event list is a listbox with the selected event as its active option. The arrow keys also move the panel's
+  edge and the splitter, with Shift for a larger step.
+- Chain messages are decoded into their operation and block events. Bytes show their length and first bytes.
+- The Resolution clock runs only while a running load is on screen.
+- The list keeps the newest 2000 events and counts the ones it dropped.
+
+### Adding a host event
+
+Emit it on the debug bus with a layer, an event name, a flow id and a payload. Give it a one-line summary and a longer
+explanation in the panel's models.
+
 ## Public API
 
 ### `@dotli/truapi-debug-ui`

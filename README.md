@@ -284,17 +284,17 @@ is deployed; rebuild from that tag to verify a deployment.
 
 ## Debug panel
 
-dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI
-host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so
-users who never see it pay no download cost.
+dot.li ships a TrUAPI debug panel that shows the host's boot, resolve, render and bridge events and the messages between
+host and product in one time-aligned inspector. Its chunk loads only in debug mode, so users who never open it pay no
+download cost.
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at
-`paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in
-the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab
-clears it. Use `?debug=off` to silence it explicitly within the same session.
+`paseoli.dev`) the panel auto-mounts collapsed. Elsewhere it's off until you click **Open in debug mode** in the host
+Settings menu, or append `?debug=true` to any URL. The choice is scoped to the tab's session, so closing the tab clears
+it. Use `?debug=off` to leave debug mode within the same session.
 
-See [packages/truapi-debug-ui/DEBUG_PANEL.md](packages/truapi-debug-ui/DEBUG_PANEL.md) for the full reference — event
-sources, views, filters, correlation keys, and how to add a new instrumentation hook.
+See [packages/truapi-debug-ui/README.md](packages/truapi-debug-ui/README.md) for how to read the panel and add a host
+event.
 
 ## Sandbox API Checker
 
