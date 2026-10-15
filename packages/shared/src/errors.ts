@@ -127,6 +127,16 @@ export function errorName(value: unknown): string | undefined {
   return value instanceof Error ? value.name : undefined;
 }
 
+/** The message of a thrown `Error`, or the thrown value as text, for copy and logs that read the message alone. */
+export function errorMessage(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
+}
+
+/** A thrown value as an `Error`. An `Error` passes through, and anything else becomes the cause of a new one. */
+export function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(serializeError(value), { cause: value });
+}
+
 const CYCLE_MARKER = '[cycle]';
 const UNKNOWN_OBJECT = '[object Object]';
 const AGG_CAP = 3;

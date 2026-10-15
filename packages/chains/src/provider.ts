@@ -8,7 +8,7 @@ import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcProvider } from 'polkadot-api';
 import { DEBUG, chainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
 import { m, reportListener, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, log } from '@dotli/shared';
+import { createAsyncTaskPool, createListenerSet, errorMessage, log } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import { createSmoldotDb, type SmoldotDb } from './smoldot-db.js';
@@ -292,7 +292,7 @@ export function createLightClient(deps: LightClientDeps): LightClient {
             onMessage(parsed);
           }
         } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
+          const reason = errorMessage(error);
           if (connected) {
             log.warn(`[dot.li provider] chain ${key} read failed, halting it: ${reason}`, error);
           } else {

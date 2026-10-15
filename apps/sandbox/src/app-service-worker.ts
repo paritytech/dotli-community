@@ -6,7 +6,7 @@
 
 /// <reference lib="webworker" />
 
-import { idbRequest, idbTransaction, openIdb } from '@dotli/shared';
+import { errorMessage, errorName, idbRequest, idbTransaction, openIdb } from '@dotli/shared';
 import type { SetArchiveMessage } from './archive-handoff.js';
 import { getMimeType } from './mime.js';
 
@@ -99,8 +99,8 @@ function reportArchiveFailure(clients: readonly Client[], stage: 'persist' | 're
   const message = {
     type: 'ARCHIVE_FAILURE',
     stage,
-    name: shown instanceof Error ? shown.name : 'NonErrorThrow',
-    message: shown instanceof Error ? shown.message : String(shown),
+    name: errorName(shown) ?? 'NonErrorThrow',
+    message: errorMessage(shown),
   } as const;
   for (const client of clients) {
     client.postMessage(message);

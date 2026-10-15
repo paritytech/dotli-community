@@ -7,7 +7,7 @@
 
 import { withActiveTld } from '@dotli/config';
 import { captureException } from '@dotli/metrics';
-import { log, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { errorMessage, log, type ReadableStore, registerStoreStateReset } from '@dotli/shared';
 import type { AuthCommands } from './core-login.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './blocking-modal-queue.js';
 import type { DotliAuthState } from './session/auth-state.js';
@@ -49,7 +49,7 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
     const fail = (error: unknown): void => {
       log.error(`[dot.li auth] ${step} failed:`, error);
       if (step === 'login') {
-        showFailure('Other', error instanceof Error ? error.message : String(error));
+        showFailure('Other', errorMessage(error));
       }
     };
     void deps.commands().then(

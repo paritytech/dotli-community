@@ -5,7 +5,7 @@
 
 import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from '@dotli/sandbox-wire';
 import { TIMEOUTS } from '@dotli/config';
-import { log, randomId, withTimeout } from '@dotli/shared';
+import { log, randomId, toError, withTimeout } from '@dotli/shared';
 
 export interface BitswapBridgeDeps {
   /** The sandbox's own window, where the host's answers and `pagehide` arrive. */
@@ -115,7 +115,7 @@ export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
         } catch (err) {
           pending.delete(id);
           log.error('[dot.li sandbox] bitswap bridge postMessage failed:', err);
-          reject(err instanceof Error ? err : new Error(String(err)));
+          reject(toError(err));
         }
       });
       // The host's relay gives up at its own budget, so a reply that never comes is dropped, not awaited forever.

@@ -10,7 +10,7 @@ import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type 
 import { bitswapGet } from '@dotli/bitswap';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { protocolClient } from '@dotli/protocol';
-import { createAsyncTaskPool, dur, elapsed, log, randomId, serializeError } from '@dotli/shared';
+import { createAsyncTaskPool, dur, elapsed, errorMessage, log, randomId, serializeError } from '@dotli/shared';
 import type { CachedManifests } from '@dotli/storage';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { readChatCapability } from './chat-capability.js';
@@ -362,14 +362,14 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
         chain_backend: backend,
       },
     });
-    trace.finish('error', { reason: err instanceof Error ? err.message : String(err), errorKind: error.kind });
+    trace.finish('error', { reason: errorMessage(err), errorKind: error.kind });
     log.debug(`[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`);
     emitDotliDebugEvent({
       layer: 'boot',
       event: 'failed',
       flowId,
       timestamp: Date.now(),
-      payload: { label, reason: err instanceof Error ? err.message : String(err), dependency },
+      payload: { label, reason: errorMessage(err), dependency },
     });
     // Once for the failed load, however many times the user moves between its error screens.
     setProductError();

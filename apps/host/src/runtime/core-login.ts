@@ -19,7 +19,7 @@ import {
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { captureException, m, recordExpected, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log, type ReadableStore } from '@dotli/shared';
+import { createAsyncTaskPool, errorMessage, log, type ReadableStore, toError } from '@dotli/shared';
 import { ownCoreConnection } from './core-connection.js';
 import type { DotliAuthState } from './session/auth-state.js';
 import type { SessionState } from './session/session-state.js';
@@ -135,7 +135,7 @@ export function createCoreAuthCommands(deps: CoreAuthCommandsDeps): AuthCommands
       // The core already rendered a `LoginRequestError`, or stayed silent on purpose. Report a failure
       // only when it never saw one.
       if (!(error instanceof LoginRequestError)) {
-        deps.session.reportLoginFailure(error instanceof Error ? error.message : String(error));
+        deps.session.reportLoginFailure(errorMessage(error));
       }
     }
   }
@@ -359,7 +359,7 @@ export function requestCoreLogin(core: Provider, reason?: string): Promise<Login
     try {
       core.postMessage(frame.value);
     } catch (error) {
-      rejectRequest(error instanceof Error ? error : new Error(String(error)));
+      rejectRequest(toError(error));
     }
   });
 }

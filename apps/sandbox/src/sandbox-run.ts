@@ -6,7 +6,7 @@
 
 import { validateSandboxParams } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, gatewayUnreachable, log, named } from '@dotli/shared';
+import { createAsyncTaskPool, errorMessage, gatewayUnreachable, log, named } from '@dotli/shared';
 
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './load-product.js';
 
@@ -137,7 +137,7 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
       step,
       tags: { surface: 'sandbox_main', dependency, attempt: String(attempt) },
     });
-    const raw = err instanceof Error ? err.message : String(err);
+    const raw = errorMessage(err);
     // The gateway path's commonest failure reads as an app bug verbatim, so it gets plain words. A failed dynamic
     // import starts the same way but means a missing chunk, not an unreachable gateway.
     const message =

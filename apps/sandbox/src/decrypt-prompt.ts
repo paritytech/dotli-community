@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ArchiveFiles } from '@dotli/content';
-import { log } from '@dotli/shared';
+import { errorMessage, log } from '@dotli/shared';
 
 export interface DecryptDeps {
   /** Asks the visitor for the password, showing why the attempt before failed. */
@@ -42,7 +42,7 @@ export function createDecryptIfNeeded(
         decryptedPasswords.set(cid, password);
         return await deps.parseIpfsResponse(plaintext);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         const looksLikeWrongPassword = /invalid tag|auth(entication)? failed|poly1305|chacha/i.test(msg);
         if (!looksLikeWrongPassword) {
           throw err;

@@ -42,8 +42,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Concurrency and state: `createAsyncTaskPool`, `createListenerSet`, `ListenerSet`, `ListenerSetOptions`,
   `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`, `createStatusCell`,
   `toAbortError`.
-- Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `named`, `endpointHost`,
-  `gatewayUnreachable`.
+- Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `errorMessage`, `toError`,
+  `named`, `endpointHost`, `gatewayUnreachable`.
 - Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.
 - IndexedDB: `openIdb`, `idbRequest`, `idbTransaction`, `deleteIdb`.
 - Origin wipe: `wipeOriginStores`, `deleteAllDatabases`, `OriginWipeError`, `OriginStores`, `OriginWipePart`.

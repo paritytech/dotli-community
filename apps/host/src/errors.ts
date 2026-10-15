@@ -4,7 +4,7 @@
 import { ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
 import { getActiveServicesConfig, getBackend, BACKEND_LABELS, type Backend } from '@dotli/config';
 
-import { endpointHost, gatewayUnreachable } from '@dotli/shared';
+import { endpointHost, errorMessage, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './error-copy.js';
 import { ManifestRejectedError } from './manifest-gate.js';
@@ -120,7 +120,7 @@ function classifyError(
   title?: string;
 } {
   // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = errorMessage(err);
 
   if (err instanceof ProtocolFatalError) {
     return {

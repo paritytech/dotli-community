@@ -6,7 +6,7 @@
 
 import type { Backend, Network } from '@dotli/config';
 import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createStatusCell, log, withTimeout } from '@dotli/shared';
+import { createAsyncTaskPool, createStatusCell, log, toError, withTimeout } from '@dotli/shared';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 import { protocolListeners } from './listeners.js';
 import { isProtocolEnvelope, type ProtocolEnvelope } from './messages.js';
@@ -386,7 +386,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       readyAt = Date.now();
       await untilStatus(() => false, loss.signal);
     } catch (error: unknown) {
-      const reason = error instanceof Error ? error : new Error(String(error));
+      const reason = toError(error);
       // Still the frame, so this keeper found the failure, not a message or a config change.
       if (kept === null || slot === kept) {
         reportBootFailure(

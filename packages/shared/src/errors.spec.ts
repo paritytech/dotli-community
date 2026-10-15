@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import { serializeError, fullErrorChain } from './errors.js';
+import { errorMessage, fullErrorChain, serializeError, toError } from './errors.js';
 
 describe('serializeError', () => {
   it('As an operator reading a failure, I see null thrown as null', () => {
@@ -180,5 +180,36 @@ describe('fullErrorChain cycle semantics', () => {
     expect(chain.causes[0]?.message).toBe('b');
     expect(chain.causes[0]?.causes).toHaveLength(1);
     expect(chain.causes[0]?.causes[0]?.name).toBe('Cycle');
+  });
+});
+
+describe('errorMessage', () => {
+  it('As a page showing a failure, I read the message of an Error and a thrown string as it is', () => {
+    // Given
+    const failure = new Error('Failed to fetch', { cause: new Error('dns') });
+
+    // When
+    const read = [errorMessage(failure), errorMessage('boom'), errorMessage(42)];
+
+    // Then
+    expect(read).toEqual(['Failed to fetch', 'boom', '42']);
+  });
+});
+
+describe('toError', () => {
+  it('As a caller rejecting with what was thrown, an Error passes through and anything else keeps it as its cause', () => {
+    // Given
+    const failure = new TypeError('closed');
+    const thrown = { code: 7 };
+
+    // When
+    const passed = toError(failure);
+    const wrapped = toError(thrown);
+
+    // Then
+    expect(passed).toBe(failure);
+    expect(wrapped).toBeInstanceOf(Error);
+    expect(wrapped.message).toBe('{"code":7}');
+    expect(wrapped.cause).toBe(thrown);
   });
 });

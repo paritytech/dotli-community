@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { toHex } from '@dotli/shared';
+import { errorMessage, toHex } from '@dotli/shared';
 
 const MAX_UINT8_PREVIEW_BYTES = 32;
 const MAX_STRING_PREVIEW_CHARS = 200;
@@ -51,7 +51,7 @@ export function formatPayloadDetail(payload: unknown): string {
   try {
     return JSON.stringify(payload, makeReplacer(), 2);
   } catch (err) {
-    return `<format error: ${err instanceof Error ? err.message : String(err)}>`;
+    return `<format error: ${errorMessage(err)}>`;
   }
 }
 

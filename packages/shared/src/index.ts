@@ -9,7 +9,7 @@ export {
   type AsyncTaskPoolParams,
 } from './async-task-pool.js';
 export { endpointHost, gatewayUnreachable } from './error-copy.js';
-export { errorName, fullErrorChain, named, serializeError } from './errors.js';
+export { errorMessage, errorName, fullErrorChain, named, serializeError, toError } from './errors.js';
 export { deleteIdb, idbRequest, idbTransaction, openIdb } from './idb.js';
 export {
   deleteAllDatabases,

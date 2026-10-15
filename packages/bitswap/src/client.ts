@@ -8,7 +8,16 @@ import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-p
 import { CHAIN_HALTED_ERROR_DATA } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import type { RemoteChainProvider } from '@dotli/protocol';
-import { createAsyncTaskPool, fromHex, log, named, realTimers, serializeError, type Timers } from '@dotli/shared';
+import {
+  createAsyncTaskPool,
+  fromHex,
+  log,
+  named,
+  realTimers,
+  serializeError,
+  type Timers,
+  toError,
+} from '@dotli/shared';
 
 import { BITSWAP_ERRORS } from './errors.js';
 
@@ -233,7 +242,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
       attempts.transient += 1;
       backoffAttempt = attempts.transient;
     } else {
-      return err instanceof Error ? err : new Error(serializeError(err), { cause: err });
+      return toError(err);
     }
     // The 1ms floor keeps a nearly spent budget off a zero delay. The deadline check then ends the fetch.
     const delay = Math.min(

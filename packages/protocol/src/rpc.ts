@@ -5,7 +5,7 @@
 
 import { m, spans as S } from '@dotli/metrics';
 import type { ResolvePhase } from '@dotli/resolver';
-import { log } from '@dotli/shared';
+import { log, toError } from '@dotli/shared';
 import { isSharedAuthRequestMethod, isSharedModeRequestMethod, isSharedWalletRequestMethod } from './auth-storage.js';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
@@ -172,7 +172,7 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
             if (timer !== null) {
               clearTimeout(timer);
             }
-            const err = reason instanceof Error ? reason : new Error(String(reason));
+            const err = toError(reason);
             settled('error', err);
             reject(err);
           },

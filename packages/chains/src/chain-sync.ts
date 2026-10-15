@@ -6,7 +6,7 @@
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
 import { m, reportListener } from '@dotli/metrics';
-import { createListenerSet, log } from '@dotli/shared';
+import { createListenerSet, errorMessage, log } from '@dotli/shared';
 import { chainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
@@ -282,9 +282,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
         );
       } catch (err: unknown) {
         // Telemetry only, and it throws only on a connection already gone, which the visitor never notices.
-        log.debug(
-          `[dot.li chain-sync] peer list unavailable for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        log.debug(`[dot.li chain-sync] peer list unavailable for ${chain}: ${errorMessage(err)}`);
       }
     };
 
@@ -324,10 +322,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
       watch = watchLifecycle();
     } catch (err: unknown) {
       // The loading screen falls back to its own timings, so this is a warning, not a failure.
-      log.warn(
-        `[dot.li chain-sync] lifecycle watch unavailable for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
-        err,
-      );
+      log.warn(`[dot.li chain-sync] lifecycle watch unavailable for ${chain}: ${errorMessage(err)}`, err);
       return { intercept, stop: () => undefined };
     }
 
@@ -338,10 +333,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
           applyLifecycleState(state);
         }
       } catch (err: unknown) {
-        log.warn(
-          `[dot.li chain-sync] lifecycle watch failed for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
-          err,
-        );
+        log.warn(`[dot.li chain-sync] lifecycle watch failed for ${chain}: ${errorMessage(err)}`, err);
       }
     })();
 

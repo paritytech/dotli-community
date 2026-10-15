@@ -15,7 +15,7 @@ import {
 import { chainBytesReceived, installByteMeter, loadProvider } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
-import { deleteAllDatabases, log, serializeError } from '@dotli/shared';
+import { deleteAllDatabases, errorMessage, log, serializeError } from '@dotli/shared';
 import {
   TIMEOUTS,
   getActiveServicesConfig,
@@ -173,7 +173,7 @@ async function init(): Promise<void> {
     try {
       await purgeWorkerCaches();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       log.error('[dot.li protocol] purgeWorkerCaches failed:', err);
       signalError(`Failed to reset chain DB: ${message}`);
       return;
