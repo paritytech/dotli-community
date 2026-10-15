@@ -10,6 +10,7 @@ export const ERRORS = {
   ALIAS_PERMISSION_DISMISSED: 'User dismissed alias permission dialog',
   IDENTITY_DISCLOSURE_DISMISSED: 'User dismissed identity disclosure dialog',
   PERMISSION_DIALOG_DISMISSED: 'User dismissed permission dialog',
+  PREIMAGE_SUBMIT_CANCELLED: 'User cancelled preimage submission',
   PERMISSION_PROMPT_RATE_LIMITED: 'Permission prompt rate limited',
   SCHEDULE_LIMIT_REACHED: 'ScheduleLimitReached',
   STORAGE_READ_FAILED: 'Failed to read from storage',

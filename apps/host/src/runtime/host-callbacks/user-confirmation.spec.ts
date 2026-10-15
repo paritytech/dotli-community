@@ -791,4 +791,70 @@ describe('user confirmation modal', () => {
       ['Sign', 'primary'],
     ]);
   });
+
+  it('As a dotli user, dismissing an account access prompt records no decision', async () => {
+    // Given
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'AccountAccess',
+      value: {
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
+      },
+    });
+    await modalShown();
+
+    // When
+    dismissModal();
+
+    // Then
+    await expect(decision).rejects.toThrow('User dismissed permission dialog');
+  });
+
+  it('As a dotli user, cancelling a preimage permission records no denial', async () => {
+    // Given
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'PreimageSubmit',
+      value: { size: 512n },
+    });
+    await modalShown();
+
+    // When
+    page.allowPreimage(false);
+
+    // Then
+    await expect(decision).rejects.toThrow('User cancelled preimage submission');
+  });
+
+  it('As a dotli user, allowing a preimage permission is not remembered', async () => {
+    // Given
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'PreimageSubmit',
+      value: { size: 512n },
+    });
+    await modalShown();
+
+    // When
+    page.allowPreimage(true);
+
+    // Then
+    await expect(decision).resolves.toBe('AllowOnce');
+  });
+
+  it('As a dotli user, Escape on a one-off review answers no and throws nothing', async () => {
+    // Given
+    const confirmation = createUserConfirmationAdapters('localhost:3000').confirmUserAction({
+      tag: 'AccountAccess',
+      value: {
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
+      },
+    });
+    await modalShown();
+
+    // When
+    dismissModal();
+
+    // Then
+    await expect(confirmation).resolves.toBe(false);
+  });
 });
