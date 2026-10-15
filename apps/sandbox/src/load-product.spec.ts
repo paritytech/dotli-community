@@ -221,7 +221,7 @@ describe('loadProduct', () => {
     expect(outcome).toEqual({ outcome: 'torn_down' });
   });
 
-  it('As a visitor, a plain error whose message reads like a teardown is still shown as a failure', async () => {
+  it('As a visitor, I hit a plain error whose message reads like a teardown and it is still shown as a failure', async () => {
     // Given a fetch that failed with an ordinary error, not an abort
     const broken = new Error('bitswap-relay: aborted, the sandbox frame was torn down');
     const page = harness(broken);
@@ -229,7 +229,7 @@ describe('loadProduct', () => {
     // When the first attempt loads it
     const outcome = await loadProduct({ params: params({ backend: 'smoldot-direct' }), attempt: 1 }, page.deps);
 
-    // Then
+    // Then the load fails at the content fetch with that error
     expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: broken });
   });
 

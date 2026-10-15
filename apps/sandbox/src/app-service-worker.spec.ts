@@ -338,82 +338,82 @@ describe('app service worker', () => {
     ]);
   });
 
-  it('As a product, an HTML file I fetch from my archive comes back byte for byte', async () => {
-    // Given
+  it('As a product, I fetch an HTML file from my archive and it comes back byte for byte', async () => {
+    // Given an archive holding an HTML file beside the page
     const scope = startWorker(origin);
     const template = '<html><head><title>part</title></head><body>part</body></html>';
     await setArchive(scope, { 'index.html': '<html></html>', 'template.html': template });
 
-    // When
+    // When the product fetches it
     const response = await request(scope, '/template.html');
 
-    // Then
+    // Then it arrives typed as HTML and untouched
     expect(response?.headers.get('Content-Type')).toBe('text/html');
     expect(await response?.text()).toBe(template);
   });
 
-  it('As a user, a navigation inside the product loads the sandbox page from the network', async () => {
-    // Given
+  it('As a user, I navigate inside the product and the sandbox page loads from the network', async () => {
+    // Given an archive holding the sub-page
     const scope = startWorker(origin);
     await setArchive(scope, { 'index.html': '<html></html>', 'docs/index.html': '<p>docs</p>' });
 
-    // When
+    // When the browser navigates to it
     const response = await request(scope, '/docs/', 'navigate');
 
-    // Then
+    // Then the worker leaves it to the network
     expect(response).toBeUndefined();
   });
 
-  it('As a user, a request whose path holds a broken escape reaches the network instead of failing in the worker', async () => {
+  it('As a user, I request a path holding a broken escape and it reaches the network instead of failing in the worker', async () => {
     // Given a worker holding an archive, and one restarted over it
     const first = startWorker(origin);
     await setArchive(first, { 'index.html': '<html></html>' });
     const restarted = startWorker(origin);
 
-    // When
+    // When each is asked for the path
     const live = await request(first, '/bad%E0%A4%A.js');
     const afterRestart = await request(restarted, '/bad%E0%A4%A.js');
 
-    // Then
+    // Then the live worker lets it through, and the restarted one fetches it
     expect(live).toBeUndefined();
     expect(await afterRestart?.text()).toBe('<!doctype html>shell');
   });
 
-  it('As a product, a file whose name holds an escaped space is served from my archive', async () => {
-    // Given
+  it('As a product, I fetch a file whose name holds an escaped space and it is served from my archive', async () => {
+    // Given an archive holding a file with a space in its name
     const scope = startWorker(origin);
     await setArchive(scope, { 'index.html': '<html></html>', 'my file.js': 'spaced()' });
 
-    // When
+    // When the product asks for it escaped
     const response = await request(scope, '/my%20file.js');
 
-    // Then
+    // Then the worker decodes the path and serves the file
     expect(await response?.text()).toBe('spaced()');
   });
 
-  it('As a product that ships a src folder, its files come from my archive', async () => {
-    // Given
+  it('As a product that ships a src folder, I fetch its files and they come from my archive', async () => {
+    // Given an archive with a src folder and an @ path, off the dev server
     const scope = startWorker(origin);
     await setArchive(scope, { 'index.html': '<html></html>', 'src/main.js': 'main()', '@scope/x.js': 'x()' });
 
-    // When
+    // When the product asks for both
     const source = await request(scope, '/src/main.js');
     const scoped = await request(scope, '/@scope/x.js');
 
-    // Then
+    // Then both come from the archive
     expect(await source?.text()).toBe('main()');
     expect(await scoped?.text()).toBe('x()');
   });
 
-  it("As a dotli developer on the dev server, the sandbox's own modules reach the network", async () => {
-    // Given
+  it("As a dotli developer on the dev server, I load the sandbox's own modules and they reach the network", async () => {
+    // Given a dev server worker whose archive ships the same module path
     const scope = startWorker(origin, true);
     await setArchive(scope, { 'index.html': '<html></html>', 'src/main.js': 'main()' });
 
-    // When
+    // When the module is asked for
     const source = await request(scope, '/src/main.js');
 
-    // Then
+    // Then the worker leaves it to the network
     expect(source).toBeUndefined();
   });
 
@@ -445,10 +445,10 @@ describe('app service worker', () => {
     await setArchive(startWorker(origin), { 'index.html': '<html></html>', 'assets/app.js': 'app()' });
     const restarted = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
 
-    // When
+    // When the page asks for its script
     const script = await request(restarted, '/docs/assets/app.js', 'no-cors', 'page');
 
-    // Then
+    // Then the restarted worker serves it from the archive it read back
     expect(await script?.text()).toBe('app()');
     expect(network).not.toHaveBeenCalled();
   });
@@ -462,7 +462,7 @@ describe('app service worker', () => {
       'assets/app.js': 'root()',
     });
 
-    // When
+    // When the page asks for the deep path
     const response = await request(scope, '/docs/assets/app.js', 'no-cors', 'page');
 
     // Then the exact path wins
@@ -474,10 +474,10 @@ describe('app service worker', () => {
     const scope = startWorker(origin, false, { page: `${ORIGIN}/intro` });
     await setArchive(scope, { 'index.html': '<html></html>', 'assets/app.js': 'app()' });
 
-    // When
+    // When it asks for a path below a folder
     const response = await request(scope, '/docs/assets/app.js', 'no-cors', 'page');
 
-    // Then
+    // Then the request goes to the network as it was
     expect(await response?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
     expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/assets/app.js` });
@@ -488,22 +488,22 @@ describe('app service worker', () => {
     const scope = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
     await setArchive(scope, { 'index.html': '<html></html>', 'guide/index.html': '<p>guide</p>' });
 
-    // When
+    // When the browser navigates to the sub-path
     const response = await request(scope, '/docs/guide/', 'navigate', 'page');
 
-    // Then
+    // Then the worker leaves it to the network
     expect(response).toBeUndefined();
   });
 
   it('As a visitor on a deep link, I request a path with a broken escape and it reaches the network', async () => {
-    // Given
+    // Given a page at a deep link
     const scope = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
     await setArchive(scope, { 'index.html': '<html></html>' });
 
-    // When
+    // When it asks for a path whose escape does not decode
     const response = await request(scope, '/docs/bad%E0%A4%A.js', 'no-cors', 'page');
 
-    // Then
+    // Then the request goes to the network as it was
     expect(await response?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
     expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/bad%E0%A4%A.js` });

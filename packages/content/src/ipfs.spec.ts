@@ -113,18 +113,18 @@ describe('fetchCarFromIpfs', () => {
 describe('gateway limits', () => {
   const TIGHT = { stallMs: 1, maxBytes: 4 };
 
-  it('As a visitor, a gateway that never answers fails my load as stalled, so I can retry', async () => {
+  it('As a visitor, I load from a gateway that never answers and the load fails as stalled, so I can retry', async () => {
     // Given a gateway that never sends its headers
     fetchMock.mockReturnValue(new Promise<Response>(() => undefined));
 
-    // When
+    // When the block is fetched
     const fetched = fetchFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
 
-    // Then
+    // Then the fetch fails as stalled
     await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayStalledError' });
   });
 
-  it('As a visitor, a gateway that stops sending mid-body fails my load as stalled', async () => {
+  it('As a visitor, I load from a gateway that stops sending mid-body and the load fails as stalled', async () => {
     // Given a gateway that sends one part of the body and then nothing
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -133,32 +133,32 @@ describe('gateway limits', () => {
     });
     fetchMock.mockResolvedValue(new Response(body, { status: 200 }));
 
-    // When
+    // When the archive is fetched
     const fetched = fetchCarFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
 
-    // Then
+    // Then the fetch fails as stalled
     await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayStalledError' });
   });
 
-  it('As a visitor, a gateway response larger than the cap fails instead of filling memory', async () => {
+  it('As a visitor, I load a gateway response larger than the cap and it fails instead of filling memory', async () => {
     // Given a gateway that sends more bytes than allowed
     fetchMock.mockResolvedValue(new Response(new Uint8Array(10), { status: 200 }));
 
-    // When
+    // When the archive is fetched
     const fetched = fetchCarFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
 
-    // Then
+    // Then the fetch fails as too large
     await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayTooLargeError' });
   });
 
-  it('As a visitor, a response within the limits arrives whole', async () => {
-    // Given
+  it('As a visitor, I load a response within the limits and it arrives whole', async () => {
+    // Given a gateway that sends exactly as many bytes as allowed
     fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 }));
 
-    // When
+    // When the block is fetched
     const { data } = await fetchFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
 
-    // Then
+    // Then every byte arrives
     expect(Array.from(data)).toEqual([1, 2, 3, 4]);
   });
 });

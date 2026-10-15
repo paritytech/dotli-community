@@ -89,7 +89,7 @@ describe('parseDotNsDomain', () => {
   });
 
   it('As a visitor, I type a polkadot:// URL in capitals and it opens as the lowercase product', () => {
-    // When / Then
+    // When / Then the name is lowercased and the path kept
     expect(dotNsUrl.parseDotNsDomain('polkadot://MyApp.PASEO/x')).toEqual({
       identifier: 'myapp.paseo',
       pathname: 'x',

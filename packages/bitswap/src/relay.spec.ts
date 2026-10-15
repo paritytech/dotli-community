@@ -520,7 +520,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
   });
 
-  it('As an operator, a verifier that cannot load refuses each block, counted for each but not captured again, with the archive cache off', async () => {
+  it('As an operator with the archive cache off, I watch a verifier that cannot load refuse each block, and each is counted but not captured again', async () => {
     // Given a verifier whose chunk cannot load, which reports that miss itself
     const captures = { exception: vi.fn(), expected: vi.fn() };
     onTestFinished(bindCaptureSink(captures));
@@ -552,7 +552,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
   });
 
-  it('As a user, once the verifier loads on a later try, my next block is checked and served', async () => {
+  it('As a user, I ask again once the verifier loads on a later try and my next block is checked and served', async () => {
     // Given a verifier whose first load fails, as during a deploy, and whose next one works
     let checks = 0;
     const { channel, send } = fakeChannel();
@@ -573,7 +573,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     send(frame, get('req-2'));
     await until(frame.replies, 2);
 
-    // Then
+    // Then the first is refused and the second is checked and served
     expect(frame.replies).toMatchObject([
       { id: 'req-1', ok: false, errorName: 'ContentVerificationError' },
       { id: 'req-2', ok: true, bytes: BLOCK },
@@ -701,7 +701,7 @@ describe('createSandboxBlockRelay progress', () => {
     ]);
   });
 
-  it('As a user whose load is retried, I see the bar count from zero again rather than past the total', async () => {
+  it('As a user whose load is retried, I watch the bar and it counts from zero again rather than past the total', async () => {
     // Given a relay that served a root and one leaf
     const { channel, send } = fakeChannel();
     const relay = createSandboxBlockRelay({
@@ -721,7 +721,7 @@ describe('createSandboxBlockRelay progress', () => {
     send(fakeFrame(), get('req-3', 'bafyRoot'));
     await until(progress, 3);
 
-    // Then
+    // Then the third update starts over at the root
     expect(progress.map(({ bytesFetched, totalBytes }) => ({ bytesFetched, totalBytes }))).toEqual([
       { bytesFetched: ROOT.length, totalBytes: 150 },
       { bytesFetched: ROOT.length + 100, totalBytes: 150 },

@@ -339,7 +339,7 @@ async function drive<T>(walk: Promise<T>, held: HeldSource, discovery: readonly 
 }
 
 describe('walkUnixFsDag', () => {
-  it('As a visitor loading a site of several chunked files, at most 8 blocks download at once across the whole walk', async () => {
+  it('As a visitor, I load a site of several chunked files and at most 8 blocks download at once across the whole walk', async () => {
     // Given
     const blocks: Blocks = new Map();
     const files = ['a.bin', 'b.bin', 'c.bin'].map(name => putChunkedFile(blocks, name, 8));
@@ -383,25 +383,25 @@ describe('walkUnixFsDag', () => {
     // Given a folder chain twice as deep as the 8 downloads the walk runs at once
     const { root, blocks, paths } = deepSite(16);
 
-    // When
+    // When the walk runs
     const files = await walkUnixFsDag(root, sourceOf(blocks));
 
-    // Then
+    // Then every file arrives
     expect(Object.keys(files).sort()).toEqual(paths.sort());
   });
 
-  it('As a visitor loading a file whose chunk tree is two levels deep, I get every byte of it', async () => {
-    // Given
+  it('As a visitor, I load a file whose chunk tree is two levels deep and get every byte of it', async () => {
+    // Given a file whose root links to two chunk nodes, each linking to leaves
     const blocks: Blocks = new Map();
     const file = putTwoLevelFile(blocks, 'big.bin', [
       ['a1;', 'a2;'],
       ['b1;', 'b2;', 'b3;'],
     ]);
 
-    // When
+    // When the walk reads it
     const files = await walkUnixFsDag(file.Hash, sourceOf(blocks));
 
-    // Then
+    // Then the leaves arrive whole and in order
     expect(text(files['index.html'])).toBe('a1;a2;b1;b2;b3;');
   });
 
@@ -410,23 +410,23 @@ describe('walkUnixFsDag', () => {
     const blocks: Blocks = new Map();
     const file = putTwoLevelFile(blocks, 'big.bin', [['a1;'], ['b1;']], [3n, 100n]);
 
-    // When
+    // When the walk reads it
     const walk = walkUnixFsDag(file.Hash, sourceOf(blocks));
 
-    // Then
+    // Then the walk fails naming the declared size
     await expect(walk).rejects.toThrow(/declares 103/);
   });
 
-  it('As a visitor loading a site whose directory is HAMT-sharded, I get each file under its own name', async () => {
+  it('As a visitor, I load a site whose directory is HAMT-sharded and get each file under its own name', async () => {
     // Given a root shard with one entry and one deeper shard holding another
     const blocks: Blocks = new Map();
     const deeper = putShard(blocks, '1F', [putRaw(blocks, 'C0app.js', enc('run()'))]);
     const root = putShard(blocks, '', [putRaw(blocks, 'A3index.html', enc('<h1>hi</h1>')), deeper]);
 
-    // When
+    // When the walk reads it
     const files = await walkUnixFsDag(root.Hash, sourceOf(blocks));
 
-    // Then
+    // Then each file arrives under its name, without the shard prefix
     expect(Object.keys(files).sort()).toEqual(['app.js', 'index.html']);
     expect(text(files['app.js'])).toBe('run()');
   });
@@ -440,10 +440,10 @@ describe('walkUnixFsDag', () => {
       docs,
     ]);
 
-    // When
+    // When the walk reads it
     const files = await walkUnixFsDag(root.Hash, sourceOf(blocks));
 
-    // Then
+    // Then the sharded files sit under the folder
     expect(Object.keys(files).sort()).toEqual(['docs/intro.html', 'index.html']);
   });
 });

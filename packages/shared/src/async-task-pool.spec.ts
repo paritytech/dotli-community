@@ -469,7 +469,7 @@ describe('async task pool', () => {
 });
 
 describe('async task pool on timers it is given', () => {
-  it('As a caller, my retry waits on the timers I pass, with the globals left alone', async () => {
+  it('As a caller, I pass my own timers and my retry waits on them, with the globals left alone', async () => {
     // Given a task that fails once, on a pool that retries after 500 ms
     const timers = manualTimers();
     let runs = 0;
@@ -479,12 +479,12 @@ describe('async task pool on timers it is given', () => {
       return runs === 1 ? Promise.reject(new Error('busy')) : 'done';
     });
 
-    // When
+    // When the given timers pass the delay in two steps
     await timers.advance(499);
     const beforeTheDelay = runs;
     await timers.advance(1);
 
-    // Then
+    // Then the retry ran only once the full delay passed
     expect(beforeTheDelay).toBe(1);
     expect(runs).toBe(2);
     await expect(call).resolves.toBe('done');
