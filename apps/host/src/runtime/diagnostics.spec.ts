@@ -162,6 +162,9 @@ describe('createPageDiagnostics', () => {
       finalizedBlock: vi.fn<PageDiagnosticsDeps['finalizedBlock']>(() => Promise.resolve(block)),
       openIssue: vi.fn<PageDiagnosticsDeps['openIssue']>(),
       page: () => ({ site, userAgent: 'Mozilla/5.0 (Macintosh) Chrome/147.0' }),
+      permissionStatuses: vi.fn<PageDiagnosticsDeps['permissionStatuses']>((_label, names) =>
+        Promise.resolve(names.map((): 'ask' => 'ask')),
+      ),
     };
     return { deps, diagnostics: createPageDiagnostics(deps) };
   }

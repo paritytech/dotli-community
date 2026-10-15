@@ -17,6 +17,8 @@ export interface BridgeDeps extends Omit<CoreAuthCommandsDeps, 'core'> {
   onStoredSessionChanged: (listener: () => void) => () => void;
   createIframeHost: ProductFrameDeps['createIframeHost'];
   onPermissionsChanged: ProductFrameDeps['onPermissionsChanged'];
+  /** Where the product frame routes its connections' permissions. */
+  permissions: ProductFrameDeps['permissions'];
   /** What the page shows around the frame. */
   frameView: ProductFrameDeps['view'];
   /** The page's notifications, for a reload the frame could not do itself. */
@@ -73,6 +75,7 @@ export function createBridge(deps: BridgeDeps): Bridge {
         createIframeHost: deps.createIframeHost,
         channel,
         onPermissionsChanged: deps.onPermissionsChanged,
+        permissions: deps.permissions,
         view: deps.frameView,
         notify: deps.notify,
       });

@@ -13,6 +13,7 @@ import { recordBestBlock, recordChainActivity } from '../state/network-monitor.j
 import { createBridge } from './create-bridge.js';
 import { createCoreRuntimeBoot } from './core-runtime.js';
 import { watchHostChains } from './host-callbacks/chain.js';
+import { pagePermissions } from './page-permissions.js';
 import { onStoredSessionChanged } from './session/core-storage.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { sessionState } from './session/session-state.js';
@@ -59,6 +60,7 @@ export const { initBridge, setPageProduct, startProductFrame, authCommands } = c
   createIframeHost: async options =>
     (await hostRuntime).web.createIframeHost({ ...options, container: productFrameContainer() }),
   onPermissionsChanged,
+  permissions: pagePermissions,
   frameView: productFrameView,
   notify: hostPrompts.notify,
   watchChains: () => {

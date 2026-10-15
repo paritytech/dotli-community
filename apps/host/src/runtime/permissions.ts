@@ -30,7 +30,7 @@ export const DEVICE_PERMISSION_POLICY: Partial<Record<DevicePermissionName, stri
   Microphone: 'microphone',
   Location: 'geolocation',
   Bluetooth: 'bluetooth',
-  // Write is always allowed (buildAllowAttribute), read needs consent.
+  // Write is always allowed (allowAttribute), read needs consent.
   Clipboard: 'clipboard-read',
   Biometrics: 'publickey-credentials-get',
   // Chromium-only, ignored elsewhere.
@@ -78,37 +78,28 @@ export function isDevicePermission(name: string): boolean {
   return name in DEVICE_PERMISSION_POLICY;
 }
 
-type PermissionAuthorizationProvider = Pick<
+export type PermissionAuthorizationProvider = Pick<
   TrUApiProductProvider,
   'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
 >;
 
-const permissionProviders = new Map<string, PermissionAuthorizationProvider[]>();
-
-export function registerPermissionAuthorizationProvider(
-  label: string,
-  provider: PermissionAuthorizationProvider,
-): () => void {
-  const providers = permissionProviders.get(label) ?? [];
-  providers.push(provider);
-  permissionProviders.set(label, providers);
-  return () => {
-    const registered = permissionProviders.get(label);
-    if (registered === undefined) {
-      return;
-    }
-    const index = registered.lastIndexOf(provider);
-    if (index >= 0) {
-      registered.splice(index, 1);
-    }
-    if (registered.length === 0) {
-      permissionProviders.delete(label);
-    }
-  };
-}
-
-function providerFor(label: string): PermissionAuthorizationProvider | null {
-  return permissionProviders.get(label)?.at(-1) ?? null;
+/** Where a product's permissions are read and written: the core, through an open connection of that product. */
+export interface PermissionAuthorizations {
+  /**
+   * Routes `label`'s permissions through `provider` until the returned unregister. The newest connection answers, as a
+   * render on a replacement core registers last.
+   */
+  register(label: string, provider: PermissionAuthorizationProvider): () => void;
+  /** `ask` for each while no connection of `label` is open. */
+  statuses(label: string, permissions: readonly PermissionName[]): Promise<PermissionStatus[]>;
+  status(label: string, permission: PermissionName): Promise<PermissionStatus>;
+  /** A no-op while no connection of `label` is open. */
+  setStatus(label: string, permission: PermissionName, status: PermissionStatus): Promise<void>;
+  /** Each write may fail on its own, so the caller learns which landed and can announce them as one change. */
+  resetAll(label: string): Promise<ResetAllResult>;
+  grantedDevicePermissions(label: string): Promise<DevicePermissionName[]>;
+  /** The iframe `allow` attribute for `label`'s granted device permissions. */
+  allowAttribute(label: string): Promise<string>;
 }
 
 function authorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
@@ -146,35 +137,6 @@ function toAuthorizationStatus(status: PermissionStatus): PermissionAuthorizatio
   }
 }
 
-export async function getPermissionStatus(label: string, permission: PermissionName): Promise<PermissionStatus> {
-  const statuses = await getPermissionStatuses(label, [permission]);
-  return statuses.at(0) ?? 'ask';
-}
-
-export async function getPermissionStatuses(
-  label: string,
-  permissions: readonly PermissionName[],
-): Promise<PermissionStatus[]> {
-  const provider = providerFor(label);
-  if (provider === null) {
-    return permissions.map(() => 'ask');
-  }
-  const statuses = await provider.getPermissionAuthorizationStatuses(permissions.map(authorizationRequest));
-  return statuses.map(fromAuthorizationStatus);
-}
-
-export async function setPermissionStatus(
-  label: string,
-  permission: PermissionName,
-  status: PermissionStatus,
-): Promise<void> {
-  const provider = providerFor(label);
-  if (provider === null) {
-    return;
-  }
-  await provider.setPermissionAuthorizationStatus(authorizationRequest(permission), toAuthorizationStatus(status));
-}
-
 export interface ResetAllResult {
   /** In menu order. */
   reset: EnforceablePermissionName[];
@@ -182,37 +144,73 @@ export interface ResetAllResult {
   errors: unknown[];
 }
 
-/** Each write may fail on its own, so the caller learns which landed and can announce them as one change. */
-export async function resetAllPermissions(label: string): Promise<ResetAllResult> {
-  const names = ALL_PERMISSIONS.map(({ name }) => name);
-  const statuses = await getPermissionStatuses(label, names);
-  const decided = names.filter((_, index) => (statuses[index] ?? 'ask') !== 'ask');
-  const writes = await Promise.allSettled(decided.map(name => setPermissionStatus(label, name, 'ask')));
-  return {
-    reset: decided.filter((_, index) => writes[index]?.status === 'fulfilled'),
-    errors: writes.flatMap((write): unknown[] => (write.status === 'rejected' ? [write.reason] : [])),
+export function createPermissionAuthorizations(): PermissionAuthorizations {
+  const providers = new Map<string, PermissionAuthorizationProvider[]>();
+  const providerFor = (label: string): PermissionAuthorizationProvider | null => providers.get(label)?.at(-1) ?? null;
+
+  const statuses = async (label: string, permissions: readonly PermissionName[]): Promise<PermissionStatus[]> => {
+    const provider = providerFor(label);
+    if (provider === null) {
+      return permissions.map(() => 'ask');
+    }
+    const answered = await provider.getPermissionAuthorizationStatuses(permissions.map(authorizationRequest));
+    return answered.map(fromAuthorizationStatus);
   };
-}
 
-export async function getGrantedDevicePermissions(label: string): Promise<DevicePermissionName[]> {
-  const granted: DevicePermissionName[] = [];
-  const names = Object.keys(DEVICE_PERMISSION_POLICY) as DevicePermissionName[];
-  const statuses = await getPermissionStatuses(label, names);
-  for (const [index, name] of names.entries()) {
-    if (statuses[index] === 'granted') {
-      granted.push(name);
+  const setStatus = async (label: string, permission: PermissionName, status: PermissionStatus): Promise<void> => {
+    const provider = providerFor(label);
+    if (provider === null) {
+      return;
     }
-  }
-  return granted;
-}
+    await provider.setPermissionAuthorizationStatus(authorizationRequest(permission), toAuthorizationStatus(status));
+  };
 
-export async function buildAllowAttribute(label: string): Promise<string> {
-  const policies = ['clipboard-write'];
-  for (const name of await getGrantedDevicePermissions(label)) {
-    const directive = DEVICE_PERMISSION_POLICY[name];
-    if (directive !== undefined) {
-      policies.push(directive);
-    }
-  }
-  return policies.join('; ');
+  const grantedDevicePermissions = async (label: string): Promise<DevicePermissionName[]> => {
+    const names = Object.keys(DEVICE_PERMISSION_POLICY) as DevicePermissionName[];
+    const answered = await statuses(label, names);
+    return names.filter((_, index) => answered[index] === 'granted');
+  };
+
+  return {
+    register(label, provider) {
+      const registered = providers.get(label) ?? [];
+      registered.push(provider);
+      providers.set(label, registered);
+      return () => {
+        const current = providers.get(label);
+        const index = current?.lastIndexOf(provider) ?? -1;
+        if (current === undefined || index < 0) {
+          return;
+        }
+        current.splice(index, 1);
+        if (current.length === 0) {
+          providers.delete(label);
+        }
+      };
+    },
+    statuses,
+    status: async (label, permission) => (await statuses(label, [permission])).at(0) ?? 'ask',
+    setStatus,
+    async resetAll(label) {
+      const names = ALL_PERMISSIONS.map(({ name }) => name);
+      const answered = await statuses(label, names);
+      const decided = names.filter((_, index) => (answered[index] ?? 'ask') !== 'ask');
+      const writes = await Promise.allSettled(decided.map(name => setStatus(label, name, 'ask')));
+      return {
+        reset: decided.filter((_, index) => writes[index]?.status === 'fulfilled'),
+        errors: writes.flatMap((write): unknown[] => (write.status === 'rejected' ? [write.reason] : [])),
+      };
+    },
+    grantedDevicePermissions,
+    async allowAttribute(label) {
+      const policies = ['clipboard-write'];
+      for (const name of await grantedDevicePermissions(label)) {
+        const directive = DEVICE_PERMISSION_POLICY[name];
+        if (directive !== undefined) {
+          policies.push(directive);
+        }
+      }
+      return policies.join('; ');
+    },
+  };
 }

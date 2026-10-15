@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
-import { getPermissionStatus, registerPermissionAuthorizationProvider, setPermissionStatus } from '../permissions.js';
+import { pagePermissions } from '../page-permissions.js';
 import { onPermissionsChanged, type PermissionsChange } from '../state/product-permissions.js';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
 import { createPromptPermission } from './prompt-permission.js';
@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 function registerTestProvider(label: string, store: Store): () => void {
-  return registerPermissionAuthorizationProvider(label, {
+  return pagePermissions.register(label, {
     getPermissionAuthorizationStatuses(requests) {
       return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
     },
@@ -121,7 +121,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
+    expect(await pagePermissions.status('myapp', 'ChainSubmit')).toBe('ask');
   });
 
   it('As a dotli user, always allowing transactions saves the grant', async () => {
@@ -139,7 +139,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowAlways');
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('granted');
+    expect(await pagePermissions.status('myapp', 'ChainSubmit')).toBe('granted');
     expect(changes).toEqual([{ label: 'myapp', permissions: ['ChainSubmit'], device: false, fromPrompt: true }]);
     stop();
   });
@@ -155,7 +155,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('Deny');
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('denied');
+    expect(await pagePermissions.status('myapp', 'ChainSubmit')).toBe('denied');
   });
 
   it('As a dotli user, I can allow a single notification', async () => {
@@ -167,7 +167,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
+    expect(await pagePermissions.status('myapp', 'Notifications')).toBe('ask');
   });
 
   it('As a dotli user, a camera prompt offers no one-time grant because granting reloads the app', async () => {
@@ -184,7 +184,7 @@ describe('three-way permission prompts', () => {
   it('As a product, an existing grant is answered without being upgraded to a lasting one', async () => {
     // Given: the status can reflect a pending one-time grant, so answering
     // AllowAlways here would quietly make it permanent.
-    await setPermissionStatus('myapp', 'ChainSubmit', 'granted');
+    await pagePermissions.setStatus('myapp', 'ChainSubmit', 'granted');
 
     // When
     const response = prompts().remotePermission(PRODUCT, {
@@ -198,7 +198,7 @@ describe('three-way permission prompts', () => {
 
   it('As a dotli user, a stored notification denial is answered without a prompt and with a quiet blocked notice', async () => {
     // Given
-    await setPermissionStatus('myapp', 'Notifications', 'denied');
+    await pagePermissions.setStatus('myapp', 'Notifications', 'denied');
 
     // When
     const response = prompts().devicePermission(PRODUCT, 'Notifications');
@@ -224,7 +224,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).rejects.toThrow('User dismissed permission dialog');
-    expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
+    expect(await pagePermissions.status('myapp', 'Notifications')).toBe('ask');
   });
 });
 
@@ -232,7 +232,7 @@ describe('queued permission prompts', () => {
   it('As a dotli integrator, I queue a duplicate permission prompt and the host rechecks the permission before showing it', async () => {
     // Given
     let status: 'NotDetermined' | 'Authorized' = 'NotDetermined';
-    const unregister = registerPermissionAuthorizationProvider('queued-app', {
+    const unregister = pagePermissions.register('queued-app', {
       getPermissionAuthorizationStatuses(requests) {
         return Promise.resolve(requests.map(() => status));
       },

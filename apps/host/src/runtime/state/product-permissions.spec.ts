@@ -5,7 +5,8 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
-import { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } from '../permissions.js';
+import { pagePermissions } from '../page-permissions.js';
+import { ALL_PERMISSIONS } from '../permissions.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { setProductError, setProductLoaded } from './product.js';
 import {
@@ -73,7 +74,7 @@ function fakeCore(label = LABEL, initial: Record<string, PermissionAuthorization
       }),
   };
   cleanups.push(
-    registerPermissionAuthorizationProvider(label, {
+    pagePermissions.register(label, {
       getPermissionAuthorizationStatuses: requests => {
         core.reads += 1;
         for (const woken of readWaiters.splice(0)) {
@@ -246,7 +247,7 @@ describe('product permissions store', () => {
   it('As the permissions menu, a read that cannot reach the core is reported and leaves the product without statuses', async () => {
     // Given
     cleanups.push(
-      registerPermissionAuthorizationProvider(LABEL, {
+      pagePermissions.register(LABEL, {
         getPermissionAuthorizationStatuses: () => Promise.reject(new Error('core down')),
         setPermissionAuthorizationStatus: () => Promise.resolve(),
       }),

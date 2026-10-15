@@ -18,7 +18,7 @@ import { ERRORS } from './errors.js';
 import { CoreRedialError, type CoreConnection, type CoreLease, type PageCore } from './page-core.js';
 import { takePendingReset } from './pending-reset.js';
 import { createPermissionResponseGate } from './permission-response-gate.js';
-import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
+import type { PermissionAuthorizations } from './permissions.js';
 import { labelToProductId } from './runtime-config.js';
 import { setProductLoaded } from './state/product.js';
 import type { PermissionsChange } from './state/product-permissions.js';
@@ -45,6 +45,8 @@ export interface ProductFrameDeps {
   /** Where a reloaded sandbox asks to be rebuilt. */
   channel: SandboxChannel;
   onPermissionsChanged: (listener: (change: PermissionsChange) => void) => () => void;
+  /** Where the frame routes each product connection's permissions, and reads the `allow` attribute from. */
+  permissions: Pick<PermissionAuthorizations, 'register' | 'allowAttribute'>;
   view: ProductFrameView;
   /** The page's notifications, for a reload the frame could not do itself. */
   notify: ShowNotification;
@@ -414,7 +416,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     const unsubscribeDown = lease.subscribeDown(args.onCoreDown);
     const coreProvider = ownCoreConnection(connection);
     const unregisterChat = chatCapable ? registerProductChat(connection) : noop;
-    const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
+    const unregisterPermissions = deps.permissions.register(args.label, coreProvider);
     let productProvider: Provider | null = null;
     let disposePipe: (() => void) | null = null;
     const lifetime = new AbortController();
@@ -444,7 +446,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       lease.release();
     };
     try {
-      const allow = `${await buildAllowAttribute(args.label)}; cross-origin-isolated`;
+      const allow = `${await deps.permissions.allowAttribute(args.label)}; cross-origin-isolated`;
       const host = await deps.createIframeHost({
         iframeUrl: args.iframeUrl,
         allowedOrigin: args.allowedOrigin,

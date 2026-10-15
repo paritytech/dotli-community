@@ -19,7 +19,8 @@ import {
 } from '@dotli/config';
 import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from '@dotli/truapi-debug-ui';
 import { loadBridge, loadPolkadotApi } from '../lazy.js';
-import { ALL_PERMISSIONS, getPermissionStatuses } from './permissions.js';
+import { pagePermissions } from './page-permissions.js';
+import { ALL_PERMISSIONS, type PermissionAuthorizations } from './permissions.js';
 import { dotliVersion } from './runtime-config.js';
 import { getProductState } from './state/product.js';
 
@@ -35,6 +36,8 @@ export interface PageDiagnosticsDeps {
   finalizedBlock: (genesisHash: string) => Promise<number | null>;
   openIssue: (url: string) => void;
   page: () => DiagnosticsPage;
+  /** The product's permission statuses, for the report. */
+  permissionStatuses: PermissionAuthorizations['statuses'];
 }
 
 /** What the browser says about the page the report is from. */
@@ -60,7 +63,13 @@ export function createPageDiagnostics(deps: PageDiagnosticsDeps): DiagnosticsSou
     packages: packageVersions,
     report: async rows => {
       const { polkadotApi, parityTruapi } = packageVersions();
-      return formatDiagnosticsReport(rows, await collectSmoldotInfo(deps.finalizedBlock), polkadotApi, parityTruapi);
+      return formatDiagnosticsReport(
+        rows,
+        await collectSmoldotInfo(deps.finalizedBlock),
+        polkadotApi,
+        parityTruapi,
+        deps.permissionStatuses,
+      );
     },
     openIssue: deps.openIssue,
   };
@@ -72,6 +81,7 @@ async function formatDiagnosticsReport(
   smoldot: SmoldotInfo,
   polkadotApi: { name: string; version: string }[],
   parityTruapi: { name: string; version: string }[],
+  permissionStatuses: PermissionAuthorizations['statuses'],
 ): Promise<string> {
   const lines: string[] = [];
   for (const [k, v] of base) {
@@ -91,7 +101,7 @@ async function formatDiagnosticsReport(
   if (product.status === 'loaded') {
     const productLabel = product.label;
     lines.push('', 'Permissions:');
-    const statuses = await getPermissionStatuses(
+    const statuses = await permissionStatuses(
       productLabel,
       ALL_PERMISSIONS.map(({ name }) => name),
     );
@@ -338,4 +348,5 @@ export const pageDiagnostics: DiagnosticsSource = createPageDiagnostics({
     window.open(url, '_blank', 'noopener,noreferrer');
   },
   page: browserPage,
+  permissionStatuses: (label, names) => pagePermissions.statuses(label, names),
 });

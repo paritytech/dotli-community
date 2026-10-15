@@ -21,6 +21,7 @@ import {
 } from './product-frame.js';
 import { getProductState } from './state/product.js';
 import type { ManifestFacts } from './manifest-facts.js';
+import { createPermissionAuthorizations } from './permissions.js';
 import type { PermissionsChange } from './state/product-permissions.js';
 import {
   answerConnection,
@@ -134,6 +135,7 @@ function harness(
         permissionListeners.delete(listener);
       };
     },
+    permissions: createPermissionAuthorizations(),
     view: {
       ...frameView.view,
       showStatus: status => {

@@ -10,6 +10,7 @@ import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-
 import type { FrameProduct, ProductFrame } from '../../src/runtime/product-frame.js';
 import { answerConnection, createFakePageCore, type FakePageCore } from '../../src/runtime/page-core.fake.js';
 import { createProductFrame } from '../../src/runtime/product-frame.js';
+import { createPermissionAuthorizations } from '../../src/runtime/permissions.js';
 import { clearScreen, showErrorPage } from '@dotli/ui';
 import { createProductFrameView } from '../../src/product-frame-view.js';
 import { nth } from '@dotli/shared/testing';
@@ -69,6 +70,7 @@ function harness(fakes: FakePageCore = createFakePageCore()): Harness {
     },
     channel,
     onPermissionsChanged: () => () => undefined,
+    permissions: createPermissionAuthorizations(),
     // The page around the frame, as the host wires it.
     view: createProductFrameView({
       body: () => document.body,

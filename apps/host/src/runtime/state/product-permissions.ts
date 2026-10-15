@@ -8,14 +8,12 @@ import { captureException, m, reportListener, spans as S } from '@dotli/metrics'
 import { createAsyncTaskPool, createListenerSet, log, createSyncStore, type ReadableStore } from '@dotli/shared';
 import {
   ALL_PERMISSIONS,
-  getPermissionStatuses,
   isDevicePermission,
-  resetAllPermissions,
-  setPermissionStatus,
   type EnforceablePermissionName,
   type PermissionStatus,
 } from '../permissions.js';
 import { throwIfAborted } from '../blocking-modal-queue.js';
+import { pagePermissions } from '../page-permissions.js';
 import { getProductState, productStore } from './product.js';
 
 const NAMES: readonly EnforceablePermissionName[] = ALL_PERMISSIONS.map(({ name }) => name);
@@ -103,7 +101,7 @@ async function read(): Promise<void> {
     return;
   }
   try {
-    const statuses = await getPermissionStatuses(label, NAMES);
+    const statuses = await pagePermissions.statuses(label, NAMES);
     m.count(S.PERMISSIONS_READ, { outcome: 'ok' });
     land(label, { status: 'read', label, statuses: NAMES.map((_, i) => statuses[i] ?? 'ask') });
   } catch (error) {
@@ -157,7 +155,7 @@ export function chooseProductPermission(
         return;
       }
       try {
-        await setPermissionStatus(label, name, next);
+        await pagePermissions.setStatus(label, name, next);
       } catch (error) {
         await reportChangeFailure(error, 'choose');
         return;
@@ -176,7 +174,7 @@ export function resetProductPermissions(label: string): Promise<void> {
     async () => {
       let result;
       try {
-        result = await resetAllPermissions(label);
+        result = await pagePermissions.resetAll(label);
       } catch (error) {
         await reportChangeFailure(error, 'reset_all');
         return;
@@ -220,7 +218,7 @@ export function recordPromptDecision(
         await read();
       } else {
         const status = decision === 'granted' ? 'granted' : 'denied';
-        await setPermissionStatus(label, name, status);
+        await pagePermissions.setStatus(label, name, status);
         throwIfAborted(signal);
         patch(label, [name], status);
       }

@@ -15,6 +15,7 @@ import type { CoreRuntimeRequest } from './core-runtime.js';
 import type { DotliAuthState } from './session/auth-state.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { makeProvider } from './page-core.fake.js';
+import { createPermissionAuthorizations } from './permissions.js';
 import { fakeIframe, fakeProductFrameView } from './product-frame.fake.js';
 
 let channel: StartedSandboxChannel | null = null;
@@ -61,6 +62,7 @@ function harness(): {
     onStoredSessionChanged: () => () => undefined,
     createIframeHost: () => Promise.resolve({ iframe: fakeIframe(), dispose: () => undefined }),
     onPermissionsChanged: () => () => undefined,
+    permissions: createPermissionAuthorizations(),
     frameView: fakeProductFrameView().view,
     notify: () => undefined,
     watchChains: () => {

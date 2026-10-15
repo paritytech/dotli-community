@@ -8,13 +8,9 @@
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions } from '@parity/truapi-host';
 import type { RemotePermission } from '@parity/truapi';
-import {
-  getPermissionStatus,
-  isDevicePermission,
-  isEnforceableDevicePermission,
-  type EnforceablePermissionName,
-} from '../permissions.js';
+import { isDevicePermission, isEnforceableDevicePermission, type EnforceablePermissionName } from '../permissions.js';
 import { throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { pagePermissions } from '../page-permissions.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
 import type { Notify } from './push-notification.js';
 import { ERRORS } from '../errors.js';
@@ -91,7 +87,7 @@ async function decidePromptPermissionWhenActive(
   const { kind, limiter, ask, notify } = options;
   // A grant reloads the product.
   const gatedByIframe = isDevicePermission(name);
-  const status = await getPermissionStatus(label, name);
+  const status = await pagePermissions.status(label, name);
   throwIfAborted(signal);
   if (status === 'granted') {
     // The status also reflects a pending one-time grant, which AllowAlways would quietly make permanent.
