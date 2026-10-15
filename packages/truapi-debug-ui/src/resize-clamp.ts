@@ -23,8 +23,8 @@ export interface DividerSize {
 }
 
 /** How far one arrow press moves a divider, and with Shift held. */
-export const KEY_STEP_PX = 16;
-export const KEY_STEP_LARGE_PX = 64;
+const KEY_STEP_PX = 16;
+const KEY_STEP_LARGE_PX = 64;
 
 function clampTo(size: number, bounds: { min: number; max: number }): number {
   return Math.max(bounds.min, Math.min(size, bounds.max));
