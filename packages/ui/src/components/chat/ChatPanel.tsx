@@ -429,7 +429,7 @@ function PanelBody(): JSX.Element {
       <form
         class={s['composer']}
         id="chat-panel-composer"
-        hidden={view() !== 'conversation'}
+        hidden={view() !== 'conversation' || activeContact()?.footer === 'Empty'}
         onSubmit={event => {
           void submit(event);
         }}
@@ -441,7 +441,7 @@ function PanelBody(): JSX.Element {
           placeholder="Message"
           autocomplete="off"
           maxlength="4000"
-          disabled={view() !== 'conversation'}
+          disabled={view() !== 'conversation' || activeContact()?.footer === 'Empty'}
           ref={el => {
             inputEl = el;
           }}

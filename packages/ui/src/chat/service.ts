@@ -23,13 +23,15 @@ import {
   listMessages,
   listRooms,
   registerBot as storeBot,
+  setRoomFooter,
   type ChatBotRecord,
   type ChatMessageRecord,
+  type ChatRoomFooter,
   type ChatRoomRecord,
 } from '@dotli/storage';
 import { recordBotsChanged, recordMessage, recordRoomsChanged } from '../state/chat.js';
 
-export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
+export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
 
 /** Detail: `{ productId }`. */
 export const CHAT_ROOMS_CHANGED_EVENT = 'dotli:chat-rooms-changed';
@@ -71,6 +73,14 @@ export async function productCreateRoom(
   const status = await createRoom({ productId, ...room });
   recordRoomsChanged(productId);
   return status;
+}
+
+/** The core has already checked the product created the room; a miss here is a host-side inconsistency. */
+export async function productSetRoomFooter(productId: string, roomId: string, footer: ChatRoomFooter): Promise<void> {
+  if (!(await setRoomFooter(productId, roomId, footer))) {
+    throw new Error('Unknown chat room');
+  }
+  recordRoomsChanged(productId);
 }
 
 export async function productPostMessage(

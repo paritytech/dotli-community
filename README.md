@@ -317,10 +317,10 @@ host-owned IndexedDB, scoped to the product execution, authenticated account, ne
 notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
 the host entry page. It does not navigate the product's route.
 
-The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
-`{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
-consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
-product, account, network or artifact cannot read or acknowledge the retained activation.
+The vendored TrUAPI host serves `notifications.send` and `notifications.cancel` only; it carries no product-facing
+activation feed, which belongs to the separate generic notification feature. The retained activation records stay scoped
+to the product execution, authenticated account, network and artifact, and another product, account, network or artifact
+cannot read them.
 
 Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
 URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
@@ -408,15 +408,14 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the Profile TrUAPI 0.24.0 SDK from source `ba61aa77cb694dce7a4dba69979791cbc37c0d21`, recorded in
+This branch vendors the Profile TrUAPI 0.25.0 SDK from source `d164d8e96ded05ea039c3b7927e645bdc65a4c89`, recorded in
 `vendor/truapi-host.lock.json`. Both Wasm bundles come from upstream's standard `build-wasm.mjs`: `wasm/web` is the
 pairing-only production host, and `wasm/testing` backs the local wallet's signing worker. The recorded archive hashes
-precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
-notification activation sit above the generic PolkaVM runtime. Profile disclosure, contacts and presentation fences are
-added here; contact names and avatars read the native Chat contacts beside the local wallet. Jam remains a separate
-feature layer. Replacing a product document retires its execution and clears its avatars and labels immediately; the new
-execution receives fresh Profile callbacks. Install the tree in `package-lock.json` with `npm ci`. To iterate against a
-matching local truapi checkout instead, run:
+precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority and custody sit above the generic
+PolkaVM runtime. Profile disclosure, contacts and presentation fences are added here; contact names and avatars read the
+native Chat contacts beside the local wallet. Jam remains a separate feature layer. Replacing a product document retires
+its execution and clears its avatars and labels immediately; the new execution receives fresh Profile callbacks. Install
+the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
