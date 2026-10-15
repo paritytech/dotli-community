@@ -4,7 +4,7 @@
 // Rows are keyed by seq and must never be rebuilt under streaming traffic, because a browser drops a click
 // whose target node is replaced between pointerdown and click.
 
-import { createEffect, createSignal, flush, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, flush, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { formatLatency } from './model/detail-format.js';
 import {
@@ -33,6 +33,8 @@ import s from './EventList.module.css';
 
 /** Pending badges tick on a clock, since a stalled host is exactly one that emits no events. */
 const PENDING_TICK_MS = 1000;
+
+const rowId = (seq: EventSeq): string => `td-row-${String(seq)}`;
 
 export interface Selection {
   seq: EventSeq;
@@ -153,6 +155,12 @@ export function EventList(props: {
 
   const ctx: RowContext = { selectedSeq, selectedKey, waiting, work };
 
+  // A selection a filter hides, or the ring evicted, has no option to point at.
+  const activeRow = createMemo<string | undefined>(() => {
+    const selected = props.selection;
+    return selected !== null && props.events.some(ev => ev.seq === selected.seq) ? rowId(selected.seq) : undefined;
+  });
+
   const rowFor = (seq: EventSeq): HTMLElement | null =>
     list?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`) ?? null;
 
@@ -161,7 +169,9 @@ export function EventList(props: {
       class={[itemListClass, s['list']]}
       data-testid="td-list"
       hidden={!props.active}
-      role="list"
+      role="listbox"
+      aria-label="Events"
+      aria-activedescendant={activeRow()}
       tabindex="0"
       ref={el => {
         list = el;
@@ -206,7 +216,7 @@ export function EventList(props: {
         each={props.events}
         keyed={ev => ev.seq}
         fallback={
-          <div role="listitem">
+          <div role="option" aria-disabled="true" aria-selected="false">
             <EmptyState testId="td-empty">No events match the current filter.</EmptyState>
           </div>
         }
@@ -239,7 +249,9 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
       data-selection={selection()}
       data-system={ev.kind === 'system' ? '' : undefined}
       data-seq={String(ev.seq)}
-      role="listitem"
+      id={rowId(ev.seq)}
+      role="option"
+      aria-selected={ctx.selectedSeq.read(ev.seq) === true ? 'true' : 'false'}
     >
       <Timestamp at={ev.receivedAt} />
       {ev.kind === 'truapi' ? (

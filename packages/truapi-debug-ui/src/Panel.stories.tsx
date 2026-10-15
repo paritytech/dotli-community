@@ -156,7 +156,7 @@ export const TruapiRows: Story = {
         await expect(counts()).toBe('5 events');
         const request = within(rowByTag('system_handshake_request'));
         await expect(rowByTag('system_handshake_request')).not.toHaveAttribute('data-system');
-        await expect(rowByTag('system_handshake_request')).toHaveAttribute('role', 'listitem');
+        await expect(rowByTag('system_handshake_request')).toHaveAttribute('role', 'option');
         await expect(request.getByTestId('td-time')).toHaveTextContent('12:34:56.789');
         await expect(request.getByTestId('td-arrow-out')).toHaveAccessibleName('outgoing');
         await expect(request.queryByTestId('td-arrow-in')).toBeNull();
@@ -811,6 +811,33 @@ export const SelectionSurvivesFilter: Story = {
       await expect(rowByTag('system_handshake_request')).toHaveAttribute('data-selection', 'selected');
       await expect(rowByTag('system_handshake_response')).toHaveAttribute('data-selection', 'paired');
       await expect(detailRows()['tag']).toBe('system_handshake_request');
+    });
+  },
+};
+
+/** As a developer using the debug panel with a screen reader, I step through the events with the arrow keys and hear which one is selected, until a filter hides it. */
+export const ListAnnouncesSelection: Story = {
+  play: async ({ userEvent, step }) => {
+    await seeded();
+    const list = part('td-list');
+    await step('When I focus the list and press the down arrow', async () => {
+      list.focus();
+      await userEvent.keyboard('{ArrowDown}');
+    });
+    await step('Then the first event is the selected option and the list points at it', async () => {
+      await expect(list).toHaveAttribute('role', 'listbox');
+      await expect(list).toHaveAccessibleName('Events');
+      const options = within(list).getAllByRole('option');
+      await expect(options.map(option => option.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
+      await expect(list).toHaveAttribute('aria-activedescendant', options[0]?.id);
+    });
+    await step('When a filter hides the selected event', async () => {
+      await userEvent.click(part('td-tag-input'));
+      await userEvent.paste('boot');
+    });
+    await step('Then the list points at no option', async () => {
+      await waitFor(() => expect(rowTags()).toEqual(['boot.started']));
+      await expect(list).not.toHaveAttribute('aria-activedescendant');
     });
   },
 };
