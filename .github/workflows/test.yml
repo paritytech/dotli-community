@@ -114,16 +114,30 @@ jobs:
       # The CLI self-updates by default, which would make CI runs nondeterministic.
       TRUAPI_HOST_NO_UPDATE: '1'
     steps:
+      # The truapi-host installer runs in this job, so the token is not left in .git/config for it.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
 
-      # Pin with TRUAPI_HOST_VERSION=x.y.z if a release breaks the suite.
+      # The installer at a fixed commit, and the CLI at the TrUAPI version the host builds against, so a run is
+      # reproducible and a TrUAPI bump moves both.
       - name: Install truapi-host CLI
+        env:
+          INSTALLER_URL: https://raw.githubusercontent.com/paritytech/host-rust-core/743f0bafab7467c3d37ca182b15af683e6564bc7/scripts/truapi-host-installer.sh
         run: |
-          curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+          set -euo pipefail
+          TRUAPI_HOST_VERSION="$(node -p 'require("./package.json").dependencies["@parity/truapi"]')"
+          if ! [[ "$TRUAPI_HOST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::@parity/truapi is '$TRUAPI_HOST_VERSION', not an exact version the CLI can be installed at."
+            exit 1
+          fi
+          export TRUAPI_HOST_VERSION
+          curl -fsSL --proto '=https' -o "$RUNNER_TEMP/truapi-host-installer.sh" "$INSTALLER_URL"
+          bash "$RUNNER_TEMP/truapi-host-installer.sh"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/truapi-host" --version
 
