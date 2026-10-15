@@ -75,7 +75,7 @@ export function Tabs<T extends string>(props: {
     }
     const tabs = tabsOf(currentTarget);
     const index = tabs.indexOf(target);
-    const next = index < 0 ? null : rovingTarget(e.key, index, tabs.length);
+    const next = index < 0 ? null : rovingTarget(e.key, index, tabs.length, e.altKey || e.ctrlKey || e.metaKey);
     if (next === null) {
       return;
     }

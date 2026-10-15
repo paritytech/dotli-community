@@ -35,6 +35,16 @@ describe('rovingTarget', () => {
     expect(others).toEqual([null, null, null, null, null, null]);
   });
 
+  it('As a keyboard user on the debug panel tabs, I keep Alt, Ctrl and Meta with an arrow for the browser', () => {
+    // Given five tabs
+
+    // When
+    const moves = ['ArrowRight', 'ArrowLeft', 'Home', 'End'].map(key => rovingTarget(key, 2, 5, true));
+
+    // Then
+    expect(moves).toEqual([null, null, null, null]);
+  });
+
   it('As the debug panel with no tabs, I move nowhere', () => {
     // Given no tabs
 

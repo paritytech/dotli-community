@@ -3,10 +3,11 @@
 
 /**
  * Where a key moves the focus in a horizontal strip of `count` items from `index`, wrapping at the ends, or `null` for a
- * key the strip leaves to the page.
+ * key the strip leaves to the page. With `modified` (Alt, Ctrl or Meta held) every key is left to the browser, whose back
+ * and forward shortcuts use the arrows.
  */
-export function rovingTarget(key: string, index: number, count: number): number | null {
-  if (count <= 0) {
+export function rovingTarget(key: string, index: number, count: number, modified = false): number | null {
+  if (count <= 0 || modified) {
     return null;
   }
   switch (key) {
