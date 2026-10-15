@@ -306,7 +306,7 @@ async function initDirectMode(): Promise<void> {
   }
 
   const engine = createEngine({
-    broker: service.broker,
+    pool: service.pool,
     isChainSupported: lightClient.isChainSupported,
     onWarmup: () => {
       // Legacy-account auth reads People, which would race a cold warp sync. Resolution does not need it.

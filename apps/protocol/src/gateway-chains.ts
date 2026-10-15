@@ -10,9 +10,9 @@ import type { EngineOptions } from './engine.js';
  * The core set, so the network panel can watch Bulletin. Advertisement to dApps is curated in
  * `isRemoteChainSupported`. An unused chain's socket closes a minute after its last connection.
  */
-export function openGatewayChains(): Pick<EngineOptions, 'broker' | 'isChainSupported'> {
+export function openGatewayChains(): Pick<EngineOptions, 'pool' | 'isChainSupported'> {
   return {
-    broker: createChainPool({ createTransport: createCoreRpcChainProvider, destroyDelay: 60_000 }),
+    pool: createChainPool({ createTransport: createCoreRpcChainProvider, destroyDelay: 60_000 }),
     isChainSupported: isCoreRpcChainSupported,
   };
 }

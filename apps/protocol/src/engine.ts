@@ -40,7 +40,7 @@ export interface EngineOptions {
    * The chains every scope connects to. The caller builds it, so the name resolver can read through the same
    * follows. `cleanup` releases its chains.
    */
-  broker: ChainPool;
+  pool: ChainPool;
   isChainSupported: (genesisHash: string) => boolean;
   onWarmup?: () => Promise<void>;
   /** Breadcrumbs for each connection's first answer, halt and close, which the SharedWorker keeps. */
@@ -81,7 +81,7 @@ function ok(respond: ResponseCallback, id: string, result: unknown): void {
 }
 
 export function createEngine(options: EngineOptions): ProtocolEngine {
-  const { broker, resolver } = options;
+  const { pool, resolver } = options;
   const note = options.log ?? ((): void => undefined);
 
   const scopes = new Set<Map<string, Connection>>();
@@ -97,7 +97,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
 
   function openScope(): EngineScope {
     const connections = new Map<string, Connection>();
-    // The broker's session ids are engine-wide, so each scope prefixes its own.
+    // The pool's session ids are engine-wide, so each scope prefixes its own.
     const scopeId = String(scopeCount++);
 
     /** Connection ids are the client's own, so each origin has its own namespace (origins contain no spaces). */
@@ -134,7 +134,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       }
       // Only the first message is noted, later ones would push the load's steps out of the breadcrumb trail.
       let answered = false;
-      const connection = broker.connectRemote(
+      const connection = pool.connectRemote(
         genesisHash,
         `${scopeId} ${key}`,
         message => {
@@ -305,7 +305,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       connections.clear();
     }
     scopes.clear();
-    broker.disconnectAll();
+    pool.disconnectAll();
   }
 
   return { openScope, cleanup };

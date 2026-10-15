@@ -92,14 +92,14 @@ function setup(
   const pool = createChainPool({ createTransport: createChainProvider, destroyDelay });
   // The id of each connection the engine opens on the real pool.
   const opened: string[] = [];
-  const broker: ChainPool = {
+  const counting: ChainPool = {
     ...pool,
     connectRemote: (genesisHash, connectionId, onMessage, onHalt) => {
       opened.push(connectionId);
       return pool.connectRemote(genesisHash, connectionId, onMessage, onHalt);
     },
   };
-  const engine = createEngine({ broker, isChainSupported: () => true, ...extra });
+  const engine = createEngine({ pool: counting, isChainSupported: () => true, ...extra });
   return { engine, scope: engine.openScope(), built, opened };
 }
 
@@ -175,9 +175,9 @@ describe('createEngine chain pool', () => {
   it('As the protocol frame, I hand the engine the chain pool the name resolver reads, so a product shares its chain', async () => {
     // Given: the resolver already holds a lease on the chain
     const { createChainProvider, built } = createTransports();
-    const broker = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
-    must(broker.getLocalProvider('0xaa', 'resolver'), 'resolver lease')(() => undefined);
-    const engine = createEngine({ broker, isChainSupported: () => true });
+    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    must(pool.getLocalProvider('0xaa', 'resolver'), 'resolver lease')(() => undefined);
+    const engine = createEngine({ pool, isChainSupported: () => true });
 
     // When
     const connected = await call(engine.openScope(), 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
@@ -190,8 +190,8 @@ describe('createEngine chain pool', () => {
   it('As the protocol frame, cleaning up the engine releases the chains of the pool it was handed', async () => {
     // Given
     const { createChainProvider, built } = createTransports();
-    const broker = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
-    const engine = createEngine({ broker, isChainSupported: () => true });
+    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    const engine = createEngine({ pool, isChainSupported: () => true });
     await call(engine.openScope(), 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
 
     // When
@@ -206,7 +206,7 @@ describe('createEngine name reads', () => {
   it("As the host waiting on a name, I hear the resolver's phases as typed progress before the answer", async () => {
     // Given
     const { createChainProvider } = createTransports();
-    const broker = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
     const resolver: EngineResolver = {
       resolveDotName: (_label, opts) => {
         opts?.onPhase?.('asset-hub-syncing');
@@ -217,7 +217,7 @@ describe('createEngine name reads', () => {
       resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
       resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
     };
-    const engine = createEngine({ broker, isChainSupported: () => true, resolver });
+    const engine = createEngine({ pool, isChainSupported: () => true, resolver });
 
     // When
     const out = await call(engine.openScope(), 'resolveDotName', { label: 'doom' });
@@ -237,7 +237,7 @@ describe('createEngine name reads', () => {
   ])('As a tester, a resolve budget cap %s', async (_case, syncBudgetCapMs, expected) => {
     // Given
     const { createChainProvider } = createTransports();
-    const broker = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
     const seen: (number | undefined)[] = [];
     const resolver: EngineResolver = {
       resolveDotName: (_label, opts) => {
@@ -248,7 +248,7 @@ describe('createEngine name reads', () => {
       resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
       resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
     };
-    const engine = createEngine({ broker, isChainSupported: () => true, resolver, syncBudgetCapMs });
+    const engine = createEngine({ pool, isChainSupported: () => true, resolver, syncBudgetCapMs });
     const hour = 60 * 60 * 1000;
 
     // When

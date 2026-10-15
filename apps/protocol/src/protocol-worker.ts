@@ -490,7 +490,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       const service = startLightClientService({ lightClient, resolver, services: getActiveFixedServicesConfig() });
       const { dotns } = service;
       engine = createEngine({
-        broker: service.broker,
+        pool: service.pool,
         isChainSupported: lightClient.isChainSupported,
         resolver: dotns,
         log: swEvent,

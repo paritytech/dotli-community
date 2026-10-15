@@ -27,7 +27,7 @@ export interface LightClientServiceDeps {
 
 export interface LightClientService {
   /** The chains every engine scope connects to. */
-  broker: ChainPool;
+  pool: ChainPool;
   dotns: DotnsResolver;
   /** Lets go of the observed chains. */
   stop: () => void;
@@ -41,18 +41,18 @@ export function startLightClientService({
   // Before the first chain opens, or that connection carries no lifecycle watch.
   resolver.enableSyncReporting(REPORTED_CHAINS);
   // Releasing a smoldot chain makes the light client drop it and re-sync later.
-  const broker = createChainPool({ createTransport: lightClient.createChainProvider, destroyDelay: Infinity });
+  const pool = createChainPool({ createTransport: lightClient.createChainProvider, destroyDelay: Infinity });
   // The relay carries the warp progress but papi never dials it. Bulletin opened lazily by the first `bitswap_v1_get`
   // has no peers yet and fails it, so it finds peers while the name resolves.
-  const stop = observeChains(broker, [services.relay.genesis, services.bulletin.genesis]);
+  const stop = observeChains(pool, [services.relay.genesis, services.bulletin.genesis]);
   // Through the broker's follows, since a second follow on one smoldot chain shares its one response queue, so the
   // broker would drop its events and reads would hang. A separate resolver chain would also be released by the first
   // dApp connection mid-read (`ChainHead disjointed`).
   const dotns = resolver.createDotnsResolver({
-    assetHub: () => requireBrokerLocalProvider(broker, services.assethub.genesis, 'Asset Hub'),
-    people: () => requireBrokerLocalProvider(broker, services.people.genesis, 'People'),
+    assetHub: () => requireBrokerLocalProvider(pool, services.assethub.genesis, 'Asset Hub'),
+    people: () => requireBrokerLocalProvider(pool, services.people.genesis, 'People'),
     dotns: services.dotns,
     source: 'light-client',
   });
-  return { broker, dotns, stop };
+  return { pool, dotns, stop };
 }
