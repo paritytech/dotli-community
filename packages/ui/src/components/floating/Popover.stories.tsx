@@ -205,8 +205,8 @@ export const PhoneClosesReturnFocus: Story = {
       await waitFor(() => expect(onOpenChange.mock.calls).toEqual(calls));
       await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
       await waitFor(() => expect(body.getByTestId('trigger')).toHaveFocus());
-      // Both the sheet's restore and the popover's land on the trigger, and nothing moves it after.
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      // The sheet's content leaves once its slide out has played, the last step of the close.
+      await waitFor(() => expect(body.queryByTestId('inside-a')).toBeNull(), { timeout: 2000 });
       await expect(body.getByTestId('trigger')).toHaveFocus();
     };
     await step('Given the sheet is open', () => press('trigger'));
@@ -229,11 +229,13 @@ export const ReleasedTriggerOpensNothing: Story = {
     await step('Given the popover holds the button as its trigger', async () => {
       await waitFor(() => expect(trigger()).toHaveAttribute('popovertarget', 'story-popover'));
     });
-    await step('When the popover lets it go', () => press('let-go'));
+    await step('When the popover lets it go', async () => {
+      await press('let-go');
+      await waitFor(() => expect(trigger()).not.toHaveAttribute('popovertarget'));
+    });
     await step('And I press the button', () => press('trigger'));
     await step('Then its own click ran and nothing opened', async () => {
       await expect(onElse).toHaveBeenCalledOnce();
-      await new Promise(resolve => requestAnimationFrame(resolve));
       await expect(onOpenChange).not.toHaveBeenCalled();
       await expect(document.getElementById('story-popover')?.hasAttribute('data-open') ?? false).toBe(false);
     });
@@ -480,7 +482,7 @@ export const TriggerReleasedFocusElsewhereClosesOnly: Story = {
     });
     await step('Then it closed and left focus alone', async () => {
       await waitFor(() => expect(heldOpen()).toBe(false));
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      await waitFor(() => expect(body.queryByTestId('held-inside')).toBeNull(), { timeout: 2000 });
       await expect(document.activeElement).toBe(document.body);
     });
   },

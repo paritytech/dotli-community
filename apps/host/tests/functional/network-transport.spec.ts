@@ -42,14 +42,12 @@ const SENTRY_FLUSH_HOLD_MS = 6_000;
 
 const total = (points: readonly GaugePoint[]): number => points.reduce((sum, p) => sum + p.value, 0);
 
-/**
- * Waits for the expected count, then holds for one Sentry flush. The test proves that no further light client reports,
- * from a SharedWorker Playwright cannot observe, and no event marks that no report is still on its way.
- */
+/** Waits for the expected count, then holds for one Sentry flush. */
 async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
   await expect
     .poll(async () => total(await readGauge(request)), { timeout: TIMEOUT_MS, intervals: [1_000] })
     .toBeGreaterThanOrEqual(expected);
+  // Proves a negative: no further report is on its way, and nothing marks that, so the wait is one Sentry flush.
   await page.waitForTimeout(SENTRY_FLUSH_HOLD_MS);
   return readGauge(request);
 }

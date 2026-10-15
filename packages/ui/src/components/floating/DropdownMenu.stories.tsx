@@ -212,14 +212,13 @@ export const SheetRowHandsOff: Story = {
       await expect(onRow).toHaveBeenCalledWith('settings');
       const settings = document.getElementById('story-settings');
       await waitFor(() => expect(settings).toHaveAttribute('data-open'));
-      await expect(settings).toHaveAttribute('data-open');
       await expect(settings).toHaveAttribute('data-handoff');
-      await expect(menu()).not.toHaveAttribute('data-open');
       await expect(menu()).not.toHaveAttribute('data-open');
       await expect(menu()).toHaveAttribute('data-handoff');
     });
     await step('And focus is in the Settings sheet, not back on More', async () => {
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      // More's rows leave once its slide out has played, the last thing its close does.
+      await waitFor(() => expect(body.queryByTestId('row-network')).toBeNull(), { timeout: 2000 });
       await expect(document.getElementById('story-settings')?.contains(document.activeElement)).toBe(true);
     });
     await step('When I press Escape', async () => {

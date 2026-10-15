@@ -192,25 +192,25 @@ export const EscapeHandledForPage: Story = {
   },
 };
 
-/** As a dotli user, I press the scrim and Escape on a password prompt and it stays up unanswered. */
+/** As a dotli user, I press the scrim and Escape on a password prompt and it stays up, so the only answer it gives is mine. */
 export const MustAnswerIgnoresScrimAndEscape: Story = {
   beforeEach: ask(passwordView),
   play: async ({ step }) => {
-    let settled = false;
-    await step('Given a password prompt is up', async () => {
-      await askNow();
-      void asked.outcomes[0]?.then(() => {
-        settled = true;
-      });
-    });
+    await step('Given a password prompt is up', askNow);
     await step('When I press the scrim and Escape', async () => {
       await pressScrim();
       await (await trustedInput()).keyboard('{Escape}');
     });
-    await step('Then it is still up and unanswered', async () => {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      await expect(settled).toBe(false);
+    await step('Then it is still up', async () => {
       await expect(backdrop()).toHaveAttribute('data-open');
+    });
+    await step('When I type the password and press Unlock', async () => {
+      await (await trustedInput()).type(body.getByTestId('prompt-dialog-input'), 'hunter2');
+      await press(body.getByRole('button', { name: 'Unlock' }));
+    });
+    await step('Then its only answer is Unlock, so the scrim and Escape answered nothing', async () => {
+      await expect(asked.outcomes[0]).resolves.toEqual({ result: 'unlock', value: 'hunter2' });
+      await closed();
     });
   },
 };

@@ -136,7 +136,10 @@ async function expectPhone(step: StoryContext<SolidRenderer>['step']): Promise<v
   });
 }
 
-/** Gives the group room for `slots` items side by side, More counting as one, and lets it measure again. */
+/**
+ * Gives the group room for `slots` items side by side, More counting as one, and lets it measure again. Reads the gap
+ * the group fits with, so the room is exact at either breakpoint without restating a spacing token.
+ */
 function fitSlots(slots: number): void {
   const gap = Number.parseFloat(getComputedStyle(byId(GROUP)).columnGap);
   bar.room = slots * ITEM + (slots - 1) * gap;
