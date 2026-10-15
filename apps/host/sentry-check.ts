@@ -61,10 +61,10 @@ async function journey(name: string, warm: Warm | null): Promise<Warm> {
   // Listens before the load so a resolution envelope that flushes early is not missed.
   const resolutionSent = p.waitForRequest(r => isEnvelope(r) && carriesResolution(r), { timeout: 180000 });
   await p.goto('https://host-playground.paseoli.dev/', { waitUntil: 'commit' });
-  // The network button is the topbar item that shows once the host has rendered.
+  // The host sets this once the product has connected and is the one on screen.
   const rendered = p
-    .locator('#chains-button')
-    .waitFor({ state: 'visible', timeout: 180000 })
+    .locator('[data-product-frame="connected"]')
+    .waitFor({ state: 'attached', timeout: 180000 })
     .then(() => ((Date.now() - t0) / 1000).toFixed(1));
   const [dur] = await Promise.all([rendered, resolutionSent]);
   // Navigating away fires the pagehide flush that carries the late resolution spans.
