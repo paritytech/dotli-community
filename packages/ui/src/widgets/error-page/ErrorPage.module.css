@@ -60,7 +60,7 @@
   color: var(--chrome-warn);
 }
 
-.glyph svg {
+.glyph-icon {
   display: block;
 }
 
@@ -184,7 +184,7 @@
 }
 
 /* A caller's icon may carry its own size. */
-.retry-icon svg {
+.action-icon {
   display: block;
   width: 16px;
   height: 16px;

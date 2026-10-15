@@ -72,7 +72,7 @@ export function Hint(props: {
 }): JSX.Element {
   return (
     <span class={s['hint']} data-testid={props.testId}>
-      <Show when={props.icon}>{icon => <DrawIcon icon={icon()} />}</Show>
+      <Show when={props.icon}>{icon => <DrawIcon icon={icon()} class={s['hintIcon']} />}</Show>
       {props.children}
     </span>
   );

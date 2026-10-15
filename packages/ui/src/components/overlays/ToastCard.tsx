@@ -58,7 +58,7 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
       }}
     >
       <div class={s['icon']} data-testid="notif-icon" data-tone={props.entry.tone}>
-        <Icon />
+        <Icon class={s['iconGlyph']} />
       </div>
       <div class={s['text']} data-testid="notif-text">
         <span class={s['title']} data-testid="notif-title">

@@ -41,7 +41,7 @@ export function ErrorFrame(props: ErrorFrameProps): JSX.Element {
           aria-hidden="true"
           data-warning={props.warning === true ? '' : undefined}
         >
-          <Icon size={24} testId="error-page-icon" />
+          <Icon size={24} class={s['glyphIcon']} testId="error-page-icon" />
         </div>
         <h1
           ref={el => {

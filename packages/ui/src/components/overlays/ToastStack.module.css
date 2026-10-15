@@ -63,7 +63,7 @@
   transition: color var(--dur-fast);
 }
 /* The shared 16 px close icon drawn smaller, its stroke thickened so it reads. */
-.close-all svg {
+.close-all-icon {
   width: 10px;
   height: 10px;
   stroke-width: 2.5;
@@ -86,7 +86,7 @@
     width: var(--sp-6);
     height: var(--sp-6);
   }
-  .close-all svg {
+  .close-all-icon {
     width: 12px;
     height: 12px;
   }

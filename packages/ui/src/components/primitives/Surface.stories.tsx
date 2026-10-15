@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect } from 'storybook/test';
-import { Show } from 'solid-js';
+import { expect, waitFor, within } from 'storybook/test';
+import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { InSheet as InSheetContext } from '../floating/in-sheet.js';
-import layer from '../floating/FloatingLayer.module.css';
-import popover from '../floating/Popover.module.css';
-import frame from '../floating/SheetFrame.module.css';
+import { Popover } from '../floating/Popover.js';
 import { Button } from './Button.js';
 import { Chip } from './Chip.js';
 import { InfoIcon } from '../icons/InfoIcon.js';
@@ -16,25 +13,21 @@ import { ReloadIcon } from '../icons/ReloadIcon.js';
 import { Hint, Surface, SurfaceFoot, SurfaceHead } from './Surface.js';
 import { Callout, Well } from './Well.js';
 
-/** A Popover's glass frame around its content, as a bottom sheet with `sheet`. */
-const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
-  <Show
-    when={props.sheet === true}
-    fallback={
-      <div class={[layer['layer'], layer['topbarEnd'], popover['surface']].join(' ')} data-open="">
-        <InSheetContext value={() => false}>{props.children}</InSheetContext>
-      </div>
-    }
-  >
-    <div style={{ position: 'fixed', right: 0, bottom: 0, left: 0 }}>
-      <div class={frame['sheet']} data-sheet="" data-state="open">
-        <div class={frame['body']}>
-          <InSheetContext value={() => true}>{props.children}</InSheetContext>
-        </div>
-      </div>
-    </div>
-  </Show>
-);
+/** The surface in a real popover, held open: anchored on a wide screen, a bottom sheet on a phone. */
+function Frame(props: { children: JSX.Element }): JSX.Element {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  return (
+    <>
+      <Button ref={setTrigger}>Settings</Button>
+      <Popover id="story-surface" title="Settings" trigger={trigger()} open={trigger() !== undefined}>
+        {props.children}
+      </Popover>
+    </>
+  );
+}
+
+// The popover renders into the page's floating layer, outside the story's body.
+const body = within(document.body);
 
 type SurfaceArgs = Parameters<typeof Surface>[0];
 const settings = (args: SurfaceArgs) => (
@@ -69,13 +62,13 @@ export const Small: Story = { args: { width: 'sm' } };
 /** As a dotli user, I read a popover surface with its title, body and footer. */
 export const Medium: Story = {
   args: { testId: 'surface' },
-  play: async ({ canvas, step }) => {
+  play: async ({ step }) => {
     await step('Then I read the popover with its title, its body and its footer', async () => {
-      await expect(canvas.getByTestId('surface').tagName).toBe('SECTION');
-      await expect(canvas.getByRole('heading', { level: 2, name: 'Settings' })).toBeInTheDocument();
-      await expect(canvas.getByText("Surfaces hold a popover's content.")).toBeInTheDocument();
-      await expect(canvas.getByText('Transport and cache changes reload the app')).toBeInTheDocument();
-      await expect(canvas.getByRole('button', { name: 'Save and apply' })).toBeInTheDocument();
+      await waitFor(() => expect(body.getByTestId('surface').tagName).toBe('SECTION'));
+      await expect(body.getByRole('heading', { level: 2, name: 'Settings' })).toBeInTheDocument();
+      await expect(body.getByText("Surfaces hold a popover's content.")).toBeInTheDocument();
+      await expect(body.getByText('Transport and cache changes reload the app')).toBeInTheDocument();
+      await expect(body.getByRole('button', { name: 'Save and apply' })).toBeInTheDocument();
     });
   },
 };
@@ -88,11 +81,11 @@ export const InSheet: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
-  render: args => <Frame sheet>{settings(args)}</Frame>,
-  play: async ({ canvas, step }) => {
+  play: async ({ step }) => {
     await step('Then the surface leaves the title to the sheet, so I hear it once', async () => {
-      await expect(canvas.queryByRole('heading', { name: 'Settings' })).toBeNull();
-      await expect(canvas.getByRole('button', { name: 'Save and apply' })).toBeInTheDocument();
+      await waitFor(() => expect(body.getAllByRole('heading', { name: 'Settings' })).toHaveLength(1));
+      await expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('Settings');
+      await expect(body.getByRole('button', { name: 'Save and apply' })).toBeInTheDocument();
     });
   },
 };

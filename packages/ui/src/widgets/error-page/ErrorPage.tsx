@@ -20,7 +20,7 @@ function ActionIcon(props: { icon: Component<IconProps> }): JSX.Element {
   const Icon = dynamic(() => props.icon);
   return (
     <span class={s['retryIcon']} aria-hidden="true">
-      <Icon testId="error-page-action-icon" />
+      <Icon class={s['actionIcon']} testId="error-page-action-icon" />
     </span>
   );
 }

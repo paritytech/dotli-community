@@ -112,7 +112,7 @@ export function ToastStack(): JSX.Element {
             setToastsExpanded(false);
           }}
         >
-          <CloseIcon />
+          <CloseIcon class={s['closeAllIcon']} />
         </button>
       </div>
     </Show>

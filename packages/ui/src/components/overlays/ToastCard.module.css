@@ -57,7 +57,7 @@
   color: var(--tone);
 }
 /* The tile sizes its icon, whatever size it was drawn at. */
-.icon svg {
+.icon-glyph {
   width: 16px;
   height: 16px;
 }
@@ -149,7 +149,7 @@ a.body:focus-visible {
     height: var(--h-control-sm);
     border-radius: var(--r-sm);
   }
-  .icon svg {
+  .icon-glyph {
     width: 20px;
     height: 20px;
   }

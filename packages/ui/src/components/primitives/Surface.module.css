@@ -61,7 +61,7 @@
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
-.hint > svg {
+.hint-icon {
   flex: none;
   width: 14px;
   height: 14px;
@@ -84,7 +84,7 @@
   .hint {
     gap: var(--sp-2);
   }
-  .hint > svg {
+  .hint-icon {
     width: 16px;
     height: 16px;
   }

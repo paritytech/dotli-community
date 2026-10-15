@@ -6,7 +6,7 @@ import { dynamic, type JSX } from '@solidjs/web';
 import type { IconProps } from './icon-props.js';
 
 /** Draws the icon component a prop carries, and redraws when the prop changes. */
-export function DrawIcon(props: { icon: Component<IconProps> }): JSX.Element {
+export function DrawIcon(props: { icon: Component<IconProps>; class?: JSX.ClassValue }): JSX.Element {
   const Icon = dynamic(() => props.icon);
-  return <Icon />;
+  return <Icon class={props.class} />;
 }
