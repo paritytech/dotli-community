@@ -54,8 +54,8 @@ interface DrawnQr {
 function QrBadge(): JSX.Element {
   return (
     <span class={s['badge']} aria-hidden="true" data-testid="auth-modal-qr-badge">
-      <span>
-        <PolkadotIcon />
+      <span class={s['badgeMark']}>
+        <PolkadotIcon class={s['badgeIcon']} />
       </span>
     </span>
   );

@@ -92,7 +92,7 @@
     color var(--dur-fast);
 }
 
-.remove svg {
+.remove-icon {
   width: 14px;
   height: 14px;
 }
@@ -120,7 +120,7 @@
     height: var(--h-control-sm);
   }
 
-  .remove svg {
+  .remove-icon {
     width: 16px;
     height: 16px;
   }

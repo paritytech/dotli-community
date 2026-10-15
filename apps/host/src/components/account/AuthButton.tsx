@@ -116,7 +116,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
           when={account().loggedIn() && account().session()}
           fallback={
             <>
-              <UserIcon />
+              <UserIcon class={s['signInIcon']} />
               <span class={s['label']}>Sign in</span>
             </>
           }

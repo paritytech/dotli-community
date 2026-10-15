@@ -16,7 +16,7 @@
 .sign-in {
   padding: 0 16px 0 13px;
 }
-.sign-in svg {
+.sign-in-icon {
   width: 14px;
   height: 14px;
 }
@@ -59,7 +59,7 @@
   .label {
     display: none;
   }
-  .sign-in svg {
+  .sign-in-icon {
     width: 20px;
     height: 20px;
     stroke-width: 1.75;

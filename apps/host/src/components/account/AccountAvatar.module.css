@@ -16,16 +16,17 @@
   height: 26px;
   font-size: 11px;
 }
-.avatar[data-size='sm'] svg {
-  width: 14px;
-  height: 14px;
-}
 .avatar[data-size='lg'] {
   width: 40px;
   height: 40px;
   font-size: 16px;
 }
-.avatar[data-size='lg'] svg {
+/* The person glyph shown until a name is known. */
+.avatar[data-size='sm'] .glyph {
+  width: 14px;
+  height: 14px;
+}
+.avatar[data-size='lg'] .glyph {
   width: 16px;
   height: 16px;
 }
@@ -46,9 +47,5 @@
     width: var(--h-row);
     height: var(--h-row);
     font-size: var(--fs-h2);
-  }
-  .avatar svg {
-    width: 20px;
-    height: 20px;
   }
 }

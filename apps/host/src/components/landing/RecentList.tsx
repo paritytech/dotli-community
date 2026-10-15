@@ -126,7 +126,7 @@ export function RecentList(props: RecentListProps): JSX.Element {
                       forget(e, label);
                     }}
                   >
-                    <CloseIcon />
+                    <CloseIcon class={s['removeIcon']} />
                   </button>
                 </Row>
               )}

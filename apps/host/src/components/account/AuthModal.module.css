@@ -111,7 +111,7 @@
   background: var(--qr-bg);
   transform: translate(-50%, -50%);
 }
-.badge > span {
+.badge-mark {
   display: grid;
   place-items: center;
   width: var(--sp-8);
@@ -120,7 +120,7 @@
   background: var(--qr-ink);
   color: var(--qr-bg);
 }
-.badge svg {
+.badge-icon {
   width: 18px;
   height: 18px;
 }
@@ -230,12 +230,12 @@
     height: var(--h-control);
     border-radius: var(--r-sm);
   }
-  .badge > span {
+  .badge-mark {
     width: var(--h-control-sm);
     height: var(--h-control-sm);
     border-radius: var(--r-xs);
   }
-  .badge svg {
+  .badge-icon {
     width: 20px;
     height: 20px;
   }

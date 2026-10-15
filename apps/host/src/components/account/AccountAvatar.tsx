@@ -31,7 +31,7 @@ export function AccountAvatar(props: {
       data-testid={props.testId}
       aria-hidden={props.decorative === true ? 'true' : undefined}
     >
-      <Show when={initials()} fallback={<UserIcon />}>
+      <Show when={initials()} fallback={<UserIcon class={s['glyph']} />}>
         {value => <>{value()}</>}
       </Show>
     </span>
