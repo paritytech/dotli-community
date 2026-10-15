@@ -12,6 +12,7 @@ import { productFrameContainer, productFrameView } from '../product-frame-view.j
 import { recordBestBlock, recordChainActivity } from '../state/network-monitor.js';
 import { createBridge } from './create-bridge.js';
 import { createCoreRuntimeBoot } from './core-runtime.js';
+import { createRuntimeLoader } from './runtime-loader.js';
 import { watchHostChains } from './host-callbacks/chain.js';
 import { pagePermissions } from './page-permissions.js';
 import { onStoredSessionChanged } from './session/core-storage.js';
@@ -31,14 +32,16 @@ export { startSessionState } from './session/session-state.js';
 // Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
 export { preloadWireDescriber } from './core-connection.js';
 
-// Preloaded so it is ready when the first product renders. One load serves the frame and every core.
-const chunkLoadStart = performance.now();
-const hostRuntime = loadHostRuntimeChunk().then(runtime => {
+// One load serves the frame and every core.
+const hostRuntime = createRuntimeLoader(async () => {
+  const chunkLoadStart = performance.now();
+  const runtime = await loadHostRuntimeChunk();
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return runtime;
 });
-void hostRuntime.catch(() => {
-  // The render or the core boot that awaits it reports the failure.
+// Preloaded so it is ready when the first product renders.
+void hostRuntime().catch(() => {
+  // The render or the core boot that asks next loads it again and reports its own failure.
 });
 
 // Each core boots on the wallet read from the shared store and the published host runtime, with callbacks that ask
@@ -46,7 +49,7 @@ void hostRuntime.catch(() => {
 const bootRuntime = createCoreRuntimeBoot({
   readWallet: readWalletBoot,
   loadHostRuntime: async () => {
-    const { web, HostWorker } = await hostRuntime;
+    const { web, HostWorker } = await hostRuntime();
     return { createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime, HostWorker };
   },
   createCallbacks: options =>
@@ -58,7 +61,7 @@ export const { initBridge, setPageProduct, startProductFrame, authCommands } = c
   bootRuntime,
   onStoredSessionChanged,
   createIframeHost: async options =>
-    (await hostRuntime).web.createIframeHost({ ...options, container: productFrameContainer() }),
+    (await hostRuntime()).web.createIframeHost({ ...options, container: productFrameContainer() }),
   onPermissionsChanged,
   permissions: pagePermissions,
   frameView: productFrameView,
