@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { sha256 } from '@noble/hashes/sha2.js';
 import * as dagPb from '@ipld/dag-pb';
 import { UnixFS } from 'ipfs-unixfs';
+import * as CarBufferWriter from '@ipld/car/buffer-writer';
 import { CID } from 'multiformats/cid';
 import { create } from 'multiformats/hashes/digest';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
@@ -58,6 +59,22 @@ function sourceOf(blocks: Map<string, Uint8Array>): (cid: string) => Promise<Uin
   };
 }
 
+/** A whole site packed as one CAR, the way some uploaders store it under a raw-codec CID. */
+function packedSite(files: Record<string, string>): { root: CID; car: Uint8Array } {
+  const site = directory(files);
+  const writer = CarBufferWriter.createWriter(new ArrayBuffer(64 * 1024), { roots: [site.root] });
+  for (const [cid, bytes] of site.blocks) {
+    writer.write({ cid: CID.parse(cid), bytes });
+  }
+  const car = writer.close({ resize: true });
+  return { root: cidOf(car, RAW), car };
+}
+
+/** An IPFS gateway that answers every request with `body`. */
+function gatewayAnswering(body: Uint8Array): typeof fetch {
+  return () => Promise.resolve(new Response(body.slice()));
+}
+
 describe('readArchiveFiles', () => {
   it('As a dotli developer, it reads every file of a directory over a block source, with no metrics', async () => {
     // Given
@@ -99,6 +116,33 @@ describe('readArchiveFiles', () => {
     // Then
     await expect(read).rejects.toMatchObject({ name: 'ContentVerificationError' });
   });
+  it('As a visitor on the gateway backend, a site packed as one CAR under a raw CID opens as its files, as over bitswap', async () => {
+    // Given
+    const { root, car } = packedSite({ 'index.html': '<h1>hi</h1>', 'app.js': 'run()' });
+
+    // When
+    const viaGateway = await readArchiveFiles(root.toString(), { gateway: true, fetch: gatewayAnswering(car) });
+    const viaBitswap = await readArchiveFiles(root.toString(), {
+      blockSource: sourceOf(new Map([[root.toString(), car]])),
+    });
+
+    // Then
+    expect(Object.keys(viaGateway).sort()).toEqual(['app.js', 'index.html']);
+    expect(viaGateway).toEqual(viaBitswap);
+  });
+
+  it('As a visitor on the gateway backend, a single raw page still reads as index.html', async () => {
+    // Given
+    const bytes = enc('<p>one file</p>');
+    const root = cidOf(bytes, RAW);
+
+    // When
+    const files = await readArchiveFiles(root.toString(), { gateway: true, fetch: gatewayAnswering(bytes) });
+
+    // Then
+    expect(Object.keys(files)).toEqual(['index.html']);
+    expect(text(files['index.html'])).toBe('<p>one file</p>');
+  });
 });
 
 describe('fetchArchive', () => {
@@ -113,5 +157,19 @@ describe('fetchArchive', () => {
     expect(reported()).toEqual(
       expect.arrayContaining(['dotli.content.fetch', 'dotli.content.bitswap_rpc', 'dotli.content.bitswap_blocks']),
     );
+  });
+
+  it('As a visitor on the gateway backend, a product load of a CAR under a raw CID gets an archive', async () => {
+    // Given
+    const { root, car } = packedSite({ 'index.html': '<h1>hi</h1>', 'app.js': 'run()' });
+
+    // When
+    const result = await fetchArchive(root.toString(), undefined, {
+      useGateway: true,
+      gatewayFetch: gatewayAnswering(car),
+    });
+
+    // Then
+    expect(result.type).toBe('archive');
   });
 });

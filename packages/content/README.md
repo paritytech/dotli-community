@@ -20,7 +20,8 @@ flowchart LR
 
 - Fetching picks one source and never falls back from one to the other. The Bitswap source is passed in as a
   block-fetching function, so this package does not import the transport.
-- The gateway path calls the active network's gateway and fetches a CAR or raw bytes.
+- The gateway path calls the active network's gateway and fetches a CAR or raw bytes. Its network is passed in, the
+  page's own by default. On either source a raw root that holds a whole CAR is unpacked into its files.
 - Verification recomputes each block hash (sha2-256 or blake2b-256) and throws `ContentVerificationError`. Gateway
   content is verified block by block here. On the Bitswap source the host's block relay is the one per-block check: it
   hashes every block before the sandbox sees it and refuses one it cannot check. The walk here re-hashes only the root,

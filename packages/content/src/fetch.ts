@@ -59,12 +59,7 @@ async function readViaBitswap(rootCid: CID, blockSource: BlockSource, onStatus?:
 
   if (rootCid.code === CODEC_RAW) {
     onStatus?.('Fetching block via bitswap...');
-    const bytes = await rootVerifyingSource(rootCid);
-    if (isCarFile(bytes)) {
-      // Some uploaders pack a whole CAR under a raw-codec CID.
-      return toFetchResult(await parseIpfsResponse(bytes));
-    }
-    return { type: 'single', content: bytes };
+    return readRawRoot(await rootVerifyingSource(rootCid));
   }
 
   if (rootCid.code === CODEC_DAG_PB) {
@@ -73,6 +68,14 @@ async function readViaBitswap(rootCid: CID, blockSource: BlockSource, onStatus?:
   }
 
   throw new Error(`bitswap-rpc: unsupported root CID codec 0x${rootCid.code.toString(16)} (${rootCid.toString()})`);
+}
+
+/**
+ * A raw root may hold a whole site packed as one CAR. Its bytes already match the root, and the CAR's own blocks are
+ * hashed as it is read.
+ */
+async function readRawRoot(bytes: Uint8Array): Promise<FetchResult> {
+  return isCarFile(bytes) ? toFetchResult(await parseIpfsResponse(bytes)) : { type: 'single', content: bytes };
 }
 
 function classifyBitswapError(err: unknown): 'not-found' | 'invalid-cid' | 'timeout' | 'aborted' | 'error' {
@@ -94,16 +97,24 @@ function classifyBitswapError(err: unknown): 'not-found' | 'invalid-cid' | 'time
   return 'error';
 }
 
-async function fetchViaGateway(cidString: string, onStatus?: StatusCallback): Promise<FetchResult> {
+async function fetchViaGateway(
+  cidString: string,
+  fetchImpl: typeof fetch,
+  onStatus?: StatusCallback,
+): Promise<FetchResult> {
   const stopGw = m.timer(S.CONTENT_GATEWAY);
   try {
-    return await readViaGateway(cidString, onStatus);
+    return await readViaGateway(cidString, fetchImpl, onStatus);
   } finally {
     stopGw();
   }
 }
 
-async function readViaGateway(cidString: string, onStatus?: StatusCallback): Promise<FetchResult> {
+async function readViaGateway(
+  cidString: string,
+  fetchImpl: typeof fetch,
+  onStatus?: StatusCallback,
+): Promise<FetchResult> {
   const cid = CID.parse(cidString);
   const gateway = defaultGateway();
   const host = gatewayHost(gateway);
@@ -111,7 +122,7 @@ async function readViaGateway(cidString: string, onStatus?: StatusCallback): Pro
     onStatus?.('Fetching archive from IPFS gateway...');
     log.event(`Requesting CAR of ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();
-    const carBuffer = await fetchCarFromIpfs(cidString, gateway);
+    const carBuffer = await fetchCarFromIpfs(cidString, gateway, fetchImpl);
     log.event(`Fetched ${String(Math.round(carBuffer.length / 1024))} KB CAR from ${host} in ${dur(gatewayStart)}`, {
       flow: 'content',
       gateway: host,
@@ -126,7 +137,7 @@ async function readViaGateway(cidString: string, onStatus?: StatusCallback): Pro
     onStatus?.('Fetching content via IPFS gateway...');
     log.event(`Requesting raw block ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();
-    const { data } = await fetchFromIpfs(cidString, gateway);
+    const { data } = await fetchFromIpfs(cidString, gateway, fetchImpl);
     log.event(`Fetched ${String(Math.round(data.length / 1024))} KB from ${host} in ${dur(gatewayStart)}`, {
       flow: 'content',
       gateway: host,
@@ -135,7 +146,7 @@ async function readViaGateway(cidString: string, onStatus?: StatusCallback): Pro
     // Untrusted transport.
     assertBlockMatchesCid(cid, data);
     log.event(`Block ${cidString} verified`, { flow: 'content', bytes: data.length });
-    return { type: 'single', content: data };
+    return readRawRoot(data);
   }
   throw new Error(`Unsupported CID codec for gateway fetch: 0x${cid.code.toString(16)} (cid=${cidString})`);
 }
@@ -148,6 +159,8 @@ export async function fetchArchive(
   onStatus?: StatusCallback,
   options?: {
     useGateway?: boolean;
+    /** The gateway path's network. The page's own `fetch` when not given. */
+    gatewayFetch?: typeof fetch;
     bitswapBlockSource?: BitswapBlockSource;
   },
 ): Promise<FetchResult> {
@@ -165,7 +178,7 @@ export async function fetchArchive(
     const result =
       blockSource !== undefined
         ? await fetchViaBitswapRpc(cidString, blockSource, onStatus)
-        : await fetchViaGateway(cidString, onStatus);
+        : await fetchViaGateway(cidString, options?.gatewayFetch ?? fetch, onStatus);
     performance.mark('dotli:fetch:end');
     measureContentSize(result);
     stopFetch();
@@ -181,12 +194,12 @@ export async function fetchArchive(
 /** Like `fetchArchive` but without marks and metrics, for reads that are not a product load. */
 export async function readArchiveFiles(
   cidString: string,
-  transport: { blockSource: BitswapBlockSource } | { gateway: true },
+  transport: { blockSource: BitswapBlockSource } | { gateway: true; fetch?: typeof fetch },
 ): Promise<ArchiveFiles> {
   const result =
     'blockSource' in transport
       ? await readViaBitswap(CID.parse(cidString), cid => transport.blockSource(cid.toString()))
-      : await readViaGateway(cidString);
+      : await readViaGateway(cidString, transport.fetch ?? fetch);
   return result.type === 'single' ? { 'index.html': result.content } : result.files;
 }
 
