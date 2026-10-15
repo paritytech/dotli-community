@@ -6,7 +6,7 @@
 import { decodeWireMessage, type WireProvider } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { reportListener } from '@dotli/metrics';
-import { createListenerSet } from '@dotli/shared';
+import { createListenerSet, noop } from '@dotli/shared';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import { loadWireDescriber } from '../lazy.js';
 import { reportLazyMiss } from '../lazy-miss.js';
@@ -18,8 +18,6 @@ export type CoreProvider = WireProvider &
     TrUApiProductProvider,
     'getPermissionAuthorizationStatus' | 'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
   >;
-
-const noop = (): void => undefined;
 
 /** One load of the describer for the page. A failed load is reported once and kept, since a deploy replaced the chunk. */
 export function createWireDescriber(load: typeof loadWireDescriber): {

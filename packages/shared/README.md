@@ -48,7 +48,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - IndexedDB: `openIdb`, `idbRequest`, `idbTransaction`, `deleteIdb`.
 - Origin wipe: `wipeOriginStores`, `deleteAllDatabases`, `OriginWipeError`, `OriginStores`, `OriginWipePart`.
 - Byte counts as people read them: `formatSize`, `formatRate`.
-- Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `sleep`, `randomId`, `Timers`, `realTimers`.
+- Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `sleep`, `randomId`, `noop`, `Timers`,
+  `realTimers`.
 
 ### `@dotli/shared/testing`
 

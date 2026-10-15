@@ -14,3 +14,15 @@ export const BITSWAP_ERRORS = {
   NOT_FOUND: 'BitswapNotFoundError',
   TIMEOUT: 'BitswapTimeoutError',
 } as const;
+
+/** Puts the JSON-RPC error code on `err`, where the retry logic reads it. */
+export function withCode<E extends Error>(err: E, code: number): E {
+  (err as { code?: number }).code = code;
+  return err;
+}
+
+/** The JSON-RPC error code an error carries, or null. */
+export function errorCode(err: unknown): number | null {
+  const code = err instanceof Error ? (err as { code?: unknown }).code : undefined;
+  return typeof code === 'number' ? code : null;
+}

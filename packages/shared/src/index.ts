@@ -23,6 +23,7 @@ export { bindLogSink, log, type LogLevel } from './log.js';
 export { formatRate, formatSize } from './byte-size.js';
 export { createListenerSet, type ListenerSet, type ListenerSetOptions } from './listener-set.js';
 export { dur, elapsed } from './perf.js';
+export { noop } from './noop.js';
 export { randomId } from './random-id.js';
 export { createStatusCell, type StatusCell, type StatusCellOptions } from './status-cell.js';
 export {

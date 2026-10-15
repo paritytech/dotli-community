@@ -8,6 +8,7 @@ export {
   chainHaltedError,
   ChainHaltError,
   haltReasonOf,
+  jsonRpcError,
   type RemoteChainHalt,
 } from './chain-halted.js';
 export {

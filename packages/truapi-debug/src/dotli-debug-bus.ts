@@ -4,7 +4,7 @@
 // The bus is off until `enableDotliDebugBuffering()`, so sessions that never open debug mode pay nothing.
 
 import { reportListener } from '@dotli/metrics';
-import { createListenerSet } from '@dotli/shared';
+import { createListenerSet, noop } from '@dotli/shared';
 
 import type { DotliDebugEvent, TruapiDebugMessageEvent } from './dotli-debug-types.js';
 
@@ -19,10 +19,6 @@ export interface DotliDebugBus {
   /** For host code that reacts to an event without being a panel. Sees nothing while the bus is off. */
   watch(callback: (event: DotliDebugBusEvent) => void): () => void;
   on(callback: (event: DotliDebugBusEvent) => void): () => void;
-}
-
-function noopUnsubscribe(): void {
-  /* returned while the bus is disabled */
 }
 
 // Boot events fire while the lazily loaded panel is still loading. They are held until the first
@@ -66,7 +62,7 @@ export function createDotliDebugBus(): DotliDebugBus {
     watch: watchers.subscribe,
     on(callback) {
       if (!enabled) {
-        return noopUnsubscribe;
+        return noop;
       }
       const wasCold = listeners.size === 0;
       const unsubscribe = listeners.subscribe(callback);

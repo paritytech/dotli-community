@@ -6,7 +6,7 @@
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { captureException, reportListener } from '@dotli/metrics';
 import { log, serializeError } from '@dotli/shared';
-import { chainHaltedError, type RemoteChainHalt } from '@dotli/chains';
+import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
 import { isRemoteChainConnectable } from './remote-chain-support.js';
@@ -27,14 +27,7 @@ function buildJsonRpcError(
   request: JsonRpcRequest,
   error: string | ReturnType<typeof chainHaltedError>,
 ): JsonRpcMessage | null {
-  if (request.id === undefined || request.id === null) {
-    return null;
-  }
-  return {
-    jsonrpc: '2.0',
-    id: request.id,
-    error: typeof error === 'string' ? { code: -32603, message: error } : error,
-  };
+  return request.id === undefined || request.id === null ? null : jsonRpcError(request.id, error);
 }
 
 /** A consumer callback that throws is reported, not propagated, so the other consumers still hear the halt. */

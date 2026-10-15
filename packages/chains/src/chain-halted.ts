@@ -14,6 +14,14 @@ export function chainHaltedError(): { code: number; message: string; data: strin
   return { code: -32603, message: 'Chain transport halted', data: CHAIN_HALTED_ERROR_DATA };
 }
 
+/** A JSON-RPC error answer to `id`. A string becomes an internal error, the halt error goes as it is. */
+export function jsonRpcError(
+  id: string | number | null,
+  error: string | { code: number; message: string; data?: string },
+): { jsonrpc: '2.0'; id: string | number | null; error: { code: number; message: string; data?: string } } {
+  return { jsonrpc: '2.0', id, error: typeof error === 'string' ? { code: -32603, message: error } : error };
+}
+
 /** Why a remote connection halted: its own chain died, or the whole frame did. */
 export type RemoteChainHalt = 'chain' | 'frame';
 

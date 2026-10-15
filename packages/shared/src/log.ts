@@ -4,6 +4,8 @@
 // Console output only under DEBUG, while warn, error and event always reach the sink so production keeps a trace.
 // The sink is bound from `@dotli/metrics`, since this package cannot depend on it.
 
+import { noop } from './noop.js';
+
 // Read from the build flag here rather than set at boot, so the first log of every entry point already honours it.
 // Node loaders other than Vite's, such as Playwright's for test helpers, define no `import.meta.env`.
 const env = import.meta.env as ImportMetaEnv | undefined;
@@ -48,9 +50,6 @@ interface BoundLogger {
   event: (name: string, attrs?: Record<string, unknown>) => void;
   child: (scope: Record<string, unknown>) => BoundLogger;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-empty-function -- debug is a no-op without DEBUG.
-const noop = (): void => {};
 
 function createLogger(scope: Record<string, unknown>): BoundLogger {
   return {

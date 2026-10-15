@@ -9,6 +9,7 @@ import { captureException, m, recordExpected, reportListener, spans as S } from 
 import { createListenerSet, errorName, log, named, serializeError } from '@dotli/shared';
 
 import { readDagTotal } from './dag-total.js';
+import { errorCode } from './errors.js';
 
 /** Every served block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */
 export interface ContentProgress {
@@ -72,11 +73,6 @@ function reportRelayFailure(step: RelayStep, err: unknown, cid?: string, reason 
   captureException(err, { flow: 'content', step: `relay_${step}`, ...(cid === undefined ? {} : { tags: { cid } }) });
   log.error(`[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}: ${serializeError(err)}`);
   m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: reason ?? 'unknown', step });
-}
-
-function errorCode(err: unknown): number | null {
-  const code = err instanceof Error ? (err as { code?: unknown }).code : undefined;
-  return typeof code === 'number' ? code : null;
 }
 
 /** A frame's id with its origin, or the window of a sandbox that sends no id. */

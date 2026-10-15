@@ -8,7 +8,7 @@ import { bitswapGet } from '@dotli/bitswap';
 import { hashToCid, fetchFromIpfs, assertBlockMatchesCid } from '@dotli/content';
 import { getBackend, type Backend } from '@dotli/config';
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, serializeError, log, toHex } from '@dotli/shared';
+import { createAsyncTaskPool, serializeError, log, noop, toHex } from '@dotli/shared';
 import { createResultStream } from './result-stream.js';
 
 const POLL_INTERVAL_MS = 10_000;
@@ -57,10 +57,6 @@ class PreimageMismatch extends Error {}
 
 /** Not found yet, so the poll goes on. */
 class PreimageMiss extends Error {}
-
-function noop(): void {
-  return;
-}
 
 function createPreimageLookupSubscribe(label: string, deps: PreimageDeps): Required<PreimageHost>['lookupPreimage'] {
   // One attempt per key at a time, since a bitswap lookup can outlive the poll interval and a second subscription to

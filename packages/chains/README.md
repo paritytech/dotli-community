@@ -59,7 +59,8 @@ flowchart LR
   `ChainTransportHooks`, `ConnectionStatus`.
 - Chain pool: `createChainPool`, `ChainPool`, `ChainPoolWatcher`, `LeaseProvider`, `ChainActivity`,
   `requireBrokerLocalProvider`, `ChainBrokerManager`, `StringJsonRpcConnection`.
-- Chain halt: `ChainHaltError`, `chainHaltedError`, `haltReasonOf`, `CHAIN_HALTED_ERROR_DATA`, `RemoteChainHalt`.
+- Chain halt: `ChainHaltError`, `chainHaltedError`, `haltReasonOf`, `CHAIN_HALTED_ERROR_DATA`, `RemoteChainHalt`, and
+  `jsonRpcError`, the error answer every chain transport sends.
 - Lazy loader: `loadProvider`.
 
 ### `@dotli/chains/testing`

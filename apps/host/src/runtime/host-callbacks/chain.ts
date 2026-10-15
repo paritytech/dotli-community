@@ -26,6 +26,7 @@ import {
   createCoreRpcChainProvider,
   haltReasonOf,
   isCoreRpcChainSupported,
+  jsonRpcError,
   requireBrokerLocalProvider,
   type ChainPool,
   type ChainPoolWatcher,
@@ -263,7 +264,7 @@ function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSo
       if (connection === null) {
         // Notifications have nothing to answer.
         if (parsed.id !== undefined && parsed.id !== null) {
-          deliver({ jsonrpc: '2.0', id: parsed.id, error: chainHaltedError() });
+          deliver(jsonRpcError(parsed.id, chainHaltedError()));
         }
         return;
       }

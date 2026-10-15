@@ -19,7 +19,7 @@ import {
   toError,
 } from '@dotli/shared';
 
-import { BITSWAP_ERRORS } from './errors.js';
+import { BITSWAP_ERRORS, errorCode, withCode } from './errors.js';
 
 // `bitswap_v1_get` error codes. Anything else, an invalid CID included, is terminal.
 const ERR_FAIL = -32810;
@@ -79,16 +79,6 @@ interface FetchAttempts {
 interface SharedFetch {
   holders: number;
   bytes: Uint8Array | null;
-}
-
-function withCode<E extends Error>(err: E, code: number): E {
-  (err as { code?: number }).code = code;
-  return err;
-}
-
-function errorCode(err: unknown): number | null {
-  const code = err instanceof Error ? (err as { code?: unknown }).code : undefined;
-  return typeof code === 'number' ? code : null;
 }
 
 function abortError(cid: string, cause?: unknown): Error {

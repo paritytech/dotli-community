@@ -10,7 +10,7 @@ import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork } from '@dotli/config';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log, randomId, sleep } from '@dotli/shared';
+import { createAsyncTaskPool, log, noop, randomId, sleep } from '@dotli/shared';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/chat-store.js';
 import { ownCoreConnection } from './core-connection.js';
@@ -126,8 +126,6 @@ const PERMISSION_ANSWER_WAIT_MS = 3_000;
 
 const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-pointer-lock';
 const SUBDOMAIN_SANDBOX = `${IFRAME_SANDBOX} allow-popups`;
-
-const noop = (): void => undefined;
 
 /** Why the frame rendered the product again on its own. */
 type RerenderReason = 'replacement' | 'permission' | 'recover';

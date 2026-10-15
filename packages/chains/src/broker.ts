@@ -8,7 +8,7 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { reportListener } from '@dotli/metrics';
 import { log } from '@dotli/shared';
-import { chainHaltedError } from './chain-halted.js';
+import { chainHaltedError, jsonRpcError } from './chain-halted.js';
 import { createFollowSnapshot, type FollowSnapshot } from './follow-snapshot.js';
 import { isRecord, stringsOf } from './json-shape.js';
 import { TERMINAL_WATCH_EVENTS } from './watch-guard.js';
@@ -125,13 +125,6 @@ const TOKEN_METHODS = new Map<string, string>([
 const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
 const MAX_EARLY_SUBSCRIPTION_TOKENS = 32;
 const MAX_EARLY_SUBSCRIPTION_EVENTS_PER_TOKEN = 16;
-
-function buildJsonRpcError(
-  id: JsonRpcId,
-  error: string | ReturnType<typeof chainHaltedError>,
-): Record<string, unknown> {
-  return { jsonrpc: '2.0', id, error: typeof error === 'string' ? { code: -32603, message: error } : error };
-}
 
 function buildJsonRpcResult(id: JsonRpcId, result: unknown): Record<string, unknown> {
   return { jsonrpc: '2.0', id, result };
@@ -363,13 +356,13 @@ export class ChainBroker {
   private answerHaltedSession(session: Session): void {
     for (const owner of this.pending.values()) {
       if (owner.kind === 'session' && owner.sessionId === session.id && owner.clientId !== null) {
-        this.sendToSession(session, buildJsonRpcError(owner.clientId, chainHaltedError()));
+        this.sendToSession(session, jsonRpcError(owner.clientId, chainHaltedError()));
       }
     }
     for (const sharedFollow of this.sharedFollows.values()) {
       for (const pendingLocal of sharedFollow.pendingLocals) {
         if (pendingLocal.sessionId === session.id && pendingLocal.requestId !== null) {
-          this.sendToSession(session, buildJsonRpcError(pendingLocal.requestId, chainHaltedError()));
+          this.sendToSession(session, jsonRpcError(pendingLocal.requestId, chainHaltedError()));
         }
       }
     }
@@ -422,13 +415,13 @@ export class ChainBroker {
     }
 
     if (Array.isArray(parsed)) {
-      this.sendToSession(session, buildJsonRpcError(null, 'Batch JSON-RPC is unsupported'));
+      this.sendToSession(session, jsonRpcError(null, 'Batch JSON-RPC is unsupported'));
       return;
     }
 
     if (!isRequestMessage(parsed)) {
       this.warn('session_not_request', `sendFromSession: not a request from session ${sessionId}`);
-      this.sendToSession(session, buildJsonRpcError(null, 'Invalid JSON-RPC request'));
+      this.sendToSession(session, jsonRpcError(null, 'Invalid JSON-RPC request'));
       return;
     }
 
@@ -466,7 +459,7 @@ export class ChainBroker {
         'request_unknown_token',
         `routeGenericRequest: unknown token for session ${session.id}, method=${method}`,
       );
-      this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+      this.sendToSession(session, jsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
 
@@ -478,14 +471,14 @@ export class ChainBroker {
     const localToken = typeof params[0] === 'string' ? params[0] : null;
     const owned = localToken !== null ? this.localToOwned.get(localToken) : undefined;
     if (localToken === null || owned?.sessionId !== session.id || owned.releaseMethod !== method) {
-      this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+      this.sendToSession(session, jsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
 
     const upstreamToken = owned.upstreamToken;
     const released = this.releaseOwnedToken(localToken, false);
     if (released === null) {
-      this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+      this.sendToSession(session, jsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
 
@@ -513,7 +506,7 @@ export class ChainBroker {
 
     const sharedFollow = this.sharedFollows.get(followToken.followKey);
     if (sharedFollow?.upstreamToken === undefined || sharedFollow.upstreamToken === null) {
-      this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+      this.sendToSession(session, jsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
 
@@ -1038,14 +1031,14 @@ export class ChainBroker {
   private handleLocalUnfollowRequest(session: Session, request: JsonRpcRequest): void {
     const token = Array.isArray(request.params) && typeof request.params[0] === 'string' ? request.params[0] : null;
     if (token === null) {
-      this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+      this.sendToSession(session, jsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
 
     const followToken = this.localFollowTokens.get(token);
     if (followToken) {
       if (followToken.sessionId !== session.id) {
-        this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+        this.sendToSession(session, jsonRpcError(request.id ?? null, 'Unknown subscription/token'));
         return;
       }
       this.releaseLocalFollowToken(token);
@@ -1057,7 +1050,7 @@ export class ChainBroker {
 
     const rewritten = this.rewriteOwnedToken(session, request);
     if (rewritten === null) {
-      this.sendToSession(session, buildJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
+      this.sendToSession(session, jsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
     this.forwardForSession(session, rewritten, request.method as string);
