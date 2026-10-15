@@ -335,9 +335,7 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}profile-references-received:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     case 'ProfilePersonalReferencesReceived':
       return `${CORE_LOCAL_STORAGE_PREFIX}profile-personal-references-received:${hexNoPrefix(encodeCoreStorageKey(key))}`;
-    // Contacts' host-channel keys, scoped by wallet and chain like the references above.
     case 'HostChannelPeers':
-      return `${CORE_LOCAL_STORAGE_PREFIX}host-channel-peers:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     case 'MainPurseCoinage':
     case 'NativeChatDevice':
     case 'NativeChatFileChunk':

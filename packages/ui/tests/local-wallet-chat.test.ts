@@ -119,6 +119,26 @@ describe('native Chat beside the local wallet core', () => {
     otherWallet.dispose();
   });
 
+  it('As a local wallet, the host channel keys my contacts sent on the Chat page are there on every product page', async () => {
+    // Given
+    const peers = {
+      tag: 'HostChannelPeers',
+      value: { rootPublicKey: new Uint8Array(32).fill(3), genesisHash: new Uint8Array(32).fill(4) },
+    } satisfies CoreStorageKey;
+    const chatPage = createLocalWalletChat(WALLET, () => true);
+    const chatPageBase = memoryStorage();
+
+    // When
+    await chatPage.coreStorage(chatPageBase).writeCoreStorage(peers, new Uint8Array([5]));
+    chatPage.dispose();
+    const seityPage = createLocalWalletChat(WALLET, () => true);
+
+    // Then
+    expect(chatPageBase.values.has('HostChannelPeers')).toBe(false);
+    expect(await seityPage.coreStorage(memoryStorage()).readCoreStorage(peers)).toEqual(new Uint8Array([5]));
+    seityPage.dispose();
+  });
+
   it('As a core disposed while custody is still being acquired, I release the late lease and refuse new Chat writes', async () => {
     // Given
     const { promise, resolve } = Promise.withResolvers<string>();

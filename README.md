@@ -361,14 +361,15 @@ private slots and offers no contacts.
 The local wallet core keeps Chat's main purse, device records, attachment chunks and product index in the protocol
 origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Each Chat app's Chat access grant is kept
 there too, under the wallet, because the core checks it before any product page's contact picker lists that app's
-contacts. Every other grant stays in the host `localStorage` of the product page that asked for it. Records are
-authenticated-encrypted with a non-extractable key; immutable attachment source Blobs are host-private but not encrypted
-at rest. They never enter product storage or the product RPC interface. Each core takes a custody lease for the wallet
-it booted, named by a domain-separated hash of the wallet's entropy, and every operation rechecks the stored wallet, so
-forgetting or replacing it ends the lease's authority. A Web Lock admits one holder per browser profile: a replacement
-core of the same page waits for its predecessor to release, and a core in another tab is refused after a bounded wait,
-so its Chat operations fail while the tab's other products keep working. There is no handover between tabs at this
-layer. Closing a product connection does not stop receiving while the page core remains alive.
+contacts. Every other grant stays in the host `localStorage` of the product page that asked for it. The host channel's
+peer keys sit in custody as well, because the host posts on that channel from whichever product page the user is on.
+Records are authenticated-encrypted with a non-extractable key; immutable attachment source Blobs are host-private but
+not encrypted at rest. They never enter product storage or the product RPC interface. Each core takes a custody lease
+for the wallet it booted, named by a domain-separated hash of the wallet's entropy, and every operation rechecks the
+stored wallet, so forgetting or replacing it ends the lease's authority. A Web Lock admits one holder per browser
+profile: a replacement core of the same page waits for its predecessor to release, and a core in another tab is refused
+after a bounded wait, so its Chat operations fail while the tab's other products keep working. There is no handover
+between tabs at this layer. Closing a product connection does not stop receiving while the page core remains alive.
 
 Each payment requires a new host review of the authenticated product and recipient, exact amount, maximum debit
 including fees, selected chain and Coinage asset, and payment operation. Chat or automatic-signing grants never approve
