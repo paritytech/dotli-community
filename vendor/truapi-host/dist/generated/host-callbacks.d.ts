@@ -328,6 +328,18 @@ export type CoreStorageKey =
         rootPublicKey: Uint8Array;
         genesisHash: Uint8Array;
     };
+}
+/**
+ * The host-channel keys this wallet's contacts handed over in a Chat
+ * bootstrap frame, one per peer (seity `doc/HOST_CHANNEL_PLAN.md`).
+ * Public keys only; the pair secret is derived on use.
+ */
+ | {
+    tag: "HostChannelPeers";
+    value: {
+        rootPublicKey: Uint8Array;
+        genesisHash: Uint8Array;
+    };
 };
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
