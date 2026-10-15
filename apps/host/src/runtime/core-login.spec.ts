@@ -445,7 +445,7 @@ describe('requestCoreLogin', () => {
     await expect(login).resolves.toBe('Success');
     expect(captures.expected).toHaveBeenCalledTimes(1);
     expect(captures.expected).toHaveBeenCalledWith(expect.anything(), { flow: 'wallet', step: 'login_frame' });
-    expect(counted('wallet.login')).toEqual([{ outcome: 'error', reason: 'undecodable_frame' }]);
+    expect(counted('wallet.login_frame')).toEqual([{ outcome: 'error', reason: 'undecodable_frame' }]);
   });
 
   it('As a dotli integrator, the host rejects send failures and unsubscribes', async () => {

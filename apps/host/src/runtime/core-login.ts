@@ -315,7 +315,7 @@ export function requestCoreLogin(core: Provider, reason?: string): Promise<Login
             reportExpected(decoded.error, {
               flow: 'wallet',
               step: 'login_frame',
-              metric: S.WALLET_LOGIN,
+              metric: S.WALLET_LOGIN_FRAME,
               reason: 'undecodable_frame',
               message: '[dot.li login] ignored a frame that does not decode:',
             });
