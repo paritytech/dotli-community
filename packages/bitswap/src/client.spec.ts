@@ -1,11 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { RemoteChainHalt } from '@dotli/chains';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import { createBitswapClient, type BitswapClient } from './client.js';
+
+/** The client's clock, which each test moves itself. */
+let timers: ManualTimers;
+
+beforeEach(() => {
+  timers = manualTimers();
+});
 
 type Reply = { code: number; data?: string } | { hex: string } | 'silent';
 
@@ -40,7 +48,7 @@ function fakeChain(
       send: request => {
         const id = (request as { id: number }).id;
         dial.sent.push(id);
-        const now = Date.now();
+        const now = timers.now();
         if (last !== null) {
           gaps.push(now - last);
         }
@@ -81,7 +89,7 @@ function sentAt(dial: Dial, index: number): number {
 }
 
 function clientOn(provider: RemoteChainProvider | null): BitswapClient {
-  return createBitswapClient({ provider: () => provider });
+  return createBitswapClient({ provider: () => provider, timers });
 }
 
 /** A signal that never aborts and counts the abort listeners attached to it, so a leak shows as a number. */
@@ -105,14 +113,6 @@ class CountingSignal extends EventTarget {
   }
 }
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
-});
-
 describe('createBitswapClient retry policy', () => {
   it('As a user, I still load the app when the peer set does not yet hold the CID', async () => {
     // Given the connected peers all answer DONT_HAVE twice before a provider attaches
@@ -120,7 +120,7 @@ describe('createBitswapClient retry policy', () => {
 
     // When
     const block = clientOn(chain.provider).get('bafyTest');
-    await vi.advanceTimersByTimeAsync(10_000);
+    await timers.advance(10_000);
 
     // Then
     await expect(block).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
@@ -137,7 +137,7 @@ describe('createBitswapClient retry policy', () => {
       name: 'BitswapNotFoundError',
       message: expect.stringMatching(/provider discovery exhausted after 9 failures/) as unknown,
     });
-    await vi.advanceTimersByTimeAsync(185_000);
+    await timers.advance(185_000);
     await settled;
 
     // Then it stopped at the bound, well short of the three-minute budget
@@ -151,7 +151,7 @@ describe('createBitswapClient retry policy', () => {
     // When
     const block = clientOn(chain.provider).get('bafySlowStart');
     const settled = expect(block).rejects.toThrow(/discovery exhausted/);
-    await vi.advanceTimersByTimeAsync(185_000);
+    await timers.advance(185_000);
     await settled;
 
     // Then discovery still got its nine tries on top of the three, and its backoff restarted at the base delay
@@ -175,7 +175,7 @@ describe('createBitswapClient retry policy', () => {
 
     // When
     const block = clientOn(chain.provider).get('bafyTransientRamp');
-    await vi.advanceTimersByTimeAsync(60_000);
+    await timers.advance(60_000);
     await block;
 
     // Then the transient ramp started at its own base delay
@@ -193,7 +193,7 @@ describe('createBitswapClient retry policy', () => {
       name: 'BitswapTimeoutError',
       message: expect.stringMatching(/timed out after 180000ms/) as unknown,
     });
-    await vi.advanceTimersByTimeAsync(185_000);
+    await timers.advance(185_000);
 
     // Then
     await settled;
@@ -206,7 +206,7 @@ describe('createBitswapClient retry policy', () => {
     // When
     const block = clientOn(chain.provider).get('not-a-cid');
     const settled = expect(block).rejects.toMatchObject({ name: 'BitswapRpcError', code: -32602 });
-    await vi.advanceTimersByTimeAsync(1_000);
+    await timers.advance(1_000);
 
     // Then
     await settled;
@@ -234,7 +234,7 @@ describe('createBitswapClient aborts', () => {
       name: 'AbortError',
       message: expect.stringMatching(/aborted/) as unknown,
     });
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
 
     // When
     aborter.abort();
@@ -249,13 +249,13 @@ describe('createBitswapClient aborts', () => {
     const aborter = new AbortController();
     const block = clientOn(chain.provider).get('bafyBackoff', aborter.signal);
     const settled = expect(block).rejects.toThrow(/aborted/);
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
     const sentBeforeAbort = chain.sent();
 
     // When the abort lands during the backoff rather than during a call
     aborter.abort();
     await settled;
-    await vi.advanceTimersByTimeAsync(185_000);
+    await timers.advance(185_000);
 
     // Then nothing further was sent
     expect(chain.sent()).toBe(sentBeforeAbort);
@@ -285,7 +285,7 @@ describe('createBitswapClient aborts', () => {
     const block = clientOn(chain.provider)
       .get('bafyLeak', signal as unknown as AbortSignal)
       .catch(() => 'done');
-    await vi.advanceTimersByTimeAsync(185_000);
+    await timers.advance(185_000);
     await block;
 
     // Then every listener it registered came off again
@@ -299,7 +299,7 @@ describe('createBitswapClient after a halt', () => {
     // Given a request in flight on a connection that then halts
     const chain = fakeChain(['silent'], { hex: '0xabcd' });
     const block = clientOn(chain.provider).get('bafyHalt');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
 
     // When the chain halts the way the pool halts it: the request in flight is answered with the halt first, and the
     // connection hears it after
@@ -310,7 +310,7 @@ describe('createBitswapClient after a halt', () => {
       error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
     halted.onHalt('chain');
-    await vi.advanceTimersByTimeAsync(1_000);
+    await timers.advance(1_000);
 
     // Then the same call redials and resolves with the second connection's bytes
     await expect(block).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
@@ -326,19 +326,19 @@ describe('createBitswapClient after a halt', () => {
       name: 'BitswapConnectionError',
       message: 'Bulletin connection halted',
     });
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
 
     // When the frame dies
     dialAt(chain.dials, 0).onHalt('frame');
 
     // Then it fails without waiting for the 60s per-call timeout, and nothing dials during that call
     await settled;
-    await vi.advanceTimersByTimeAsync(10_000);
+    await timers.advance(10_000);
     expect(chain.dials).toHaveLength(1);
 
     // And a later fetch dials anew
     const next = client.get('bafyFrame');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
     await expect(next).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
     expect(chain.dials).toHaveLength(2);
   });
@@ -350,7 +350,7 @@ describe('createBitswapClient after a halt', () => {
     const client = clientOn(chain.provider);
     const failed = client.get('bafyNoFrame');
     const settled = expect(failed).rejects.toThrow('Chain connection is closed');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
     const dead = dialAt(chain.dials, 0);
     dead.onMessage({
       jsonrpc: '2.0',
@@ -362,7 +362,7 @@ describe('createBitswapClient after a halt', () => {
 
     // When
     const next = client.get('bafyNoFrame');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
     const redialled = dialAt(chain.dials, 1);
     redialled.onMessage({ jsonrpc: '2.0', id: sentAt(redialled, 0), result: '0xabcd' });
 
@@ -381,7 +381,7 @@ describe('createBitswapClient after a halt', () => {
     void fetching.finally(() => {
       settled = true;
     });
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
     const replaced = dialAt(chain.dials, 0);
     replaced.onMessage({
       jsonrpc: '2.0',
@@ -389,13 +389,13 @@ describe('createBitswapClient after a halt', () => {
       error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
     replaced.onHalt('chain');
-    await vi.advanceTimersByTimeAsync(1_000);
+    await timers.advance(1_000);
     const current = dialAt(chain.dials, 1);
     expect(current.sent).toHaveLength(1);
 
     // When the replaced connection hears a halt again
     replaced.onHalt('frame');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
 
     // Then the request on the new connection is still pending, and is served there
     expect(settled).toBe(false);
@@ -404,7 +404,7 @@ describe('createBitswapClient after a halt', () => {
 
     // And the next fetch uses the new connection without dialling
     const next = client.get('bafyReplaced');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
     current.onMessage({ jsonrpc: '2.0', id: sentAt(current, 1), result: '0xef' });
     await expect(next).resolves.toEqual(new Uint8Array([0xef]));
     expect(chain.dials).toHaveLength(2);
@@ -420,13 +420,14 @@ describe('createBitswapClient redial', () => {
     let reads = 0;
     const client = createBitswapClient({
       provider: () => providers[Math.min(reads++, providers.length - 1)] ?? null,
+      timers,
     });
     const block = client.get('bafyRedial');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
 
     // When the first connection halts with the request unanswered
     dialAt(before.dials, 0).onHalt('chain');
-    await vi.advanceTimersByTimeAsync(1_000);
+    await timers.advance(1_000);
 
     // Then the retry went to the second provider
     await expect(block).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
@@ -443,23 +444,23 @@ describe('createBitswapClient for one block asked twice', () => {
     const client = clientOn(chain.provider);
     let firstSettledAt = -1;
     let secondSettledAt = -1;
-    const start = Date.now();
+    const start = timers.now();
     const first = client.get('bafyBusy').catch(() => {
-      firstSettledAt = Date.now() - start;
+      firstSettledAt = timers.now() - start;
     });
-    await vi.advanceTimersByTimeAsync(60_000);
-    const secondStart = Date.now();
+    await timers.advance(60_000);
+    const secondStart = timers.now();
     const second = client.get('bafyBusy').catch((err: unknown) => {
-      secondSettledAt = Date.now() - secondStart;
+      secondSettledAt = timers.now() - secondStart;
       throw err;
     });
     const secondFailure = expect(second).rejects.toMatchObject({ name: 'BitswapTimeoutError' });
 
     // When the first fetch spends its budget and fails
-    await vi.advanceTimersByTimeAsync(120_000);
+    await timers.advance(120_000);
     await first;
     const sentWhenFirstFailed = chain.sent();
-    await vi.advanceTimersByTimeAsync(60_000);
+    await timers.advance(60_000);
     await secondFailure;
 
     // Then the second fetched on its own after that, and gave up 180 seconds after its own call, not after the first's
@@ -483,12 +484,12 @@ describe('createBitswapClient for one block asked twice', () => {
     ]);
 
     // When
-    await vi.advanceTimersByTimeAsync(180_000);
+    await timers.advance(180_000);
     await failures;
 
     // Then the second sent nothing after the first gave up
     const sentByFirst = chain.sent();
-    await vi.advanceTimersByTimeAsync(10_000);
+    await timers.advance(10_000);
     expect(chain.sent()).toBe(sentByFirst);
   });
 
@@ -500,7 +501,7 @@ describe('createBitswapClient for one block asked twice', () => {
     // When
     const first = client.get('bafyShared');
     const second = client.get('bafyShared');
-    await vi.advanceTimersByTimeAsync(1_000);
+    await timers.advance(1_000);
 
     // Then one fetch served both, each with a buffer of its own
     const [a, b] = await Promise.all([first, second]);
@@ -518,12 +519,12 @@ describe('createBitswapClient for one block asked twice', () => {
     const abandoned = client.get('bafyHalfWanted', aborter.signal);
     const settled = expect(abandoned).rejects.toThrow(/aborted/);
     const wanted = client.get('bafyHalfWanted');
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
 
     // When the first gives up
     aborter.abort();
     await settled;
-    await vi.advanceTimersByTimeAsync(100);
+    await timers.advance(100);
 
     // Then the second fetches the block itself
     await expect(wanted).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
@@ -535,12 +536,12 @@ describe('createBitswapClient for one block asked twice', () => {
     const chain = fakeChain([{ hex: '0x01' }, { hex: '0x02' }]);
     const client = clientOn(chain.provider);
     const first = client.get('bafyAgain');
-    await vi.advanceTimersByTimeAsync(10);
+    await timers.advance(10);
     await first;
 
     // When
     const second = client.get('bafyAgain');
-    await vi.advanceTimersByTimeAsync(10);
+    await timers.advance(10);
 
     // Then nothing was kept past the first fetch
     await expect(second).resolves.toEqual(new Uint8Array([0x02]));

@@ -4,6 +4,8 @@
 // Ported from polkadot-desktop's `createAsyncTaskPool`. One place for queueing, bounded concurrency, retries and
 // abort, so modules do not grow their own in-flight flags and retry timers.
 
+import { realTimers, type Timers } from './timers.js';
+
 const DEFAULT_POOL = 'default';
 
 export interface AsyncTaskPoolParams {
@@ -18,6 +20,8 @@ export interface AsyncTaskPoolParams {
    * retries.
    */
   retryIf?: (error: unknown) => boolean;
+  /** The timers delays and retry waits run on. The page's own by default. */
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 }
 
 export interface AsyncTaskParams {
@@ -43,7 +47,7 @@ interface Task {
   readonly signal: AbortSignal | undefined;
   retry: number;
   // The pending delay or retry wait.
-  timer: ReturnType<typeof setTimeout> | undefined;
+  timer: unknown;
   onAbort: (() => void) | undefined;
 }
 
@@ -58,9 +62,11 @@ class TaskPool implements AsyncTaskPool {
   private readonly waiting = new Set<Task>();
   private readonly settleWaiters = new Map<string, (() => void)[]>();
   private readonly params: AsyncTaskPoolParams;
+  private readonly timers: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 
   constructor(params: AsyncTaskPoolParams) {
     this.params = params;
+    this.timers = params.timers ?? realTimers;
   }
 
   call<T>(fn: () => T | PromiseLike<T>, params: AsyncTaskParams = {}): Promise<T> {
@@ -171,7 +177,7 @@ class TaskPool implements AsyncTaskPool {
   /** Queues the task once `ms` has passed. Until then it is waiting, so `settle` holds and an abort clears it. */
   private queueAfter(task: Task, ms: number): void {
     this.waiting.add(task);
-    task.timer = setTimeout(() => {
+    task.timer = this.timers.setTimeout(() => {
       this.waiting.delete(task);
       task.timer = undefined;
       this.queue.push(task);
@@ -180,7 +186,7 @@ class TaskPool implements AsyncTaskPool {
   }
 
   private abort(task: Task): void {
-    clearTimeout(task.timer);
+    this.timers.clearTimeout(task.timer);
     const index = this.queue.indexOf(task);
     if (index >= 0) {
       this.queue.splice(index, 1);

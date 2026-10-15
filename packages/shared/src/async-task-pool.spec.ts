@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAsyncTaskPool } from './async-task-pool.js';
+import { manualTimers } from './testing/manual-timers.js';
 
 // Fake timers, so a "wait" is a step the test advances, never a real sleep.
 const wait = (ms: number): Promise<void> =>
@@ -464,5 +465,28 @@ describe('async task pool', () => {
     // Then
     await expect(call).rejects.toMatchObject({ errors: [broken, failure] });
     await pool.settle();
+  });
+});
+
+describe('async task pool on timers it is given', () => {
+  it('As a caller, my retry waits on the timers I pass, with the globals left alone', async () => {
+    // Given a task that fails once, on a pool that retries after 500 ms
+    const timers = manualTimers();
+    let runs = 0;
+    const pool = createAsyncTaskPool({ poolSize: 1, retryCount: 1, retryDelay: 500, timers });
+    const call = pool.call(() => {
+      runs += 1;
+      return runs === 1 ? Promise.reject(new Error('busy')) : 'done';
+    });
+
+    // When
+    await timers.advance(499);
+    const beforeTheDelay = runs;
+    await timers.advance(1);
+
+    // Then
+    expect(beforeTheDelay).toBe(1);
+    expect(runs).toBe(2);
+    await expect(call).resolves.toBe('done');
   });
 });

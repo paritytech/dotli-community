@@ -16,6 +16,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 - One async task pool is the place for queueing, bounded concurrency, retries and abort. Callers name a pool and keep
   their task idempotent instead of hand-rolling in-flight flags.
+- A module that waits takes `Timers`, the page's own by default, which read the globals at each call. A spec passes
+  `manualTimers` and moves time itself, so it fakes no globals.
 - The sync store imports no Solid. Notifications are synchronous, and every store registers a reset so tests can restore
   all of them at once. It stays off Solid so boot-path code does not ship Solid's core.
 - A listener set delivers a value to every listener in order. A value emitted during delivery waits for the round in
@@ -43,12 +45,12 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.
 - IndexedDB: `openIdb`, `idbRequest`, `idbTransaction`, `deleteIdb`.
 - Byte counts as people read them: `formatSize`, `formatRate`.
-- Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `randomId`.
+- Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `randomId`, `Timers`, `realTimers`.
 
 ### `@dotli/shared/testing`
 
 Test-only helpers, apart from the main entry so no browser bundle reaches them.
 
-- `resetAllStoresForTests`, `deferred`, `memoryStorage`, `must`, `nth`, `FakePage` (a page with a document and a window,
-  each firing the events the browser fires on it).
+- `resetAllStoresForTests`, `deferred`, `memoryStorage`, `must`, `nth`, `manualTimers` (timers a spec moves by hand),
+  `FakePage` (a page with a document and a window, each firing the events the browser fires on it).
 - `untilDom` waits on the page for functional tests. It reads the DOM, so only they call it.

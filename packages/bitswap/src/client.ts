@@ -8,7 +8,7 @@ import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-p
 import { CHAIN_HALTED_ERROR_DATA } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import type { RemoteChainProvider } from '@dotli/protocol';
-import { createAsyncTaskPool, fromHex, log, named, serializeError } from '@dotli/shared';
+import { createAsyncTaskPool, fromHex, log, named, realTimers, serializeError, type Timers } from '@dotli/shared';
 
 import { BITSWAP_ERRORS } from './errors.js';
 
@@ -31,6 +31,8 @@ const DISCOVERY_RETRIES = 8;
 export interface BitswapClientDeps {
   /** The Bulletin chain's provider, read at each dial, or null when the protocol frame does not serve Bulletin. */
   provider: () => RemoteChainProvider | null;
+  /** The clock and timers the budget, the per-call timeout and the retry waits run on. */
+  timers?: Timers;
 }
 
 export interface BitswapClient {
@@ -87,7 +89,7 @@ function abortError(cid: string, cause?: unknown): Error {
   );
 }
 
-export function createBitswapClient({ provider }: BitswapClientDeps): BitswapClient {
+export function createBitswapClient({ provider, timers = realTimers }: BitswapClientDeps): BitswapClient {
   const pending = new Map<number, PendingResolver>();
   const shared = new Map<string, SharedFetch>();
   let nextId = 1;
@@ -98,6 +100,7 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
     retryCount: Number.POSITIVE_INFINITY,
     retryIf: error => error instanceof RetryLater,
     retryDelay: (_retry, error) => (error as RetryLater).delayMs,
+    timers,
   });
 
   function dial(): JsonRpcConnection {
@@ -171,11 +174,11 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
       }
       // Every exit shares one teardown, since the caller's signal outlives the call and would collect listeners.
       const cleanup = (): void => {
-        clearTimeout(timer);
+        timers.clearTimeout(timer);
         pending.delete(id);
         signal?.removeEventListener('abort', onAbort);
       };
-      const timer = setTimeout(() => {
+      const timer = timers.setTimeout(() => {
         cleanup();
         reject(
           withCode(
@@ -236,7 +239,7 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
     const delay = Math.min(
       BACKOFF_CAP_MS,
       BACKOFF_BASE_MS * 2 ** Math.min(backoffAttempt - 1, 4),
-      Math.max(1, attempts.deadline - Date.now()),
+      Math.max(1, attempts.deadline - timers.now()),
     );
     // Expected while providers are found, so a breadcrumb. The final failure goes back to the caller.
     log.event('Bitswap retry', { flow: 'content', cid, attempt: attempts.made, code, delay_ms: delay });
@@ -247,7 +250,7 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
     const attempts: FetchAttempts = { deadline, made: 0, discovery: 0, transient: 0 };
     const attempt = async (): Promise<Uint8Array> => {
       attempts.made += 1;
-      const remaining = attempts.deadline - Date.now();
+      const remaining = attempts.deadline - timers.now();
       if (remaining <= 0) {
         throw named(
           new Error(
@@ -268,7 +271,7 @@ export function createBitswapClient({ provider }: BitswapClientDeps): BitswapCli
   return {
     get(cid, signal) {
       // Taken at the call, so a caller queued behind another fetch of the CID spends its own budget while it waits.
-      const deadline = Date.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET;
+      const deadline = timers.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET;
       const entry = shared.get(cid) ?? { holders: 0, bytes: null };
       shared.set(cid, entry);
       entry.holders += 1;

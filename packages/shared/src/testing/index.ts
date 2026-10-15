@@ -6,6 +6,7 @@
 export { resetAllStoresForTests } from '../sync-store.js';
 export { deferred } from './deferred.js';
 export { FakePage } from './fake-page.js';
+export { manualTimers, type ManualTimers } from './manual-timers.js';
 export { memoryStorage } from './memory-storage.js';
 export { must } from './must.js';
 export { nth } from './nth.js';
