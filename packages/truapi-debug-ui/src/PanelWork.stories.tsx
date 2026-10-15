@@ -98,11 +98,6 @@ export const FanOutWatchSeesFanOut: Story = {
     }),
 };
 
-/** Waits for `clock` to be just past a Resolution tick, so the next frames stay clear of one. */
-function pastResolutionTick(clock: FakeClock): void {
-  clock.advance(500 - (Date.now() % 500) + 1);
-}
-
 /** As a developer using the debug panel, I collapse the panel while traffic arrives and only the header count is matched, and it catches up once when I expand. */
 export const CollapsedKeepsCountOnly: Story = {
   play: async ({ step }) =>
@@ -158,6 +153,44 @@ export const PendingClockStopsCollapsed: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I see the Resolution clock run only while its running load is on screen. */
+export const ResolutionClockStopsHidden: Story = {
+  play: async ({ step }) =>
+    withFakeClock(async clock => {
+      const { mount, system } = debugPanel();
+      mount();
+      // Read on the Resolution tab, where the list and its pending clock are not active.
+      let idle = 0;
+      let running = 0;
+      await step('Given the Resolution tab open with no load yet', () => {
+        part('td-section', 'resolution').click();
+        clock.frame();
+        idle = clock.timerCount();
+      });
+      await step('When a load starts', async () => {
+        system('boot', 'started', 'flow-boot');
+        clock.frame();
+        await expect(within(part('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
+        running = clock.timerCount();
+      });
+      await step('Then its clock runs', async () => {
+        await expect(running).toBe(idle + 1);
+      });
+      await step('When I collapse the panel', () => {
+        part('td-collapse').click();
+      });
+      await step('Then the clock stops', async () => {
+        await expect(clock.timerCount()).toBe(idle);
+      });
+      await step('When I expand it again', () => {
+        part('td-collapse').click();
+      });
+      await step('Then the clock runs again', async () => {
+        await expect(clock.timerCount()).toBe(running);
+      });
+    }),
+};
+
 /** As a developer using the debug panel, I keep the Resolution tab open while TrUAPI traffic arrives and nothing is recomputed until I go back. */
 export const ResolutionTabIgnoresTraffic: Story = {
   play: async ({ step }) =>
@@ -166,7 +199,6 @@ export const ResolutionTabIgnoresTraffic: Story = {
       mount();
       fillWithPendingRequests(clock);
       part('td-section', 'resolution').click();
-      pastResolutionTick(clock);
       resetCalls(calls);
       await step('When TrUAPI traffic arrives with the Resolution tab open', () => {
         for (let i = 0; i < 10; i++) {
@@ -196,7 +228,6 @@ export const ResolutionRedrawsOnSystemEvent: Story = {
       const { mount, calls, system } = debugPanel();
       mount();
       part('td-section', 'resolution').click();
-      pastResolutionTick(clock);
       resetCalls(calls);
       await step('When a system event lands', () => {
         system('boot', 'started', 'flow-boot');

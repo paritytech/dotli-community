@@ -58,16 +58,25 @@ export function ResolutionView(props: {
     },
   );
 
-  // Only a running load grows with time. A new load arrives through the refresh effect.
-  const tick = window.setInterval(() => {
-    if (props.active && !props.collapsed && model()?.summary.outcome === 'running') {
-      flush(draw);
-    }
-  }, RESOLUTION_TICK_MS);
+  // Only a running load grows with time, and only a shown one needs redrawing. A new load arrives through the refresh
+  // effect.
+  createEffect(
+    () => props.active && !props.collapsed && model()?.summary.outcome === 'running',
+    running => {
+      if (!running) {
+        return;
+      }
+      const tick = window.setInterval(() => {
+        flush(draw);
+      }, RESOLUTION_TICK_MS);
+      return () => {
+        window.clearInterval(tick);
+      };
+    },
+  );
 
   let unwireTooltips: (() => void) | undefined;
   onCleanup(() => {
-    window.clearInterval(tick);
     unwireTooltips?.();
   });
 
