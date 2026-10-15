@@ -9,8 +9,7 @@ inputs:
     required: true
   known-hosts:
     description:
-      'known_hosts lines for the deploy host, from the DEPLOY_KNOWN_HOSTS variable. The host field must equal
-      DEPLOY_HOST.'
+      'known_hosts lines for the deploy host, from the DEPLOY_KNOWN_HOSTS secret. The host field must equal DEPLOY_HOST.'
     required: true
 
 runs:
@@ -28,7 +27,7 @@ runs:
       run: |
         set -euo pipefail
         if [ -z "$KNOWN_HOSTS" ]; then
-          echo "::error::DEPLOY_KNOWN_HOSTS is not set. Add the deploy host's known_hosts line as a repository or environment variable (see DEPLOYMENT.md)."
+          echo "::error::DEPLOY_KNOWN_HOSTS is not set. Add the deploy host's known_hosts line as a repository or environment secret (see DEPLOYMENT.md)."
           exit 1
         fi
         mkdir -p ~/.ssh
