@@ -64,7 +64,7 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
                 y1={rail().y1}
                 x2={rail().x}
                 y2={rail().y2}
-                stroke={rail().color}
+                style={{ stroke: rail().color }}
                 stroke-dasharray={rail().pending ? '2 3' : undefined}
                 onClick={e => {
                   props.onSelect(rail().seq, e.currentTarget);
@@ -83,7 +83,7 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
                 cx={tick().cx}
                 cy={tick().cy}
                 r={2}
-                fill={tick().color}
+                style={{ fill: tick().color }}
                 onClick={e => {
                   props.onSelect(tick().seq, e.currentTarget);
                 }}
@@ -107,14 +107,21 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
                   height={box().height}
                   rx={2}
                   ry={2}
-                  fill={box().color}
+                  style={{ fill: box().color }}
                   onClick={e => {
                     props.onSelect(box().seq, e.currentTarget);
                   }}
                 />
                 <Show when={box().connector}>
                   {c => (
-                    <line class={s['connector']} x1={c().x1} y1={c().y} x2={c().x2} y2={c().y} stroke={box().color} />
+                    <line
+                      class={s['connector']}
+                      x1={c().x1}
+                      y1={c().y}
+                      x2={c().x2}
+                      y2={c().y}
+                      style={{ stroke: box().color }}
+                    />
                   )}
                 </Show>
                 <Show when={box().pendingEdge}>

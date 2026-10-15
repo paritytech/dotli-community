@@ -39,12 +39,13 @@ const OPERATION_TERMINAL_VARIANTS: ReadonlySet<string> = new Set([
   'OperationInaccessible',
 ]);
 
+// The panel's palette, resolved by the browser where the timeline draws, so a palette change reaches the chart.
 const LIFECYCLE_COLORS: Record<string, string> = {
-  Initialized: '#4081f6',
-  NewBlock: '#78a9ff',
-  BestBlockChanged: '#ffbb33',
-  Finalized: '#4cde7f',
-  Stop: '#ff7a7a',
+  Initialized: 'var(--td-focus)',
+  NewBlock: 'var(--td-blue)',
+  BestBlockChanged: 'var(--td-amber)',
+  Finalized: 'var(--td-green)',
+  Stop: 'var(--td-health-bad)',
 };
 
 export interface SegmentEntry {
@@ -182,7 +183,7 @@ export function partitionIntoSwimlanes(events: readonly StoredEvent[]): Swimlane
       return {
         key,
         header: 'Other',
-        color: '#96a2b8',
+        color: 'var(--td-slate)',
         events: evts,
       };
     }
@@ -190,7 +191,7 @@ export function partitionIntoSwimlanes(events: readonly StoredEvent[]): Swimlane
       return {
         key,
         header: 'System',
-        color: '#4cd4aa',
+        color: 'var(--td-teal)',
         events: evts,
       };
     }
@@ -318,7 +319,7 @@ export function computeLayout(events: readonly StoredEvent[], opts: LayoutOption
             kind: 'tick',
             seq: ev.seq,
             y: (seqToY.get(ev.seq) ?? 0) + ROW_HEIGHT / 2,
-            color: LIFECYCLE_COLORS[ann.chainEventTag] ?? '#6f727a',
+            color: LIFECYCLE_COLORS[ann.chainEventTag] ?? 'var(--td-fg-dim)',
             variant: ann.chainEventTag,
             linkedRailIdx: rail.railIdx,
           });
