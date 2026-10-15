@@ -54,7 +54,7 @@ async function fetchViaBitswapRpc(
 }
 
 async function readViaBitswap(rootCid: CID, blockSource: BlockSource, onStatus?: StatusCallback): Promise<FetchResult> {
-  // Defense in depth over smoldot's own checks. Only the root is re-hashed, since every link is followed by CID.
+  // The host's relay checked every block. Re-hashing the root ties the walk to the CID this sandbox was given.
   const rootVerifyingSource = rootVerifyingBlockSource(rootCid, blockSource);
 
   if (rootCid.code === CODEC_RAW) {

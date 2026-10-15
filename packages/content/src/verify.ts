@@ -60,7 +60,7 @@ export function verifyingBlockSource(source: BlockSource): BlockSource {
   };
 }
 
-/** Verifies only the root, for a transport that already verifies every block (smoldot bitswap). */
+/** Verifies only the root, for a source whose every block the host's relay already checked. */
 export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): BlockSource {
   return async (cid: CID): Promise<Uint8Array> => {
     const bytes = await source(cid);

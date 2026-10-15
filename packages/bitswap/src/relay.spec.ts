@@ -488,7 +488,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(network.fetches).toHaveLength(2);
   });
 
-  it('As a user, I get a cached block treated as a miss when the verifier fails to load, the cached copy is kept, and no fresh one is written', async () => {
+  it('As a user, I get no block when the verifier fails to load, the cached copy is kept for a later check, and nothing is written', async () => {
     // Given a cache already holding the block, but a verifier whose chunk cannot load
     const captured = recordCaptures({ onFinished: onTestFinished });
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
@@ -507,10 +507,10 @@ describe('createSandboxBlockRelay with a block cache', () => {
     send(frame, get('req-1'));
     await until(frame.replies);
 
-    // Then the cached copy was not trusted but not dropped either, the block was fetched fresh and served, and nothing
-    // was written
+    // Then the cached copy was neither trusted nor dropped, the fetched copy could not be checked either, so the
+    // sandbox gets a verification failure and nothing was written
     expect(network.fetches).toHaveLength(1);
-    expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
+    expect(frame.replies[0]).toMatchObject({ ok: false, errorName: 'ContentVerificationError' });
     expect(cache.writes).toBe(0);
     expect(cache.deleted).toEqual([]);
     expect(cache.blocks.get('bafyBlock')).toEqual(BLOCK);
@@ -520,7 +520,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
   });
 
-  it('As an operator, a verifier that cannot load is counted for each block but not captured again, with the archive cache off', async () => {
+  it('As an operator, a verifier that cannot load refuses each block, counted for each but not captured again, with the archive cache off', async () => {
     // Given a verifier whose chunk cannot load, which reports that miss itself
     const captures = { exception: vi.fn(), expected: vi.fn() };
     onTestFinished(bindCaptureSink(captures));
@@ -540,13 +540,44 @@ describe('createSandboxBlockRelay with a block cache', () => {
     send(frame, get('req-2'));
     await until(frame.replies, 2);
 
-    // Then both are served, each miss leaves a breadcrumb and a count, and none is captured
-    expect(frame.replies).toMatchObject([{ ok: true }, { ok: true }]);
+    // Then both are refused, each miss leaves a breadcrumb and a count, and none is captured
+    expect(frame.replies).toMatchObject([
+      { ok: false, errorName: 'ContentVerificationError' },
+      { ok: false, errorName: 'ContentVerificationError' },
+    ]);
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(2);
     expect(captures.expected).toHaveBeenCalledWith(missing, { flow: 'content', step: 'relay_verify' });
     const verifyFailure = { outcome: 'error', reason: 'Error', step: 'verify' };
     expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
+  });
+
+  it('As a user, once the verifier loads on a later try, my next block is checked and served', async () => {
+    // Given a verifier whose first load fails, as during a deploy, and whose next one works
+    let checks = 0;
+    const { channel, send } = fakeChannel();
+    createSandboxBlockRelay({
+      channel,
+      blocks: fakeNetwork().blocks,
+      cache: null,
+      verify: (cid, bytes) => {
+        checks += 1;
+        return checks === 1 ? Promise.reject(new Error('verify chunk failed to load')) : matchesBlock(cid, bytes);
+      },
+    });
+
+    // When the sandbox asks, is refused, and asks again
+    const frame = fakeFrame();
+    send(frame, get('req-1'));
+    await until(frame.replies);
+    send(frame, get('req-2'));
+    await until(frame.replies, 2);
+
+    // Then
+    expect(frame.replies).toMatchObject([
+      { id: 'req-1', ok: false, errorName: 'ContentVerificationError' },
+      { id: 'req-2', ok: true, bytes: BLOCK },
+    ]);
   });
 
   it('As a user, I am still served the fetched block when dropping a corrupted cached block fails', async () => {
