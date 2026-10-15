@@ -44,7 +44,7 @@ import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
 
-/** Below this width the panel docks at the bottom with its panes stacked, whatever dock was picked. */
+/** The panel keeps its own kit, so it holds this width itself: below it the panel docks at the bottom, panes stacked. */
 export const NARROW_QUERY = '(max-width: 560px)';
 
 /** The first row still in view at `scrollTop`, by bisection over offsets relative to the first row. */
