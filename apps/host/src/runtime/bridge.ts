@@ -6,7 +6,7 @@
 
 import { m, spans as S } from '@dotli/metrics';
 import { hostPrompts } from '../page-prompts.js';
-import { loadLocalWalletCore } from '../lazy.js';
+import { loadHostRuntimeChunk, loadLocalWalletCore } from '../lazy.js';
 import { pageNotifications } from '../page-notifications.js';
 import { productFrameContainer, productFrameView } from '../product-frame-view.js';
 import { recordBestBlock, recordChainActivity } from '../state/network-monitor.js';
@@ -30,17 +30,14 @@ export { startSessionState } from './session/session-state.js';
 // Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
 export { preloadWireDescriber } from './core-connection.js';
 
-// Preloaded so they are ready when the first product renders.
+// Preloaded so it is ready when the first product renders. One load serves the frame and every core.
 const chunkLoadStart = performance.now();
-const runtimeChunkPromise = Promise.all([
-  import('@parity/truapi-host/web'),
-  import('@parity/truapi-host/worker-runtime?worker'),
-]).then(([web]) => {
+const hostRuntime = loadHostRuntimeChunk().then(runtime => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
-  return { createIframeHost: web.createIframeHost };
+  return runtime;
 });
-void runtimeChunkPromise.catch(() => {
-  // The render that awaits it reports the failure.
+void hostRuntime.catch(() => {
+  // The render or the core boot that awaits it reports the failure.
 });
 
 // Each core boots on the wallet read from the shared store and the published host runtime, with callbacks that ask
@@ -48,11 +45,8 @@ void runtimeChunkPromise.catch(() => {
 const bootRuntime = createCoreRuntimeBoot({
   readWallet: readWalletBoot,
   loadHostRuntime: async () => {
-    const [web, worker] = await Promise.all([
-      import('@parity/truapi-host/web'),
-      import('@parity/truapi-host/worker-runtime?worker'),
-    ]);
-    return { createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime, HostWorker: worker.default };
+    const { web, HostWorker } = await hostRuntime;
+    return { createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime, HostWorker };
   },
   createCallbacks: options =>
     createHostCallbacks({ ...options, prompts: hostPrompts, notifications: pageNotifications() }),
@@ -63,7 +57,7 @@ export const { initBridge, setPageProduct, startProductFrame, authCommands } = c
   bootRuntime,
   onStoredSessionChanged,
   createIframeHost: async options =>
-    (await runtimeChunkPromise).createIframeHost({ ...options, container: productFrameContainer() }),
+    (await hostRuntime).web.createIframeHost({ ...options, container: productFrameContainer() }),
   onPermissionsChanged,
   frameView: productFrameView,
   notify: hostPrompts.notify,

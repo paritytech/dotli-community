@@ -9,7 +9,8 @@ import { reportExpected, spans as S } from '@dotli/metrics';
 import { protocolClient, type LocalWalletIdentity } from '@dotli/protocol';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { hexToBytes } from '@parity/truapi/scale';
-import { loadBridge } from '../lazy.js';
+import { loadPolkadotApi } from '../lazy.js';
+import { hostChainProvider } from './host-callbacks/chain.js';
 import { reportLocalWalletFailure, type LocalWalletBoot, type LocalWalletFailureReason } from './wallet-boot.js';
 
 export interface LiteUsernameRefreshDeps {
@@ -86,12 +87,11 @@ function isConsumer(value: unknown): value is { lite_username: Uint8Array } {
 }
 
 async function readFromPeople(identityAccountId: string): Promise<string | null> {
-  const { hostChainProvider } = await loadBridge();
   const provider = hostChainProvider(getActiveServicesConfig().people.genesis);
   if (provider === null) {
     throw new Error('People is not reachable on this chain backend');
   }
-  const papi = await import('polkadot-api');
+  const papi = await loadPolkadotApi();
   const client = papi.createClient(provider);
   try {
     const account = papi.AccountId().dec(hexToBytes(identityAccountId));

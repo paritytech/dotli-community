@@ -18,7 +18,7 @@ import {
   getActiveServicesConfig,
 } from '@dotli/config';
 import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from '@dotli/truapi-debug-ui';
-import { loadBridge } from '../lazy.js';
+import { loadBridge, loadPolkadotApi } from '../lazy.js';
 import { ALL_PERMISSIONS, getPermissionStatuses } from './permissions.js';
 import { dotliVersion } from './runtime-config.js';
 import { getProductState } from './state/product.js';
@@ -264,7 +264,7 @@ export function createFinalizedBlockQuery(
 const queryFinalizedBlock = createFinalizedBlockQuery({
   provider: async genesisHash =>
     isRemoteChainSupported(genesisHash) ? (await loadBridge()).hostChainProvider(genesisHash) : null,
-  createClient: async provider => (await import('polkadot-api')).createClient(provider),
+  createClient: async provider => (await loadPolkadotApi()).createClient(provider),
 });
 
 function formatBlock(n: number | null): string {

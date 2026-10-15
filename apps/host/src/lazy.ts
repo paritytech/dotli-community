@@ -35,3 +35,18 @@ export const loadSigningWorker = (): Promise<{ default: new () => Worker }> =>
   import('./runtime/signing-worker.js?worker');
 export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;
 export const loadLocalWalletCore = (): Promise<LocalWalletCoreModule> => import('./runtime/local-wallet-core.js');
+
+/** The published host runtime and its worker, which every core boots on and the product frame mounts with. */
+export const loadHostRuntimeChunk = async () => {
+  const [web, worker] = await Promise.all([
+    import('@parity/truapi-host/web'),
+    import('@parity/truapi-host/worker-runtime?worker'),
+  ]);
+  return { web, HostWorker: worker.default };
+};
+
+/** The chain client, for the reads a visit may never make. */
+export const loadPolkadotApi = () => import('polkadot-api');
+
+/** The QR encoder, for the first code a visit shows. */
+export const loadQrCode = () => import('qrcode');
