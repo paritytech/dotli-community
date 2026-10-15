@@ -1294,6 +1294,62 @@ describe('broker warnings', () => {
     // Then it is one full-form warning, as the second broker's first
     expect(warnings).toEqual([expect.stringMatching(/^\[dot\.li broker\] .*unknown id=second-0$/) as string]);
   });
+
+  it('As a dotli maintainer, I see no warning when the node answers the unpins and unfollows the broker sends itself', () => {
+    // Given a session that unpinned its first block, saw the chain finalize past it, and left
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const messages: unknown[] = [];
+    const connection = broker.connect('a', message => messages.push(message), 'object');
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
+    const token = (messages[0] as { result: string }).result;
+    const event = (result: Record<string, unknown>): void => {
+      harness.emit({ jsonrpc: '2.0', method: 'chainHead_v1_followEvent', params: { subscription: 'up-1', result } });
+    };
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    connection.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_unpin', params: [token, ['0xf0']] });
+    event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event({ event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+    connection.disconnect();
+    const releases = harness.sent.filter(
+      message => message.method === 'chainHead_v1_unpin' || message.method === 'chainHead_v1_unfollow',
+    );
+
+    // When the node answers them
+    const warnings = warningsDuring(() => {
+      for (const release of releases) {
+        harness.emit({ jsonrpc: '2.0', id: release.id ?? null, result: null });
+      }
+    });
+
+    // Then
+    expect(releases.map(release => release.method)).toEqual(['chainHead_v1_unpin', 'chainHead_v1_unfollow']);
+    expect(warnings).toEqual([]);
+  });
+
+  it('As a dotli maintainer, I am warned when the node refuses a release the broker sent itself', () => {
+    // Given a session that followed and left
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const connection = broker.connect('a', () => undefined, 'object');
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
+    connection.disconnect();
+    const unfollow = harness.sent.find(message => message.method === 'chainHead_v1_unfollow');
+
+    // When the node refuses the unfollow
+    const warnings = warningsDuring(() => {
+      harness.emit({
+        jsonrpc: '2.0',
+        id: unfollow?.id ?? null,
+        error: { code: -32602, message: 'Invalid subscription' },
+      });
+    });
+
+    // Then
+    expect(warnings).toEqual([expect.stringMatching(/refused chainHead_v1_unfollow/) as string]);
+  });
 });
 
 describe('ChainBroker.halt', () => {

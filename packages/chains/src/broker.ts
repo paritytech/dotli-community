@@ -45,7 +45,8 @@ interface SubscriptionMessage {
 
 /**
  * Who the answer to an upstream request goes to. Each request the broker sends upstream with an id has exactly one
- * owner, so an answer is never routed by guessing what its id holds.
+ * owner (a session, a shared follow, a session that left or a release the broker sent itself), so an answer is never
+ * routed by guessing what its id holds.
  */
 type RequestOwner =
   /** A session's own request, answered under the session's id for it. */
@@ -53,7 +54,9 @@ type RequestOwner =
   /** The upstream follow a shared follow waits on, answered to every session waiting on it. */
   | { kind: 'follow'; follow: SharedFollow }
   /** A request whose session left before the answer. A subscription the answer opens is released at once. */
-  | { kind: 'orphan'; method: string };
+  | { kind: 'orphan'; method: string }
+  /** A release the broker sent itself. Nobody waits on its answer. */
+  | { kind: 'release'; method: string };
 
 function methodOf(owner: RequestOwner): string {
   return owner.kind === 'follow' ? 'chainHead_v1_follow' : owner.method;
@@ -271,8 +274,7 @@ export class ChainBroker {
 
   /** A release the broker sends itself, for something no session holds anymore. */
   private sendRelease(method: string, params: unknown[]): void {
-    this.sendUpstream({ jsonrpc: '2.0', id: `broker-release:${this.requestCounter.toString(36)}`, method, params });
-    this.requestCounter += 1;
+    this.sendTracked({ kind: 'release', method }, { jsonrpc: '2.0', method, params });
   }
 
   connect(
@@ -616,6 +618,8 @@ export class ChainBroker {
       this.answerFollow(owner.follow, response);
     } else if (owner.kind === 'orphan') {
       this.answerOrphan(owner.method, response);
+    } else if (owner.kind === 'release') {
+      this.answerRelease(owner.method, response);
     } else {
       this.answerSession(owner, response);
     }
@@ -717,6 +721,13 @@ export class ChainBroker {
     }
     this.earlySubscriptions.delete(upstreamToken);
     this.sendRelease(releaseMethod, [upstreamToken]);
+  }
+
+  /** Nobody waits on a release, so the node refusing one is all there is to tell. */
+  private answerRelease(method: string, response: JsonRpcResponse): void {
+    if ('error' in response) {
+      this.warn('release_refused', `upstream refused ${method}: ${JSON.stringify(response.error)}`);
+    }
   }
 
   /** Forgets `follow`, unless a newer follow on the same key replaced it already. */
