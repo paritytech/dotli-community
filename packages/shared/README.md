@@ -8,7 +8,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Owns the primitives other layers build on: `createAsyncTaskPool`, `createListenerSet`, `createSyncStore`,
   `createStatusCell`, `log`.
 - Owns generic helpers with no owner of their own: error copy, hex, byte sizes, timing, a timeout, abort, web storage
-  that never throws and the IndexedDB callbacks as promises.
+  that never throws, the IndexedDB callbacks as promises and the wipe of an origin's stores.
 - Owns no page state, no dotNS rules, no metrics, no UI and no chain access. The log sink is bound from outside, and
   listener errors are reported through callbacks the caller passes in.
 
@@ -26,6 +26,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - IndexedDB's callbacks become promises in one helper: an open that rejects when an older tab blocks the upgrade, a
   request, a transaction that resolves once it commits and rejects on an abort, and a delete that rejects when a
   connection blocks it.
+- An origin wipe empties the databases, caches and service workers of one origin, each whatever happened to the one
+  before, and rejects naming every part it left behind. A browser that cannot list its databases fails that part.
 - Web storage that the browser blocks or that is full reads as empty and drops writes, in one adapter, so no module
   wraps storage itself.
 - A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
@@ -44,6 +46,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
   `gatewayUnreachable`.
 - Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.
 - IndexedDB: `openIdb`, `idbRequest`, `idbTransaction`, `deleteIdb`.
+- Origin wipe: `wipeOriginStores`, `deleteAllDatabases`, `OriginWipeError`, `OriginStores`, `OriginWipePart`.
 - Byte counts as people read them: `formatSize`, `formatRate`.
 - Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `randomId`, `Timers`, `realTimers`.
 

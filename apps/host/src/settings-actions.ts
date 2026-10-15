@@ -5,7 +5,17 @@
 // host's boot resets through it when a URL changes the settings, before any island has loaded.
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
-import { errorName, log, pageLocalStorage, pageSessionStorage, type SafeStorage } from '@dotli/shared';
+import {
+  errorName,
+  log,
+  OriginWipeError,
+  pageLocalStorage,
+  pageSessionStorage,
+  wipeOriginStores,
+  type OriginStores,
+  type OriginWipePart,
+  type SafeStorage,
+} from '@dotli/shared';
 import { markContinuation, type Continuation } from './continuation.js';
 import { sharedSettingsOf, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
 import { clearCidCache, clearBlockCache } from '@dotli/storage';
@@ -153,37 +163,43 @@ export const pageSettingsActions: SettingsActions = createSettingsActions({
 /** Survive a reset, since losing the theme would be a visible change nobody requested. */
 const PRESERVED_KEYS: readonly string[] = [THEME_KEY];
 
-export type WipeFailure = 'indexeddb' | 'cache_storage' | 'service_worker';
+export type WipeFailure = OriginWipePart;
 
-/** The browser stores a wipe empties. Each rejects when it could not finish. */
+/** What a wipe empties: the origin's browser stores and both web storages. */
 export interface WipeParts {
-  indexedDb: () => Promise<void>;
-  cacheStorage: () => Promise<void>;
-  serviceWorkers: () => Promise<void>;
+  stores: OriginStores;
   local: SafeStorage;
   session: SafeStorage;
 }
 
-const BROWSER_WIPE_PARTS: WipeParts = {
-  indexedDb: deleteAllIndexedDBs,
-  cacheStorage: deleteAllCacheStorage,
-  serviceWorkers: unregisterAllServiceWorkers,
-  local: pageLocalStorage,
-  session: pageSessionStorage,
-};
+/** Read on use, since the page loads this module before it knows it will wipe. */
+function browserWipeParts(): WipeParts {
+  return {
+    stores: {
+      indexedDB: typeof indexedDB === 'undefined' ? null : indexedDB,
+      caches: typeof caches === 'undefined' ? null : caches,
+      serviceWorker: 'serviceWorker' in navigator ? navigator.serviceWorker : null,
+    },
+    local: pageLocalStorage,
+    session: pageSessionStorage,
+  };
+}
 
 /**
- * Best-effort, since Firefox and older Safari lack `indexedDB.databases()`. Resolves the parts that failed after
- * reporting each, so the caller counts them without a second report.
+ * Empties the origin and resolves the parts that failed, after reporting each, so the caller counts them without a
+ * second report. A browser that cannot list its databases fails the `indexeddb` part.
  */
-export async function wipeOriginState(parts: WipeParts = BROWSER_WIPE_PARTS): Promise<readonly WipeFailure[]> {
-  const failed: WipeFailure[] = [];
-  const run = async (reason: WipeFailure, part: () => Promise<void>): Promise<void> => {
-    try {
-      await part();
-    } catch (err: unknown) {
-      failed.push(reason);
-      reportExpected(err, {
+export async function wipeOriginState(parts: WipeParts = browserWipeParts()): Promise<readonly WipeFailure[]> {
+  let failed: WipeFailure[] = [];
+  try {
+    await wipeOriginStores(parts.stores);
+  } catch (err: unknown) {
+    if (!(err instanceof OriginWipeError)) {
+      throw err;
+    }
+    failed = [...err.failures.keys()];
+    for (const [reason, cause] of err.failures) {
+      reportExpected(cause, {
         flow: 'storage',
         step: `origin_wipe_${reason}`,
         metric: S.ORIGIN_WIPE,
@@ -191,9 +207,7 @@ export async function wipeOriginState(parts: WipeParts = BROWSER_WIPE_PARTS): Pr
         message: `[dot.li settings] ${reason} wipe failed:`,
       });
     }
-  };
-  await Promise.all([run('indexeddb', parts.indexedDb), run('cache_storage', parts.cacheStorage)]);
-  await run('service_worker', parts.serviceWorkers);
+  }
   parts.session.clear();
   const preserved = PRESERVED_KEYS.map(key => [key, parts.local.getItem(key)] as const);
   parts.local.clear();
@@ -203,50 +217,6 @@ export async function wipeOriginState(parts: WipeParts = BROWSER_WIPE_PARTS): Pr
     }
   }
   return failed;
-}
-
-async function deleteAllIndexedDBs(): Promise<void> {
-  if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
-    return;
-  }
-  const dbs = await indexedDB.databases();
-  await Promise.all(
-    dbs.map(
-      db =>
-        new Promise<void>(resolve => {
-          if (db.name === undefined || db.name === '') {
-            resolve();
-            return;
-          }
-          const req = indexedDB.deleteDatabase(db.name);
-          // Chromium may never fire success, error or blocked.
-          const timer = setTimeout(resolve, 3000);
-          const settle = (): void => {
-            clearTimeout(timer);
-            resolve();
-          };
-          req.onsuccess = settle;
-          req.onerror = settle;
-          req.onblocked = settle;
-        }),
-    ),
-  );
-}
-
-async function deleteAllCacheStorage(): Promise<void> {
-  if (typeof caches === 'undefined') {
-    return;
-  }
-  const keys = await caches.keys();
-  await Promise.all(keys.map(k => caches.delete(k)));
-}
-
-async function unregisterAllServiceWorkers(): Promise<void> {
-  if (!('serviceWorker' in navigator)) {
-    return;
-  }
-  const regs = await navigator.serviceWorker.getRegistrations();
-  await Promise.all(regs.map(r => r.unregister()));
 }
 
 export function isTruapiDebugEnabled(): boolean {

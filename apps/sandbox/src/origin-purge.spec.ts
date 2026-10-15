@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 
-import { purgeSandboxOriginState, type OriginStores } from './origin-purge.js';
+import { purgeSandboxOriginState, type SandboxOrigin } from './origin-purge.js';
 
 interface Origin {
-  stores: OriginStores;
+  stores: SandboxOrigin;
   /** What each store had wiped, in order. */
   wiped: string[];
 }
@@ -16,7 +16,7 @@ interface Origin {
 function origin(): Origin {
   const wiped: string[] = [];
   const cookies = ['theme=dark'];
-  const stores: OriginStores = {
+  const stores: SandboxOrigin = {
     indexedDB: {
       databases: () => Promise.resolve([{ name: 'app-db', version: 1 }]),
       deleteDatabase: name => {
@@ -93,5 +93,40 @@ describe('purgeSandboxOriginState', () => {
       'cookie:theme=',
     ]);
     expect(expected).toEqual(['origin_purge']);
+  });
+
+  it('As a visitor whose database delete is refused, the purge still wipes the rest and reports the database part', async () => {
+    // Given an origin whose database delete fails and whose storages are open
+    const { stores, wiped } = origin();
+    const refusing: SandboxOrigin = {
+      ...stores,
+      indexedDB: {
+        databases: () => Promise.resolve([{ name: 'app-db', version: 1 }]),
+        deleteDatabase: () => {
+          const request = { error: new DOMException('refused', 'UnknownError') } as unknown as IDBOpenDBRequest;
+          queueMicrotask(() => {
+            request.onerror?.call(request, new Event('error'));
+          });
+          return request;
+        },
+      },
+      localStorage: () => ({ clear: () => undefined }),
+    };
+    const refusals: string[] = [];
+    onTestFinished(
+      bindCaptureSink({
+        exception: () => undefined,
+        expected: err => {
+          refusals.push(err instanceof Error ? err.message : String(err));
+        },
+      }),
+    );
+
+    // When
+    await purgeSandboxOriginState(refusing);
+
+    // Then
+    expect(wiped).toEqual(['caches:assets-v1', 'serviceWorker', 'sessionStorage', 'cookie:theme=', 'cookie:theme=']);
+    expect(refusals).toEqual(['Failed to delete app-db DB: UnknownError']);
   });
 });

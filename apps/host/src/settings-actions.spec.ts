@@ -13,7 +13,7 @@ import {
 } from './settings-actions.js';
 import { memoryStorage } from '@dotli/shared/testing';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink } from '@dotli/shared';
+import { bindLogSink, type OriginStores } from '@dotli/shared';
 
 const CACHE_ON = {
   skipCidCache: false,
@@ -303,15 +303,22 @@ describe('full reset', () => {
   let local: Storage;
   let session: Storage;
 
-  /** Every part succeeds, over this test's storages. */
-  function parts(overrides: Partial<WipeParts> = {}): WipeParts {
+  /** A browser with none of the stores a wipe empties, over this test's storages, unless `stores` adds them. */
+  function parts(stores: Partial<OriginStores> = {}): WipeParts {
+    return { stores: { indexedDB: null, caches: null, serviceWorker: null, ...stores }, local, session };
+  }
+
+  /** A database list whose every delete the browser refuses, as `deleteDatabase` fires `error`. */
+  function refusingDatabases(names: string[]): OriginStores['indexedDB'] {
     return {
-      indexedDb: () => Promise.resolve(),
-      cacheStorage: () => Promise.resolve(),
-      serviceWorkers: () => Promise.resolve(),
-      local,
-      session,
-      ...overrides,
+      databases: () => Promise.resolve(names.map(name => ({ name, version: 1 }))),
+      deleteDatabase: () => {
+        const request = { error: new DOMException('refused', 'UnknownError') } as unknown as IDBOpenDBRequest;
+        queueMicrotask(() => {
+          request.onerror?.call(request, new Event('error'));
+        });
+        return request;
+      },
     };
   }
 
@@ -346,9 +353,8 @@ describe('full reset', () => {
     expect(local.getItem('dotli:network')).toBeNull();
   });
 
-  it('As an operator, a wipe part that fails is reported as an expected failure, counted and named to the caller, and the other parts still run', async () => {
-    // Given an IndexedDB wipe that fails, and a reporting pipeline that records
-    const failure = new Error('blocked');
+  it('As an operator, a database the browser refuses to delete is reported as an expected failure, counted and named to the caller, and the other parts still run', async () => {
+    // Given a database whose delete fails, and a reporting pipeline that records
     const ran: string[] = [];
     const captures = { exception: vi.fn(), expected: vi.fn() };
     onTestFinished(bindCaptureSink(captures));
@@ -358,14 +364,24 @@ describe('full reset', () => {
     // When
     const failed = await wipeOriginState(
       parts({
-        indexedDb: () => Promise.reject(failure),
-        cacheStorage: () => {
-          ran.push('cache storage');
-          return Promise.resolve();
+        indexedDB: refusingDatabases(['dotli']),
+        caches: {
+          keys: () => Promise.resolve(['shell']),
+          delete: () => {
+            ran.push('cache storage');
+            return Promise.resolve(true);
+          },
         },
-        serviceWorkers: () => {
-          ran.push('service workers');
-          return Promise.resolve();
+        serviceWorker: {
+          getRegistrations: () =>
+            Promise.resolve([
+              {
+                unregister: () => {
+                  ran.push('service workers');
+                  return Promise.resolve(true);
+                },
+              } as unknown as ServiceWorkerRegistration,
+            ]),
         },
       }),
     );
@@ -374,7 +390,10 @@ describe('full reset', () => {
     expect(failed).toEqual(['indexeddb']);
     expect(ran).toEqual(['cache storage', 'service workers']);
     expect(local.getItem('dotli:network')).toBeNull();
-    expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'storage', step: 'origin_wipe_indexeddb' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Failed to delete dotli DB: UnknownError' }),
+      { flow: 'storage', step: 'origin_wipe_indexeddb' },
+    );
     expect(captures.exception).not.toHaveBeenCalled();
     expect(metrics.counted('settings.origin_wipe')).toEqual([{ outcome: 'error', reason: 'indexeddb' }]);
   });

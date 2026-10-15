@@ -1,14 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { deleteIdb } from '@dotli/shared';
+import { OriginWipeError, wipeOriginStores, type OriginStores } from '@dotli/shared';
 import { m, recordExpected, spans as S } from '@dotli/metrics';
 
 /** The stores a product may leave in the sandbox origin. A store this browser lacks is `null`. */
-export interface OriginStores {
-  indexedDB: Pick<IDBFactory, 'databases' | 'deleteDatabase'> | null;
-  caches: Pick<CacheStorage, 'keys' | 'delete'> | null;
-  serviceWorker: Pick<ServiceWorkerContainer, 'getRegistrations'> | null;
+export interface SandboxOrigin extends OriginStores {
   /** Read on use, since a browser that blocks storage throws on the read. */
   localStorage: () => Pick<Storage, 'clear'>;
   sessionStorage: () => Pick<Storage, 'clear'>;
@@ -18,56 +15,50 @@ export interface OriginStores {
 }
 
 /**
- * Best-effort, since a page cannot reach `HttpOnly` cookies or, in older Firefox and Safari, enumerate IndexedDB. The
- * reset is opt-in, so a partial wipe is not fatal, and each store is wiped whatever happened to the one before.
+ * Best-effort, since a page cannot reach `HttpOnly` cookies. The reset is opt-in, so a partial wipe is not fatal, and
+ * each store is wiped whatever happened to the one before.
  */
-export async function purgeSandboxOriginState(stores: OriginStores): Promise<void> {
+export async function purgeSandboxOriginState(origin: SandboxOrigin): Promise<void> {
   const failed: string[] = [];
+  // The browser refusing a store is not a bug, but it explains a product that still sees its old state.
+  const refused = (store: string, err: unknown): void => {
+    recordExpected(err, { flow: 'content', step: 'origin_purge' });
+    failed.push(store);
+  };
   const wipe = async (store: string, run: () => unknown): Promise<void> => {
     try {
       await run();
     } catch (err) {
-      // The browser refusing a store is not a bug, but it explains a product that still sees its old state.
-      recordExpected(err, { flow: 'content', step: 'origin_purge' });
-      failed.push(store);
+      refused(store, err);
     }
   };
 
-  const { indexedDB: idb, caches, serviceWorker, document: page } = stores;
-  if (idb !== null && typeof idb.databases === 'function') {
-    await wipe('indexeddb', async () => {
-      const dbs = await idb.databases();
-      await Promise.all(dbs.flatMap(db => (db.name === undefined || db.name === '' ? [] : [deleteIdb(idb, db.name)])));
-    });
-  }
-  if (caches !== null) {
-    await wipe('caches', async () => {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(key => caches.delete(key)));
-    });
-  }
-  if (serviceWorker !== null) {
-    await wipe('service_worker', async () => {
-      const registrations = await serviceWorker.getRegistrations();
-      await Promise.all(registrations.map(registration => registration.unregister()));
-    });
+  try {
+    await wipeOriginStores(origin);
+  } catch (err) {
+    if (!(err instanceof OriginWipeError)) {
+      throw err;
+    }
+    for (const [part, cause] of err.failures) {
+      refused(part, cause);
+    }
   }
   await wipe('local_storage', () => {
-    stores.localStorage().clear();
+    origin.localStorage().clear();
   });
   await wipe('session_storage', () => {
-    stores.sessionStorage().clear();
+    origin.sessionStorage().clear();
   });
   // A product may have set a cookie on either path.
   await wipe('cookies', () => {
     const expired = 'expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    for (const entry of page.cookie.split(';')) {
+    for (const entry of origin.document.cookie.split(';')) {
       const name = (entry.split('=')[0] ?? '').trim();
       if (name === '') {
         continue;
       }
-      page.cookie = `${name}=; ${expired}; path=/`;
-      page.cookie = `${name}=; ${expired}; path=${stores.pathname}`;
+      origin.document.cookie = `${name}=; ${expired}; path=/`;
+      origin.document.cookie = `${name}=; ${expired}; path=${origin.pathname}`;
     }
   });
 

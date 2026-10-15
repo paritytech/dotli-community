@@ -15,7 +15,7 @@ import {
 import { chainBytesReceived, installByteMeter, loadProvider } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
-import { deleteIdb, log, serializeError } from '@dotli/shared';
+import { deleteAllDatabases, log, serializeError } from '@dotli/shared';
 import {
   TIMEOUTS,
   getActiveServicesConfig,
@@ -133,20 +133,9 @@ function signalParent(kind: 'ready' | 'listening'): void {
 
 /** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
 async function purgeWorkerCaches(): Promise<void> {
-  // Throws rather than continuing, which would boot smoldot against the stale DB.
-  const KEEP = new Set([DB_NAME]);
-  if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
-    throw new Error(
-      'Browser does not expose indexedDB.databases() — cannot fully purge worker caches. ' +
-        'Please clear site data manually before retrying.',
-    );
-  }
-  const dbs = await indexedDB.databases();
-  const targets = dbs
-    .map(db => db.name)
-    .filter((name): name is string => name !== undefined && name !== '' && !KEEP.has(name));
-  await Promise.all(targets.map(name => deleteIdb(indexedDB, name)));
-  log.event('Worker caches purged', { flow: 'protocol', databases: targets.length });
+  // Rejects rather than continuing, which would boot smoldot against the stale DB.
+  const deleted = await deleteAllDatabases(indexedDB, [DB_NAME]);
+  log.event('Worker caches purged', { flow: 'protocol', databases: deleted.length });
 }
 
 /** A boot that cannot start, which the host answers by dropping this frame and building a new one after a wait. */
