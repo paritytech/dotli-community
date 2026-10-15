@@ -19,18 +19,22 @@ const BUTTON_VARIANT: Record<ModalButtonVariant, ButtonVariant> = {
   primary: 'primary',
 };
 
-// A reject keeps the cancel test id: it is the same answer, drawn destructive.
-const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
-  danger: 'signing-btn-cancel',
-  cancel: 'signing-btn-cancel',
-  secondary: 'signing-btn-secondary',
-  primary: 'signing-btn-sign',
+/** The root of the dialog's ids when its caller names none. */
+const DEFAULT_TEST_ID = 'prompt-dialog';
+
+// A reject keeps the cancel id: it is the same answer, drawn destructive.
+const BUTTON_TEST_ROLE: Record<ModalButtonVariant, string> = {
+  danger: 'cancel',
+  cancel: 'cancel',
+  secondary: 'secondary',
+  primary: 'primary',
 };
 
 /** A queued app prompt (permission, password, preimage, signing) drawn as a Modal. */
 export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- keyed entry, read once
   const { id, view } = props.entry;
+  const root = view.testId ?? DEFAULT_TEST_ID;
   const titleId = `overlay-modal-title-${String(id)}`;
   const [password, setPassword] = createSignal('');
   let input: HTMLInputElement | undefined;
@@ -71,9 +75,9 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
       title={view.title}
       labelledBy={titleId}
       initialFocus={() => input}
-      testId="signing-modal"
+      testId={root}
     >
-      <Modal.Head titleId={titleId} title={view.title} icon={view.icon} iconTestId="permission-modal-icon" />
+      <Modal.Head titleId={titleId} title={view.title} icon={view.icon} iconTestId={`${root}-icon`} />
       <Modal.Body>
         <Show when={view.fields.length > 0}>
           <Well layout="list">
@@ -84,9 +88,9 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
                   value={field.value}
                   mono={field.mono === true}
                   warning={field.warning === true}
-                  testId="signing-field"
-                  labelTestId="signing-field-label"
-                  valueTestId="signing-field-value"
+                  testId={`${root}-field`}
+                  labelTestId={`${root}-field-label`}
+                  valueTestId={`${root}-field-value`}
                 />
               )}
             </For>
@@ -95,7 +99,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
         <Show when={view.notice}>
           {notice => (
             // The one notice says the app reloads, hence the board's reload arrow.
-            <Callout icon={ReloadIcon} testId="permission-modal-notice">
+            <Callout icon={ReloadIcon} testId={`${root}-notice`}>
               {notice()}
             </Callout>
           )}
@@ -105,14 +109,14 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
             <>
               <Show when={spec().hint}>
                 {hint => (
-                  <p class={s['caption']} data-testid="password-prompt-hint">
+                  <p class={s['caption']} data-testid={`${root}-hint`}>
                     {hint()}
                   </p>
                 )}
               </Show>
               <Show when={spec().error}>
                 {error => (
-                  <p class={s['error']} data-testid="password-prompt-error" role="alert">
+                  <p class={s['error']} data-testid={`${root}-error`} role="alert">
                     {error()}
                   </p>
                 )}
@@ -123,7 +127,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
                 }}
                 type="password"
                 class={s['input']}
-                data-testid="password-prompt-input"
+                data-testid={`${root}-input`}
                 aria-labelledby={titleId}
                 placeholder={spec().placeholder}
                 autocomplete="off"
@@ -142,13 +146,13 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
           )}
         </Show>
       </Modal.Body>
-      <Modal.Actions testId="signing-modal-footer">
+      <Modal.Actions testId={`${root}-footer`}>
         <For each={view.buttons}>
           {button => (
             <Button
               variant={BUTTON_VARIANT[button.variant]}
               block
-              testId={BUTTON_TEST_ID[button.variant]}
+              testId={`${root}-btn-${BUTTON_TEST_ROLE[button.variant]}`}
               disabled={needsPassword(button) && password() === ''}
               onClick={() => {
                 choose(button);

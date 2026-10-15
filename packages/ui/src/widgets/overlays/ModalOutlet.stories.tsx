@@ -100,14 +100,14 @@ type Story = StoryObj<typeof meta>;
 
 // The dialog is portalled into the body, outside the story's canvas.
 const body = within(document.body);
-const backdrop = () => body.queryByTestId('signing-modal-backdrop');
+const backdrop = () => body.queryByTestId('prompt-dialog-backdrop');
 const title = () => body.getByRole('heading', { level: 2 }).textContent;
 const press = async (el: Element) => {
   await (await trustedInput()).click(el);
 };
 /** A press on the scrim beside the card, as a real press there lands. */
 const pressScrim = async () => {
-  await (await trustedInput()).click(body.getByTestId('signing-modal-scrim'), { position: { x: 4, y: 4 } });
+  await (await trustedInput()).click(body.getByTestId('prompt-dialog-scrim'), { position: { x: 4, y: 4 } });
 };
 const askNow = async () => {
   await press(body.getByTestId('opener'));
@@ -153,7 +153,7 @@ export const ScrimAndEscapeDismiss: Story = {
   play: async ({ step }) => {
     await step('Given two prompts are queued', askNow);
     await step('When I click inside the card, then nothing is answered', async () => {
-      await press(body.getByTestId('permission-modal-notice'));
+      await press(body.getByTestId('prompt-dialog-notice'));
       await expect(title()).toBe('Permission Request');
     });
     await step('When I press the scrim, then the first is dismissed and the second shows', async () => {
@@ -222,7 +222,7 @@ export const PhoneSheetCloseDismisses: Story = {
   play: async ({ step }) => {
     await step('Given a prompt is up on a phone', askNow);
     await step("When I press the sheet's Close", async () => {
-      await press(await body.findByTestId('signing-modal-sheet-close'));
+      await press(await body.findByTestId('prompt-dialog-sheet-close'));
     });
     await step('Then it is dismissed as the scrim would, and closes', async () => {
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'dismissed' });
@@ -238,10 +238,10 @@ export const PhoneSheetCloseCancels: Story = {
   play: async ({ step }) => {
     await step('Given a password prompt is up on a phone and I typed', async () => {
       await askNow();
-      await (await trustedInput()).type(body.getByTestId('password-prompt-input'), 'typed');
+      await (await trustedInput()).type(body.getByTestId('prompt-dialog-input'), 'typed');
     });
     await step("When I press the sheet's Close", async () => {
-      await press(await body.findByTestId('signing-modal-sheet-close'));
+      await press(await body.findByTestId('prompt-dialog-sheet-close'));
     });
     await step('Then it answers Cancel, without what I typed', async () => {
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'cancel' });
@@ -266,7 +266,7 @@ export const FocusReturnsToOpener: Story = {
 export const PasswordEnterSubmits: Story = {
   beforeEach: ask({ ...passwordView, input: { kind: 'password', placeholder: 'Password', error: 'Wrong password' } }),
   play: async ({ step }) => {
-    const field = () => body.getByTestId('password-prompt-input');
+    const field = () => body.getByTestId('prompt-dialog-input');
     await step('Given the password prompt is up with focus in its field', async () => {
       await askNow();
       await waitFor(() => expect(field()).toHaveFocus());
@@ -297,7 +297,7 @@ export const PasswordCancelDropsText: Story = {
   play: async ({ step }) => {
     await step('Given I typed in the password prompt', async () => {
       await askNow();
-      await (await trustedInput()).type(body.getByTestId('password-prompt-input'), 'typed');
+      await (await trustedInput()).type(body.getByTestId('prompt-dialog-input'), 'typed');
     });
     await step('When I press Cancel', () => press(body.getByRole('button', { name: 'Cancel' })));
     await step('Then it settles without the typed value', async () => {
@@ -314,7 +314,7 @@ export const QueuedDialogGetsFocus: Story = {
     await step('When I answer the first', () => press(body.getByRole('button', { name: 'Deny' })));
     await step('Then the second shows with focus on it', async () => {
       await waitFor(() => expect(title()).toBe('Second'));
-      await waitFor(() => expect(body.getByTestId('signing-modal')).toHaveFocus());
+      await waitFor(() => expect(body.getByTestId('prompt-dialog')).toHaveFocus());
     });
   },
 };

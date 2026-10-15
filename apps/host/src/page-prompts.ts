@@ -7,7 +7,7 @@
 import { withActiveTld } from '@dotli/config';
 import type { HostPrompts } from './runtime/host-prompts.js';
 import { isDevicePermission } from './runtime/permissions.js';
-import { openModal, showNotification } from '@dotli/ui';
+import { openModal, showNotification, type ModalView } from '@dotli/ui';
 import { permissionRequestDialog } from './components/permissions/permission-dialog.js';
 import { preimageSubmitDialog } from './components/permissions/preimage-dialog.js';
 
@@ -17,11 +17,16 @@ export interface HostPromptsDeps {
   notify?: HostPrompts['notify'] | undefined;
 }
 
+/** The host's tests find any of its prompts by this id. */
+const HOST_PROMPT_TEST_ID = 'host-prompt';
+
 /** The user's answers come from the page's dialogs, and the runtime's notices are the page's notifications. */
 export function createHostPrompts({
   present = openModal,
   notify = showNotification,
 }: HostPromptsDeps = {}): HostPrompts {
+  const ask = <R extends string>(view: ModalView<R>, signal: AbortSignal) =>
+    present({ ...view, testId: HOST_PROMPT_TEST_ID }, signal);
   return {
     askPermission: async (label, permission, signal, { allowOnce }) => {
       const dialog = permissionRequestDialog({
@@ -30,11 +35,11 @@ export function createHostPrompts({
         allowOnce,
         reloads: isDevicePermission(permission),
       });
-      return (await present(dialog, signal)).result;
+      return (await ask(dialog, signal)).result;
     },
     confirmPreimage: async (label, size, signal) =>
-      (await present(preimageSubmitDialog({ app: withActiveTld(label), dataSize: size }), signal)).result === 'allow',
-    confirmReview: async (dialog, signal) => (await present(dialog, signal)).result,
+      (await ask(preimageSubmitDialog({ app: withActiveTld(label), dataSize: size }), signal)).result === 'allow',
+    confirmReview: async (dialog, signal) => (await ask(dialog, signal)).result,
     notify,
   };
 }

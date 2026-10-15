@@ -17,6 +17,7 @@ export function passwordPromptDialog(opts?: { error?: string }): ModalView<Passw
   return {
     icon: LockIcon,
     title: 'Encrypted Content',
+    testId: 'password-prompt',
     fields: [],
     input: {
       kind: 'password',

@@ -198,4 +198,12 @@ describe('preimage submit', () => {
     await expect(decision).rejects.toMatchObject({ name: 'AbortError' });
     expect(() => shownModal()).toThrow();
   });
+
+  it('As the host, every dialog I ask through carries my own test id, so ui names none of mine', () => {
+    // When
+    void prompts.askPermission('myapp', 'Camera', live(), { allowOnce: false });
+
+    // Then
+    expect(shownModal().view.testId).toBe('host-prompt');
+  });
 });

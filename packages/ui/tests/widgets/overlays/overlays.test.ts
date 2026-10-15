@@ -47,7 +47,7 @@ describe('overlays', () => {
 
     // When
     await mountOverlays();
-    byTestId('signing-btn-sign').click();
+    byTestId('prompt-dialog-btn-primary').click();
 
     // Then
     expect(byTestId('notif-title').textContent).toBe('Polkadot Desktop');

@@ -63,7 +63,7 @@ export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number, 
 }
 
 async function waitForHostModalsSettled(page: Page): Promise<void> {
-  await expect(page.getByTestId('signing-modal-backdrop')).toHaveCount(0, { timeout: HOST_MODAL_SETTLE_TIMEOUT_MS });
+  await expect(page.getByTestId('host-prompt-backdrop')).toHaveCount(0, { timeout: HOST_MODAL_SETTLE_TIMEOUT_MS });
 }
 
 /** A test that sends the page to another product calls this to hand the next test a host-playground page. */
@@ -169,7 +169,7 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
       console.log(`[productFrame] iframe ready in ${String(Date.now() - start)}ms`);
       await use(frame);
       // A dialog still open fails the test that left it, not the next one.
-      await expect(pairedPage.getByTestId('signing-modal-backdrop')).toHaveCount(0);
+      await expect(pairedPage.getByTestId('host-prompt-backdrop')).toHaveCount(0);
     },
     // Test-scoped, since a product handoff or reload replaces the iframe. Its own timeout, since a gateway download
     // can exceed the test's.

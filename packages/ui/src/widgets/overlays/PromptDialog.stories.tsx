@@ -50,7 +50,7 @@ type Story = StoryObj<typeof meta>;
 // The dialog is portalled into the body, outside the story's canvas.
 const body = within(document.body);
 const footer = (): [string, string | null][] =>
-  within(body.getByTestId('signing-modal-footer'))
+  within(body.getByTestId('prompt-dialog-footer'))
     .getAllByRole('button')
     .map(button => [button.textContent, button.getAttribute('data-variant')]);
 
@@ -58,18 +58,18 @@ const footer = (): [string, string | null][] =>
 export const PermissionRequest: Story = {
   play: async ({ step }) => {
     await step('Then I meet a modal dialog named by its title, with its icon, fields, notice and answers', async () => {
-      const frame = body.getByTestId('signing-modal-backdrop');
+      const frame = body.getByTestId('prompt-dialog-backdrop');
       await expect(frame).toHaveAttribute('role', 'dialog');
       await expect(frame).toHaveAttribute('aria-modal', 'true');
       await expect(frame).toHaveAttribute('data-open');
       await expect(frame).toHaveAccessibleName('Permission Request');
       await expect(body.getByRole('heading', { level: 2, name: 'Permission Request' })).toBeInTheDocument();
-      await expect(body.getByTestId('permission-modal-icon').querySelector('svg')).not.toBeNull();
-      await expect(body.getAllByTestId('signing-field-label').map(label => label.textContent)).toEqual([
+      await expect(body.getByTestId('prompt-dialog-icon').querySelector('svg')).not.toBeNull();
+      await expect(body.getAllByTestId('prompt-dialog-field-label').map(label => label.textContent)).toEqual([
         'Application',
         'Permission',
       ]);
-      await expect(body.getByTestId('permission-modal-notice')).toHaveTextContent(
+      await expect(body.getByTestId('prompt-dialog-notice')).toHaveTextContent(
         'Granting this permission will reload the application.',
       );
       await expect(footer()).toEqual([
@@ -77,12 +77,18 @@ export const PermissionRequest: Story = {
         ['Always allow', 'secondary'],
         ['Allow once', 'primary'],
       ]);
-      await expect(body.getByRole('button', { name: 'Deny' })).toHaveAttribute('data-testid', 'signing-btn-cancel');
+      await expect(body.getByRole('button', { name: 'Deny' })).toHaveAttribute(
+        'data-testid',
+        'prompt-dialog-btn-cancel',
+      );
       await expect(body.getByRole('button', { name: 'Always allow' })).toHaveAttribute(
         'data-testid',
-        'signing-btn-secondary',
+        'prompt-dialog-btn-secondary',
       );
-      await expect(body.getByRole('button', { name: 'Allow once' })).toHaveAttribute('data-testid', 'signing-btn-sign');
+      await expect(body.getByRole('button', { name: 'Allow once' })).toHaveAttribute(
+        'data-testid',
+        'prompt-dialog-btn-primary',
+      );
     });
   },
 };
@@ -91,7 +97,7 @@ export const PermissionRequest: Story = {
 export const FocusStartsOnDialog: Story = {
   play: async ({ step }) => {
     await step('Then focus is on the dialog, not on an answer', async () => {
-      await waitFor(() => expect(body.getByTestId('signing-modal')).toHaveFocus());
+      await waitFor(() => expect(body.getByTestId('prompt-dialog')).toHaveFocus());
     });
     await step('When I press Tab on the last answer, then focus wraps to the first', async () => {
       body.getByRole('button', { name: 'Allow once' }).focus();
@@ -125,7 +131,7 @@ export const PasswordPrompt: Story = {
     }),
   },
   play: async ({ userEvent, step }) => {
-    const field = body.getByTestId('password-prompt-input');
+    const field = body.getByTestId('prompt-dialog-input');
     await step('Then the password field has the focus, and keeps what I type to itself', async () => {
       await expect(field).toHaveFocus();
       await expect(field).toHaveAttribute('type', 'password');
@@ -241,10 +247,10 @@ export const SignMessage: Story = {
   },
   play: async ({ step }) => {
     await step('Then the code value is mono and the warning is marked', async () => {
-      const fields = body.getAllByTestId('signing-field');
+      const fields = body.getAllByTestId('prompt-dialog-field');
       await expect(fields.map(field => field.hasAttribute('data-warning'))).toEqual([false, false, false, true]);
       const mono = fields.filter(field => field.hasAttribute('data-mono'));
-      await expect(mono.map(field => within(field).getByTestId('signing-field-value').textContent)).toEqual([
+      await expect(mono.map(field => within(field).getByTestId('prompt-dialog-field-value').textContent)).toEqual([
         `0x${'48656c6c6f'.repeat(4)}`,
       ]);
     });
@@ -258,10 +264,10 @@ export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
     await step('Then a sheet headed by the title leads the prompt, with a Close button', async () => {
-      const modal = body.getByTestId('signing-modal');
-      const head = await within(modal).findByTestId('signing-modal-sheet-head');
+      const modal = body.getByTestId('prompt-dialog');
+      const head = await within(modal).findByTestId('prompt-dialog-sheet-head');
       await expect(modal.firstElementChild).toBe(head);
-      await expect(within(head).getByTestId('signing-modal-sheet-title')).toHaveTextContent('Permission Request');
+      await expect(within(head).getByTestId('prompt-dialog-sheet-title')).toHaveTextContent('Permission Request');
       await expect(within(head).getByRole('button', { name: 'Close' })).toBeVisible();
     });
   },

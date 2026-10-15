@@ -36,6 +36,8 @@ export interface ModalPasswordInput {
 
 export interface ModalView<R extends string> {
   title: string;
+  /** The dialog's test id, which names every id inside it. The caller's own, so ui names none of a domain's. */
+  testId?: string;
   /** Drawn in the dialog's icon tile, which sizes it. */
   icon?: Component<IconProps>;
   fields: ModalField[];

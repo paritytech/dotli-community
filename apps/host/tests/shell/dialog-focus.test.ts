@@ -45,7 +45,7 @@ describe('dialog focus', () => {
     disposeOverlays = render(() => createComponent(Overlays, {}), root);
     opener.focus();
     const outcome = createHostPrompts().confirmReview(REVIEW, new AbortController().signal);
-    const sign = await appears('[data-testid="signing-btn-sign"]');
+    const sign = await appears('[data-testid="host-prompt-btn-primary"]');
     opener.remove();
 
     // When

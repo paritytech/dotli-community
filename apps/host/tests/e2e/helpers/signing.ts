@@ -41,7 +41,7 @@ export async function answerHostDialogs(page: Page, dialogs: readonly HostDialog
       throw new Error(`the "${title}" dialog has no title id`);
     }
     await button.click();
-    await expect(page.locator(`[data-testid="signing-modal-backdrop"][aria-labelledby="${titleId}"]`)).toHaveCount(0);
+    await expect(page.locator(`[data-testid="host-prompt-backdrop"][aria-labelledby="${titleId}"]`)).toHaveCount(0);
   }
 }
 

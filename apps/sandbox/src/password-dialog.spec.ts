@@ -35,4 +35,12 @@ describe('password prompt dialog', () => {
     // Then
     expect(view.input).not.toHaveProperty('error');
   });
+
+  it('As the sandbox, my password dialog carries my own test id', () => {
+    // When
+    const view = passwordPromptDialog();
+
+    // Then
+    expect(view.testId).toBe('password-prompt');
+  });
 });
