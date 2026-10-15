@@ -14,8 +14,10 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 ## Design
 
 - The `?mode=` query picks smoldot in a cross-tab SharedWorker, smoldot in the iframe, or trusted WSS RPC for gateway
-  mode. Each chain mode loads its chains on demand, so the shared-worker mode, which only relays, loads none. Startup
-  installs the byte meter first and reports failures to the parent without a reload.
+  mode. Each chain mode loads its chains on demand, so the shared-worker mode, which only relays, loads none. The byte
+  meter is installed where the light client runs, in the iframe or the SharedWorker, before it starts, and either one
+  posts the light client's byte total for the host's speed readout. Startup reports failures to the parent without a
+  reload.
 - One window listener is the iframe's router. It admits requests from allowed host pages and sends each to the store or
   engine that serves its method. A handler's failure is answered as an error response.
 - One engine dispatches for every mode. A scope holds one tab's chain connections and budget, while the chains are

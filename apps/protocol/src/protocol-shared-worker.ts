@@ -9,7 +9,15 @@ declare const self: SharedWorkerGlobalScope;
 
 import { isLocalhost, setActiveNetwork } from '@dotli/config';
 import { flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
-import { createLightClient, enableSyncReporting, lightClientDeps, onChainDetail, onChainSync } from '@dotli/chains';
+import {
+  chainBytesReceived,
+  createLightClient,
+  enableSyncReporting,
+  installByteMeter,
+  lightClientDeps,
+  onChainDetail,
+  onChainSync,
+} from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
 
 import { startProtocolWorker, workerNetwork } from './protocol-worker.js';
@@ -26,10 +34,14 @@ if (network.ok) {
   m.setDefaults({ network: network.network });
 }
 
+// Before the light client starts, or its first sockets go uncounted.
+installByteMeter();
+
 startProtocolWorker({
   scope: self,
   network,
   flush: () => flushTelemetry(2_000),
+  netBytes: { read: chainBytesReceived },
   // A worker has no session to tune it from.
   lightClient: createLightClient(lightClientDeps(null, isLocalhost)),
   // The functions, not the namespace, so the worker bundle keeps only what it calls.
