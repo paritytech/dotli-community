@@ -23,7 +23,7 @@
     },
     "@config/vite#test": {
       "dependsOn": ["transit"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/nginx/snippets/**"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/nginx/snippets/**", "$TURBO_ROOT$/docker/dotli-runtime-network.conf"]
     },
     "lint": {
       "dependsOn": ["transit"],

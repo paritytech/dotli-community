@@ -59,7 +59,7 @@ export const LOCAL_FRAME_ANCESTORS = 'http://localhost:* http://*.localhost:*';
  * Chrome's Private Network Access blocks loopback iframes across `*.localhost` subdomains without it, so the protocol
  * frame's handshake times out. nginx serves public origins and needs none.
  */
-export const LOCAL_SERVER_HEADERS: Readonly<Record<string, string>> = {
+const LOCAL_SERVER_HEADERS: Readonly<Record<string, string>> = {
   'Access-Control-Allow-Private-Network': 'true',
 };
 

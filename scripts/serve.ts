@@ -10,14 +10,16 @@
 import { createServer, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
 import {
-  LOCAL_SERVER_HEADERS,
+  RUNTIME_NETWORK_CONFIG_HEADERS,
+  RUNTIME_NETWORK_CONFIG_PATH,
+  runtimeNetworkConfigScriptBody,
+} from '@config/vite/runtime-network-config';
+import {
   headerPolicy,
   resolveFile,
   responseHeaders,
   routeFor,
-  securityHeaders,
   type HeaderPolicy,
   type Site,
 } from '@config/vite/serving';
@@ -25,7 +27,6 @@ import {
 const PORT = Number(process.env['PORT'] ?? '5173');
 const HOST = process.env['HOST'] ?? '127.0.0.1';
 const DIST = resolve(process.env['DIST'] ?? 'dist');
-const RUNTIME_CONFIG_PATH = '/dotli-network.js';
 
 const DIRS: Record<Site, string> = {
   host: join(DIST, 'host'),
@@ -81,25 +82,20 @@ for (const dir of Object.values(DIRS)) {
   }
 }
 
-createServer((req, res) => {
+// Read once, so a $DOTLI_NETWORK that is not JSON stops the server here instead of failing its first request.
+const runtimeConfigBody = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETWORK']);
+
+const server = createServer((req, res) => {
   const route = routeFor((req.headers.host ?? '').split(':')[0] ?? '');
   const dir = DIRS[route.site];
   const url = new URL(req.url ?? '/', 'http://placeholder');
   const acceptEncoding = req.headers['accept-encoding'] ?? '';
   const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
 
-  const policy = headerPolicy(route, url.pathname);
-
   // Ahead of the SPA fallback, whose index.html would fail as a script syntax error rather than a missing file.
-  if (url.pathname === RUNTIME_CONFIG_PATH) {
-    const body = runtimeNetworkConfigScriptBody();
-    res.writeHead(200, {
-      'Content-Type': 'application/javascript',
-      'Cache-Control': 'no-store',
-      ...securityHeaders(policy),
-      ...LOCAL_SERVER_HEADERS,
-    });
-    res.end(body);
+  if (url.pathname === RUNTIME_NETWORK_CONFIG_PATH) {
+    res.writeHead(200, { ...RUNTIME_NETWORK_CONFIG_HEADERS });
+    res.end(runtimeConfigBody);
     return;
   }
 
@@ -108,12 +104,17 @@ createServer((req, res) => {
     res.writeHead(404).end('Not Found');
     return;
   }
-  send(res, resolved.file, resolved.pathname, policy, accept);
-}).listen(PORT, HOST, () => {
+  send(res, resolved.file, resolved.pathname, headerPolicy(route, url.pathname), accept);
+});
+
+// PORT=0 picks a free port, so the log reports the bound one.
+server.listen(PORT, HOST, () => {
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : PORT;
   const config = process.env['DOTLI_NETWORK']?.trim();
-  console.log(`dot.li serving ${DIST} on http://localhost:${String(PORT)} (bound ${HOST})`);
-  console.log(`  shell     http://browse.localhost:${String(PORT)}`);
-  console.log(`  protocol  http://host.localhost:${String(PORT)}`);
+  console.log(`dot.li serving ${DIST} on http://localhost:${String(port)} (bound ${HOST})`);
+  console.log(`  shell     http://browse.localhost:${String(port)}`);
+  console.log(`  protocol  http://host.localhost:${String(port)}`);
   console.log(
     `  network   ${config === undefined || config === '' ? 'built-in (set DOTLI_NETWORK to override)' : config}`,
   );

@@ -10,21 +10,18 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
 import { MODE_SYNC_CORS, MODE_SYNC_PREFIX, handleModeSync } from '@config/vite/mode-sync';
-import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
 import {
-  LOCAL_SERVER_HEADERS,
-  headerPolicy,
-  resolveFile,
-  responseHeaders,
-  routeFor,
-  securityHeaders,
-  type Site,
-} from '@config/vite/serving';
+  RUNTIME_NETWORK_CONFIG_HEADERS,
+  RUNTIME_NETWORK_CONFIG_PATH,
+  runtimeNetworkConfigScriptBody,
+} from '@config/vite/runtime-network-config';
+import { headerPolicy, resolveFile, responseHeaders, routeFor, type Site } from '@config/vite/serving';
 
 // Node's types have no global `BodyInit`, so take it from `Response` itself.
 type BodyInit = NonNullable<ConstructorParameters<typeof Response>[0]>;
 
-const RUNTIME_CONFIG_PATH = '/dotli-network.js';
+// Read once, so a $DOTLI_NETWORK that is not JSON stops the server at start instead of failing its first request.
+const runtimeConfigBody = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETWORK']);
 
 const PORT = parseInt(process.env['PORT'] ?? '5173', 10);
 const HOST = process.env['HOST'] ?? '127.0.0.1';
@@ -120,27 +117,19 @@ async function handle(req: Request): Promise<Response> {
     return handleModeSync(req, key);
   }
 
-  const route = routeFor(url.hostname);
-  const policy = headerPolicy(route, url.pathname);
-
   // Ahead of the SPA fallback, whose index.html would fail as a script syntax error rather than a missing file.
-  if (url.pathname === RUNTIME_CONFIG_PATH) {
-    return new Response(runtimeNetworkConfigScriptBody(), {
-      headers: {
-        'Content-Type': 'application/javascript',
-        'Cache-Control': 'no-store',
-        ...securityHeaders(policy),
-        ...LOCAL_SERVER_HEADERS,
-      },
-    });
+  if (url.pathname === RUNTIME_NETWORK_CONFIG_PATH) {
+    return new Response(runtimeConfigBody, { headers: RUNTIME_NETWORK_CONFIG_HEADERS });
   }
 
+  const route = routeFor(url.hostname);
   const resolved = resolveFile(DIRS[route.site], route, url.pathname);
   if (resolved === undefined) {
     return new Response('Not Found', { status: 404 });
   }
   const body = Readable.toWeb(createReadStream(resolved.file)) as ReadableStream<Uint8Array>;
-  return new Response(body as BodyInit, { headers: responseHeaders(resolved.file, resolved.pathname, policy) });
+  const headers = responseHeaders(resolved.file, resolved.pathname, headerPolicy(route, url.pathname));
+  return new Response(body as BodyInit, { headers });
 }
 
 // The Request URL takes its hostname from the Host header, which the routing keys on.

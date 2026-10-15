@@ -18,6 +18,9 @@ Build plugins and options shared by the host, sandbox and protocol builds, plus 
   nginx's order, so the release and test servers agree. Its spec reads the header values of nginx's snippets back
   against it, so a header value cannot drift from nginx unnoticed. Which snippet each nginx location includes is not
   checked.
+- The runtime network config script has one owner for its path, headers and body. Every local server sends it with the
+  container's headers, same-origin only, and reads `$DOTLI_NETWORK` once at start, so a value that is not JSON stops the
+  server there. Its spec holds the headers to the container's nginx snippet.
 
 ## Entry points
 
@@ -37,7 +40,8 @@ take the mode sync, runtime network config and serving entries, and the host run
 - `./spa-fallback`: dev middleware that routes page loads as nginx does.
 - `./truapi-signing-worker`: a second TrUAPI worker on the `testing` wasm bundle, which has a signing host.
 - `./mode-sync`: in-memory mode preference sync on the protocol origin for local servers.
-- `./runtime-network-config`: serves `/dotli-network.js` from `$DOTLI_NETWORK` on opt-in.
+- `./runtime-network-config`: the `/dotli-network.js` script, its path, its same-origin headers and its body from
+  `$DOTLI_NETWORK`, for the release and test servers, and the plugin that injects and serves it on opt-in.
 - `./serving`: the route, file and header table of the release, test and dev servers, and the dev servers' isolation
   headers.
 - `./dependency-versions`: the installed version of each direct workspace dependency in a scope, for the diagnostics

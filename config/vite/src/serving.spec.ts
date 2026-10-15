@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -13,32 +12,9 @@ import {
   routeFor,
   securityHeaders,
 } from './serving.js';
+import { nginxHeaders } from './testing/nginx.js';
 
-const SNIPPETS = join(import.meta.dirname, '../../../nginx/snippets');
 const NGINX_ANCESTORS = '$csp_ancestors';
-
-/**
- * The headers a snippet adds, following its includes, as nginx sends them. An `add_header` it cannot read fails the
- * spec, so a value written another way cannot drift unseen.
- */
-function nginxHeaders(snippet: string): Record<string, string> {
-  const headers: Record<string, string> = {};
-  for (const line of readFileSync(join(SNIPPETS, snippet), 'utf8').split('\n')) {
-    const include = /^\s*include \/etc\/nginx\/snippets\/(\S+);/.exec(line);
-    if (include?.[1] !== undefined) {
-      Object.assign(headers, nginxHeaders(include[1]));
-    }
-    if (!/^\s*add_header\b/.test(line)) {
-      continue;
-    }
-    const header = /^\s*add_header (\S+) "([^"]*)"( always)?;\s*$/.exec(line);
-    if (header?.[1] === undefined || header[2] === undefined) {
-      throw new Error(`${snippet}: cannot read "${line.trim()}"`);
-    }
-    headers[header[1]] = header[2];
-  }
-  return headers;
-}
 
 describe('routeFor', () => {
   it('As a visitor, I open the bare host and get the host build with the landing page at its root', () => {
@@ -254,7 +230,7 @@ describe('resolveFile', () => {
 describe('the table against nginx', () => {
   it('As an operator, I run a Node server and a shell page carries the headers nginx sends', () => {
     // Given
-    const nginx = nginxHeaders('dotli-headers-host.conf');
+    const nginx = nginxHeaders('nginx/snippets/dotli-headers-host.conf');
 
     // When
     const headers = securityHeaders('plain', NGINX_ANCESTORS);
@@ -265,7 +241,7 @@ describe('the table against nginx', () => {
 
   it('As an operator, I run a Node server and a sandbox page carries the isolation headers nginx sends', () => {
     // Given
-    const nginx = nginxHeaders('dotli-headers-iframeable.conf');
+    const nginx = nginxHeaders('nginx/snippets/dotli-headers-iframeable.conf');
 
     // When
     const headers = securityHeaders('isolated', NGINX_ANCESTORS);
@@ -277,9 +253,9 @@ describe('the table against nginx', () => {
   it('As an operator, I run a Node server and host and sandbox assets carry the headers nginx sends', () => {
     // Given
     const nginx = [
-      nginxHeaders('dotli-assets-host.conf'),
-      nginxHeaders('dotli-assets-preview.conf'),
-      nginxHeaders('dotli-assets-iframeable.conf'),
+      nginxHeaders('nginx/snippets/dotli-assets-host.conf'),
+      nginxHeaders('nginx/snippets/dotli-assets-preview.conf'),
+      nginxHeaders('nginx/snippets/dotli-assets-iframeable.conf'),
     ];
 
     // When
@@ -295,7 +271,7 @@ describe('the table against nginx', () => {
 
   it('As an operator, I run a Node server and each service worker carries the headers nginx sends', () => {
     // Given
-    const nginx = [nginxHeaders('dotli-sw-app.conf'), nginxHeaders('dotli-sw-host.conf')];
+    const nginx = [nginxHeaders('nginx/snippets/dotli-sw-app.conf'), nginxHeaders('nginx/snippets/dotli-sw-host.conf')];
 
     // When
     const headers = [
