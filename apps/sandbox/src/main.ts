@@ -26,7 +26,6 @@ import {
   reportSandboxDebug,
   showStatus,
 } from './host-messages.js';
-import { withArchiveBase } from './archive-base.js';
 import { withoutContractParams } from './contract-url.js';
 import { createBitswapBridge, hostOriginRule } from './bitswap-bridge.js';
 import { loadProduct, type BlockSource, type SandboxParams } from './load-product.js';
@@ -137,8 +136,7 @@ void runSandbox(
         blockSource,
         decrypt: decryptIfNeeded,
         storeArchive: files => storeArchiveInSW(appWorker.container, files),
-        prepareHtml: html =>
-          maybeInjectSandboxChecker(withArchiveBase(html, window.location.pathname, import.meta.env.BASE_URL)),
+        prepareHtml: maybeInjectSandboxChecker,
         report: reportSandboxDebug,
         loaded: () => {
           notifyLoadingDone({ outcome: 'loaded' });

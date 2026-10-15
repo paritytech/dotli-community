@@ -33,8 +33,11 @@ interface Origin {
   fetch: typeof fetch;
 }
 
-/** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
-function startWorker(origin: Origin, devServer = false): WorkerScope {
+/**
+ * A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker.
+ * `documents` maps each page's client id to the URL it is open at.
+ */
+function startWorker(origin: Origin, devServer = false, documents: Record<string, string> = {}): WorkerScope {
   const scope = Object.assign(new EventTarget(), {
     location: new URL(`${ORIGIN}/app-sw.js`),
     skipWaiting: () => Promise.resolve(),
@@ -53,7 +56,12 @@ function startWorker(origin: Origin, devServer = false): WorkerScope {
         ]),
     },
   });
-  startAppServiceWorker({ scope: scope as unknown as AppServiceWorkerDeps['scope'], ...origin, devServer });
+  startAppServiceWorker({
+    scope: scope as unknown as AppServiceWorkerDeps['scope'],
+    ...origin,
+    devServer,
+    clientUrl: id => Promise.resolve(documents[id]),
+  });
   return scope;
 }
 
@@ -165,10 +173,16 @@ function quotaAbortingIndexedDb(): IDBFactory {
 }
 
 /** `undefined` means the worker let the request through to the network. */
-async function request(scope: WorkerScope, path: string, mode: RequestMode = 'no-cors'): Promise<Response | undefined> {
+async function request(
+  scope: WorkerScope,
+  path: string,
+  mode: RequestMode = 'no-cors',
+  clientId = '',
+): Promise<Response | undefined> {
   let answer: Response | Promise<Response> | undefined;
   const event = Object.assign(new Event('fetch'), {
     request: { url: `${ORIGIN}${path}`, mode },
+    clientId,
     respondWith: (response: Response | Promise<Response>) => {
       answer = response;
     },
@@ -401,5 +415,97 @@ describe('app service worker', () => {
 
     // Then
     expect(source).toBeUndefined();
+  });
+
+  it("As a visitor on a deep link, I load the product's relative assets and they come from the archive root", async () => {
+    // Given a product page written at a deep link, with its assets at the archive root
+    const scope = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
+    await setArchive(scope, {
+      'index.html': '<html></html>',
+      'assets/app.js': 'app()',
+      'assets/chunk.js': 'chunk()',
+      'img/logo.svg': '<svg></svg>',
+    });
+
+    // When the page asks for its script, the script imports a sibling, and its CSS asks for an image one level up
+    const script = await request(scope, '/docs/assets/app.js', 'no-cors', 'page');
+    const chunk = await request(scope, '/docs/assets/chunk.js', 'no-cors', 'page');
+    const image = await request(scope, '/docs/img/logo.svg', 'no-cors', 'page');
+
+    // Then each comes from the archive, typed by its own name
+    expect(await script?.text()).toBe('app()');
+    expect(script?.headers.get('Content-Type')).toBe('application/javascript');
+    expect(await chunk?.text()).toBe('chunk()');
+    expect(await image?.text()).toBe('<svg></svg>');
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it('As a visitor on a deep link after the browser restarted the idle worker, I load a relative asset and it comes from the archive root', async () => {
+    // Given a worker restarted over an archive the page handed to the one before it
+    await setArchive(startWorker(origin), { 'index.html': '<html></html>', 'assets/app.js': 'app()' });
+    const restarted = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
+
+    // When
+    const script = await request(restarted, '/docs/assets/app.js', 'no-cors', 'page');
+
+    // Then
+    expect(await script?.text()).toBe('app()');
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it('As a product that ships a file at the deep path itself, I request it from a deep link and get that file', async () => {
+    // Given an archive holding both the deep path and the same name at the root
+    const scope = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
+    await setArchive(scope, {
+      'index.html': '<html></html>',
+      'docs/assets/app.js': 'deep()',
+      'assets/app.js': 'root()',
+    });
+
+    // When
+    const response = await request(scope, '/docs/assets/app.js', 'no-cors', 'page');
+
+    // Then the exact path wins
+    expect(await response?.text()).toBe('deep()');
+  });
+
+  it('As a product page at the root, I request a path the archive lacks and it reaches the network unchanged', async () => {
+    // Given a page at the root, whose directory is the archive root itself
+    const scope = startWorker(origin, false, { page: `${ORIGIN}/intro` });
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/app.js': 'app()' });
+
+    // When
+    const response = await request(scope, '/docs/assets/app.js', 'no-cors', 'page');
+
+    // Then
+    expect(await response?.text()).toBe('<!doctype html>shell');
+    expect(network).toHaveBeenCalledOnce();
+    expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/assets/app.js` });
+  });
+
+  it('As a visitor on a deep link, I navigate to a sub-path and the sandbox page loads from the network, never remapped', async () => {
+    // Given a page at a deep link, and an archive holding the root file the sub-path would remap to
+    const scope = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
+    await setArchive(scope, { 'index.html': '<html></html>', 'guide/index.html': '<p>guide</p>' });
+
+    // When
+    const response = await request(scope, '/docs/guide/', 'navigate', 'page');
+
+    // Then
+    expect(response).toBeUndefined();
+  });
+
+  it('As a visitor on a deep link, I request a path with a broken escape and it reaches the network', async () => {
+    // Given
+    const scope = startWorker(origin, false, { page: `${ORIGIN}/docs/intro` });
+    await setArchive(scope, { 'index.html': '<html></html>' });
+
+    // When
+    const response = await request(scope, '/docs/bad%E0%A4%A.js', 'no-cors', 'page');
+
+    // Then
+    expect(await response?.text()).toBe('<!doctype html>shell');
+    expect(network).toHaveBeenCalledOnce();
+    expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/bad%E0%A4%A.js` });
   });
 });

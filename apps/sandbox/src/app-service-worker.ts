@@ -106,6 +106,8 @@ export interface AppServiceWorkerDeps {
   fetch: typeof fetch;
   /** The dev server serves the sandbox's own modules under `src/`, `@` paths and `node_modules/`. */
   devServer: boolean;
+  /** The URL the page with this client id is open at, or undefined when it has gone. */
+  clientUrl: (clientId: string) => Promise<string | undefined>;
 }
 
 /** Serves the archive the page hands it, from this scope's events. Each call is a fresh worker start. */
@@ -114,6 +116,7 @@ export function startAppServiceWorker({
   indexedDB,
   fetch: fetchFromNetwork,
   devServer,
+  clientUrl,
 }: AppServiceWorkerDeps): void {
   const BASE = scope.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 
@@ -249,10 +252,17 @@ export function startAppServiceWorker({
       return;
     }
 
+    const { request, clientId } = event;
+    const remappable = clientId !== '' && url.pathname.slice(BASE.length).includes('/');
+
     if (hasArchive()) {
-      const result = lookupArchive(url.pathname);
-      if (result !== null) {
-        event.respondWith(result);
+      const exact = lookupArchive(url.pathname);
+      if (exact !== null) {
+        event.respondWith(exact);
+      } else if (remappable) {
+        event.respondWith(
+          lookupFromClientDirectory(clientId, url.pathname).then(found => found ?? fetchFromNetwork(request)),
+        );
       }
       return;
     }
@@ -262,11 +272,37 @@ export function startAppServiceWorker({
     }
 
     // A restarted worker reads the archive back first, since nginx answers every path with the shell as `text/html`.
-    const { request } = event;
     event.respondWith(
-      restoreArchive().then(() => (hasArchive() ? lookupArchive(url.pathname) : null) ?? fetchFromNetwork(request)),
+      restoreArchive().then(async () => {
+        if (!hasArchive()) {
+          return fetchFromNetwork(request);
+        }
+        const found =
+          lookupArchive(url.pathname) ?? (remappable ? await lookupFromClientDirectory(clientId, url.pathname) : null);
+        return found ?? fetchFromNetwork(request);
+      }),
     );
   });
+
+  /**
+   * The archive file a request means once the requesting page's directory is read as the archive root.
+   *
+   * The page is written at the URL the visitor opened, so below the root a relative URL resolves under the page's
+   * directory, while the archive holds every file from its root. A script or stylesheet loaded that way carries the
+   * page's client id too, so its own relative URLs land here as well.
+   */
+  async function lookupFromClientDirectory(clientId: string, pathname: string): Promise<Response | null> {
+    const href = await clientUrl(clientId);
+    if (href === undefined) {
+      return null;
+    }
+    const pagePath = new URL(href).pathname;
+    const directory = pagePath.slice(0, pagePath.lastIndexOf('/') + 1);
+    if (directory.length <= BASE.length || !directory.startsWith(BASE) || !pathname.startsWith(directory)) {
+      return null;
+    }
+    return lookupArchive(BASE + pathname.slice(directory.length));
+  }
 
   /**
    * `null` means the path is not the archive's and must reach the network: the origin also serves the shell's own
