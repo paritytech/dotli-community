@@ -98,6 +98,73 @@ export const ViewTabs: Story = {
   },
 };
 
+/** As a developer using the debug panel with a keyboard, I move along the section tabs with the arrow keys, Home and End, and open the focused one with Enter. */
+export const SectionTabsByKeyboard: Story = {
+  play: async ({ userEvent, step }) => {
+    const tab = (value: string): HTMLElement => part('td-section', value);
+    await step('Given the TrUAPI tab focused, the only tab in the Tab order', async () => {
+      tab('truapi').focus();
+      await expect(tab('truapi')).toHaveAttribute('tabindex', '0');
+      await expect(tab('resolution')).toHaveAttribute('tabindex', '-1');
+    });
+    await step('When I press the right arrow', async () => {
+      await userEvent.keyboard('{ArrowRight}');
+    });
+    await step('Then the focus moves to Resolution without opening it', async () => {
+      await expect(tab('resolution')).toHaveFocus();
+      await expect(tab('resolution')).toHaveAttribute('tabindex', '0');
+      await expect(tab('truapi')).toHaveAttribute('aria-selected', 'true');
+    });
+    await step('When I press End', async () => {
+      await userEvent.keyboard('{End}');
+    });
+    await step('Then the focus is on the last tab', async () => {
+      await expect(tab('wallet')).toHaveFocus();
+    });
+    await step('When I press Home and then the left arrow', async () => {
+      await userEvent.keyboard('{Home}{ArrowLeft}');
+    });
+    await step('Then the focus wraps round to the last tab', async () => {
+      await expect(tab('wallet')).toHaveFocus();
+    });
+    await step('When I press Enter', async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Then Wallet opens in the section panel that its tab labels', async () => {
+      await expect(tab('wallet')).toHaveAttribute('aria-selected', 'true');
+      const body = part('td-body');
+      await expect(body).toHaveAttribute('role', 'tabpanel');
+      await expect(body).toHaveAttribute('aria-labelledby', tab('wallet').id);
+      await expect(tab('wallet')).toHaveAttribute('aria-controls', body.id);
+      await expect(part('td-wallet')).not.toHaveAttribute('hidden');
+    });
+  },
+};
+
+/** As a developer using the debug panel with a screen reader, I hear the List and Timeline tabs name the view they show. */
+export const ViewTabsLabelTheirPanel: Story = {
+  play: async ({ userEvent, step }) => {
+    const viewPanel = (): HTMLElement => part('td-view-panel');
+    await step('Then the list view is the panel of the List tab', async () => {
+      await expect(viewPanel()).toHaveAttribute('role', 'tabpanel');
+      await expect(viewPanel()).toHaveAttribute('aria-labelledby', part('td-tab', 'list').id);
+      await expect(part('td-tab', 'timeline')).toHaveAttribute('aria-controls', viewPanel().id);
+    });
+    await step('When I open the timeline', async () => {
+      await userEvent.click(part('td-tab', 'timeline'));
+    });
+    await step('Then the same panel is labelled by the Timeline tab', async () => {
+      await expect(viewPanel()).toHaveAttribute('aria-labelledby', part('td-tab', 'timeline').id);
+    });
+    await step('When I open the Archive section', async () => {
+      await userEvent.click(part('td-section', 'archive'));
+    });
+    await step('Then the view panel is hidden with its tabs', async () => {
+      await expect(viewPanel()).toHaveAttribute('hidden');
+    });
+  },
+};
+
 /** As a developer using the debug panel, I pick the Diagnostics tab and the panel opens on it the next time it mounts. */
 export const StoredTabOpensNextTime: Story = {
   parameters: { debugPanel: { mount: false } },

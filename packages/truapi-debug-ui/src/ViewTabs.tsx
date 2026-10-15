@@ -5,6 +5,9 @@ import type { JSX } from '@solidjs/web';
 import { Bar } from './shared/Bar.js';
 import { Tabs, type TabOption } from './shared/Tabs.js';
 
+export const VIEW_TABS_ID = 'td-view-tab';
+export const VIEW_PANEL_ID = 'td-view-panel';
+
 /** How the TrUAPI tab shows the captured events. */
 export type PanelView = 'list' | 'timeline';
 
@@ -25,6 +28,9 @@ export function ViewTabs(props: {
         selected={props.view}
         onSelect={props.onSelect}
         variant="secondary"
+        label="Event views"
+        idPrefix={VIEW_TABS_ID}
+        panelId={VIEW_PANEL_ID}
         testId="td-tabs"
         tabTestId="td-tab"
       />

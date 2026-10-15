@@ -98,6 +98,16 @@
 .panel[data-layout='stacked'] .views {
   border-right: none;
 }
+/* Takes the views' content row and hands it to the List or the Timeline, whichever shows. */
+.view-panel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+.view-panel[hidden] {
+  display: none;
+}
 
 .tooltip {
   position: absolute;

@@ -6,6 +6,9 @@ import type { PanelSection } from './model/section-storage.js';
 import { Tabs, type TabOption } from './shared/Tabs.js';
 import s from './SectionTabs.module.css';
 
+export const SECTION_TABS_ID = 'td-section-tab';
+export const SECTION_PANEL_ID = 'td-section-panel';
+
 const SECTIONS: readonly TabOption<PanelSection>[] = [
   { value: 'truapi', label: 'TrUAPI' },
   { value: 'resolution', label: 'Resolution' },
@@ -22,6 +25,9 @@ export function SectionTabs(props: { section: PanelSection; onSelect: (section: 
       selected={props.section}
       onSelect={props.onSelect}
       variant="primary"
+      label="Panel sections"
+      idPrefix={SECTION_TABS_ID}
+      panelId={SECTION_PANEL_ID}
       testId="td-sections"
       tabTestId="td-section"
       class={s['sections']}

@@ -34,7 +34,9 @@ import { BodySplitter, ResizeHandle } from './Resizers.js';
 import { ArchiveView } from './ArchiveView.js';
 import type { DebugPanelHost } from './host.js';
 import { ResolutionView } from './ResolutionView.js';
-import { ViewTabs, type PanelView } from './ViewTabs.js';
+import { SECTION_PANEL_ID, SECTION_TABS_ID } from './SectionTabs.js';
+import { tabId } from './shared/Tabs.js';
+import { ViewTabs, VIEW_PANEL_ID, VIEW_TABS_ID, type PanelView } from './ViewTabs.js';
 import { TimelineView } from './TimelineView.js';
 import { WalletView } from './WalletView.js';
 import { usePanelWork, type PanelWork } from './work.js';
@@ -486,30 +488,45 @@ export function Panel(props: {
           hidden={collapsed() || !events()}
           onChange={changeFilters}
         />
-        <div class={s['body']} data-testid="td-body">
+        <div
+          id={SECTION_PANEL_ID}
+          class={s['body']}
+          data-testid="td-body"
+          role="tabpanel"
+          aria-labelledby={tabId(SECTION_TABS_ID, section())}
+        >
           <div class={s['views']} data-testid="td-views">
             <ViewTabs view={view()} hidden={!events()} onSelect={selectView} />
-            <EventList
-              events={visible()}
-              allEvents={snapshot().events}
-              refreshedAt={snapshot().takenAt}
-              store={store}
-              selection={selection()}
-              active={listShown()}
-              collapsed={collapsed()}
-              onSelect={select}
-              listRef={el => {
-                listEl = el;
-              }}
-            />
-            <TimelineView
-              active={events() && view() === 'timeline'}
-              events={visible()}
-              selectedSeq={selection()?.seq ?? null}
-              tooltip={() => tooltipEl}
-              panel={() => panelEl}
-              onSelect={select}
-            />
+            <div
+              id={VIEW_PANEL_ID}
+              class={s['viewPanel']}
+              data-testid="td-view-panel"
+              role="tabpanel"
+              aria-labelledby={tabId(VIEW_TABS_ID, view())}
+              hidden={!events()}
+            >
+              <EventList
+                events={visible()}
+                allEvents={snapshot().events}
+                refreshedAt={snapshot().takenAt}
+                store={store}
+                selection={selection()}
+                active={listShown()}
+                collapsed={collapsed()}
+                onSelect={select}
+                listRef={el => {
+                  listEl = el;
+                }}
+              />
+              <TimelineView
+                active={events() && view() === 'timeline'}
+                events={visible()}
+                selectedSeq={selection()?.seq ?? null}
+                tooltip={() => tooltipEl}
+                panel={() => panelEl}
+                onSelect={select}
+              />
+            </div>
             <ResolutionView
               active={section() === 'resolution'}
               collapsed={collapsed()}
