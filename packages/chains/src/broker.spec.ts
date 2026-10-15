@@ -1311,6 +1311,46 @@ describe('chain pool brokering', () => {
         .map(message => message.params as unknown),
     ).toEqual([['up-tx']]);
   });
+
+  it('As the last session leaving a follow before the node answers it, I leave no follow running upstream', () => {
+    // Given a follow in flight
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const connection = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+    connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    const follow = harness.sent[0] as { id: string };
+
+    // When the session leaves and only then the node answers
+    connection?.disconnect();
+    harness.emit({ jsonrpc: '2.0', id: follow.id, result: 'up-1' });
+
+    // Then the follow is ended upstream
+    expect(
+      harness.sent
+        .filter(message => message.method === 'chainHead_v1_unfollow')
+        .map(message => message.params as unknown),
+    ).toEqual([['up-1']]);
+  });
+
+  it('As a session joining a follow whose first session left before the node answered, I get the follow the node answers', () => {
+    // Given a follow in flight whose first session left
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    connectionA?.disconnect();
+
+    // When a second session follows and the node answers
+    connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] }));
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
+
+    // Then one follow went upstream, it serves the second session, and nothing ended it
+    expect(harness.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(1);
+    expect(JSON.parse(messagesB[0] ?? '{}')).toEqual({ jsonrpc: '2.0', id: 2, result: expect.any(String) as string });
+    expect(harness.sent.filter(message => message.method === 'chainHead_v1_unfollow')).toEqual([]);
+  });
 });
 
 describe('broker warnings', () => {

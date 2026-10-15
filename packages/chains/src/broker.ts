@@ -678,6 +678,13 @@ export class ChainBroker {
       return;
     }
     const upstreamToken = response.result;
+    // Every session left while the follow was in flight, and nobody else would ever end it.
+    if (follow.localTokens.size === 0) {
+      this.dropSharedFollow(follow);
+      this.earlySubscriptions.delete(upstreamToken);
+      this.sendRelease('chainHead_v1_unfollow', [upstreamToken]);
+      return;
+    }
     follow.upstreamToken = upstreamToken;
     this.upstreamFollowTokens.set(upstreamToken, follow);
     for (const pendingLocal of follow.pendingLocals.splice(0)) {
@@ -739,10 +746,19 @@ export class ChainBroker {
     }
   }
 
-  /** Forgets `follow`, unless a newer follow on the same key replaced it already. */
+  /**
+   * Forgets `follow` and its upstream token, unless a newer follow on the same key replaced it already. The token
+   * and its reverse map entry are cleared together.
+   */
   private dropSharedFollow(follow: SharedFollow): void {
     if (this.sharedFollows.get(follow.key) === follow) {
       this.sharedFollows.delete(follow.key);
+    }
+    if (follow.upstreamToken !== null) {
+      if (this.upstreamFollowTokens.get(follow.upstreamToken) === follow) {
+        this.upstreamFollowTokens.delete(follow.upstreamToken);
+      }
+      follow.upstreamToken = null;
     }
   }
 
@@ -1025,8 +1041,7 @@ export class ChainBroker {
     brokerLog(
       `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
     );
-    this.upstreamFollowTokens.delete(upstreamToken);
-    this.sharedFollows.delete(sharedFollow.key);
+    this.dropSharedFollow(sharedFollow);
     const recipients: { session: Session; localToken: string }[] = [];
     for (const localToken of sharedFollow.localTokens) {
       const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
@@ -1075,9 +1090,8 @@ export class ChainBroker {
       }
       return;
     }
-    this.upstreamFollowTokens.delete(upstreamToken);
+    this.dropSharedFollow(sharedFollow);
     this.sendRelease('chainHead_v1_unfollow', [upstreamToken]);
-    this.sharedFollows.delete(followToken.followKey);
   }
 
   private replayFollowSnapshot(session: Session, localToken: string, sharedFollow: SharedFollow): void {
