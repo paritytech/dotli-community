@@ -4,7 +4,10 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/main.ts",
+    "./src/protocol-shared-worker.ts"
+  ],
   "scripts": {
     "build": "vite build",
     "build:prod": "vite build && node ../../scripts/compress-dist.ts",
