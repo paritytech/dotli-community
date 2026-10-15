@@ -110,6 +110,8 @@
   --chrome-danger-fill: color-mix(in srgb, var(--chrome-err) var(--chrome-tint), transparent);
   --chrome-danger-fill-strong: color-mix(in srgb, var(--chrome-err) var(--chrome-tint-strong), transparent);
   --chrome-danger-ring: color-mix(in srgb, var(--chrome-err) 45%, transparent);
+  --chrome-warn-fill: color-mix(in srgb, var(--chrome-warn) 12%, transparent);
+  --chrome-warn-ring: color-mix(in srgb, var(--chrome-warn) 30%, transparent);
   --chrome-danger-text: #ffdad7; /* Lc 75 on --chrome-danger-fill-strong */
 
   --chrome-shadow-pop:

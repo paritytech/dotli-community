@@ -55,8 +55,8 @@
 }
 
 .glyph[data-warning] {
-  background: color-mix(in srgb, var(--chrome-warn) 12%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chrome-warn) 30%, transparent);
+  background: var(--chrome-warn-fill);
+  box-shadow: inset 0 0 0 1px var(--chrome-warn-ring);
   color: var(--chrome-warn);
 }
 
