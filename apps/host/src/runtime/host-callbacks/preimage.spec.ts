@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { blake2b } from '@noble/hashes/blake2.js';
 import type { Backend } from '@dotli/config';
+import { loadVerify } from '@dotli/content';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createBlockFetch, createPreimageAdapters, type PreimageBlock, type PreimageFetch } from './preimage.js';
@@ -86,6 +87,35 @@ describe('preimage host callbacks', () => {
     // Then
     expect(captures.exception).toHaveBeenCalledWith(expect.any(Error), { flow: 'content', step: 'preimage_lookup' });
     expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'mismatch' }]);
+    await iterator.return?.();
+  });
+
+  it('As an operator, a verifier chunk that fails to load is reported once and the next poll verifies the block', async () => {
+    // Given
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const data = new TextEncoder().encode('block behind a missing chunk');
+    const key = blake2b(data, { dkLen: 32 });
+    const fetchBlock = vi.fn<PreimageFetch>(() => Promise.resolve(found(data)));
+    const flakyLoad = vi.fn(loadVerify).mockRejectedValueOnce(new Error('chunk gone'));
+    const { lookupPreimage } = createPreimageAdapters('myapp', { fetchBlock, loadVerify: flakyLoad });
+    const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
+    await iterator.next();
+    const answer = iterator.next();
+
+    // When the first poll hits the missing chunk and the next one loads it
+    await vi.advanceTimersByTimeAsync(1_000 + 10_000);
+    const hit = await answer;
+
+    // Then
+    expect(yielded(hit)._unsafeUnwrap()).toEqual(data);
+    expect(captures.expected).toHaveBeenCalledTimes(1);
+    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), {
+      flow: 'content',
+      step: 'preimage_verify_load',
+    });
+    expect(metrics.counted('lazy_chunk.load')).toEqual([{ outcome: 'error', reason: 'preimage_verify_load' }]);
     await iterator.return?.();
   });
 
