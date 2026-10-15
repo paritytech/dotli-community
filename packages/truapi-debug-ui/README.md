@@ -72,7 +72,10 @@ Builds made with `VITE_APP_DEBUG=true` mount the panel collapsed. Other builds k
 - Keyboard: the section and view tabs move focus with the left and right arrows, Home and End, and Enter or Space picks
   one. The event list is a listbox with the selected event as its active option. The arrow keys also move the panel's
   edge and the splitter, with Shift for a larger step.
-- Chain messages are decoded into their operation and block events. Bytes show their length and first bytes.
+- Chain messages are decoded into their operation and block events. Signing, session, entropy and local storage payloads
+  show only their size. In local wallet mode the signing requests and the resource allocation request are decoded
+  instead, because the panel stands in for the phone. A frame that cannot be decoded shows as raw bytes, with their
+  length in the list and a hex preview of the first bytes in the detail pane.
 - The Resolution clock runs only while a running load is on screen.
 - The list keeps the newest 2000 events and counts the ones it dropped.
 
