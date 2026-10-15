@@ -10,6 +10,7 @@ export { isExecutableKind } from './executables.js';
 export {
   toExecutableManifestResult,
   toRootManifestResult,
+  type AppVersion,
   type ExecutableManifest,
   type ManifestResult,
   type RootManifest,

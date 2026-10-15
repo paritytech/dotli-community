@@ -3,7 +3,7 @@
 
 // What a product's manifests publish that the page shows: its name, the root manifest's version and the app's version.
 
-export type AppVersion = readonly [number, number, number] | readonly [number, number, number, string];
+import type { AppVersion } from '@dotli/resolver';
 
 export interface ManifestFacts {
   /** The root manifest's `displayName`. */

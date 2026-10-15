@@ -37,7 +37,7 @@ every caller checks a name against.
 - Resolving: `createDotnsResolver`, `DotnsResolver`, `DotnsResolverDeps`, `ResolveOptions`, `ResolvePhase`,
   `ChainClient`.
 - Manifests: `toRootManifestResult`, `toExecutableManifestResult`, `RootManifest`, `ExecutableManifest`,
-  `ManifestResult`.
+  `ManifestResult`, `AppVersion`.
 - Naming rules: `dotNsUrl`, `validateDotLabel`, `isValidDotLabel`, `DotLabelResult`, `isExecutableKind`.
 - Errors: `ResolverErrorName`.
 - Lazy loader: `loadResolve`.
