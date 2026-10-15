@@ -349,4 +349,31 @@ describe('app service worker', () => {
     // Then
     expect(response).toBeUndefined();
   });
+
+  it('As a user, a request whose path holds a broken escape reaches the network instead of failing in the worker', async () => {
+    // Given a worker holding an archive, and one restarted over it
+    const first = startWorker(origin);
+    await setArchive(first, { 'index.html': '<html></html>' });
+    const restarted = startWorker(origin);
+
+    // When
+    const live = await request(first, '/bad%E0%A4%A.js');
+    const afterRestart = await request(restarted, '/bad%E0%A4%A.js');
+
+    // Then
+    expect(live).toBeUndefined();
+    expect(await afterRestart?.text()).toBe('<!doctype html>shell');
+  });
+
+  it('As a product, a file whose name holds an escaped space is served from my archive', async () => {
+    // Given
+    const scope = startWorker(origin);
+    await setArchive(scope, { 'index.html': '<html></html>', 'my file.js': 'spaced()' });
+
+    // When
+    const response = await request(scope, '/my%20file.js');
+
+    // Then
+    expect(await response?.text()).toBe('spaced()');
+  });
 });

@@ -19,6 +19,19 @@ function hasExtension(path: string): boolean {
   return lastDot > lastSlash;
 }
 
+/** The archive path a request names, or null when its escapes do not decode, so it names no archive file. */
+function archivePath(pathname: string, base: string): string | null {
+  const relative = pathname.startsWith(base) ? pathname.slice(base.length) : pathname.slice(1);
+  try {
+    return decodeURIComponent(relative);
+  } catch (err) {
+    if (err instanceof URIError) {
+      return null;
+    }
+    throw err;
+  }
+}
+
 // The browser stops an idle worker after about 30s, so the archive is also kept in IndexedDB and read back on the
 // first fetch after a restart.
 
@@ -252,7 +265,11 @@ export function startAppServiceWorker({ scope, indexedDB, fetch: fetchFromNetwor
    * assets, and a 404 for them strands a refresh on the loader.
    */
   function lookupArchive(pathname: string): Response | null {
-    let filePath = decodeURIComponent(pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname.slice(1));
+    const decoded = archivePath(pathname, BASE);
+    if (decoded === null) {
+      return null;
+    }
+    let filePath = decoded;
 
     let content = getFile(filePath);
 
