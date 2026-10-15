@@ -62,7 +62,6 @@ export function setupTruapiDebugPanel(options: SetupOptions): () => void {
           store={store}
           resolution={resolution}
           startCollapsed={options.startCollapsed ?? false}
-          loadArchive={options.host.archive}
           host={options.host}
           effects={options.effects ?? pageEffects}
         />

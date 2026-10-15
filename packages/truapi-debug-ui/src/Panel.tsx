@@ -32,7 +32,6 @@ import { PanelEffectsContext, type PanelEffects } from './effects.js';
 import { Header } from './Header.js';
 import { BodySplitter, ResizeHandle } from './Resizers.js';
 import { ArchiveView } from './ArchiveView.js';
-import type { ArchiveLoader } from './host.js';
 import type { DebugPanelHost } from './host.js';
 import { ResolutionView } from './ResolutionView.js';
 import { ViewTabs, type PanelView } from './ViewTabs.js';
@@ -148,7 +147,6 @@ export function Panel(props: {
   /** Kept apart from the ring buffer so a busy session cannot evict the load the Resolution view draws. */
   resolution: ResolutionRecorder;
   startCollapsed: boolean;
-  loadArchive: ArchiveLoader;
   host: DebugPanelHost;
   /** What the panel asks of the browser: the clipboard and a download. */
   effects: PanelEffects;
@@ -520,7 +518,7 @@ export function Panel(props: {
               tooltip={() => tooltipEl}
               panel={() => panelEl}
             />
-            <ArchiveView active={section() === 'archive'} load={props.loadArchive} product={host.product} />
+            <ArchiveView active={section() === 'archive'} load={host.archive} product={host.product} />
             <DiagnosticsView active={section() === 'diagnostics'} source={host.diagnostics} />
             <WalletView active={section() === 'wallet'} host={host} />
           </div>
