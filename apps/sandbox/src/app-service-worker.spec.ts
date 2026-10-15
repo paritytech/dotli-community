@@ -35,9 +35,13 @@ interface Origin {
 
 /**
  * A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker.
- * `documents` maps each page's client id to the URL it is open at.
+ * `documents` maps each page's client id to the URL it is open at, or stands in for the lookup itself.
  */
-function startWorker(origin: Origin, devServer = false, documents: Record<string, string> = {}): WorkerScope {
+function startWorker(
+  origin: Origin,
+  devServer = false,
+  documents: Record<string, string> | AppServiceWorkerDeps['clientUrl'] = {},
+): WorkerScope {
   const scope = Object.assign(new EventTarget(), {
     location: new URL(`${ORIGIN}/app-sw.js`),
     skipWaiting: () => Promise.resolve(),
@@ -60,7 +64,7 @@ function startWorker(origin: Origin, devServer = false, documents: Record<string
     scope: scope as unknown as AppServiceWorkerDeps['scope'],
     ...origin,
     devServer,
-    clientUrl: id => Promise.resolve(documents[id]),
+    clientUrl: typeof documents === 'function' ? documents : id => Promise.resolve(documents[id]),
   });
   return scope;
 }
@@ -507,5 +511,19 @@ describe('app service worker', () => {
     expect(await response?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
     expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/bad%E0%A4%A.js` });
+  });
+
+  it('As a visitor on a deep link, I request a missing asset while the page lookup fails and it reaches the network', async () => {
+    // Given a worker whose lookup of the requesting page rejects
+    const scope = startWorker(origin, false, () => Promise.reject(new Error('client lookup failed')));
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/app.js': 'app()' });
+
+    // When the page asks for a path the archive lacks
+    const response = await request(scope, '/docs/assets/app.js', 'no-cors', 'page');
+
+    // Then the request goes to the network as it was, not to an error
+    expect(await response?.text()).toBe('<!doctype html>shell');
+    expect(network).toHaveBeenCalledOnce();
+    expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/assets/app.js` });
   });
 });

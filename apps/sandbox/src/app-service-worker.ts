@@ -292,7 +292,12 @@ export function startAppServiceWorker({
    * page's client id too, so its own relative URLs land here as well.
    */
   async function lookupFromClientDirectory(clientId: string, pathname: string): Promise<Response | null> {
-    const href = await clientUrl(clientId);
+    // The remap is best effort: without the page's URL the request goes to the network, as it did before the remap.
+    const href = await clientUrl(clientId).catch((err: unknown) => {
+      // eslint-disable-next-line no-console -- the worker has no logger
+      console.error('Failed to look up the requesting page, so the request goes to the network:', err);
+      return undefined;
+    });
     if (href === undefined) {
       return null;
     }
