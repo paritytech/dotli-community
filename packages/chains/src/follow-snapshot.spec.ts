@@ -6,17 +6,17 @@ import { createFollowSnapshot } from './follow-snapshot.js';
 
 describe('createFollowSnapshot', () => {
   it('As a session joining a shared follow late, I am replayed the newest finalized block, the blocks up to the best one and the best block', () => {
-    // Given
+    // Given a follow with an initialized base, two blocks and a best block
     const snapshot = createFollowSnapshot();
     snapshot.record({ event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: { spec: 1 } });
     snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
     snapshot.record({ event: 'newBlock', blockHash: '0xb2', parentBlockHash: '0xb1' });
     snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xb2' });
 
-    // When
+    // When the late session asks for its replay
     const replay = snapshot.replayFor('late');
 
-    // Then
+    // Then it gets the base, both blocks and the best block
     expect(replay).toEqual([
       { event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: { spec: 1 } },
       { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' },
@@ -26,27 +26,27 @@ describe('createFollowSnapshot', () => {
   });
 
   it('As a session joining before the node said initialized, I am replayed nothing', () => {
-    // Given
+    // Given a snapshot with nothing recorded
     const snapshot = createFollowSnapshot();
 
-    // When
+    // When the early session asks for its replay
     const replay = snapshot.replayFor('early');
 
-    // Then
+    // Then the session is replayed nothing
     expect(replay).toEqual([]);
   });
 
   it('As a session joining after a runtime upgrade was finalized, I am replayed the upgraded runtime', () => {
-    // Given
+    // Given a follow initialized, then a block that upgrades the runtime and is finalized
     const snapshot = createFollowSnapshot();
     snapshot.record({ event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: { spec: 1 } });
     snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0', newRuntime: { spec: 2 } });
     snapshot.record({ event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
 
-    // When
+    // When the late session asks for its replay
     const [initialized] = snapshot.replayFor('late');
 
-    // Then
+    // Then the initialized event carries the upgraded runtime
     expect(initialized).toEqual({
       event: 'initialized',
       finalizedBlockHashes: ['0xb1'],
@@ -98,10 +98,10 @@ describe('createFollowSnapshot', () => {
     snapshot.record({ event: 'newBlock', blockHash: '0xa2', parentBlockHash: '0xa1' });
     snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xa2' });
 
-    // When
+    // When the late session asks for its replay
     const replay = snapshot.replayFor('late');
 
-    // Then
+    // Then it is replayed every unfinalized block on both branches, parents first
     expect(replay).toEqual([
       { event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: null },
       { event: 'newBlock', blockHash: '0xa1', parentBlockHash: '0xf0' },
@@ -112,15 +112,15 @@ describe('createFollowSnapshot', () => {
   });
 
   it('As a session joining before any best block was reported, I am still replayed the unfinalized blocks', () => {
-    // Given
+    // Given a finalized base and one unfinalized block, with no best block reported
     const snapshot = createFollowSnapshot();
     snapshot.record({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
     snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
 
-    // When
+    // When the late session asks for its replay
     const replay = snapshot.replayFor('late');
 
-    // Then
+    // Then it is replayed the base and the unfinalized block
     expect(replay).toEqual([
       { event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: null },
       { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' },
@@ -137,10 +137,10 @@ describe('createFollowSnapshot', () => {
     snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xa2' });
     snapshot.record({ event: 'finalized', finalizedBlockHashes: ['0xa1'], prunedBlockHashes: ['0xb1'] });
 
-    // When
+    // When the late session asks for its replay
     const replay = snapshot.replayFor('late');
 
-    // Then
+    // Then it is replayed the new base, the surviving block and the best block
     expect(replay).toEqual([
       { event: 'initialized', finalizedBlockHashes: ['0xa1'], finalizedBlockRuntime: null },
       { event: 'newBlock', blockHash: '0xa2', parentBlockHash: '0xa1' },
@@ -154,7 +154,7 @@ describe('createFollowSnapshot', () => {
     snapshot.record({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
     snapshot.record({ event: 'bestBlockChanged', bestBlockHash: '0xb1' });
 
-    // When
+    // When the late session asks for its replay
     const replay = snapshot.replayFor('late');
 
     // Then there is no base to replay from, and nothing pinned for the session to release

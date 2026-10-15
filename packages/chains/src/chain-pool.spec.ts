@@ -78,7 +78,7 @@ describe('createChainPool', () => {
     vi.useRealTimers();
   });
 
-  it('As a dotli integrator, leases on one chain share one transport, and each chain gets its own', () => {
+  it('As a dotli integrator, I lease one chain twice and share one transport, and each chain gets its own', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
@@ -93,7 +93,7 @@ describe('createChainPool', () => {
     expect(built.map(record => record.opened)).toEqual([1, 1]);
   });
 
-  it('As a dotli integrator, a chain closes destroyDelay after its last lease, unless a new lease arrives first', async () => {
+  it('As a dotli integrator, I release the last lease and the chain closes destroyDelay later, unless a new lease arrives first', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
@@ -119,7 +119,7 @@ describe('createChainPool', () => {
     expect(pool.status('0xaa')).toBe('disconnected');
   });
 
-  it('As a dotli integrator, an infinite destroyDelay keeps a chain after its last lease', async () => {
+  it('As a dotli integrator, I release the last lease under an infinite destroyDelay and the chain is kept', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -134,7 +134,7 @@ describe('createChainPool', () => {
     expect(must(built[0], 'transport').disconnect).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, a throwing status listener is reported, and neither stops the others nor reaches the transport', () => {
+  it('As a dotli integrator, I add a throwing status listener and it is reported, stops no other listener and never reaches the transport', () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -174,7 +174,7 @@ describe('createChainPool', () => {
     ]);
   });
 
-  it('As a dotli integrator, a provider nobody calls does not keep its chain', async () => {
+  it('As a dotli integrator, I take a provider and never call it, and its chain is not kept', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
@@ -188,7 +188,7 @@ describe('createChainPool', () => {
     expect(must(built[0], 'transport').opened).toBe(0);
   });
 
-  it('As a dotli integrator, a halted transport ends every lease once and the next lease rebuilds the chain', () => {
+  it('As a dotli integrator, I hold leases on a transport that halts, each lease ends once and my next lease rebuilds the chain', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -216,7 +216,7 @@ describe('createChainPool', () => {
     expect(built).toHaveLength(2);
   });
 
-  it('As a dotli integrator, a lease released after its chain was rebuilt leaves the new connection alone', () => {
+  it('As a dotli integrator, I release a lease after its chain was rebuilt and the new connection is left alone', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -233,7 +233,7 @@ describe('createChainPool', () => {
     expect(pool.status('0xaa')).toBe('connecting');
   });
 
-  it('As a dotli integrator, the pool reports each chain status and ignores a closed transport', () => {
+  it('As a dotli integrator, I read each chain status from the pool and a closed transport changes nothing', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -254,7 +254,7 @@ describe('createChainPool', () => {
     expect(pool.status('0xaa')).toBe('disconnected');
   });
 
-  it('As a dotli integrator, a chain the factory cannot reach builds nothing', () => {
+  it('As a dotli integrator, I ask for a chain the factory cannot reach and nothing is built', () => {
     // Given
     const { createTransport, built } = createTransports(genesisHash => genesisHash !== '0xbb');
     const pool = createChainPool({ createTransport });
@@ -270,7 +270,7 @@ describe('createChainPool', () => {
     expect(pool.status('0xbb')).toBe('disconnected');
   });
 
-  it('As a dotli integrator, a remote connection is a lease, and a duplicate connection id leaks none', () => {
+  it('As a dotli integrator, I connect remotely and hold a lease, and a duplicate connection id leaks none', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -288,7 +288,7 @@ describe('createChainPool', () => {
     expect(pool.status('0xaa')).toBe('disconnected');
   });
 
-  it('As a dotli integrator, disconnectAll closes every chain without halting its leases', () => {
+  it('As a dotli integrator, I disconnect all and every chain closes without halting its leases', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
@@ -304,7 +304,7 @@ describe('createChainPool', () => {
     expect(onHalt).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, a transaction watch reaches its lease as dropped when the transport disconnects', () => {
+  it('As a dotli integrator, I watch a transaction and hear it dropped when the transport disconnects', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
@@ -333,7 +333,7 @@ describe('createChainPool', () => {
     ]);
   });
 
-  it('As a dotli integrator, a transport that disconnects and then halts drops an answered watch before the lease hears the halt', () => {
+  it('As a dotli integrator, I watch a transaction on a transport that disconnects and then halts, and hear it dropped before the halt', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
@@ -366,7 +366,7 @@ describe('createChainPool', () => {
     expect(events).toEqual(['dropped', 'halt']);
   });
 
-  it('As a dotli integrator, a chain rebuilt by a halt handler reports its own status', () => {
+  it('As a dotli integrator, I rebuild a chain from a halt handler and it reports its own status', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -387,7 +387,7 @@ describe('createChainPool', () => {
     expect(seen).toEqual(['connecting', 'disconnected', 'connecting']);
   });
 
-  it('As a dotli integrator, a remote connection named like a local lease does not collide with one', () => {
+  it('As a dotli integrator, I connect remotely under a name like a local lease and the two do not collide', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
@@ -431,7 +431,7 @@ describe('createChainPool warnings', () => {
     }
   }
 
-  it('As a dotli maintainer, a chain that halts and is rebuilt keeps counting its anomalies, so a flapping chain cannot flood the trail', () => {
+  it('As a dotli maintainer, I see a chain that halts and is rebuilt keep counting its anomalies, so a flapping chain cannot flood the trail', () => {
     // Given a chain whose broker already logged an anomaly past its full logging, and which then halted
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -478,7 +478,7 @@ describe('createChainPool watch', () => {
     };
   }
 
-  it('As the network panel, watching builds no chain and keeps none past its destroy delay', async () => {
+  it('As the network panel, I watch and no chain is built, and none is kept past its destroy delay', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
@@ -539,7 +539,7 @@ describe('createChainPool watch', () => {
     expect(seen.activity).toEqual([{ genesisHash: '0xaa', consumers: 1, status: 'connecting', following: false }]);
   });
 
-  it('As the network panel, a chain rebuilt inside its halt ends on the rebuilt chain, not the dead one', () => {
+  it('As the network panel, I end on the rebuilt chain when a chain is rebuilt inside its halt, not on the dead one', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -562,7 +562,7 @@ describe('createChainPool watch', () => {
     expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1 });
   });
 
-  it('As a dotli integrator, a throwing watcher is reported, and keeps neither the others nor the pool from the change', () => {
+  it('As a dotli integrator, I add a throwing watcher and it is reported, keeping neither the others nor the pool from the change', () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -626,7 +626,7 @@ describe('createChainPool watch', () => {
     } as JsonRpcMessage);
   }
 
-  it('As the network panel, a chain someone holds without following it still brings me its best blocks', () => {
+  it('As the network panel, I get the best blocks of a chain someone holds without following it', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -671,7 +671,7 @@ describe('createChainPool watch', () => {
     expect(seen.best).toEqual([['0xaa', 7]]);
   });
 
-  it('As the network panel, the last consumer leaving stops my follow before I hear no consumers are left', async () => {
+  it('As the network panel, I have my follow stopped by the last consumer leaving before I hear no consumers are left', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
@@ -715,7 +715,7 @@ describe('createChainPool watch', () => {
     expect(replies.some(reply => 'id' in reply && reply.id === 1 && 'result' in reply)).toBe(true);
   });
 
-  it('As the network panel, a follow the chain stops is started again while the chain is held', () => {
+  it('As the network panel, I have a follow the chain stops started again while the chain is held', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -731,7 +731,7 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(2);
   });
 
-  it('As a dotli integrator, a pool nobody watches follows nothing of its own, and the last unwatch ends its follows', () => {
+  it('As a dotli integrator, I leave a pool unwatched and it follows nothing of its own, and the last unwatch ends its follows', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -750,7 +750,7 @@ describe('createChainPool watch', () => {
     expect(transport.sent.at(-1)).toMatchObject({ method: 'chainHead_v1_unfollow', params: ['up-1'] });
   });
 
-  it('As the network panel, unwatching stops the reports', () => {
+  it('As the network panel, I unwatch and the reports stop', () => {
     // Given
     const pool = createChainPool({ createTransport: createTransports().createTransport });
     const seen = recorder();

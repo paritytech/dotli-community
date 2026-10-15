@@ -655,7 +655,7 @@ describe('chain pool brokering', () => {
     ]);
   });
 
-  it('As a dApp user sharing a new follow, a session that unpins as it hears initialized leaves my blocks pinned', () => {
+  it('As a dApp user sharing a new follow, I keep my blocks pinned when another session unpins them as it hears initialized', () => {
     // Given: A releases the older finalized blocks inside its own delivery, as polkadot-api does
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
@@ -705,7 +705,7 @@ describe('chain pool brokering', () => {
     expect(harness.sent.filter(message => message.method === 'chainHead_v1_unpin')).toEqual([]);
   });
 
-  it('As a dApp user, joining a follow another session holds replays only blocks still pinned upstream', () => {
+  it('As a dApp user, I join a follow another session holds and am replayed only blocks still pinned upstream', () => {
     // Given: session A follows, sees two blocks finalized and a third on top,
     // then unpins what it no longer needs, as papi does
     const harness = createProviderHarness();
@@ -754,7 +754,7 @@ describe('chain pool brokering', () => {
     expect(unpinned).not.toContain('0xb3');
   });
 
-  it('As a dApp user, joining a follow after a runtime upgrade was finalized replays the upgraded runtime', () => {
+  it('As a dApp user, I join a follow after a runtime upgrade was finalized and am replayed the upgraded runtime', () => {
     // Given
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
@@ -1382,7 +1382,7 @@ describe('broker warnings', () => {
     };
   }
 
-  it('As a dotli maintainer, an anomaly repeated on every message logs its first few, then only a running count', () => {
+  it('As a dotli maintainer, I see an anomaly repeated on every message logged in full a few times, then only as a running count', () => {
     // Given a broker on a pool
     const harness = createProviderHarness();
     const pool = createManager(() => harness.provider);
@@ -1408,7 +1408,7 @@ describe('broker warnings', () => {
     ]);
   });
 
-  it('As a dotli maintainer, two brokers that hit the same anomaly each log their own first few', () => {
+  it('As a dotli maintainer, I see two brokers that hit the same anomaly each log their own first few', () => {
     // Given two brokers, the first of which already hit an anomaly past its full logging
     const strayToFirst = brokerWithStrayResponses();
     const strayToSecond = brokerWithStrayResponses();
@@ -1534,7 +1534,7 @@ describe('ChainBroker.halt', () => {
     return { messages: session.messages, token: ack.result };
   }
 
-  it('As a dotli integrator, a halt answers a request in flight under its client id before the session hears the halt', () => {
+  it('As a dotli integrator, I halt a broker and a request in flight is answered under its client id before the session hears the halt', () => {
     // Given
     const { broker, harness, open } = setup();
     const log: string[] = [];
@@ -1556,7 +1556,7 @@ describe('ChainBroker.halt', () => {
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli integrator, a halt stops an established follow under its local token before the halt', () => {
+  it('As a dotli integrator, I halt a broker and an established follow is stopped under its local token before the halt', () => {
     // Given
     const { broker, harness, open } = setup();
     const log: string[] = [];
@@ -1576,7 +1576,7 @@ describe('ChainBroker.halt', () => {
     expect(log).toEqual(['a:message', 'a:halt']);
   });
 
-  it('As a dotli integrator, a halt answers a follow still in flight with an error and no stop', () => {
+  it('As a dotli integrator, I halt a broker and a follow still in flight is answered with an error and no stop', () => {
     // Given
     const { broker, open } = setup();
     const log: string[] = [];
@@ -1598,7 +1598,7 @@ describe('ChainBroker.halt', () => {
     expect(second.messages).toEqual([error(22)]);
   });
 
-  it('As a dotli integrator, a halt tells each session only about its own requests and follows', () => {
+  it('As a dotli integrator, I halt a broker and each session hears only about its own requests and follows', () => {
     // Given
     const { broker, harness, open } = setup();
     const log: string[] = [];
@@ -1627,7 +1627,7 @@ describe('ChainBroker.halt', () => {
     ]);
   });
 
-  it('As a dotli integrator, a session whose handler throws is reported, still hears its halt and does not keep the others from theirs', () => {
+  it('As a dotli integrator, I halt a broker and a session whose handler throws is reported, still hears its halt and keeps no other from theirs', () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -1663,7 +1663,7 @@ describe('ChainBroker.halt', () => {
     expect(metrics.counted('listener.delivery')).toEqual([{ outcome: 'error', reason: 'Error', owner: 'chain_halt' }]);
   });
 
-  it('As a dotli integrator, the release requests the broker sends itself are never answered on a halt', () => {
+  it('As a dotli integrator, I halt a broker and the release requests it sent itself are never answered', () => {
     // Given
     const { broker, harness, open } = setup();
     const log: string[] = [];
@@ -1724,7 +1724,7 @@ describe('upstream follow stop', () => {
     return { messages, stops: () => stops };
   }
 
-  it('As a dApp user, a follow the node stops is followed afresh once, not looped on the dead one', () => {
+  it('As a dApp user, I re-follow when the node stops my follow and it is followed afresh once, not looped on the dead one', () => {
     // Given: a session following through the broker, with a snapshot cached.
     const harness = createProviderHarness();
     const broker = new ChainBroker(harness.provider);
@@ -1750,7 +1750,7 @@ describe('upstream follow stop', () => {
     expect(follows).toHaveLength(2);
   });
 
-  it('As a dApp user, the fresh follow carries on under its own token and the stopped one hears nothing more', () => {
+  it('As a dApp user, I carry on under the fresh follow and its own token, and the stopped one hears nothing more', () => {
     // Given
     const harness = createProviderHarness();
     const broker = new ChainBroker(harness.provider);
@@ -1799,20 +1799,20 @@ describe('upstream answers', () => {
     );
     connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
 
-    // When
+    // When the node refuses the follow
     harness.emit({
       jsonrpc: '2.0',
       id: (harness.sent[0] as { id: string }).id,
       error: { code: -32800, message: 'Too many follows' },
     });
 
-    // Then
+    // Then the session retried once and the node received two follows
     expect(retries).toBe(1);
     expect(harness.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(2);
   });
 
   it('As a session whose follow the node answers with garbled JSON, I hear an error and my next follow asks the node again', () => {
-    // Given
+    // Given a follow sent upstream and a session listening for its answer
     const harness = createProviderHarness();
     const broker = new ChainBroker(harness.provider);
     const messages: unknown[] = [];
@@ -1820,11 +1820,11 @@ describe('upstream answers', () => {
     connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
     const follow = harness.sent[0] as { id: string };
 
-    // When
+    // When the node answers the follow with garbled JSON and the session follows again
     harness.emit(`{"jsonrpc":"2.0","id":"${follow.id}","result":` as unknown as JsonRpcMessage);
     connection.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] });
 
-    // Then
+    // Then the session hears an unparseable-response error and the second follow reaches the node
     expect(messages).toEqual([
       {
         jsonrpc: '2.0',
@@ -1836,7 +1836,7 @@ describe('upstream answers', () => {
   });
 
   it('As a session whose request the node answers with garbled JSON, I hear an error under my own id', () => {
-    // Given
+    // Given a header request sent upstream under the session id
     const harness = createProviderHarness();
     const broker = new ChainBroker(harness.provider);
     const messages: unknown[] = [];
@@ -1844,10 +1844,10 @@ describe('upstream answers', () => {
     connection.send({ jsonrpc: '2.0', id: 7, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
     const upstream = harness.sent[0] as { id: string };
 
-    // When
+    // When the node answers the request with garbled JSON
     harness.emit(`{"jsonrpc":"2.0","id":"${upstream.id}","result":` as unknown as JsonRpcMessage);
 
-    // Then
+    // Then the session hears the error under its own id
     expect(messages).toEqual([
       {
         jsonrpc: '2.0',
