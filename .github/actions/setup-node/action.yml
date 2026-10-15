@@ -13,7 +13,7 @@ runs:
         cache: npm
 
     # Node's bundled npm moves with each Node release, and how `npm ci` treats `allowScripts` and the lockfile follows
-    # the npm version. The Dockerfile installs the same pin.
+    # the npm version.
     - name: Install the pinned npm
       run: npm install -g "$(node -p 'require("./package.json").packageManager')"
       shell: bash
