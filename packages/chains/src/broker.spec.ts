@@ -1252,6 +1252,37 @@ describe('chain pool brokering', () => {
     },
   );
 
+  it('As a session whose transaction watch already ended, I unwatch it and get an unknown subscription error without an upstream call', () => {
+    // Given a watch the node ended with a final event
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote('asset-hub', 'conn-a', message => messages.push(message));
+    connection?.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x0102'] }),
+    );
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-tx' });
+    const localToken = (JSON.parse(messages[0] ?? '{}') as { result: string }).result;
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'transactionWatch_v1_watchEvent',
+      params: { subscription: 'up-tx', result: { event: 'finalized' } },
+    });
+
+    // When the session unwatches its local token
+    connection?.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'transactionWatch_v1_unwatch', params: [localToken] }),
+    );
+
+    // Then the answer is an error under the request id and nothing is unwatched upstream
+    expect(JSON.parse(messages.at(-1) ?? '{}')).toMatchObject({
+      jsonrpc: '2.0',
+      id: 2,
+      error: { message: 'Unknown subscription/token' },
+    });
+    expect(harness.sent.filter(message => message.method === 'transactionWatch_v1_unwatch')).toEqual([]);
+  });
+
   it('As a session whose transaction is only included in a best block, I keep my watch and my disconnect unwatches it upstream', () => {
     // Given an answered watch
     const harness = createProviderHarness();
