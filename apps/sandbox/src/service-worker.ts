@@ -106,7 +106,7 @@ export async function registerAppServiceWorker(
 ): Promise<void> {
   const { container } = app;
   if (container === null) {
-    contentLog.warn('[dot.li app] No Service Worker support; continuing without one');
+    contentLog.event('No service worker support, continuing without one');
     return;
   }
 

@@ -233,7 +233,11 @@ describe('createFrameRpc', () => {
 
     // Then
     expect((await read).name).toBe('ProtocolTimeoutError');
-    expect(metrics.counted(S.PROTOCOL_REQUEST)).toContainEqual({ outcome: 'timeout', method: 'authStorageRead' });
+    expect(metrics.counted(S.PROTOCOL_REQUEST)).toContainEqual({
+      outcome: 'timeout',
+      method: 'authStorageRead',
+      reason: 'ProtocolTimeoutError',
+    });
   });
 
   it('As a dotli integrator, I send a request while the frame comes up and its timer starts only once the frame is up', async () => {

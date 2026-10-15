@@ -5,7 +5,7 @@
 
 import { m, spans as S } from '@dotli/metrics';
 import type { ResolvePhase } from '@dotli/resolver';
-import { createPendingReplies, log, toError, withTimeout } from '@dotli/shared';
+import { createPendingReplies, errorName, log, toError, withTimeout } from '@dotli/shared';
 import { isSharedAuthRequestMethod, isSharedModeRequestMethod, isSharedWalletRequestMethod } from './auth-storage.js';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
@@ -121,7 +121,7 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
       const settled = (outcome: 'ok' | 'error' | 'timeout', err?: Error): void => {
         stopReq();
         if (outcome !== 'ok') {
-          m.count(S.PROTOCOL_REQUEST, { outcome, method });
+          m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: errorName(err) ?? 'unknown' });
         }
         if (trailed) {
           log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {

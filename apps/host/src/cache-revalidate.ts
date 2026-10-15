@@ -6,7 +6,7 @@
 
 import { captureException, m, spans as S } from '@dotli/metrics';
 import type { CachedManifests } from '@dotli/storage';
-import { log } from '@dotli/shared';
+import { errorName, log } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 import { revalidateCachedProduct } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
@@ -64,18 +64,19 @@ export async function revalidateCachedCopy(
       log.event('Cached app could not be evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
       return;
     }
-    m.count(S.CACHE_REVALIDATE, { outcome: 'cleared' });
+    m.count(S.CACHE_REVALIDATE, { outcome: 'cleared', reason: decision.reason });
     log.event('Cached app evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
     if (onScreen) {
       deps.reload();
     }
-  } catch (err) {
+  } catch (err: unknown) {
     stopTimer();
-    m.count(S.CACHE_REVALIDATE, { outcome: 'error' });
     captureException(err, {
       flow: 'resolve',
       step: 'cache_revalidate',
       tags: { kind: 'cid_cache_revalidate_error', surface: 'host_cache_revalidate' },
     });
+    log.error('[dot.li] Cached copy revalidation failed:', err);
+    m.count(S.CACHE_REVALIDATE, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
   }
 }

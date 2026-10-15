@@ -6,7 +6,15 @@
 
 import type { Backend, Network } from '@dotli/config';
 import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createStatusCell, log, toError, withTimeout } from '@dotli/shared';
+import {
+  createAsyncTaskPool,
+  createStatusCell,
+  errorName,
+  log,
+  serializeError,
+  toError,
+  withTimeout,
+} from '@dotli/shared';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 import { protocolListeners } from './listeners.js';
 import { isProtocolEnvelope, type ProtocolEnvelope } from './messages.js';
@@ -135,10 +143,10 @@ function sameFrameConfig(a: ProtocolFrameConfig, b: ProtocolFrameConfig): boolea
 /** The frame's step that failed, so a failure is counted where it happened. */
 type BootPhase = 'load' | 'listen' | 'ready';
 
-function reportBootFailure(phase: BootPhase, error: Error): void {
-  m.count(S.PROTOCOL_IFRAME_READY, { outcome: 'error', phase, reason: error.name });
+function reportBootFailure(phase: BootPhase, error: unknown): void {
+  m.count(S.PROTOCOL_IFRAME_READY, { outcome: 'error', phase, reason: errorName(error) ?? 'unknown' });
   m.breadcrumb(phase === 'ready' ? 'protocol iframe ready wait failed' : 'protocol iframe load failed', {
-    reason: error.message,
+    reason: serializeError(error),
   });
   log.error(
     phase === 'ready' ? '[dot.li protocol] Ready wait failed:' : '[dot.li protocol] Host iframe load failed:',
@@ -389,7 +397,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       if (kept === null || slot === kept) {
         reportBootFailure(
           phase === 'load' && reason.message === PROTOCOL_ERRORS.HOST_FRAME_NOT_LISTENING ? 'listen' : phase,
-          reason,
+          error,
         );
         loseFrame(reason, 'failed');
       }

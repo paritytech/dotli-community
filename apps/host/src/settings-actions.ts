@@ -6,7 +6,6 @@
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import {
-  errorName,
   log,
   OriginWipeError,
   pageLocalStorage,
@@ -126,7 +125,8 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
       } catch (err: unknown) {
         captureException(err, { flow: 'ui', step: 'settings_apply' });
         log.error('[dot.li settings] Save & Apply failed:', err);
-        m.count(S.SETTINGS_APPLY, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+        // Beside the steps that count themselves. The error's class is in the capture.
+        m.count(S.SETTINGS_APPLY, { outcome: 'error', reason: 'fault' });
       } finally {
         // The settings the user chose take effect only on the reload, so it runs whatever failed.
         deps.reload(reason);

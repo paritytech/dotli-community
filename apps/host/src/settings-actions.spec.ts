@@ -251,11 +251,11 @@ describe('applyAndReset', () => {
     // When
     await applyAndReset({ ...prior, cache: { ...CACHE_ON, skipArchiveCache: true } }, prior);
 
-    // Then the page still reloads, and the fault is captured and counted by its name
+    // Then the page still reloads, and the fault is captured and counted beside the steps
     expect(steps).toEqual(['reload']);
     expect(captures.exception).toHaveBeenCalledTimes(1);
     expect(captures.exception).toHaveBeenCalledWith(fault, { flow: 'ui', step: 'settings_apply' });
-    expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'fault' }]);
   });
 
   it('As an operator, I see a Save & Apply that cleared what it had to counted as ok', async () => {
