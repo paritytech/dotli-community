@@ -265,3 +265,15 @@ export const PRODUCT_STORAGE_WATCH = 'product_storage.watch';
  * the other subdomains on the old setting.
  */
 export const SHARED_MODE_WRITE = 'shared_mode.write';
+
+/**
+ * One preimage lookup a product asked for. Tagged `outcome` and, on error, `reason`: `fetch` once per lookup whose
+ * backend keeps failing while the poll retries, or `mismatch` for bytes that do not hash to the key.
+ */
+export const PREIMAGE_LOOKUP = 'preimage.lookup';
+
+/**
+ * A new lease on a host chain after its transport halted. Tagged `outcome` and, on error, `reason`: `no_transport` when
+ * the backend no longer serves the chain, `halted` when the new lease halted at once, or the error's name.
+ */
+export const TRUAPI_CHAIN_REOPEN = 'truapi_chain.reopen';

@@ -1,7 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { bindCaptureSink } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createLiteUsernameRefresh } from './local-wallet-identity.js';
 import type { LocalWalletBoot } from './wallet-boot.js';
 
@@ -135,5 +137,23 @@ describe('lite username refresh', () => {
 
     // Then
     expect(name).toBe('alice.42');
+  });
+
+  it('As an operator, a network read of the name that fails is recorded and counted', async () => {
+    // Given
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { liteUsername } = refreshWith(() => Promise.reject(new Error('people unavailable')));
+
+    // When
+    await liteUsername.refresh(wallet('alice.42'), reported());
+
+    // Then
+    expect(captures.expected).toHaveBeenCalledWith(expect.objectContaining({ message: 'people unavailable' }), {
+      flow: 'wallet',
+      step: 'lite_username_read',
+    });
+    expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'username-read' }]);
   });
 });

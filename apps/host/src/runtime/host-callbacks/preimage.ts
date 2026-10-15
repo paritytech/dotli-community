@@ -7,6 +7,7 @@ import type { PreimageHost } from '@parity/truapi-host';
 import { bitswapGet } from '@dotli/bitswap';
 import { hashToCid, fetchFromIpfs, assertBlockMatchesCid } from '@dotli/content';
 import { getBackend, type Backend } from '@dotli/config';
+import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, serializeError, log, toHex } from '@dotli/shared';
 import { createResultStream } from './result-stream.js';
 
@@ -87,6 +88,9 @@ function createPreimageLookupSubscribe(label: string, deps: PreimageDeps): Requi
       // Aborting also reaches a running fetch, and a retrying bitswapGet can keep fetching for minutes after the
       // consumer has gone.
       const aborter = new AbortController();
+      // The poll retries every 10 s for as long as the product waits, so a backend that keeps failing is recorded once
+      // per lookup.
+      let failureRecorded = false;
       const attempt = async (): Promise<Uint8Array> => {
         const hit = preimageCache.get(key);
         if (hit) {
@@ -97,8 +101,15 @@ function createPreimageLookupSubscribe(label: string, deps: PreimageDeps): Requi
           block = await deps.fetchBlock(cid.toString(), aborter.signal);
         } catch (err) {
           // Teardown aborts the in-flight lookup, so this ends a dropped subscription, not a failure.
-          if (!aborter.signal.aborted) {
-            log.warn(`[${label}] preimage lookup failed:`, err);
+          if (!aborter.signal.aborted && !failureRecorded) {
+            failureRecorded = true;
+            reportExpected(err, {
+              flow: 'content',
+              step: 'preimage_lookup',
+              metric: S.PREIMAGE_LOOKUP,
+              reason: 'fetch',
+              message: `[${label}] preimage lookup failing, the poll keeps retrying:`,
+            });
           }
           throw err;
         }
@@ -118,10 +129,15 @@ function createPreimageLookupSubscribe(label: string, deps: PreimageDeps): Requi
 
       polls.call(attempt, { pool: key, signal: aborter.signal, delay: INITIAL_POLL_DELAY_MS }).then(
         data => {
+          m.count(S.PREIMAGE_LOOKUP, { outcome: 'ok' });
           push(data);
         },
         (err: unknown) => {
           if (err instanceof PreimageMismatch) {
+            // A backend served bytes that do not hash to the key, which no retry fixes.
+            log.error(`[${label}] preimage lookup got the wrong bytes:`, err);
+            captureException(err, { flow: 'content', step: 'preimage_lookup' });
+            m.count(S.PREIMAGE_LOOKUP, { outcome: 'error', reason: 'mismatch' });
             pushError({ reason: err.message });
           }
           // The poll retries every other failure, so any other end is the abort of a subscription that has gone.

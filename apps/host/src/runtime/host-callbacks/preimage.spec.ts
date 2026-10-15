@@ -1,9 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { blake2b } from '@noble/hashes/blake2.js';
 import type { Backend } from '@dotli/config';
+import { bindCaptureSink } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createBlockFetch, createPreimageAdapters, type PreimageBlock, type PreimageFetch } from './preimage.js';
 import { yielded } from '../../testing/fixtures.js';
 
@@ -42,6 +44,49 @@ describe('preimage host callbacks', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('As an operator, a backend that keeps failing a lookup is recorded once, not on every poll', async () => {
+    // Given
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const fetchBlock = vi.fn<PreimageFetch>(() => Promise.reject(new Error('gateway unavailable')));
+    const { lookupPreimage } = createPreimageAdapters('myapp', { fetchBlock });
+    const iterator = lookupPreimage(new Uint8Array(32))[Symbol.asyncIterator]();
+    await iterator.next();
+
+    // When the poll fails four times
+    await vi.advanceTimersByTimeAsync(1_000 + 3 * 10_000);
+
+    // Then
+    expect(fetchBlock).toHaveBeenCalledTimes(4);
+    expect(captures.expected).toHaveBeenCalledTimes(1);
+    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'content', step: 'preimage_lookup' });
+    expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'fetch' }]);
+    await iterator.return?.();
+  });
+
+  it('As an operator, a backend that serves the wrong bytes for a preimage is captured and counted', async () => {
+    // Given
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const key = blake2b(new TextEncoder().encode('expected preimage'), { dkLen: 32 });
+    const fetchBlock = vi.fn<PreimageFetch>(() => Promise.resolve(found(new TextEncoder().encode('tampered'))));
+    const { lookupPreimage } = createPreimageAdapters('myapp', { fetchBlock });
+    const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
+    await iterator.next();
+
+    // When
+    const answer = iterator.next();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await answer;
+
+    // Then
+    expect(captures.exception).toHaveBeenCalledWith(expect.any(Error), { flow: 'content', step: 'preimage_lookup' });
+    expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'mismatch' }]);
+    await iterator.return?.();
   });
 
   it('As a dotli integrator, the host emits a miss immediately for an uncached lookup', async () => {

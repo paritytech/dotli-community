@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { bindCaptureSink } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getSettings, setSettings, type Backend } from '@dotli/config';
 import type { ChainActivity, ChainPool, LeaseProvider, RemoteChainHalt } from '@dotli/chains';
@@ -110,6 +112,49 @@ describe('createChainConnect', () => {
     people = getActiveServicesConfig().people.genesis;
     assetHub = getActiveServicesConfig().assethub.genesis;
     sources = fakeSources();
+  });
+
+  it('As an operator, a re-lease that finds no transport is counted', async () => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const connection = await connectOn(sources)(hexBytes(people));
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    must(sources.upstreams[0], 'upstream').halt();
+    sources.remoteChain.mockReturnValue(null);
+
+    // When
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+    await responses.next();
+
+    // Then
+    expect(metrics.counted('truapi_chain.reopen')).toEqual([{ outcome: 'error', reason: 'no_transport' }]);
+    connection.close();
+  });
+
+  it('As an operator, a re-lease that throws is captured and counted, and the request is still answered', async () => {
+    // Given
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const connection = await connectOn(sources)(hexBytes(people));
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    must(sources.upstreams[0], 'upstream').halt();
+    sources.remoteChain.mockImplementation(() => {
+      throw new Error('transport refused');
+    });
+
+    // When
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+    const answer = yielded(await responses.next());
+
+    // Then
+    expect(JSON.parse(answer)).toMatchObject({ id: 'truapi:2', error: { data: 'dotli:chain-halted' } });
+    expect(captures.exception).toHaveBeenCalledWith(expect.objectContaining({ message: 'transport refused' }), {
+      flow: 'protocol',
+      step: 'chain_reopen',
+    });
+    expect(metrics.counted('truapi_chain.reopen')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    connection.close();
   });
 
   it("As a dotli integrator, the host routes chain connections on a light client backend through the protocol frame's light client", async () => {

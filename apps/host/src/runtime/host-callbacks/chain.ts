@@ -33,7 +33,8 @@ import {
   type LeaseProvider,
   type RemoteChainHalt,
 } from '@dotli/chains';
-import { log } from '@dotli/shared';
+import { captureException, m, spans as S } from '@dotli/metrics';
+import { errorName, log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport, type RemoteChainFactory } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
@@ -219,13 +220,18 @@ function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSo
     try {
       const provider = pool.getLocalProvider(genesisHash, 'truapi-core');
       if (provider === null) {
-        log.warn(`[dot.li truapi-chain] no chain transport for ${genesisHash} after a halt`);
+        // The backend no longer serves this chain, as after a switch, so the product is answered at once.
+        log.event('chain has no transport after a halt', { flow: 'protocol', genesisHash });
+        m.count(S.TRUAPI_CHAIN_REOPEN, { outcome: 'error', reason: 'no_transport' });
         return null;
       }
       open(provider);
+      m.count(S.TRUAPI_CHAIN_REOPEN, lease === null ? { outcome: 'error', reason: 'halted' } : { outcome: 'ok' });
       return lease;
     } catch (error: unknown) {
-      log.warn(`[dot.li truapi-chain] re-leasing ${genesisHash} failed:`, error);
+      log.error(`[dot.li truapi-chain] re-leasing ${genesisHash} failed:`, error);
+      captureException(error, { flow: 'protocol', step: 'chain_reopen' });
+      m.count(S.TRUAPI_CHAIN_REOPEN, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
       return null;
     }
   };
