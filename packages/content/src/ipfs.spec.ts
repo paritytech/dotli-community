@@ -57,6 +57,18 @@ describe('fetchFromIpfs', () => {
     // the CID so a report says which gateway failed on what
     await expect(fetchFromIpfs(CID, GATEWAY, fetchMock)).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
   });
+
+  it('As a visitor, I hit a gateway that answers with an error page and its transfer is stopped, not left open', async () => {
+    // Given a gateway that answers with an error status and a body
+    fetchMock.mockResolvedValue(new Response('<h1>Bad gateway</h1>', { status: 502 }));
+
+    // When it fetches the block
+    const fetched = fetchFromIpfs(CID, GATEWAY, fetchMock);
+
+    // Then the fetch fails and the transfer it started is aborted
+    await expect(fetched).rejects.toThrow('HTTP 502');
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
 });
 
 describe('fetchCarFromIpfs', () => {

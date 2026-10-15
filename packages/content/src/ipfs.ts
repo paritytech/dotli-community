@@ -66,7 +66,10 @@ async function gatewayGet(
     stalled,
   );
   if (!response.ok) {
-    throw new Error(`${request.failure}: HTTP ${httpStatus(response)} from ${host} for ${request.cid}`);
+    const err = new Error(`${request.failure}: HTTP ${httpStatus(response)} from ${host} for ${request.cid}`);
+    // The error page's body is never read, so its transfer would otherwise stay open.
+    transfer.abort(err);
+    throw err;
   }
   const contentType = response.headers.get('content-type') ?? undefined;
   if (Number(response.headers.get('content-length')) > limits.maxBytes) {

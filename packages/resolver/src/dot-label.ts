@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A dotNS label. Callers normalize and lowercase user input first, because folding here would hide input
+ * A dotNS label. Callers lowercase user input first, because folding here would hide input
  * that disagrees with the registered form.
  */
 const DOT_LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
