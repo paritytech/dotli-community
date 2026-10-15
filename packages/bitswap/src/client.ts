@@ -10,6 +10,7 @@ import { TIMEOUTS } from '@dotli/config';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import {
   createAsyncTaskPool,
+  createPendingReplies,
   fromHex,
   log,
   named,
@@ -52,11 +53,6 @@ export interface BitswapClient {
   get(cid: string, signal?: AbortSignal): Promise<Uint8Array>;
 }
 
-interface PendingResolver {
-  resolve: (bytes: Uint8Array) => void;
-  reject: (err: Error) => void;
-}
-
 /** A failure worth another attempt once `delayMs` has passed. */
 class RetryLater extends Error {
   readonly delayMs: number;
@@ -89,7 +85,7 @@ function abortError(cid: string, cause?: unknown): Error {
 }
 
 export function createBitswapClient({ provider, timers = realTimers }: BitswapClientDeps): BitswapClient {
-  const pending = new Map<number, PendingResolver>();
+  const replies = createPendingReplies<number, Uint8Array>();
   const shared = new Map<string, SharedFetch>();
   let nextId = 1;
   let connection: JsonRpcConnection | null = null;
@@ -115,11 +111,6 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
         if (!isResponse(message) || typeof message.id !== 'number') {
           return;
         }
-        const entry = pending.get(message.id);
-        if (entry === undefined) {
-          return;
-        }
-        pending.delete(message.id);
         if ('error' in message) {
           const err = named(
             new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
@@ -127,11 +118,12 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
           );
           // A halt answer arrives before `onHalt` drops the connection, so the retry redials a rebuilt chain.
           const halted = message.error.data === CHAIN_HALTED_ERROR_DATA;
-          entry.reject(withCode(err, halted ? ERR_FAIL_RETRY : message.error.code));
+          replies.reject(message.id, withCode(err, halted ? ERR_FAIL_RETRY : message.error.code));
           return;
         }
         if (typeof message.result !== 'string') {
-          entry.reject(
+          replies.reject(
+            message.id,
             named(
               new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`),
               BITSWAP_ERRORS.RPC,
@@ -140,8 +132,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
           return;
         }
         // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
-        const hex = message.result;
-        entry.resolve(fromHex(hex));
+        replies.resolve(message.id, fromHex(message.result));
       },
       reason => {
         // The next attempt redials. Requests the halt never answered are rejected here, and a halt from a replaced
@@ -150,12 +141,11 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
           return;
         }
         connection = null;
-        for (const [id, entry] of pending) {
-          pending.delete(id);
+        replies.rejectAll(() => {
           const err = named(new Error('Bulletin connection halted'), BITSWAP_ERRORS.CONNECTION);
           // A halted chain is rebuilt on reconnect, so it is retried. A dead frame is fatal.
-          entry.reject(reason === 'chain' ? withCode(err, ERR_FAIL_RETRY) : err);
-        }
+          return reason === 'chain' ? withCode(err, ERR_FAIL_RETRY) : err;
+        });
       },
     );
     connection = opened;
@@ -165,47 +155,37 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
   function sendOnce(cid: string, timeoutMs: number, signal: AbortSignal | undefined): Promise<Uint8Array> {
     const id = nextId++;
     const conn = dial();
-    return new Promise<Uint8Array>((resolve, reject) => {
-      // `addEventListener` never fires on a signal that is already aborted.
-      if (signal?.aborted === true) {
-        reject(abortError(cid));
-        return;
-      }
-      // Every exit shares one teardown, since the caller's signal outlives the call and would collect listeners.
-      const cleanup = (): void => {
-        timers.clearTimeout(timer);
-        pending.delete(id);
-        signal?.removeEventListener('abort', onAbort);
-      };
-      const timer = timers.setTimeout(() => {
-        cleanup();
-        reject(
-          withCode(
-            named(
-              new Error(`bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`),
-              BITSWAP_ERRORS.TIMEOUT,
-            ),
-            ERR_FAIL_RETRY,
+    // `addEventListener` never fires on a signal that is already aborted.
+    if (signal?.aborted === true) {
+      return Promise.reject(abortError(cid));
+    }
+    const timer = timers.setTimeout(() => {
+      replies.reject(
+        id,
+        withCode(
+          named(
+            new Error(`bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`),
+            BITSWAP_ERRORS.TIMEOUT,
           ),
-        );
-      }, timeoutMs);
-      // smoldot cannot cancel an issued request, so the entry is dropped and its late reply finds no slot.
-      function onAbort(): void {
-        cleanup();
-        reject(abortError(cid));
-      }
-      signal?.addEventListener('abort', onAbort, { once: true });
-      pending.set(id, {
-        resolve: bytes => {
-          cleanup();
-          resolve(bytes);
-        },
-        reject: err => {
-          cleanup();
-          reject(err);
-        },
-      });
+          ERR_FAIL_RETRY,
+        ),
+      );
+    }, timeoutMs);
+    // smoldot cannot cancel an issued request, so the wait is dropped and its late reply finds no slot.
+    const onAbort = (): void => {
+      replies.reject(id, abortError(cid));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const reply = replies.wait(id);
+    try {
       conn.send({ jsonrpc: '2.0', id, method: 'bitswap_v1_get', params: [cid] });
+    } catch (err) {
+      replies.reject(id, toError(err));
+    }
+    // Every exit shares one teardown, since the caller's signal outlives the call and would collect listeners.
+    return reply.finally(() => {
+      timers.clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
     });
   }
 

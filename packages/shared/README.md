@@ -30,6 +30,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
   before, and rejects naming every part it left behind. A browser that cannot list its databases fails that part.
 - Web storage that the browser blocks or that is full reads as empty and drops writes, in one adapter, so no module
   wraps storage itself.
+- A pending-replies table pairs a request with the reply that carries its id. A settled id leaves the table, so a late
+  reply settles nothing, and a dead channel fails every open wait at once.
 - A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
 - The logger writes to the console only in debug builds, read from the `VITE_APP_DEBUG` build flag at load so the first
   log of every entry point honours it. Warn, error and event always reach the sink bound with `bindLogSink`.
@@ -41,7 +43,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 - Concurrency and state: `createAsyncTaskPool`, `createListenerSet`, `ListenerSet`, `ListenerSetOptions`,
   `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`, `createStatusCell`,
-  `toAbortError`.
+  `toAbortError`, `createPendingReplies`, `PendingReplies`.
 - Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `errorMessage`, `toError`,
   `named`, `endpointHost`, `gatewayUnreachable`.
 - Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.

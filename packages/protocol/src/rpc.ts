@@ -5,7 +5,7 @@
 
 import { m, spans as S } from '@dotli/metrics';
 import type { ResolvePhase } from '@dotli/resolver';
-import { log, toError } from '@dotli/shared';
+import { createPendingReplies, log, toError, withTimeout } from '@dotli/shared';
 import { isSharedAuthRequestMethod, isSharedModeRequestMethod, isSharedWalletRequestMethod } from './auth-storage.js';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
@@ -18,10 +18,9 @@ import {
 } from './messages.js';
 import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
 
-interface PendingRequest {
+/** What a request leaves with its wait, for the answer and its progress. */
+interface RequestMeta {
   method: ProtocolRequestMethod;
-  resolve: (value: unknown) => void;
-  reject: (reason?: unknown) => void;
   onProgress?: ((phase: ResolvePhase) => void) | undefined;
 }
 
@@ -58,34 +57,34 @@ export interface FrameRpc {
 }
 
 export function createFrameRpc(frame: RpcFrame): FrameRpc {
-  const pendingRequests = new Map<string, PendingRequest>();
+  const replies = createPendingReplies<string, unknown, RequestMeta>();
 
   frame.onEnvelope(msg => {
     if (msg.kind === 'progress') {
       if (isProgressPayloadValid(msg)) {
-        pendingRequests.get(msg.id)?.onProgress?.(msg.phase);
+        replies.meta(msg.id)?.onProgress?.(msg.phase);
       }
       return;
     }
     if (msg.kind !== 'response') {
       return;
     }
-    const pending = pendingRequests.get(msg.id);
-    if (!pending) {
+    const meta = replies.meta(msg.id);
+    if (meta === undefined) {
       return;
     }
-    pendingRequests.delete(msg.id);
     if (msg.ok) {
-      pending.resolve(msg.result);
+      replies.resolve(msg.id, msg.result);
       return;
     }
-    pending.reject(
+    replies.reject(
+      msg.id,
       new ProtocolRequestError(
         msg.error || 'Unknown protocol error',
         // A bare `"Error"` carries nothing, and would cost us the
         // "crossed the protocol boundary" signal dashboards filter on.
         msg.errorName !== undefined && msg.errorName !== 'Error' ? msg.errorName : 'ProtocolResponseError',
-        pending.method,
+        meta.method,
         typeof msg.errorStack === 'string' ? msg.errorStack : undefined,
       ),
     );
@@ -93,11 +92,7 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
 
   // The frame that would answer is gone, so a request left to its timer would only fail later.
   frame.onLost(error => {
-    const inFlight = [...pendingRequests.values()];
-    pendingRequests.clear();
-    for (const pending of inFlight) {
-      pending.reject(error);
-    }
+    replies.rejectAll(() => error);
   });
 
   return {
@@ -143,42 +138,30 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
         });
       }
 
-      return new Promise<ProtocolResponseMap[typeof method]>((resolve, reject) => {
-        const timer =
-          timeoutMs === null
-            ? null
-            : setTimeout(() => {
-                pendingRequests.delete(id);
-                const err = new ProtocolRequestError(
-                  `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
-                  'ProtocolTimeoutError',
-                  method,
-                );
-                settled('timeout', err);
-                reject(err);
-              }, timeoutMs);
-
-        pendingRequests.set(id, {
-          method,
-          resolve: value => {
-            if (timer !== null) {
-              clearTimeout(timer);
-            }
-            settled('ok');
-            // The one place an answer gets its type: it crossed postMessage untyped, so the map is only as right as the specs.
-            resolve(value as ProtocolResponseMap[typeof method]);
-          },
-          reject: (reason?: unknown) => {
-            if (timer !== null) {
-              clearTimeout(timer);
-            }
-            const err = toError(reason);
-            settled('error', err);
-            reject(err);
-          },
-          onProgress,
-        });
-      });
+      const reply = replies.wait(id, { method, onProgress });
+      let timedOut: Error | undefined;
+      const answered =
+        timeoutMs === null
+          ? reply
+          : withTimeout(reply, timeoutMs, () => {
+              timedOut = new ProtocolRequestError(
+                `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
+                'ProtocolTimeoutError',
+                method,
+              );
+              replies.reject(id, timedOut);
+              return timedOut;
+            });
+      try {
+        const value = await answered;
+        settled('ok');
+        // The one place an answer gets its type: it crossed postMessage untyped, so the map is only as right as the specs.
+        return value as ProtocolResponseMap[typeof method];
+      } catch (reason: unknown) {
+        const err = toError(reason);
+        settled(err === timedOut ? 'timeout' : 'error', err);
+        throw err;
+      }
     },
   };
 }

@@ -294,6 +294,27 @@ describe('createBitswapClient aborts', () => {
   });
 });
 
+describe('createBitswapClient when the connection cannot send', () => {
+  it('As a user, I see a send that throws fail the fetch and leave no abort listener behind', async () => {
+    // Given a connection whose send throws, and a signal that outlives the call
+    const provider: RemoteChainProvider = () => ({
+      send: () => {
+        throw new Error('frame vanished');
+      },
+      disconnect: () => undefined,
+    });
+    const signal = new CountingSignal();
+
+    // When
+    const block = clientOn(provider).get('bafySend', signal as unknown as AbortSignal);
+
+    // Then the failure reaches the caller and the call's own listener came off again
+    await expect(block).rejects.toThrow('frame vanished');
+    expect(signal.added).toBeGreaterThan(0);
+    expect(signal.live).toBe(0);
+  });
+});
+
 describe('createBitswapClient after a halt', () => {
   it('As a dotli user, I still load content after the Bulletin chain halts', async () => {
     // Given a request in flight on a connection that then halts

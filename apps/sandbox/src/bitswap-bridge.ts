@@ -5,7 +5,7 @@
 
 import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from '@dotli/sandbox-wire';
 import { TIMEOUTS } from '@dotli/config';
-import { log, randomId, toError, withTimeout } from '@dotli/shared';
+import { createPendingReplies, log, randomId, toError, withTimeout } from '@dotli/shared';
 
 export interface BitswapBridgeDeps {
   /** The sandbox's own window, where the host's answers and `pagehide` arrive. */
@@ -68,20 +68,17 @@ export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
   let nextId = 1;
   // The host reads this document's abort after the document is gone, so the abort names its frame instead.
   const frame = randomId();
-  const pending = new Map<string, { resolve: (bytes: Uint8Array) => void; reject: (err: Error) => void }>();
+  const replies = createPendingReplies<string, Uint8Array>();
 
   // Nothing else tells the host this frame went, and a fetch with no providers retries for tens of seconds.
   deps.window.addEventListener('pagehide', event => {
     // A frame entering the back/forward cache can come back, still awaiting fetches the host would have aborted.
-    if ((event as PageTransitionEvent).persisted || pending.size === 0) {
+    if ((event as PageTransitionEvent).persisted || replies.ids().length === 0) {
       return;
     }
-    postToHost(parent, { type: 'dotli:bitswap-abort', ids: [...pending.keys()], frame });
-    // Reject rather than clear, or the promises never settle: the reply listener ignores unknown ids.
-    for (const [, entry] of pending) {
-      entry.reject(new DOMException('bitswap-relay: aborted, the sandbox frame was torn down', 'AbortError'));
-    }
-    pending.clear();
+    postToHost(parent, { type: 'dotli:bitswap-abort', ids: replies.ids(), frame });
+    // Rejected rather than dropped, or the promises never settle: the reply listener ignores unknown ids.
+    replies.rejectAll(() => new DOMException('bitswap-relay: aborted, the sandbox frame was torn down', 'AbortError'));
   });
   deps.window.addEventListener('message', event => {
     const message = event as MessageEvent<unknown>;
@@ -93,41 +90,34 @@ export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
     if (reply === null) {
       return;
     }
-    const entry = pending.get(reply.id);
-    if (entry === undefined) {
-      return;
-    }
-    pending.delete(reply.id);
     if (reply.ok) {
-      entry.resolve(reply.bytes);
+      replies.resolve(reply.id, reply.bytes);
     } else {
-      entry.reject(hostError(reply));
+      replies.reject(reply.id, hostError(reply));
     }
   });
 
   return {
     requestBlock: cid => {
       const id = `bitswap-${String(nextId++)}-${String(Date.now())}`;
-      const reply = new Promise<Uint8Array>((resolve, reject) => {
-        pending.set(id, { resolve, reject });
-        try {
-          postToHost(parent, { type: 'dotli:bitswap-get', id, cid, frame });
-        } catch (err) {
-          pending.delete(id);
-          log.error('[dot.li sandbox] bitswap bridge postMessage failed:', err);
-          reject(toError(err));
-        }
-      });
+      const reply = replies.wait(id);
+      try {
+        postToHost(parent, { type: 'dotli:bitswap-get', id, cid, frame });
+      } catch (err) {
+        log.error('[dot.li sandbox] bitswap bridge postMessage failed:', err);
+        replies.reject(id, toError(err));
+      }
       // The host's relay gives up at its own budget, so a reply that never comes is dropped, not awaited forever.
       return withTimeout(reply, TIMEOUTS.BITSWAP_TOTAL_BUDGET + TIMEOUTS.RESPONSE_DELIVERY_GRACE, () => {
-        pending.delete(id);
-        // A throw here would escape the timer and leave the request unsettled, so the abort is only best effort.
+        const timeout = new BitswapBridgeTimeoutError(`bitswap-bridge: no reply for ${cid} from the host`);
+        replies.reject(id, timeout);
+        // The abort is best effort: the request fails with the timeout even when the abort cannot be posted.
         try {
           postToHost(parent, { type: 'dotli:bitswap-abort', ids: [id], frame });
         } catch (err) {
           log.error('[dot.li sandbox] bitswap bridge abort postMessage failed:', err);
         }
-        return new BitswapBridgeTimeoutError(`bitswap-bridge: no reply for ${cid} from the host`);
+        return timeout;
       });
     },
   };
