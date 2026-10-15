@@ -161,9 +161,11 @@ export const ResolutionClockStopsHidden: Story = {
       // Read on the Resolution tab, where the list and its pending clock are not active.
       let idle = 0;
       let running = 0;
-      await step('Given the Resolution tab open with no load yet', () => {
+      await step('Given the Resolution tab open with no load yet', async () => {
         part('td-section', 'resolution').click();
         clock.frame();
+        // The list's clock stops in an effect after the click, so the count is read once the tab has rendered.
+        await expect(within(part('td-res')).getByTestId('td-res-empty')).toBeInTheDocument();
         idle = clock.timerCount();
       });
       await step('When a load starts', async () => {

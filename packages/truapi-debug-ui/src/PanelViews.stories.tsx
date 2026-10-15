@@ -394,14 +394,15 @@ export const ResolutionTicks: Story = {
         clock.advance(500);
       });
       await step('Then the elapsed time redraws on its tick', async () => {
-        await expect(resolutionFact('elapsed')).toBe('500ms');
+        // The clock starts on the frame that first draws the running load, 16 ms after the load started.
+        await expect(resolutionFact('elapsed')).toBe('516ms');
       });
       await step('When the panel is collapsed and time passes', () => {
         part('td-collapse').click();
         clock.advance(1500);
       });
       await step('Then nothing redraws', async () => {
-        await expect(resolutionFact('elapsed')).toBe('500ms');
+        await expect(resolutionFact('elapsed')).toBe('516ms');
       });
     }),
 };
