@@ -47,16 +47,26 @@ beforeEach(() => {
   page = new EventTarget();
   resetAllStoresForTests();
   pageContent = createSyncStore<PageContent>('page-content-spec', 'page');
+  const frameTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  let lastFrame = 0;
   ctl = createLoadingController({
     reducedMotion: () => reducedMotion,
-    // A frame every 16ms on the faked clock.
+    // A frame every 16ms on the faked clock. Node's timers are objects, so each gets a number like a frame handle.
     frames: {
-      request: step =>
-        setTimeout(() => {
-          step(performance.now());
-        }, 16) as unknown as number,
+      request: step => {
+        const handle = ++lastFrame;
+        frameTimers.set(
+          handle,
+          setTimeout(() => {
+            frameTimers.delete(handle);
+            step(performance.now());
+          }, 16),
+        );
+        return handle;
+      },
       cancel: handle => {
-        clearTimeout(handle);
+        clearTimeout(frameTimers.get(handle));
+        frameTimers.delete(handle);
       },
       now: () => performance.now(),
     },

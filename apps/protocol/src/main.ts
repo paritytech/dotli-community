@@ -51,10 +51,11 @@ installByteMeter();
 
 // No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
 window.addEventListener('vite:preloadError', event => {
-  const evt = event as unknown as { payload?: unknown };
-  log.error('[dot.li protocol] Asset failed to load', evt.payload);
+  // Typed as an Error, but the loader hands on whatever the import rejected with.
+  const payload: unknown = event.payload;
+  log.error('[dot.li protocol] Asset failed to load', payload);
   // The browser's message names the chunk. Only Safari omits it.
-  const msg = evt.payload === undefined ? 'no detail from the loader' : serializeError(evt.payload);
+  const msg = payload === undefined ? 'no detail from the loader' : serializeError(payload);
   postToParent({
     namespace: 'dotli:protocol',
     kind: 'fatal',

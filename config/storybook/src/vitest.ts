@@ -7,8 +7,7 @@ import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 
-// Local only, never run through turbo, so it is not a turbo input.
-// eslint-disable-next-line turbo/no-undeclared-env-vars
+// eslint-disable-next-line turbo/no-undeclared-env-vars -- local only, never run through turbo, so not a turbo input.
 const vrt = process.env['VRT'] === '1';
 
 /**
