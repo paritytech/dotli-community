@@ -4,7 +4,7 @@
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { preloadWhenIdle, type IdleScheduler } from './idle.js';
+import { preloadWhenIdle, runWhenIdle, type IdleScheduler } from './idle.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -120,5 +120,33 @@ describe('preloadWhenIdle', () => {
 
     // Then
     expect(cancelled).not.toHaveBeenCalled();
+  });
+});
+
+describe('runWhenIdle', () => {
+  it('As the shell, my idle work runs once the browser is idle with my deadline, and its cancel takes it back', () => {
+    // Given
+    const asked: { timeout: number }[] = [];
+    const cancelled: number[] = [];
+    let idle: (() => void) | undefined;
+    const scheduler: IdleScheduler = {
+      requestIdleCallback: (run, options) => {
+        idle = run;
+        asked.push(options);
+        return 5;
+      },
+      cancelIdleCallback: handle => cancelled.push(handle),
+    };
+    const work = vi.fn();
+
+    // When
+    const cancel = runWhenIdle(work, 2_000, scheduler);
+    idle?.();
+    cancel();
+
+    // Then
+    expect(work).toHaveBeenCalledTimes(1);
+    expect(asked).toEqual([{ timeout: 2_000 }]);
+    expect(cancelled).toEqual([5]);
   });
 });

@@ -67,8 +67,8 @@ and no data source.
 - Stores: the modal store (`openModal`, `refuseModals`, which answers every dialog with its refusal while the overlays
   cannot render, and the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
   `ModalButtonVariant`) and the toast store (`toastsStore` and the type `ToastEntry`).
-- Page helpers: `focusables`, `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`, `watchPhoneViewport`,
-  `prefersReducedMotion` and the type `StatusTone`.
+- Page helpers: `focusables`, `runWhenIdle` and `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`,
+  `watchPhoneViewport`, `prefersReducedMotion` and the type `StatusTone`.
 - Helpers: `useStore`, `startDrag`, `focusLostOrInside`, `focusTrigger`.
 - Roots: `mountRoot` with `MountRootOptions`, `RootBoundary`, `ensureOverlayRoot`.
 - Screens and overlays: `showErrorPage` and `showError` with the types `ErrorAction`, `ErrorPageContent`, `ErrorText`

@@ -15,7 +15,7 @@ export interface IdleScheduler {
 /**
  * Run `run` once the browser is idle, or after `timeoutMs` where it cannot say. Returns the cancel function.
  */
-function runWhenIdle(run: () => void, timeoutMs: number, scheduler: IdleScheduler = globalThis): () => void {
+export function runWhenIdle(run: () => void, timeoutMs: number, scheduler: IdleScheduler = globalThis): () => void {
   const { requestIdleCallback, cancelIdleCallback } = scheduler;
   // Both or neither: happy-dom has only one of them, so it takes the timer.
   if (typeof requestIdleCallback === 'function' && typeof cancelIdleCallback === 'function') {

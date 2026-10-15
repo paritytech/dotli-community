@@ -26,7 +26,7 @@ import {
   setCachedCid,
   type CachedManifests,
 } from '@dotli/storage';
-import { showNotification } from '@dotli/ui';
+import { runWhenIdle, showNotification } from '@dotli/ui';
 import { elapsed, log, randomId } from '@dotli/shared';
 import {
   DEBUG,
@@ -71,6 +71,9 @@ import { pageNotifications } from './page-notifications.js';
 import { recordRecentLabel } from './recent-labels.js';
 import { bindTopbar } from './topbar.js';
 import { bindUrlPill } from './url-pill.js';
+
+/** Idle work still runs this long after it was asked for, so a busy page cannot starve it. */
+const IDLE_WORK_TIMEOUT_MS = 2_000;
 
 /** Content block cache cap. After each load the least recently used blocks are dropped until it fits. */
 const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
@@ -241,12 +244,12 @@ function pageCidCache(names: NameSource): LoaderCidCache {
   return {
     get: label => getCachedCid(label, getNetwork()),
     storeLater: (label, cid, manifests) => {
-      requestIdleCallback(() => {
+      runWhenIdle(() => {
         void set(label, cid, manifests);
-      });
+      }, IDLE_WORK_TIMEOUT_MS);
     },
     revalidateLater: (label, servedCid, onScreen) => {
-      requestIdleCallback(() => {
+      runWhenIdle(() => {
         void revalidateCachedCopy(label, servedCid, onScreen, {
           names,
           cache: { set, evict: evictCachedCid },
@@ -256,7 +259,7 @@ function pageCidCache(names: NameSource): LoaderCidCache {
             window.location.reload();
           },
         });
-      });
+      }, IDLE_WORK_TIMEOUT_MS);
     },
   };
 }
@@ -284,7 +287,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
       void pruneBlockCache(BLOCK_CACHE_MAX_BYTES);
     },
     idle: callback => {
-      requestIdleCallback(callback);
+      runWhenIdle(callback, IDLE_WORK_TIMEOUT_MS);
     },
     emit: emitDotliDebugEvent,
     flowId: shell.flowId,

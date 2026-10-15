@@ -32,14 +32,6 @@ export const T0 = performance.now();
 
 /** What a page load starts first: the chunk and island failure offers, the desktop offer and the wasm timings. */
 export function startPage(): void {
-  // Safari before 18.4 lacks requestIdleCallback.
-  if (typeof globalThis.requestIdleCallback !== 'function') {
-    globalThis.requestIdleCallback = (cb: IdleRequestCallback): number =>
-      setTimeout(() => {
-        cb({ didTimeout: false, timeRemaining: () => 50 });
-      }, 1) as unknown as number;
-  }
-
   const reload = (): void => {
     markContinuation('app_update');
     window.location.reload();

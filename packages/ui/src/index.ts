@@ -52,7 +52,7 @@ export { toastsStore, type ToastEntry } from './page/state/toasts.js';
 
 // Page helpers.
 export { focusables } from './page/focusables.js';
-export { preloadWhenIdle, type IdleScheduler } from './page/idle.js';
+export { preloadWhenIdle, runWhenIdle, type IdleScheduler } from './page/idle.js';
 export { isPhoneViewport, watchPhoneViewport } from './page/phone-viewport.js';
 export { prefersReducedMotion } from './page/reduced-motion.js';
 export type { StatusTone } from './page/status-tone.js';
