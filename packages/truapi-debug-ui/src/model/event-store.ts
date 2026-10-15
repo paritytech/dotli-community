@@ -38,6 +38,20 @@ export function correlationKeyOf(ev: StoredEvent): string {
   return ev.kind === 'truapi' ? ev.requestId : ev.flowId;
 }
 
+/** A TrUAPI call's identity. `requestId` is minted per product, so two products in one tab can share it. */
+export function callKeyOf(ev: { readonly productId?: string | undefined; readonly requestId: string }): string {
+  return `${ev.productId ?? 'dotli'}::${ev.requestId}`;
+}
+
+/** Paired on the tag suffix, not `direction`, which depends on who initiated the call. */
+function isRequestTag(tag: string): boolean {
+  return tag.endsWith('_request');
+}
+
+function isResponseTag(tag: string): boolean {
+  return tag.endsWith('_response');
+}
+
 export interface EventStoreConfig {
   capacity: number;
 }
@@ -55,6 +69,12 @@ export class EventStore {
   private readonly anchors = new WeakMap<StoredEvent, StoredEvent>();
   /** Kept so `productIds()` needs no scan. */
   private readonly productCounts = new Map<string | undefined, number>();
+
+  /**
+   * Requests kept and not yet answered, by call key. A paused store still takes the one reply that closes each, so it
+   * holds at most as many entries as the ring holds requests.
+   */
+  private readonly unanswered = new Map<string, number>();
   // A view that throws on a change is a defect in the panel, reported while the other views still hear the change.
   private readonly listeners = createListenerSet<undefined>({
     onListenerError: reportListener('ui', 'debug_panel.event_store'),
@@ -84,12 +104,14 @@ export class EventStore {
     this.buf.length = 0;
     this.firstByKey.clear();
     this.productCounts.clear();
+    this.unanswered.clear();
     this.droppedCount = 0;
     this.notify();
   }
 
   insertTruapi(ev: TruapiDebugMessageEvent): void {
-    if (this.paused) {
+    // Without its reply, a call recorded before Pause would read pending for good once the panel resumes.
+    if (this.paused && !(isResponseTag(ev.payload.tag) && this.unanswered.has(callKeyOf(ev)))) {
       return;
     }
     const stored: StoredTruapiEvent = {
@@ -132,6 +154,7 @@ export class EventStore {
       this.anchors.set(stored, anchor);
     }
     this.countProduct(stored, 1);
+    this.trackCall(stored, 1);
     while (this.buf.length > this.capacity) {
       const evicted = this.buf.shift();
       this.droppedCount++;
@@ -142,6 +165,7 @@ export class EventStore {
           this.firstByKey.delete(evictedKey);
         }
         this.countProduct(evicted, -1);
+        this.trackCall(evicted, -1);
       }
     }
     this.notify();
@@ -156,6 +180,29 @@ export class EventStore {
       this.productCounts.set(ev.productId, next);
     } else {
       this.productCounts.delete(ev.productId);
+    }
+  }
+
+  /** A kept request opens its call, its reply closes it, and an evicted request leaves nothing to close. */
+  private trackCall(ev: StoredEvent, delta: 1 | -1): void {
+    if (ev.kind !== 'truapi') {
+      return;
+    }
+    let step = 0;
+    if (isRequestTag(ev.tag)) {
+      step = delta;
+    } else if (isResponseTag(ev.tag) && delta === 1) {
+      step = -1;
+    }
+    if (step === 0) {
+      return;
+    }
+    const key = callKeyOf(ev);
+    const next = (this.unanswered.get(key) ?? 0) + step;
+    if (next > 0) {
+      this.unanswered.set(key, next);
+    } else {
+      this.unanswered.delete(key);
     }
   }
 

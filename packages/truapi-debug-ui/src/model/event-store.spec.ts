@@ -257,3 +257,91 @@ describe('firstNewIndex()', () => {
     expect(firstNewIndex({ lastSeq: 1 }, [])).toBe(0);
   });
 });
+
+describe('EventStore while paused', () => {
+  const tags = (store: EventStore): string[] => store.list().map(ev => (ev.kind === 'truapi' ? ev.tag : ev.event));
+
+  it('As a developer who paused the debug panel, I still see the reply that closes a call recorded before Pause', () => {
+    // Given
+    const store = new EventStore({ capacity: 10 });
+    insert(store, 'sign_request', 'r1');
+    store.setPaused(true);
+
+    // When
+    insert(store, 'sign_response', 'r1');
+
+    // Then
+    expect(tags(store)).toEqual(['sign_request', 'sign_response']);
+  });
+
+  it('As a developer who paused the debug panel, I see no reply for a call that started after Pause', () => {
+    // Given
+    const store = new EventStore({ capacity: 10 });
+    store.setPaused(true);
+    insert(store, 'sign_request', 'r1');
+    const before = store.version();
+
+    // When
+    insert(store, 'sign_response', 'r1');
+
+    // Then
+    expect(store.list()).toEqual([]);
+    expect(store.version()).toBe(before);
+  });
+
+  it('As a developer who paused the debug panel, I see only the first reply to a recorded call', () => {
+    // Given
+    const store = new EventStore({ capacity: 10 });
+    insert(store, 'sign_request', 'r1');
+    store.setPaused(true);
+
+    // When
+    insert(store, 'sign_response', 'r1');
+    insert(store, 'sign_response', 'r1');
+
+    // Then
+    expect(tags(store)).toEqual(['sign_request', 'sign_response']);
+  });
+
+  it('As a developer who paused the debug panel, I see no reply from another product that reuses the request id', () => {
+    // Given
+    const store = new EventStore({ capacity: 10 });
+    insert(store, 'sign_request', 'r1', 'a.dot');
+    store.setPaused(true);
+
+    // When
+    insert(store, 'sign_response', 'r1', 'b.dot');
+
+    // Then
+    expect(tags(store)).toEqual(['sign_request']);
+  });
+
+  it('As a developer who paused the debug panel, I see no reply for a call whose request was evicted', () => {
+    // Given a ring of two that evicted r1's request
+    const store = new EventStore({ capacity: 2 });
+    insert(store, 'sign_request', 'r1');
+    insert(store, 'other_request', 'r2');
+    insert(store, 'other_request', 'r3');
+    store.setPaused(true);
+
+    // When
+    insert(store, 'sign_response', 'r1');
+
+    // Then
+    expect(tags(store)).toEqual(['other_request', 'other_request']);
+  });
+
+  it('As a developer who paused the debug panel after Clear, I see no reply for a call I cleared', () => {
+    // Given
+    const store = new EventStore({ capacity: 10 });
+    insert(store, 'sign_request', 'r1');
+    store.clear();
+    store.setPaused(true);
+
+    // When
+    insert(store, 'sign_response', 'r1');
+
+    // Then
+    expect(store.list()).toEqual([]);
+  });
+});

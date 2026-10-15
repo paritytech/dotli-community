@@ -4,15 +4,10 @@
 // A row's latency appears only once its reply lands, so without this a hung call looks like a fast one.
 // Scoped to TrUAPI because answering those calls is where the host actually stalls.
 
-import { firstNewIndex, type StoredEvent, type StoredTruapiEvent } from './event-store.js';
+import { callKeyOf, firstNewIndex, type StoredEvent } from './event-store.js';
 
 /** Past this a call is called out rather than just counted. */
 export const SLOW_AFTER_MS = 3000;
-
-/** `requestId` is minted per product, so two products in one tab can share it. */
-function callKeyOf(ev: StoredTruapiEvent): string {
-  return `${ev.productId ?? 'dotli'}::${ev.requestId}`;
-}
 
 /** Paired on the tag suffix, not `direction`, which depends on who initiated the call. */
 export function pendingKeyOf(ev: StoredEvent): string | null {

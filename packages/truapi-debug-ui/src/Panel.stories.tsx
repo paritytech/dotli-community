@@ -249,31 +249,32 @@ export const ChainResponseDetail: Story = {
   },
 };
 
-/** As a developer using the debug panel, I pause the list so new messages add no rows, and resume so they show again. */
+/** As a developer using the debug panel, I pause the list so new calls add no rows while the reply to a call I already see still lands, and resume so new calls show again. */
 export const PauseResume: Story = {
   play: async ({ userEvent, step }) => {
     const { truapi } = debugPanel();
-    await step('Given one row', async () => {
+    await step('Given one call waiting for its reply', async () => {
       truapi({ tag: 'before_request', requestId: 'r1' });
       await waitFor(() => expect(rows()).toHaveLength(1));
     });
-    await step('When I pause and a message arrives', async () => {
+    await step('When I pause, a new call starts and the waiting call is answered', async () => {
       await userEvent.click(part('td-pause'));
       truapi({ tag: 'while_paused_request', requestId: 'r2' });
-      await nextFrame();
+      truapi({ tag: 'before_response', requestId: 'r1', direction: 'incoming' });
     });
-    await step('Then no new row shows', async () => {
+    await step('Then only the reply shows, and the call no longer reads pending', async () => {
+      await waitFor(() => expect(rowTags()).toEqual(['before_request', 'before_response']));
       await expect(part('td-pause')).toHaveTextContent('Resume');
       await expect(part('td-pause')).toHaveAttribute('data-active');
-      await expect(rowTags()).toEqual(['before_request']);
-      await expect(counts()).toBe('1 events');
+      await expect(counts()).toBe('2 events');
+      await waitFor(() => expect(rowByTag('before_request').querySelector('[data-testid="td-pending"]')).toBeNull());
     });
     await step('When I resume and a message arrives', async () => {
       await userEvent.click(part('td-pause'));
       truapi({ tag: 'after_request', requestId: 'r3' });
     });
     await step('Then it shows', async () => {
-      await waitFor(() => expect(rowTags()).toEqual(['before_request', 'after_request']));
+      await waitFor(() => expect(rowTags()).toEqual(['before_request', 'before_response', 'after_request']));
       await expect(part('td-pause')).toHaveTextContent('Pause');
       await expect(part('td-pause')).not.toHaveAttribute('data-active');
     });

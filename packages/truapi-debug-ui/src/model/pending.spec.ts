@@ -186,4 +186,19 @@ describe('OpenCallTracker', () => {
     // Then
     expect(tracker.update(store.list().slice())).toBe(true);
   });
+
+  it('As a developer who paused the debug panel, I see a call recorded before Pause stop reading pending when its reply lands', () => {
+    // Given
+    const store = new EventStore({ capacity: 10 });
+    const tracker = new OpenCallTracker();
+    insert(store, 'sign_request', 'r1');
+    openAfterUpdate(tracker, store);
+    store.setPaused(true);
+
+    // When
+    insert(store, 'sign_response', 'r1');
+
+    // Then
+    expect(openAfterUpdate(tracker, store).size).toBe(0);
+  });
 });
