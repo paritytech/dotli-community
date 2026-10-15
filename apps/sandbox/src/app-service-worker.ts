@@ -136,13 +136,14 @@ export function startAppServiceWorker({
    * so the next fetch reads it again, while only the first failure is reported to the page.
    */
   const restoreArchive = createLazyLoad(
-    async (): Promise<ServedArchive | null> => {
+    async (): Promise<void> => {
       const archive = await loadPersistedArchive(indexedDB);
       if (archive === null) {
         nothingPersisted = true;
-        return null;
+        return;
       }
-      return { files: unpackArchive(archive.packed, archive.index), directory: archive.directory ?? BASE };
+      // A SET_ARCHIVE that landed during the read is newer. The loader keeps nothing, so a later one frees the buffers.
+      served ??= { files: unpackArchive(archive.packed, archive.index), directory: archive.directory ?? BASE };
     },
     {
       onFirstMiss: err => {
@@ -273,9 +274,7 @@ export function startAppServiceWorker({
     // A restarted worker reads the archive back first, since nginx answers every path with the shell as `text/html`.
     event.respondWith(
       restoreArchive().then(
-        restored => {
-          // A SET_ARCHIVE that landed since the read is newer.
-          served ??= restored;
+        () => {
           if (!hasArchive()) {
             return fetchFromNetwork(request);
           }

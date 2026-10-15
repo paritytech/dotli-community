@@ -244,6 +244,22 @@ describe('app service worker', () => {
     expect(stale).toBeUndefined();
   });
 
+  it('As a user, an archive the page sends after a restarted worker restored an older one is the one served', async () => {
+    // Given a restarted worker that already served from the archive it read back
+    await setArchive(startWorker(origin), { 'index.html': '<html></html>', 'old.js': 'old' });
+    const restarted = startWorker(origin);
+    await request(restarted, '/old.js');
+
+    // When
+    await setArchive(restarted, { 'index.html': '<html></html>', 'new.js': 'new' });
+    const fresh = await request(restarted, '/new.js');
+    const stale = await request(restarted, '/old.js');
+
+    // Then
+    expect(await fresh?.text()).toBe('new');
+    expect(stale).toBeUndefined();
+  });
+
   it('As a sandbox page, I hand over an archive with a reply port and only that port hears the acknowledgement', async () => {
     // Given
     const scope = startWorker(origin);
