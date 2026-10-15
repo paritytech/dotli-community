@@ -15,7 +15,7 @@ export interface GatewayLimits {
 }
 
 /** A stalled gateway must end in a failure the visitor can retry, not a load that waits forever. */
-export const GATEWAY_LIMITS: GatewayLimits = { stallMs: 30_000, maxBytes: 256 * 1024 * 1024 };
+const GATEWAY_LIMITS: GatewayLimits = { stallMs: 30_000, maxBytes: 256 * 1024 * 1024 };
 
 export function defaultGateway(): string {
   const [gateway] = getActiveServicesConfig().bulletin.ipfsGateways;
