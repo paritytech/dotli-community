@@ -37,7 +37,8 @@ take the mode sync, runtime network config and serving entries, and the host run
   writes into a document dotli does not build.
 - `./astro-pwa`: an Astro integration that generates the manifest and service worker after the page is written.
 - `./service-worker`: builds a hand-written service worker into one file at the root, with the app's own environment.
-- `./spa-fallback`: dev middleware that routes page loads as nginx does.
+- `./spa-fallback`: dev middleware that routes page loads as nginx does and answers a malformed escape with 404, and the
+  decision it makes for each request.
 - `./truapi-signing-worker`: a second TrUAPI worker on the `testing` wasm bundle, which has a signing host.
 - `./mode-sync`: in-memory mode preference sync on the protocol origin for local servers.
 - `./runtime-network-config`: the `/dotli-network.js` script, its path, its same-origin headers and its body from
