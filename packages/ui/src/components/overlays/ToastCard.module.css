@@ -147,7 +147,6 @@ a.body:focus-visible {
   pointer-events: none;
 }
 
-/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .card {
     --pile-step: var(--sp-2);

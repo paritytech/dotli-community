@@ -38,7 +38,6 @@
   color: var(--chrome-warn-text);
 }
 
-/* Keep in step with PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   :where(.field) {
     padding: var(--sp-3) 0;

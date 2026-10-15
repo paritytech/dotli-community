@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** The phone layout's breakpoint. Stylesheets repeat it as `@media (max-width: 560px)`. */
+/** The phone layout's breakpoint. */
 export const PHONE_QUERY = '(max-width: 560px)';
 
 // Islands are server-rendered at build time, where reads answer "wide". A component that differs on a

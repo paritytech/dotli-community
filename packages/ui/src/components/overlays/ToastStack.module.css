@@ -13,7 +13,6 @@
   margin: 0;
   padding: 0;
 }
-/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .stack {
     left: var(--sp-4);
@@ -82,7 +81,6 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .stack[data-expanded] .cards {
     gap: var(--sp-2);

@@ -81,7 +81,7 @@
   cursor: default;
   transform: none;
 }
-/* A circle as tall as the button. Button.tsx grows it to the content once loading ends. */
+/* A circle as tall as the button, which grows to its content once loading ends. */
 .button[data-loading] {
   width: var(--button-h);
   padding: 0;

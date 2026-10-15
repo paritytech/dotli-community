@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Loaded through src/lazy.ts by the product frame view, only in VITE_SANDBOX_CHECKER builds.
+// Loaded on demand, and only in sandbox-checker builds, so no production visit fetches it.
 
 import type { JSX } from '@solidjs/web';
 import { mountRoot } from '@dotli/ui';

@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Duplicates the loading screen's layout because importing LoadingScreen.module.css here would link a
-   second render-blocking copy of that island's sheet. */
+/* Its own copy of the loading layout, since sharing that sheet would link a second render-blocking copy of it. */
 
 .screen {
   display: flex;

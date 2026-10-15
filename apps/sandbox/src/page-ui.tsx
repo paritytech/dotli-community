@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // What the sandbox draws itself: its toasts and dialogs, the error page, the retry screen and the password dialog.
-// Loaded through src/lazy.ts the first time something needs it, so a product that loads never fetches it.
+// Loaded on demand the first time something needs it, so a product that loads never fetches it.
 
 import { ensureOverlayRoot, mountRoot, Overlays } from '@dotli/ui';
 
