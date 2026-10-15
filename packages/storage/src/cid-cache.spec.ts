@@ -1,9 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { NetworkName } from '@dotli/config';
+import { spans as S } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { type CidCache, createCidCache } from './cid-cache.js';
+import { abortAtCommit } from './testing/abort-at-commit.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
 
 // Each test gets a fresh database, so no test sees another's records.
@@ -33,6 +36,21 @@ async function putRawEntry(entry: object): Promise<void> {
       reject(tx.error ?? new Error('put failed'));
     };
   });
+}
+
+/** A cache over a fresh database that pushes `committed` into `events` when a write commits. */
+function cacheWatchingCommits(events: string[]): CidCache {
+  return createCidCache(
+    memoryIdb({
+      onTransaction: tx => {
+        if (tx.mode === 'readwrite') {
+          tx.addEventListener('complete', () => {
+            events.push('committed');
+          });
+        }
+      },
+    }),
+  );
 }
 
 describe('CID IndexedDB round-trip', () => {
@@ -157,5 +175,86 @@ describe('cid-cache failure reporting', () => {
 
     // Then
     expect(cleared).toBe(true);
+  });
+});
+
+describe('cid-cache writes and the commit', () => {
+  it('As an operator, the CID write latency I read covers the commit', async () => {
+    // Given
+    const events: string[] = [];
+    bindRecordingSentry({
+      onFinished: onTestFinished,
+      onRecord: () => {
+        events.push('latency recorded');
+      },
+    });
+    const watched = cacheWatchingCommits(events);
+
+    // When
+    await watched.setCachedCid('myapp', PASEO, 'bafy123', NO_MANIFESTS);
+
+    // Then
+    expect(events[0]).toBe('committed');
+    expect(events).toContain('latency recorded');
+  });
+
+  it('As an operator, a CID write the browser refuses at commit is counted, and the label stays a miss', async () => {
+    // Given a database that refuses every commit, as a full quota does
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const refusing = createCidCache(memoryIdb({ onTransaction: abortAtCommit }));
+
+    // When
+    await refusing.setCachedCid('myapp', PASEO, 'bafy123', NO_MANIFESTS);
+
+    // Then
+    expect(sentry.counted(S.CACHE_STORAGE)).toEqual([
+      expect.objectContaining({ outcome: 'error', surface: 'cid_cache', step: 'write' }),
+    ]);
+    expect(await refusing.getCachedCidResult('myapp', PASEO)).toEqual({ kind: 'miss' });
+  });
+
+  it('As the host that reloads after an evict, I find the delete committed by the time evict resolves', async () => {
+    // Given
+    const events: string[] = [];
+    const watched = cacheWatchingCommits(events);
+    await watched.setCachedCid('myapp', PASEO, 'bafy-doomed', NO_MANIFESTS);
+    events.length = 0;
+
+    // When
+    await watched.evictCachedCid('myapp');
+    events.push('evict resolved');
+
+    // Then
+    expect(events).toEqual(['committed', 'evict resolved']);
+  });
+
+  it('As an operator, an evict the browser refuses at commit is counted, so the stale CID it leaves is visible', async () => {
+    // Given a cached label, and then a database that refuses every commit
+    let refusing = false;
+    const flaky = createCidCache(
+      memoryIdb({
+        onTransaction: tx => {
+          if (refusing) {
+            abortAtCommit(tx);
+          }
+        },
+      }),
+    );
+    await flaky.setCachedCid('myapp', PASEO, 'bafy-stale', NO_MANIFESTS);
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    refusing = true;
+
+    // When
+    await flaky.evictCachedCid('myapp');
+
+    // Then the evict is counted as failed, and the label still reads its old CID
+    expect(sentry.counted(S.CACHE_STORAGE)).toEqual([
+      expect.objectContaining({ outcome: 'error', surface: 'cid_cache', step: 'evict' }),
+    ]);
+    expect(await flaky.getCachedCidResult('myapp', PASEO)).toEqual({
+      kind: 'hit',
+      cid: 'bafy-stale',
+      manifests: NO_MANIFESTS,
+    });
   });
 });

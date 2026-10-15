@@ -41,4 +41,5 @@ scheduled notifications.
 
 ### `@dotli/storage/testing`
 
-- `memoryIdb`: a fresh in-memory IndexedDB (fake-indexeddb) a store reads and writes in place of the page's own.
+- `memoryIdb`: a fresh in-memory IndexedDB (fake-indexeddb) a store reads and writes in place of the page's own. Its
+  `onTransaction` option sees each transaction as it opens, so a test can watch a commit or make one fail.
