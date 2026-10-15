@@ -6,7 +6,7 @@
 
 import type { Backend } from '@dotli/config';
 import type { DotnsResolver, ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
-import { createAsyncTaskPool, log } from '@dotli/shared';
+import { createLazyLoad, log } from '@dotli/shared';
 import type { ProductManifests } from './manifest-gate.js';
 
 type PhaseCallback = (phase: ResolvePhase) => void;
@@ -36,14 +36,7 @@ export interface NameSource {
 }
 
 export function createNameSource(deps: NameSourceDeps): NameSource {
-  // One load at a time, and every later read finds the resolver already loaded.
-  const rpcLoads = createAsyncTaskPool({ poolSize: 1 });
-  let rpc: RpcResolver | null = null;
-  const rpcResolver = (): Promise<RpcResolver> =>
-    rpcLoads.call(async () => {
-      rpc ??= await deps.loadRpc();
-      return rpc;
-    });
+  const rpcResolver = createLazyLoad(deps.loadRpc);
   const gateway = deps.backend === 'rpc-gateway';
 
   const resolveName = async (name: string, onPhase?: PhaseCallback): Promise<string | null> =>

@@ -52,7 +52,8 @@ describe('core connection debug tap', () => {
     // When the product sends a frame and the core answers
     wrapped.postMessage(request);
     core.listener?.(answer);
-    await Promise.resolve();
+    // The describer answers in order, so once a later ask settles every earlier frame has reached the panel.
+    await preloadWireDescriber();
 
     // Then both reach their side and the panel sees each once, tagged with its direction
     expect(core.postMessage).toHaveBeenCalledWith(request);
@@ -85,7 +86,8 @@ describe('core connection debug tap', () => {
     wrapped.dispose();
     wrapped.postMessage(loginResponseFrame('late-product', { success: true, value: 'Success' }));
     core.listener?.(loginResponseFrame('late-core', { success: true, value: 'Success' }));
-    await Promise.resolve();
+    // The describer answers in order, so once a later ask settles every earlier frame has reached the panel.
+    await preloadWireDescriber();
 
     // Then nothing is forwarded or shown, and the connection closed as a deliberate close
     expect(events).toEqual([]);
@@ -103,7 +105,8 @@ describe('core connection debug tap', () => {
     // When two frames cross back to back
     wrapped.postMessage(loginResponseFrame('first', { success: true, value: 'Success' }));
     wrapped.postMessage(loginResponseFrame('second', { success: true, value: 'Success' }));
-    await Promise.resolve();
+    // The describer answers in order, so once a later ask settles every earlier frame has reached the panel.
+    await preloadWireDescriber();
 
     // Then the panel sees them in the order they crossed
     expect(events.map(event => ('requestId' in event ? event.requestId : null))).toEqual(['first', 'second']);
@@ -117,24 +120,42 @@ describe('wire describer', () => {
     return captures;
   }
 
-  it('As a developer in debug mode, a describer that cannot load is counted once, however many frames wait on it', async () => {
+  it('As a developer in debug mode, a describer that cannot load is counted once, however many frames try it', async () => {
     // Given a describer whose chunk is gone
     const captures = captureReports();
     const load = vi.fn(() => Promise.reject<typeof WireDescribe>(new Error('chunk missing')));
     const describer = createWireDescriber(load);
 
-    // When three frames wait on it
+    // When three frames try it
     for (let frame = 0; frame < 3; frame += 1) {
       await describer.preload().catch(() => undefined);
     }
 
-    // Then the chunk is fetched and the miss counted once
-    expect(load).toHaveBeenCalledOnce();
+    // Then each frame tried the chunk, and the miss is counted once
+    expect(load).toHaveBeenCalledTimes(3);
     expect(captures.expected).toHaveBeenCalledOnce();
     expect(captures.expected).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({ step: 'wire_describe_load' }),
     );
+  });
+
+  it('As a developer in debug mode, a describer whose first load failed loads for the next frame', async () => {
+    // Given a describer whose first load fails
+    captureReports();
+    const module = { describeWireFrame: vi.fn() } as unknown as typeof WireDescribe;
+    const load = vi.fn<() => Promise<typeof WireDescribe>>();
+    load.mockRejectedValueOnce(new Error('chunk missing'));
+    load.mockResolvedValue(module);
+    const describer = createWireDescriber(load);
+    await describer.preload().catch(() => undefined);
+
+    // When the next frame asks
+    const loaded = await describer.preload();
+
+    // Then
+    expect(loaded).toBe(module);
+    expect(load).toHaveBeenCalledTimes(2);
   });
 
   it('As a developer in debug mode, the describer loads once for every frame', async () => {

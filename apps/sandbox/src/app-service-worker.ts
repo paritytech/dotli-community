@@ -6,7 +6,7 @@
 
 /// <reference lib="webworker" />
 
-import { errorMessage, errorName, idbRequest, idbTransaction, openIdb } from '@dotli/shared';
+import { createLazyLoad, errorMessage, errorName, idbRequest, idbTransaction, openIdb } from '@dotli/shared';
 import type { SetArchiveMessage } from './archive-handoff.js';
 import { getMimeType } from './mime.js';
 
@@ -128,26 +128,24 @@ export function startAppServiceWorker({
 
   let served: ServedArchive | null = null;
 
-  /** Started by the first fetch that finds no archive in memory. */
-  let restoring: Promise<void> | null = null;
-
   /** The read-back found nothing, so the page has not sent an archive yet. */
   let nothingPersisted = false;
 
-  function restoreArchive(): Promise<void> {
-    restoring ??= loadPersistedArchive(indexedDB).then(
-      archive => {
-        if (archive === null) {
-          nothingPersisted = true;
-          return;
-        }
-        // A SET_ARCHIVE that landed while the read was in flight is newer.
-        served ??= { files: unpackArchive(archive.packed, archive.index), directory: archive.directory ?? BASE };
-      },
-      (err: unknown) => {
-        // eslint-disable-next-line no-console -- the worker has no logger, and the page reports the failure
-        console.error('Failed to restore the archive after a worker restart:', err);
+  /**
+   * The archive kept for restarts, read back by the first fetch that finds none in memory. A failed read is not kept,
+   * so the next fetch reads it again, while only the first failure is reported to the page.
+   */
+  const restoreArchive = createLazyLoad(
+    async (): Promise<ServedArchive | null> => {
+      const archive = await loadPersistedArchive(indexedDB);
+      if (archive === null) {
         nothingPersisted = true;
+        return null;
+      }
+      return { files: unpackArchive(archive.packed, archive.index), directory: archive.directory ?? BASE };
+    },
+    {
+      onFirstMiss: err => {
         // Not awaited: the fetch waiting on this read-back must not wait on the report too.
         void scope.clients.matchAll({ type: 'window' }).then(
           clients => {
@@ -156,9 +154,8 @@ export function startAppServiceWorker({
           () => undefined,
         );
       },
-    );
-    return restoring;
-  }
+    },
+  );
 
   function hasArchive(): boolean {
     return served !== null;
@@ -275,12 +272,21 @@ export function startAppServiceWorker({
 
     // A restarted worker reads the archive back first, since nginx answers every path with the shell as `text/html`.
     event.respondWith(
-      restoreArchive().then(() => {
-        if (!hasArchive()) {
+      restoreArchive().then(
+        restored => {
+          // A SET_ARCHIVE that landed since the read is newer.
+          served ??= restored;
+          if (!hasArchive()) {
+            return fetchFromNetwork(request);
+          }
+          return lookupArchive(url.pathname) ?? lookupUnderPageDirectory(url.pathname) ?? fetchFromNetwork(request);
+        },
+        (err: unknown) => {
+          // eslint-disable-next-line no-console -- the worker has no logger, and the page reports the failure
+          console.error('Failed to restore the archive after a worker restart:', err);
           return fetchFromNetwork(request);
-        }
-        return lookupArchive(url.pathname) ?? lookupUnderPageDirectory(url.pathname) ?? fetchFromNetwork(request);
-      }),
+        },
+      ),
     );
   });
 

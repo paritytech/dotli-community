@@ -139,6 +139,20 @@ function brokenIndexedDb(): IDBFactory {
   } as unknown as IDBFactory;
 }
 
+/** The origin's `storage`, whose first `failures` opens fail as a full quota does. */
+function failingFirst(storage: IDBFactory, failures: number): IDBFactory {
+  let left = failures;
+  return {
+    open: (...args: Parameters<IDBFactory['open']>) => {
+      if (left > 0) {
+        left -= 1;
+        return brokenIndexedDb().open(...args);
+      }
+      return storage.open(...args);
+    },
+  } as unknown as IDBFactory;
+}
+
 /** An IndexedDB that opens, then aborts every write at commit, as a full quota does. Only `abort` fires. */
 function quotaAbortingIndexedDb(): IDBFactory {
   const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError');
@@ -329,6 +343,24 @@ describe('app service worker', () => {
         message: 'The quota has been exceeded.',
       },
     ]);
+  });
+
+  it('As a user, a restarted worker whose first read-back failed reads it again on the next request and serves it', async () => {
+    // Given an archive kept in the origin's storage, and a restarted worker whose first read of it fails
+    const first = startWorker(origin);
+    await setArchive(first, { 'index.html': '<html></html>', '_nuxt/late.js': 'export default 1;' });
+    const restarted = startWorker({ ...origin, indexedDB: failingFirst(origin.indexedDB, 1) });
+    const reported = nextPageMessage();
+    const failed = await request(restarted, '/_nuxt/late.js');
+    await reported;
+
+    // When the app asks again
+    const served = await request(restarted, '/_nuxt/late.js');
+
+    // Then the first request went to the network, the second came from the archive, and the miss was reported once
+    expect(await failed?.text()).toBe('<!doctype html>shell');
+    expect(await served?.text()).toBe('export default 1;');
+    expect(pageInbox.filter(message => (message as { stage?: string }).stage === 'restore')).toHaveLength(1);
   });
 
   it('As a product, I fetch an HTML file from my archive and it comes back byte for byte', async () => {

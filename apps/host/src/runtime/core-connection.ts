@@ -6,7 +6,7 @@
 import { decodeWireMessage, type WireProvider } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { reportListener } from '@dotli/metrics';
-import { createListenerSet, noop } from '@dotli/shared';
+import { createLazyLoad, createListenerSet, noop } from '@dotli/shared';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import { loadWireDescriber } from '../lazy.js';
 import { reportLazyMiss } from '../lazy-miss.js';
@@ -19,18 +19,19 @@ export type CoreProvider = WireProvider &
     'getPermissionAuthorizationStatus' | 'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
   >;
 
-/** One load of the describer for the page. A failed load is reported once and kept, since a deploy replaced the chunk. */
+/**
+ * The describer's chunk, loaded one load at a time, so frames reach the panel in the order they crossed. A failed load
+ * rejects that frame and the next frame loads again, while only the first miss of the page is reported.
+ */
 export function createWireDescriber(load: typeof loadWireDescriber): {
   preload: () => ReturnType<typeof loadWireDescriber>;
 } {
-  // Every frame waits on the same load, so frames reach the panel in the order they crossed.
-  let loaded: ReturnType<typeof loadWireDescriber> | undefined;
   return {
-    preload: () =>
-      (loaded ??= load().catch((err: unknown) => {
+    preload: createLazyLoad(load, {
+      onFirstMiss: err => {
         reportLazyMiss('ui', 'wire_describe_load', err);
-        throw err;
-      })),
+      },
+    }),
   };
 }
 

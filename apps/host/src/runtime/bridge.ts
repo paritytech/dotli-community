@@ -5,6 +5,7 @@
 // dialogs, showing its notifications and drawing around the frame with its layout.
 
 import { m, spans as S } from '@dotli/metrics';
+import { createLazyLoad } from '@dotli/shared';
 import { hostPrompts } from '../page-prompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore } from '../lazy.js';
 import { pageNotifications } from '../page-notifications.js';
@@ -12,7 +13,6 @@ import { productFrameContainer, productFrameView } from '../product-frame-view.j
 import { recordBestBlock, recordChainActivity } from '../state/network-monitor.js';
 import { createBridge } from './create-bridge.js';
 import { createCoreRuntimeBoot } from './core-runtime.js';
-import { createRuntimeLoader } from './runtime-loader.js';
 import { watchHostChains } from './host-callbacks/chain.js';
 import { pagePermissions, productPermissions } from './page-permissions.js';
 import { onStoredSessionChanged } from './session/core-storage.js';
@@ -32,7 +32,7 @@ export { startSessionState } from './session/session-state.js';
 export { preloadWireDescriber } from './core-connection.js';
 
 // One load serves the frame and every core.
-const hostRuntime = createRuntimeLoader(async () => {
+const hostRuntime = createLazyLoad(async () => {
   const chunkLoadStart = performance.now();
   const runtime = await loadHostRuntimeChunk();
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);

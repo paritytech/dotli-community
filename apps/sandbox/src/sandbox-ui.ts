@@ -5,7 +5,7 @@
 // that loads needs none of it, so the boot carries no Solid.
 
 import { reportExpected, spans as S } from '@dotli/metrics';
-import type { ReadableStore } from '@dotli/shared';
+import { createLazyLoad, type ReadableStore } from '@dotli/shared';
 import type { PageUiModule } from './lazy.js';
 
 export interface SandboxUiDeps {
@@ -19,10 +19,7 @@ export interface SandboxUiDeps {
 }
 
 export interface SandboxUi {
-  /**
-   * The UI with its overlays mounted. One load serves every caller while it is in flight. A failed load is not
-   * cached, so the next call loads again.
-   */
+  /** The UI with its overlays mounted. One load at a time, and a failed load is not kept, so the next call loads again. */
   ready: () => Promise<PageUiModule>;
   showError: (title: string, message: string, retry?: () => void) => void;
   showRetryScreen: () => void;
@@ -34,19 +31,18 @@ export interface SandboxUi {
 }
 
 export function createSandboxUi({ load, toasts, showFallback, hideFallback }: SandboxUiDeps): SandboxUi {
-  let loaded: Promise<PageUiModule> | undefined;
   let closed = false;
-  const ready = (): Promise<PageUiModule> =>
-    (loaded ??= load().then(
-      ui => {
-        if (!closed) {
-          hideFallback();
-          ui.mountOverlays();
-        }
-        return ui;
-      },
-      (err: unknown) => {
-        loaded = undefined;
+  const ready = createLazyLoad(
+    async () => {
+      const ui = await load();
+      if (!closed) {
+        hideFallback();
+        ui.mountOverlays();
+      }
+      return ui;
+    },
+    {
+      onFirstMiss: err => {
         // A missing chunk is a deploy race, counted as the host counts its own (owner's call: metric only).
         reportExpected(err, {
           flow: 'content',
@@ -55,9 +51,9 @@ export function createSandboxUi({ load, toasts, showFallback, hideFallback }: Sa
           reason: 'page_ui_load',
           message: '[dot.li app] the page UI failed to load',
         });
-        throw err;
       },
-    ));
+    },
+  );
 
   /** `text` is what the page says in place of the UI when it cannot load. */
   const withUi = (show: (ui: PageUiModule) => void, text?: string): void => {

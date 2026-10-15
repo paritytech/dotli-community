@@ -56,8 +56,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   describer, the local wallet and workbox, the host runtime and its worker, the chain client and the QR encoder. The
   small pieces of a product load (branding, the cache check, the failure screen, the verification tooltip) are plain
   imports.
-- The host runtime loads once and serves the frame and every core. A failed load is forgotten, so the next caller, a
-  sign-in Retry for one, loads it again without a page reload.
+- The host runtime, the wire describer, the block verifier and the gateway resolver each load once and serve every
+  caller after. A failed load is forgotten, so the next caller, a sign-in Retry for one, loads it again without a page
+  reload. The describer and the verifier report only their first miss.
 - The error page and the no-content page replace the page's content at once, through the shared screen owner. A
   full-page screen ends the loading screen and the landing islands, and the product frame takes the screen down when it
   shows.
