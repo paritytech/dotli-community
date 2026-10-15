@@ -21,6 +21,8 @@ export interface SegmentedControlProps<V extends string> {
   onChange: (value: V) => void;
   /** Full width of its container, the options sharing it equally. */
   block?: boolean;
+  /** `lg` stacks each option's icon over its label in a taller tile. */
+  size?: 'md' | 'lg';
   class?: string | undefined;
   testId?: string;
 }
@@ -79,6 +81,7 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
       aria-label={props.label}
       class={[s['seg'], props.class]}
       data-block={props.block === true ? '' : undefined}
+      data-size={props.size ?? 'md'}
       data-testid={props.testId}
       onKeyDown={onKeyDown}
       onFocusIn={onFocusIn}

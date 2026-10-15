@@ -99,6 +99,42 @@ export const Icons: Story = {
   },
 };
 
+/** As a dotli user, I see a large control stack each icon over its label and pick Dark, which is reported. */
+export const Large: Story = {
+  args: { size: 'lg', block: true },
+  render: args => {
+    const [value, setValue] = createSignal<Theme>(untrack(() => args.value));
+    const options: readonly SegmentOption<Theme>[] = [
+      { value: 'light', label: 'Light', icon: <SunIcon />, testId: 'seg-light' },
+      { value: 'dark', label: 'Dark', icon: <MoonIcon />, testId: 'seg-dark' },
+      { value: 'system', label: 'System', icon: <MonitorIcon />, testId: 'seg-system' },
+    ];
+    return (
+      <SegmentedControl<Theme>
+        {...args}
+        options={options}
+        value={value()}
+        onChange={next => {
+          setValue(next);
+          args.onChange(next);
+        }}
+      />
+    );
+  },
+  play: async ({ args, canvas, userEvent, step }) => {
+    await step('Given the control is large', async () => {
+      await expect(canvas.getByRole('group', { name: 'Theme' })).toHaveAttribute('data-size', 'lg');
+    });
+    await step('When I press Dark', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Dark' }));
+    });
+    await step('Then Dark is pressed and reported', async () => {
+      await expect(canvas.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
+      await expect(args.onChange).toHaveBeenCalledWith('dark');
+    });
+  },
+};
+
 /** As a screen reader user, I hear a named group with the current option pressed. */
 export const NamedGroup: Story = {
   args: { value: 'light' },

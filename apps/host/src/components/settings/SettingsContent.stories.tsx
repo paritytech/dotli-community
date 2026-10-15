@@ -76,7 +76,7 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
   await expect([...categories.children].map(b => b.textContent)).toEqual(['General', 'Network', 'Advanced']);
   await expect(selectedCategory()).toBe(`settings-category-${category}`);
   const sections = query(document, '[data-testid="mode-popover-sections"]');
-  const theme = sections.querySelector('[role="radiogroup"][aria-label="Theme"]');
+  const theme = sections.querySelector('[role="group"][aria-label="Theme"]');
   const transports = sections.querySelector('[role="radiogroup"][aria-label="Network transport"]');
   const networks = sections.querySelector('[role="radiogroup"][aria-label="Network"]');
   const cache = sections.querySelector('[data-testid="mode-cache"]');
@@ -251,7 +251,7 @@ export const StartsOnGeneral: Story = {
     await open(ctx);
     await ctx.step('Then General shows the theme tiles with System checked, and nothing else', async () => {
       await expect(selectedCategory()).toBe('settings-category-general');
-      await expect(query(document, '[data-testid="theme-option-system"]')).toHaveAttribute('aria-checked', 'true');
+      await expect(query(document, '[data-testid="theme-option-system"]')).toHaveAttribute('aria-pressed', 'true');
       await expect(document.querySelector('[data-testid="mode-cache"]')).toBeNull();
       await expect(document.querySelector('input[name="dotli-backend"]')).toBeNull();
     });
@@ -407,7 +407,7 @@ export const ThemePickedWithoutSave: Story = {
     await ctx.step('Then it was picked at once, with Save still disabled and the popover open', async () => {
       await expect(settingsAsked.themes).toEqual(['light']);
       await waitFor(() =>
-        expect(query(document, '[data-testid="theme-option-light"]')).toHaveAttribute('aria-checked', 'true'),
+        expect(query(document, '[data-testid="theme-option-light"]')).toHaveAttribute('aria-pressed', 'true'),
       );
       await expect(applyButton()).toBeDisabled();
       await expect(isOpen()).toBe(true);

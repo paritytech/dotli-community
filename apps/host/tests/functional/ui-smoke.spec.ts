@@ -296,7 +296,7 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#topbar #mode-button').click();
 
     // Then
-    await expect(page.getByTestId('theme-option-light')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('theme-option-light')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test("As a user who loses the connection, the bar's status turns red and recovers when I'm back", async ({
