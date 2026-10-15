@@ -88,6 +88,14 @@ describe('parseDotNsDomain', () => {
     });
   });
 
+  it('As a visitor, I type a polkadot:// URL in capitals and it opens as the lowercase product', () => {
+    // When / Then
+    expect(dotNsUrl.parseDotNsDomain('polkadot://MyApp.PASEO/x')).toEqual({
+      identifier: 'myapp.paseo',
+      pathname: 'x',
+    });
+  });
+
   it('As a visitor, I type a polkadot:// URL on a .dot.li host and it is not a product', () => {
     // When / Then
     expect(dotNsUrl.parseDotNsDomain('polkadot://currenthost.dot.li/mytestapp.paseo')).toBeNull();

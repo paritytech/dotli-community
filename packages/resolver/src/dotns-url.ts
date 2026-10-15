@@ -11,13 +11,13 @@ export interface DotNsUrl {
   pathname: string;
 }
 
-/** Names are registered in lowercase ASCII, so the host is NFC-normalized and case-folded first. */
+/** Case-folded, since a `polkadot://` host and a raw identifier keep the case they were typed in. */
 function isDotDomain(domain: string): boolean {
-  return domain.normalize('NFC').toLowerCase().endsWith(getActiveTldSuffix());
+  return domain.toLowerCase().endsWith(getActiveTldSuffix());
 }
 
 function isProductIdentifier(id: string): boolean {
-  const n = id.normalize('NFC').toLowerCase();
+  const n = id.toLowerCase();
   return n.endsWith(getActiveTldSuffix()) || n === 'localhost' || n.startsWith('localhost:');
 }
 
@@ -54,7 +54,7 @@ function parseDotNsDomain(url: string): DotNsUrl | null {
   }
 
   return {
-    identifier: parsed.hostname.normalize('NFC').toLowerCase(),
+    identifier: parsed.hostname.toLowerCase(),
     pathname: parsed.pathname.replace(/^\//, '') + parsed.search + parsed.hash,
   };
 }

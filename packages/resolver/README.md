@@ -25,6 +25,8 @@ every caller checks a name against.
 - Error names are read verbatim by dashboards and Sentry filters.
 - The naming rules are small pure helpers with no chain access. The URL helpers read the active network's TLD to tell a
   product host from a website.
+- A label is lowercase ASCII letters, digits and inner hyphens, and never starts with `xn--`, since a punycode label can
+  spell a name in letters that only look like another name's.
 - The resolver is heavy, so it loads through a lazy loader. The entry is pure re-exports, so the bundler drops what a
   caller does not take.
 
