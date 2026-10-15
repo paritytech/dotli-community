@@ -13,7 +13,6 @@ import {
   drag,
   expectPhone,
   grab,
-  nextFrame,
   panel,
   part,
 } from './testing/stories/debug-panel-fixtures.js';
@@ -412,9 +411,8 @@ export const FrameRefitsOnDrag: Story = {
   play: async ({ step }) => {
     mountDocked('bottom', { topbar: true });
     const held = grab(part('td-resize-handle'));
-    await step('When I drag the panel edge', async () => {
+    await step('When I drag the panel edge', () => {
       held.to(0, window.innerHeight - 268);
-      await nextFrame();
     });
     await step('Then the panel reports its new room on the next frame', async () => {
       await waitFor(() => expect(room().bottom).toBeCloseTo(268, 0));

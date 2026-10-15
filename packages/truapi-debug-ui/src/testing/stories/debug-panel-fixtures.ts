@@ -317,15 +317,6 @@ export async function expectPhone(step: StoryContext<SolidRenderer>['step']): Pr
   });
 }
 
-/** Resolves after the next animation frame, by which a render the panel scheduled has run. */
-export function nextFrame(): Promise<void> {
-  return new Promise(resolve => {
-    requestAnimationFrame(() => {
-      resolve();
-    });
-  });
-}
-
 function pointerEvent(target: Element, type: string, x = 0, y = 0): void {
   target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: x, clientY: y }));
 }

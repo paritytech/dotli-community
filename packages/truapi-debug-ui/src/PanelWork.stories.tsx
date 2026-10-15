@@ -12,7 +12,6 @@ import {
   debugPanel,
   debugPanelBeforeEach,
   grab,
-  nextFrame,
   panel,
   part,
   resetCalls,
@@ -464,7 +463,6 @@ export const ScrolledUpKeepsRows: Story = {
       for (let i = 0; i < 5; i++) {
         request('x_receive', `n${String(i)}`);
       }
-      await nextFrame();
       await waitFor(() => expect(rows()[5]).toBe(topRow));
     });
     await step('Then the same row stays under me', async () => {

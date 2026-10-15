@@ -11,7 +11,6 @@ import {
   debugPanel,
   debugPanelBeforeEach,
   detailRows,
-  nextFrame,
   panel,
   part,
   rowByTag,
@@ -784,9 +783,8 @@ export const DetailNotRebuilt: Story = {
     await step('When events stream in', async () => {
       for (let i = 0; i < 5; i++) {
         debugPanel().system('boot', 'topbar_ready', 'flow-boot-1');
-        await nextFrame();
+        await waitFor(() => expect(rows()).toHaveLength(4 + i));
       }
-      await waitFor(() => expect(rows()).toHaveLength(8));
     });
     await step('Then the detail pane is the same and still open', async () => {
       await expect(part('td-detail').querySelector('details')).toBe(explanation);
@@ -849,7 +847,7 @@ export const SmallCapacity: Story = {
     await step('When eight messages arrive', async () => {
       for (let i = 0; i < 8; i++) {
         debugPanel().truapi({ tag: `ev${String(i)}_request`, requestId: `r${String(i)}` });
-        await nextFrame();
+        await waitFor(() => expect(rowTags().at(-1)).toBe(`ev${String(i)}_request`));
       }
     });
     await step('Then the newest five show and the dropped ones are counted', async () => {
@@ -917,9 +915,8 @@ export const StreamingClickKeepsNode: Story = {
             direction: 'incoming',
           });
         }
-        await nextFrame();
+        await waitFor(() => expect(rows()).toHaveLength(3 + 10 * (f + 1)));
       }
-      await waitFor(() => expect(rows()).toHaveLength(103));
     });
     await step('Then the rows, the selection and the detail keep their nodes', async () => {
       for (const [i, node] of before.entries()) {

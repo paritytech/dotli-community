@@ -11,7 +11,6 @@ import {
   debugPanelBeforeEach,
   detailRows,
   hover,
-  nextFrame,
   panel,
   part,
   resolutionFact,
@@ -297,9 +296,8 @@ export const StreamingKeepsHoverAndClick: Story = {
     await step('When traffic streams in and the click lands', async () => {
       for (let i = 0; i < 3; i++) {
         debugPanel().truapi({ tag: 'late_request', requestId: `late-${String(i)}` });
-        await nextFrame();
+        await waitFor(() => expect(segments()).toHaveLength(3 + i));
       }
-      await waitFor(() => expect(segments()).toHaveLength(5));
       box.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await step('Then the box, its tooltip and the click all held', async () => {
