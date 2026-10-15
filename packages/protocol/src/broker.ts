@@ -103,6 +103,8 @@ interface BrokerConnection {
 const TOKEN_METHODS = new Map<string, string>([
   ['transaction_v1_broadcast', 'transaction_v1_stop'],
   ['transactionWatch_v1_submitAndWatch', 'transactionWatch_v1_unwatch'],
+  // The TrUAPI core watches its allowance registrations through the legacy author API.
+  ['author_submitAndWatchExtrinsic', 'author_unwatchExtrinsic'],
   ['statement_subscribeStatement', 'statement_unsubscribeStatement'],
 ]);
 const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
