@@ -3,6 +3,8 @@
 
 // The table that pairs a request with the reply carrying its id, for any channel that answers out of band.
 
+import { toError } from './errors.js';
+
 export interface PendingReplies<Id, Value, Meta = undefined> {
   /** Waits for the reply to `id`. `meta` is what the reply handler reads back with `meta(id)`. */
   wait(id: Id, meta?: Meta): Promise<Value>;
@@ -57,7 +59,12 @@ export function createPendingReplies<Id, Value, Meta = undefined>(): PendingRepl
       const open = [...waits];
       waits.clear();
       for (const [id, wait] of open) {
-        wait.reject(errorFor(id));
+        // A factory that throws still fails its wait, so the waits after it are not left open.
+        try {
+          wait.reject(errorFor(id));
+        } catch (err) {
+          wait.reject(toError(err));
+        }
       }
     },
     ids: () => [...waits.keys()],

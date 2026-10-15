@@ -50,6 +50,26 @@ describe('createPendingReplies', () => {
     expect(replies.ids()).toEqual([]);
   });
 
+  it('As a channel closing down, I still fail every wait when one error factory throws', async () => {
+    // Given
+    const replies = createPendingReplies<string, string>();
+    const a = replies.wait('a');
+    const b = replies.wait('b');
+    const settled = [expect(a).rejects.toThrow('no error for a'), expect(b).rejects.toThrow('lost b')];
+
+    // When
+    replies.rejectAll(id => {
+      if (id === 'a') {
+        throw new Error('no error for a');
+      }
+      return new Error(`lost ${id}`);
+    });
+
+    // Then
+    await Promise.all(settled);
+    expect(replies.ids()).toEqual([]);
+  });
+
   it('As a channel reading progress, I read what a request left with its wait until it is answered', () => {
     // Given
     const replies = createPendingReplies<string, string, { method: string }>();

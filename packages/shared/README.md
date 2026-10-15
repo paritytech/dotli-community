@@ -33,7 +33,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - A pending-replies table pairs a request with the reply that carries its id. A settled id leaves the table, so a late
   reply settles nothing, and a dead channel fails every open wait at once.
 - A lazy load runs one load at a time and keeps what it loaded for every later caller. A failed load rejects the caller
-  that ran it and is not kept, so the next caller loads again, and only the first failure is reported.
+  that ran it and is not kept, so the next caller loads again, and only the first failure is passed to the caller's
+  report hook.
 - A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
 - The logger writes to the console only in debug builds, read from the `VITE_APP_DEBUG` build flag at load so the first
   log of every entry point honours it. Warn, error and event always reach the sink bound with `bindLogSink`.

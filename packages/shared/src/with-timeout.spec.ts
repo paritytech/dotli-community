@@ -48,6 +48,22 @@ describe('withTimeout', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('As a caller whose error factory throws a string, I get an Error that keeps the string as its cause', async () => {
+    // Given
+    const timed = withTimeout(new Promise<never>(() => undefined), 1_000, () => {
+      // eslint-disable-next-line no-throw-literal, @typescript-eslint/only-throw-error -- the case under test is a non-Error throw
+      throw 'plain string';
+    });
+    const settled = expect(timed).rejects.toMatchObject({ cause: 'plain string' });
+
+    // When
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then
+    await settled;
+    await expect(timed).rejects.toBeInstanceOf(Error);
+  });
+
   it('As two callers sharing one piece of work, the tighter budget fails and the looser one still gets the value', async () => {
     // Given
     let resolve: (value: number) => void = () => undefined;
