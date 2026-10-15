@@ -1,18 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Only edits the filter state. Matching lives in `@dotli/truapi-debug`.
+// Only edits the filter state. The list does the matching.
 
 import { createMemo } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { compileQuery, type DirectionFilter, type FilterState } from './model/filters.js';
 import { FilterBar, FilterChips, FilterCheck, FilterGroup, FilterInput, type FilterChip } from './shared/Filters.js';
+import { IncomingIcon } from './icons/IncomingIcon.js';
+import { OutgoingIcon } from './icons/OutgoingIcon.js';
 import s from './EventFilters.module.css';
 
 const DIRECTIONS: readonly FilterChip<DirectionFilter>[] = [
   { value: 'both', label: 'both' },
-  { value: 'outgoing', label: '▶ out' },
-  { value: 'incoming', label: '◀ in' },
+  { value: 'outgoing', label: 'out', icon: OutgoingIcon },
+  { value: 'incoming', label: 'in', icon: IncomingIcon },
 ];
 
 const ALL_PRODUCTS = '__all';

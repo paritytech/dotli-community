@@ -183,7 +183,7 @@ export const ResolutionTabIgnoresTraffic: Story = {
         part('td-section', 'truapi').click();
       });
       await step('Then the badges catch up once', async () => {
-        await expect(pendingBadge(rows()[1999])?.textContent).toMatch(/^⟳ \d+ms pending$/);
+        await expect(pendingBadge(rows()[1999])?.textContent).toMatch(/^\d+ms pending$/);
         await expect(within(part('td-list')).getAllByTestId('td-pending')).toHaveLength(2000);
       });
     }),
@@ -269,8 +269,8 @@ export const PendingTickNoFanOut: Story = {
           clock.advance(1000);
         });
         await step('Then every badge updates without a fan-out warning', async () => {
-          await expect(badge).toHaveTextContent('⟳ 1.0s pending');
-          await expect(pendingBadge(rows()[1999])).toHaveTextContent('⟳ 1.0s pending');
+          await expect(badge).toHaveTextContent('1.0s pending');
+          await expect(pendingBadge(rows()[1999])).toHaveTextContent('1.0s pending');
           await expect(fanOut()).toEqual([]);
         });
       }),

@@ -3,8 +3,9 @@
 
 // The panel's filter controls. Each control carries its value as `data-value`, and the caller owns the filter state.
 
-import { For } from 'solid-js';
+import { For, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import type { IconProps } from '../icons/icon-props.js';
 import { Bar } from './Bar.js';
 import s from './Filters.module.css';
 
@@ -58,6 +59,8 @@ export function FilterCheck(props: {
 export interface FilterChip<T extends string> {
   value: T;
   label: string;
+  /** Drawn before the label. */
+  icon?: ((props: IconProps) => JSX.Element) | undefined;
 }
 
 /** Chips picking one value. Keyed by value, so a list that changes under traffic keeps its nodes and clicks land. */
@@ -70,20 +73,24 @@ export function FilterChips<T extends string>(props: {
   return (
     <div class={s['chips']}>
       <For each={props.chips} keyed={chip => chip.value}>
-        {chip => (
-          <button
-            type="button"
-            class={s['chip']}
-            data-testid={props.testId}
-            data-value={chip().value}
-            data-active={props.selected === chip().value ? '' : undefined}
-            onClick={() => {
-              props.onSelect(chip().value);
-            }}
-          >
-            {chip().label}
-          </button>
-        )}
+        {chip => {
+          const Icon = untrack(() => chip().icon);
+          return (
+            <button
+              type="button"
+              class={s['chip']}
+              data-testid={props.testId}
+              data-value={chip().value}
+              data-active={props.selected === chip().value ? '' : undefined}
+              onClick={() => {
+                props.onSelect(chip().value);
+              }}
+            >
+              {Icon === undefined ? null : <Icon size={8} />}
+              {chip().label}
+            </button>
+          );
+        }}
       </For>
     </div>
   );

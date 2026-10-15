@@ -12,6 +12,9 @@ import { COPY_STATUS, copyText, type CopyOutcome } from './shared/copy.js';
 import { createFlash } from './shared/flash.js';
 import { Button } from './shared/Button.js';
 import { SectionTabs } from './SectionTabs.js';
+import { CheckIcon } from './icons/CheckIcon.js';
+import { ChevronDownIcon } from './icons/ChevronDownIcon.js';
+import { ChevronUpIcon } from './icons/ChevronUpIcon.js';
 import { CloseIcon } from './icons/CloseIcon.js';
 import { CopyIcon } from './icons/CopyIcon.js';
 import { DockBottomIcon } from './icons/DockBottomIcon.js';
@@ -68,6 +71,7 @@ export function Header(props: {
   };
 
   const dockLabel = (): string => (props.dock === 'right' ? 'Dock to bottom' : 'Dock to right');
+  const collapseLabel = (): string => (props.collapsed ? 'Expand' : 'Collapse');
   const events = (): boolean => props.section === 'truapi';
   const clearable = (): boolean => events() || props.section === 'resolution';
 
@@ -104,7 +108,9 @@ export function Header(props: {
         onClick={copyToClipboard}
       >
         <Show when={copyOutcome()} fallback={<CopyIcon />}>
-          {outcome => (outcome() === 'copied' ? '✓' : '✕')}
+          {outcome =>
+            outcome() === 'copied' ? <CheckIcon testId="td-copy-done" /> : <CloseIcon testId="td-copy-failed" />
+          }
         </Show>
       </Button>
       <Announce testId="td-copy-status">{copyStatus()}</Announce>
@@ -118,8 +124,15 @@ export function Header(props: {
       >
         {props.dock === 'right' ? <DockBottomIcon /> : <DockRightIcon />}
       </Button>
-      <Button testId="td-collapse" icon title="Collapse" onClick={props.onToggleCollapse}>
-        {props.collapsed ? '▲' : '▼'}
+      <Button
+        testId="td-collapse"
+        icon
+        title={collapseLabel()}
+        label={collapseLabel()}
+        expanded={!props.collapsed}
+        onClick={props.onToggleCollapse}
+      >
+        {props.collapsed ? <ChevronUpIcon /> : <ChevronDownIcon />}
       </Button>
       <Button testId="td-close" icon title="Hide" label="Hide" onClick={props.onExit}>
         <CloseIcon />

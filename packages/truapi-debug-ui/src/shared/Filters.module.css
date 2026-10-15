@@ -41,6 +41,9 @@
   border: 1px solid var(--td-line-strong);
   color: var(--td-fg-muted);
   padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font: inherit;
   font-size: 11px;
   border-radius: 999px;

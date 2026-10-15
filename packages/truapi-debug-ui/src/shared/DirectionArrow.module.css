@@ -3,7 +3,8 @@
 
 .arrow {
   min-width: 0;
-  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
 }
 .in {
   color: var(--td-green);

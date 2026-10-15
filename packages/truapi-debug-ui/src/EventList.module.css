@@ -54,6 +54,9 @@
   border: 1px solid var(--td-slate-line);
   font-size: 10px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .pending[data-slow] {
   background: var(--td-pink-bg);

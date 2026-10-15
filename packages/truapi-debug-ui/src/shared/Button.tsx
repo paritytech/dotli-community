@@ -13,6 +13,8 @@ export function Button(props: {
   icon?: boolean;
   /** A toggle that is on, such as Pause while paused. */
   active?: boolean;
+  /** For a button that shows or hides a region, whether it is shown. */
+  expanded?: boolean | undefined;
   title?: string | undefined;
   label?: string | undefined;
   disabled?: boolean;
@@ -27,6 +29,7 @@ export function Button(props: {
       type={props.type ?? 'button'}
       data-testid={props.testId}
       data-active={props.active === true ? '' : undefined}
+      aria-expanded={props.expanded === undefined ? undefined : props.expanded ? 'true' : 'false'}
       title={props.title}
       aria-label={props.label}
       disabled={props.disabled}

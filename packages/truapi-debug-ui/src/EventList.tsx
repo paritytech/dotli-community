@@ -26,6 +26,7 @@ import { itemClass, itemListClass } from './shared/ItemList.js';
 import { LayerBadge } from './shared/LayerBadge.js';
 import { Latency } from './shared/Latency.js';
 import { MethodTag } from './shared/MethodTag.js';
+import { PendingIcon } from './icons/PendingIcon.js';
 import { Timestamp } from './shared/Timestamp.js';
 import { usePanelWork, type PanelWork } from './work.js';
 import s from './EventList.module.css';
@@ -280,7 +281,8 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
             data-slow={(waiting() ?? 0) >= SLOW_AFTER_MS ? '' : undefined}
             data-pending-key={pendingKey ?? ''}
           >
-            {`⟳ ${ctx.work.formatPending(waiting() ?? 0)} pending`}
+            <PendingIcon size={10} />
+            {`${ctx.work.formatPending(waiting() ?? 0)} pending`}
           </span>
         </Show>
         {data.summary !== '' ? (

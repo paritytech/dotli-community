@@ -184,7 +184,7 @@ export const CollapseRestoresHeight: Story = {
     });
     await step('Then only the header shows', async () => {
       await expect(panel()).toHaveAttribute('data-collapsed');
-      await expect(part('td-collapse')).toHaveTextContent('▲');
+      await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'false');
       await expect(box(panel()).height).toBeLessThan(368);
     });
     const collapsed = box(panel()).height;
@@ -199,7 +199,7 @@ export const CollapseRestoresHeight: Story = {
     });
     await step('Then the dragged height comes back', async () => {
       await expect(panel()).not.toHaveAttribute('data-collapsed');
-      await expect(part('td-collapse')).toHaveTextContent('▼');
+      await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'true');
       await expect(box(panel()).height).toBeCloseTo(368, 0);
     });
   },

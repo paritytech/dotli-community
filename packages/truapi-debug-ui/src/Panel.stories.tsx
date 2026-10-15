@@ -87,8 +87,10 @@ export const Default: Story = {
         await expect(part(id)).toHaveAttribute('title', title);
         await expect(part(id).querySelector('svg')).not.toBeNull();
       }
-      await expect(part('td-collapse')).toHaveTextContent('▼');
+      await expect(header.getByRole('button', { name: 'Collapse' })).toBe(part('td-collapse'));
       await expect(part('td-collapse')).toHaveAttribute('title', 'Collapse');
+      await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'true');
+      await expect(part('td-collapse').querySelector('svg')).not.toBeNull();
     });
     await step('Then the filters start wide open', async () => {
       const filters = within(part('td-filters'));
@@ -98,7 +100,8 @@ export const Default: Story = {
         ['system', true],
       ]);
       const dirs = filters.getAllByTestId('td-dir');
-      await expect(dirs.map(d => d.textContent)).toEqual(['both', '▶ out', '◀ in']);
+      await expect(dirs.map(d => d.textContent)).toEqual(['both', 'out', 'in']);
+      await expect(dirs.map(d => d.querySelector('svg') !== null)).toEqual([false, true, true]);
       await expect(dirs.map(d => d.hasAttribute('data-active'))).toEqual([true, false, false]);
       const chips = filters.getAllByTestId('td-product-chip');
       await expect(chips.map(c => c.textContent)).toEqual(['all']);
@@ -128,7 +131,8 @@ export const StartCollapsed: Story = {
   play: async ({ step }) => {
     await step('Then the panel mounts header-only', async () => {
       await expect(panel()).toHaveAttribute('data-collapsed');
-      await expect(part('td-collapse')).toHaveTextContent('▲');
+      await expect(part('td-collapse')).toHaveAccessibleName('Expand');
+      await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'false');
       await expect(part('td-resize-handle')).toHaveAttribute('data-disabled');
       await expect(part('td-filters')).toHaveAttribute('hidden');
     });
@@ -154,7 +158,7 @@ export const TruapiRows: Story = {
         await expect(rowByTag('system_handshake_request')).not.toHaveAttribute('data-system');
         await expect(rowByTag('system_handshake_request')).toHaveAttribute('role', 'listitem');
         await expect(request.getByTestId('td-time')).toHaveTextContent('12:34:56.789');
-        await expect(request.getByTestId('td-arrow-out')).toHaveTextContent('▶');
+        await expect(request.getByTestId('td-arrow-out')).toHaveAccessibleName('outgoing');
         await expect(request.queryByTestId('td-arrow-in')).toBeNull();
         await expect(request.getByTestId('td-product')).toHaveTextContent('app.dot');
         await expect(request.getByTestId('td-product')).not.toHaveAttribute('data-anon');
@@ -164,7 +168,7 @@ export const TruapiRows: Story = {
         await expect(request.queryByTestId('td-latency')).toBeNull();
 
         const response = within(rowByTag('system_handshake_response'));
-        await expect(response.getByTestId('td-arrow-in')).toHaveTextContent('◀');
+        await expect(response.getByTestId('td-arrow-in')).toHaveAccessibleName('incoming');
         await expect(response.getByTestId('td-tag')).toHaveAttribute('data-kind', 'response');
         await expect(response.getByTestId('td-latency')).toHaveTextContent('+50ms');
         await expect(response.getByTestId('td-summary')).toHaveTextContent('ok=true');
@@ -411,7 +415,7 @@ export const CopyFlashesCheck: Story = {
       await userEvent.click(copy());
     });
     await step('Then the filtered JSON is on the clipboard and the button flashes a check mark', async () => {
-      await waitFor(() => expect(copy()).toHaveTextContent('✓'));
+      await waitFor(() => expect(within(copy()).getByTestId('td-copy-done')).toBeInTheDocument());
       await expect(part('td-copy-status')).toHaveTextContent('Copied');
       await expect(copy()).toBeDisabled();
       await expect(effects.writeClipboard).toHaveBeenCalledTimes(1);
@@ -428,7 +432,7 @@ export const CopyFlashesCheck: Story = {
     });
     await step('Then the button comes back after the flash', async () => {
       await waitFor(() => expect(copy()).toBeEnabled());
-      await expect(copy()).not.toHaveTextContent('✓');
+      await expect(within(copy()).queryByTestId('td-copy-done')).toBeNull();
       await expect(part('td-copy-status').textContent).toBe('');
       await expect(copy().querySelector('svg')).not.toBeNull();
     });
@@ -448,7 +452,7 @@ export const CopyRefusedFlashesCross: Story = {
       await userEvent.click(copy());
     });
     await step('Then the button flashes a cross', async () => {
-      await waitFor(() => expect(copy()).toHaveTextContent('✕'));
+      await waitFor(() => expect(within(copy()).getByTestId('td-copy-failed')).toBeInTheDocument());
       await expect(part('td-copy-status')).toHaveTextContent('Copy failed');
       await expect(copy()).toBeDisabled();
     });
@@ -844,14 +848,15 @@ export const PendingBadgeCountsUp: Story = {
       });
       await step('Then it shows a pending badge', async () => {
         await expect(badge()).not.toHaveAttribute('hidden');
-        await expect(badge()?.textContent).toMatch(/^⟳ \d+ms pending$/);
+        await expect(badge()?.textContent).toMatch(/^\d+ms pending$/);
+        await expect(badge()?.querySelector('svg')).not.toBeNull();
         await expect(badge()).not.toHaveAttribute('data-slow');
       });
       await step('Then it counts up each second, and turns slow', async () => {
         clock.advance(980);
-        await expect(badge()).toHaveTextContent('⟳ 1.0s pending');
+        await expect(badge()).toHaveTextContent('1.0s pending');
         clock.advance(2000);
-        await expect(badge()).toHaveTextContent('⟳ 3.0s pending');
+        await expect(badge()).toHaveTextContent('3.0s pending');
         await expect(badge()).toHaveAttribute('data-slow');
       });
       await step('When the reply lands', () => {
