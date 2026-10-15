@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./fixed": "./src/fixed.ts",
+    "./networks": "./src/networks.ts",
     "./package.json": "./package.json"
   },
   "scripts": {

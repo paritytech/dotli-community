@@ -46,3 +46,8 @@ timeouts.
 What a context that never receives the runtime network config may read: `DEBUG`, `CHAIN_ROLES`, `ChainRole`,
 `chainRoleForGenesis`, `getActiveFixedServicesConfig`, `FixedServicesConfig`, `getActiveSupportedGenesisHashes`,
 `isValidNetwork`, `Network`. A name joins only once it reads no overridable field.
+
+### `@dotli/config/networks`
+
+The network table for Node tooling, which cannot load the bare entry: `NETWORK_NAME_TO_SERVICES_CONFIG`, `NetworkName`,
+`isValidNetwork`, `Network`. It reads no page state at load.

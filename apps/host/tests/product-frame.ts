@@ -5,10 +5,8 @@
 // product Frame once `dotli:app:end` fires.
 
 import { errors, expect, type Frame, type Page } from '@playwright/test';
-// From its source file: the package barrel loads `@dotli/config`, which reads `self.location` and `import.meta.env` at
-// load, so Node cannot load it.
 import { isSandboxUrl, waitForFrame } from './functional/helpers/frames.js';
-import { SANDBOX_CONTRACT_PARAMS } from '../../../packages/sandbox-wire/src/contract-params.js';
+import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire/contract-params';
 
 export interface ProductLocation {
   pathname: string;

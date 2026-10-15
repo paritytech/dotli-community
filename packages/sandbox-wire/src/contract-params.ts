@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Imports nothing, so the Playwright helpers can load it from Node, where the `@dotli/config` barrel cannot load.
+// Imports nothing, so its own entry loads in Node, where the package's main entry cannot.
 
 export const SANDBOX_SCHEMA_VERSION = 3;
 

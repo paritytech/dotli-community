@@ -1,14 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// From its source file: the `@dotli/config` barrel reads `self.location` and `import.meta.env` at load, so Node
-// cannot load it.
-import {
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  NetworkName,
-  isValidNetwork,
-  type Network,
-} from '../../../packages/config/src/network.js';
+import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName, isValidNetwork, type Network } from '@dotli/config/networks';
 
 export const DOMAIN = process.env['DOMAIN'] ?? 'host-playground';
 /** The functional config starts one preview server per worker. */
