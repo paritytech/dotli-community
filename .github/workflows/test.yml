@@ -123,19 +123,13 @@ jobs:
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
 
-      # The installer at a fixed commit, and the CLI at the TrUAPI version the host builds against, so a run is
-      # reproducible and a TrUAPI bump moves both.
+      # The installer at a fixed commit, so the script a run executes cannot change under it. Asked for no version,
+      # it installs the CLI's latest stable release.
       - name: Install truapi-host CLI
         env:
           INSTALLER_URL: https://raw.githubusercontent.com/paritytech/host-rust-core/743f0bafab7467c3d37ca182b15af683e6564bc7/scripts/truapi-host-installer.sh
         run: |
           set -euo pipefail
-          TRUAPI_HOST_VERSION="$(node -p 'require("./package.json").dependencies["@parity/truapi"]')"
-          if ! [[ "$TRUAPI_HOST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::@parity/truapi is '$TRUAPI_HOST_VERSION', not an exact version the CLI can be installed at."
-            exit 1
-          fi
-          export TRUAPI_HOST_VERSION
           curl -fsSL --proto '=https' -o "$RUNNER_TEMP/truapi-host-installer.sh" "$INSTALLER_URL"
           bash "$RUNNER_TEMP/truapi-host-installer.sh"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
