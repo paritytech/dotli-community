@@ -49,10 +49,10 @@ export const E2E_FAST = 'e2e.fast_path';
 /** CID cache miss, then resolve, fetch and render. */
 export const E2E_SLOW = 'e2e.slow_path';
 
-/** One `bitswap_v1_get` round trip. Tag `outcome` with `ok, retry, backoff, not-found, invalid-cid, timeout`. */
+/** One `bitswap_v1_get` round trip. Tag `outcome` (`ok, error, aborted`) and, on a failure, `reason` (the error name). */
 export const CONTENT_BITSWAP_RPC = 'content.bitswap_rpc';
 
-/** Blocks per content fetch, 1 for raw and N for dag-pb directories. */
+/** Blocks per content fetch, as a distribution: 1 for raw and N for dag-pb directories. */
 export const CONTENT_BITSWAP_BLOCKS = 'content.bitswap_blocks';
 
 /** A bitswap relay step that failed. Tag `outcome` (`error`), `reason` (the error name) and `step` (`verify, cache_read, cache_delete, cache_write`). */

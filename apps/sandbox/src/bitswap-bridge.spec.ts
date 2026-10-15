@@ -101,7 +101,7 @@ describe('sandbox bitswap bridge', () => {
     // Given a block request the host has not answered
     const sandbox = harness();
     const pending = sandbox.bridge.requestBlock('bafyX');
-    const settled = expect(pending).rejects.toThrow(/aborted/);
+    const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
 
     // When the frame goes away for good
     sandbox.pagehide(false);

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { dur, log } from '@dotli/shared';
+import { dur, errorName, log } from '@dotli/shared';
 
 import { m, spans as S } from '@dotli/metrics';
 import { CID } from 'multiformats/cid';
@@ -40,7 +40,8 @@ async function fetchViaBitswapRpc(
       return bytes;
     } catch (err) {
       m.count(S.CONTENT_BITSWAP_RPC, {
-        outcome: classifyBitswapError(err),
+        outcome: isAbort(err) ? 'aborted' : 'error',
+        reason: errorName(err) ?? 'unknown',
       });
       throw err;
     } finally {
@@ -49,7 +50,7 @@ async function fetchViaBitswapRpc(
   };
 
   const result = await readViaBitswap(rootCid, tracedSource, onStatus);
-  m.count(S.CONTENT_BITSWAP_BLOCKS, { count: String(blockCount) });
+  m.distribution(S.CONTENT_BITSWAP_BLOCKS, blockCount, 'none');
   return result;
 }
 
@@ -78,23 +79,9 @@ async function readRawRoot(bytes: Uint8Array): Promise<FetchResult> {
   return isCarFile(bytes) ? toFetchResult(await parseIpfsResponse(bytes)) : { type: 'single', content: bytes };
 }
 
-function classifyBitswapError(err: unknown): 'not-found' | 'invalid-cid' | 'timeout' | 'aborted' | 'error' {
-  if (err instanceof Error) {
-    const msg = err.message;
-    if (msg.includes('not found')) {
-      return 'not-found';
-    }
-    if (msg.includes('invalid CID')) {
-      return 'invalid-cid';
-    }
-    if (msg.includes('timed out')) {
-      return 'timeout';
-    }
-    if (msg.includes('aborted')) {
-      return 'aborted';
-    }
-  }
-  return 'error';
+/** A frame's teardown rejects its fetches by the platform's abort name, which is not a failure. */
+function isAbort(err: unknown): boolean {
+  return errorName(err) === 'AbortError';
 }
 
 async function fetchViaGateway(
@@ -186,7 +173,12 @@ export async function fetchArchive(
   } catch (err) {
     performance.mark('dotli:fetch:end');
     stopFetch();
-    log.child({ flow: 'content' }).error(`[dot.li fetch] ${method} failed for ${cidString}:`, err);
+    if (isAbort(err)) {
+      // The sandbox ends this load as torn down, so it is a breadcrumb rather than an error.
+      log.event(`Fetch of ${cidString} stopped as its frame went away`, { flow: 'content', method });
+    } else {
+      log.child({ flow: 'content' }).error(`[dot.li fetch] ${method} failed for ${cidString}:`, err);
+    }
     throw err;
   }
 }

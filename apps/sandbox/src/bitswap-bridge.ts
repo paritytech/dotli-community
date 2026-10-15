@@ -79,7 +79,7 @@ export function createBitswapBridge(deps: BitswapBridgeDeps): BitswapBridge {
     postToHost(parent, { type: 'dotli:bitswap-abort', ids: [...pending.keys()], frame });
     // Reject rather than clear, or the promises never settle: the reply listener ignores unknown ids.
     for (const [, entry] of pending) {
-      entry.reject(new Error('bitswap-relay: aborted, the sandbox frame was torn down'));
+      entry.reject(new DOMException('bitswap-relay: aborted, the sandbox frame was torn down', 'AbortError'));
     }
     pending.clear();
   });

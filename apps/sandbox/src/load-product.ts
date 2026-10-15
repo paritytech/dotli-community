@@ -7,7 +7,7 @@
 import { m, spans as S } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
-import { log } from '@dotli/shared';
+import { errorName, log } from '@dotli/shared';
 
 export type SandboxParams = Extract<ReturnType<typeof validateSandboxParams>, { ok: true }>['params'];
 
@@ -73,9 +73,9 @@ function resultFileCount(result: FetchResult): number {
   return result.type === 'single' ? 1 : Object.keys(result.files).length;
 }
 
-/** Matched on the message, since it crosses two modules as a plain Error. */
+/** A frame's teardown rejects its fetches by the platform's abort name. */
 function isTeardownAbort(err: unknown): boolean {
-  return err instanceof Error && err.message.includes('bitswap-relay: aborted');
+  return errorName(err) === 'AbortError';
 }
 
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {

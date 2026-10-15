@@ -9,6 +9,7 @@ import * as CarBufferWriter from '@ipld/car/buffer-writer';
 import { CID } from 'multiformats/cid';
 import { create } from 'multiformats/hashes/digest';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
+import { bindLogSink, type LogLevel } from '@dotli/shared';
 import { fetchArchive, readArchiveFiles } from './fetch.js';
 
 /** The metrics, measurements and tags the page reports, recorded for each test. */
@@ -157,6 +158,54 @@ describe('fetchArchive', () => {
     expect(reported()).toEqual(
       expect.arrayContaining(['dotli.content.fetch', 'dotli.content.bitswap_rpc', 'dotli.content.bitswap_blocks']),
     );
+    expect(metrics.distributions).toContainEqual(
+      expect.objectContaining({ name: 'dotli.content.bitswap_blocks', value: 3 }),
+    );
+    expect(metrics.counts.map(({ name }) => name)).not.toContain('dotli.content.bitswap_blocks');
+  });
+
+  it('As an operator, a block that fails is counted as an error under its error name and logged', async () => {
+    // Given a block no peer holds
+    const logged: LogLevel[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: level => {
+          logged.push(level);
+        },
+      }),
+    );
+    const missing = Object.assign(new Error('provider discovery exhausted'), { name: 'BitswapNotFoundError' });
+    const root = cidOf(enc('<p>one</p>'), RAW);
+
+    // When
+    const fetched = fetchArchive(root.toString(), undefined, { bitswapBlockSource: () => Promise.reject(missing) });
+
+    // Then
+    await expect(fetched).rejects.toBe(missing);
+    expect(metrics.counted('content.bitswap_rpc')).toEqual([{ outcome: 'error', reason: 'BitswapNotFoundError' }]);
+    expect(logged).toContain('error');
+  });
+
+  it('As an operator, a fetch the frame tore down is counted as aborted and logs no error', async () => {
+    // Given a block request the sandbox frame gave up as it went away
+    const logged: LogLevel[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: level => {
+          logged.push(level);
+        },
+      }),
+    );
+    const teardown = new DOMException('bitswap-relay: aborted, the sandbox frame was torn down', 'AbortError');
+    const root = cidOf(enc('<p>one</p>'), RAW);
+
+    // When
+    const fetched = fetchArchive(root.toString(), undefined, { bitswapBlockSource: () => Promise.reject(teardown) });
+
+    // Then
+    await expect(fetched).rejects.toBe(teardown);
+    expect(metrics.counted('content.bitswap_rpc')).toEqual([{ outcome: 'aborted', reason: 'AbortError' }]);
+    expect(logged).not.toContain('error');
   });
 
   it('As a visitor on the gateway backend, a product load of a CAR under a raw CID gets an archive', async () => {

@@ -212,13 +212,25 @@ describe('loadProduct', () => {
 
   it('As a visitor leaving mid-load, I see a fetch the frame tore down end the load quietly', async () => {
     // Given a relay fetch aborted by the frame's teardown
-    const page = harness(new Error('bitswap-relay: aborted, the sandbox frame was torn down'));
+    const page = harness(new DOMException('The sandbox frame was torn down', 'AbortError'));
 
     // When the first attempt loads it
     const outcome = await loadProduct({ params: params({ backend: 'smoldot-direct' }), attempt: 1 }, page.deps);
 
     // Then the load ends as torn down, not failed
     expect(outcome).toEqual({ outcome: 'torn_down' });
+  });
+
+  it('As a visitor, a plain error whose message reads like a teardown is still shown as a failure', async () => {
+    // Given a fetch that failed with an ordinary error, not an abort
+    const broken = new Error('bitswap-relay: aborted, the sandbox frame was torn down');
+    const page = harness(broken);
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: params({ backend: 'smoldot-direct' }), attempt: 1 }, page.deps);
+
+    // Then
+    expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: broken });
   });
 
   it('As a visitor asking for a full reset, I get the origin wiped and a fresh worker awaited on the first attempt only', async () => {
