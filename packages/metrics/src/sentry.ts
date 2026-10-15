@@ -161,7 +161,7 @@ export function initSentry(source: SentrySource): void {
 
   if ((dsn === undefined || dsn === '') && env !== 'development') {
     // eslint-disable-next-line no-console -- error reporting is off, so the console is the only place to say so
-    console.warn(`[dot.li sentry] VITE_SENTRY_DSN missing in env "${env}" — error reporting is DISABLED.`);
+    console.warn(`[dot.li sentry] VITE_SENTRY_DSN missing in env "${env}". Error reporting is DISABLED.`);
   }
 
   // Handled failures leave a breadcrumb trail in production regardless of `DEBUG`.

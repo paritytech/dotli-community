@@ -56,9 +56,9 @@ jobs:
               fmt_size=$(awk "BEGIN {printf \"%.1f KB\", $size/1024}")
               fmt_max=$(awk "BEGIN {printf \"%.1f KB\", $max/1024}")
               fmt_over=$(awk "BEGIN {printf \"%.1f KB\", ($size-$max)/1024}")
-              echo "- \`${label}\` exceeded budget: **${fmt_size}** > ${fmt_max} (+${fmt_over}) — \`${file#apps/}\`" >> /tmp/budget-warnings.md
+              echo "- \`${label}\` exceeded budget: **${fmt_size}** > ${fmt_max} (+${fmt_over}) in \`${file#apps/}\`" >> /tmp/budget-warnings.md
             else
-              echo "${label}: ${size} B (budget ${max} B) — ok"
+              echo "${label}: ${size} B (budget ${max} B): ok"
             fi
           }
           check "protocol-iframe-entry" \
@@ -82,7 +82,7 @@ jobs:
               echo "::warning::${label} exceeded budget: ${gz} B gzip > ${max} B"
               echo "- \`${label}\` exceeded budget: **${gz} B gzip** > ${max} B" >> /tmp/budget-warnings.md
             else
-              echo "${label}: ${gz} B gzip (budget ${max} B) — ok"
+              echo "${label}: ${gz} B gzip (budget ${max} B): ok"
             fi
           }
           check_eager "host-eager-path" apps/host/dist 172000
@@ -110,7 +110,7 @@ jobs:
             HAS_BASELINE=true
           else
             HAS_BASELINE=false
-            echo "::warning::No baseline found — sizes shown without comparison"
+            echo "::warning::No baseline found. Sizes shown without comparison"
           fi
 
           fmt() {
@@ -186,7 +186,7 @@ jobs:
             echo ""
             if [[ -s /tmp/budget-warnings.md ]]; then
               echo "> [!WARNING]"
-              echo "> **Bundle budget exceeded** — not a blocker, but please confirm the regression is intentional."
+              echo "> **Bundle budget exceeded.** Not a blocker, but please confirm the regression is intentional."
               echo ">"
               while IFS= read -r line; do echo "> ${line}"; done < /tmp/budget-warnings.md
               echo ""

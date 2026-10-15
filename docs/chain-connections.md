@@ -239,7 +239,7 @@ sequenceDiagram
   Cli->>Use: onHalt('chain')
   Use->>Cli: connect again (host pool: on its next lease)
   Cli->>Ctx: chainConnect
-  Ctx->>Pool: new lease → entry rebuilt
+  Ctx->>Pool: new lease, entry rebuilt
 ```
 
 - Everything that was waiting is answered first, so nothing hangs.

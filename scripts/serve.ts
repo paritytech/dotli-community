@@ -64,7 +64,7 @@ function send(
 
 if (PORT === 80) {
   console.error(
-    "serve: PORT=80 is not supported — the bundle derives the protocol iframe's\n" +
+    "serve: PORT=80 is not supported. The bundle derives the protocol iframe's\n" +
       'origin from window.location.port, which browsers leave empty on port 80, so\n' +
       'the iframe would be looked for on port 5173 and never load. Use another port.',
   );

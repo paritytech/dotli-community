@@ -1353,7 +1353,7 @@ describe('workerNetwork', () => {
     // Then
     expect(network).toEqual({
       ok: false,
-      message: 'Unexpected SharedWorker name "dotli-protocol" — iframe did not encode the active network.',
+      message: 'Unexpected SharedWorker name "dotli-protocol". The iframe did not encode the active network.',
     });
   });
 });

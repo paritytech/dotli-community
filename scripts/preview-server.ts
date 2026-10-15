@@ -44,7 +44,7 @@ for (const [label, dir] of [
       console.error(`${label} build not found at ${dir}\nRun: npm run build (from monorepo root)`);
       process.exit(1);
     }
-    console.warn(`⚠ ${label} build not found at ${dir} — requests to this origin will 404`);
+    console.warn(`⚠ ${label} build not found at ${dir}. Requests to this origin will 404`);
   }
 }
 

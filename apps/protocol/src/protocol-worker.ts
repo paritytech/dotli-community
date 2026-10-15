@@ -163,7 +163,10 @@ function createLightClientStatus(initial: LightClientStatus): {
 export function workerNetwork(name: string): WorkerNetwork {
   const requested = name.startsWith(NETWORK_NAME_PREFIX) ? name.slice(NETWORK_NAME_PREFIX.length) : null;
   if (requested === null) {
-    return { ok: false, message: `Unexpected SharedWorker name "${name}" — iframe did not encode the active network.` };
+    return {
+      ok: false,
+      message: `Unexpected SharedWorker name "${name}". The iframe did not encode the active network.`,
+    };
   }
   if (!isValidNetwork(requested)) {
     return { ok: false, message: `Unknown protocol network: "${requested}"` };

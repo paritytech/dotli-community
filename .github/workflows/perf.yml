@@ -51,7 +51,7 @@ jobs:
             echo "HAVE_BASE=true" >> "$GITHUB_ENV"
           else
             echo "HAVE_BASE=false" >> "$GITHUB_ENV"
-            echo "::warning::No baseline found — run will be recorded without comparison"
+            echo "::warning::No baseline found. The run will be recorded without comparison"
           fi
 
       - name: Run perf tests (baseline)

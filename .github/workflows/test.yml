@@ -151,7 +151,7 @@ jobs:
           npx playwright test --config=tests/e2e/playwright.config.ts
           code=$?
           if [ "$code" -eq 99 ]; then
-            echo "::warning::Signing infrastructure unavailable — E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."
+            echo "::warning::Signing infrastructure unavailable. E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."
             echo "signing_unavailable=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -171,7 +171,7 @@ jobs:
         run: |
           R=tests/e2e/test-results/results.json
           if [ ! -f "$R" ]; then
-            echo "list=- (no results.json — suite likely crashed before any tests ran)" >> "$GITHUB_OUTPUT"
+            echo "list=- (no results.json, suite likely crashed before any tests ran)" >> "$GITHUB_OUTPUT"
             echo "summary=suite did not produce results" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -194,13 +194,13 @@ jobs:
         with:
           header: e2e-product
           message: |
-            ❌ **E2E Product suite failed** on `${{ github.event.pull_request.head.sha }}` — ${{ steps.failed.outputs.summary }}.
+            ❌ **E2E Product suite failed** on `${{ github.event.pull_request.head.sha }}}}`: ${{{{ steps.failed.outputs.summary }}.
 
             Failed tests:
             ${{ steps.failed.outputs.list }}
 
             Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            Artifacts: `e2e-product-results` (uploaded above) — open the failed test's `trace.zip` with `npx playwright show-trace`.
+            Artifacts: `e2e-product-results` (uploaded above). Open the failed test's `trace.zip` with `npx playwright show-trace`.
 
       - name: Clear stale failure note on PR (suite is green)
         if: success() && github.event_name == 'pull_request'
@@ -216,7 +216,7 @@ jobs:
         with:
           header: e2e-product-signing-unavailable
           message: |
-            ⚠️ **E2E Product suite skipped** — pairing/signing infrastructure is unavailable.
+            ⚠️ **E2E Product suite skipped**: pairing/signing infrastructure is unavailable.
 
             The truapi-host CLI could not complete pairing (testnet chains or
             identity backend outage). This is **not a dot.li test failure**.

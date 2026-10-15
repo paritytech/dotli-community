@@ -78,14 +78,14 @@ async function main(): Promise<void> {
     const [brSize, gzSize] = await Promise.all([compressBrotli(filePath, data), compressGzip(filePath, data)]);
     const rel = filePath.replace(DIST + '/', '');
     const brPct = ((1 - brSize / size) * 100).toFixed(0);
-    console.log(`  ${rel}: ${fmt(size)} → br ${fmt(brSize)} (-${brPct}%) / gz ${fmt(gzSize)}`);
+    console.log(`  ${rel}: ${fmt(size)}, br ${fmt(brSize)} (-${brPct}%), gz ${fmt(gzSize)}`);
     totalRaw += size;
     totalBr += brSize;
     totalGz += gzSize;
   }
 
   console.log(
-    `\nTotal: ${fmt(totalRaw)} → br ${fmt(totalBr)} (-${((1 - totalBr / totalRaw) * 100).toFixed(0)}%) / gz ${fmt(totalGz)}`,
+    `\nTotal: ${fmt(totalRaw)}, br ${fmt(totalBr)} (-${((1 - totalBr / totalRaw) * 100).toFixed(0)}%), gz ${fmt(totalGz)}`,
   );
 }
 

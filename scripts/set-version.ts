@@ -122,7 +122,7 @@ function runSet(packages: PkgVersion[], target: string): void {
       continue;
     }
     writeVersion(pkg, target);
-    console.log(`✓ ${rel(pkg.file)}: ${pkg.version} → ${target}`);
+    console.log(`✓ ${rel(pkg.file)}: ${pkg.version} to ${target}`);
     changed++;
   }
   console.log(

@@ -127,13 +127,13 @@ function assertFreshDist(): void {
       const distMtime = statSync(distIndex).mtimeMs;
       if (distMtime < lockMtime) {
         throw new Error(
-          `apps/${app}/dist is older than package-lock.json — run \`npm run build\` from the repo root before re-running e2e.`,
+          `apps/${app}/dist is older than package-lock.json. Run \`npm run build\` from the repo root before re-running e2e.`,
         );
       }
     }
   } catch (e) {
     if (e instanceof Error && e.message.includes('ENOENT')) {
-      throw new Error('dist directories missing — run `npm run build` from the repo root before running e2e.', {
+      throw new Error('dist directories missing. Run `npm run build` from the repo root before running e2e.', {
         cause: e,
       });
     }
@@ -154,7 +154,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     );
     process.exit(1);
   }
-  console.log(`[globalSetup] signing-host version: ${version} — pairing once.`);
+  console.log(`[globalSetup] signing-host version: ${version}, pairing once.`);
 
   await killStaleSigningHost();
 

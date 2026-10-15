@@ -12,7 +12,7 @@
 [![Polkadot](https://img.shields.io/badge/polkadot-ecosystem-E6007A?style=flat-square&logo=polkadot)](https://polkadot.com)
 
 A decentralized web browser that runs in your browser. Visit any Polkadot application with fully trustless, client-side
-resolution — no servers in the loop.
+resolution, with no servers in the loop.
 
 [Website](https://paseo.li) | [Report an Issue](https://github.com/paritytech/dotli-community/issues)
 
@@ -22,7 +22,7 @@ resolution — no servers in the loop.
 
 ## How to access apps
 
-dotli resolves apps by **subdomain** — the `.dot` name is the host:
+dotli resolves apps by **subdomain**. The `.dot` name is the host:
 
 | Format        | Example                            |
 | ------------- | ---------------------------------- |
@@ -97,13 +97,13 @@ through a Service Worker that acts as a virtual file system.
 ## How resolution works
 
 1. Parse the label from the subdomain (`host-playground.paseo.li` -> `host-playground`)
-2. Compute the ENS-style namehash (`node`) of the name — the resolver tries `app.<label>.dot` first and falls back to
+2. Compute the ENS-style namehash (`node`) of the name. The resolver tries `app.<label>.dot` first and falls back to
    `<label>.dot`
 3. Read the `contenthash` bytes for `node` directly from the dotNS ContentResolver contract storage
 4. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
 5. Create an iframe to `<label>.app.paseo.li?cid=<cid>` which fetches and renders the content
 
-All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
+All chain access is read-only storage reads through the smoldot light client, so no RPC server is needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
 ## How multi-file SPAs work
@@ -122,10 +122,10 @@ When a CID points to an IPFS directory (not a single file):
 
 dotli uses a two-layer cache for fast repeat visits:
 
-1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
-2. **Block cache** (host IndexedDB) — keeps the content blocks the host relays to the sandbox, hash-checked against
-   their CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is
-   credentialless, so its storage is dropped on reload
+1. **CID cache** (IndexedDB): maps `.dot` labels to their last-known CID
+2. **Block cache** (host IndexedDB): keeps the content blocks the host relays to the sandbox, hash-checked against their
+   CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is credentialless, so
+   its storage is dropped on reload
 
 On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield
 shows how the current page was loaded:
@@ -135,8 +135,8 @@ shows how the current page was loaded:
 | Green (Verified) | Checked by your in-browser light client (the default smoldot backend)         |
 | Orange (Trusted) | Served by an external RPC provider or IPFS gateway, not light-client verified |
 
-If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification
-with a **Reload** action rather than swapping content silently.
+If a background re-resolution finds the CID on the network has changed, dotli shows a **New version available**
+notification with a **Reload** action rather than swapping content silently.
 
 ## TrUAPI bridge
 
@@ -145,7 +145,7 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | Handler                        | What it does                                                                          |
 | ------------------------------ | ------------------------------------------------------------------------------------- |
 | `accountGet`                   | Derives a per-app public key via HDKD soft derivation                                 |
-| `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host                |
+| `getLegacyAccounts`            | Returns non-derived (imported) accounts. Always empty on the web host                 |
 | `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session                    |
 | `chainConnection`              | Returns an isolated broker connection over the selected chain backend                 |
 | `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                               |
@@ -262,7 +262,7 @@ E2E_CHAIN_BACKEND=smoldot-shared-worker npm run test:e2e:local
 Set `SIGNING_HOST_BIN` to a locally built binary (e.g. `../host-rust-core/target/debug/truapi-host`) instead of
 installing, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
 `apps/host/tests/e2e/.auth/signing-host`, so repeat runs reuse one test account; the first run registers a fresh lite
-username on-chain and can take a few minutes.
+username on the network and can take a few minutes.
 
 The command builds dotli with its debug-only localhost proxy enabled, starts both preview servers through Playwright,
 extracts the login QR deeplink, pairs a headless `truapi-host signing-host` process that auto-signs for the rest of the
@@ -342,11 +342,11 @@ take the same network override at **run time**, so one artifact works against an
 # container
 docker run -p 5173:5173 -e DOTLI_NETWORK='{…}' ghcr.io/paritytech/dotli-community:0.7.4
 
-# tarball — needs only node >= 22 or bun
+# tarball: needs only node >= 22 or bun
 DOTLI_NETWORK='{…}' node serve.mjs
 ```
 
-Overrides patch the tables above and reach endpoints only — `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
+Overrides patch the tables above and reach endpoints only: `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
 contract addresses stay fixed at build time, because they are the trust root for name resolution. See
 [docs/docker.md](docs/docker.md).
 

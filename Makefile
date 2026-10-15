@@ -135,7 +135,7 @@ _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 
 # Warns on stderr, since render-nginx pipes stdout. Envs without Sentry are legitimate, a silently dead tunnel is not.
 _sentry_warn = @test -n "$(SENTRY_DSN)" || \
-	echo "WARNING: SENTRY_DSN not set — rendering with the Sentry tunnel (/t) disabled." >&2
+	echo "WARNING: SENTRY_DSN not set. Rendering with the Sentry tunnel (/t) disabled." >&2
 
 # Prints the rendered nginx config for ENV, with no remote changes.
 render-nginx: _require-env-name

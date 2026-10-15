@@ -97,7 +97,7 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
     fail(
       'contract_top_level',
       'Sandbox URL not supported',
-      `Open this dApp through https://${deps.baseDomain} — the sandbox origin (${url.host}) is not a standalone entry point.`,
+      `Open this dApp through https://${deps.baseDomain}. The sandbox origin (${url.host}) is not a standalone entry point.`,
     );
     return Promise.resolve();
   }

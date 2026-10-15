@@ -102,7 +102,7 @@ test('As a user using smoldot directly, when the sync times out (>45s) I see the
   await mockProtocolIframe(
     page,
     errorResolveResponse(
-      'Sync to Asset Hub Paseo timed out after 45s — unable to reach peers',
+      'Sync to Asset Hub Paseo timed out after 45s. Unable to reach peers.',
       1_500,
       'NetworkSyncTimeoutError',
     ),

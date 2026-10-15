@@ -8,7 +8,7 @@
     </marker>
   </defs>
 
-  <!-- Participants — 7 lanes, evenly distributed -->
+  <!-- Participants: 7 lanes, evenly distributed -->
   <rect x="15" y="10" width="140" height="50" rx="6" fill="#909090" stroke="#606060" stroke-width="1.5"/>
   <text x="85" y="40" text-anchor="middle" font-weight="bold" fill="#3a3a3a">User</text>
 
@@ -36,7 +36,7 @@
   <text x="1045" y="32" text-anchor="middle" font-weight="bold" fill="#3a3a3a">apps/sandbox</text>
   <text x="1045" y="50" text-anchor="middle" font-size="10" fill="#606060">&lt;cid&gt;.app.paseo.li (iframe)</text>
 
-  <!-- Lifecycle bands on smoldot lane — transparent, dashed -->
+  <!-- Lifecycle bands on smoldot lane: transparent, dashed -->
   <rect x="665" y="70" width="120" height="100" rx="4" fill="none" stroke="#606060" stroke-width="1" stroke-dasharray="4,3"/>
   <text x="670" y="84" text-anchor="start" font-size="10" font-weight="bold" fill="#909090">COLD</text>
 
@@ -58,17 +58,17 @@
   <line x1="885"  y1="60" x2="885"  y2="930" stroke="#909090" stroke-width="1" stroke-dasharray="4,3"/>
   <line x1="1045" y1="60" x2="1045" y2="930" stroke="#909090" stroke-width="1" stroke-dasharray="4,3"/>
 
-  <!-- 1. User → host -->
+  <!-- 1. User to host -->
   <line x1="85" y1="115" x2="239" y2="115" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="162" y="109" text-anchor="middle" fill="#909090">visit example1.paseo.li</text>
   <text x="10" y="118" fill="#909090" font-size="10">1</text>
 
-  <!-- 2. host → Tab 1 protocol -->
+  <!-- 2. host to Tab 1 protocol -->
   <line x1="245" y1="148" x2="399" y2="148" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="322" y="142" text-anchor="middle" fill="#909090">open the protocol iframe</text>
   <text x="10" y="151" fill="#909090" font-size="10">2</text>
 
-  <!-- 3. Tab 1 protocol → smoldot: connect (Cold → Booting) -->
+  <!-- 3. Tab 1 protocol to smoldot: connect (Cold to Booting) -->
   <line x1="405" y1="220" x2="719" y2="220" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="562" y="214" text-anchor="middle" fill="#909090">connect (first port)</text>
   <text x="10" y="223" fill="#909090" font-size="10">3</text>
@@ -78,52 +78,52 @@
   <text x="773" y="263" text-anchor="start" fill="#909090">start smoldot · add Paseo and Asset Hub chains</text>
   <text x="10" y="263" fill="#909090" font-size="10">4</text>
 
-  <!-- 5. smoldot → Polkadot: warp-sync -->
+  <!-- 5. smoldot to Polkadot: warp-sync -->
   <line x1="725" y1="300" x2="879" y2="300" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="802" y="294" text-anchor="middle" fill="#909090">warp-sync</text>
   <text x="10" y="303" fill="#909090" font-size="10">5</text>
 
-  <!-- 6. Polkadot → smoldot: chain ready -->
+  <!-- 6. Polkadot to smoldot: chain ready -->
   <line x1="885" y1="335" x2="731" y2="335" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="808" y="330" text-anchor="middle" fill="#909090">Asset Hub finalized block ready</text>
   <text x="10" y="338" fill="#909090" font-size="10">6</text>
 
-  <!-- 7. smoldot self: presync complete (Booting → Warm) -->
+  <!-- 7. smoldot self: presync complete (Booting to Warm) -->
   <path d="M 725 357 H 765 V 371 H 731" fill="none" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="773" y="367" text-anchor="start" fill="#909090">presync complete</text>
   <text x="10" y="367" fill="#909090" font-size="10">7</text>
 
-  <!-- 8. Tab 1 protocol → smoldot: resolve -->
+  <!-- 8. Tab 1 protocol to smoldot: resolve -->
   <line x1="405" y1="415" x2="719" y2="415" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="562" y="409" text-anchor="middle" fill="#909090">resolve "example1"</text>
   <text x="10" y="418" fill="#909090" font-size="10">8</text>
 
-  <!-- 9. smoldot → Polkadot: read contenthash -->
+  <!-- 9. smoldot to Polkadot: read contenthash -->
   <line x1="725" y1="450" x2="879" y2="450" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="802" y="444" text-anchor="middle" fill="#909090">read contenthash for "example1" from DotNS</text>
   <text x="10" y="453" fill="#909090" font-size="10">9</text>
 
-  <!-- 10. Polkadot → smoldot: DotNS returns CID -->
+  <!-- 10. Polkadot to smoldot: DotNS returns CID -->
   <line x1="885" y1="485" x2="731" y2="485" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="808" y="480" text-anchor="middle" fill="#909090">DotNS returns the CID</text>
   <text x="10" y="488" fill="#909090" font-size="10">10</text>
 
-  <!-- 11. smoldot → host: send CID back -->
+  <!-- 11. smoldot to host: send CID back -->
   <line x1="725" y1="520" x2="251" y2="520" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="488" y="515" text-anchor="middle" fill="#909090">send the CID back to the host</text>
   <text x="10" y="523" fill="#909090" font-size="10">11</text>
 
-  <!-- 12. host → sandbox: open sandbox -->
+  <!-- 12. host to sandbox: open sandbox -->
   <line x1="245" y1="555" x2="1039" y2="555" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="642" y="549" text-anchor="middle" fill="#909090">open the sandbox iframe at the CID's subdomain</text>
   <text x="10" y="558" fill="#909090" font-size="10">12</text>
 
-  <!-- 13. sandbox → Polkadot: fetch content -->
+  <!-- 13. sandbox to Polkadot: fetch content -->
   <line x1="1045" y1="590" x2="891" y2="590" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="968" y="584" text-anchor="middle" fill="#909090">fetch the app content</text>
   <text x="10" y="593" fill="#909090" font-size="10">13</text>
 
-  <!-- 14. Polkadot → sandbox: content -->
+  <!-- 14. Polkadot to sandbox: content -->
   <line x1="885" y1="625" x2="1039" y2="625" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="962" y="620" text-anchor="middle" fill="#909090">HTML / JS / CSS</text>
   <text x="10" y="628" fill="#909090" font-size="10">14</text>
@@ -133,29 +133,29 @@
   <text x="1045" y="689" text-anchor="middle" fill="#909090">render the app</text>
   <text x="10" y="665" fill="#909090" font-size="10">15</text>
 
-  <!-- 16. sandbox → User: user sees app -->
+  <!-- 16. sandbox to User: user sees app -->
   <line x1="1039" y1="715" x2="91" y2="715" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="565" y="710" text-anchor="middle" fill="#909090">user sees app at example1.paseo.li</text>
   <text x="10" y="718" fill="#909090" font-size="10">16</text>
 
-  <!-- 17. Tab 2 protocol → smoldot: connect (later, additional port) -->
+  <!-- 17. Tab 2 protocol to smoldot: connect (later, additional port) -->
   <line x1="565" y1="755" x2="719" y2="755" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <text x="642" y="749" text-anchor="middle" fill="#909090">connect (additional port — already Warm)</text>
+  <text x="642" y="749" text-anchor="middle" fill="#909090">connect (additional port, already Warm)</text>
   <text x="10" y="758" fill="#909090" font-size="10">17</text>
 
-  <!-- 18. smoldot → Tab 2 protocol: ready immediate -->
+  <!-- 18. smoldot to Tab 2 protocol: ready immediate -->
   <line x1="725" y1="785" x2="571" y2="785" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
-  <text x="648" y="780" text-anchor="middle" fill="#909090">ready immediately — no re-sync</text>
+  <text x="648" y="780" text-anchor="middle" fill="#909090">ready immediately, no re-sync</text>
   <text x="10" y="788" fill="#909090" font-size="10">18</text>
 
-  <!-- 19. Tab 1 protocol → smoldot: disconnect -->
+  <!-- 19. Tab 1 protocol to smoldot: disconnect -->
   <line x1="405" y1="815" x2="719" y2="815" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <text x="562" y="809" text-anchor="middle" fill="#909090">disconnect (1 port remains — still Warm)</text>
+  <text x="562" y="809" text-anchor="middle" fill="#909090">disconnect (1 port remains, still Warm)</text>
   <text x="10" y="818" fill="#909090" font-size="10">19</text>
 
-  <!-- 20. Tab 2 protocol → smoldot: disconnect (last port — Warm → Cold) -->
+  <!-- 20. Tab 2 protocol to smoldot: disconnect (last port, Warm to Cold) -->
   <line x1="565" y1="870" x2="719" y2="870" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <text x="642" y="864" text-anchor="middle" fill="#909090">disconnect (last port — Warm → Cold)</text>
+  <text x="642" y="864" text-anchor="middle" fill="#909090">disconnect (last port, Warm to Cold)</text>
   <text x="10" y="873" fill="#909090" font-size="10">20</text>
 
   <!-- 21. smoldot self: terminate · libp2p drops -->

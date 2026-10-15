@@ -65,7 +65,7 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
     return {
       ok: false,
       recoverable: true,
-      reason: 'Missing required URL param `chainBackend`. The host did not specify a backend — reload from dot.li.',
+      reason: 'Missing required URL param `chainBackend`. The host did not specify a backend. Reload from dot.li.',
     };
   }
   const backend = parseBackend(rawBackend);
@@ -82,7 +82,7 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
       ok: false,
       recoverable: true,
       reason:
-        'Missing required URL param `network`. The host did not propagate the active network — reload from dot.li.',
+        'Missing required URL param `network`. The host did not propagate the active network. Reload from dot.li.',
     };
   }
   if (!isValidNetwork(network)) {
@@ -98,7 +98,7 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParamsRes
   if (resetRaw !== null && !VALID_BOOLEAN_FLAGS.has(resetRaw)) {
     return {
       ok: false,
-      reason: `Invalid fullReset "${resetRaw}" — expected "0" or "1".`,
+      reason: `Invalid fullReset "${resetRaw}". Expected "0" or "1".`,
     };
   }
 

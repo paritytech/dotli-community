@@ -125,10 +125,10 @@ jobs:
           # Fail rather than publish a bundle whose runtime config is inert.
           for app in host app protocol; do
             grep -q 'dotli-network.js' "$OUT/dist/$app/index.html" \
-              || { echo "::error::$app/index.html has no runtime-config script — built without VITE_RUNTIME_NETWORK_CONFIG"; exit 1; }
+              || { echo "::error::$app/index.html has no runtime-config script (built without VITE_RUNTIME_NETWORK_CONFIG)"; exit 1; }
           done
           test -n "$(find "$OUT/dist/host/assets" -name '*.br' -print -quit)" \
-            || { echo "::error::no precompressed assets — built without build:prod"; exit 1; }
+            || { echo "::error::no precompressed assets (built without build:prod)"; exit 1; }
 
           tar czf "$OUT.tar.gz" "$OUT"
           sha256sum "$OUT.tar.gz" > "$OUT.tar.gz.sha256"

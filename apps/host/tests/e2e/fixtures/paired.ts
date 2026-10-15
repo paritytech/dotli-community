@@ -90,7 +90,7 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
     async ({ browser }, use) => {
       if (!existsSync(STATE_FILE)) {
         throw new Error(
-          `pairedPage: ${STATE_FILE} missing — globalSetup must run first. ` +
+          `pairedPage: ${STATE_FILE} missing. Run globalSetup first. ` +
             `If you ran the test directly, ensure SIGNING_HOST_NETWORK is set ` +
             `and re-run via \`npm run test:e2e\`.`,
         );
@@ -130,13 +130,13 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
         cdp.on('Network.webSocketFrameSent', e => {
           const text = e.response.payloadData;
           if (/statement_submit|statement_store|broadcast/i.test(text)) {
-            console.log(`[ws→] ${text.slice(0, 500)}`);
+            console.log(`[ws out] ${text.slice(0, 500)}`);
           }
         });
         cdp.on('Network.webSocketFrameReceived', e => {
           const text = e.response.payloadData;
           if (/statement_submit|statement_store|"error"|broadcast/i.test(text)) {
-            console.log(`[ws←] ${text.slice(0, 500)}`);
+            console.log(`[ws in] ${text.slice(0, 500)}`);
           }
         });
       } catch (e) {

@@ -152,7 +152,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       step = 'archive_index';
       const indexHtml = result.files['index.html'] as Uint8Array | undefined;
       if (indexHtml === undefined) {
-        throw new Error('Archive missing index.html — cannot render a sandbox without a root document.');
+        throw new Error('Archive missing index.html. Cannot render a sandbox without a root document.');
       }
       html = new TextDecoder().decode(indexHtml);
     }

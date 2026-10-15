@@ -48,7 +48,7 @@ function deriveBaseDomain(): string {
   }
   if (segments.length < 2) {
     throw new Error(
-      `[dot.li config] Refusing to boot — hostname "${hostname}" doesn't have a two-segment registrable root. Set up a proper DNS entry or run from localhost.`,
+      `[dot.li config] Refusing to boot: hostname "${hostname}" doesn't have a two-segment registrable root. Set up a proper DNS entry or run from localhost.`,
     );
   }
   return segments.slice(-2).join('.');
