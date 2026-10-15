@@ -7,6 +7,7 @@
 /// <reference lib="webworker" />
 
 import { idbRequest, idbTransaction, openIdb } from '@dotli/shared';
+import type { SetArchiveMessage } from './archive-handoff.js';
 import { getMimeType } from './mime.js';
 
 // The page reads it through `GET_SW_VERSION` to detect a stale worker. A build inlines it as a literal, so the worker's
@@ -40,6 +41,14 @@ type ArchiveIndex = { p: string; o: number; l: number }[];
 interface PersistedArchive {
   packed: ArrayBuffer;
   index: ArchiveIndex;
+  /** Absent in an archive a worker from the previous release kept. */
+  directory?: string;
+}
+
+/** The archive's files and the directory of the path its page is written at, replaced together by each handoff. */
+interface ServedArchive {
+  files: Record<string, ArrayBuffer>;
+  directory: string;
 }
 
 const ARCHIVE_DB_NAME = 'dotli-app-sw';
@@ -106,8 +115,6 @@ export interface AppServiceWorkerDeps {
   fetch: typeof fetch;
   /** The dev server serves the sandbox's own modules under `src/`, `@` paths and `node_modules/`. */
   devServer: boolean;
-  /** The URL the page with this client id is open at, or undefined when it has gone. */
-  clientUrl: (clientId: string) => Promise<string | undefined>;
 }
 
 /** Serves the archive the page hands it, from this scope's events. Each call is a fresh worker start. */
@@ -116,11 +123,10 @@ export function startAppServiceWorker({
   indexedDB,
   fetch: fetchFromNetwork,
   devServer,
-  clientUrl,
 }: AppServiceWorkerDeps): void {
   const BASE = scope.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 
-  let servedFiles: Record<string, ArrayBuffer> | null = null;
+  let served: ServedArchive | null = null;
 
   /** Started by the first fetch that finds no archive in memory. */
   let restoring: Promise<void> | null = null;
@@ -136,7 +142,7 @@ export function startAppServiceWorker({
           return;
         }
         // A SET_ARCHIVE that landed while the read was in flight is newer.
-        servedFiles ??= unpackArchive(archive.packed, archive.index);
+        served ??= { files: unpackArchive(archive.packed, archive.index), directory: archive.directory ?? BASE };
       },
       (err: unknown) => {
         // eslint-disable-next-line no-console -- the worker has no logger, and the page reports the failure
@@ -155,11 +161,11 @@ export function startAppServiceWorker({
   }
 
   function hasArchive(): boolean {
-    return servedFiles !== null;
+    return served !== null;
   }
 
   function getFile(path: string): ArrayBuffer | undefined {
-    return servedFiles !== null && Object.hasOwn(servedFiles, path) ? servedFiles[path] : undefined;
+    return served !== null && Object.hasOwn(served.files, path) ? served.files[path] : undefined;
   }
 
   scope.addEventListener('install', () => {
@@ -207,18 +213,19 @@ export function startAppServiceWorker({
       };
 
       // An ACK without a payload would leave the sender looping forever against an empty SW.
-      const packed = data['packed'] as ArrayBuffer | undefined;
-      const idx = data['index'] as ArchiveIndex | undefined;
+      const { packed, index: idx, directory: sent } = data as Partial<SetArchiveMessage>;
 
       if (packed === undefined || idx === undefined) {
         reply({ type: 'ARCHIVE_ERROR', reason: 'SET_ARCHIVE missing packed/index payload' });
         return;
       }
 
-      servedFiles = unpackArchive(packed, idx);
+      // A page from the previous release names no directory, and its page needs no remap.
+      const directory = typeof sent === 'string' ? sent : BASE;
+      served = { files: unpackArchive(packed, idx), directory };
       // The write matters only to the next instance, so it does not hold up the ACK. `waitUntil` keeps this one alive.
       event.waitUntil(
-        persistArchive(indexedDB, { packed, index: idx }).catch((err: unknown) => {
+        persistArchive(indexedDB, { packed, index: idx, directory }).catch((err: unknown) => {
           // eslint-disable-next-line no-console -- the worker has no logger, and the page reports the failure
           console.error('Failed to persist the archive; a restarted worker will not serve it:', err);
           if (sender !== null) {
@@ -252,17 +259,12 @@ export function startAppServiceWorker({
       return;
     }
 
-    const { request, clientId } = event;
-    const remappable = clientId !== '' && url.pathname.slice(BASE.length).includes('/');
+    const { request } = event;
 
     if (hasArchive()) {
-      const exact = lookupArchive(url.pathname);
-      if (exact !== null) {
-        event.respondWith(exact);
-      } else if (remappable) {
-        event.respondWith(
-          lookupFromClientDirectory(clientId, url.pathname).then(found => found ?? fetchFromNetwork(request)),
-        );
+      const found = lookupArchive(url.pathname) ?? lookupUnderPageDirectory(url.pathname);
+      if (found !== null) {
+        event.respondWith(found);
       }
       return;
     }
@@ -273,36 +275,25 @@ export function startAppServiceWorker({
 
     // A restarted worker reads the archive back first, since nginx answers every path with the shell as `text/html`.
     event.respondWith(
-      restoreArchive().then(async () => {
+      restoreArchive().then(() => {
         if (!hasArchive()) {
           return fetchFromNetwork(request);
         }
-        const found =
-          lookupArchive(url.pathname) ?? (remappable ? await lookupFromClientDirectory(clientId, url.pathname) : null);
-        return found ?? fetchFromNetwork(request);
+        return lookupArchive(url.pathname) ?? lookupUnderPageDirectory(url.pathname) ?? fetchFromNetwork(request);
       }),
     );
   });
 
   /**
-   * The archive file a request means once the requesting page's directory is read as the archive root.
+   * The archive file a request means once the page's directory is read as the archive root.
    *
    * The page is written at the URL the visitor opened, so below the root a relative URL resolves under the page's
-   * directory, while the archive holds every file from its root. A script or stylesheet loaded that way carries the
-   * page's client id too, so its own relative URLs land here as well.
+   * directory, while the archive holds every file from its root. The directory is the one the page was written at, not
+   * the requester's current URL: a product's router moves its page elsewhere, and a product's worker is open at its own
+   * script's path, yet both still ask for files under the written directory.
    */
-  async function lookupFromClientDirectory(clientId: string, pathname: string): Promise<Response | null> {
-    // The remap is best effort: without the page's URL the request goes to the network, as it did before the remap.
-    const href = await clientUrl(clientId).catch((err: unknown) => {
-      // eslint-disable-next-line no-console -- the worker has no logger
-      console.error('Failed to look up the requesting page, so the request goes to the network:', err);
-      return undefined;
-    });
-    if (href === undefined) {
-      return null;
-    }
-    const pagePath = new URL(href).pathname;
-    const directory = pagePath.slice(0, pagePath.lastIndexOf('/') + 1);
+  function lookupUnderPageDirectory(pathname: string): Response | null {
+    const directory = served?.directory ?? BASE;
     if (directory.length <= BASE.length || !directory.startsWith(BASE) || !pathname.startsWith(directory)) {
       return null;
     }

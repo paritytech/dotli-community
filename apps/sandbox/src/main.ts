@@ -135,7 +135,7 @@ void runSandbox(
         fetchArchive,
         blockSource,
         decrypt: decryptIfNeeded,
-        storeArchive: files => storeArchiveInSW(appWorker.container, files),
+        storeArchive: files => storeArchiveInSW(appWorker.container, files, window.location.pathname),
         prepareHtml: maybeInjectSandboxChecker,
         report: reportSandboxDebug,
         loaded: () => {

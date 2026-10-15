@@ -9,12 +9,19 @@ import { packArchive } from '@dotli/content';
 import { handOverArchive } from './archive-handoff.js';
 import { SANDBOX_ERRORS } from './errors.js';
 
-/** Stands in for the controlling worker, keeping the reply port each handoff sends. */
-function fakeWorker(): { postMessage: (message: unknown, transfer: Transferable[]) => void; ports: MessagePort[] } {
+/** Stands in for the controlling worker, keeping each handoff's message and reply port. */
+function fakeWorker(): {
+  postMessage: (message: unknown, transfer: Transferable[]) => void;
+  messages: unknown[];
+  ports: MessagePort[];
+} {
+  const messages: unknown[] = [];
   const ports: MessagePort[] = [];
   return {
+    messages,
     ports,
-    postMessage: (_message, transfer) => {
+    postMessage: (message, transfer) => {
+      messages.push(message);
       const port = transfer.find(item => typeof (item as Partial<MessagePort>).postMessage === 'function');
       if (port !== undefined) {
         ports.push(port as MessagePort);
@@ -45,10 +52,31 @@ afterEach(() => {
 });
 
 describe('archive handoff to the service worker', () => {
+  it('As a visitor on a deep link, my page hands over its archive with the directory it is written at', async () => {
+    // Given
+    const worker = fakeWorker();
+
+    // When the page is written at /docs/intro, then at the root
+    const handoffs = [
+      handOverArchive(worker, archive(), '/docs/intro', null),
+      handOverArchive(worker, archive(), '/', null),
+    ];
+
+    // Then each handoff names the directory of its page
+    expect(worker.messages).toMatchObject([
+      { type: 'SET_ARCHIVE', directory: '/docs/' },
+      { type: 'SET_ARCHIVE', directory: '/' },
+    ]);
+    for (const port of worker.ports) {
+      port.postMessage({ type: 'ARCHIVE_READY' });
+    }
+    await Promise.all(handoffs);
+  });
+
   it('As a sandbox user, I hand my archive to the worker and the load continues once it acknowledges this handoff', async () => {
     // Given
     const worker = fakeWorker();
-    const handoff = handOverArchive(worker, archive(), null);
+    const handoff = handOverArchive(worker, archive(), '/', null);
 
     // When
     worker.ports[0]?.postMessage({ type: 'ARCHIVE_READY' });
@@ -60,7 +88,7 @@ describe('archive handoff to the service worker', () => {
   it('As a sandbox user, I hand over an archive the worker refuses and the load fails with its reason', async () => {
     // Given
     const worker = fakeWorker();
-    const handoff = handOverArchive(worker, archive(), null);
+    const handoff = handOverArchive(worker, archive(), '/', null);
 
     // When
     worker.ports[0]?.postMessage({ type: 'ARCHIVE_ERROR', reason: 'SET_ARCHIVE missing packed/index payload' });
@@ -73,11 +101,11 @@ describe('archive handoff to the service worker', () => {
     // Given an earlier handoff the page gave up on
     vi.useFakeTimers();
     const worker = fakeWorker();
-    const first = handOverArchive(worker, archive(), null);
+    const first = handOverArchive(worker, archive(), '/', null);
     const firstGaveUp = expect(first).rejects.toThrow(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED);
     vi.advanceTimersByTime(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK);
     await firstGaveUp;
-    const retry = handOverArchive(worker, archive(), null);
+    const retry = handOverArchive(worker, archive(), '/', null);
 
     // When the worker answers the old handoff late, then refuses the retry
     worker.ports[0]?.postMessage({ type: 'ARCHIVE_READY' });
@@ -91,7 +119,7 @@ describe('archive handoff to the service worker', () => {
     // Given
     vi.useFakeTimers();
     const worker = fakeWorker();
-    const handoff = handOverArchive(worker, archive(), null);
+    const handoff = handOverArchive(worker, archive(), '/', null);
     const gaveUp = expect(handoff).rejects.toThrow(
       `Service worker did not acknowledge archive within ${String(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK / 1000)}s`,
     );
@@ -107,7 +135,7 @@ describe('archive handoff to the service worker', () => {
     // Given a worker that ignores the port and answers on the page-wide channel
     const worker = fakeWorker();
     const pageChannel = new EventTarget();
-    const handoff = handOverArchive(worker, archive(), pageChannel);
+    const handoff = handOverArchive(worker, archive(), '/', pageChannel);
 
     // When
     pageChannel.dispatchEvent(new MessageEvent('message', { data: { type: 'ARCHIVE_READY' } }));
@@ -128,7 +156,7 @@ describe('archive handoff to the service worker', () => {
     const pageChannel = new CountingChannel();
 
     // When
-    const handoff = handOverArchive(worker, archive(), pageChannel);
+    const handoff = handOverArchive(worker, archive(), '/', pageChannel);
 
     // Then
     await expect(handoff).rejects.toMatchObject({ cause: failure });

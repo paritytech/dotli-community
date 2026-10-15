@@ -10,6 +10,16 @@ import { SANDBOX_ERRORS } from './errors.js';
 
 type PackedArchive = ReturnType<typeof packArchive>;
 
+/** The handoff message the controlling worker reads. */
+export interface SetArchiveMessage extends PackedArchive {
+  type: 'SET_ARCHIVE';
+  /**
+   * The directory of the path the page writes the product at, such as `/docs/` for `/docs/intro`. The page resolves
+   * its relative URLs under it, while the archive holds every file from its root.
+   */
+  directory: string;
+}
+
 /** The one `ServiceWorker` method the handoff needs, so tests drive it with a stand-in. */
 export interface ArchiveWorker {
   postMessage(message: unknown, transfer: Transferable[]): void;
@@ -17,12 +27,14 @@ export interface ArchiveWorker {
 
 /**
  * Resolves on `ARCHIVE_READY`, rejects on `ARCHIVE_ERROR` or after `timeoutMs`. The answer comes on a port of its own,
- * so a late answer to an attempt that already gave up cannot settle this one. `legacyReplies` is the page-wide channel a
- * worker from the previous release answers on, since it ignores the port.
+ * so a late answer to an attempt that already gave up cannot settle this one. `pagePath` is the path the product's page
+ * is written at. `legacyReplies` is the page-wide channel a worker from the previous release answers on, since it
+ * ignores the port.
  */
 export function handOverArchive(
   worker: ArchiveWorker,
   { packed, index }: PackedArchive,
+  pagePath: string,
   legacyReplies: EventTarget | null,
   timeoutMs: number = SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK,
 ): Promise<void> {
@@ -59,8 +71,14 @@ export function handOverArchive(
       onReply(event.data);
     };
     legacyReplies?.addEventListener('message', onLegacyReply);
+    const message: SetArchiveMessage = {
+      type: 'SET_ARCHIVE',
+      packed,
+      index,
+      directory: pagePath.slice(0, pagePath.lastIndexOf('/') + 1),
+    };
     try {
-      worker.postMessage({ type: 'SET_ARCHIVE', packed, index }, [packed, channel.port2]);
+      worker.postMessage(message, [packed, channel.port2]);
     } catch (cause) {
       // Settled here, so the timer, the port and the page-wide listener go now rather than at the timeout.
       settle(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_SENT, { cause }));

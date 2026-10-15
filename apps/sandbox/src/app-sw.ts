@@ -11,5 +11,4 @@ startAppServiceWorker({
   indexedDB,
   fetch,
   devServer: import.meta.env.DEV,
-  clientUrl: async id => (await self.clients.get(id))?.url,
 });

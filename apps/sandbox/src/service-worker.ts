@@ -164,8 +164,15 @@ export function listenForArchiveFailures(container: ServiceWorkerContainer | nul
   });
 }
 
-/** Before document.write(), or sub-resource requests fall through to nginx's HTML fallback. */
-export async function storeArchiveInSW(container: ServiceWorkerContainer | null, files: ArchiveFiles): Promise<void> {
+/**
+ * Before document.write(), or sub-resource requests fall through to nginx's HTML fallback. `pagePath` is the path the
+ * page is written at.
+ */
+export async function storeArchiveInSW(
+  container: ServiceWorkerContainer | null,
+  files: ArchiveFiles,
+  pagePath: string,
+): Promise<void> {
   const sw = container?.controller ?? null;
   if (!sw) {
     contentLog.warn(
@@ -175,5 +182,5 @@ export async function storeArchiveInSW(container: ServiceWorkerContainer | null,
   }
 
   // The page-wide channel too, for one release, since a worker from the previous deploy ignores the port.
-  await handOverArchive(sw, packArchive(files), container);
+  await handOverArchive(sw, packArchive(files), pagePath, container);
 }
