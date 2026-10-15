@@ -5,11 +5,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import {
+  DisjointError,
   OperationInaccessibleError,
   StopError,
   type FollowEventWithoutRuntime,
   type SubstrateClient,
 } from '@polkadot-api/substrate-client';
+import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { readMappingAddress, readMappingBytes } from './access-raw-storage.js';
 import { ApiStoppedError, createRawApi } from './api.js';
@@ -307,5 +309,41 @@ describe('createRawApi', () => {
       expect(subscribe).not.toThrow();
       expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.stop' } }]);
     });
+  });
+
+  it('As a dotli user, an unpin refused because the follow already stopped is expected and not reported', async () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { client, follow } = fakeClient();
+    const refused = Promise.reject(new DisjointError());
+    follow.unpin.mockImplementation(() => refused);
+    createRawApi(client);
+
+    // When finality leaves a block behind
+    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x00', '0x0a'] });
+    await refused.catch(() => undefined);
+
+    // Then
+    expect(captured).toEqual([]);
+    expect(metrics.counted(S.RESOLVE_UNPIN)).toEqual([]);
+  });
+
+  it('As an operator, an unpin the light client refuses while the follow runs is reported and counted', async () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { client, follow } = fakeClient();
+    const refused = Promise.reject(new TypeError('Invalid block hash'));
+    follow.unpin.mockImplementation(() => refused);
+    createRawApi(client);
+
+    // When finality leaves a block behind
+    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x00', '0x0a'] });
+    await refused.catch(() => undefined);
+
+    // Then
+    expect(captured).toEqual([{ flow: 'resolve', step: 'unpin', tags: undefined }]);
+    expect(metrics.counted(S.RESOLVE_UNPIN)).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
   });
 });

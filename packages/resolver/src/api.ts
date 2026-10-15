@@ -6,11 +6,11 @@
 // from that child trie. `trie_id` is never cached, because a redeploy would then return stale data.
 
 import type { SubstrateClient } from '@polkadot-api/substrate-client';
-import { OperationInaccessibleError, StopError } from '@polkadot-api/substrate-client';
+import { DisjointError, OperationInaccessibleError, StopError } from '@polkadot-api/substrate-client';
 import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
 import { mergeUint8 } from '@polkadot-api/utils';
-import { reportListener } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, fromHex, toHex } from '@dotli/shared';
+import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createListenerSet, errorName, fromHex, log, toHex } from '@dotli/shared';
 
 const enc = new TextEncoder();
 
@@ -115,8 +115,14 @@ export function createRawApi(
     if (hashes.length === 0 || stopped) {
       return;
     }
-    follow.unpin(hashes).catch(() => {
-      /* the follow stopped, and its pins went with it */
+    follow.unpin(hashes).catch((err: unknown) => {
+      // The follow stopped, and its pins went with it.
+      if (err instanceof DisjointError) {
+        return;
+      }
+      captureException(err, { flow: 'resolve', step: 'unpin' });
+      log.error('[dot.li resolver] the light client refused an unpin:', err);
+      m.count(S.RESOLVE_UNPIN, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
     });
   }
 

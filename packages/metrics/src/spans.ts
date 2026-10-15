@@ -35,6 +35,9 @@ export const RESOLVE_STORAGE_READ = 'resolve.storage_read';
  */
 export const RESOLVE_MANIFEST_READ = 'resolve.manifest_read';
 
+/** Count. An unpin the light client refused while the follow ran, so pins pile up. Tag `outcome` and `reason`. */
+export const RESOLVE_UNPIN = 'resolve.unpin';
+
 /** A cache read. Tag `outcome` (`hit, miss`) and `surface` (`cid_cache, block_cache`). */
 export const CACHE_READ = 'cache.read';
 
