@@ -84,7 +84,10 @@ export interface ProductPermissions {
     decision: PromptDecision,
     signal: AbortSignal,
   ) => Promise<void>;
-  /** Reads on every load, a reload of the same product included, until the returned stop. A second call returns it too. */
+  /**
+   * Reads on every load, a reload of the same product included, until the returned stop. A second call returns it
+   * too.
+   */
   start: () => () => void;
 }
 
@@ -224,7 +227,8 @@ export function createProductPermissions({ registry, product }: ProductPermissio
   const recordPromptDecision: ProductPermissions['recordPromptDecision'] = (label, name, decision, signal) =>
     work.call(
       async () => {
-        // The pool frees its slot the moment the signal aborts, so the check here keeps a queued read from running beside the write.
+        // The pool frees its slot the moment the signal aborts, so the check here keeps a queued read from running
+        // beside the write.
         throwIfAborted(signal);
         if (decision === 'granted-once') {
           // The core holds a one-time grant for this execution only, so only a read shows it.
