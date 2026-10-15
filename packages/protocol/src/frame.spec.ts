@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
-import { bindCaptureSink } from '@dotli/metrics';
+import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import type { RemoteChainHalt } from '@dotli/chains';
@@ -593,6 +593,40 @@ describe('protocol status', () => {
     expect(buildsAfterRequests).toBe(2);
     expect(builds).toBe(3);
   });
+
+  class FrameBuildError extends Error {
+    override name = 'FrameBuildError';
+  }
+
+  it.each([
+    { thrown: 'no iframe here', reason: 'unknown', what: 'a string' },
+    { thrown: new FrameBuildError('no iframe here'), reason: 'FrameBuildError', what: 'an error class' },
+  ])(
+    'As a dotli operator, I see a frame that fails to build counted by what it threw ($what) and not by a wrapper',
+    async ({ thrown, reason }) => {
+      // Given a frame whose iframe cannot be built, and a recording metrics pipeline
+      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+      const dom = createFrameDom();
+      const failing = createProtocolClient({
+        ...dom.deps,
+        document: {
+          createElement: () => {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error -- a thrown non-Error is the case under test
+            throw thrown;
+          },
+          body: dom.deps.document.body,
+        },
+      });
+      failing.configureProtocolFrame(FRAME_CONFIG);
+
+      // When the first build fails
+      void settledWith(failing.ensureProtocolFrame());
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Then the failure is counted with the reason of the thrown value
+      expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toContainEqual({ outcome: 'error', phase: 'load', reason });
+    },
+  );
 
   it('As a dotli user, I change the config during the wait before a rebuild and get a frame at once, and the dropped wait leaves no second rebuild', async () => {
     // Given: a retry left over from the dropped wait would rebuild the next lost frame at once.
