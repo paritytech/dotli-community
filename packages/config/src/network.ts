@@ -370,7 +370,7 @@ export function getActiveTldSuffix(): string {
 }
 
 /** The TLD `network` registers names under, with its leading dot. */
-export function getTldSuffix(network: Network): string {
+function getTldSuffix(network: Network): string {
   return `.${NETWORK_NAME_TO_SERVICES_CONFIG[network].dotns.TLD}`;
 }
 

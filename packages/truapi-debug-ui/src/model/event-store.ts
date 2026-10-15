@@ -196,11 +196,6 @@ export class EventStore {
     return out;
   }
 
-  /** Back-compat alias of `eventsInGroup`. */
-  eventsForRequestId(requestId: string): StoredEvent[] {
-    return this.eventsInGroup(requestId);
-  }
-
   productIds(): (string | undefined)[] {
     return Array.from(this.productCounts.keys());
   }

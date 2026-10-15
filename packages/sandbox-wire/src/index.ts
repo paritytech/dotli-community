@@ -17,13 +17,7 @@ export {
   parseHostToSandboxMessage,
   postToHost,
   type ApiViolationMessage,
-  type BitswapAbortMessage,
-  type BitswapGetMessage,
   type BitswapResultMessage,
   type HostToSandboxMessage,
-  type LoadingStatusMessage,
-  type SandboxDebugEvent,
-  type SandboxDebugEventMessage,
-  type SandboxRecoverMessage,
   type SandboxToHostMessage,
 } from './sandbox-messages.js';

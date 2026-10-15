@@ -38,8 +38,6 @@ flowchart LR
 
 - Param contract: `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`.
 - Messages: `parseHostToSandboxMessage`, `postToHost`, `parseApiViolationMessage`, `ApiViolationMessage`,
-  `SandboxToHostMessage`, `HostToSandboxMessage`, `LoadingStatusMessage`, `SandboxDebugEvent`,
-  `SandboxDebugEventMessage`, `SandboxRecoverMessage`, `BitswapGetMessage`, `BitswapAbortMessage`,
-  `BitswapResultMessage`.
+  `SandboxToHostMessage` (each member named through `SandboxMessageOf`), `HostToSandboxMessage`, `BitswapResultMessage`.
 - Channel: `startSandboxChannel`, `SandboxChannel`, `StartedSandboxChannel`, `SandboxChannelOptions`, `SandboxSender`,
   `SandboxMessageType`, `SandboxMessageOf`.

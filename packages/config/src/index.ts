@@ -39,7 +39,6 @@ export {
   getActiveTldSuffix,
   getEnabledNetworks,
   getNetwork,
-  getTldSuffix,
   isValidNetwork,
   withActiveTld,
   type ActiveChainRole,
