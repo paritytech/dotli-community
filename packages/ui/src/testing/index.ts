@@ -11,6 +11,6 @@ export { installPopoverPolyfill } from './popover-polyfill.dom.js';
 // The modal store presents a dialog without the overlays, so a spec answers it in their place.
 export { modalsStore } from '../page/state/modals.js';
 export { chooseModalButton, dismissModal, shownModal } from '../page/state/modals.fake.js';
-export { PHONE_QUERY, resetPhoneViewport } from '../page/phone-viewport.js';
+export { PHONE_QUERY } from '../page/phone-viewport.js';
 // The toast store, bound to the document of a `FakePage` (from `@dotli/shared/testing`) whose visibility a spec flips.
 export { bindToastPage } from '../page/state/toasts.js';

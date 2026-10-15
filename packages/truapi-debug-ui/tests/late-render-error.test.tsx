@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { untilDom } from '@dotli/shared/testing';
-import { createDotliDebugBus } from '@dotli/truapi-debug';
+import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
 import { setupTruapiDebugPanel } from '../src/truapi-debug-panel.js';
 import { PANEL_ID } from '../src/Panel.js';
 import { fakeDebugPanelHost } from '../src/host.fake.js';

@@ -7,7 +7,8 @@
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expect, fn, waitFor } from 'storybook/test';
-import { createDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
+import type { DotliDebugBus, DotliDebugBusEvent } from '@dotli/truapi-debug';
+import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
 import { fakeDebugPanelHost, type FakeDebugPanelHost } from '../../host.fake.js';
 import type { KeyedSignals } from '../../keyed-signals.js';
 import { setupTruapiDebugPanel } from '../../truapi-debug-panel.js';

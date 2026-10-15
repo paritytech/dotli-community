@@ -3,7 +3,6 @@
 
 export { isDebugModeOn, leaveDebugMode, resolveDebugMode, type DebugMode, type DebugModePage } from './debug-mode.js';
 export {
-  createDotliDebugBus,
   emitDotliDebugEvent,
   enableDotliDebugBuffering,
   hasDotliDebugListeners,

@@ -4,27 +4,19 @@
 /** The phone layout's breakpoint. Stylesheets repeat it as `@media (max-width: 560px)`. */
 export const PHONE_QUERY = '(max-width: 560px)';
 
-// One list for the session: it is read on hot paths and each matchMedia call parses and allocates.
-let phoneList: MediaQueryList | null = null;
-
-function phoneQuery(): MediaQueryList {
-  phoneList ??= window.matchMedia(PHONE_QUERY);
-  return phoneList;
-}
-
 // Islands are server-rendered at build time, where reads answer "wide". A component that differs on a
 // phone must not read this while hydrating, or its first client render disagrees with that markup.
 const serverRendering = (): boolean => typeof window === 'undefined';
 
 export function isPhoneViewport(): boolean {
-  return !serverRendering() && phoneQuery().matches;
+  return !serverRendering() && window.matchMedia(PHONE_QUERY).matches;
 }
 
 export function watchPhoneViewport(onChange: (phone: boolean) => void): () => void {
   if (serverRendering()) {
     return () => undefined;
   }
-  const query = phoneQuery();
+  const query = window.matchMedia(PHONE_QUERY);
   const notify = (): void => {
     onChange(query.matches);
   };
@@ -32,9 +24,4 @@ export function watchPhoneViewport(onChange: (phone: boolean) => void): () => vo
   return () => {
     query.removeEventListener('change', notify);
   };
-}
-
-/** For tests, so the next read reads the current window's media query list. */
-export function resetPhoneViewport(): void {
-  phoneList = null;
 }

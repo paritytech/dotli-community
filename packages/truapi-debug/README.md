@@ -26,8 +26,10 @@ flowchart LR
 ### `@dotli/truapi-debug`
 
 - Bus: `emitDotliDebugEvent`, `onDotliDebugEvent`, `watchDotliDebugEvents`, `hasDotliDebugListeners`,
-  `enableDotliDebugBuffering`, `createDotliDebugBus`, `DotliDebugBus`, `DotliDebugBusEvent`.
+  `enableDotliDebugBuffering`, `DotliDebugBus`, `DotliDebugBusEvent`.
 - Events: `DotliDebugEvent`, `TruapiDebugMessageEvent`.
 - Debug mode: `resolveDebugMode`, `isDebugModeOn`, `leaveDebugMode`, `DebugMode`, `DebugModePage`.
 
-There is no `testing` export.
+### `@dotli/truapi-debug/testing`
+
+- `createDotliDebugBus`: a bus apart from the page's, for specs and stories.

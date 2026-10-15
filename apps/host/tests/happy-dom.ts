@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Window as HappyWindow } from 'happy-dom';
-import { resetPhoneViewport } from '@dotli/ui/testing';
 
 // happy-dom's default window size.
 const DESKTOP = { width: 1024, height: 768 };
@@ -20,11 +19,9 @@ export function setPageUrl(url: string): void {
 /** Makes the page phone-wide. Pair with `resetViewport()` in `afterEach`. */
 export function setPhoneViewport(): void {
   happyDom().setViewport({ width: 390, height: 844 });
-  resetPhoneViewport();
 }
 
-/** Back to the desktop default, and drops the phone query ui cached. */
+/** Back to the desktop default. */
 export function resetViewport(): void {
   happyDom().setViewport(DESKTOP);
-  resetPhoneViewport();
 }

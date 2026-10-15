@@ -5,7 +5,8 @@
 // does is in the Panel stories beside it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDotliDebugBus, type DotliDebugBus } from '@dotli/truapi-debug';
+import type { DotliDebugBus } from '@dotli/truapi-debug';
+import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
 import { fakeDebugPanelHost } from '../src/host.fake.js';
 import { setupTruapiDebugPanel } from '../src/truapi-debug-panel.js';
 import { PANEL_ID } from '../src/Panel.js';

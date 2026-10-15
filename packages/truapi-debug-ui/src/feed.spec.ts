@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { createDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from '@dotli/truapi-debug';
+import type { DotliDebugBus, DotliDebugBusEvent } from '@dotli/truapi-debug';
+import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
 import { createPanelFeed } from './feed.js';
 
 /** A bus buffering for a panel that has not loaded yet, as the host's entry leaves it. */
