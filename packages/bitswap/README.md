@@ -7,8 +7,8 @@ the host.
 
 - Owns the `bitswap_v1_get` client: one connection, retries and same-CID request sharing.
 - Owns the host side relay that serves sandbox block requests and reports content progress.
-- Owns the per-block check on this path: every block it serves, from the cache or the network, has been hashed against
-  its CID by the verifier it is given, and a block that cannot be checked is refused.
+- Owns the per-block check on the Bitswap path: every block it serves, from the cache or the network, has been hashed
+  against its CID by the verifier it is given, and a block that cannot be checked is refused.
 - Does not own the hash functions, the block cache or the light client.
 
 ## Design
@@ -16,8 +16,11 @@ the host.
 ```mermaid
 flowchart LR
   sandbox -- postMessage --> relay --> cache{"block cache hit?"}
-  cache -- yes --> reply
+  cache -- yes --> verify{"hash matches CID?"}
   cache -- no --> client --> frame[protocol frame] --> lc[light client] --> peers[Bulletin peers]
+  client --> verify
+  verify -- yes --> reply
+  verify -- "no, or cannot check" --> refuse[refuse]
 ```
 
 - The client keeps one Bulletin connection to the protocol frame, redialled after a halt. Retryable errors go through

@@ -15,7 +15,8 @@ in the trust path.
 ```mermaid
 flowchart LR
   cid[CID] --> fetch["fetch: gateway or injected block source"]
-  fetch --> verify["verify: hash each block"] --> archive["archive: walk, pack"]
+  fetch --> verify["verify: every gateway block, the Bitswap root, every block of a read outside a load"]
+  verify --> archive["archive: walk, pack"]
 ```
 
 - Fetching picks one source and never falls back from one to the other. The Bitswap source is passed in as a
