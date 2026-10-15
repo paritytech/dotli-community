@@ -159,4 +159,38 @@ describe('scheduled notifications poller', () => {
     expect(show).toHaveBeenCalledTimes(1);
     expect(show).toHaveBeenCalledWith(expect.objectContaining({ label: 'Acme', browserNotification: false }));
   });
+
+  it('As a user back on a page from the back-forward cache, a notification that fell due meanwhile still shows', async () => {
+    // Given a page with a notification due in two seconds, put into the back-forward cache
+    const store = recordStore([{ ...due, scheduledAt: Date.now() + 2_000 }]);
+    const { show } = start(store);
+    await ticks(1);
+    page.window.dispatchEvent(new Event('pagehide'));
+    await ticks(3);
+    expect(show).not.toHaveBeenCalled();
+
+    // When the page is restored
+    page.window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    await ticks(1);
+
+    // Then
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user loading a page, its first pageshow opens no second channel', () => {
+    // Given
+    const opened: string[] = [];
+    start(recordStore([]), {
+      openChannel: name => {
+        opened.push(name);
+        return null;
+      },
+    });
+
+    // When
+    page.window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: false }));
+
+    // Then
+    expect(opened).toEqual(['dotli:scheduled-notifications']);
+  });
 });

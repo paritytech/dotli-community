@@ -57,7 +57,7 @@ export interface ScheduledNotificationsDeps {
   openChannel: (name: string) => BroadcastChannel | null;
   /** The document, whose visibility sets how late a due notification may show. */
   visibility: EventTarget & { readonly visibilityState: DocumentVisibilityState };
-  /** The window, whose `pagehide` stops the poller. */
+  /** The window, whose `pagehide` stops the poller and whose restoring `pageshow` starts it again. */
   lifecycle: EventTarget;
 }
 
@@ -216,6 +216,19 @@ export function createScheduledNotifications({
     }, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
   };
 
+  const openBroadcast = (): void => {
+    // A restore without a preceding `pagehide` keeps its channel, so none is opened twice.
+    if (bcChannel !== null) {
+      return;
+    }
+    bcChannel = openChannel(BROADCAST_CHANNEL_NAME);
+    if (bcChannel !== null) {
+      bcChannel.onmessage = () => {
+        ensurePolling();
+      };
+    }
+  };
+
   const rehydrate = async (): Promise<void> => {
     const records = await pendingRecords();
     const now = Date.now();
@@ -234,12 +247,7 @@ export function createScheduledNotifications({
       }
       initialized = true;
 
-      bcChannel = openChannel(BROADCAST_CHANNEL_NAME);
-      if (bcChannel !== null) {
-        bcChannel.onmessage = () => {
-          ensurePolling();
-        };
-      }
+      openBroadcast();
 
       log.debug(`[${opts.label}] scheduled notifications: init`);
 
@@ -260,6 +268,19 @@ export function createScheduledNotifications({
         stopPolling();
         bcChannel?.close();
         bcChannel = null;
+      });
+
+      // A page restored from the back-forward cache runs on where `pagehide` stopped it, so the channel and the
+      // poller come back, and a record that fell due meanwhile fires. The first load's `pageshow` is not a restore.
+      lifecycle.addEventListener('pageshow', event => {
+        if (!('persisted' in event) || event.persisted !== true) {
+          return;
+        }
+        shuttingDown = false;
+        openBroadcast();
+        void rehydrate().then(() => {
+          ensurePolling();
+        });
       });
     },
 
