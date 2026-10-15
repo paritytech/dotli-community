@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { AuthState } from '@parity/truapi-host';
 import type {
   CreateWebWorkerPairingHostRuntimeOptions,
@@ -9,6 +9,7 @@ import type {
   WebWorkerHostConfig,
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createLocalWalletCoreBoot, watchIdentityAccount, type LocalWalletCoreDeps } from './local-wallet-core.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import type { LocalWalletBoot } from './wallet-boot.js';
@@ -211,8 +212,9 @@ describe('local wallet core', () => {
     expect(runtimes[1]?.activateLocalSession).toHaveBeenLastCalledWith(ENTROPY, 'bob.7');
   });
 
-  it('As a local wallet user whose activation fails, I see the core fail and the failure is reported', async () => {
+  it('As an operator, a local wallet activation that fails is counted here and left to its caller to report', async () => {
     // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const runtimes: FakeRuntime[] = [];
     const reportFailure = vi.fn();
     const boot = createLocalWalletCoreBoot(deps({ reportFailure }));
@@ -228,12 +230,15 @@ describe('local wallet core', () => {
 
     // Then
     await expect(booted).rejects.toThrow(/activation failed/);
+    await expect(booted).rejects.toHaveProperty('cause.message', 'bad entropy');
     expect(runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
-    expect(reportFailure).toHaveBeenCalledWith(expect.any(Error), 'activate');
+    expect(reportFailure).not.toHaveBeenCalled();
+    expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'activate' }]);
   });
 
-  it('As a local wallet user whose signing worker cannot load, I see the core fail and the failure is reported', async () => {
+  it('As an operator, a signing worker that cannot load is counted here and left to its caller to report', async () => {
     // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const reportFailure = vi.fn();
     const boot = createLocalWalletCoreBoot(
       deps({ reportFailure, loadSigningWorker: () => Promise.reject(new Error('chunk failed')) }),
@@ -244,6 +249,7 @@ describe('local wallet core', () => {
 
     // Then
     await expect(booted).rejects.toThrow(/failed to boot/);
-    expect(reportFailure).toHaveBeenCalledWith(expect.any(Error), 'boot');
+    expect(reportFailure).not.toHaveBeenCalled();
+    expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'boot' }]);
   });
 });

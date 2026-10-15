@@ -51,6 +51,7 @@ export interface LocalWalletCoreDeps {
     wallet: LocalWalletBoot,
     identityAccountId: Promise<string>,
   ) => Promise<string | null | undefined>;
+  /** Reports the one failure nobody awaits, the re-activation after a name change. */
   reportFailure: (error: unknown, reason: LocalWalletFailureReason) => void;
 }
 
@@ -73,14 +74,15 @@ export function createLocalWalletCoreBoot(deps: LocalWalletCoreDeps): BootLocalW
         role: 'signing',
       });
     } catch (error) {
-      deps.reportFailure(error, 'boot');
+      // The caller that asked for the core hears this and reports it, so only the count is kept here.
+      m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'error', reason: 'boot' });
       throw new Error('Local wallet core failed to boot', { cause: error });
     }
     try {
       await runtime.activateLocalSession(wallet.entropy, wallet.identity?.liteUsername ?? undefined);
     } catch (error) {
       runtime.dispose();
-      deps.reportFailure(error, 'activate');
+      m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'error', reason: 'activate' });
       throw new Error('Local wallet activation failed', { cause: error });
     }
     m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'ok' });
