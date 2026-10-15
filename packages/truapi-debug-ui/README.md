@@ -11,8 +11,8 @@ product's archive, the wallet switch and diagnostics. It loads only in debug mod
   formatting, timeline lanes, resolution blocks, pending-call tracking, export, chain names and payload decoding, and
   the stored dock position and section. They are plain modules with Node specs beside them.
 - Its own components, icons and tokens. Of the ui package it takes only the Solid glue that reads a store and mounts a
-  root, so a store read and a broken root behave as everywhere else on the page. Each icon is a Solid component that
-  draws an `<svg>` in `currentColor`.
+  root, and the pointer drag, so a store read, a broken root and a drag behave as everywhere else on the page. Each icon
+  is a Solid component that draws an `<svg>` in `currentColor`.
 - Not owned: event capture and the bus, and the host's stores and layers. The host gives them through `DebugPanelHost`.
 
 ## Design

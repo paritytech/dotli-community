@@ -4,10 +4,40 @@
 /** What a drag needs of its handle. */
 export type DragTarget = Pick<HTMLElement, 'setPointerCapture' | 'addEventListener' | 'removeEventListener'>;
 
-/** Stops the page selecting text while a drag runs. */
-function lockBodySelection(locked: boolean): void {
-  document.body.style.userSelect = locked ? 'none' : '';
+/** Holds the page's text selection off while anything holds it. */
+export interface SelectionLock {
+  /** Locks until the returned release, which is safe to call twice. */
+  hold: () => () => void;
 }
+
+/** A lock over `apply`, locked by the first hold and unlocked by the last release. */
+export function createSelectionLock(apply: (locked: boolean) => void): SelectionLock {
+  let holders = 0;
+  return {
+    hold: () => {
+      holders += 1;
+      if (holders === 1) {
+        apply(true);
+      }
+      let released = false;
+      return () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        holders -= 1;
+        if (holders === 0) {
+          apply(false);
+        }
+      };
+    },
+  };
+}
+
+// One lock for the page, so two drags at once keep selection off until both end.
+const bodySelection = createSelectionLock(locked => {
+  document.body.style.userSelect = locked ? 'none' : '';
+});
 
 /**
  * Follow one captured pointer drag until pointerup or pointercancel, which no pointerup follows.
@@ -17,7 +47,7 @@ export function startDrag(
   target: DragTarget,
   down: Pick<PointerEvent, 'pointerId'>,
   handlers: { move: (event: PointerEvent) => void; end?: () => void },
-  lockSelection: (locked: boolean) => void = lockBodySelection,
+  selection: SelectionLock = bodySelection,
 ): () => void {
   try {
     target.setPointerCapture(down.pointerId);
@@ -25,21 +55,32 @@ export function startDrag(
   } catch {
     /* not capturable */
   }
-  lockSelection(true);
+  const release = selection.hold();
   let done = false;
+  // Another pointer on the same handle, such as a second finger, runs its own drag.
+  const onMove = (event: PointerEvent): void => {
+    if (event.pointerId === down.pointerId) {
+      handlers.move(event);
+    }
+  };
+  const onEnd = (event: PointerEvent): void => {
+    if (event.pointerId === down.pointerId) {
+      end();
+    }
+  };
   const end = (): void => {
     if (done) {
       return;
     }
     done = true;
-    target.removeEventListener('pointermove', handlers.move);
-    target.removeEventListener('pointerup', end);
-    target.removeEventListener('pointercancel', end);
-    lockSelection(false);
+    target.removeEventListener('pointermove', onMove);
+    target.removeEventListener('pointerup', onEnd);
+    target.removeEventListener('pointercancel', onEnd);
+    release();
     handlers.end?.();
   };
-  target.addEventListener('pointermove', handlers.move);
-  target.addEventListener('pointerup', end);
-  target.addEventListener('pointercancel', end);
+  target.addEventListener('pointermove', onMove);
+  target.addEventListener('pointerup', onEnd);
+  target.addEventListener('pointercancel', onEnd);
   return end;
 }

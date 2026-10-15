@@ -5,7 +5,7 @@
 
 import { onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { startDrag } from '../drag.js';
+import { startDrag } from '@dotli/ui';
 import s from './Resizer.module.css';
 
 export function Resizer(props: {
