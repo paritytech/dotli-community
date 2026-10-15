@@ -12,7 +12,7 @@ interface SystemExplanation {
 const EXPLANATIONS: Record<string, SystemExplanation> = {
   'boot:started': {
     title: 'Host boot started',
-    body: `The host application has begun executing \`main()\` in \`apps/host/src/main.ts\`. At this point the browser URL has not been parsed yet, the topbar is not mounted, and no network requests have gone out, but the chosen mode and backend preferences have already been read from localStorage.
+    body: `The host application has begun executing \`main()\`. At this point the browser URL has not been parsed yet, the topbar is not mounted, and no network requests have gone out, but the chosen mode and backend preferences have already been read from localStorage.
 
 This is the very first application-level event you'll see in a tab. Everything downstream (resolver, render, bridge, product boot) follows from here, and every boot-layer event in this group shares the same \`flowId\`.`,
   },
@@ -42,14 +42,14 @@ Warmup happens in the background and is non-blocking. If a product calls chain s
 
   'boot:cid_cache_checked': {
     title: 'CID cache lookup',
-    body: `Checked the persistent CID cache (\`@dotli/storage/cid-cache\`, IndexedDB) for a previously resolved \`label\` to \`cid\` mapping. A hit triggers the **fast path**: skip resolution entirely, render the cached CID, save ~1–5 seconds of boot time. A miss triggers the **slow path**: run the full resolver against the chosen chain backend.
+    body: `Checked the persistent CID cache (the host's CID cache, kept in IndexedDB) for a previously resolved \`label\` to \`cid\` mapping. A hit triggers the **fast path**: skip resolution entirely, render the cached CID, save ~1–5 seconds of boot time. A miss triggers the **slow path**: run the full resolver against the chosen chain backend.
 
 The cache is populated at the end of each successful slow-path resolution (\`resolve:completed\`) unless the user has explicitly disabled caching in settings.`,
   },
 
   'boot:block_cache': {
     title: 'Host block cache',
-    body: `How the host answered the sandbox's bitswap requests for this load. The host relays every block the sandbox asks for and keeps it in its own IndexedDB (\`@dotli/storage/block-cache\`), hash-checked against its CID. \`hits\` came from there, \`misses\` went to the protocol iframe's light client. A load with no misses reads as an archive cache hit.
+    body: `How the host answered the sandbox's bitswap requests for this load. The host relays every block the sandbox asks for and keeps it in its own block cache in IndexedDB, hash-checked against its CID. \`hits\` came from there, \`misses\` went to the protocol iframe's light client. A load with no misses reads as an archive cache hit.
 
 The sandbox cannot keep content itself: its iframe is credentialless, so its storage is dropped on every reload. In \`rpc-gateway\` mode the sandbox fetches from a gateway directly and this event does not appear.`,
   },
@@ -124,7 +124,7 @@ The host catches this and emits a \`boot:failed\` event (or a user-facing error 
     body: `The host is about to insert an \`<iframe>\` into the DOM for the product. Two modes:
 
 • \`iframe\`: plain embed of the URL directly (localhost dev-server proxy).
-• \`subdomain\`: the full sandboxed flow. An iframe pointing at \`<label>.app.dot.li\` where the sandbox origin is responsible for fetching the CID's content, decompressing the archive, and rendering the product into its own nested iframe. The host stays the cross-origin bridge.
+• \`subdomain\`: the full sandboxed flow. The iframe points at \`<label>.app.dot.li\` and the sandbox origin is responsible for fetching the CID's content, decompressing the archive, and rendering the product into its own nested iframe. The host stays the cross-origin bridge.
 
 The iframe's \`sandbox\` and \`allow\` attributes are configured here based on the label's per-product permissions.`,
   },
