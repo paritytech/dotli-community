@@ -39,7 +39,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
   // Touch writes and prunes share one queue, so a prune ranks blocks after every touch before it.
   const bookkeeping = createAsyncTaskPool({ poolSize: 1 });
 
-  /** Writes the waiting touches in one transaction. A flush queued behind another finds none left and returns. */
+  /** Writes the waiting touches in one transaction. A flush that a prune ran ahead of finds none left and returns. */
   async function flushTouches(): Promise<void> {
     if (pendingTouches.size === 0) {
       return;
@@ -67,8 +67,12 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
   }
 
   function touch(cid: string): void {
+    // Every flush empties the map as it starts, so only the touch that fills an empty map is owed a flush of its own.
+    const owed = pendingTouches.size === 0;
     pendingTouches.set(cid, timers.now());
-    void bookkeeping.call(flushTouches, { pool: BOOKKEEPING });
+    if (owed) {
+      void bookkeeping.call(flushTouches, { pool: BOOKKEEPING });
+    }
   }
 
   /** Resolves `null` on a miss or a storage failure. */
