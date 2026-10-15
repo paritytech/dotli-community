@@ -74,8 +74,8 @@ and no data source.
 - Screens and overlays: `showErrorPage` and `showError` with the types `ErrorAction`, `ErrorPageContent`, `ErrorText`
   and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, `showScreen`, `clearScreen`,
   `pageContentStore` and the type `PageContent`, `Overlays`, `showNotification` with the types `NotificationParams` and
-  `ShowNotification`, and `listenForChunkFailures` with `ChunkFailureDeps` (a failure is counted as `chunk.preload`) and
-  `offerReload`.
+  `ShowNotification`, `createReloadOffer`, the page's one reload offer, and `listenForChunkFailures` with
+  `ChunkFailureDeps` (a failure is counted as `chunk.preload`).
 
 ### `@dotli/ui/testing`
 

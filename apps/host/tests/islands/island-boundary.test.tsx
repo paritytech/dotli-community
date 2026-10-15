@@ -19,7 +19,7 @@ describe('island boundary', () => {
     onTestFinished(bindCaptureSink(captures));
     const onBroken = vi.fn();
     const notify = vi.fn();
-    onTestFinished(reportIslandErrors({ target: document, notify, reload: vi.fn() }));
+    onTestFinished(reportIslandErrors({ target: document, offerReload: notify }));
     const failure = new Error('island render failed');
     const Failing = (): JSX.Element => {
       throw failure;

@@ -7,13 +7,12 @@
 // reaches the console alone.
 
 import { captureException } from '@dotli/metrics';
-import { offerReload, type ShowNotification } from '@dotli/ui';
 
 export interface IslandErrorDeps {
   /** Where Astro dispatches `astro:hydration-error`. */
   target?: EventTarget;
-  notify: ShowNotification;
-  reload: () => void;
+  /** The page's one reload offer. */
+  offerReload: () => void;
   /** What an island must still do when its code never ran, by its `component-export` name. */
   standIns?: Readonly<Record<string, () => void>>;
 }
@@ -37,7 +36,7 @@ function islandOf(ev: Event): Island | null {
  * Reports each island that fails to load or hydrate and offers a reload, from now until the returned stop. A reload is
  * the one way out that fits every island.
  */
-export function reportIslandErrors({ target = document, notify, reload, standIns = {} }: IslandErrorDeps): () => void {
+export function reportIslandErrors({ target = document, offerReload, standIns = {} }: IslandErrorDeps): () => void {
   const onError = (ev: Event): void => {
     // Replaces Astro's console log.
     ev.preventDefault();
@@ -48,7 +47,7 @@ export function reportIslandErrors({ target = document, notify, reload, standIns
       tags: { root: `island:${component}`, kind: 'island_hydration_error' },
     });
     standIns[component]?.();
-    offerReload(notify, reload);
+    offerReload();
   };
   target.addEventListener('astro:hydration-error', onError);
   return () => {

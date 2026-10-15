@@ -62,6 +62,6 @@ export type { ErrorAction, ErrorPageContent, ErrorText } from './widgets/error-p
 export { showError, showErrorPage, type ShowErrorPage } from './widgets/error-page/show-error-page.js';
 export { ErrorDetail, ErrorFrame, type ErrorFrameProps } from './widgets/error-page/ErrorFrame.js';
 export { clearScreen, pageContentStore, showScreen, type PageContent } from './widgets/page-screen.js';
-export { listenForChunkFailures, offerReload, type ChunkFailureDeps } from './widgets/chunk-failures.js';
+export { createReloadOffer, listenForChunkFailures, type ChunkFailureDeps } from './widgets/chunk-failures.js';
 export { showNotification, type NotificationParams, type ShowNotification } from './widgets/notification.js';
 export { Overlays } from './widgets/overlays/Overlays.js';

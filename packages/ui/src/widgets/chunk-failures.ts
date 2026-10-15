@@ -9,29 +9,42 @@ import type { ShowNotification } from './notification.js';
 
 export interface ChunkFailureDeps {
   target: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
-  notify: ShowNotification;
-  reload: () => void;
+  /** The page's one reload offer. */
+  offerReload: () => void;
 }
 
-/** Offers a reload after a part of the page failed to load, most likely because a new version was deployed. */
-export function offerReload(notify: ShowNotification, reload: () => void): void {
-  // The user opts into a reload rather than getting a silent one.
-  notify({
-    label: 'Asset failed to load',
-    text: 'A new version may have been deployed. Reload to get the latest.',
-    tone: 'err',
-    dismissMs: 0,
-    action: { label: 'Reload', onClick: reload },
-  });
+/**
+ * The page's one reload offer, for any part of it that failed to load, most likely because a new version was
+ * deployed. Asked again while it shows, it adds nothing. Once the visitor closes it, the next failure offers again.
+ */
+export function createReloadOffer(notify: ShowNotification, reload: () => void): () => void {
+  let showing = false;
+  return () => {
+    if (showing) {
+      return;
+    }
+    showing = true;
+    // The user opts into a reload rather than getting a silent one.
+    notify({
+      label: 'Asset failed to load',
+      text: 'A new version may have been deployed. Reload to get the latest.',
+      tone: 'err',
+      dismissMs: 0,
+      action: { label: 'Reload', onClick: reload },
+      onDismiss: () => {
+        showing = false;
+      },
+    });
+  };
 }
 
-/** Offers a reload for each chunk that fails to load, until the returned stop. */
-export function listenForChunkFailures({ target, notify, reload }: ChunkFailureDeps): () => void {
+/** Offers a reload when a chunk fails to load, until the returned stop. */
+export function listenForChunkFailures({ target, offerReload }: ChunkFailureDeps): () => void {
   const onPreloadError = (event: Event): void => {
     const error = (event as Event & { payload?: unknown }).payload ?? new Error('vite:preloadError');
     // The caller that imported the chunk counts the failure with its own breadcrumb, so this adds only the rate.
     reportExpected(error, { flow: 'boot', step: 'chunk_preload', metric: S.CHUNK_PRELOAD });
-    offerReload(notify, reload);
+    offerReload();
   };
   target.addEventListener('vite:preloadError', onPreloadError);
   return () => {

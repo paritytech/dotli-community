@@ -4,7 +4,7 @@
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { listenForChunkFailures } from './chunk-failures.js';
+import { createReloadOffer, listenForChunkFailures } from './chunk-failures.js';
 import type { ShowNotification } from './notification.js';
 
 type Notice = Parameters<ShowNotification>[0];
@@ -33,10 +33,12 @@ describe('listenForChunkFailures', () => {
     onTestFinished(
       listenForChunkFailures({
         target,
-        notify: notice => notices.push(notice),
-        reload: () => {
-          reloads += 1;
-        },
+        offerReload: createReloadOffer(
+          notice => notices.push(notice),
+          () => {
+            reloads += 1;
+          },
+        ),
       }),
     );
     const failure = new TypeError('Failed to fetch dynamically imported module');
@@ -69,8 +71,10 @@ describe('listenForChunkFailures', () => {
     onTestFinished(
       listenForChunkFailures({
         target,
-        notify: notice => notices.push(notice),
-        reload: () => undefined,
+        offerReload: createReloadOffer(
+          notice => notices.push(notice),
+          () => undefined,
+        ),
       }),
     );
 
@@ -89,8 +93,10 @@ describe('listenForChunkFailures', () => {
     const notices: Notice[] = [];
     const stop = listenForChunkFailures({
       target,
-      notify: notice => notices.push(notice),
-      reload: () => undefined,
+      offerReload: createReloadOffer(
+        notice => notices.push(notice),
+        () => undefined,
+      ),
     });
 
     // When
@@ -99,5 +105,29 @@ describe('listenForChunkFailures', () => {
 
     // Then
     expect(notices).toEqual([]);
+  });
+});
+
+describe('createReloadOffer', () => {
+  it('As a visitor after a deploy, failures while the offer shows add no second offer, and one after I close it offers again', () => {
+    // Given
+    const notices: Notice[] = [];
+    const offer = createReloadOffer(
+      notice => notices.push(notice),
+      () => undefined,
+    );
+
+    // When
+    offer();
+    offer();
+    offer();
+    const whileShowing = notices.length;
+    notices[0]?.onDismiss?.();
+    offer();
+
+    // Then
+    expect(whileShowing).toBe(1);
+    expect(notices).toHaveLength(2);
+    expect(notices[1]).toMatchObject({ label: 'Asset failed to load', tone: 'err', dismissMs: 0 });
   });
 });

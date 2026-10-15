@@ -8,7 +8,7 @@ import '@dotli/ui/styles.css';
 import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
-import { listenForChunkFailures, refuseModals, showError, showNotification } from '@dotli/ui';
+import { createReloadOffer, listenForChunkFailures, refuseModals, showError, showNotification } from '@dotli/ui';
 import { protocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktop-offer.js';
@@ -32,14 +32,14 @@ export const T0 = performance.now();
 
 /** What a page load starts first: the chunk and island failure offers, the desktop offer and the wasm timings. */
 export function startPage(): void {
-  const reload = (): void => {
+  // One offer for the page, so chunk and island failures never stack reload toasts.
+  const offerReload = createReloadOffer(showNotification, () => {
     markContinuation('app_update');
     window.location.reload();
-  };
-  listenForChunkFailures({ target: window, notify: showNotification, reload });
+  });
+  listenForChunkFailures({ target: window, offerReload });
   reportIslandErrors({
-    notify: showNotification,
-    reload,
+    offerReload,
     standIns: pageStandIns({
       disableAuthModal,
       refuseModals: () => {

@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
-import type { ShowNotification } from '@dotli/ui';
+import { createReloadOffer, type ShowNotification } from '@dotli/ui';
 import { pageStandIns, reportIslandErrors } from './island-errors.js';
 
 type Notice = Parameters<ShowNotification>[0];
@@ -46,7 +46,13 @@ function setup(standIns: Readonly<Record<string, () => void>> = {}): {
   const page = new EventTarget();
   const notices: Notice[] = [];
   const reload = vi.fn();
-  onTestFinished(reportIslandErrors({ target: page, notify: notice => notices.push(notice), reload, standIns }));
+  onTestFinished(
+    reportIslandErrors({
+      target: page,
+      offerReload: createReloadOffer(notice => notices.push(notice), reload),
+      standIns,
+    }),
+  );
   return { captures, page, notices, reload };
 }
 
@@ -104,7 +110,7 @@ describe('island failures', () => {
     onTestFinished(bindCaptureSink(captures));
     const page = new EventTarget();
     const notify = vi.fn();
-    const stop = reportIslandErrors({ target: page, notify, reload: vi.fn() });
+    const stop = reportIslandErrors({ target: page, offerReload: notify });
 
     // When
     stop();
