@@ -29,6 +29,10 @@ export function observeChains(
   const retakes = createAsyncTaskPool({ poolSize: 1 });
 
   function take(genesisHash: string): void {
+    // A duplicate halt can queue two re-takes. The second finds the chain held and builds nothing.
+    if (leases.has(genesisHash)) {
+      return;
+    }
     const provider = pool.getLocalProvider(genesisHash, 'sync-observer');
     if (provider === null) {
       return;

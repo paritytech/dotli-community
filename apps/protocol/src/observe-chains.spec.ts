@@ -94,17 +94,39 @@ describe('observeChains', () => {
 
   it('As a dotli user on a light client, I keep seeing the sync of a chain that halts again after it was rebuilt', async () => {
     // Given
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const { pool, built } = setup(0);
-    observeChains(pool, ['0xaa'], 0);
+    observeChains(pool, ['0xaa'], 1_000);
     built[0]?.halt(new Error('gone'));
+    await vi.advanceTimersByTimeAsync(1_000);
 
     // When
     built[1]?.halt(new Error('gone again'));
+    await vi.advanceTimersByTimeAsync(1_000);
 
     // Then
-    await vi.waitFor(() => {
-      expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa', '0xaa']);
+    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa', '0xaa']);
+  });
+
+  it('As a dotli integrator, I see one new lease when a chain reports its halt twice', async () => {
+    // Given
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
     });
+    const { pool, built } = setup(0);
+    observeChains(pool, ['0xaa'], 1_000);
+
+    // When
+    built[0]?.halt(new Error('gone'));
+    built[0]?.halt(new Error('gone'));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then
+    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa']);
   });
 
   it('As a dotli integrator, I see a halted chain taken again only once the re-take delay has passed', async () => {
