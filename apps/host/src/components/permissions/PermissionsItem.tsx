@@ -54,7 +54,6 @@ export function PermissionsItem(props: PermissionsItemProps): JSX.Element {
       >
         <Permissions
           permissions={props.permissions}
-          host={props.host}
           notice={props.notice}
           statuses={props.statuses}
           onOpen={props.onOpen}

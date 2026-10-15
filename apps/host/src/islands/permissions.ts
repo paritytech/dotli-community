@@ -8,8 +8,7 @@ import type { MenuPermission, PermissionsNotice } from '../components/permission
 import type { PermissionsItemProps } from '../components/permissions/PermissionsItem.js';
 
 /** The product on show, as the panel reads it. */
-export type ShownProduct =
-  { status: 'none' } | { status: 'error' } | { status: 'loaded'; label: string; productId: string };
+export type ShownProduct = { status: 'none' } | { status: 'error' } | { status: 'loaded'; label: string };
 
 /** The product's permissions as last read or written, `statuses` in the order of the menu. */
 export type ReadPermissions =
@@ -58,10 +57,6 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
   return {
     permissions: binding.permissions,
     hasGrants: useStore(binding.state, read => read.status === 'read' && read.statuses.includes('granted')),
-    host: () => {
-      const current = product();
-      return current.status === 'loaded' ? current.productId : undefined;
-    },
     notice,
     statuses,
     onOpen: () => {

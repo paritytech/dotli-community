@@ -13,7 +13,7 @@ const PERMISSIONS: readonly MenuPermission[] = [
   { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
 ];
 
-const LOADED: ShownProduct = { status: 'loaded', label: 'app', productId: 'app.dot' };
+const LOADED: ShownProduct = { status: 'loaded', label: 'app' };
 
 /** The page's product and permissions, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
@@ -58,18 +58,6 @@ describe('usePermissionsPanel', () => {
 
     // Then
     expect(panel.notice()).toBe(notice);
-    dispose();
-  });
-
-  it('As the permissions panel, when the permissions are unreadable, I still name the app', () => {
-    // Given
-    const { panel, dispose, given } = mount();
-
-    // When
-    given(LOADED, { status: 'failed', label: 'app' });
-
-    // Then
-    expect(panel.host()).toBe('app.dot');
     dispose();
   });
 
@@ -133,7 +121,7 @@ describe('usePermissionsPanel', () => {
     // Given
     const markup = '<img id="injected" src="x">';
     const { panel, dispose, intents, given } = mount();
-    given({ status: 'loaded', label: markup, productId: 'app.dot' }, read(['ask', 'ask'], markup));
+    given({ status: 'loaded', label: markup }, read(['ask', 'ask'], markup));
 
     // When
     panel.onChoose('Camera', 'granted');

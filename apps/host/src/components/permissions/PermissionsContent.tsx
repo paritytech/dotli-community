@@ -7,7 +7,6 @@ import { ReloadIcon } from '@dotli/ui/icons';
 import {
   Button,
   Callout,
-  Chip,
   Hint,
   SectionLabel,
   Stack,
@@ -36,8 +35,6 @@ const NOTICES: Record<PermissionsNotice, string> = {
 export interface PermissionsContentProps {
   /** Every permission the menu offers, in the order `statuses` follows. */
   permissions: readonly MenuPermission[];
-  /** The loaded app's host. */
-  host: Accessor<string | undefined>;
   notice: Accessor<PermissionsNotice | undefined>;
   /** The loaded app's statuses once read, in the order of `permissions`. */
   statuses: Accessor<readonly PermissionStatus[] | undefined>;
@@ -99,19 +96,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
 
   return (
     <Surface width="lg" padded>
-      <SurfaceHead
-        title="Permissions"
-        testId="permissions-popover-header"
-        aside={
-          <Show when={props.host()}>
-            {id => (
-              <Chip tone="mono" testId="permissions-popover-host">
-                {id()}
-              </Chip>
-            )}
-          </Show>
-        }
-      />
+      <SurfaceHead title="Permissions" testId="permissions-popover-header" />
       <div class={s['list']} id="permissions-popover-list">
         <Show when={hint()}>{text => <Callout testId="permissions-popover-hint">{text()}</Callout>}</Show>
         <Show when={props.statuses()}>

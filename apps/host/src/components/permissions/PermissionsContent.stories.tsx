@@ -9,7 +9,6 @@ import type { PermissionStatus } from '../../runtime/permissions.js';
 import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
 import {
   givenApp,
-  givenHost,
   givenNotice,
   permissionsAsked,
   readAll,
@@ -77,7 +76,7 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * As a user of a loaded app, the popover lists its device and app permissions in named groups, each with its status
- * pressed, under the app's host, and the open dialog is named Permissions.
+ * pressed, and the open dialog is named Permissions.
  */
 export const Open: Story = {
   tags: ['!autodocs'],
@@ -90,7 +89,7 @@ export const Open: Story = {
       await waitFor(() => expect(button).toHaveAttribute('data-badge'));
     });
     await open(ctx);
-    await ctx.step('Then it is the open dialog named Permissions, under the host', async () => {
+    await ctx.step('Then it is the open dialog named Permissions', async () => {
       await expect(button).toHaveAttribute('aria-expanded', 'true');
       const popover = byId('permissions-popover');
       await expect(popover).toHaveAttribute('role', 'dialog');
@@ -98,7 +97,6 @@ export const Open: Story = {
       await expect(within(popover).getByTestId('permissions-popover-header').querySelector('h2')).toHaveTextContent(
         'Permissions',
       );
-      await expect(within(popover).getByTestId('permissions-popover-host')).toHaveTextContent('app.dot');
       await expect(within(popover).getByTestId('permissions-popover-foot')).toHaveTextContent('Changes reload the app');
     });
     await ctx.step('And every permission is in its named group, with Ask, Allow and Deny', async () => {
@@ -131,7 +129,7 @@ export const Open: Story = {
   },
 };
 
-/** As a phone user, the permissions sheet leaves out its own heading and host, and lists every permission. */
+/** As a phone user, the permissions sheet leaves out its own heading and lists every permission. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -141,11 +139,10 @@ export const OpenPhone: Story = {
   play: async ctx => {
     await expectPhone(ctx.step);
     await open(ctx);
-    await ctx.step('Then the sheet is titled Permissions, with no heading or host of its own', async () => {
+    await ctx.step('Then the sheet is titled Permissions, with no heading of its own', async () => {
       const sheet = byId('permissions-popover');
       await expect(within(sheet).getByTestId('popover-sheet-title')).toHaveTextContent('Permissions');
       await expect(sheet.querySelector('[data-testid="permissions-popover-header"]')).toBeNull();
-      await expect(sheet.querySelector('[data-testid="permissions-popover-host"]')).toBeNull();
       await expect(sheet.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(
         STORY_PERMISSIONS.length,
       );
@@ -175,7 +172,7 @@ export const NoApp: Story = {
 export const Unavailable: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    givenNotice('unavailable', 'app.dot');
+    givenNotice('unavailable');
   },
   play: async ctx => {
     await open(ctx);
@@ -292,27 +289,6 @@ export const ReopenReadsAgain: Story = {
     });
     await ctx.step('Then its answer shows', async () => {
       await waitFor(() => expect(statusOf('Camera')).toBe('denied'));
-    });
-  },
-};
-
-const MARKUP = '<img id="injected" src="x">';
-
-/** As a user of an app whose host contains markup, it is only ever shown as text. */
-export const MarkupHost: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    givenApp();
-    givenHost(MARKUP);
-  },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then the host shows as text and was never rendered', async () => {
-      await expect(within(byId('permissions-popover')).getByTestId('permissions-popover-host')).toHaveTextContent(
-        MARKUP,
-      );
-      await expect(document.getElementById('injected')).toBeNull();
-      await expect(byId('permissions-popover').querySelector('img')).toBeNull();
     });
   },
 };

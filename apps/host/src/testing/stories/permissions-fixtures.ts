@@ -26,7 +26,6 @@ export const STORY_PERMISSIONS: readonly MenuPermission[] = [
   { name: 'StatementSubmit', label: 'Submit statements', group: 'app' },
 ];
 
-const [host, setHost] = createSignal<string | undefined>(undefined);
 const [notice, setNotice] = createSignal<PermissionsNotice | undefined>('loading');
 const [statuses, setStatuses] = createSignal<readonly PermissionStatus[] | undefined>(undefined);
 const [hasGrants, setHasGrants] = createSignal(false);
@@ -48,7 +47,6 @@ function write(next: readonly PermissionStatus[] | undefined): void {
 export const storyPermissions: PermissionsItemProps = {
   permissions: STORY_PERMISSIONS,
   hasGrants,
-  host,
   notice,
   statuses,
   onOpen: () => {
@@ -73,22 +71,14 @@ export const storyPermissions: PermissionsItemProps = {
 
 /** A loaded app on `app.dot` whose statuses read as `granted` says, Ask for the rest. */
 export function givenApp(granted: Partial<Record<EnforceablePermissionName, PermissionStatus>> = {}): void {
-  setHost('app.dot');
   setNotice(undefined);
   write(STORY_PERMISSIONS.map(({ name }) => granted[name] ?? 'ask'));
 }
 
-/** No statuses to show, and why. The host stays while an app is loaded. */
-export function givenNotice(next: PermissionsNotice, appHost?: string): void {
-  setHost(appHost);
+/** No statuses to show, and why. */
+export function givenNotice(next: PermissionsNotice): void {
   setNotice(next);
   write(undefined);
-}
-
-/** The app's host as the page names it. */
-export function givenHost(next: string): void {
-  setHost(next);
-  flush();
 }
 
 /** Every permission read as `status`, as a newer read lands. */
