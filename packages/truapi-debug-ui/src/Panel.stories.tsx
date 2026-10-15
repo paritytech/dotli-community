@@ -646,7 +646,7 @@ export const RowClickHighlightsGroup: Story = {
           product: 'app.dot',
           tag: 'system_handshake_request',
           requestId: 'req-aa req-aaa-111',
-          group: '2 events — system_handshake_response +50ms',
+          group: '2 events: system_handshake_response +50ms',
         });
         await expect(part('td-detail-pre').textContent).toBe(JSON.stringify({ version: 1 }, null, 2));
       });
@@ -656,7 +656,7 @@ export const RowClickHighlightsGroup: Story = {
       await step('Then the response is selected and the request paired', async () => {
         await expect(rowByTag('system_handshake_response')).toHaveAttribute('data-selection', 'selected');
         await expect(rowByTag('system_handshake_request')).toHaveAttribute('data-selection', 'paired');
-        await expect(detailRows()['group']).toBe('2 events — system_handshake_request −50ms');
+        await expect(detailRows()['group']).toBe('2 events: system_handshake_request −50ms');
       });
       await step('When I click a row of another group', () => {
         rowByTag('boot.started').click();
@@ -691,7 +691,7 @@ export const SystemDetailExplains: Story = {
         'Host boot started (mode: direct, chain: smoldot, content: helia).',
       );
       const explanation = part('td-detail-explanation');
-      await expect(explanation.querySelector('summary')).toHaveTextContent('What is this? — Host boot started');
+      await expect(explanation.querySelector('summary')).toHaveTextContent('What is this? (Host boot started)');
       await expect(explanation.querySelector('code')).toHaveTextContent('main()');
       await expect(part('td-detail-pre')).toHaveTextContent('"smoldot"');
     });

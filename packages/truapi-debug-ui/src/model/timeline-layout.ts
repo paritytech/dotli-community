@@ -554,7 +554,7 @@ function opBoxDetail(
   if (terminal !== undefined) {
     const tann = decodeChainAnnotations(terminal.tag, terminal.payload);
     if (tann?.chainEventTag !== undefined) {
-      parts.push(`→ ${tann.chainEventTag}`);
+      parts.push(`then ${tann.chainEventTag}`);
     }
   }
   return parts.length === 0 ? undefined : parts.join(' · ');

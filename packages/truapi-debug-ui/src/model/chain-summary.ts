@@ -123,7 +123,7 @@ function summariseFollowEvent(inner: unknown): string | null {
     case 'OperationStorageDone':
       return `Storage operation complete (op ${shortId(asString(v?.['operationId']))}).`;
     case 'OperationWaitingForContinue':
-      return `Paused — client must call chainHead.continue (op ${shortId(asString(v?.['operationId']))}).`;
+      return `Paused. Client must call chainHead.continue (op ${shortId(asString(v?.['operationId']))}).`;
     case 'OperationInaccessible':
       return `Block unavailable, retry (op ${shortId(asString(v?.['operationId']))}).`;
     case 'OperationError': {
@@ -131,7 +131,7 @@ function summariseFollowEvent(inner: unknown): string | null {
       return `Operation failed: ${err ?? 'unknown'} (op ${shortId(asString(v?.['operationId']))}).`;
     }
     case 'Stop':
-      return 'Subscription stopped by the server — client must create a new follow.';
+      return 'Subscription stopped by the server. Client must create a new follow.';
   }
   return null;
 }

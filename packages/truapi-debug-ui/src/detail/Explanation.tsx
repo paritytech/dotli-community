@@ -12,7 +12,7 @@ export function Explanation(props: { event: StoredSystemEvent }): JSX.Element {
     <Show when={explanationDetail(props.event)}>
       {detail => (
         <details class={s['explanation']} data-testid="td-detail-explanation">
-          <summary class={s['toggle']}>What is this? — {detail().title}</summary>
+          <summary class={s['toggle']}>What is this? ({detail().title})</summary>
           <div class={s['body']}>
             <For each={detail().blocks}>
               {block =>

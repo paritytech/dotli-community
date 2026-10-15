@@ -17,7 +17,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       const label = typeof p['label'] === 'string' ? p['label'] : null;
       const lh = typeof p['localhostHost'] === 'string' ? p['localhostHost'] : null;
       if (lh !== null) {
-        return `URL parsed: localhost proxy → ${lh}.`;
+        return `URL parsed: localhost proxy to ${lh}.`;
       }
       if (label !== null) {
         return `URL parsed: label=${label}.`;
@@ -26,7 +26,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     }
     case 'boot:cid_cache_checked':
       return p['hit'] === true
-        ? `CID cache hit for ${str(p['label'])} → ${str(p['cid'])}.`
+        ? `CID cache hit for ${str(p['label'])}: ${str(p['cid'])}.`
         : `CID cache miss for ${str(p['label'])}.`;
     case 'boot:block_cache':
       return `Host block cache: ${str(p['hits'])} blocks from cache, ${str(p['misses'])} from the network.`;
@@ -46,7 +46,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'resolve:completed':
       return p['cid'] === null
         ? `No content set for ${withActiveTld(str(p['label']))}.`
-        : `Resolved ${withActiveTld(str(p['label']))} → ${str(p['cid'])} in ${numMs(p['durationMs'])}.`;
+        : `Resolved ${withActiveTld(str(p['label']))} to ${str(p['cid'])} in ${numMs(p['durationMs'])}.`;
     case 'resolve:failed':
       return `Resolve failed via ${str(p['source'])}: ${str(p['reason'])}.`;
 
@@ -64,10 +64,10 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'bridge:first_inbound':
       return `First message from product received (productId=${str(p['productId'])}).`;
     case 'bridge:first_outbound':
-      return `First message sent to product — bridge traffic established (productId=${str(p['productId'])}).`;
+      return `First message sent to product, bridge traffic established (productId=${str(p['productId'])}).`;
 
     case 'failover:chain_backend':
-      return `Chain backend failover: ${str(p['from'])} → ${str(p['to'])} (reason: ${str(p['reason'])}).`;
+      return `Chain backend failover from ${str(p['from'])} to ${str(p['to'])} (reason: ${str(p['reason'])}).`;
 
     case 'chain:phase': {
       const reason = typeof p['reason'] === 'string' ? ` (${p['reason']})` : '';
@@ -111,7 +111,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case 'sandbox:archive_stored':
       return `Archive staged in SW (${str(p['fileCount'])} files, ${numMs(p['durationMs'])}).`;
     case 'sandbox:document_written':
-      return `Sandbox ready in ${numMs(p['totalMs'])} — dApp HTML written, product transport will start here.`;
+      return `Sandbox ready in ${numMs(p['totalMs'])}: dApp HTML written, product transport will start here.`;
     case 'sandbox:failed':
       return `Sandbox failed: ${str(p['reason'])}.`;
 

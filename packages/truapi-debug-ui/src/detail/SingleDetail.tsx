@@ -82,7 +82,7 @@ function GroupField(props: SingleDetailProps): JSX.Element {
     <KeyValue name="group">
       {eventCountLabel(props.group.length)}
       <Show when={pills.length > 0}>
-        {' — '}
+        {': '}
         <For each={pills}>
           {(pill, i) => (
             <>
