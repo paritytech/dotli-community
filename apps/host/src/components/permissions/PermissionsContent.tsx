@@ -5,6 +5,7 @@ import { createEffect, createMemo, createSignal, For, Show, type Accessor } from
 import type { JSX } from '@solidjs/web';
 import { ReloadIcon } from '@dotli/ui/icons';
 import {
+  Accordion,
   Button,
   Callout,
   Hint,
@@ -148,16 +149,14 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                 }}
               />
               <Show when={failedText()}>{text => <Callout testId="permissions-popover-error">{text()}</Callout>}</Show>
-              <details
+              <Accordion
+                title="Advanced"
                 open={advanced()}
-                onToggle={event => {
-                  setAdvanced(event.currentTarget.open);
-                }}
-                data-testid="permissions-advanced"
+                onToggle={setAdvanced}
+                class={s['advanced']}
+                testId="permissions-advanced"
+                summaryTestId="permissions-advanced-toggle"
               >
-                <summary class={s['summary']} data-testid="permissions-advanced-toggle">
-                  Advanced
-                </summary>
                 <div class={s['groups']}>
                   <For each={groups()}>
                     {group => (
@@ -185,7 +184,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                     )}
                   </For>
                 </div>
-              </details>
+              </Accordion>
             </>
           )}
         </Show>

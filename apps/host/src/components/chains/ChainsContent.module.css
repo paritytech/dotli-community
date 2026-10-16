@@ -27,15 +27,6 @@
   line-height: var(--lh-body);
 }
 
-.other {
-  padding: 0 var(--sp-1);
-}
-.other-summary {
-  color: var(--chrome-text-muted);
-  font-size: var(--fs-small);
-  font-weight: var(--fw-medium);
-  cursor: pointer;
-}
 .transfer {
   display: flex;
   flex-direction: column;
