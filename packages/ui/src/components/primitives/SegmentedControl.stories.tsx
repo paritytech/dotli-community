@@ -272,3 +272,25 @@ export const OtherKeysPassThrough: Story = {
     });
   },
 };
+
+/** As a dotli user, I press an option of a disabled control, nothing is picked, and my focus stays on it. */
+export const Disabled: Story = {
+  args: { disabled: true },
+  render: Owned,
+  play: async ({ args, canvas, userEvent, step }) => {
+    await step('Given the control is disabled', async () => {
+      await expect(canvas.getByRole('group')).toHaveAttribute('aria-disabled', 'true');
+      await expect(canvas.getByTestId('seg-dark')).toHaveAttribute('aria-disabled', 'true');
+    });
+    await step('When I press Dark with the pointer and with the keyboard', async () => {
+      await userEvent.click(canvas.getByTestId('seg-dark'));
+      canvas.getByTestId('seg-dark').focus();
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Then nothing was picked and Dark keeps focus', async () => {
+      await expect(args.onChange).not.toHaveBeenCalled();
+      await expect(canvas.getByTestId('seg-system')).toHaveAttribute('aria-pressed', 'true');
+      await expect(canvas.getByTestId('seg-dark')).toHaveFocus();
+    });
+  },
+};

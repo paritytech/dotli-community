@@ -37,6 +37,7 @@ and no data source.
 - Text goes into the error page and the notifier as text, so nothing a visitor typed is parsed as markup. An action
   carries its icon as a component. Every `icon` prop takes the icon component, except `Choice` and `SegmentedControl`,
   whose slot takes markup.
+- A disabled `SegmentedControl` keeps its options focusable and ignores presses, so a popover it sits in stays open.
 - `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
   screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first. `clearScreen`
   takes it down and keeps what the page put beside it, such as the product frame. `pageContentStore` says `screen` while

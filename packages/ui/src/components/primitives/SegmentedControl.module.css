@@ -44,6 +44,16 @@
 .option:hover {
   color: var(--chrome-text);
 }
+.seg[aria-disabled='true'] > .option {
+  cursor: default;
+  opacity: 0.5;
+}
+.seg[aria-disabled='true'] > .option:hover {
+  color: var(--chrome-text-muted);
+}
+.seg[aria-disabled='true'] > .option[aria-pressed='true'] {
+  color: var(--chrome-text);
+}
 .option:focus-visible {
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
