@@ -5,6 +5,7 @@ export { clearBlockCache, deleteCachedBlock, getCachedBlock, pruneBlockCache, pu
 export {
   appendMessage,
   createRoom,
+  setRoomFooter,
   latestMessageTimestamps,
   listBots,
   listMessages,
@@ -12,6 +13,7 @@ export {
   registerBot,
   type ChatBotRecord,
   type ChatMessageRecord,
+  type ChatRoomFooter,
   type ChatRoomRecord,
 } from './chat.js';
 export { isExpectedDbError } from './db.js';

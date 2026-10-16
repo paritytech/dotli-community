@@ -43,6 +43,7 @@ function nameOf(request: PermissionAuthorizationRequest): string {
     case 'AccountAccess':
     case 'ChatAuthority':
     case 'StatementStoreAllowance':
+    case 'CrossProductSignature':
       return request.tag;
   }
 }
