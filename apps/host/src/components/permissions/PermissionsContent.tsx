@@ -148,7 +148,6 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
               />
               <Show when={failedText()}>{text => <Callout testId="permissions-popover-error">{text()}</Callout>}</Show>
               <details
-                class={s['advanced']}
                 open={advanced()}
                 onToggle={event => {
                   setAdvanced(event.currentTarget.open);

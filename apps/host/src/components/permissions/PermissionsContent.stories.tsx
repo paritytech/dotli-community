@@ -11,6 +11,7 @@ import {
   givenApp,
   givenNotice,
   holdChanges,
+  changesSettled,
   permissionsAsked,
   readAll,
   refuseChanges,
@@ -144,20 +145,31 @@ export const Open: Story = {
     await ctx.step('When I open Advanced', async () => {
       await openAdvanced(ctx.userEvent);
     });
-    await ctx.step('Then every permission is in its named group, with its status pressed', async () => {
-      const groups = [...document.querySelectorAll<HTMLElement>('[data-testid="permissions-popover-group"]')];
-      await expect(groups.map(group => group.querySelector('h3')?.textContent)).toEqual(GROUPS.map(g => g.label));
-      for (const [i, group] of groups.entries()) {
-        await expect(group).toHaveAttribute('role', 'group');
-        const names = [
-          ...group.querySelectorAll('[data-testid="permissions-popover-row"] [id^="permissions-popover-name-"]'),
-        ].map(name => name.id.replace('permissions-popover-name-', ''));
-        await expect(names).toEqual(GROUPS[i]?.names);
-      }
-      await expect(statusOf('Camera')).toBe('granted');
-      await expect(statusOf('ChainSubmit')).toBe('denied');
-      await expect(statusOf('Notifications')).toBe('ask');
-    });
+    await ctx.step(
+      'Then every permission is in its named group, with Ask, Allow and Deny and its status pressed',
+      async () => {
+        const groups = [...document.querySelectorAll<HTMLElement>('[data-testid="permissions-popover-group"]')];
+        await expect(groups.map(group => group.querySelector('h3')?.textContent)).toEqual(GROUPS.map(g => g.label));
+        for (const [i, group] of groups.entries()) {
+          await expect(group).toHaveAttribute('role', 'group');
+          await expect(byId(group.getAttribute('aria-labelledby') ?? '').textContent).toBe(GROUPS[i]?.label);
+          const names = [
+            ...group.querySelectorAll('[data-testid="permissions-popover-row"] [id^="permissions-popover-name-"]'),
+          ].map(name => name.id.replace('permissions-popover-name-', ''));
+          await expect(names).toEqual(GROUPS[i]?.names);
+        }
+        const camera = row('Camera');
+        await expect(within(camera).getByRole('group')).toHaveAttribute('aria-label', 'Camera');
+        await expect(
+          within(camera)
+            .getAllByRole('button')
+            .map(b => b.textContent),
+        ).toEqual(['Ask', 'Allow', 'Deny']);
+        await expect(statusOf('Camera')).toBe('granted');
+        await expect(statusOf('ChainSubmit')).toBe('denied');
+        await expect(statusOf('Notifications')).toBe('ask');
+      },
+    );
   },
 };
 
@@ -309,7 +321,10 @@ export const RepressModifiedReapplies: Story = {
   },
 };
 
-/** As a keyboard user, a row I press while a change is pending is ignored, keeps my focus, and the popover stays open. */
+/**
+ * As a keyboard user, a row I press while a change is pending is ignored, keeps my focus, and the popover stays open,
+ * while a preset I press is still asked for.
+ */
 export const PendingLocksRows: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -336,7 +351,14 @@ export const PendingLocksRows: Story = {
     await ctx.step('Then nothing more was asked for', async () => {
       await expect(permissionsAsked.changes).toHaveBeenCalledTimes(1);
     });
-    await ctx.step('When the change settles', () => {
+    await ctx.step('When I press Trusted on the slider', async () => {
+      await ctx.userEvent.click(stop('trusted'));
+    });
+    await ctx.step('Then all of Trusted was asked for', async () => {
+      await expect(permissionsAsked.changes).toHaveBeenCalledTimes(2);
+      await expect(permissionsAsked.changes).toHaveBeenNthCalledWith(2, TRUSTED.statuses);
+    });
+    await ctx.step('When the changes settle', () => {
       release();
     });
     await ctx.step('Then the rows take presses again', async () => {
@@ -347,8 +369,8 @@ export const PendingLocksRows: Story = {
 };
 
 /**
- * As a user whose move the core refuses for Camera, the panel names Camera, and the error is gone once I close and
- * reopen the panel, even for a failure that arrives while it is closed.
+ * As a user whose move the core refuses for Camera, the panel names Camera, and a failure of a move made before I
+ * closed and reopened the panel never shows.
  */
 export const FailedChangeNamesPermissions: Story = {
   tags: ['!autodocs'],
@@ -366,18 +388,51 @@ export const FailedChangeNamesPermissions: Story = {
       await expectPreset('trusted', true);
     });
     const release = holdChanges();
-    await ctx.step('When I press Unlimited, close the panel while it is pending, and it then fails', async () => {
+    await ctx.step('When I press Unlimited and close the panel while it is pending', async () => {
       await ctx.userEvent.click(stop('unlimited'));
       await waitFor(() => expect(errorLine()).toBeNull());
       await ctx.userEvent.keyboard('{Escape}');
       await waitFor(() => expect(byId('permissions-popover')).not.toHaveAttribute('data-open'));
-      release();
     });
-    await ctx.step('And I open the panel again', async () => {
+    await ctx.step('And I open the panel again before the move fails', async () => {
       await ctx.userEvent.click(byId('permissions-button'));
       await waitFor(() => expect(byId('permissions-popover')).toHaveAttribute('data-open'));
+      release();
+    });
+    await ctx.step('Then the move settles with Camera kept, and no error shows', async () => {
+      await expectPreset('unlimited', true);
+      await waitFor(() => expect(byId('permissions-popover-list')).not.toHaveAttribute('data-pending'));
+      await changesSettled();
+      await expect(errorLine()).toBeNull();
+    });
+  },
+};
+
+/** As a user who makes a newer move before an older one fails, only the newer move's outcome shows. */
+export const OlderFailureNeverShows: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    givenApp();
+    refuseChanges(['Camera']);
+  },
+  play: async ctx => {
+    await open(ctx);
+    const releaseOlder = holdChanges();
+    await ctx.step('Given I press Unlimited, which the core will refuse for Camera, and it stays pending', async () => {
+      await ctx.userEvent.click(stop('unlimited'));
+      await waitFor(() => expect(byId('permissions-popover-list')).toHaveAttribute('data-pending'));
+    });
+    refuseChanges([]);
+    const releaseNewer = holdChanges();
+    await ctx.step('When I press Secure, which lands, and then Unlimited fails', async () => {
+      await ctx.userEvent.click(stop('secure'));
+      await expect(permissionsAsked.changes).toHaveBeenCalledTimes(2);
+      releaseNewer();
+      releaseOlder();
     });
     await ctx.step('Then no error shows', async () => {
+      await changesSettled();
+      await expectPreset('secure', false);
       await expect(errorLine()).toBeNull();
     });
   },

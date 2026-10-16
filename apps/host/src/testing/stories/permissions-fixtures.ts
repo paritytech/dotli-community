@@ -34,6 +34,7 @@ const [pending, setPending] = createSignal(false);
 // A held change stays pending until the story releases it.
 let held: PromiseWithResolvers<undefined> | null = null;
 let refused: readonly EnforceablePermissionName[] = [];
+let asked: Promise<unknown>[] = [];
 
 /** What the panel asked of the page. */
 export const permissionsAsked = {
@@ -64,34 +65,50 @@ export const storyPermissions: PermissionsItemProps = {
   onOpen: () => {
     permissionsAsked.opens += 1;
   },
-  onChange: async targets => {
-    permissionsAsked.changes(targets);
-    const before = statuses();
-    if (before === undefined) {
-      return [];
-    }
-    write(laidOver(before, targets));
-    const hold = held;
-    if (hold !== null) {
-      setPending(true);
-      flush();
-      await hold.promise;
-      setPending(false);
-      flush();
-    }
-    const failed = STORY_PERMISSIONS.map(({ name }) => name).filter(
-      name => refused.includes(name) && targets[name] !== undefined,
-    );
-    if (failed.length > 0) {
-      // A refused write leaves the status the core had before.
-      const kept = Object.fromEntries(
-        failed.map(name => [name, before[STORY_PERMISSIONS.findIndex(perm => perm.name === name)] ?? 'ask']),
-      );
-      write(laidOver(statuses() ?? before, kept));
-    }
-    return failed;
+  onChange: targets => {
+    const change = applyChange(targets);
+    asked.push(change);
+    return change;
   },
 };
+
+async function applyChange(targets: PermissionTargets): Promise<EnforceablePermissionName[]> {
+  permissionsAsked.changes(targets);
+  const refusing = refused;
+  const before = statuses();
+  if (before === undefined) {
+    return [];
+  }
+  write(laidOver(before, targets));
+  const hold = held;
+  if (hold !== null) {
+    setPending(true);
+    flush();
+    await hold.promise;
+    setPending(false);
+    flush();
+  }
+  const failed = STORY_PERMISSIONS.map(({ name }) => name).filter(
+    name => refusing.includes(name) && targets[name] !== undefined,
+  );
+  if (failed.length > 0) {
+    // A refused write leaves the status the core had before.
+    const kept = Object.fromEntries(
+      failed.map(name => [name, before[STORY_PERMISSIONS.findIndex(perm => perm.name === name)] ?? 'ask']),
+    );
+    write(laidOver(statuses() ?? before, kept));
+  }
+  return failed;
+}
+
+/**
+ * Resolves once every change asked for has settled, the panel has taken each outcome, and the page shows what it made of
+ * them. The panel takes each outcome first, as it asked for the change before a play can wait on it.
+ */
+export async function changesSettled(): Promise<void> {
+  await Promise.all(asked);
+  flush();
+}
 
 /** A loaded app on `app.dot` whose statuses read as `granted` says, Ask for the rest. */
 export function givenApp(granted: Partial<Record<EnforceablePermissionName, PermissionStatus>> = {}): void {
@@ -110,17 +127,19 @@ export function readAll(status: PermissionStatus): void {
   write(STORY_PERMISSIONS.map(() => status));
 }
 
-/** Holds every change pending until the returned release. */
+/** Holds every change asked for from now on pending until the returned release, or until a newer hold takes over. */
 export function holdChanges(): () => void {
   const hold = Promise.withResolvers<undefined>();
   held = hold;
   return () => {
-    held = null;
+    if (held === hold) {
+      held = null;
+    }
     hold.resolve(undefined);
   };
 }
 
-/** The core refuses every write of `names` until the story resets. */
+/** The core refuses every write of `names` in a change asked for from now on, until a newer call or the reset. */
 export function refuseChanges(names: readonly EnforceablePermissionName[]): void {
   refused = names;
 }
@@ -132,5 +151,6 @@ export function resetStoryPermissions(): void {
   permissionsAsked.changes.mockClear();
   held = null;
   refused = [];
+  asked = [];
   setPending(false);
 }
