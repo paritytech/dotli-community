@@ -270,12 +270,18 @@ export interface ChatRoom {
     participatingAs: ChatRoomParticipation;
 }
 export declare const ChatRoom: S.Codec<ChatRoom>;
+/** What a room shows below its messages. */
+export type ChatRoomFooter = "TextInput" | "Empty";
+export declare const ChatRoomFooter: S.Codec<ChatRoomFooter>;
 /** How the product participates in a chat room. */
 export type ChatRoomParticipation = "RoomHost" | "Bot";
 export declare const ChatRoomParticipation: S.Codec<ChatRoomParticipation>;
 /** Whether the room was newly created or already existed. */
 export type ChatRoomRegistrationStatus = "New" | "Exists";
 export declare const ChatRoomRegistrationStatus: S.Codec<ChatRoomRegistrationStatus>;
+/** Code formats the host scanner reads: the set both platform decoders share. */
+export type CodeFormat = "Qr" | "Aztec" | "DataMatrix" | "Pdf417" | "Ean13" | "Ean8" | "UpcE" | "Code128" | "Code39" | "Code93" | "Itf" | "Codabar";
+export declare const CodeFormat: S.Codec<CodeFormat>;
 /** Standardized encrypted Coinage secret transmission payload. */
 export interface CoinPaymentCheque {
     /** Receivable public key protecting the cheque contents. */
@@ -660,6 +666,30 @@ export type VersionedHostAccountSignVrfResponse =
     value: VrfSignature;
 };
 export declare const VersionedHostAccountSignVrfResponse: S.Codec<VersionedHostAccountSignVrfResponse>;
+/** Versioned envelope for [`HostCancelNextGameError`]. */
+export type VersionedHostCancelNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostCancelNextGameError: S.Codec<VersionedHostCancelNextGameError>;
+/** Versioned envelope for [`HostCancelNextGameRequest`]. */
+export type VersionedHostCancelNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostCancelNextGameRequest;
+};
+export declare const VersionedHostCancelNextGameRequest: S.Codec<VersionedHostCancelNextGameRequest>;
+/** Versioned envelope for [`HostCancelNextGameResponse`]. */
+export type VersionedHostCancelNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostCancelNextGameResponse: S.Codec<VersionedHostCancelNextGameResponse>;
 /** Versioned envelope for [`HostChatActionSubscribeError`]. */
 export type VersionedHostChatActionSubscribeError = 
 /** Version 1 payload. */
@@ -734,25 +764,25 @@ export type VersionedHostChatListSubscribeRequest =
 export declare const VersionedHostChatListSubscribeRequest: S.Codec<VersionedHostChatListSubscribeRequest>;
 /** Versioned envelope for [`HostChatPostMessageError`]. */
 export type VersionedHostChatPostMessageError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageError;
 };
 export declare const VersionedHostChatPostMessageError: S.Codec<VersionedHostChatPostMessageError>;
 /** Versioned envelope for [`HostChatPostMessageRequest`]. */
 export type VersionedHostChatPostMessageRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageRequest;
 };
 export declare const VersionedHostChatPostMessageRequest: S.Codec<VersionedHostChatPostMessageRequest>;
 /** Versioned envelope for [`HostChatPostMessageResponse`]. */
 export type VersionedHostChatPostMessageResponse = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageResponse;
 };
 export declare const VersionedHostChatPostMessageResponse: S.Codec<VersionedHostChatPostMessageResponse>;
@@ -780,6 +810,30 @@ export type VersionedHostChatRegisterBotResponse =
     value: HostChatRegisterBotResponse;
 };
 export declare const VersionedHostChatRegisterBotResponse: S.Codec<VersionedHostChatRegisterBotResponse>;
+/** Versioned envelope for [`HostChatSetRoomFooterError`]. */
+export type VersionedHostChatSetRoomFooterError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterError;
+};
+export declare const VersionedHostChatSetRoomFooterError: S.Codec<VersionedHostChatSetRoomFooterError>;
+/** Versioned envelope for [`HostChatSetRoomFooterRequest`]. */
+export type VersionedHostChatSetRoomFooterRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterRequest;
+};
+export declare const VersionedHostChatSetRoomFooterRequest: S.Codec<VersionedHostChatSetRoomFooterRequest>;
+/** Versioned envelope for [`HostChatSetRoomFooterResponse`]. */
+export type VersionedHostChatSetRoomFooterResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostChatSetRoomFooterResponse: S.Codec<VersionedHostChatSetRoomFooterResponse>;
 /** Versioned envelope for [`HostCoinPaymentCreateChequeError`]. */
 export type VersionedHostCoinPaymentCreateChequeError = 
 /** Version 1 payload. */
@@ -1116,6 +1170,30 @@ export type VersionedHostDevicePermissionResponse =
     value: HostDevicePermissionResponse;
 };
 export declare const VersionedHostDevicePermissionResponse: S.Codec<VersionedHostDevicePermissionResponse>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownError`]. */
+export type VersionedHostExpandedCardSetFaceShownError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownError;
+};
+export declare const VersionedHostExpandedCardSetFaceShownError: S.Codec<VersionedHostExpandedCardSetFaceShownError>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownRequest`]. */
+export type VersionedHostExpandedCardSetFaceShownRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownRequest;
+};
+export declare const VersionedHostExpandedCardSetFaceShownRequest: S.Codec<VersionedHostExpandedCardSetFaceShownRequest>;
+/** Versioned envelope for [`HostExpandedCardSetFaceShownResponse`]. */
+export type VersionedHostExpandedCardSetFaceShownResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostExpandedCardSetFaceShownResponse: S.Codec<VersionedHostExpandedCardSetFaceShownResponse>;
 /** Versioned envelope for [`HostFeatureSupportedError`]. */
 export type VersionedHostFeatureSupportedError = 
 /** Version 1 payload. */
@@ -2286,6 +2364,30 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export declare const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [`HostRemindNextGameError`]. */
+export type VersionedHostRemindNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameError;
+};
+export declare const VersionedHostRemindNextGameError: S.Codec<VersionedHostRemindNextGameError>;
+/** Versioned envelope for [`HostRemindNextGameRequest`]. */
+export type VersionedHostRemindNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameRequest;
+};
+export declare const VersionedHostRemindNextGameRequest: S.Codec<VersionedHostRemindNextGameRequest>;
+/** Versioned envelope for [`HostRemindNextGameResponse`]. */
+export type VersionedHostRemindNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostRemindNextGameResponse: S.Codec<VersionedHostRemindNextGameResponse>;
 /** Versioned envelope for [`HostRendererActionSubscribeError`]. */
 export type VersionedHostRendererActionSubscribeError = 
 /** Version 1 payload. */
@@ -2358,6 +2460,30 @@ export type VersionedHostRequestResourceAllocationResponse =
     value: HostRequestResourceAllocationResponse;
 };
 export declare const VersionedHostRequestResourceAllocationResponse: S.Codec<VersionedHostRequestResourceAllocationResponse>;
+/** Versioned envelope for [`HostScannerScanError`]. */
+export type VersionedHostScannerScanError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanError;
+};
+export declare const VersionedHostScannerScanError: S.Codec<VersionedHostScannerScanError>;
+/** Versioned envelope for [`HostScannerScanRequest`]. */
+export type VersionedHostScannerScanRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanRequest;
+};
+export declare const VersionedHostScannerScanRequest: S.Codec<VersionedHostScannerScanRequest>;
+/** Versioned envelope for [`HostScannerScanResponse`]. */
+export type VersionedHostScannerScanResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanResponse;
+};
+export declare const VersionedHostScannerScanResponse: S.Codec<VersionedHostScannerScanResponse>;
 /**
  * Full Substrate extrinsic signing payload with all fields needed for signature
  * generation.
@@ -3182,76 +3308,6 @@ export type Modifier =
     value: BlendingMode;
 };
 export declare const Modifier: S.Codec<Modifier>;
-/**
- * A host-admitted notification activation for the authenticated product,
- * account and environment bound to this runtime.
- */
-export interface NotificationActivation {
-    /** Host-assigned sequence, unique within the bound activation queue. */
-    sequence: bigint;
-    /** Identifier of the activated notification. */
-    notificationId: number;
-    /** Validated product-relative route beginning with exactly one slash. */
-    route: string;
-}
-export declare const NotificationActivation: S.Codec<NotificationActivation>;
-/** Versioned envelope for [`NotificationActivationAcknowledgeError`]. */
-export type VersionedNotificationActivationAcknowledgeError = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: GenericError;
-};
-export declare const VersionedNotificationActivationAcknowledgeError: S.Codec<VersionedNotificationActivationAcknowledgeError>;
-/** Versioned envelope for [`NotificationActivationAcknowledgeRequest`]. */
-export type VersionedNotificationActivationAcknowledgeRequest = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: NotificationActivationAcknowledgeRequest;
-};
-export declare const VersionedNotificationActivationAcknowledgeRequest: S.Codec<VersionedNotificationActivationAcknowledgeRequest>;
-/** Versioned envelope for [`NotificationActivationAcknowledgeResponse`]. */
-export type VersionedNotificationActivationAcknowledgeResponse = 
-/** Version 1 (no payload). */
-{
-    tag: "V1";
-    value?: undefined;
-};
-export declare const VersionedNotificationActivationAcknowledgeResponse: S.Codec<VersionedNotificationActivationAcknowledgeResponse>;
-/** Versioned envelope for [`NotificationActivationEventsError`]. */
-export type VersionedNotificationActivationEventsError = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: GenericError;
-};
-export declare const VersionedNotificationActivationEventsError: S.Codec<VersionedNotificationActivationEventsError>;
-/** Versioned envelope for [`NotificationActivationEventsRequest`]. */
-export type VersionedNotificationActivationEventsRequest = 
-/** Version 1 (no payload). */
-{
-    tag: "V1";
-    value?: undefined;
-};
-export declare const VersionedNotificationActivationEventsRequest: S.Codec<VersionedNotificationActivationEventsRequest>;
-/** Versioned envelope for [`NotificationActivationEventsResponse`]. */
-export type VersionedNotificationActivationEventsResponse = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: NotificationActivations;
-};
-export declare const VersionedNotificationActivationEventsResponse: S.Codec<VersionedNotificationActivationEventsResponse>;
-/**
- * Pending activations, retained until individually acknowledged. Hosts return
- * at most 32 events in sequence order, without consuming them on retrieval.
- */
-export interface NotificationActivations {
-    /** Pending events in ascending sequence order. */
-    events: Array<NotificationActivation>;
-}
-export declare const NotificationActivations: S.Codec<NotificationActivations>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -4208,6 +4264,27 @@ export type RuntimeType =
     };
 };
 export declare const RuntimeType: S.Codec<RuntimeType>;
+/**
+ * How a scan ended.
+ *
+ * A dismissal is an outcome rather than an error, because it is worth
+ * offering again.
+ */
+export type ScanOutcome = 
+/** The user scanned a code the request accepts. */
+{
+    tag: "Scanned";
+    value: {
+        text: string;
+        format: CodeFormat;
+    };
+}
+/** The user closed the viewfinder without scanning. */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+};
+export declare const ScanOutcome: S.Codec<ScanOutcome>;
 /** Outline of a background or border. */
 export type Shape = 
 /** Rounded corners with the given radius. */
@@ -4658,6 +4735,10 @@ export interface HostAccountSignVrfRequest {
     items: Array<VrfTranscriptItem>;
 }
 export declare const HostAccountSignVrfRequest: S.Codec<HostAccountSignVrfRequest>;
+/** Request to drop this product's reminder. */
+export interface HostCancelNextGameRequest {
+}
+export declare const HostCancelNextGameRequest: S.Codec<HostCancelNextGameRequest>;
 /** A chat action received from the host. */
 export interface HostChatActionSubscribeItem {
     /** Room where the action occurred. */
@@ -4721,13 +4802,13 @@ export type HostChatPostMessageError =
 };
 export declare const HostChatPostMessageError: S.Codec<HostChatPostMessageError>;
 /** Request to post a message to a chat room. */
-export interface HostChatPostMessageRequest {
+export interface V01HostChatPostMessageRequest {
     /** Room to post to. */
     roomId: string;
     /** Message content. */
     payload: ChatMessageContent;
 }
-export declare const HostChatPostMessageRequest: S.Codec<HostChatPostMessageRequest>;
+export declare const V01HostChatPostMessageRequest: S.Codec<V01HostChatPostMessageRequest>;
 /** Result of posting a message. */
 export interface HostChatPostMessageResponse {
     /**
@@ -4768,6 +4849,29 @@ export interface HostChatRegisterBotResponse {
     status: ChatBotRegistrationStatus;
 }
 export declare const HostChatRegisterBotResponse: S.Codec<HostChatRegisterBotResponse>;
+/** Room footer failure. */
+export type HostChatSetRoomFooterError = 
+/** The calling product created no room with this id. */
+{
+    tag: "UnknownRoom";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostChatSetRoomFooterError: S.Codec<HostChatSetRoomFooterError>;
+/** Request to set what a room shows below its messages. */
+export interface HostChatSetRoomFooterRequest {
+    /** A room the calling product created. */
+    roomId: string;
+    /** What the room shows below its messages. */
+    footer: ChatRoomFooter;
+}
+export declare const HostChatSetRoomFooterRequest: S.Codec<HostChatSetRoomFooterRequest>;
 /** Request to create a cheque from a local purse to a receivable. */
 export interface HostCoinPaymentCreateChequeRequest {
     /** Source purse. */
@@ -5014,6 +5118,32 @@ export interface HostDevicePermissionResponse {
     granted: boolean;
 }
 export declare const HostDevicePermissionResponse: S.Codec<HostDevicePermissionResponse>;
+/** Face visibility change failure. */
+export type HostExpandedCardSetFaceShownError = 
+/** The Widget is not shown under its card right now. */
+{
+    tag: "NotPresented";
+    value?: undefined;
+}
+/** The user is moving the face; the request had no effect. */
+ | {
+    tag: "UserMoving";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostExpandedCardSetFaceShownError: S.Codec<HostExpandedCardSetFaceShownError>;
+/** Request to show or hide the face above the calling Widget. */
+export interface HostExpandedCardSetFaceShownRequest {
+    /** `true` brings the face back, `false` moves it out of the way. */
+    shown: boolean;
+}
+export declare const HostExpandedCardSetFaceShownRequest: S.Codec<HostExpandedCardSetFaceShownRequest>;
 /** Request to query whether a feature is supported by the host. */
 export type HostFeatureSupportedRequest = 
 /** Ask whether the host can interact with the chain identified by genesis hash. */
@@ -5679,6 +5809,15 @@ export interface HostPushNotificationResponse {
     id: number;
 }
 export declare const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse>;
+/** Why a reminder was not taken. */
+export type HostRemindNextGameError = "StartsInPast";
+export declare const HostRemindNextGameError: S.Codec<HostRemindNextGameError>;
+/** Request to remind the user when this product's next game starts. */
+export interface HostRemindNextGameRequest {
+    /** Milliseconds since the Unix epoch, UTC, at which the game starts. */
+    startsAt: bigint;
+}
+export declare const HostRemindNextGameRequest: S.Codec<HostRemindNextGameRequest>;
 /** An action triggered inside a product-rendered body. */
 export interface HostRendererActionSubscribeItem {
     /** Where the body lives. */
@@ -5724,6 +5863,75 @@ export interface HostRequestResourceAllocationResponse {
     outcomes: Array<AllocationOutcome>;
 }
 export declare const HostRequestResourceAllocationResponse: S.Codec<HostRequestResourceAllocationResponse>;
+/**
+ * Error returned by the scanner.
+ *
+ * A host with no scanner answers `Unsupported` at the framework level rather
+ * than through this enum.
+ */
+export type HostScannerScanError = 
+/** The device has no camera, or the user refused the host application one. */
+{
+    tag: "CameraUnavailable";
+    value?: undefined;
+}
+/** Another scan is open. */
+ | {
+    tag: "Busy";
+    value?: undefined;
+}
+/**
+ * The calling execution is not on screen, and is not a Worker handling a
+ * tap from the user, so no viewfinder was opened.
+ */
+ | {
+    tag: "NotVisible";
+    value?: undefined;
+}
+/** The request breaks a limit, so no viewfinder was shown. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostScannerScanError: S.Codec<HostScannerScanError>;
+/**
+ * Request to open the host's scanner.
+ *
+ * The host draws the viewfinder and writes its title, naming the product.
+ * Only `hint` is product text, shown as one plain line under the title.
+ */
+export interface HostScannerScanRequest {
+    /** Formats the product accepts. At least one, each named once. */
+    formats: Array<CodeFormat>;
+    /**
+     * Start the text must have, compared ignoring ASCII letter case, since QR
+     * codes often carry URLs in capitals. At most 256 bytes of UTF-8.
+     */
+    prefix?: string;
+    /**
+     * What to point the camera at, shown as the product's words. At most 80
+     * Unicode scalar values (`[...hint].length` in TypeScript). No control
+     * characters, line or paragraph separators, invisible characters, or
+     * bidirectional formatting characters.
+     */
+    hint?: string;
+}
+export declare const HostScannerScanRequest: S.Codec<HostScannerScanRequest>;
+/** Outcome of a scan. */
+export interface HostScannerScanResponse {
+    /** How the scan ended. */
+    outcome: ScanOutcome;
+}
+export declare const HostScannerScanResponse: S.Codec<HostScannerScanResponse>;
 /** Signing operation error. */
 export type HostSignPayloadError = 
 /** Payload could not be deserialized. */
@@ -5822,12 +6030,6 @@ export interface HostWorkerEndOperationRequest {
     id: number;
 }
 export declare const HostWorkerEndOperationRequest: S.Codec<HostWorkerEndOperationRequest>;
-/** Acknowledge one handled activation in the runtime's bound queue. */
-export interface NotificationActivationAcknowledgeRequest {
-    /** Exact sequence to acknowledge; never a cumulative watermark. */
-    sequence: bigint;
-}
-export declare const NotificationActivationAcknowledgeRequest: S.Codec<NotificationActivationAcknowledgeRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */
@@ -6213,6 +6415,25 @@ export type RemoteStatementStoreSubscribeRequest =
     value: Array<HexString>;
 };
 export declare const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreSubscribeRequest>;
+/**
+ * Request to post a message to a chat room.
+ *
+ * v0.2 adds `alt`, the text a host shows wherever it lists a custom message
+ * without drawing it, such as a chat list preview.
+ */
+export interface HostChatPostMessageRequest {
+    /** Room to post to. */
+    roomId: string;
+    /** Message content. */
+    payload: ChatMessageContent;
+    /**
+     * One line describing a custom message. `None` leaves the host its own
+     * placeholder. Every other kind previews from its own content, so its
+     * `alt` is dropped.
+     */
+    alt?: string;
+}
+export declare const HostChatPostMessageRequest: S.Codec<HostChatPostMessageRequest>;
 /** Local storage read failure. */
 export type HostLocalStorageReadError = 
 /** Storage quota exceeded. */

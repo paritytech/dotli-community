@@ -1,7 +1,7 @@
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
 import type { GenericError } from "@parity/truapi";
 import type { ChainConnect, HopConnect } from "../runtime.js";
-export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "nativeCoinage", "contacts", "pickContact", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "compareExchangeCoreStorage", "coreStorageChanged", "featureSupported", "supportedChains", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "mediaBackendCapabilities", "mediaBackendCommand", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "activationEvents", "acknowledgeActivation", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "confirmPermission", "confirmUserAction"];
+export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "setChatRoomFooter", "nativeCoinage", "contacts", "pickContact", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "compareExchangeCoreStorage", "coreStorageChanged", "featureSupported", "supportedChains", "scheduleGameReminder", "cancelGameReminder", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "mediaBackendCapabilities", "mediaBackendCommand", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "scanCode", "confirmPermission", "confirmUserAction"];
 export type CallbackName = typeof CALLBACK_NAMES[number];
 export declare const SUBSCRIPTION_NAMES: readonly ["subscribeChatRooms", "subscribeLocale", "mediaBackendEvents", "subscribePocketCards", "lookupPreimage", "subscribeStorage", "subscribeTheme"];
 export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];
@@ -24,6 +24,8 @@ export interface OptionalCapabilities {
     /** Whether the host serves this capability. */
     contacts?: boolean;
     /** Whether the host serves this capability. */
+    game?: boolean;
+    /** Whether the host serves this capability. */
     identityBackend?: boolean;
     /** Whether the host serves this capability. */
     media?: boolean;
@@ -31,6 +33,8 @@ export interface OptionalCapabilities {
     permissionStatus?: boolean;
     /** Whether the host serves this capability. */
     pocket?: boolean;
+    /** Whether the host serves this capability. */
+    scanner?: boolean;
 }
 export declare function createWorkerRawCallbacks(bridge: WorkerCallbackBridge, capabilities?: OptionalCapabilities): Record<string, unknown>;
 export declare function startRawSubscription(callbacks: RawCallbacks, name: SubscriptionName, args: readonly unknown[], sendItem: (value?: unknown) => void, sendError: (error: GenericError) => void): (() => void) | void;

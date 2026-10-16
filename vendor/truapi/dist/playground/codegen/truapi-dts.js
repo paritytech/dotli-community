@@ -806,12 +806,18 @@ export interface ChatRoom {
     participatingAs: ChatRoomParticipation;
 }
 export const ChatRoom: Codec<ChatRoom>;
+/** What a room shows below its messages. */
+export type ChatRoomFooter = "TextInput" | "Empty";
+export const ChatRoomFooter: Codec<ChatRoomFooter>;
 /** How the product participates in a chat room. */
 export type ChatRoomParticipation = "RoomHost" | "Bot";
 export const ChatRoomParticipation: Codec<ChatRoomParticipation>;
 /** Whether the room was newly created or already existed. */
 export type ChatRoomRegistrationStatus = "New" | "Exists";
 export const ChatRoomRegistrationStatus: Codec<ChatRoomRegistrationStatus>;
+/** Code formats the host scanner reads: the set both platform decoders share. */
+export type CodeFormat = "Qr" | "Aztec" | "DataMatrix" | "Pdf417" | "Ean13" | "Ean8" | "UpcE" | "Code128" | "Code39" | "Code93" | "Itf" | "Codabar";
+export const CodeFormat: Codec<CodeFormat>;
 /** Standardized encrypted Coinage secret transmission payload. */
 export interface CoinPaymentCheque {
     /** Receivable public key protecting the cheque contents. */
@@ -1196,6 +1202,30 @@ export type VersionedHostAccountSignVrfResponse =
     value: VrfSignature;
 };
 export const VersionedHostAccountSignVrfResponse: Codec<VersionedHostAccountSignVrfResponse>;
+/** Versioned envelope for [\`HostCancelNextGameError\`]. */
+export type VersionedHostCancelNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostCancelNextGameError: Codec<VersionedHostCancelNextGameError>;
+/** Versioned envelope for [\`HostCancelNextGameRequest\`]. */
+export type VersionedHostCancelNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostCancelNextGameRequest;
+};
+export const VersionedHostCancelNextGameRequest: Codec<VersionedHostCancelNextGameRequest>;
+/** Versioned envelope for [\`HostCancelNextGameResponse\`]. */
+export type VersionedHostCancelNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostCancelNextGameResponse: Codec<VersionedHostCancelNextGameResponse>;
 /** Versioned envelope for [\`HostChatActionSubscribeError\`]. */
 export type VersionedHostChatActionSubscribeError = 
 /** Version 1 payload. */
@@ -1270,25 +1300,25 @@ export type VersionedHostChatListSubscribeRequest =
 export const VersionedHostChatListSubscribeRequest: Codec<VersionedHostChatListSubscribeRequest>;
 /** Versioned envelope for [\`HostChatPostMessageError\`]. */
 export type VersionedHostChatPostMessageError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageError;
 };
 export const VersionedHostChatPostMessageError: Codec<VersionedHostChatPostMessageError>;
 /** Versioned envelope for [\`HostChatPostMessageRequest\`]. */
 export type VersionedHostChatPostMessageRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageRequest;
 };
 export const VersionedHostChatPostMessageRequest: Codec<VersionedHostChatPostMessageRequest>;
 /** Versioned envelope for [\`HostChatPostMessageResponse\`]. */
 export type VersionedHostChatPostMessageResponse = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageResponse;
 };
 export const VersionedHostChatPostMessageResponse: Codec<VersionedHostChatPostMessageResponse>;
@@ -1316,6 +1346,30 @@ export type VersionedHostChatRegisterBotResponse =
     value: HostChatRegisterBotResponse;
 };
 export const VersionedHostChatRegisterBotResponse: Codec<VersionedHostChatRegisterBotResponse>;
+/** Versioned envelope for [\`HostChatSetRoomFooterError\`]. */
+export type VersionedHostChatSetRoomFooterError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterError;
+};
+export const VersionedHostChatSetRoomFooterError: Codec<VersionedHostChatSetRoomFooterError>;
+/** Versioned envelope for [\`HostChatSetRoomFooterRequest\`]. */
+export type VersionedHostChatSetRoomFooterRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterRequest;
+};
+export const VersionedHostChatSetRoomFooterRequest: Codec<VersionedHostChatSetRoomFooterRequest>;
+/** Versioned envelope for [\`HostChatSetRoomFooterResponse\`]. */
+export type VersionedHostChatSetRoomFooterResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostChatSetRoomFooterResponse: Codec<VersionedHostChatSetRoomFooterResponse>;
 /** Versioned envelope for [\`HostCoinPaymentCreateChequeError\`]. */
 export type VersionedHostCoinPaymentCreateChequeError = 
 /** Version 1 payload. */
@@ -1652,6 +1706,30 @@ export type VersionedHostDevicePermissionResponse =
     value: HostDevicePermissionResponse;
 };
 export const VersionedHostDevicePermissionResponse: Codec<VersionedHostDevicePermissionResponse>;
+/** Versioned envelope for [\`HostExpandedCardSetFaceShownError\`]. */
+export type VersionedHostExpandedCardSetFaceShownError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownError;
+};
+export const VersionedHostExpandedCardSetFaceShownError: Codec<VersionedHostExpandedCardSetFaceShownError>;
+/** Versioned envelope for [\`HostExpandedCardSetFaceShownRequest\`]. */
+export type VersionedHostExpandedCardSetFaceShownRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostExpandedCardSetFaceShownRequest;
+};
+export const VersionedHostExpandedCardSetFaceShownRequest: Codec<VersionedHostExpandedCardSetFaceShownRequest>;
+/** Versioned envelope for [\`HostExpandedCardSetFaceShownResponse\`]. */
+export type VersionedHostExpandedCardSetFaceShownResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostExpandedCardSetFaceShownResponse: Codec<VersionedHostExpandedCardSetFaceShownResponse>;
 /** Versioned envelope for [\`HostFeatureSupportedError\`]. */
 export type VersionedHostFeatureSupportedError = 
 /** Version 1 payload. */
@@ -2822,6 +2900,30 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export const VersionedHostPushNotificationResponse: Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [\`HostRemindNextGameError\`]. */
+export type VersionedHostRemindNextGameError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameError;
+};
+export const VersionedHostRemindNextGameError: Codec<VersionedHostRemindNextGameError>;
+/** Versioned envelope for [\`HostRemindNextGameRequest\`]. */
+export type VersionedHostRemindNextGameRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRemindNextGameRequest;
+};
+export const VersionedHostRemindNextGameRequest: Codec<VersionedHostRemindNextGameRequest>;
+/** Versioned envelope for [\`HostRemindNextGameResponse\`]. */
+export type VersionedHostRemindNextGameResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostRemindNextGameResponse: Codec<VersionedHostRemindNextGameResponse>;
 /** Versioned envelope for [\`HostRendererActionSubscribeError\`]. */
 export type VersionedHostRendererActionSubscribeError = 
 /** Version 1 payload. */
@@ -2894,6 +2996,30 @@ export type VersionedHostRequestResourceAllocationResponse =
     value: HostRequestResourceAllocationResponse;
 };
 export const VersionedHostRequestResourceAllocationResponse: Codec<VersionedHostRequestResourceAllocationResponse>;
+/** Versioned envelope for [\`HostScannerScanError\`]. */
+export type VersionedHostScannerScanError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanError;
+};
+export const VersionedHostScannerScanError: Codec<VersionedHostScannerScanError>;
+/** Versioned envelope for [\`HostScannerScanRequest\`]. */
+export type VersionedHostScannerScanRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanRequest;
+};
+export const VersionedHostScannerScanRequest: Codec<VersionedHostScannerScanRequest>;
+/** Versioned envelope for [\`HostScannerScanResponse\`]. */
+export type VersionedHostScannerScanResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostScannerScanResponse;
+};
+export const VersionedHostScannerScanResponse: Codec<VersionedHostScannerScanResponse>;
 /**
  * Full Substrate extrinsic signing payload with all fields needed for signature
  * generation.
@@ -3718,76 +3844,6 @@ export type Modifier =
     value: BlendingMode;
 };
 export const Modifier: Codec<Modifier>;
-/**
- * A host-admitted notification activation for the authenticated product,
- * account and environment bound to this runtime.
- */
-export interface NotificationActivation {
-    /** Host-assigned sequence, unique within the bound activation queue. */
-    sequence: bigint;
-    /** Identifier of the activated notification. */
-    notificationId: number;
-    /** Validated product-relative route beginning with exactly one slash. */
-    route: string;
-}
-export const NotificationActivation: Codec<NotificationActivation>;
-/** Versioned envelope for [\`NotificationActivationAcknowledgeError\`]. */
-export type VersionedNotificationActivationAcknowledgeError = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: GenericError;
-};
-export const VersionedNotificationActivationAcknowledgeError: Codec<VersionedNotificationActivationAcknowledgeError>;
-/** Versioned envelope for [\`NotificationActivationAcknowledgeRequest\`]. */
-export type VersionedNotificationActivationAcknowledgeRequest = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: NotificationActivationAcknowledgeRequest;
-};
-export const VersionedNotificationActivationAcknowledgeRequest: Codec<VersionedNotificationActivationAcknowledgeRequest>;
-/** Versioned envelope for [\`NotificationActivationAcknowledgeResponse\`]. */
-export type VersionedNotificationActivationAcknowledgeResponse = 
-/** Version 1 (no payload). */
-{
-    tag: "V1";
-    value?: undefined;
-};
-export const VersionedNotificationActivationAcknowledgeResponse: Codec<VersionedNotificationActivationAcknowledgeResponse>;
-/** Versioned envelope for [\`NotificationActivationEventsError\`]. */
-export type VersionedNotificationActivationEventsError = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: GenericError;
-};
-export const VersionedNotificationActivationEventsError: Codec<VersionedNotificationActivationEventsError>;
-/** Versioned envelope for [\`NotificationActivationEventsRequest\`]. */
-export type VersionedNotificationActivationEventsRequest = 
-/** Version 1 (no payload). */
-{
-    tag: "V1";
-    value?: undefined;
-};
-export const VersionedNotificationActivationEventsRequest: Codec<VersionedNotificationActivationEventsRequest>;
-/** Versioned envelope for [\`NotificationActivationEventsResponse\`]. */
-export type VersionedNotificationActivationEventsResponse = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: NotificationActivations;
-};
-export const VersionedNotificationActivationEventsResponse: Codec<VersionedNotificationActivationEventsResponse>;
-/**
- * Pending activations, retained until individually acknowledged. Hosts return
- * at most 32 events in sequence order, without consuming them on retrieval.
- */
-export interface NotificationActivations {
-    /** Pending events in ascending sequence order. */
-    events: Array<NotificationActivation>;
-}
-export const NotificationActivations: Codec<NotificationActivations>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -4744,6 +4800,27 @@ export type RuntimeType =
     };
 };
 export const RuntimeType: Codec<RuntimeType>;
+/**
+ * How a scan ended.
+ *
+ * A dismissal is an outcome rather than an error, because it is worth
+ * offering again.
+ */
+export type ScanOutcome = 
+/** The user scanned a code the request accepts. */
+{
+    tag: "Scanned";
+    value: {
+        text: string;
+        format: CodeFormat;
+    };
+}
+/** The user closed the viewfinder without scanning. */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+};
+export const ScanOutcome: Codec<ScanOutcome>;
 /** Outline of a background or border. */
 export type Shape = 
 /** Rounded corners with the given radius. */
@@ -5194,6 +5271,10 @@ export interface HostAccountSignVrfRequest {
     items: Array<VrfTranscriptItem>;
 }
 export const HostAccountSignVrfRequest: Codec<HostAccountSignVrfRequest>;
+/** Request to drop this product's reminder. */
+export interface HostCancelNextGameRequest {
+}
+export const HostCancelNextGameRequest: Codec<HostCancelNextGameRequest>;
 /** A chat action received from the host. */
 export interface HostChatActionSubscribeItem {
     /** Room where the action occurred. */
@@ -5257,13 +5338,13 @@ export type HostChatPostMessageError =
 };
 export const HostChatPostMessageError: Codec<HostChatPostMessageError>;
 /** Request to post a message to a chat room. */
-export interface HostChatPostMessageRequest {
+export interface V01HostChatPostMessageRequest {
     /** Room to post to. */
     roomId: string;
     /** Message content. */
     payload: ChatMessageContent;
 }
-export const HostChatPostMessageRequest: Codec<HostChatPostMessageRequest>;
+export const V01HostChatPostMessageRequest: Codec<V01HostChatPostMessageRequest>;
 /** Result of posting a message. */
 export interface HostChatPostMessageResponse {
     /**
@@ -5304,6 +5385,29 @@ export interface HostChatRegisterBotResponse {
     status: ChatBotRegistrationStatus;
 }
 export const HostChatRegisterBotResponse: Codec<HostChatRegisterBotResponse>;
+/** Room footer failure. */
+export type HostChatSetRoomFooterError = 
+/** The calling product created no room with this id. */
+{
+    tag: "UnknownRoom";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostChatSetRoomFooterError: Codec<HostChatSetRoomFooterError>;
+/** Request to set what a room shows below its messages. */
+export interface HostChatSetRoomFooterRequest {
+    /** A room the calling product created. */
+    roomId: string;
+    /** What the room shows below its messages. */
+    footer: ChatRoomFooter;
+}
+export const HostChatSetRoomFooterRequest: Codec<HostChatSetRoomFooterRequest>;
 /** Request to create a cheque from a local purse to a receivable. */
 export interface HostCoinPaymentCreateChequeRequest {
     /** Source purse. */
@@ -5550,6 +5654,32 @@ export interface HostDevicePermissionResponse {
     granted: boolean;
 }
 export const HostDevicePermissionResponse: Codec<HostDevicePermissionResponse>;
+/** Face visibility change failure. */
+export type HostExpandedCardSetFaceShownError = 
+/** The Widget is not shown under its card right now. */
+{
+    tag: "NotPresented";
+    value?: undefined;
+}
+/** The user is moving the face; the request had no effect. */
+ | {
+    tag: "UserMoving";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostExpandedCardSetFaceShownError: Codec<HostExpandedCardSetFaceShownError>;
+/** Request to show or hide the face above the calling Widget. */
+export interface HostExpandedCardSetFaceShownRequest {
+    /** \`true\` brings the face back, \`false\` moves it out of the way. */
+    shown: boolean;
+}
+export const HostExpandedCardSetFaceShownRequest: Codec<HostExpandedCardSetFaceShownRequest>;
 /** Request to query whether a feature is supported by the host. */
 export type HostFeatureSupportedRequest = 
 /** Ask whether the host can interact with the chain identified by genesis hash. */
@@ -6215,6 +6345,15 @@ export interface HostPushNotificationResponse {
     id: number;
 }
 export const HostPushNotificationResponse: Codec<HostPushNotificationResponse>;
+/** Why a reminder was not taken. */
+export type HostRemindNextGameError = "StartsInPast";
+export const HostRemindNextGameError: Codec<HostRemindNextGameError>;
+/** Request to remind the user when this product's next game starts. */
+export interface HostRemindNextGameRequest {
+    /** Milliseconds since the Unix epoch, UTC, at which the game starts. */
+    startsAt: bigint;
+}
+export const HostRemindNextGameRequest: Codec<HostRemindNextGameRequest>;
 /** An action triggered inside a product-rendered body. */
 export interface HostRendererActionSubscribeItem {
     /** Where the body lives. */
@@ -6260,6 +6399,75 @@ export interface HostRequestResourceAllocationResponse {
     outcomes: Array<AllocationOutcome>;
 }
 export const HostRequestResourceAllocationResponse: Codec<HostRequestResourceAllocationResponse>;
+/**
+ * Error returned by the scanner.
+ *
+ * A host with no scanner answers \`Unsupported\` at the framework level rather
+ * than through this enum.
+ */
+export type HostScannerScanError = 
+/** The device has no camera, or the user refused the host application one. */
+{
+    tag: "CameraUnavailable";
+    value?: undefined;
+}
+/** Another scan is open. */
+ | {
+    tag: "Busy";
+    value?: undefined;
+}
+/**
+ * The calling execution is not on screen, and is not a Worker handling a
+ * tap from the user, so no viewfinder was opened.
+ */
+ | {
+    tag: "NotVisible";
+    value?: undefined;
+}
+/** The request breaks a limit, so no viewfinder was shown. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostScannerScanError: Codec<HostScannerScanError>;
+/**
+ * Request to open the host's scanner.
+ *
+ * The host draws the viewfinder and writes its title, naming the product.
+ * Only \`hint\` is product text, shown as one plain line under the title.
+ */
+export interface HostScannerScanRequest {
+    /** Formats the product accepts. At least one, each named once. */
+    formats: Array<CodeFormat>;
+    /**
+     * Start the text must have, compared ignoring ASCII letter case, since QR
+     * codes often carry URLs in capitals. At most 256 bytes of UTF-8.
+     */
+    prefix?: string;
+    /**
+     * What to point the camera at, shown as the product's words. At most 80
+     * Unicode scalar values (\`[...hint].length\` in TypeScript). No control
+     * characters, line or paragraph separators, invisible characters, or
+     * bidirectional formatting characters.
+     */
+    hint?: string;
+}
+export const HostScannerScanRequest: Codec<HostScannerScanRequest>;
+/** Outcome of a scan. */
+export interface HostScannerScanResponse {
+    /** How the scan ended. */
+    outcome: ScanOutcome;
+}
+export const HostScannerScanResponse: Codec<HostScannerScanResponse>;
 /** Signing operation error. */
 export type HostSignPayloadError = 
 /** Payload could not be deserialized. */
@@ -6358,12 +6566,6 @@ export interface HostWorkerEndOperationRequest {
     id: number;
 }
 export const HostWorkerEndOperationRequest: Codec<HostWorkerEndOperationRequest>;
-/** Acknowledge one handled activation in the runtime's bound queue. */
-export interface NotificationActivationAcknowledgeRequest {
-    /** Exact sequence to acknowledge; never a cumulative watermark. */
-    sequence: bigint;
-}
-export const NotificationActivationAcknowledgeRequest: Codec<NotificationActivationAcknowledgeRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */
@@ -6749,6 +6951,25 @@ export type RemoteStatementStoreSubscribeRequest =
     value: Array<HexString>;
 };
 export const RemoteStatementStoreSubscribeRequest: Codec<RemoteStatementStoreSubscribeRequest>;
+/**
+ * Request to post a message to a chat room.
+ *
+ * v0.2 adds \`alt\`, the text a host shows wherever it lists a custom message
+ * without drawing it, such as a chat list preview.
+ */
+export interface HostChatPostMessageRequest {
+    /** Room to post to. */
+    roomId: string;
+    /** Message content. */
+    payload: ChatMessageContent;
+    /**
+     * One line describing a custom message. \`None\` leaves the host its own
+     * placeholder. Every other kind previews from its own content, so its
+     * \`alt\` is dropped.
+     */
+    alt?: string;
+}
+export const HostChatPostMessageRequest: Codec<HostChatPostMessageRequest>;
 /** Local storage read failure. */
 export type HostLocalStorageReadError = 
 /** Storage quota exceeded. */
@@ -7102,8 +7323,10 @@ export import ChatMessageContent = T.ChatMessageContent;
 export import ChatReaction = T.ChatReaction;
 export import ChatRichText = T.ChatRichText;
 export import ChatRoom = T.ChatRoom;
+export import ChatRoomFooter = T.ChatRoomFooter;
 export import ChatRoomParticipation = T.ChatRoomParticipation;
 export import ChatRoomRegistrationStatus = T.ChatRoomRegistrationStatus;
+export import CodeFormat = T.CodeFormat;
 export import CoinPaymentCheque = T.CoinPaymentCheque;
 export import CoinPaymentClearingReference = T.CoinPaymentClearingReference;
 export import CoinPaymentError = T.CoinPaymentError;
@@ -7146,6 +7369,9 @@ export import VersionedHostAccountRingVrfSignResponse = T.VersionedHostAccountRi
 export import VersionedHostAccountSignVrfError = T.VersionedHostAccountSignVrfError;
 export import VersionedHostAccountSignVrfRequest = T.VersionedHostAccountSignVrfRequest;
 export import VersionedHostAccountSignVrfResponse = T.VersionedHostAccountSignVrfResponse;
+export import VersionedHostCancelNextGameError = T.VersionedHostCancelNextGameError;
+export import VersionedHostCancelNextGameRequest = T.VersionedHostCancelNextGameRequest;
+export import VersionedHostCancelNextGameResponse = T.VersionedHostCancelNextGameResponse;
 export import VersionedHostChatActionSubscribeError = T.VersionedHostChatActionSubscribeError;
 export import VersionedHostChatActionSubscribeItem = T.VersionedHostChatActionSubscribeItem;
 export import VersionedHostChatActionSubscribeRequest = T.VersionedHostChatActionSubscribeRequest;
@@ -7161,6 +7387,9 @@ export import VersionedHostChatPostMessageResponse = T.VersionedHostChatPostMess
 export import VersionedHostChatRegisterBotError = T.VersionedHostChatRegisterBotError;
 export import VersionedHostChatRegisterBotRequest = T.VersionedHostChatRegisterBotRequest;
 export import VersionedHostChatRegisterBotResponse = T.VersionedHostChatRegisterBotResponse;
+export import VersionedHostChatSetRoomFooterError = T.VersionedHostChatSetRoomFooterError;
+export import VersionedHostChatSetRoomFooterRequest = T.VersionedHostChatSetRoomFooterRequest;
+export import VersionedHostChatSetRoomFooterResponse = T.VersionedHostChatSetRoomFooterResponse;
 export import VersionedHostCoinPaymentCreateChequeError = T.VersionedHostCoinPaymentCreateChequeError;
 export import VersionedHostCoinPaymentCreateChequeRequest = T.VersionedHostCoinPaymentCreateChequeRequest;
 export import VersionedHostCoinPaymentCreateChequeResponse = T.VersionedHostCoinPaymentCreateChequeResponse;
@@ -7203,6 +7432,9 @@ export import VersionedHostDeriveEntropyResponse = T.VersionedHostDeriveEntropyR
 export import VersionedHostDevicePermissionError = T.VersionedHostDevicePermissionError;
 export import VersionedHostDevicePermissionRequest = T.VersionedHostDevicePermissionRequest;
 export import VersionedHostDevicePermissionResponse = T.VersionedHostDevicePermissionResponse;
+export import VersionedHostExpandedCardSetFaceShownError = T.VersionedHostExpandedCardSetFaceShownError;
+export import VersionedHostExpandedCardSetFaceShownRequest = T.VersionedHostExpandedCardSetFaceShownRequest;
+export import VersionedHostExpandedCardSetFaceShownResponse = T.VersionedHostExpandedCardSetFaceShownResponse;
 export import VersionedHostFeatureSupportedError = T.VersionedHostFeatureSupportedError;
 export import VersionedHostFeatureSupportedRequest = T.VersionedHostFeatureSupportedRequest;
 export import VersionedHostFeatureSupportedResponse = T.VersionedHostFeatureSupportedResponse;
@@ -7329,6 +7561,9 @@ export import VersionedHostPushNotificationCancelResponse = T.VersionedHostPushN
 export import VersionedHostPushNotificationError = T.VersionedHostPushNotificationError;
 export import VersionedHostPushNotificationRequest = T.VersionedHostPushNotificationRequest;
 export import VersionedHostPushNotificationResponse = T.VersionedHostPushNotificationResponse;
+export import VersionedHostRemindNextGameError = T.VersionedHostRemindNextGameError;
+export import VersionedHostRemindNextGameRequest = T.VersionedHostRemindNextGameRequest;
+export import VersionedHostRemindNextGameResponse = T.VersionedHostRemindNextGameResponse;
 export import VersionedHostRendererActionSubscribeError = T.VersionedHostRendererActionSubscribeError;
 export import VersionedHostRendererActionSubscribeItem = T.VersionedHostRendererActionSubscribeItem;
 export import VersionedHostRendererActionSubscribeRequest = T.VersionedHostRendererActionSubscribeRequest;
@@ -7338,6 +7573,9 @@ export import VersionedHostRequestLoginResponse = T.VersionedHostRequestLoginRes
 export import VersionedHostRequestResourceAllocationError = T.VersionedHostRequestResourceAllocationError;
 export import VersionedHostRequestResourceAllocationRequest = T.VersionedHostRequestResourceAllocationRequest;
 export import VersionedHostRequestResourceAllocationResponse = T.VersionedHostRequestResourceAllocationResponse;
+export import VersionedHostScannerScanError = T.VersionedHostScannerScanError;
+export import VersionedHostScannerScanRequest = T.VersionedHostScannerScanRequest;
+export import VersionedHostScannerScanResponse = T.VersionedHostScannerScanResponse;
 export import HostSignPayloadData = T.HostSignPayloadData;
 export import VersionedHostSignPayloadError = T.VersionedHostSignPayloadError;
 export import VersionedHostSignPayloadRequest = T.VersionedHostSignPayloadRequest;
@@ -7405,14 +7643,6 @@ export import MediaSurface = T.MediaSurface;
 export import MediaTrackState = T.MediaTrackState;
 export import MediaViewport = T.MediaViewport;
 export import Modifier = T.Modifier;
-export import NotificationActivation = T.NotificationActivation;
-export import VersionedNotificationActivationAcknowledgeError = T.VersionedNotificationActivationAcknowledgeError;
-export import VersionedNotificationActivationAcknowledgeRequest = T.VersionedNotificationActivationAcknowledgeRequest;
-export import VersionedNotificationActivationAcknowledgeResponse = T.VersionedNotificationActivationAcknowledgeResponse;
-export import VersionedNotificationActivationEventsError = T.VersionedNotificationActivationEventsError;
-export import VersionedNotificationActivationEventsRequest = T.VersionedNotificationActivationEventsRequest;
-export import VersionedNotificationActivationEventsResponse = T.VersionedNotificationActivationEventsResponse;
-export import NotificationActivations = T.NotificationActivations;
 export import OperationStartedResult = T.OperationStartedResult;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
 export import PocketCard = T.PocketCard;
@@ -7500,6 +7730,7 @@ export import RowProps = T.RowProps;
 export import RuntimeApi = T.RuntimeApi;
 export import RuntimeSpec = T.RuntimeSpec;
 export import RuntimeType = T.RuntimeType;
+export import ScanOutcome = T.ScanOutcome;
 export import Shape = T.Shape;
 export import SignedStatement = T.SignedStatement;
 export import Size = T.Size;
@@ -7531,17 +7762,20 @@ export import HostAccountRingVrfSignError = T.HostAccountRingVrfSignError;
 export import HostAccountRingVrfSignRequest = T.HostAccountRingVrfSignRequest;
 export import HostAccountSignVrfError = T.HostAccountSignVrfError;
 export import HostAccountSignVrfRequest = T.HostAccountSignVrfRequest;
+export import HostCancelNextGameRequest = T.HostCancelNextGameRequest;
 export import HostChatActionSubscribeItem = T.HostChatActionSubscribeItem;
 export import HostChatCreateRoomError = T.HostChatCreateRoomError;
 export import HostChatCreateRoomRequest = T.HostChatCreateRoomRequest;
 export import HostChatCreateRoomResponse = T.HostChatCreateRoomResponse;
 export import HostChatListSubscribeItem = T.HostChatListSubscribeItem;
 export import HostChatPostMessageError = T.HostChatPostMessageError;
-export import HostChatPostMessageRequest = T.HostChatPostMessageRequest;
+export import V01HostChatPostMessageRequest = T.V01HostChatPostMessageRequest;
 export import HostChatPostMessageResponse = T.HostChatPostMessageResponse;
 export import HostChatRegisterBotError = T.HostChatRegisterBotError;
 export import HostChatRegisterBotRequest = T.HostChatRegisterBotRequest;
 export import HostChatRegisterBotResponse = T.HostChatRegisterBotResponse;
+export import HostChatSetRoomFooterError = T.HostChatSetRoomFooterError;
+export import HostChatSetRoomFooterRequest = T.HostChatSetRoomFooterRequest;
 export import HostCoinPaymentCreateChequeRequest = T.HostCoinPaymentCreateChequeRequest;
 export import HostCoinPaymentCreateChequeResponse = T.HostCoinPaymentCreateChequeResponse;
 export import HostCoinPaymentCreatePurseRequest = T.HostCoinPaymentCreatePurseRequest;
@@ -7567,6 +7801,8 @@ export import HostDeriveEntropyRequest = T.HostDeriveEntropyRequest;
 export import HostDeriveEntropyResponse = T.HostDeriveEntropyResponse;
 export import HostDevicePermissionRequest = T.HostDevicePermissionRequest;
 export import HostDevicePermissionResponse = T.HostDevicePermissionResponse;
+export import HostExpandedCardSetFaceShownError = T.HostExpandedCardSetFaceShownError;
+export import HostExpandedCardSetFaceShownRequest = T.HostExpandedCardSetFaceShownRequest;
 export import HostFeatureSupportedRequest = T.HostFeatureSupportedRequest;
 export import HostFeatureSupportedResponse = T.HostFeatureSupportedResponse;
 export import HostGetLegacyAccountsResponse = T.HostGetLegacyAccountsResponse;
@@ -7617,12 +7853,17 @@ export import HostPushNotificationCancelRequest = T.HostPushNotificationCancelRe
 export import HostPushNotificationError = T.HostPushNotificationError;
 export import HostPushNotificationRequest = T.HostPushNotificationRequest;
 export import HostPushNotificationResponse = T.HostPushNotificationResponse;
+export import HostRemindNextGameError = T.HostRemindNextGameError;
+export import HostRemindNextGameRequest = T.HostRemindNextGameRequest;
 export import HostRendererActionSubscribeItem = T.HostRendererActionSubscribeItem;
 export import HostRequestLoginError = T.HostRequestLoginError;
 export import HostRequestLoginRequest = T.HostRequestLoginRequest;
 export import HostRequestLoginResponse = T.HostRequestLoginResponse;
 export import HostRequestResourceAllocationRequest = T.HostRequestResourceAllocationRequest;
 export import HostRequestResourceAllocationResponse = T.HostRequestResourceAllocationResponse;
+export import HostScannerScanError = T.HostScannerScanError;
+export import HostScannerScanRequest = T.HostScannerScanRequest;
+export import HostScannerScanResponse = T.HostScannerScanResponse;
 export import HostSignPayloadError = T.HostSignPayloadError;
 export import HostSignPayloadRequest = T.HostSignPayloadRequest;
 export import HostSignPayloadResponse = T.HostSignPayloadResponse;
@@ -7633,7 +7874,6 @@ export import HostThemeSubscribeItem = T.HostThemeSubscribeItem;
 export import HostWorkerBeginOperationRequest = T.HostWorkerBeginOperationRequest;
 export import HostWorkerBeginOperationResponse = T.HostWorkerBeginOperationResponse;
 export import HostWorkerEndOperationRequest = T.HostWorkerEndOperationRequest;
-export import NotificationActivationAcknowledgeRequest = T.NotificationActivationAcknowledgeRequest;
 export import ProductRendererRenderRequest = T.ProductRendererRenderRequest;
 export import RemoteChainHeadBodyRequest = T.RemoteChainHeadBodyRequest;
 export import RemoteChainHeadBodyResponse = T.RemoteChainHeadBodyResponse;
@@ -7669,6 +7909,7 @@ export import RemoteStatementStoreCreateProofRequest = T.RemoteStatementStoreCre
 export import RemoteStatementStoreCreateProofResponse = T.RemoteStatementStoreCreateProofResponse;
 export import RemoteStatementStoreSubscribeItem = T.RemoteStatementStoreSubscribeItem;
 export import RemoteStatementStoreSubscribeRequest = T.RemoteStatementStoreSubscribeRequest;
+export import HostChatPostMessageRequest = T.HostChatPostMessageRequest;
 export import HostLocalStorageReadError = T.HostLocalStorageReadError;
 export import HostLocalStorageReadRequest = T.HostLocalStorageReadRequest;
 export import HostLocaleLocalizeTimestampsRequest = T.HostLocaleLocalizeTimestampsRequest;
@@ -8136,7 +8377,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "90c2d0c1b44449fc";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "5e5364e0191bf9d5";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -8269,6 +8510,12 @@ export declare class ChatClient {
     postMessage(request: T.HostChatPostMessageRequest, options?: CallOptions): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
     actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
+    /**
+     * Set what a room the product created shows below its messages. A room
+     * keeps the footer until the product sets another, and a new room shows
+     * the text input.
+     */
+    setRoomFooter(request: T.HostChatSetRoomFooterRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostChatSetRoomFooterError>>;
 }
 /**
  * CoinPayment operations.
@@ -8344,6 +8591,39 @@ export declare class EntropyClient {
     constructor(transport: TrUApiTransport);
     /** Derive deterministic entropy. */
     derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
+}
+/**
+ * The card a Widget is shown under.
+ *
+ * Only a Widget execution may call it.
+ */
+export declare class ExpandedCardClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Show or hide the face above the calling Widget.
+     *
+     * Succeeds when the face is already in that state. Fails with
+     * \`NotPresented\` when the Widget is not shown under its card.
+     */
+    setFaceShown(request: T.HostExpandedCardSetFaceShownRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostExpandedCardSetFaceShownError>>;
+}
+/** Reminders for a product's next game. */
+export declare class GameClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Remind the user when this product's next game starts.
+     *
+     * Replaces the reminder this product already holds. Served only to the
+     * game product: any other product, or a host that cannot hold reminders,
+     * gets \`Unsupported\`. A \`startsAt\` that is not in the future fails with
+     * \`StartsInPast\`, and a reminder the host cannot hold fails as a host
+     * failure carrying its reason.
+     */
+    remindNextGame(request: T.HostRemindNextGameRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostRemindNextGameError>>;
+    /** Drop the reminder. Safe to call whether one is held or not. */
+    cancelNextGame(request: T.HostCancelNextGameRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostCancelNextGameError>>;
 }
 /** Local key/value storage scoped to the calling product. */
 export declare class LocalStorageClient {
@@ -8514,18 +8794,6 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
-    /**
-     * Retrieve up to 32 pending activations for this runtime's authenticated
-     * product, account and environment. Retrieval does not consume events,
-     * prompt for permissions or enroll a background receiver.
-     */
-    activationEvents(options?: CallOptions): ResultAsync<T.NotificationActivations, S.CallErrorValue<T.VersionedNotificationActivationEventsError>>;
-    /**
-     * Acknowledge exactly one activation after the product router handles it.
-     * Unknown or already acknowledged sequences are idempotent, and can never
-     * remove an activation from another product, account or environment.
-     */
-    acknowledgeActivation(request: T.NotificationActivationAcknowledgeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedNotificationActivationAcknowledgeError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {
@@ -8588,7 +8856,14 @@ export declare class PreimageClient {
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
     }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
-    /** Submit a preimage. Returns the preimage key (hash) on success. */
+    /**
+     * Submit a preimage. Returns the preimage key (hash) on success.
+     *
+     * Requires the \`PreimageSubmit\` permission. Upload consent is separate
+     * from that capability grant. The host reviews each upload unless an
+     * explicit bounded automatic-upload policy approves it. Allocating or
+     * renewing the Bulletin allowance may also require approval.
+     */
     submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */
@@ -8612,6 +8887,27 @@ export declare class ResourceAllocationClient {
     constructor(transport: TrUApiTransport);
     /** Request the host to pre-allocate one or more resources. */
     request(request: T.HostRequestResourceAllocationRequest, options?: CallOptions): ResultAsync<T.HostRequestResourceAllocationResponse, S.CallErrorValue<T.VersionedHostRequestResourceAllocationError>>;
+}
+/**
+ * QR codes and barcodes scanned through the host's own viewfinder.
+ *
+ * The product receives the one code the user scanned, never camera frames,
+ * so there is no permission to request: pointing the host's viewfinder at a
+ * code is the consent. The host does not act on what it scanned, so a link
+ * comes back as text. A product that needs the camera for anything else keeps
+ * using \`getUserMedia\` under the \`Camera\` permission.
+ */
+export declare class ScannerClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Ask the host to let the user scan one code.
+     *
+     * The host ignores codes outside \`formats\` or without \`prefix\` and keeps
+     * the viewfinder open. A host with no scanner answers \`Unsupported\`, and
+     * cancelling the call closes the viewfinder.
+     */
+    scan(request: T.HostScannerScanRequest, options?: CallOptions): ResultAsync<T.HostScannerScanResponse, S.CallErrorValue<T.VersionedHostScannerScanError>>;
 }
 /** Signing operations. */
 export declare class SigningClient {
@@ -8787,6 +9083,8 @@ export interface TrUApiClient {
     readonly coinPayment: CoinPaymentClient;
     readonly contacts: ContactsClient;
     readonly entropy: EntropyClient;
+    readonly expandedCard: ExpandedCardClient;
+    readonly game: GameClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
     readonly media: MediaClient;
@@ -8797,6 +9095,7 @@ export interface TrUApiClient {
     readonly preimage: PreimageClient;
     readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;
+    readonly scanner: ScannerClient;
     readonly signing: SigningClient;
     readonly statementStore: StatementStoreClient;
     readonly system: SystemClient;

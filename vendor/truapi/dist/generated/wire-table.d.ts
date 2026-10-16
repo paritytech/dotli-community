@@ -178,6 +178,11 @@ export declare const CHAT_ACTION_SUBSCRIBE: {
     readonly method: 4;
     readonly kind: "subscription";
 };
+export declare const CHAT_SET_ROOM_FOOTER: {
+    readonly trait: 4;
+    readonly method: 6;
+    readonly kind: "request";
+};
 export declare const COIN_PAYMENT_CREATE_PURSE: {
     readonly trait: 5;
     readonly method: 0;
@@ -256,16 +261,6 @@ export declare const NOTIFICATIONS_SEND_PUSH_NOTIFICATION: {
 export declare const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION: {
     readonly trait: 8;
     readonly method: 1;
-    readonly kind: "request";
-};
-export declare const NOTIFICATIONS_ACTIVATION_EVENTS: {
-    readonly trait: 8;
-    readonly method: 8;
-    readonly kind: "request";
-};
-export declare const NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION: {
-    readonly trait: 8;
-    readonly method: 9;
     readonly kind: "request";
 };
 export declare const PAYMENT_BALANCE_SUBSCRIBE: {
@@ -430,6 +425,26 @@ export declare const WORKER_END_OPERATION: {
 };
 export declare const CONTACTS_PICK: {
     readonly trait: 20;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const GAME_REMIND_NEXT_GAME: {
+    readonly trait: 21;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const GAME_CANCEL_NEXT_GAME: {
+    readonly trait: 21;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const EXPANDED_CARD_SET_FACE_SHOWN: {
+    readonly trait: 23;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const SCANNER_SCAN: {
+    readonly trait: 25;
     readonly method: 0;
     readonly kind: "request";
 };

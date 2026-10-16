@@ -44,31 +44,9 @@ import {
   cancelPairing,
   initPageCore,
   setPageProduct,
-  activeLocalWallet,
-  assertLocalWallet,
-  disposePageCores,
-  withLocalIdentityUpdate,
-  type LiveLocalWallet,
   type CoreConnection,
   type CoreLease,
 } from './page-core.js';
-import type { InspectorProduct } from '@dotli/truapi-debug';
-import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
-import { ALL_PERMISSIONS, authorizationRequest, fromAuthorizationStatus } from './permissions.js';
-import {
-  createLocalWalletSecret,
-  deleteLocalWalletSecret,
-  exportLocalWalletMnemonic,
-  importLocalWalletMnemonic,
-  isExperimentalWalletActive,
-  initializeLocalWalletState,
-  isLocalWalletStoredInOtherApp,
-  setLocalWalletEnabled,
-  readLocalWalletDisplay,
-  writeVerifiedLocalIdentity,
-  LOCAL_WALLET_ENABLED_KEY,
-  LOCAL_WALLET_REVISION_KEY,
-} from './host-callbacks/SessionStore.js';
 
 export { setPageProduct } from './page-core.js';
 // The pool behind these leases already ships in this chunk, so other callers take them from here.

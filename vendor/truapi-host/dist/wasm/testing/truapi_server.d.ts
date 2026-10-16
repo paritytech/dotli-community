@@ -116,6 +116,16 @@ export class WasmPairingHostRuntime {
      * Update a stored permission authorization status for a product.
      */
     setPermissionAuthorizationStatus(product_id: string, payload: Uint8Array, status: string): Promise<void>;
+    /**
+     * Keep preimage submissions in the core instead of the Bulletin chain.
+     *
+     * For a test host whose wallet answers allowances in-page: the Bulletin
+     * allowance it hands out was never authorized on chain, so a real `store`
+     * would be refused at dry-run. The product gets the content key back and
+     * reads the value from the core's lookup cache, as after a landed
+     * submission. A refused Bulletin allowance still refuses the submission.
+     */
+    setSubmitPreimagesLocally(local: boolean): void;
 }
 
 /**
@@ -298,11 +308,19 @@ export class WasmSigningHostRuntime {
      */
     notifyContactsChanged(): void;
     /**
-     * Read one permission authorization status for a product.
+     * Read a permission authorization status for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      */
     permissionAuthorizationStatus(product_id: string, payload: Uint8Array): Promise<any>;
     /**
      * Read permission authorization statuses for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      */
     permissionAuthorizationStatuses(product_id: string, payloads: Array<any>): Promise<Array<any>>;
     /**
@@ -339,12 +357,27 @@ export class WasmSigningHostRuntime {
      * paths without an on-chain personhood identity. Nothing is allocated, so
      * a green run says the product handles a grant, not that a host would
      * have given one.
+     *
+     * Preimage submissions then stay in the core: the Bulletin allowance was
+     * never authorized on chain, so a real `store` would be refused. The
+     * product gets the content key back and reads the value from the core's
+     * lookup cache, as after a landed submission.
      */
     setGrantAllowancesUnchecked(granted: boolean): void;
     /**
-     * Update one stored permission authorization status for a product.
+     * Update a stored permission authorization status for a product.
      */
     setPermissionAuthorizationStatus(product_id: string, payload: Uint8Array, status: string): Promise<void>;
+    /**
+     * Keep preimage submissions in the core instead of the Bulletin chain.
+     *
+     * For a test host whose wallet answers allowances in-page: the Bulletin
+     * allowance it hands out was never authorized on chain, so a real `store`
+     * would be refused at dry-run. The product gets the content key back and
+     * reads the value from the core's lookup cache, as after a landed
+     * submission. A refused Bulletin allowance still refuses the submission.
+     */
+    setSubmitPreimagesLocally(local: boolean): void;
     /**
      * Answer these resource tags as refused, replacing any earlier set.
      *
@@ -464,6 +497,7 @@ export interface InitOutput {
     readonly wasmpairinghostruntime_resetSessionState: (a: number) => number;
     readonly wasmpairinghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmpairinghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
+    readonly wasmpairinghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
     readonly wasmproductruntime_callingPermissionAuthorizationRequest: (a: number) => number;
     readonly wasmproductruntime_disconnectSession: (a: number) => number;
     readonly wasmproductruntime_dispose: (a: number, b: number) => void;
@@ -503,14 +537,15 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setGrantAllowancesUnchecked: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
+    readonly wasmsigninghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_10534: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_10590: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4750: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4743: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_10403: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4747: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10751: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10808: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4942: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4935: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_10621: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4939: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

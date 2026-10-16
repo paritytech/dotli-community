@@ -1,5 +1,5 @@
 /* @ts-self-types="./truapi_server.d.ts" */
-import { alias, member, prove, read, sign, start } from './snippets/truapi-fe97cb90e277013a/inline0.js';
+import { alias, member, prove, read, sign, start } from './snippets/truapi-bfd371e31d568d3d/inline0.js';
 
 
 /**
@@ -577,348 +577,6 @@ export class WasmRendererSubscription {
 if (Symbol.dispose) WasmRendererSubscription.prototype[Symbol.dispose] = WasmRendererSubscription.prototype.free;
 
 /**
- * JS-callable handle to a wallet-local signing-host runtime.
- */
-export class WasmSigningHostRuntime {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        WasmSigningHostRuntimeFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_wasmsigninghostruntime_free(ptr, 0);
-    }
-    /**
-     * Take one reference on the product's worker for a modality holder. The
-     * first one reports `"Start"` to the host's `workerDemandChanged`
-     * callback. Pair every call with one `releaseWorker`.
-     * @param {string} product_id
-     */
-    acquireWorker(product_id) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.wasmsigninghostruntime_acquireWorker(this.__wbg_ptr, ptr0, len0);
-    }
-    /**
-     * Activate a wallet-local session from raw BIP-39 entropy.
-     * @param {Uint8Array} secret
-     * @returns {Promise<void>}
-     */
-    activateLocalSession(secret) {
-        const ptr0 = passArray8ToWasm0(secret, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_activateLocalSession(this.__wbg_ptr, ptr0, len0);
-        return takeObject(ret);
-    }
-    /**
-     * Activate a wallet-local session and attach known identity metadata.
-     * @param {Uint8Array} secret
-     * @param {string | null} [lite_username]
-     * @returns {Promise<void>}
-     */
-    activateLocalSessionWithIdentity(secret, lite_username) {
-        const ptr0 = passArray8ToWasm0(secret, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        var ptr1 = isLikeNone(lite_username) ? 0 : passStringToWasm0(lite_username, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        var len1 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_activateLocalSessionWithIdentity(this.__wbg_ptr, ptr0, len0, ptr1, len1);
-        return takeObject(ret);
-    }
-    /**
-     * Resolve the current Calling slot as a SCALE-encoded
-     * `PermissionAuthorizationRequest`, without prompting or opening Media.
-     * @param {string} product_id
-     * @returns {Promise<Uint8Array>}
-     */
-    callingPermissionAuthorizationRequest(product_id) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_callingPermissionAuthorizationRequest(this.__wbg_ptr, ptr0, len0);
-        return takeObject(ret);
-    }
-    /**
-     * Revoke one product's grants from the current local activation.
-     * @param {string} product_id
-     * @returns {Promise<void>}
-     */
-    clearProductState(product_id) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_clearProductState(this.__wbg_ptr, ptr0, len0);
-        return takeObject(ret);
-    }
-    /**
-     * Read this browser's X25519 encryption secret, generating and persisting
-     * it on first read.
-     * @returns {Promise<Uint8Array>}
-     */
-    deviceEncryptionKey() {
-        const ret = wasm.wasmsigninghostruntime_deviceEncryptionKey(this.__wbg_ptr);
-        return takeObject(ret);
-    }
-    /**
-     * Disconnect the active wallet-local session.
-     * @returns {Promise<void>}
-     */
-    disconnectSession() {
-        const ret = wasm.wasmsigninghostruntime_disconnectSession(this.__wbg_ptr);
-        return takeObject(ret);
-    }
-    /**
-     * Read the active signing wallet's trusted native Chat directory for host UI.
-     * @returns {Promise<any>}
-     */
-    getNativeChatContacts() {
-        const ret = wasm.wasmsigninghostruntime_getNativeChatContacts(this.__wbg_ptr);
-        return takeObject(ret);
-    }
-    /**
-     * Read finalized allowance state for this activation; never allocate or sign.
-     * @param {string} activation_id
-     * @param {string[]} product_ids
-     * @returns {Promise<any>}
-     */
-    getWalletAllowanceSnapshot(activation_id, product_ids) {
-        const ptr0 = passStringToWasm0(activation_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayJsValueToWasm0(product_ids, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_getWalletAllowanceSnapshot(this.__wbg_ptr, ptr0, len0, ptr1, len1);
-        return takeObject(ret);
-    }
-    /**
-     * Return the UID public key followed by its native sr25519 backend-auth proof.
-     * @param {string} activation_id
-     * @param {Uint8Array} challenge
-     * @returns {Uint8Array}
-     */
-    localIdentityAuthProof(activation_id, challenge) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passStringToWasm0(activation_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-            const len0 = WASM_VECTOR_LEN;
-            const ptr1 = passArray8ToWasm0(challenge, wasm.__wbindgen_export);
-            const len1 = WASM_VECTOR_LEN;
-            wasm.wasmsigninghostruntime_localIdentityAuthProof(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-            if (r3) {
-                throw takeObject(r2);
-            }
-            var v3 = getArrayU8FromWasm0(r0, r1).slice();
-            wasm.__wbindgen_export4(r0, r1 * 1, 1);
-            return v3;
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Capture an opaque activation fence and its UID account.
-     * @returns {any}
-     */
-    localIdentityContext() {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.wasmsigninghostruntime_localIdentityContext(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return takeObject(r0);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Build registration JSON without exporting entropy or implementing proofs in JavaScript.
-     * @param {string} activation_id
-     * @param {string} username_base
-     * @param {Uint8Array} verifier
-     * @returns {Promise<string>}
-     */
-    localLiteRegistrationBody(activation_id, username_base, verifier) {
-        const ptr0 = passStringToWasm0(activation_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(username_base, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray8ToWasm0(verifier, wasm.__wbindgen_export);
-        const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_localLiteRegistrationBody(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
-        return takeObject(ret);
-    }
-    /**
-     * Build a shared signing runtime from host callbacks and host config.
-     * @param {any} callbacks
-     * @param {any} host_config
-     */
-    constructor(callbacks, host_config) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.wasmsigninghostruntime_new(retptr, addHeapObject(callbacks), addHeapObject(host_config));
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            this.__wbg_ptr = r0;
-            WasmSigningHostRuntimeFinalization.register(this, this.__wbg_ptr, this);
-            return this;
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Tell the runtime that the host's contact list changed, so cached
-     * handles are dropped and the next resolution reads the list.
-     */
-    notifyContactsChanged() {
-        wasm.wasmsigninghostruntime_notifyContactsChanged(this.__wbg_ptr);
-    }
-    /**
-     * Read one permission authorization status for a product.
-     * @param {string} product_id
-     * @param {Uint8Array} payload
-     * @returns {Promise<any>}
-     */
-    permissionAuthorizationStatus(product_id, payload) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_permissionAuthorizationStatus(this.__wbg_ptr, ptr0, len0, ptr1, len1);
-        return takeObject(ret);
-    }
-    /**
-     * Read permission authorization statuses for a product.
-     * @param {string} product_id
-     * @param {Array<any>} payloads
-     * @returns {Promise<Array<any>>}
-     */
-    permissionAuthorizationStatuses(product_id, payloads) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_permissionAuthorizationStatuses(this.__wbg_ptr, ptr0, len0, addHeapObject(payloads));
-        return takeObject(ret);
-    }
-    /**
-     * Build one product-scoped runtime from this signing host.
-     * Optional platform callbacks are execution-local; shared authority stays here.
-     * @param {any} product
-     * @param {any} core_callbacks
-     * @param {any | null} [platform_callbacks]
-     * @returns {WasmProductRuntime}
-     */
-    productRuntime(product, core_callbacks, platform_callbacks) {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.wasmsigninghostruntime_productRuntime(retptr, this.__wbg_ptr, addHeapObject(product), addHeapObject(core_callbacks), isLikeNone(platform_callbacks) ? 0 : addHeapObject(platform_callbacks));
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-            if (r2) {
-                throw takeObject(r1);
-            }
-            return WasmProductRuntime.__wrap(r0);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Resolve a product's hard-subtree public key from the active local
-     * signing session.
-     * @param {string} product_id
-     * @param {number | null} [timeout_ms]
-     * @returns {Promise<Uint8Array | undefined>}
-     */
-    productSubtreePublicKey(product_id, timeout_ms) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_productSubtreePublicKey(this.__wbg_ptr, ptr0, len0, isLikeNone(timeout_ms) ? Number.MAX_SAFE_INTEGER : (timeout_ms) >>> 0);
-        return takeObject(ret);
-    }
-    /**
-     * Install freshly verified dotNS metadata only for the captured local activation.
-     * @param {string} activation_id
-     * @returns {Promise<any>}
-     */
-    refreshLocalIdentity(activation_id) {
-        const ptr0 = passStringToWasm0(activation_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_refreshLocalIdentity(this.__wbg_ptr, ptr0, len0);
-        return takeObject(ret);
-    }
-    /**
-     * Re-read a product's stored authorization after another core changes it.
-     * @param {string} product_id
-     * @param {Uint8Array} payload
-     * @returns {Promise<void>}
-     */
-    refreshPermissionAuthorization(product_id, payload) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_refreshPermissionAuthorization(this.__wbg_ptr, ptr0, len0, ptr1, len1);
-        return takeObject(ret);
-    }
-    /**
-     * Release one reference. The last one reports `"Stop"`, after which the
-     * host may stop the worker; releasing with none held is a no-op.
-     * @param {string} product_id
-     */
-    releaseWorker(product_id) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.wasmsigninghostruntime_releaseWorker(this.__wbg_ptr, ptr0, len0);
-    }
-    /**
-     * Read the active local session's X25519 chat identity private key.
-     * @returns {Uint8Array | undefined}
-     */
-    sessionChatIdentityKey() {
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.wasmsigninghostruntime_sessionChatIdentityKey(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            let v1;
-            if (r0 !== 0) {
-                v1 = getArrayU8FromWasm0(r0, r1).slice();
-                wasm.__wbindgen_export4(r0, r1 * 1, 1);
-            }
-            return v1;
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-        }
-    }
-    /**
-     * Update one stored permission authorization status for a product.
-     * @param {string} product_id
-     * @param {Uint8Array} payload
-     * @param {string} status
-     * @returns {Promise<void>}
-     */
-    setPermissionAuthorizationStatus(product_id, payload, status) {
-        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(status, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmsigninghostruntime_setPermissionAuthorizationStatus(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
-        return takeObject(ret);
-    }
-}
-if (Symbol.dispose) WasmSigningHostRuntime.prototype[Symbol.dispose] = WasmSigningHostRuntime.prototype.free;
-
-/**
  * Soft-derive a product account public key from a product's hard-subtree key
  * and a SCALE-encoded `DerivationIndex`.
  *
@@ -1136,12 +794,6 @@ function __wbg_get_imports() {
             const ret = getObject(arg0) === undefined;
             return ret;
         },
-        __wbg___wbindgen_number_get_394265ed1e1b84ee: function(arg0, arg1) {
-            const obj = getObject(arg1);
-            const ret = typeof(obj) === 'number' ? obj : undefined;
-            getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-        },
         __wbg___wbindgen_string_get_b0ca35b86a603356: function(arg0, arg1) {
             const obj = getObject(arg1);
             const ret = typeof(obj) === 'string' ? obj : undefined;
@@ -1156,7 +808,7 @@ function __wbg_get_imports() {
         __wbg__wbg_cb_unref_fffb441def202758: function(arg0) {
             getObject(arg0)._wbg_cb_unref();
         },
-        __wbg_alias_0a7d8f1127ec6aff: function(arg0, arg1, arg2, arg3, arg4) {
+        __wbg_alias_5c2a475b2fd2c303: function(arg0, arg1, arg2, arg3, arg4) {
             const ret = alias(getArrayU8FromWasm0(arg1, arg2), getArrayU8FromWasm0(arg3, arg4));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1260,7 +912,7 @@ function __wbg_get_imports() {
             const ret = getObject(arg0).length;
             return ret;
         },
-        __wbg_member_6e3b459e446c90c6: function(arg0, arg1, arg2) {
+        __wbg_member_b50f347e728a2710: function(arg0, arg1, arg2) {
             const ret = member(getArrayU8FromWasm0(arg1, arg2));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1298,7 +950,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return __wasm_bindgen_func_elem_10573(a, state0.b, arg0, arg1);
+                        return __wasm_bindgen_func_elem_7568(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -1325,10 +977,6 @@ function __wbg_get_imports() {
             const ret = getObject(arg0).now();
             return ret;
         },
-        __wbg_parse_1c0d8a8656d7e016: function() { return handleError(function (arg0, arg1) {
-            const ret = JSON.parse(getStringFromWasm0(arg0, arg1));
-            return addHeapObject(ret);
-        }, arguments); },
         __wbg_performance_3fcf6e32a7e1ed0a: function(arg0) {
             const ret = getObject(arg0).performance;
             return addHeapObject(ret);
@@ -1340,7 +988,7 @@ function __wbg_get_imports() {
         __wbg_prototypesetcall_4770620bbe4688a0: function(arg0, arg1, arg2) {
             Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), getObject(arg2));
         },
-        __wbg_prove_041447c1ef7a2ad3: function(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+        __wbg_prove_b6e6026484b3e835: function(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
             const ret = prove(getArrayU8FromWasm0(arg1, arg2), arg3 >>> 0, getArrayU8FromWasm0(arg4, arg5), getArrayU8FromWasm0(arg6, arg7), getArrayU8FromWasm0(arg8, arg9), getArrayU8FromWasm0(arg10, arg11));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1361,7 +1009,7 @@ function __wbg_get_imports() {
         __wbg_randomFillSync_6c25eac9869eb53c: function() { return handleError(function (arg0, arg1) {
             getObject(arg0).randomFillSync(takeObject(arg1));
         }, arguments); },
-        __wbg_read_9bb2cdcbdd53cf29: function() {
+        __wbg_read_63aa7d7733088844: function() {
             const ret = read();
             return addHeapObject(ret);
         },
@@ -1381,7 +1029,7 @@ function __wbg_get_imports() {
             const ret = Reflect.set(getObject(arg0), getObject(arg1), getObject(arg2));
             return ret;
         }, arguments); },
-        __wbg_sign_afeaee32bf7fb771: function(arg0, arg1, arg2, arg3, arg4) {
+        __wbg_sign_d17b848f01c49da3: function(arg0, arg1, arg2, arg3, arg4) {
             const ret = sign(getArrayU8FromWasm0(arg1, arg2), getArrayU8FromWasm0(arg3, arg4));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1395,7 +1043,7 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
-        __wbg_start_595d9b0cd3ecadb5: function(arg0) {
+        __wbg_start_b1eabc62a60698c2: function(arg0) {
             const ret = start(getObject(arg0));
             return addHeapObject(ret);
         },
@@ -1435,28 +1083,28 @@ function __wbg_get_imports() {
             console.warn(getObject(arg0));
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 381, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10517);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 310, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_7512);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 97, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4743);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 74, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_3152);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 163, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10386);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 124, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_7382);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000004: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 93, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4736);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 70, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_3145);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000005: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 95, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4740);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 72, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_3149);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000006: function(arg0) {
@@ -1500,22 +1148,22 @@ function __wbg_get_imports() {
     };
 }
 
-function __wasm_bindgen_func_elem_10386(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_10386(arg0, arg1);
+function __wasm_bindgen_func_elem_7382(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_7382(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4740(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_4740(arg0, arg1);
+function __wasm_bindgen_func_elem_3149(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_3149(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4743(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_4743(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_3152(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_3152(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_4736(arg0, arg1) {
+function __wasm_bindgen_func_elem_3145(arg0, arg1) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_4736(retptr, arg0, arg1);
+        wasm.__wasm_bindgen_func_elem_3145(retptr, arg0, arg1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1526,10 +1174,10 @@ function __wasm_bindgen_func_elem_4736(arg0, arg1) {
     }
 }
 
-function __wasm_bindgen_func_elem_10517(arg0, arg1, arg2) {
+function __wasm_bindgen_func_elem_7512(arg0, arg1, arg2) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_10517(retptr, arg0, arg1, addHeapObject(arg2));
+        wasm.__wasm_bindgen_func_elem_7512(retptr, arg0, arg1, addHeapObject(arg2));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1540,8 +1188,8 @@ function __wasm_bindgen_func_elem_10517(arg0, arg1, arg2) {
     }
 }
 
-function __wasm_bindgen_func_elem_10573(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_10573(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_7568(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_7568(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const WasmPairingHostRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1553,9 +1201,6 @@ const WasmProductRuntimeFinalization = (typeof FinalizationRegistry === 'undefin
 const WasmRendererSubscriptionFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmrenderersubscription_free(ptr, 1));
-const WasmSigningHostRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_wasmsigninghostruntime_free(ptr, 1));
 
 function addHeapObject(obj) {
     if (heap_next === heap.length) heap.push(heap.length + 1);
@@ -1742,16 +1387,6 @@ function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
     getUint8ArrayMemory0().set(arg, ptr / 1);
     WASM_VECTOR_LEN = arg.length;
-    return ptr;
-}
-
-function passArrayJsValueToWasm0(array, malloc) {
-    const ptr = malloc(array.length * 4, 4) >>> 0;
-    const mem = getDataViewMemory0();
-    for (let i = 0; i < array.length; i++) {
-        mem.setUint32(ptr + 4 * i, addHeapObject(array[i]), true);
-    }
-    WASM_VECTOR_LEN = array.length;
     return ptr;
 }
 

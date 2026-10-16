@@ -1,5 +1,5 @@
 /* @ts-self-types="./truapi_server.d.ts" */
-import { alias, member, prove, read, sign, start } from './snippets/truapi-fe97cb90e277013a/inline0.js';
+import { alias, member, prove, read, sign, start } from './snippets/truapi-bfd371e31d568d3d/inline0.js';
 
 
 /**
@@ -298,6 +298,19 @@ export class WasmPairingHostRuntime {
         const len2 = WASM_VECTOR_LEN;
         const ret = wasm.wasmpairinghostruntime_setPermissionAuthorizationStatus(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
         return takeObject(ret);
+    }
+    /**
+     * Keep preimage submissions in the core instead of the Bulletin chain.
+     *
+     * For a test host whose wallet answers allowances in-page: the Bulletin
+     * allowance it hands out was never authorized on chain, so a real `store`
+     * would be refused at dry-run. The product gets the content key back and
+     * reads the value from the core's lookup cache, as after a landed
+     * submission. A refused Bulletin allowance still refuses the submission.
+     * @param {boolean} local
+     */
+    setSubmitPreimagesLocally(local) {
+        wasm.wasmpairinghostruntime_setSubmitPreimagesLocally(this.__wbg_ptr, local);
     }
 }
 if (Symbol.dispose) WasmPairingHostRuntime.prototype[Symbol.dispose] = WasmPairingHostRuntime.prototype.free;
@@ -782,7 +795,11 @@ export class WasmSigningHostRuntime {
         wasm.wasmsigninghostruntime_notifyContactsChanged(this.__wbg_ptr);
     }
     /**
-     * Read one permission authorization status for a product.
+     * Read a permission authorization status for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      * @param {string} product_id
      * @param {Uint8Array} payload
      * @returns {Promise<any>}
@@ -797,6 +814,10 @@ export class WasmSigningHostRuntime {
     }
     /**
      * Read permission authorization statuses for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      * @param {string} product_id
      * @param {Array<any>} payloads
      * @returns {Promise<Array<any>>}
@@ -905,13 +926,18 @@ export class WasmSigningHostRuntime {
      * paths without an on-chain personhood identity. Nothing is allocated, so
      * a green run says the product handles a grant, not that a host would
      * have given one.
+     *
+     * Preimage submissions then stay in the core: the Bulletin allowance was
+     * never authorized on chain, so a real `store` would be refused. The
+     * product gets the content key back and reads the value from the core's
+     * lookup cache, as after a landed submission.
      * @param {boolean} granted
      */
     setGrantAllowancesUnchecked(granted) {
         wasm.wasmsigninghostruntime_setGrantAllowancesUnchecked(this.__wbg_ptr, granted);
     }
     /**
-     * Update one stored permission authorization status for a product.
+     * Update a stored permission authorization status for a product.
      * @param {string} product_id
      * @param {Uint8Array} payload
      * @param {string} status
@@ -926,6 +952,19 @@ export class WasmSigningHostRuntime {
         const len2 = WASM_VECTOR_LEN;
         const ret = wasm.wasmsigninghostruntime_setPermissionAuthorizationStatus(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
         return takeObject(ret);
+    }
+    /**
+     * Keep preimage submissions in the core instead of the Bulletin chain.
+     *
+     * For a test host whose wallet answers allowances in-page: the Bulletin
+     * allowance it hands out was never authorized on chain, so a real `store`
+     * would be refused at dry-run. The product gets the content key back and
+     * reads the value from the core's lookup cache, as after a landed
+     * submission. A refused Bulletin allowance still refuses the submission.
+     * @param {boolean} local
+     */
+    setSubmitPreimagesLocally(local) {
+        wasm.wasmsigninghostruntime_setSubmitPreimagesLocally(this.__wbg_ptr, local);
     }
     /**
      * Answer these resource tags as refused, replacing any earlier set.
@@ -1198,7 +1237,7 @@ function __wbg_get_imports() {
         __wbg__wbg_cb_unref_fffb441def202758: function(arg0) {
             getObject(arg0)._wbg_cb_unref();
         },
-        __wbg_alias_0a7d8f1127ec6aff: function(arg0, arg1, arg2, arg3, arg4) {
+        __wbg_alias_5c2a475b2fd2c303: function(arg0, arg1, arg2, arg3, arg4) {
             const ret = alias(getArrayU8FromWasm0(arg1, arg2), getArrayU8FromWasm0(arg3, arg4));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1302,7 +1341,7 @@ function __wbg_get_imports() {
             const ret = getObject(arg0).length;
             return ret;
         },
-        __wbg_member_6e3b459e446c90c6: function(arg0, arg1, arg2) {
+        __wbg_member_b50f347e728a2710: function(arg0, arg1, arg2) {
             const ret = member(getArrayU8FromWasm0(arg1, arg2));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1340,7 +1379,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return __wasm_bindgen_func_elem_10590(a, state0.b, arg0, arg1);
+                        return __wasm_bindgen_func_elem_10808(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -1382,7 +1421,7 @@ function __wbg_get_imports() {
         __wbg_prototypesetcall_4770620bbe4688a0: function(arg0, arg1, arg2) {
             Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), getObject(arg2));
         },
-        __wbg_prove_041447c1ef7a2ad3: function(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+        __wbg_prove_b6e6026484b3e835: function(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
             const ret = prove(getArrayU8FromWasm0(arg1, arg2), arg3 >>> 0, getArrayU8FromWasm0(arg4, arg5), getArrayU8FromWasm0(arg6, arg7), getArrayU8FromWasm0(arg8, arg9), getArrayU8FromWasm0(arg10, arg11));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1403,7 +1442,7 @@ function __wbg_get_imports() {
         __wbg_randomFillSync_6c25eac9869eb53c: function() { return handleError(function (arg0, arg1) {
             getObject(arg0).randomFillSync(takeObject(arg1));
         }, arguments); },
-        __wbg_read_9bb2cdcbdd53cf29: function() {
+        __wbg_read_63aa7d7733088844: function() {
             const ret = read();
             return addHeapObject(ret);
         },
@@ -1423,7 +1462,7 @@ function __wbg_get_imports() {
             const ret = Reflect.set(getObject(arg0), getObject(arg1), getObject(arg2));
             return ret;
         }, arguments); },
-        __wbg_sign_afeaee32bf7fb771: function(arg0, arg1, arg2, arg3, arg4) {
+        __wbg_sign_d17b848f01c49da3: function(arg0, arg1, arg2, arg3, arg4) {
             const ret = sign(getArrayU8FromWasm0(arg1, arg2), getArrayU8FromWasm0(arg3, arg4));
             const ptr1 = passArray8ToWasm0(ret, wasm.__wbindgen_export);
             const len1 = WASM_VECTOR_LEN;
@@ -1437,7 +1476,7 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
-        __wbg_start_595d9b0cd3ecadb5: function(arg0) {
+        __wbg_start_b1eabc62a60698c2: function(arg0) {
             const ret = start(getObject(arg0));
             return addHeapObject(ret);
         },
@@ -1477,28 +1516,28 @@ function __wbg_get_imports() {
             console.warn(getObject(arg0));
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 381, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10534);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 101, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4942);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 97, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4750);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 385, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10751);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 163, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10403);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 168, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10621);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000004: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 93, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4743);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 97, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4935);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000005: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 95, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4747);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 99, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4939);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000006: function(arg0) {
@@ -1542,22 +1581,22 @@ function __wbg_get_imports() {
     };
 }
 
-function __wasm_bindgen_func_elem_10403(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_10403(arg0, arg1);
+function __wasm_bindgen_func_elem_10621(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_10621(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4747(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_4747(arg0, arg1);
+function __wasm_bindgen_func_elem_4939(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_4939(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4750(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_4750(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_4942(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_4942(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_4743(arg0, arg1) {
+function __wasm_bindgen_func_elem_4935(arg0, arg1) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_4743(retptr, arg0, arg1);
+        wasm.__wasm_bindgen_func_elem_4935(retptr, arg0, arg1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1568,10 +1607,10 @@ function __wasm_bindgen_func_elem_4743(arg0, arg1) {
     }
 }
 
-function __wasm_bindgen_func_elem_10534(arg0, arg1, arg2) {
+function __wasm_bindgen_func_elem_10751(arg0, arg1, arg2) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_10534(retptr, arg0, arg1, addHeapObject(arg2));
+        wasm.__wasm_bindgen_func_elem_10751(retptr, arg0, arg1, addHeapObject(arg2));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1582,8 +1621,8 @@ function __wasm_bindgen_func_elem_10534(arg0, arg1, arg2) {
     }
 }
 
-function __wasm_bindgen_func_elem_10590(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_10590(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_10808(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_10808(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const WasmPairingHostRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')

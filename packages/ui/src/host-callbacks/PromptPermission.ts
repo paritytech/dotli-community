@@ -1,17 +1,6 @@
-// Permission prompt. The Rust core awaits the typed response before encoding
-// the product reply, so a slow modal blocks the product just as long as the
-// user takes to dismiss it. Device grants also schedule an iframe reload so
-// the browser sees the refreshed Permissions Policy `allow` attribute.
-//
-// "Always allow" and "Deny" are durable, matching the grant the topbar
-// permissions menu shows and resets. "Allow once" is kept by the core for the
-// current execution and consumed by the next operation that needs it, so it
-// is offered only where the core is that gate: the submit permissions and
-// Notifications. A grant gated by the iframe `allow` attribute reloads the
-// product into a new execution, which would drop a one-time grant.
-// Auto-grants answer `AllowOnce` so the core records nothing the user never
-// saw. Each instance serves one product, so the product the core passes is
-// already known as `label`.
+// Core callbacks keep "Allow once" for the current execution; host-mediated input uses it for one request.
+// A grant gated by the iframe `allow` attribute reloads into a new execution, which would drop it.
+// Auto-grants answer `AllowOnce` so the core records nothing the user never saw.
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions } from '@parity/truapi-host';
@@ -20,7 +9,6 @@ import {
   getPermissionStatus,
   isDevicePermission,
   isEnforceableDevicePermission,
-  setPermissionStatus,
   type EnforceablePermissionName,
 } from '../permissions.js';
 import { showPermissionRequestModal } from '../permission-modal.js';
@@ -107,9 +95,7 @@ async function decidePromptPermissionWhenActive(
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === 'granted') {
-    // The status also reflects a pending one-time grant, so answering
-    // AllowAlways here would quietly make it permanent. AllowOnce leaves a
-    // saved grant untouched.
+    // The status also reflects a pending one-time grant, which AllowAlways would quietly make permanent.
     return 'AllowOnce';
   }
   if (status === 'denied') {
@@ -125,7 +111,6 @@ async function decidePromptPermissionWhenActive(
     });
     return 'Deny';
   }
-  // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
@@ -136,20 +121,14 @@ async function decidePromptPermissionWhenActive(
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
+  // Core callbacks must return the decision without an administrative write, which would invalidate
+  // their pending prompt. Host-mediated consumers without a core prompt commit durable answers themselves.
   if (decision === 'denied') {
-    await setPermissionStatus(label, name, 'denied');
-    throwIfAborted(signal);
     return 'Deny';
   }
-  if (decision === 'granted') {
-    await setPermissionStatus(label, name, 'granted');
-    throwIfAborted(signal);
-  }
   if (gatedByIframe) {
-    // Device permissions are also gated by the iframe `allow` attribute,
-    // which is fixed at iframe load time. Reload so the next attempt sees
-    // the updated attribute. Defer to the next tick so the prompt response
-    // can flush before the iframe is disposed.
+    // The iframe `allow` attribute is fixed at load, so reload, a tick later so the prompt response
+    // flushes before the iframe is disposed.
     setTimeout(() => {
       if (signal.aborted) {
         return;
@@ -157,8 +136,7 @@ async function decidePromptPermissionWhenActive(
       recordPermissionChange({ kind: 'device', label, permission: name });
     }, 0);
   } else {
-    // No browser-level gate, so the grant takes effect as is. The event keeps
-    // the permissions button in sync.
+    // Keeps the permissions button in sync.
     recordPermissionChange({ kind: 'grant', label, permission: name });
   }
   return decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';

@@ -29,7 +29,6 @@ import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
-import { withTrustedSubmitFallback } from './light-client-submit-fallback.js';
 import { createMediaAdvertisementLookupRoute } from './media-advertisement-lookup.js';
 import { recordBestBlock, recordChainActivity } from '../network-monitor.js';
 
@@ -132,12 +131,8 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
   // TEMPORARY: the light client returns no stored statements, so Media's
   // marked advertisement lookups go to the trusted RPC node instead.
   const mediaLookup = getBackend() === 'rpc-gateway' ? null : createMediaAdvertisementLookupRoute(genesisHash, deliver);
-  // A halt drops the lease, and the stream stays open: truapi-host 0.23.0
-  // ignores its end and keeps sending on this connection. The broker has
-  // answered the requests in flight and stopped the follows, so the next send
-  // takes a new lease, which rebuilds the chain: it waits for the chain's gate
-  // after `'chain'`, and for the frame gate after `'frame'`, where that lease
-  // boots a frame.
+  // A halt drops the lease but the stream stays open, since truapi-host ignores its end and keeps
+  // sending. The next send takes a new lease, behind the chain gate or the frame gate.
   const open = (provider: LeaseProvider): void => {
     // Per lease, so a halt heard while `provider` still runs, or a late one from a replaced lease,
     // never touches another lease.

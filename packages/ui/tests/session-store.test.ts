@@ -4,6 +4,7 @@ import { SHARED_CORE_SESSION_KEY, type SharedStoreStatus } from '@dotli/protocol
 import { SITE_ID } from '@dotli/config';
 import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import { must } from './support.js';
+import { bytesToHex } from '@parity/truapi/scale';
 
 const localWallet = vi.hoisted((): { result: unknown } => ({ result: { status: 'none' } }));
 
@@ -36,6 +37,16 @@ vi.mock('../../protocol/src/client.js', () => ({
   writeSharedAuthStorage: (siteId: string, key: string, value: string) => {
     sharedAuth.storage.set(`${siteId}:${key}`, value);
     return Promise.resolve();
+  },
+  compareExchangeSharedAuthStorage: (
+    siteId: string, key: string, expected: Uint8Array | null, replacement: Uint8Array,
+  ) => {
+    const slot = `${siteId}:${key}`;
+    const matches = (sharedAuth.storage.get(slot) ?? null) === (expected === null ? null : bytesToHex(expected));
+    if (matches) {
+      sharedAuth.storage.set(slot, bytesToHex(replacement));
+    }
+    return Promise.resolve(matches);
   },
   clearSharedAuthStorage: (siteId: string, key: string) => {
     sharedAuth.storage.delete(`${siteId}:${key}`);
@@ -268,6 +279,46 @@ describe('session-store host callbacks', () => {
       'Atomic cross-document core storage is unavailable',
     );
     expect(await storage.readCoreStorage(key)).toBeUndefined();
+  });
+
+  it('As a core, a failed atomic comparison never migrates or removes the stored secret', async () => {
+    const previousLocks = Object.getOwnPropertyDescriptor(navigator, 'locks');
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request: (_name: string, operation: () => Promise<unknown>) => operation() },
+    });
+    try {
+      const storage = createSessionStoreAdapters();
+      const key = { tag: 'AutoSigningKeys' } satisfies CoreStorageKey;
+      const slot = 'dotli:core:auto-signing-keys';
+      localStorage.setItem(slot, '0x01');
+      expect(
+        await storage.compareExchangeCoreStorage(key, new Uint8Array([2]), new Uint8Array([3]), false),
+      ).toBe(false);
+      expect(localStorage.getItem(slot)).toBe('0x01');
+
+      localStorage.setItem(slot, 'enc1:0x00');
+      await expect(
+        storage.compareExchangeCoreStorage(key, undefined, new Uint8Array([3]), false),
+      ).rejects.toThrow('Core storage value cannot be decoded');
+      expect(localStorage.getItem(slot)).toBe('enc1:0x00');
+    } finally {
+      if (previousLocks === undefined) {
+        Reflect.deleteProperty(navigator, 'locks');
+      } else {
+        Object.defineProperty(navigator, 'locks', previousLocks);
+      }
+    }
+  });
+
+  it('As a paired core, I compare-exchange the shared session without overwriting a newer session', async () => {
+    const storage = createSessionStoreAdapters();
+    const first = new Uint8Array([1]);
+    const second = new Uint8Array([2]);
+    expect(await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, undefined, first, false)).toBe(true);
+    expect(await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, undefined, second, false)).toBe(false);
+    expect(await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, first, second, false)).toBe(true);
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe('0x02');
   });
 
   it('As a dotli integrator, the host keeps remote permission authorization keys opaque', async () => {
@@ -1074,6 +1125,12 @@ describe('session-store host callbacks', () => {
     const read = await storage.readCoreStorage(AUTH_SESSION_KEY);
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9, 9]));
     await storage.clearCoreStorage(AUTH_SESSION_KEY);
+    expect(
+      await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, undefined, new Uint8Array([8]), false),
+    ).toBe(true);
+    expect(
+      await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([8]), new Uint8Array([7]), false),
+    ).toBe(false);
 
     // Then
     expect(read).toBeUndefined();

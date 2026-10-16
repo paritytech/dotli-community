@@ -70,7 +70,7 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   let disposed = false;
   const custody = async (
     operation: (lease: string) => CoreCustodyOperation,
-  ): Promise<string | Uint8Array | Blob | undefined> => {
+  ): Promise<string | Uint8Array | Blob | boolean | undefined> => {
     if (disposed) {
       throw new Error('Native Chat custody was released');
     }
@@ -102,6 +102,7 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   return {
     coreStorage(storage) {
       return directory.observeStorage({
+        ...storage,
         async readCoreStorage(key) {
           if (!isCustodySlot(key)) {
             return storage.readCoreStorage(key);
@@ -125,6 +126,25 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
             return;
           }
           await custody(token => ({ action: 'clear', lease: token, key: custodyKey(key) }));
+        },
+        async compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess) {
+          if (!isCustodySlot(key)) {
+            return storage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
+          }
+          const changed = await custody(token => ({
+            action: 'compareExchange',
+            lease: token,
+            key: custodyKey(key),
+            expected: expected ?? null,
+            replacement,
+          }));
+          if (typeof changed !== 'boolean') {
+            throw new Error('Invalid private custody compare-exchange response');
+          }
+          if (changed && notifyOnSuccess) {
+            storage.coreStorageChanged(key);
+          }
+          return changed;
         },
       });
     },

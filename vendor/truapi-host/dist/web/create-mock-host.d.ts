@@ -1,5 +1,5 @@
 import type { ChatMessageContent, ChatRoom, HostChatRegisterBotRequest, ThemeVariant } from "@parity/truapi";
-import type { AuthState, CoreStorageKey, HostChainSet, PermissionDecision, RequiredHostCallbacks, UserConfirmationReview } from "../generated/host-callbacks.js";
+import type { AuthState, CoreStorageKey, HostChainSet, HostScan, PermissionDecision, RequiredHostCallbacks, UserConfirmationReview } from "../generated/host-callbacks.js";
 import type { ProductRuntimeConfig } from "../runtime.js";
 /** How the mock answers a permission prompt for one capability. */
 export type PermissionPolicy = "allow-all" | "deny-all";
@@ -192,6 +192,8 @@ export interface MockHostConfig {
     timeZone?: string;
     /** Whether `confirmUserAction` confirms reviewed actions. Default `true`. */
     confirmUserActions?: boolean;
+    /** The scanner's answer. Unset serves no scanner, so scans are `Unsupported`. */
+    scanner?: HostScan;
     /**
      * JSON-RPC response frames the chain connection replays, in order. Empty
      * (the default) means a silent connection: it records outbound requests and
@@ -344,6 +346,8 @@ export interface MockHost {
     getTheme(): ThemeVariant;
     /** Replace the reported theme. */
     setTheme(variant: ThemeVariant): void;
+    /** Set the next scan's answer. Throws unless created with a `scanner` answer. */
+    setScanAnswer(answer: HostScan): void;
     /** State of the mock's chain connection. */
     getChainStatus(): ChainStatus;
     /** Mark the chain disconnected, as a dropped transport would. */

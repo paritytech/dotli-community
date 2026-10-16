@@ -1,20 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// One native core per page product. Product frames and host controls open
-// connections to that same core. Mobile is lease-owned; the opt-in wallet
-// also retains the page core while no product is visible.
+// The page's one refcounted TrUAPI core, under its product's label. The core goes with its last lease,
+// and a faulted one is never handed out again.
 
-import { DEBUG, getActiveServicesConfig } from '@dotli/config';
-import {
-  requestCoreCustody,
-  requestWalletOwner,
-  subscribeWalletOwnerRevoked,
-  WALLET_OWNER_REVOKED_EVENT,
-} from '@dotli/protocol';
-import { log } from '@dotli/shared';
 import type {
   AuthState,
+  ContactsPlatform,
   CoreStorage,
   CoreStorageKey,
   MediaPlatform,
@@ -23,92 +15,61 @@ import type {
   RequiredHostCallbacks,
   TrUApiProductProvider,
 } from '@parity/truapi-host';
-import type {
-  BrowserNativeChatFilesHost,
-  LocalIdentity,
-  WorkerPairingHostRuntime,
-  WorkerSigningHostRuntime,
-} from '@parity/truapi-host/web';
-import {
-  createBrowserNativeChatFilesHost,
-  createWebWorkerPairingHostRuntime,
-  createWebWorkerSigningHostRuntime,
-} from '@parity/truapi-host/web';
-import HostWorker from '@parity/truapi-host/worker-runtime?worker';
+import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
+import { log } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { loadLocalWalletCore } from './lazy.js';
+import type { LocalWalletChat } from './local-wallet-chat.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
-import { dispatchAuthState } from './host-callbacks/AuthState.js';
-import { createContactsPlatform, NativeChatContactsDirectory } from './host-callbacks/Contacts.js';
 import {
-  initializeLocalWalletState,
-  isExperimentalWalletActive,
-  isCurrentLocalWallet,
-  localWalletContext,
   onStoredSessionChanged,
-  onVerifiedLocalIdentityChanged,
-  readLocalWalletSecret,
-  readVerifiedLocalIdentity,
   registerCoreStoragePermissionProvider,
   waitForCoreStoragePermissionRefresh,
-  writeVerifiedLocalIdentity,
-  type LocalWalletIdentityBinding,
 } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
-import { showNotification } from './notification.js';
+import { getWalletMode } from './state/wallet-mode.js';
+import { readWalletBoot } from './wallet-boot.js';
 import { setNotificationAccount } from './notification-activation.js';
 
 export interface PageProduct {
   label: string;
+  /** Overrides the label-derived product id, for the local debug routes. */
   productId?: string | undefined;
+  /** How pairing presents itself, when not as the product. */
   pairing?: { label: string; dotSuffix: boolean; hostGlobal: boolean };
 }
 
-export interface LiveLocalWallet {
-  runtime: WorkerSigningHostRuntime;
-  binding: LocalWalletIdentityBinding;
-  identity: LocalIdentity;
-  usernameVerified: boolean;
-  nativeSessionUiInfo?: { publicKey?: string | undefined; fullUsername?: string | undefined } | undefined;
-}
-
-type PageRuntime = WorkerPairingHostRuntime | WorkerSigningHostRuntime;
-
-/**
- * Host-owned Media for one product connection. Built by the trusted host page
- * only, never from product metadata or requests.
- */
+/** Host-owned Media for one product connection, never supplied by the product. */
 export interface ConnectionMedia {
   platform: Required<MediaPlatform>;
   authChanged(state: AuthState): void;
   observeStorage(key: CoreStorageKey): void;
 }
 
-/** Close through `close`, never the provider, so expected closes stay local. */
+/** Close it through `close`, never the provider, or the core is marked faulted. */
 export interface CoreConnection {
   provider: TrUApiProductProvider;
   productId: string;
-  wallet: LiveLocalWallet | undefined;
   /** Settles once every live core sharing this storage applied the decision. */
   waitForPermissionRefresh(request: PermissionAuthorizationRequest): Promise<void>;
   close(): void;
 }
 
 export interface CoreLease {
-  runtime: PageRuntime;
-  wallet: LiveLocalWallet | undefined;
+  runtime: WorkerPairingHostRuntime;
   connect(executionKind?: ProductExecutionKind, media?: ConnectionMedia): Promise<CoreConnection>;
+  /** Idempotent. */
   release(): void;
 }
 
 interface Core {
   product: PageProduct;
-  runtime: Promise<PageRuntime>;
-  wallet: LiveLocalWallet | undefined;
+  runtime: Promise<WorkerPairingHostRuntime>;
   leases: number;
-  persistent: boolean;
   faulted: boolean;
-  /** The session-store adapters, before any observing wrapper. */
+  /** The session-store adapter before the Chat and Media observing wrappers. */
   permissionStorage(): CoreStorage;
+  /** Callbacks scoped to one product connection, so its prompts end with it. */
   openCallbacks(media?: ConnectionMedia): { callbacks: RequiredHostCallbacks; dispose(): void };
   dispose(): void;
 }
@@ -117,37 +78,20 @@ const LANDING_PRODUCT: PageProduct = {
   label: 'dotli',
   pairing: { label: 'Polkadot Web', dotSuffix: false, hostGlobal: true },
 };
+
 let modalCoordinator: BlockingModalCoordinator | null = null;
 let pageProduct: PageProduct = LANDING_PRODUCT;
 let current: Core | null = null;
+// Also holds cores a product change or fault replaced while they still had leases.
 const cores = new Set<Core>();
-let generation = 0;
-let walletOwnerLease: Promise<string | undefined> | undefined;
-let ownerRevocationBound = false;
-let custodyOperations: Promise<void> = Promise.resolve();
-let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
-const noop = (): void => undefined;
-
-/** Serializes native restoration, explicit claims, and shared metadata hints. */
-export function withLocalIdentityUpdate<T>(operation: () => Promise<T>): Promise<T> {
-  const result = localIdentityUpdateQueue.then(operation);
-  localIdentityUpdateQueue = result.catch(noop);
-  return result;
-}
 
 export function initPageCore(coordinator: BlockingModalCoordinator): void {
   modalCoordinator = coordinator;
 }
 
+/** Called as soon as the page knows it, so a core booted by an early login is already the product's. */
 export function setPageProduct(product: PageProduct): void {
   pageProduct = product;
-  if (current !== null && !isPageProduct(current)) {
-    // A navigation must not retain a second signing authority under the old
-    // product. Same-product iframe replacements keep their existing core.
-    if (current.persistent) {
-      current.dispose();
-    }
-  }
 }
 
 function productIdOf(product: PageProduct): string {
@@ -158,49 +102,8 @@ function isPageProduct(core: Core): boolean {
   return core.product.label === pageProduct.label && productIdOf(core.product) === productIdOf(pageProduct);
 }
 
-export function disposePageCores(): void {
-  generation++;
-  for (const core of cores) {
-    core.dispose();
-  }
-}
-
-window.addEventListener('pagehide', disposePageCores);
-
-async function ensureWalletOwner(): Promise<void> {
-  if (!ownerRevocationBound) {
-    ownerRevocationBound = true;
-    subscribeWalletOwnerRevoked(lease => {
-      walletOwnerLease = undefined;
-      disposePageCores();
-      window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
-      void requestWalletOwner({ action: 'release', lease }).catch(noop);
-    });
-  }
-  walletOwnerLease ??= requestWalletOwner({ action: 'acquire' }).catch((error: unknown) => {
-    walletOwnerLease = undefined;
-    throw error;
-  });
-  if ((await walletOwnerLease) === undefined) {
-    walletOwnerLease = undefined;
-    throw new Error('The test wallet could not acquire exclusive signing ownership.');
-  }
-}
-
 export async function acquireCore(): Promise<CoreLease> {
-  const requestedGeneration = generation;
-  await initializeLocalWalletState();
-  if (requestedGeneration !== generation) {
-    throw new Error('Page core retired while loading wallet state');
-  }
-  if (current?.wallet !== undefined && !isCurrentLocalWallet(current.wallet.binding)) {
-    disposePageCores();
-    throw new Error('The test wallet or network changed. Reopen the Wallet tab.');
-  }
   if (current === null || current.faulted || !isPageProduct(current)) {
-    if (current?.persistent === true) {
-      current.dispose();
-    }
     current = createCore(pageProduct);
   }
   const core = current;
@@ -212,64 +115,38 @@ export async function acquireCore(): Promise<CoreLease> {
     }
     released = true;
     core.leases--;
-    if (core.leases === 0 && !core.persistent) {
+    if (core.leases === 0) {
       core.dispose();
     }
   };
+  let runtime: WorkerPairingHostRuntime;
   try {
-    const runtime = await core.runtime;
-    if (!cores.has(core)) {
-      throw new Error('Page core retired before it became ready');
-    }
-    return {
-      runtime,
-      wallet: core.wallet,
-      connect: (kind, media) => connect(core, runtime, kind, media),
-      release,
-    };
+    runtime = await core.runtime;
   } catch (error) {
     release();
     throw error;
   }
-}
-
-export async function activeLocalWallet(): Promise<LiveLocalWallet> {
-  await initializeLocalWalletState();
-  if (!isExperimentalWalletActive()) {
-    throw new Error('Enable the debug test wallet before checking its username.');
-  }
-  const lease = await acquireCore();
-  try {
-    if (lease.wallet === undefined) {
-      throw new Error('The current test wallet is not ready.');
-    }
-    assertLocalWallet(lease.wallet);
-    return lease.wallet;
-  } finally {
-    lease.release();
-  }
-}
-
-export function assertLocalWallet(wallet: LiveLocalWallet): void {
-  if (
-    !DEBUG ||
-    !isCurrentLocalWallet(wallet.binding) ||
-    current?.wallet !== wallet ||
-    !cores.has(current) ||
-    current.faulted ||
-    wallet.identity.identityAccountId !== wallet.binding.identityAccountId
-  ) {
-    throw new Error('The test identity changed. Reopen the Wallet tab.');
-  }
+  return {
+    runtime,
+    connect: (executionKind, media) => connect(core, runtime, executionKind, media),
+    release,
+  };
 }
 
 export function cancelPairing(): void {
+  // A signing runtime has no pairing to cancel.
+  if (getWalletMode() === 'local') {
+    return;
+  }
   for (const core of cores) {
-    void core.runtime.then(runtime => {
-      if (cores.has(core) && 'cancelPairing' in runtime) {
+    core.runtime.then(
+      runtime => {
         runtime.cancelPairing();
-      }
-    }, noop);
+      },
+      () => {
+        // A core that never booted has no pairing to cancel.
+      },
+    );
   }
 }
 
@@ -280,85 +157,26 @@ function createCore(product: PageProduct): Core {
   log.event('wallet core create', { flow: 'wallet', landing: product === LANDING_PRODUCT });
   const coordinator = modalCoordinator;
   const blockingModalScope = coordinator.createScope();
-  const connectionDisposers = new Set<() => void>();
-  let runtimeCallbacks: RequiredHostCallbacks | undefined;
-  const context = isExperimentalWalletActive() ? localWalletContext() : undefined;
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
-  let booted: PageRuntime | undefined;
-  let worker: Worker | undefined;
-  let disposed = false;
-  let unsubscribeStore: (() => void) | undefined;
-  let unsubscribeIdentity: (() => void) | undefined;
-  let unsubscribeClose: (() => void) | undefined;
-  let monitor: TrUApiProductProvider | undefined;
-  let activatedIdentity: LocalIdentity | undefined;
-  let nativeSessionUiInfo: LiveLocalWallet['nativeSessionUiInfo'];
-  let walletAuthReady = false;
-  let pendingWalletAuthState: AuthState | undefined;
-  let custodyLease: string | undefined;
-  let nativeChatFiles: BrowserNativeChatFilesHost | undefined;
-  let permissionStorage: CoreStorage | undefined;
+  let unsubscribeStore: (() => void) | null = null;
+  let coreCallbacks: RequiredHostCallbacks | null = null;
+  let permissionStorage: CoreStorage | null = null;
   const connectionMedia = new Set<ConnectionMedia>();
-  const contactsGenesis = getActiveServicesConfig().people.genesis;
-  const contactsDirectory =
-    context === undefined
-      ? undefined
-      : new NativeChatContactsDirectory(
-          () =>
-            !disposed && isCurrentLocalWallet(context) && contactsGenesis === getActiveServicesConfig().people.genesis,
-        );
-  const nativeContacts =
-    contactsDirectory === undefined ? undefined : createContactsPlatform(contactsDirectory, blockingModalScope);
-  const releaseCustody = (): void => {
-    // Queue after an in-flight acquisition. A replacement core cannot acquire
-    // until this terminated signer has released even a late-arriving lease.
-    custodyOperations = custodyOperations
-      .then(async () => {
-        if (custodyLease === undefined) {
-          return;
-        }
-        const lease = custodyLease;
-        custodyLease = undefined;
-        await requestCoreCustody({ action: 'release', lease });
-      })
-      .catch(noop);
-  };
-  const assertCurrent = (): void => {
-    if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
-      throw new Error('Wallet or network changed while the page core was starting.');
-    }
-  };
-  const runtime = Promise.resolve().then(async (): Promise<PageRuntime> => {
-    assertCurrent();
-    if (context !== undefined) {
-      await ensureWalletOwner();
-      assertCurrent();
-      const acquisition = custodyOperations.then(async () => {
-        assertCurrent();
-        const acquired = await requestCoreCustody({ action: 'acquire', walletRevision: context.revision });
-        if (typeof acquired !== 'string') {
-          throw new Error('Private wallet custody was not acquired');
-        }
-        custodyLease = acquired;
-        assertCurrent();
-      });
-      custodyOperations = acquisition.catch(noop);
-      await acquisition;
-    }
-    const callbacks = createHostCallbacks({
+  // Native Chat runs only beside the local signer; a Polkadot App session leaves Chat on the phone.
+  let chat: LocalWalletChat | null = null;
+  const connectionDisposers = new Set<() => void>();
+  const callbacksFor = (local: boolean, contacts?: Required<ContactsPlatform>): RequiredHostCallbacks => {
+    coreCallbacks = createHostCallbacks({
       label: product.label,
       pairingLabel: product.pairing?.label,
       pairingDotSuffix: product.pairing?.dotSuffix,
       pairingHostGlobal: product.pairing?.hostGlobal,
       blockingModalScope,
-      ...(custodyLease === undefined ? {} : { custodyLease }),
-      ...(nativeContacts === undefined ? {} : { contacts: nativeContacts.callbacks }),
+      local,
+      contacts,
     });
-    runtimeCallbacks = callbacks;
-    permissionStorage = callbacks.coreStorage;
-    // Live Media connections learn the persisted Calling scopes the core uses,
-    // so trusted settings can list and revoke them.
-    const sessionStorage = callbacks.coreStorage;
+    const storage = coreCallbacks.coreStorage;
+    permissionStorage = storage;
     const observePermission = (key: CoreStorageKey): void => {
       if (key.tag === 'PermissionAuthorization') {
         for (const media of connectionMedia) {
@@ -366,267 +184,117 @@ function createCore(product: PageProduct): Core {
         }
       }
     };
-    callbacks.coreStorage = {
-      ...sessionStorage,
+    coreCallbacks.coreStorage = {
+      ...storage,
       readCoreStorage: key => {
         observePermission(key);
-        return sessionStorage.readCoreStorage(key);
+        return storage.readCoreStorage(key);
       },
       writeCoreStorage: async (key, value) => {
-        await sessionStorage.writeCoreStorage(key, value);
+        await storage.writeCoreStorage(key, value);
         observePermission(key);
       },
       compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => {
-        const changed = await sessionStorage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
+        const changed = await storage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
         if (changed) {
           observePermission(key);
         }
         return changed;
       },
     };
-    if (contactsDirectory !== undefined) {
-      callbacks.coreStorage = contactsDirectory.observeStorage(callbacks.coreStorage);
-    }
-    if (custodyLease !== undefined) {
-      const lease = custodyLease;
-      nativeChatFiles = createBrowserNativeChatFilesHost({
-        async putSources(sources) {
-          await requestCoreCustody({ action: 'putSources', lease, sources: [...sources] });
-        },
-        async readSource(sourceId) {
-          const blob = await requestCoreCustody({ action: 'readSource', lease, sourceId });
-          if (blob !== undefined && !(blob instanceof Blob)) {
-            throw new Error('Invalid private Chat source');
-          }
-          return blob;
-        },
-        async releaseSource(sourceId) {
-          await requestCoreCustody({ action: 'releaseSource', lease, sourceId });
-        },
-      });
-      callbacks.nativeChatFiles = nativeChatFiles;
-    }
-    const presentAuthState = callbacks.auth.authStateChanged;
-    // Media fences its operations on every accepted authority change.
-    const forwardAuthState = (state: AuthState): void => {
+    const presentAuth = coreCallbacks.auth.authStateChanged;
+    coreCallbacks.auth.authStateChanged = state => {
       for (const media of connectionMedia) {
         media.authChanged(state);
       }
-      presentAuthState(state);
+      presentAuth(state);
     };
-    callbacks.auth.authStateChanged = state => {
-      if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
-        return;
+    return coreCallbacks;
+  };
+  // The wallet read, the host chunk and the worker wrapper load in parallel, so a Polkadot App boot waits on
+  // whichever is slower. The wrapper fetches its worker script only when constructed, so local mode pays nothing.
+  const runtime = Promise.all([
+    readWalletBoot(),
+    import('@parity/truapi-host/web'),
+    import('@parity/truapi-host/worker-runtime?worker'),
+  ]).then(async ([wallet, { createWebWorkerPairingHostRuntime }, { default: HostWorker }]) => {
+    if (wallet !== null) {
+      const { bootLocalWalletCore, createLocalWalletChat } = await loadLocalWalletCore();
+      if (!cores.has(core)) {
+        throw new Error('Page core retired before the local wallet booted');
       }
-      contactsDirectory?.invalidate();
-      if (context === undefined) {
-        forwardAuthState(state);
-        return;
-      }
-      if (state.tag === 'Connected') {
-        const account = state.value.identityAccountId;
-        if (account === undefined || !/^(?:0x)?[0-9a-fA-F]{64}$/.test(account)) {
-          return;
-        }
-        const identityAccountId = `0x${account.replace(/^0x/, '').toLowerCase()}`;
-        if (core.wallet !== undefined && identityAccountId !== core.wallet.binding.identityAccountId) {
-          return;
-        }
-        const liteUsername = state.value.liteUsername;
-        activatedIdentity = {
-          identityAccountId,
-          ...(liteUsername !== undefined && liteUsername !== '' ? { liteUsername } : {}),
-        };
-        nativeSessionUiInfo = { publicKey: state.value.publicKey, fullUsername: state.value.fullUsername };
-        if (core.wallet !== undefined) {
-          core.wallet.identity = activatedIdentity;
-          core.wallet.nativeSessionUiInfo = nativeSessionUiInfo;
-        }
-      }
-      if (walletAuthReady) {
-        forwardAuthState(state);
-      } else {
-        pendingWalletAuthState = state;
-      }
-    };
-    if (context === undefined) {
-      worker = new HostWorker();
-      booted = await createWebWorkerPairingHostRuntime(worker, callbacks, { hostConfig });
-      assertCurrent();
-      const pairing = booted;
-      log.event('wallet core booted', { flow: 'wallet' });
-      // Another tab logging in or out lands in the shared session store; the
-      // core reads it again. Once now too, for a session stored before boot.
-      unsubscribeStore = onStoredSessionChanged(() => {
-        // Fence both local and cross-tab changes before the worker reloads auth.
-        setNotificationAccount(product.label, undefined);
-        pairing.notifySessionStoreChanged();
-      });
-      queueMicrotask(() => {
-        if (!disposed) {
-          pairing.notifySessionStoreChanged();
-        }
-      });
-      return pairing;
-    }
-    const secret = await readLocalWalletSecret();
-    if (secret === undefined) {
-      throw new Error('Experimental wallet is unavailable. Disconnect it in the debug bar.');
-    }
-    try {
-      assertCurrent();
-      const { dotns, coinage } = getActiveServicesConfig();
-      worker = new HostWorker();
-      const signing = await createWebWorkerSigningHostRuntime(worker, callbacks, {
-        hostConfig:
-          coinage === undefined
-            ? { ...hostConfig, networkSuffix: dotns.TLD }
-            : { ...hostConfig, networkSuffix: dotns.TLD, coinageInstanceId: coinage.instanceId },
-      });
-      booted = signing;
-      assertCurrent();
-      await signing.activateLocalSession(secret);
-      assertCurrent();
-      if (activatedIdentity === undefined) {
-        throw new Error('Native activation did not report its identity.');
-      }
-      if (nativeSessionUiInfo?.publicKey === undefined || contactsDirectory === undefined) {
-        throw new Error('Native Chat contacts require the activated signing wallet');
-      }
-      contactsDirectory.bind(signing, nativeSessionUiInfo.publicKey, contactsGenesis);
-      const binding: LocalWalletIdentityBinding = {
-        ...context,
-        identityAccountId: activatedIdentity.identityAccountId,
+      const localChat = createLocalWalletChat(wallet, () => cores.has(core));
+      chat = localChat;
+      const callbacks = callbacksFor(true, localChat.openContacts(blockingModalScope).callbacks);
+      callbacks.coreStorage = localChat.coreStorage(callbacks.coreStorage);
+      callbacks.nativeChatFiles = localChat.nativeChatFiles;
+      const presentAuth = callbacks.auth.authStateChanged;
+      callbacks.auth.authStateChanged = state => {
+        localChat.authStateChanged(state);
+        presentAuth(state);
       };
-      await withLocalIdentityUpdate(async () => {
-        const hint = await readVerifiedLocalIdentity(binding);
-        assertCurrent();
-        let usernameVerified = false;
-        try {
-          const identity = await signing.refreshLocalIdentity();
-          assertCurrent();
-          if (identity.identityAccountId !== binding.identityAccountId) {
-            throw new Error('Restored username did not match the active wallet.');
-          }
-          activatedIdentity = identity;
-          usernameVerified = true;
-          await writeVerifiedLocalIdentity(binding, identity);
-        } catch (error) {
-          // A known username must be reverified before publishing Connected.
-          // No cached username is a hint, not proof of chain absence; failure
-          // there leaves the native bare identity usable for Check username.
-          assertCurrent();
-          if (hint?.liteUsername !== undefined || usernameVerified) {
-            throw error;
-          }
-          log.warn('[dot.li] automatic test-wallet username lookup failed:', error);
-        }
-        assertCurrent();
-        if (activatedIdentity?.identityAccountId !== binding.identityAccountId) {
-          throw new Error('Native identity did not match the active wallet.');
-        }
-        core.wallet = { runtime: signing, binding, identity: activatedIdentity, usernameVerified, nativeSessionUiInfo };
-      });
-      // The runtime has no close subscription; one host connection observes
-      // worker death even when no product frame is mounted. It is not a core.
-      monitor = await signing.createProvider({ productId: productIdOf(product) });
-      assertCurrent();
-      let closeError: Error | undefined;
-      unsubscribeClose = monitor.subscribeClose?.(error => {
-        if (disposed) {
-          return;
-        }
-        closeError = error;
-        core.faulted = true;
-        core.dispose();
-        dispatchAuthState({ tag: 'WalletUnavailable', reason: error.message });
-      });
-      if (closeError !== undefined) {
-        throw closeError;
-      }
-      unsubscribeIdentity = onVerifiedLocalIdentityChanged(() => {
-        void withLocalIdentityUpdate(async () => {
-          const wallet = core.wallet;
-          if (wallet === undefined || disposed || !isCurrentLocalWallet(binding)) {
-            return;
-          }
-          const cached = await readVerifiedLocalIdentity(binding);
-          assertCurrent();
-          if (cached === undefined || cached.liteUsername === wallet.identity.liteUsername) {
-            return;
-          }
-          const identity = await signing.refreshLocalIdentity();
-          assertCurrent();
-          if (identity.identityAccountId !== binding.identityAccountId) {
-            throw new Error('Shared username belongs to another identity.');
-          }
-          wallet.identity = identity;
-          wallet.usernameVerified = true;
-        }).catch((error: unknown) => {
-          if (disposed) {
-            return;
-          }
-          log.warn('[dot.li] shared test-wallet username refresh failed:', error);
-          showNotification({
-            text: 'A shared test-wallet username changed, but this app could not refresh it. Use Wallet tab → Check username.',
-            label: 'Test wallet',
-            browserNotification: false,
-          });
-        });
-      });
-      log.event('wallet core booted', { flow: 'wallet', experimental: true });
-      walletAuthReady = true;
-      if (pendingWalletAuthState !== undefined) {
-        forwardAuthState(pendingWalletAuthState);
-      }
-      return signing;
-    } finally {
-      secret.fill(0);
+      const booted = await bootLocalWalletCore(createWebWorkerPairingHostRuntime, callbacks, hostConfig, wallet, () =>
+        cores.has(core),
+      );
+      localChat.activated(booted);
+      log.event('wallet core booted', { flow: 'wallet', local: true });
+      return booted;
     }
+    const booted = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacksFor(false), { hostConfig });
+    log.event('wallet core booted', { flow: 'wallet' });
+    // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
+    unsubscribeStore = onStoredSessionChanged(() => {
+      // Fence both local and cross-tab changes before the worker reloads auth.
+      setNotificationAccount(product.label, undefined);
+      booted.notifySessionStoreChanged();
+    });
+    queueMicrotask(() => {
+      if (cores.has(core)) {
+        booted.notifySessionStoreChanged();
+      }
+    });
+    return booted;
   });
   const core: Core = {
     product,
     runtime,
-    wallet: undefined,
     leases: 0,
-    persistent: context !== undefined,
     faulted: false,
     permissionStorage() {
-      if (disposed || permissionStorage === undefined) {
+      if (permissionStorage === null || !cores.has(core)) {
         throw new Error('Page core storage is unavailable');
       }
       return permissionStorage;
     },
     openCallbacks(media) {
-      if (disposed || runtimeCallbacks === undefined) {
+      const shared = coreCallbacks;
+      if (shared === null || !cores.has(core)) {
         throw new Error('Page core callbacks are unavailable');
       }
       const scope = coordinator.createScope();
-      const contacts = contactsDirectory === undefined ? undefined : createContactsPlatform(contactsDirectory, scope);
+      const contacts = chat?.openContacts(scope);
       const callbacks = createHostCallbacks({
         label: product.label,
         blockingModalScope: scope,
-        ...(custodyLease === undefined ? {} : { custodyLease }),
-        ...(contacts === undefined ? {} : { contacts: contacts.callbacks }),
+        contacts: contacts?.callbacks,
       });
-      // Session state, encrypted storage and file custody belong to the core.
-      // Interactive product prompts belong only to their live connection.
+      // Authentication, session storage and Chat custody stay core-owned; interactive
+      // product prompts cannot outlive the connection that requested them.
       let closed = false;
-      const auth = runtimeCallbacks.auth;
       callbacks.auth = {
         authStateChanged: state => {
           if (!closed) {
-            auth.authStateChanged(state);
+            shared.auth.authStateChanged(state);
           }
         },
       };
-      callbacks.coreStorage = runtimeCallbacks.coreStorage;
+      callbacks.coreStorage = shared.coreStorage;
       if (media !== undefined) {
         callbacks.media = media.platform;
         connectionMedia.add(media);
       }
-      if (nativeChatFiles !== undefined) {
-        callbacks.nativeChatFiles = nativeChatFiles;
+      if (shared.nativeChatFiles !== undefined) {
+        callbacks.nativeChatFiles = shared.nativeChatFiles;
       }
       const dispose = (): void => {
         if (closed) {
@@ -644,53 +312,41 @@ function createCore(product: PageProduct): Core {
       return { callbacks, dispose };
     },
     dispose() {
-      if (disposed) {
+      if (!cores.delete(core)) {
         return;
       }
-      disposed = true;
-      cores.delete(core);
       if (current === core) {
         current = null;
       }
       log.event('wallet core disposed', { flow: 'wallet', faulted: core.faulted });
       unsubscribeStore?.();
-      unsubscribeIdentity?.();
-      unsubscribeClose?.();
       for (const dispose of connectionDisposers) {
         dispose();
       }
-      nativeContacts?.dispose();
-      contactsDirectory?.dispose();
       blockingModalScope.dispose();
-      monitor?.dispose();
-      booted?.dispose();
-      // Revocation/replacement must stop signing before releasing ownership,
-      // including a worker still booting or holding a native operation open.
-      if (context !== undefined) {
-        worker?.terminate();
-      }
-      nativeChatFiles?.dispose();
-      releaseCustody();
+      // Ends Chat custody; writes the stopping signer still makes are refused, never interleaved with a successor's.
+      chat?.dispose();
+      runtime.then(
+        booted => {
+          booted.dispose();
+        },
+        () => {
+          // Nothing booted, nothing to dispose.
+        },
+      );
     },
   };
   cores.add(core);
-  void runtime.catch((error: unknown) => {
-    const report = !disposed && context !== undefined && isCurrentLocalWallet(context);
+  runtime.catch((error: unknown) => {
     log.warn('[dot.li page-core] wallet core failed to boot:', error);
     core.faulted = true;
-    core.dispose();
-    // A runtime factory may resolve after an early dispose. Retire it too.
-    booted?.dispose();
-    if (report) {
-      dispatchAuthState({ tag: 'WalletUnavailable', reason: error instanceof Error ? error.message : String(error) });
-    }
   });
   return core;
 }
 
 async function connect(
   core: Core,
-  runtime: PageRuntime,
+  runtime: WorkerPairingHostRuntime,
   executionKind: ProductExecutionKind = 'App',
   media?: ConnectionMedia,
 ): Promise<CoreConnection> {
@@ -714,7 +370,6 @@ async function connect(
     if (!cores.has(core)) {
       throw new Error('Page core closed while connecting the product');
     }
-    // Decisions persisted by any core sharing this storage reach this one.
     unregisterRefresh = await registerCoreStoragePermissionProvider(storage, productId, provider);
     if (!cores.has(core)) {
       unregisterRefresh();
@@ -726,6 +381,7 @@ async function connect(
     throw error;
   }
   let closing = false;
+  // A deliberate close also fires close listeners. Any other close is the core going down.
   provider.subscribeClose?.(() => {
     unregisterRefresh();
     callbacks.dispose();
@@ -737,7 +393,6 @@ async function connect(
   return {
     provider,
     productId,
-    wallet: core.wallet,
     waitForPermissionRefresh: request => waitForCoreStoragePermissionRefresh(storage, productId, request),
     close() {
       if (closing) {

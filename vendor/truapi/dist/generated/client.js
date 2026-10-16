@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "90c2d0c1b44449fc";
+export const TRUAPI_WIRE_SCHEMA_HASH = "5e5364e0191bf9d5";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -560,7 +560,7 @@ export class ChatClient {
     postMessage(request, options) {
         return this.#transport.request({
             ids: W.CHAT_POST_MESSAGE,
-            payload: T.VersionedHostChatPostMessageRequest.enc({ tag: "V1", value: request }),
+            payload: T.VersionedHostChatPostMessageRequest.enc({ tag: "V2", value: request }),
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostChatPostMessageResponse, S.CallError(T.VersionedHostChatPostMessageError)).dec(payload);
@@ -576,6 +576,22 @@ export class ChatClient {
             payload: T.VersionedHostChatActionSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostChatActionSubscribeItem.dec(payload).value,
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostChatActionSubscribeError)),
+        });
+    }
+    /**
+     * Set what a room the product created shows below its messages. A room
+     * keeps the footer until the product sets another, and a new room shows
+     * the text input.
+     */
+    setRoomFooter(request, options) {
+        return this.#transport.request({
+            ids: W.CHAT_SET_ROOM_FOOTER,
+            payload: T.VersionedHostChatSetRoomFooterRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostChatSetRoomFooterResponse, S.CallError(T.VersionedHostChatSetRoomFooterError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -745,6 +761,73 @@ export class EntropyClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostDeriveEntropyResponse, S.CallError(T.VersionedHostDeriveEntropyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/**
+ * The card a Widget is shown under.
+ *
+ * Only a Widget execution may call it.
+ */
+export class ExpandedCardClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Show or hide the face above the calling Widget.
+     *
+     * Succeeds when the face is already in that state. Fails with
+     * `NotPresented` when the Widget is not shown under its card.
+     */
+    setFaceShown(request, options) {
+        return this.#transport.request({
+            ids: W.EXPANDED_CARD_SET_FACE_SHOWN,
+            payload: T.VersionedHostExpandedCardSetFaceShownRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostExpandedCardSetFaceShownResponse, S.CallError(T.VersionedHostExpandedCardSetFaceShownError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/** Reminders for a product's next game. */
+export class GameClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Remind the user when this product's next game starts.
+     *
+     * Replaces the reminder this product already holds. Served only to the
+     * game product: any other product, or a host that cannot hold reminders,
+     * gets `Unsupported`. A `startsAt` that is not in the future fails with
+     * `StartsInPast`, and a reminder the host cannot hold fails as a host
+     * failure carrying its reason.
+     */
+    remindNextGame(request, options) {
+        return this.#transport.request({
+            ids: W.GAME_REMIND_NEXT_GAME,
+            payload: T.VersionedHostRemindNextGameRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostRemindNextGameResponse, S.CallError(T.VersionedHostRemindNextGameError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Drop the reminder. Safe to call whether one is held or not. */
+    cancelNextGame(request, options) {
+        return this.#transport.request({
+            ids: W.GAME_CANCEL_NEXT_GAME,
+            payload: T.VersionedHostCancelNextGameRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCancelNextGameResponse, S.CallError(T.VersionedHostCancelNextGameError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1109,38 +1192,6 @@ export class NotificationsClient {
             },
         });
     }
-    /**
-     * Retrieve up to 32 pending activations for this runtime's authenticated
-     * product, account and environment. Retrieval does not consume events,
-     * prompt for permissions or enroll a background receiver.
-     */
-    activationEvents(options) {
-        return this.#transport.request({
-            ids: W.NOTIFICATIONS_ACTIVATION_EVENTS,
-            payload: T.VersionedNotificationActivationEventsRequest.enc({ tag: "V1", value: undefined }),
-            signal: options?.signal,
-            decodeResponse: (payload) => {
-                const result = S.Result(T.VersionedNotificationActivationEventsResponse, S.CallError(T.VersionedNotificationActivationEventsError)).dec(payload);
-                return result.success ? { success: true, value: result.value.value } : result;
-            },
-        });
-    }
-    /**
-     * Acknowledge exactly one activation after the product router handles it.
-     * Unknown or already acknowledged sequences are idempotent, and can never
-     * remove an activation from another product, account or environment.
-     */
-    acknowledgeActivation(request, options) {
-        return this.#transport.request({
-            ids: W.NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION,
-            payload: T.VersionedNotificationActivationAcknowledgeRequest.enc({ tag: "V1", value: request }),
-            signal: options?.signal,
-            decodeResponse: (payload) => {
-                const result = S.Result(T.VersionedNotificationActivationAcknowledgeResponse, S.CallError(T.VersionedNotificationActivationAcknowledgeError)).dec(payload);
-                return result.success ? { success: true, value: result.value.value } : result;
-            },
-        });
-    }
 }
 /** Payment request and balance/status subscription methods. */
 export class PaymentClient {
@@ -1287,7 +1338,14 @@ export class PreimageClient {
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedRemotePreimageLookupSubscribeError)),
         });
     }
-    /** Submit a preimage. Returns the preimage key (hash) on success. */
+    /**
+     * Submit a preimage. Returns the preimage key (hash) on success.
+     *
+     * Requires the `PreimageSubmit` permission. Upload consent is separate
+     * from that capability grant. The host reviews each upload unless an
+     * explicit bounded automatic-upload policy approves it. Allocating or
+     * renewing the Bulletin allowance may also require approval.
+     */
     submit(request, options) {
         return this.#transport.request({
             ids: W.PREIMAGE_SUBMIT,
@@ -1348,6 +1406,39 @@ export class ResourceAllocationClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostRequestResourceAllocationResponse, S.CallError(T.VersionedHostRequestResourceAllocationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/**
+ * QR codes and barcodes scanned through the host's own viewfinder.
+ *
+ * The product receives the one code the user scanned, never camera frames,
+ * so there is no permission to request: pointing the host's viewfinder at a
+ * code is the consent. The host does not act on what it scanned, so a link
+ * comes back as text. A product that needs the camera for anything else keeps
+ * using `getUserMedia` under the `Camera` permission.
+ */
+export class ScannerClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Ask the host to let the user scan one code.
+     *
+     * The host ignores codes outside `formats` or without `prefix` and keeps
+     * the viewfinder open. A host with no scanner answers `Unsupported`, and
+     * cancelling the call closes the viewfinder.
+     */
+    scan(request, options) {
+        return this.#transport.request({
+            ids: W.SCANNER_SCAN,
+            payload: T.VersionedHostScannerScanRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostScannerScanResponse, S.CallError(T.VersionedHostScannerScanError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1734,6 +1825,8 @@ export function createClient(transport) {
         coinPayment: new CoinPaymentClient(transport),
         contacts: new ContactsClient(transport),
         entropy: new EntropyClient(transport),
+        expandedCard: new ExpandedCardClient(transport),
+        game: new GameClient(transport),
         localStorage: new LocalStorageClient(transport),
         locale: new LocaleClient(transport),
         media: new MediaClient(transport),
@@ -1744,6 +1837,7 @@ export function createClient(transport) {
         preimage: new PreimageClient(transport),
         renderer: new RendererClient(transport),
         resourceAllocation: new ResourceAllocationClient(transport),
+        scanner: new ScannerClient(transport),
         signing: new SigningClient(transport),
         statementStore: new StatementStoreClient(transport),
         system: new SystemClient(transport),
