@@ -389,6 +389,29 @@ describe('product frame renders', () => {
     expect(url.hash).toBe('#boss');
   });
 
+  it('As a visitor who opened a subname, its sandbox loads on one hashed label a wildcard certificate covers', async () => {
+    // Given
+    location = { ...location, href: 'http://localhost:3000/pr16.back-me-up/', pathname: '/pr16.back-me-up/' };
+    const fakes = harness();
+
+    // When
+    await settle(
+      fakes,
+      {
+        mode: 'subdomain',
+        label: 'pr16.back-me-up',
+        cid: 'cid',
+        base: '/pr16.back-me-up',
+        chat: Promise.resolve(false),
+      },
+      0,
+    );
+
+    // Then
+    const url = new URL(nth(fakes.hosts, 0).options.iframeUrl);
+    expect(url.hostname).toMatch(/^sn--[0-9a-f]{59}\.app\.localhost$/);
+  });
+
   it('As a user who reset everything, only the first product frame after the reload purges the sandbox origin', async () => {
     // Given
     const fakes = harness();

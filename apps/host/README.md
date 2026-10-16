@@ -6,8 +6,8 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 ## Responsibility
 
 - Route a page load to a product, a local or preview target, or the landing page. A product is named by its host
-  (`<label>.<domain>`) or, on the bare host, by the first path segment (`<domain>/<label>`), and gets only the path
-  after it.
+  (`<label>.<domain>`) or, on the bare host, by the first path segment (`<domain>/<name>`), and gets only the path after
+  it. A subname such as `pr16.my-app` opens by path only, since a wildcard certificate covers one label.
 - Take a `.dot` label to a product on screen, or to the screen that says why not.
 - Own the page chrome: topbar, URL pill, loading screen, settings, account, permissions and network views.
 - Own the domain building blocks the chrome composes: account, chat, permission, appearance and chain views and their

@@ -5,7 +5,7 @@
 // builds, or no product at all. Read from the URL alone.
 
 import { BASE_DOMAIN } from '@dotli/config';
-import { dotNsUrl, isValidDotLabel } from '@dotli/resolver';
+import { dotNsUrl, isValidDotName } from '@dotli/resolver';
 import { log } from '@dotli/shared';
 import { parseDotLabel } from './dot-label.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
@@ -74,7 +74,10 @@ export function readShellRoute(location: ShellLocation, options: RouteOptions): 
   return readPathProduct(location.pathname) ?? { kind: 'landing' };
 }
 
-/** A link to a product on the bare host: `/<label>` or `/<label>.dot`, then the product's own path. */
+/**
+ * A link to a product on the bare host: `/<name>` or `/<name>.dot`, then the product's own path. The only way to a
+ * subname, whose host a wildcard certificate does not cover.
+ */
 function readPathProduct(pathname: string): ShellRoute | null {
   const segment = /^\/([^/]+)/.exec(pathname)?.[1];
   if (segment === undefined) {
@@ -82,7 +85,7 @@ function readPathProduct(pathname: string): ShellRoute | null {
   }
   // Lowercased as the browser lowercases a hostname, so both spellings of a link reach the same name.
   const label = segment.replace(/\.dot$/i, '').toLowerCase();
-  return isValidDotLabel(label) ? { kind: 'product', label, base: `/${segment}` } : null;
+  return isValidDotName(label) ? { kind: 'product', label, base: `/${segment}` } : null;
 }
 
 function readProductIdOverride(search: string): string | undefined {

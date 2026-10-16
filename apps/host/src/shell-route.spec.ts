@@ -45,6 +45,16 @@ describe('readShellRoute', () => {
     expect(dotted).toEqual({ kind: 'product', label: 'doom', base: '/Doom.dot' });
   });
 
+  it('As a visitor on the bare host, I open a subname by its name in the path, with or without .dot', () => {
+    // When
+    const plain = readShellRoute(at('https://example.li/pr16.back-me-up/deep'), RELEASE);
+    const dotted = readShellRoute(at('https://example.li/pr16.back-me-up.dot'), RELEASE);
+
+    // Then
+    expect(plain).toEqual({ kind: 'product', label: 'pr16.back-me-up', base: '/pr16.back-me-up' });
+    expect(dotted).toEqual({ kind: 'product', label: 'pr16.back-me-up', base: '/pr16.back-me-up.dot' });
+  });
+
   it('As a visitor on the bare host, a path that cannot be a name gets me no product', () => {
     // When
     const route = readShellRoute(at('https://example.li/not_a-name-/deep'), RELEASE);

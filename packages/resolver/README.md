@@ -7,8 +7,8 @@ every caller checks a name against.
 
 - Owns dotNS reads: Registry and ContentResolver storage, contenthash decoding and manifest records.
 - Owns the wait for a chain to sync before a read, and the errors a resolution fails with.
-- Owns the dotNS naming rules: which hosts are products under the active network's TLD, what a valid label is, and the
-  manifest kinds a product publishes.
+- Owns the dotNS naming rules: which hosts are products under the active network's TLD, what a valid label and name are,
+  the one DNS label a product's sandbox origin is named by, and the manifest kinds a product publishes.
 - Does not own the chain connections it reads through, content fetching or the cached label to CID map.
 
 ## Design
@@ -27,6 +27,8 @@ every caller checks a name against.
   product host from a website.
 - A label is lowercase ASCII letters, digits and inner hyphens, and never starts with `xn--`, since a punycode label can
   spell a name in letters that only look like another name's.
+- A name is one label or a subname of several. A wildcard certificate covers one label, so a subname's sandbox label is
+  `sn--` and a hash of the name. No label may start with `sn--`, so a registered label never takes a subname's origin.
 - The resolver is heavy, so it loads through a lazy loader. The entry is pure re-exports, so the bundler drops what a
   caller does not take.
 
@@ -38,6 +40,7 @@ every caller checks a name against.
   `ChainClient`.
 - Manifests: `toRootManifestResult`, `toExecutableManifestResult`, `RootManifest`, `ExecutableManifest`,
   `ManifestResult`, `AppVersion`.
-- Naming rules: `dotNsUrl`, `validateDotLabel`, `isValidDotLabel`, `DotLabelResult`, `isExecutableKind`.
+- Naming rules: `dotNsUrl`, `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `sandboxLabel`,
+  `DotLabelResult`, `isExecutableKind`.
 - Errors: `ResolverErrorName`.
 - Lazy loader: `loadResolve`.

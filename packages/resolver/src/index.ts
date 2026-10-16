@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export { type ResolvePhase } from './access-raw-storage.js';
-export { isValidDotLabel, validateDotLabel, type DotLabelResult } from './dot-label.js';
+export {
+  isValidDotLabel,
+  isValidDotName,
+  sandboxLabel,
+  validateDotLabel,
+  validateDotName,
+  type DotLabelResult,
+} from './dot-label.js';
 export { dotNsUrl } from './dotns-url.js';
 export { type ResolverErrorName } from './errors.js';
 export { isExecutableKind } from './executables.js';

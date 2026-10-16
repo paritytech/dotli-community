@@ -19,6 +19,7 @@ const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], s
   'invalid-char': 'Names can only contain a-z, 0-9 and hyphens',
   'non-ascii': 'Names can only contain a-z, 0-9 and hyphens',
   punycode: "Names can't start with xn--",
+  reserved: "Names can't start with sn--",
 };
 
 export interface NavFormProps {
