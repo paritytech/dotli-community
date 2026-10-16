@@ -89,4 +89,7 @@
   .accordion::details-content {
     transition: none;
   }
+  .accordion[open]::details-content {
+    transition: none;
+  }
 }

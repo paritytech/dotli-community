@@ -103,9 +103,11 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
           testId="chains-other"
           summaryTestId="chains-other-summary"
         >
-          <For each={otherChains()} keyed={chain => chain.key}>
-            {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
-          </For>
+          <div class={s['other']}>
+            <For each={otherChains()} keyed={chain => chain.key}>
+              {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
+            </For>
+          </div>
         </Accordion>
       </Show>
       <div class={s['transfer']}>

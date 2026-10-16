@@ -134,6 +134,47 @@ export const OwnerDecides: Story = {
       await expect(args.onToggle).toHaveBeenLastCalledWith(true);
       await expect(root(canvas).open).toBe(false);
     });
+    await step('When I press Space on its header', async () => {
+      await (await trustedInput()).keyboard(' ');
+    });
+    await step('Then its owner hears it a third time and the section stays closed', async () => {
+      await expect(args.onToggle).toHaveBeenCalledTimes(3);
+      await expect(args.onToggle).toHaveBeenLastCalledWith(true);
+      await expect(root(canvas).open).toBe(false);
+    });
+  },
+};
+
+// The owner holds the section closed and refuses every change, so only the browser opens it.
+/**
+ * As a dotli user, the browser opens a controlled section for a find in the page and its owner hears it, and my press
+ * closes it again although the owner refused the opening.
+ */
+export const BrowserOpens: Story = {
+  args: { open: false, onToggle: fn() },
+  play: async ({ args, canvas, userEvent, step }) => {
+    await step('When the browser opens the section itself', async () => {
+      const toggled = new Promise(resolve => {
+        root(canvas).addEventListener('toggle', resolve, { once: true });
+      });
+      root(canvas).open = true;
+      await toggled;
+    });
+    await step('Then its owner hears it opened', async () => {
+      await expect(args.onToggle).toHaveBeenCalledTimes(1);
+      await expect(args.onToggle).toHaveBeenCalledWith(true);
+    });
+    await step('When I click its header', async () => {
+      await userEvent.click(summary(canvas));
+    });
+    await step(
+      'Then the section closes, back in step with its owner, and the owner hears it should close',
+      async () => {
+        await expect(root(canvas).open).toBe(false);
+        await expect(args.onToggle).toHaveBeenCalledTimes(2);
+        await expect(args.onToggle).toHaveBeenLastCalledWith(false);
+      },
+    );
   },
 };
 

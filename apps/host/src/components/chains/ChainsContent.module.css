@@ -27,6 +27,9 @@
   line-height: var(--lh-body);
 }
 
+.other {
+  padding: 0 var(--sp-1);
+}
 .transfer {
   display: flex;
   flex-direction: column;

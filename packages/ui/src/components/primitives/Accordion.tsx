@@ -24,8 +24,12 @@ export interface AccordionProps {
 /** A section that folds its body away under a header, on the native disclosure element. */
 export function Accordion(props: AccordionProps): JSX.Element {
   const controlled = (): boolean => props.open !== undefined;
+  let details: HTMLDetailsElement | undefined;
   return (
     <details
+      ref={el => {
+        details = el;
+      }}
       class={[s['accordion'], props.class]}
       open={props.open}
       onToggle={event => {
@@ -41,9 +45,15 @@ export function Accordion(props: AccordionProps): JSX.Element {
       <summary
         class={s['summary']}
         onClick={event => {
-          if (controlled()) {
+          if (controlled() && details !== undefined) {
             event.preventDefault();
-            props.onToggle?.(props.open !== true);
+            const next = !details.open;
+            // The owner holds the state asked for only when it refused a toggle the browser made, so the element
+            // catches up itself.
+            if (next === props.open) {
+              details.open = next;
+            }
+            props.onToggle?.(next);
           }
         }}
         data-testid={props.summaryTestId}
