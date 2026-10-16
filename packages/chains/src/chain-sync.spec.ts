@@ -441,7 +441,7 @@ function recordLogLines(): {
 }
 
 describe('An expected lifecycle watch state is a breadcrumb', () => {
-  it('As a maintainer, a chain that refuses a lifecycle watch leaves a flow event and no warning', () => {
+  it('As a maintainer, I watch a chain that refuses a lifecycle watch and see a flow event, not a warning', () => {
     // Given sync reporting on the relay chain
     const log = recordLogLines();
     reporter.enableSyncReporting(['relay']);
@@ -465,7 +465,7 @@ describe('An expected lifecycle watch state is a breadcrumb', () => {
     ]);
   });
 
-  it('As a maintainer, a lifecycle watch that ends in an error leaves a flow event and no warning', async () => {
+  it('As a maintainer, I watch a lifecycle watch end in an error and see a flow event, not a warning', async () => {
     // Given sync reporting on the relay chain, and a watch whose stream fails
     const log = recordLogLines();
     const logged = log.next();
