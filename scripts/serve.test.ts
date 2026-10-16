@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -61,20 +61,42 @@ function listeningPort(server: Server): Promise<number> {
   });
 }
 
-/** The raw reply to one request line, for a line `fetch` would refuse to send. */
-function rawRequest(port: number, requestLine: string): Promise<string> {
+/** Resolves once the server's stderr matches `pattern`. Rejects if the server exits first. */
+function untilStderr(server: Server, pattern: RegExp): Promise<void> {
+  const text = collect(server.stderr);
   return new Promise((resolve, reject) => {
+    server.stderr.on('data', () => {
+      if (pattern.test(text())) {
+        resolve();
+      }
+    });
+    server.once('exit', code => {
+      reject(new Error(`serve exited with ${String(code)}:\n${text()}`));
+    });
+  });
+}
+
+/**
+ * The raw reply to one request, for a line `fetch` would refuse to send or a header it sets itself. Settles when the
+ * connection closes, with the socket error if the server cut it.
+ */
+function rawRequest(port: number, requestLine: string, headers = ''): Promise<{ reply: string; error?: Error }> {
+  return new Promise(resolve => {
     let reply = '';
+    let error: Error | undefined;
     const socket = connect(port, '127.0.0.1', () => {
-      socket.end(`${requestLine}\r\nHost: browse.localhost\r\nConnection: close\r\n\r\n`);
+      // Written, not ended, since a client that half-closes reads as one that left mid-reply.
+      socket.write(`${requestLine}\r\nHost: browse.localhost\r\n${headers}Connection: close\r\n\r\n`);
     });
     socket.on('data', (chunk: Buffer) => {
       reply += chunk.toString();
     });
-    socket.on('end', () => {
-      resolve(reply);
+    socket.on('error', (err: Error) => {
+      error = err;
     });
-    socket.on('error', reject);
+    socket.on('close', () => {
+      resolve(error === undefined ? { reply } : { reply, error });
+    });
   });
 }
 
@@ -128,12 +150,53 @@ describe('serve', { timeout: 20_000 }, () => {
     const port = await listeningPort(server);
 
     // When one request names a path no URL can hold
-    const reply = await rawRequest(port, 'GET //[ HTTP/1.1');
+    const { reply } = await rawRequest(port, 'GET //[ HTTP/1.1');
     const next = await fetch(`http://127.0.0.1:${String(port)}/dotli-network.js`);
     await next.body?.cancel();
 
     // Then that request is refused and the next one is answered
     assert.match(reply, /^HTTP\/1\.1 400 /);
+    assert.equal(next.status, 200);
+    assert.equal(server.exitCode, null);
+  });
+
+  it('As a visitor, I fetch an asset and get its bytes, and the server keeps serving', async () => {
+    // Given an asset in the host build
+    const dist = emptyDist();
+    mkdirSync(join(dist, 'host', 'assets'));
+    writeFileSync(join(dist, 'host', 'assets', 'app.js'), 'run()');
+    const server = startServe(dist, '');
+    const port = await listeningPort(server);
+
+    // When the visitor fetches it, then asks again
+    const asset = await fetch(`http://127.0.0.1:${String(port)}/assets/app.js`);
+    const body = await asset.text();
+    const next = await fetch(`http://127.0.0.1:${String(port)}/dotli-network.js`);
+    await next.body?.cancel();
+
+    // Then the file came whole and the next request is answered
+    assert.equal(asset.status, 200);
+    assert.equal(body, 'run()');
+    assert.equal(next.status, 200);
+  });
+
+  it('As an operator, I have a file fail to read mid-request and the server logs it and keeps serving', async () => {
+    // Given an asset whose brotli copy is a folder, which passes the existence check and fails to read
+    const dist = emptyDist();
+    mkdirSync(join(dist, 'host', 'assets'));
+    writeFileSync(join(dist, 'host', 'assets', 'app.js'), 'run()');
+    mkdirSync(join(dist, 'host', 'assets', 'app.js.br'));
+    const server = startServe(dist, '');
+    const logged = untilStderr(server, /could not send/);
+    const port = await listeningPort(server);
+
+    // When a client asks for it in brotli
+    await rawRequest(port, 'GET /assets/app.js HTTP/1.1', 'Accept-Encoding: br\r\n');
+    await logged;
+    const next = await fetch(`http://127.0.0.1:${String(port)}/dotli-network.js`);
+    await next.body?.cancel();
+
+    // Then the read error was logged and the next request is answered
     assert.equal(next.status, 200);
     assert.equal(server.exitCode, null);
   });

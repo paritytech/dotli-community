@@ -10,6 +10,7 @@
 import { createServer, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pipeline } from 'node:stream';
 import {
   RUNTIME_NETWORK_CONFIG_HEADERS,
   RUNTIME_NETWORK_CONFIG_PATH,
@@ -59,7 +60,15 @@ function send(
     headers['Vary'] = 'Accept-Encoding';
   }
   res.writeHead(200, headers);
-  createReadStream(chosen.path).pipe(res);
+  // A file that fails to read, such as one swapped out by a redeploy, ends this response and not the server.
+  // Node and Bun pass `undefined` on success, whatever the types say.
+  pipeline(createReadStream(chosen.path), res, (err: NodeJS.ErrnoException | null | undefined) => {
+    // A client that leaves mid-file is no server failure.
+    if (err === null || err === undefined || err.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+      return;
+    }
+    console.error(`serve: could not send ${chosen.path}: ${err.message}`);
+  });
 }
 
 if (PORT === 80) {
@@ -88,9 +97,11 @@ const runtimeConfigBody = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETW
 const server = createServer((req, res) => {
   const route = routeFor((req.headers.host ?? '').split(':')[0] ?? '');
   const dir = DIRS[route.site];
-  // A request line no URL can hold, such as `//[`, is the client's error. Throwing here would stop the server.
-  const url = URL.parse(req.url ?? '/', 'http://placeholder');
-  if (url === null) {
+  let url: URL;
+  try {
+    url = new URL(req.url ?? '/', 'http://placeholder');
+  } catch {
+    // A request line no URL can hold, such as `//[`, is the client's error. Throwing here would stop the server.
     res.writeHead(400).end('Bad Request');
     return;
   }
