@@ -52,7 +52,8 @@ export interface PermissionsChange {
   fromPrompt: boolean;
 }
 
-export type PromptDecision = 'granted' | 'granted-once' | 'denied';
+/** A lasting answer from the product's prompt. A one-time grant is the core's own and never reaches the store. */
+export type PromptDecision = 'granted' | 'denied';
 
 /** How a panel change settled. */
 export interface ChangeOutcome {
@@ -327,22 +328,6 @@ export function createProductPermissions({
   const recordPromptDecision: ProductPermissions['recordPromptDecision'] = (label, name, decision, signal) =>
     work.call(
       async () => {
-        if (decision === 'granted-once') {
-          throwIfAborted(signal);
-          const before = readStatuses(label);
-          // The core holds a one-time grant for this execution only, so only a read shows it.
-          await read();
-          const after = readStatuses(label);
-          if (
-            before === null ||
-            after === null ||
-            permissionStatusIn(before, name) !== permissionStatusIn(after, name)
-          ) {
-            // A one-time grant is offered only where the iframe does not gate, so the frame stays.
-            announce({ label, permissions: [name], allowChanged: false, fromPrompt: true });
-          }
-          return;
-        }
         const { errors } = await write(label, { [name]: decision }, { prompt: signal, always: true, fromPrompt: true });
         if (errors.length > 0) {
           throw errors.length === 1 && errors[0] instanceof Error

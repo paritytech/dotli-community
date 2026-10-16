@@ -681,29 +681,6 @@ describe('product permissions store', () => {
     expect(changes).toEqual([]);
   });
 
-  it('As a product granted once, the grant is announced only when the read shows a change, and leaves the frame as it is', async () => {
-    // Given
-    const core = fakeCore();
-    const changes = recordChanges();
-    await loaded();
-    // The core holds the one-time grant it gave for this execution.
-    core.stored.set('ChainSubmit', 'Authorized');
-
-    // When
-    await permissions.recordPromptDecision(LABEL, 'ChainSubmit', 'granted-once', new AbortController().signal);
-
-    // Then
-    expect(changes).toEqual([{ label: LABEL, permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true }]);
-    expect(permissions.state.get()).toMatchObject({ statuses: statuses({ ChainSubmit: 'granted' }) });
-
-    // When granted once again, with the read showing no change
-    await permissions.recordPromptDecision(LABEL, 'ChainSubmit', 'granted-once', new AbortController().signal);
-
-    // Then
-    expect(changes).toHaveLength(1);
-    expect(core.writes).toEqual([]);
-  });
-
   it('As a product whose prompt was torn down while its answer was stored, nothing is announced', async () => {
     // Given
     fakeCore();

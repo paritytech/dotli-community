@@ -131,9 +131,10 @@ async function decidePromptPermissionWhenActive(
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
-  await permissions.product.recordPromptDecision(label, name, decision, signal);
-  if (decision === 'denied') {
-    return 'Deny';
+  // The core keeps a one-time grant for this execution itself, so only a lasting answer is recorded.
+  if (decision === 'granted-once') {
+    return 'AllowOnce';
   }
-  return decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';
+  await permissions.product.recordPromptDecision(label, name, decision, signal);
+  return decision === 'denied' ? 'Deny' : 'AllowAlways';
 }
