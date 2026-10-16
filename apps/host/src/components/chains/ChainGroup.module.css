@@ -36,13 +36,14 @@
   white-space: nowrap;
 }
 .waiting {
-  position: absolute;
-  top: 50%;
-  left: var(--sp-1);
-  transform: translateY(-50%);
+  flex: none;
+  align-self: center;
+  margin-right: var(--sp-1);
 }
 .bars {
   position: relative;
+  /* The pending trail sizes its slots from the strip's width. */
+  container-type: inline-size;
   display: flex;
   /* 48 slots share the width, the newest at the right edge. */
   flex-direction: row;
@@ -72,6 +73,23 @@
   height: 3px;
   border-radius: var(--r-hair);
   background: var(--chrome-fill-strong);
+}
+/* Before a first bar the status text leads the strip. The slots keep the size they have in a full strip and the
+   oldest ones go under the text's edge, so they don't shrink as the countdown's width changes. */
+.trail {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--sp-hair);
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.trail > .stub,
+.trail > .bar {
+  flex: none;
+  width: calc((100cqw - (var(--slots) - 1) * var(--sp-hair)) / var(--slots));
 }
 .bar[data-new] {
   animation: bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);

@@ -55,15 +55,17 @@ function PendingBar(props: { chain: ChainSummary; sinceLast: number | null }): J
   };
   return (
     <>
-      <Stubs count={HISTORY_SLOTS - 1} />
-      <span
-        class={[s['bar'], s['pending']]}
-        data-testid="chains-bar-pending"
-        data-pending={pending().phase}
-        style={height()}
-      />
       <span class={s['waiting']} data-testid="chains-bars-waiting">
         {pending().text}
+      </span>
+      <span class={s['trail']} style={{ '--slots': String(HISTORY_SLOTS) }}>
+        <Stubs count={HISTORY_SLOTS - 1} />
+        <span
+          class={[s['bar'], s['pending']]}
+          data-testid="chains-bar-pending"
+          data-pending={pending().phase}
+          style={height()}
+        />
       </span>
     </>
   );
