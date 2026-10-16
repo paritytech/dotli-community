@@ -9,6 +9,7 @@ export { IconTile } from './components/primitives/IconTile.js';
 export { Choice } from './components/primitives/Choice.js';
 export { SectionLabel, Stack } from './components/primitives/SectionLabel.js';
 export { SegmentedControl, type SegmentOption } from './components/primitives/SegmentedControl.js';
+export { StepSlider, type StepSliderProps, type StepSliderStop } from './components/primitives/StepSlider.js';
 export { Spinner } from './components/primitives/Spinner.js';
 export { StatusDot } from './components/primitives/StatusDot.js';
 export { Hint, Surface, SurfaceFoot, SurfaceHead } from './components/primitives/Surface.js';

@@ -8,8 +8,8 @@ and no data source.
 
 - The toast and modal stores, where everything that decides how a toast or dialog settles lives, and page helpers: the
   controls Tab reaches, idle preload, the phone viewport, reduced motion and the status tones.
-- Primitives (`Button`, `Switch`, `Chip`, `Surface`, `Well` and others) and the floating layers (`Modal`, `Popover`,
-  `Tooltip`).
+- Primitives (`Button`, `Switch`, `StepSlider`, `Chip`, `Surface`, `Well` and others) and the floating layers (`Modal`,
+  `Popover`, `Tooltip`).
 - The action group: a row of actions that moves what does not fit into a More menu.
 - The toast view, which the overlays render from the toast store.
 - Mounting a view inside an error boundary, and the overlay container.
@@ -38,6 +38,8 @@ and no data source.
   carries its icon as a component. Every `icon` prop takes the icon component, except `Choice` and `SegmentedControl`,
   whose slot takes markup.
 - A disabled `SegmentedControl` keeps its options focusable and ignores presses, so a popover it sits in stays open.
+- `StepSlider` commits the stop each gesture ends on, the current one included, so its owner decides what a repeat
+  means. A pointer the browser cancels commits nothing.
 - `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
   screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first. `clearScreen`
   takes it down and keeps what the page put beside it, such as the product frame. `pageContentStore` says `screen` while
@@ -58,9 +60,9 @@ and no data source.
 
 ### `@dotli/ui`
 
-- Primitives: `Button`, `ButtonLink`, `Chip`, `IconButton`, `IconTile`, `Choice`, `SegmentedControl`, `Spinner`,
-  `StatusDot`, `Surface` (with `SurfaceHead`, `SurfaceFoot`, `Hint`), `Switch`, `Well`, `Callout`, `Row`, `Stack`,
-  `SectionLabel`.
+- Primitives: `Button`, `ButtonLink`, `Chip`, `IconButton`, `IconTile`, `Choice`, `SegmentedControl`, `StepSlider`,
+  `Spinner`, `StatusDot`, `Surface` (with `SurfaceHead`, `SurfaceFoot`, `Hint`), `Switch`, `Well`, `Callout`, `Row`,
+  `Stack`, `SectionLabel`.
 - Floating layers: `Modal`, `Popover` and `usePopover`, `Tooltip`, plus the layer tracking (`LayerTracker`,
   `ModalFocusFallback`).
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
