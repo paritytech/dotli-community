@@ -11,19 +11,12 @@
     gap: var(--sp-3);
   }
 }
-.advanced {
-  padding-top: 10px;
-  border-top: 1px solid var(--chrome-line);
-}
 .groups {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 @media (max-width: 560px) {
-  .advanced {
-    padding-top: var(--sp-3);
-  }
   .groups {
     gap: var(--sp-3);
   }

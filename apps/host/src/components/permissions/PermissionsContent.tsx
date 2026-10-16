@@ -153,7 +153,6 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                 title="Advanced"
                 open={advanced()}
                 onToggle={setAdvanced}
-                class={s['advanced']}
                 testId="permissions-advanced"
                 summaryTestId="permissions-advanced-toggle"
               >
