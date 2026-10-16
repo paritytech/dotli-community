@@ -393,9 +393,9 @@ execution and a chat button in the topbar. The product drives the conversation o
 replies from the docked chat panel, and each reply reaches the product as a `MessagePosted` action. Rooms and messages
 persist in IndexedDB on the product origin and never leave the device. The core denies chat calls without an active
 session, so chat requires being logged in. The localhost debug paths enable chat unconditionally so local products can
-be tested without publishing a manifest.
-Products may select a room's footer with `chat.set_room_footer`: `Empty` hides the reply composer, while `TextInput`
-retains it. Recreating an existing room updates its name and icon without resetting that preference.
+be tested without publishing a manifest. Products may select a room's footer with `chat.set_room_footer`: `Empty` hides
+the reply composer, while `TextInput` retains it. Recreating an existing room updates its name and icon without
+resetting that preference.
 
 Custom messages (`ChatMessageContent::Custom`) render live: when a custom message cell scrolls into view, the panel asks
 the product to draw it through the Renderer service (`renderer.render`, with a `ChatMessage` render context) and renders
