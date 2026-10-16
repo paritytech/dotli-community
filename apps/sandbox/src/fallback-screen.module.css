@@ -8,8 +8,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 32px;
+  gap: var(--sp-4);
+  padding: var(--sp-8);
   background: var(--bg-page);
   color: var(--text-strong);
   font-family: var(--font-sans);
@@ -22,7 +22,7 @@
 }
 
 .reload {
-  padding: 10px 20px;
+  padding: var(--sp-2) var(--sp-5);
   border: 0;
   border-radius: 999px;
   background: var(--inverse-bg);
