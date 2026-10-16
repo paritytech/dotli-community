@@ -4,7 +4,7 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   padding: 0 12px;
   border-bottom: 1px solid var(--td-line);
   background: var(--td-bg-raised);
@@ -20,14 +20,6 @@
   padding-top: 5px;
 }
 
-.counts {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--td-fg-dim);
-  font-size: 11px;
-}
 .spacer {
   flex: none;
   margin-left: auto;
@@ -36,7 +28,6 @@
 /* On a phone the panel always docks at the bottom, so the dock button goes and the header tightens. */
 @media (max-width: 560px) {
   .header {
-    gap: 6px;
     padding: 0 8px;
   }
   /* Two classes, so it wins over the button's own display. */

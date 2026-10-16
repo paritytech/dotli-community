@@ -44,6 +44,8 @@ export function EventFilters(props: {
   /** While the panel is collapsed or shows another tab than TrUAPI. */
   hidden: boolean;
   onChange: (next: FilterState) => void;
+  /** The log's own controls, at the row's end. */
+  controls: JSX.Element;
 }): JSX.Element {
   const update = (patch: Partial<FilterState>): void => {
     props.onChange({ ...props.filters, ...patch });
@@ -119,6 +121,7 @@ export function EventFilters(props: {
           }}
         />
       </FilterGroup>
+      {props.controls}
     </FilterBar>
   );
 }

@@ -97,8 +97,8 @@ export const FanOutWatchSeesFanOut: Story = {
     }),
 };
 
-/** As a developer using the debug panel, I collapse the panel while traffic arrives and only the header count is matched, and it catches up once when I expand. */
-export const CollapsedKeepsCountOnly: Story = {
+/** As a developer using the debug panel, I collapse the panel while traffic arrives and nothing is matched, and it catches up once when I expand. */
+export const CollapsedIgnoresTraffic: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
       const { mount, calls } = debugPanel();
@@ -111,11 +111,10 @@ export const CollapsedKeepsCountOnly: Story = {
           clock.frame();
         }
       });
-      await step('Then only the new events are matched, for the header count', async () => {
-        await expect(calls.matches).toBe(10);
+      await step('Then nothing is matched or drawn', async () => {
+        await expect(calls.matches).toBe(0);
         await expect(calls.formatPending).toBe(0);
         await expect(rows()).toHaveLength(0);
-        await expect(counts()).toBe('2000 events (+10 dropped)');
       });
       await step('When I expand', () => {
         part('td-collapse').click();

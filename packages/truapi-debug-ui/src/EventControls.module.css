@@ -1,0 +1,15 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The end of the filter row. */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.counts {
+  color: var(--td-fg-dim);
+  font-size: 11px;
+}

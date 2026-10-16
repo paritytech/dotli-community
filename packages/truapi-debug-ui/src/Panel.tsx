@@ -3,7 +3,7 @@
 
 // Rendering rules the parts rely on:
 // - The store is not reactive. `snapshot` copies it at most once per frame, and synchronously on user actions.
-//   A collapsed panel takes no snapshots and only updates its header count.
+//   A collapsed panel takes no snapshots.
 // - User actions apply synchronously via `flush`. Never call `flush()` from an effect, memo or `onSettled`,
 //   which already run inside Solid's update pass and would re-enter it.
 // - The detail pane rebuilds only on user actions (`detailRevision`), never on traffic.
@@ -27,6 +27,7 @@ import type { ResolutionRecorder } from './model/resolution-view.js';
 import { DiagnosticsView } from './Diagnostics.js';
 import { DetailPane } from './DetailPane.js';
 import { EventList, type Selection } from './EventList.js';
+import { EventControls } from './EventControls.js';
 import { EventFilters } from './EventFilters.js';
 import { PanelEffectsContext, type PanelEffects } from './effects.js';
 import { Header } from './Header.js';
@@ -39,7 +40,7 @@ import { tabId } from './shared/Tabs.js';
 import { ViewTabs, VIEW_PANEL_ID, VIEW_TABS_ID, type PanelView } from './ViewTabs.js';
 import { TimelineView } from './TimelineView.js';
 import { WalletView } from './WalletView.js';
-import { usePanelWork, type PanelWork } from './work.js';
+import { usePanelWork } from './work.js';
 import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
@@ -88,54 +89,6 @@ function sortProducts(products: (string | undefined)[]): (string | undefined)[] 
     }
     return a.localeCompare(b);
   });
-}
-
-/** The collapsed header's shown count, updated at a cost proportional to the events that arrived or left. */
-class ShownCounter {
-  /** Valid from `head` on. */
-  private seqs: EventSeq[] = [];
-  private head = 0;
-  private lastSeq = -1;
-  private filters: FilterState | null = null;
-  private readonly matches: PanelWork['matches'];
-
-  constructor(matches: PanelWork['matches']) {
-    this.matches = matches;
-  }
-
-  seed(shown: readonly StoredEvent[], events: readonly StoredEvent[], filters: FilterState): void {
-    this.seqs = shown.map(e => e.seq);
-    this.head = 0;
-    this.lastSeq = events.at(-1)?.seq ?? -1;
-    this.filters = filters;
-  }
-
-  count(events: readonly StoredEvent[], filters: FilterState): number {
-    if (filters !== this.filters) {
-      this.seed([], [], filters);
-    }
-    const firstSeq = events[0]?.seq ?? Infinity;
-    let headSeq = this.seqs[this.head];
-    while (headSeq !== undefined && headSeq < firstSeq) {
-      this.head++;
-      headSeq = this.seqs[this.head];
-    }
-    for (let i = firstNewIndex({ lastSeq: this.lastSeq }, events); i < events.length; i++) {
-      const ev = events[i];
-      if (ev !== undefined && this.matches(ev, filters)) {
-        this.seqs.push(ev.seq);
-      }
-    }
-    const lastEvent = events.at(-1);
-    if (lastEvent !== undefined) {
-      this.lastSeq = lastEvent.seq;
-    }
-    if (this.head > 1024) {
-      this.seqs = this.seqs.slice(this.head);
-      this.head = 0;
-    }
-    return this.seqs.length - this.head;
-  }
 }
 
 function countsLabel(total: number, dropped: number, shown: number): string {
@@ -225,15 +178,7 @@ export function Panel(props: {
     return recorder.version();
   });
 
-  const shown = new ShownCounter(matches);
-  const [collapsedCounts, setCollapsedCounts] = createSignal<string | null>(null);
-  if (untrack(collapsed)) {
-    untrack(() => {
-      shown.seed(visible(), snapshot().events, filters());
-    });
-  }
-  const counts = (): string =>
-    collapsedCounts() ?? countsLabel(snapshot().events.length, snapshot().dropped, visible().length);
+  const counts = (): string => countsLabel(snapshot().events.length, snapshot().dropped, visible().length);
 
   const refreshDetail = (): void => {
     setDetailRevision(n => n + 1);
@@ -271,13 +216,8 @@ export function Panel(props: {
     }
     frame = requestAnimationFrame(() => {
       frame = null;
-      if (store.version() === snapshot().version) {
-        return;
-      }
-      if (collapsed()) {
-        const events = store.list();
-        const label = countsLabel(events.length, store.dropped(), shown.count(events, filters()));
-        flush(() => setCollapsedCounts(label));
+      // A collapsed panel shows nothing of the log, and expanding takes a snapshot.
+      if (store.version() === snapshot().version || collapsed()) {
         return;
       }
       commit(() => setSnapshot(takeSnapshot()));
@@ -377,9 +317,39 @@ export function Panel(props: {
       refreshDetail();
     });
   };
+  /** Folds the panel to its header, or unfolds it running `update` in the same pass. */
+  const setCollapsedTo = (next: boolean, update?: () => void): void => {
+    const el = panelEl;
+    if (el !== undefined) {
+      if (next) {
+        // An inline drag height would override the collapsed height rule, so stash it until expand.
+        expandedHeight = el.style.height;
+        el.style.height = '';
+      } else if (expandedHeight !== '') {
+        el.style.height = expandedHeight;
+      }
+    }
+    if (next) {
+      flush(() => setCollapsed(true));
+    } else {
+      commit(() => {
+        update?.();
+        setCollapsed(false);
+        refreshSnapshot();
+      });
+    }
+    refit();
+  };
   const selectSection = (next: PanelSection): void => {
     if (next !== section()) {
       writeStoredSection(next);
+    }
+    if (collapsed()) {
+      setCollapsedTo(false, () => {
+        setSection(next);
+        refreshDetail();
+      });
+    } else if (next !== section()) {
       show(() => setSection(next));
     }
   };
@@ -426,60 +396,18 @@ export function Panel(props: {
         <Header
           section={section()}
           onSelectSection={selectSection}
-          counts={counts()}
-          paused={paused()}
           collapsed={collapsed()}
           dock={dock()}
           placement={placement()}
-          exportJson={exportJson}
           onExit={() => {
             host.leaveDebugMode();
-          }}
-          onTogglePause={() => {
-            const next = !store.isPaused();
-            store.setPaused(next);
-            flush(() => setPaused(next));
-          }}
-          onClear={() => {
-            if (section() === 'resolution') {
-              recorder.clear();
-              flush(() => setResolutionCleared(n => n + 1));
-              return;
-            }
-            store.clear();
-            // The detail pane rebuilds only on request, so rebuild now or the old event lingers.
-            flush(() => {
-              setSelection(null);
-              refreshDetail();
-            });
           }}
           onToggleDock={() => {
             flush(() => setDock(dock() === 'bottom' ? 'right' : 'bottom'));
             applyDockLayout(true);
           }}
           onToggleCollapse={() => {
-            const next = !collapsed();
-            const el = panelEl;
-            if (el !== undefined) {
-              if (next) {
-                // An inline drag height would override the collapsed height rule, so stash it until expand.
-                expandedHeight = el.style.height;
-                el.style.height = '';
-              } else if (expandedHeight !== '') {
-                el.style.height = expandedHeight;
-              }
-            }
-            if (next) {
-              shown.seed(visible(), snapshot().events, filters());
-              flush(() => setCollapsed(true));
-            } else {
-              commit(() => {
-                setCollapsed(false);
-                setCollapsedCounts(null);
-                refreshSnapshot();
-              });
-            }
-            refit();
+            setCollapsedTo(!collapsed());
           }}
         />
         <EventFilters
@@ -487,6 +415,26 @@ export function Panel(props: {
           products={snapshot().products}
           hidden={collapsed() || !events()}
           onChange={changeFilters}
+          controls={
+            <EventControls
+              counts={counts()}
+              paused={paused()}
+              exportJson={exportJson}
+              onTogglePause={() => {
+                const next = !store.isPaused();
+                store.setPaused(next);
+                flush(() => setPaused(next));
+              }}
+              onClear={() => {
+                store.clear();
+                // The detail pane rebuilds only on request, so rebuild now or the old event lingers.
+                flush(() => {
+                  setSelection(null);
+                  refreshDetail();
+                });
+              }}
+            />
+          }
         />
         <div
           id={SECTION_PANEL_ID}
@@ -534,6 +482,10 @@ export function Panel(props: {
               recorder={recorder}
               tooltip={() => tooltipEl}
               panel={() => panelEl}
+              onClear={() => {
+                recorder.clear();
+                flush(() => setResolutionCleared(n => n + 1));
+              }}
             />
             <ArchiveView active={section() === 'archive'} load={host.archive} product={host.product} />
             <DiagnosticsView active={section() === 'diagnostics'} source={host.diagnostics} />

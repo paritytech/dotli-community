@@ -6,3 +6,10 @@
   font-size: 11px;
   color: var(--td-fg-strong);
 }
+/* In the panel's type, like every other control, not the view's. */
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  font-family: var(--td-font);
+}

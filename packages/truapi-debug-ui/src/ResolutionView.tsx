@@ -9,6 +9,7 @@ import type { JSX } from '@solidjs/web';
 import type { ResolutionModel, ResolutionRecorder } from './model/resolution-view.js';
 import { wireHoverTooltips } from './shared/hover-tooltip.js';
 import { Chart } from './resolution/Chart.js';
+import { Button } from './shared/Button.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { Pane } from './shared/Pane.js';
 import { Summary } from './resolution/Summary.js';
@@ -30,6 +31,7 @@ export function ResolutionView(props: {
   recorder: ResolutionRecorder;
   tooltip: () => HTMLElement | undefined;
   panel: () => HTMLElement | undefined;
+  onClear: () => void;
 }): JSX.Element {
   const recorder = untrack(() => props.recorder);
   const { buildResolution } = usePanelWork();
@@ -104,6 +106,11 @@ export function ResolutionView(props: {
         );
       }}
     >
+      <div class={s['actions']}>
+        <Button testId="td-res-clear" onClick={props.onClear}>
+          Clear
+        </Button>
+      </div>
       <Show when={model()}>
         {m => (
           <Show

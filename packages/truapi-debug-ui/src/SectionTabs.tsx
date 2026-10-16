@@ -17,8 +17,11 @@ const SECTIONS: readonly TabOption<PanelSection>[] = [
   { value: 'wallet', label: 'Wallet' },
 ];
 
-/** In the header, so they stay in reach while the panel is collapsed. */
-export function SectionTabs(props: { section: PanelSection; onSelect: (section: PanelSection) => void }): JSX.Element {
+/** In the header, so they stay in reach while the panel is collapsed. A collapsed panel selects none. */
+export function SectionTabs(props: {
+  section: PanelSection | null;
+  onSelect: (section: PanelSection) => void;
+}): JSX.Element {
   return (
     <Tabs
       tabs={SECTIONS}

@@ -48,6 +48,9 @@ Builds made with `VITE_APP_DEBUG=true` mount the panel collapsed. Other builds k
 
 ### Sections
 
+The header holds the section tabs and the panel's own controls: dock, collapse and Hide. A collapsed panel selects no
+tab, and picking one opens the panel on it. A collapsed panel also stops reading traffic, and catches up once it opens.
+
 - **TrUAPI**: the messages between host and product, and the host's own boot, resolve, render, bridge and failover
   events, as a list or a timeline beside a detail pane.
 - **Resolution**: how the last page load went, phase by phase, with the open block and the chains that never started.
@@ -60,9 +63,9 @@ Builds made with `VITE_APP_DEBUG=true` mount the panel collapsed. Other builds k
 - A TrUAPI message groups with the others of its request id, a host event with the others of its flow id. Selecting an
   event highlights its group, and the detail pane shows the group with each event's time from the first.
 - A request with no reply yet shows a pending badge that counts up and turns slow after three seconds.
-- **Pause** stops recording new events. The reply that closes a call the panel already recorded still lands, once, so
-  that call does not read pending for good. **Clear** drops the recorded events, or on the Resolution section the
-  recorded load.
+- The event count, **Pause**, **Clear**, Export and Copy sit at the end of the filter row. **Pause** stops recording new
+  events. The reply that closes a call the panel already recorded still lands, once, so that call does not read pending
+  for good. **Clear** drops the recorded events. The Resolution section has its own **Clear** for the recorded load.
 - The filters pick the kind (TrUAPI or System), the direction, the product, and the methods to include by text or
   `/regex/`, and the methods to exclude. Export and Copy take what the filters show. Copy announces its outcome as a
   status text for assistive technology.

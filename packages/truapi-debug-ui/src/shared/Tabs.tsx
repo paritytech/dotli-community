@@ -22,7 +22,8 @@ export function tabId(idPrefix: string, value: string): string {
  */
 export function Tabs<T extends string>(props: {
   tabs: readonly TabOption<T>[];
-  selected: T;
+  /** None while the strip's panel is folded away, so no tab claims to show it. */
+  selected: T | null;
   onSelect: (value: T) => void;
   /** `primary` for the panel's top-level tabs, `secondary` for tabs inside one. */
   variant: 'primary' | 'secondary';

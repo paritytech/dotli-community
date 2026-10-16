@@ -50,47 +50,54 @@ async function seededFilters(): Promise<void> {
   await waitFor(() => expect(rows()).toHaveLength(5));
 }
 
-/** As a developer using the debug panel, I see the header with the tabs, counts and every control, the filters wide open and an empty list beside an empty detail pane. */
+/** As a developer using the debug panel, I see the header with the tabs and the panel controls, the filter row with the log's count and controls, the filters wide open and an empty list beside an empty detail pane. */
 export const Default: Story = {
   play: async ({ step }) => {
     const header = within(part('td-header'));
-    await step('Then the header shows the tabs, the counts and every control', async () => {
-      await expect(panel()).not.toHaveAttribute('data-collapsed');
-      await expect(panel()).toHaveAttribute('data-dock', 'bottom');
-      await expect(part('td-resize-handle')).toBeInTheDocument();
-      const sections = header.getAllByTestId('td-section');
-      await expect(sections.map(t => t.textContent)).toEqual([
-        'TrUAPI',
-        'Resolution',
-        'Archive',
-        'Diagnostics',
-        'Wallet',
-      ]);
-      await expect(sections.map(t => t.getAttribute('aria-selected'))).toEqual([
-        'true',
-        'false',
-        'false',
-        'false',
-        'false',
-      ]);
-      await expect(counts()).toBe('0 events');
-      await expect(part('td-pause')).toHaveTextContent('Pause');
-      await expect(part('td-clear')).toHaveTextContent('Clear');
-      for (const [id, label, title] of [
-        ['td-export', 'Download as JSON', 'Download as JSON'],
-        ['td-copy', 'Copy to clipboard', 'Copy to clipboard'],
-        ['td-dock', 'Dock to right', 'Dock to right'],
-        ['td-close', 'Hide', 'Hide'],
-      ] as const) {
-        await expect(header.getByRole('button', { name: label })).toBe(part(id));
-        await expect(part(id)).toHaveAttribute('title', title);
-        await expect(part(id).querySelector('svg')).not.toBeNull();
-      }
-      await expect(header.getByRole('button', { name: 'Collapse' })).toBe(part('td-collapse'));
-      await expect(part('td-collapse')).toHaveAttribute('title', 'Collapse');
-      await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'true');
-      await expect(part('td-collapse').querySelector('svg')).not.toBeNull();
-    });
+    await step(
+      'Then the header shows the tabs and the panel controls, and the filter row the log controls',
+      async () => {
+        await expect(panel()).not.toHaveAttribute('data-collapsed');
+        await expect(panel()).toHaveAttribute('data-dock', 'bottom');
+        await expect(part('td-resize-handle')).toBeInTheDocument();
+        const sections = header.getAllByTestId('td-section');
+        await expect(sections.map(t => t.textContent)).toEqual([
+          'TrUAPI',
+          'Resolution',
+          'Archive',
+          'Diagnostics',
+          'Wallet',
+        ]);
+        await expect(sections.map(t => t.getAttribute('aria-selected'))).toEqual([
+          'true',
+          'false',
+          'false',
+          'false',
+          'false',
+        ]);
+        const log = within(part('td-filters'));
+        await expect(log.getByTestId('td-counts')).toHaveTextContent('0 events');
+        await expect(log.getByRole('button', { name: 'Pause' })).toBe(part('td-pause'));
+        await expect(log.getByRole('button', { name: 'Clear' })).toBe(part('td-clear'));
+        for (const [id, label, scope] of [
+          ['td-export', 'Download as JSON', log],
+          ['td-copy', 'Copy to clipboard', log],
+          ['td-dock', 'Dock to right', header],
+          ['td-close', 'Hide', header],
+        ] as const) {
+          await expect(scope.getByRole('button', { name: label })).toBe(part(id));
+          await expect(part(id)).toHaveAttribute('title', label);
+          await expect(part(id).querySelector('svg')).not.toBeNull();
+        }
+        for (const id of ['td-counts', 'td-pause', 'td-clear', 'td-export', 'td-copy']) {
+          await expect(header.queryByTestId(id)).toBeNull();
+        }
+        await expect(header.getByRole('button', { name: 'Collapse' })).toBe(part('td-collapse'));
+        await expect(part('td-collapse')).toHaveAttribute('title', 'Collapse');
+        await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'true');
+        await expect(part('td-collapse').querySelector('svg')).not.toBeNull();
+      },
+    );
     await step('Then the filters start wide open', async () => {
       const filters = within(part('td-filters'));
       const kinds = filters.getAllByTestId('td-kind');
@@ -124,7 +131,7 @@ export const Default: Story = {
   },
 };
 
-/** As a developer using the debug panel, I see the panel mount header-only when it starts collapsed. */
+/** As a developer using the debug panel, I see the panel mount header-only when it starts collapsed, with no tab selected. */
 export const StartCollapsed: Story = {
   parameters: { debugPanel: { startCollapsed: true } },
   play: async ({ step }) => {
@@ -134,6 +141,44 @@ export const StartCollapsed: Story = {
       await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'false');
       await expect(part('td-resize-handle')).toHaveAttribute('data-disabled');
       await expect(part('td-filters')).toHaveAttribute('hidden');
+    });
+    await step('Then no section tab shows as selected, and the first takes the Tab stop', async () => {
+      const sections = within(part('td-header')).getAllByTestId('td-section');
+      await expect(sections.map(t => t.getAttribute('aria-selected'))).toEqual([
+        'false',
+        'false',
+        'false',
+        'false',
+        'false',
+      ]);
+      await expect(sections.map(t => t.tabIndex)).toEqual([0, -1, -1, -1, -1]);
+    });
+  },
+};
+
+/** As a developer using the debug panel, I click a section tab while the panel is collapsed and it opens on that section. */
+export const TabOpensCollapsed: Story = {
+  parameters: { debugPanel: { startCollapsed: true } },
+  play: async ({ userEvent, step }) => {
+    await step('When I click the Resolution tab on the collapsed panel', async () => {
+      await userEvent.click(part('td-section', 'resolution'));
+    });
+    await step('Then the panel opens on Resolution', async () => {
+      await expect(panel()).not.toHaveAttribute('data-collapsed');
+      await expect(panel()).toHaveAttribute('data-section', 'resolution');
+      await expect(part('td-section', 'resolution')).toHaveAttribute('aria-selected', 'true');
+      await expect(part('td-collapse')).toHaveAttribute('aria-expanded', 'true');
+      await expect(part('td-res')).not.toHaveAttribute('hidden');
+    });
+    await step('When I collapse it and click the TrUAPI tab', async () => {
+      await userEvent.click(part('td-collapse'));
+      await expect(part('td-section', 'resolution')).toHaveAttribute('aria-selected', 'false');
+      await userEvent.click(part('td-section', 'truapi'));
+    });
+    await step('Then it opens on TrUAPI with its filter row', async () => {
+      await expect(panel()).not.toHaveAttribute('data-collapsed');
+      await expect(panel()).toHaveAttribute('data-section', 'truapi');
+      await expect(part('td-filters')).not.toHaveAttribute('hidden');
     });
   },
 };
@@ -330,8 +375,8 @@ export const ClearResolutionKeepsEvents: Story = {
       await userEvent.click(part('td-section', 'resolution'));
       await expect(within(part('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
     });
-    await step('When I clear it', async () => {
-      await userEvent.click(part('td-clear'));
+    await step('When I clear it from inside the section', async () => {
+      await userEvent.click(within(part('td-res')).getByRole('button', { name: 'Clear' }));
     });
     await step('Then the Resolution view is empty and the events are kept', async () => {
       await expect(within(part('td-res')).getByTestId('td-res-empty')).toBeInTheDocument();
@@ -343,24 +388,24 @@ export const ClearResolutionKeepsEvents: Story = {
 /** As a developer using the debug panel, I see each tab show only the controls that apply to it. */
 export const ControlsPerTab: Story = {
   play: async ({ userEvent, step }) => {
-    const shown = (): string[] =>
-      ['td-counts', 'td-pause', 'td-clear', 'td-export', 'td-copy'].filter(id => !part(id).hasAttribute('hidden'));
-    await step('Then the TrUAPI tab shows every event control', async () => {
-      await expect(shown()).toEqual(['td-counts', 'td-pause', 'td-clear', 'td-export', 'td-copy']);
+    await step('Then the TrUAPI tab shows the log controls in its filter row', async () => {
+      await expect(part('td-filters')).not.toHaveAttribute('hidden');
+      await expect(within(part('td-filters')).getByTestId('td-event-controls')).toBeInTheDocument();
     });
     await step('When I open the Resolution tab', async () => {
       await userEvent.click(part('td-section', 'resolution'));
     });
-    await step('Then only Clear shows, with no filters or view tabs', async () => {
-      await expect(shown()).toEqual(['td-clear']);
+    await step('Then its own Clear shows, with no filters, log controls or view tabs', async () => {
+      await expect(within(part('td-res')).getByTestId('td-res-clear')).toBeVisible();
       await expect(part('td-filters')).toHaveAttribute('hidden');
       await expect(part('td-view-bar')).toHaveAttribute('hidden');
     });
     await step('When I open the Wallet tab', async () => {
       await userEvent.click(part('td-section', 'wallet'));
     });
-    await step('Then no event control shows, and the wallet takes the detail pane', async () => {
-      await expect(shown()).toEqual([]);
+    await step('Then no Clear and no log control shows, and the wallet takes the detail pane', async () => {
+      await expect(part('td-res-clear')).not.toBeVisible();
+      await expect(part('td-filters')).toHaveAttribute('hidden');
       await expect(part('td-wallet')).not.toHaveAttribute('hidden');
       await expect(part('td-detail')).toHaveAttribute('hidden');
     });
