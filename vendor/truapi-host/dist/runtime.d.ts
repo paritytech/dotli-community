@@ -1,7 +1,7 @@
 import type { HostChatActionSubscribeItem, HostRendererActionSubscribeItem, ProductRendererRenderRequest, RendererNode, WireProvider } from "@parity/truapi";
 import type { CoreAdmin, CoreStorageKey, ProductExecutionKind } from "./generated/host-callbacks.js";
 export * from "./generated/host-callbacks.js";
-export type { JsonRpcConnection as PlatformJsonRpcConnection, } from "./generated/host-callbacks.js";
+export type { JsonRpcConnection as PlatformJsonRpcConnection } from "./generated/host-callbacks.js";
 /** Encode a typed core-storage slot for hosts that need an opaque backing key. */
 export declare function encodeCoreStorageKey(key: CoreStorageKey): Uint8Array;
 /**

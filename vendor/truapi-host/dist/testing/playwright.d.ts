@@ -1,5 +1,6 @@
 import type { Page, FrameLocator } from "@playwright/test";
 import { type ChainStatus, type ChatMessageRecord, type MockHostConfig, type NotificationLogEntry, type PermissionLogEntry, type PermissionPolicy, type PermissionPolicyAlias, type SigningLogEntry, type StatementEntry } from "../web/create-mock-host.js";
+import type { HostScan } from "../generated/host-callbacks.js";
 import type { StatementInput } from "../web/loopback-statements.js";
 export type { StatementEntry } from "../web/create-mock-host.js";
 export type { StatementInput } from "../web/loopback-statements.js";
@@ -205,6 +206,8 @@ export interface TestHost {
     clearPreimages(): Promise<void>;
     getTheme(): Promise<string>;
     setTheme(variant: string): Promise<void>;
+    /** Set the next scan's answer. Throws unless created with a `scanner` answer. */
+    setScanAnswer(answer: HostScan): Promise<void>;
     getIsAuthenticated(): Promise<boolean>;
     getChainStatus(): Promise<ChainStatus>;
     getConnectionStatus(): Promise<ChainStatus>;

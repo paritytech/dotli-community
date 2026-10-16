@@ -1029,6 +1029,7 @@ function createTestHostFixture(defaults) {
         clearPreimages: () => call("clearPreimages"),
         getTheme: () => call("getTheme"),
         setTheme: (variant) => call("setTheme", variant),
+        setScanAnswer: (answer) => call("setScanAnswer", answer),
         getIsAuthenticated: () => call("getIsAuthenticated"),
         getChainStatus: () => call("getChainStatus"),
         getConnectionStatus: () => call("getConnectionStatus"),

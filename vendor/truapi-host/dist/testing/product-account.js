@@ -16,7 +16,8 @@ async function derivation() {
         const glue = (await import(
         // A file URL rather than a path: node refuses a Windows drive letter as
         // an ESM specifier.
-        /* @vite-ignore */ pathToFileURL(wasmArtifact("testing/truapi_server.js")).href));
+        /* @vite-ignore */ pathToFileURL(wasmArtifact("testing/truapi_server.js"))
+            .href));
         // The bytes are handed over rather than left to the glue's own loader,
         // which fetches a URL: node has none to fetch, and a suite reaches this
         // from a Playwright global setup, which node runs.
