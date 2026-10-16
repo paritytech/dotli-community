@@ -120,6 +120,11 @@ interface WriteOptions {
   superseded?: AbortSignal;
   /** A prompt torn down. Its change rejects and shows nothing, as its answer never reaches the product. */
   prompt?: AbortSignal;
+  /**
+   * Writes even the targets the statuses read already match. A prompt asks only at Ask, as the core said just then, so
+   * the statuses read may be stale, and a skipped write would drop the answer.
+   */
+  always?: boolean;
   fromPrompt: boolean;
 }
 
@@ -214,7 +219,7 @@ export function createProductPermissions({
     const was = (name: EnforceablePermissionName): PermissionStatus | undefined =>
       before === null ? undefined : permissionStatusIn(before, name);
     // With the statuses unread nothing is known to match, so every target is written.
-    if (before !== null && names.every(name => was(name) === targets[name])) {
+    if (options.always !== true && before !== null && names.every(name => was(name) === targets[name])) {
       return { failed: [], errors: [] };
     }
 
@@ -338,7 +343,7 @@ export function createProductPermissions({
           }
           return;
         }
-        const { errors } = await write(label, { [name]: decision }, { prompt: signal, fromPrompt: true });
+        const { errors } = await write(label, { [name]: decision }, { prompt: signal, always: true, fromPrompt: true });
         if (errors.length > 0) {
           throw errors.length === 1 && errors[0] instanceof Error
             ? errors[0]

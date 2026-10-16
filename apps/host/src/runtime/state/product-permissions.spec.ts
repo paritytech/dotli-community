@@ -582,12 +582,16 @@ describe('product permissions store', () => {
     expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: false, fromPrompt: true }]);
   });
 
-  it('As a product whose prompt answer the core cannot store after three attempts, I get the failure and nothing changes', async () => {
+  it('As a product whose prompt answer the core cannot store after three attempts, I get the failure, it is reported once and nothing changes', async () => {
     // Given
     const timers = manualTimers();
     permissionsOn(timers);
     const core = fakeCore();
-    core.failWrite = () => new Error('core down');
+    let attempts = 0;
+    core.failWrite = () => {
+      attempts += 1;
+      return new Error('core down');
+    };
     const changes = recordChanges();
     await loaded();
 
@@ -599,8 +603,105 @@ describe('product permissions store', () => {
 
     // Then
     await expect(decision).rejects.toThrow('core down');
+    expect(attempts).toBe(3);
+    expect(captures.exception).toHaveBeenCalledExactlyOnceWith(new Error('core down'), {
+      flow: 'wallet',
+      step: 'permissions_change',
+      tags: { reason: 'write' },
+    });
     expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: statuses() });
     expect(changes).toEqual([]);
+  });
+
+  it('As a product whose prompt is answered Always allow while the statuses read are stale, the answer is still stored', async () => {
+    // Given: Camera read as allowed, then reset to Ask behind the store's back, so the prompt asks
+    const core = fakeCore(LABEL, { Camera: 'Authorized' });
+    await loaded();
+    core.stored.set('Camera', 'NotDetermined');
+
+    // When
+    await permissions.recordPromptDecision(LABEL, 'Camera', 'granted', new AbortController().signal);
+
+    // Then
+    expect(core.writes).toEqual([{ name: 'Camera', status: 'Authorized' }]);
+    expect(core.stored.get('Camera')).toBe('Authorized');
+  });
+
+  it('As a product, my prompt decision queued between two panel changes is never superseded and still announces', async () => {
+    // Given: a panel change whose write is held, and a prompt decision queued behind it
+    const core = fakeCore();
+    const changes = recordChanges();
+    await loaded();
+    const write = Promise.withResolvers<undefined>();
+    core.writeGate = write.promise;
+    const first = permissions.change(LABEL, { Camera: 'granted' });
+    const decision = permissions.recordPromptDecision(LABEL, 'Microphone', 'granted', new AbortController().signal);
+
+    // When a newer panel change supersedes the first
+    const last = permissions.change(LABEL, { Location: 'granted' });
+    write.resolve(undefined);
+    await Promise.all([first, decision, last]);
+
+    // Then
+    expect(core.writes.map(({ name }) => name)).toEqual(['Camera', 'Microphone', 'Location']);
+    expect(changes).toContainEqual({
+      label: LABEL,
+      permissions: ['Microphone'],
+      allowChanged: true,
+      fromPrompt: true,
+    });
+  });
+
+  it('As a product whose prompt was torn down while a write waits to retry, no more attempts are made and nothing changes', async () => {
+    // Given: a prompt whose first write the core refused
+    const timers = manualTimers();
+    permissionsOn(timers);
+    const core = fakeCore();
+    let attempts = 0;
+    core.failWrite = () => {
+      attempts += 1;
+      return new Error('core busy');
+    };
+    const changes = recordChanges();
+    await loaded();
+    const prompt = new AbortController();
+    const decision = permissions.recordPromptDecision(LABEL, 'Camera', 'granted', prompt.signal);
+    decision.catch(() => undefined);
+    await timers.advance(0);
+    expect(attempts).toBe(1);
+
+    // When
+    prompt.abort(new DOMException('Blocking modal scope disposed', 'AbortError'));
+    await timers.advance(600);
+
+    // Then
+    await expect(decision).rejects.toThrow('Blocking modal scope disposed');
+    expect(attempts).toBe(1);
+    expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: statuses() });
+    expect(changes).toEqual([]);
+  });
+
+  it('As a product granted once, the grant is announced only when the read shows a change, and leaves the frame as it is', async () => {
+    // Given
+    const core = fakeCore();
+    const changes = recordChanges();
+    await loaded();
+    // The core holds the one-time grant it gave for this execution.
+    core.stored.set('ChainSubmit', 'Authorized');
+
+    // When
+    await permissions.recordPromptDecision(LABEL, 'ChainSubmit', 'granted-once', new AbortController().signal);
+
+    // Then
+    expect(changes).toEqual([{ label: LABEL, permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true }]);
+    expect(permissions.state.get()).toMatchObject({ statuses: statuses({ ChainSubmit: 'granted' }) });
+
+    // When granted once again, with the read showing no change
+    await permissions.recordPromptDecision(LABEL, 'ChainSubmit', 'granted-once', new AbortController().signal);
+
+    // Then
+    expect(changes).toHaveLength(1);
+    expect(core.writes).toEqual([]);
   });
 
   it('As a product whose prompt was torn down while its answer was stored, nothing is announced', async () => {
@@ -657,6 +758,36 @@ describe('product permissions store', () => {
 });
 
 describe('product permissions store, as the permissions popover reads it', () => {
+  it('As a user, a change I made for an app lands only while that app is on show', async () => {
+    // Given: a change for the first app whose write is held
+    const first = fakeCore(LABEL);
+    const other = fakeCore('other');
+    await loaded();
+    const write = Promise.withResolvers<undefined>();
+    first.writeGate = write.promise;
+    const outcome = permissions.change(LABEL, { Camera: 'granted' });
+
+    // When the app changes, its read held, and the write is released
+    other.holdReads = true;
+    setProductLoaded('other', 'other.dot');
+    write.resolve(undefined);
+    await outcome;
+
+    // Then
+    expect(first.stored.get('Camera')).toBe('Authorized');
+    expect(permissions.state.get()).toEqual({ status: 'reading', label: 'other' });
+
+    // When
+    other.holdReads = false;
+    for (const answer of other.heldReads.splice(0)) {
+      answer();
+    }
+    await permissions.refresh();
+
+    // Then
+    expect(permissions.state.get()).toEqual({ status: 'read', label: 'other', statuses: statuses() });
+  });
+
   it("As a user, when the app changes while the popover is open, the previous app's statuses are never shown for it", async () => {
     // Given
     fakeCore('first', { Camera: 'Authorized' });
