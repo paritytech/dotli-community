@@ -38,17 +38,17 @@ network. Chat grants additionally bind the account and network because their nat
 
 On first access, an existing profile record moves from the product's storage into custody. A newer custody value wins.
 Migration persists the destination before retiring the source, and a durable tombstone prevents another product's stale
-copy from restoring a withdrawn record. Reads, writes and clears for one slot are serialized through the shared task pool.
-An absent source does not retire that slot, so opening Chat before the profile product does not prevent migration.
+copy from restoring a withdrawn record. Reads, writes and clears for one slot are serialized through the shared task
+pool. An absent source does not retire that slot, so opening Chat before the profile product does not prevent migration.
 
 Old Chat grants have no account or network binding. Their bytes are retained, but they do not grant access in the new
 scope. The Chat product asks for fresh consent. Existing conversation history and profile records are not reset.
 
 Host-channel qualification must distinguish direct delivery from the older Chat relay. Pair two accounts in Chat, then
 leave Chat and share, update and withdraw a profile through Seity. Check the receiving host's
-`host channel reference recorded from a contact` trace and the visible profile. Reopen the receiving host after withdrawal
-to check that replay does not restore it. The native host-channel regression suite separately exercises delivery with no
-Chat relay, including replay, peer and network isolation.
+`host channel reference recorded from a contact` trace and the visible profile. Reopen the receiving host after
+withdrawal to check that replay does not restore it. The native host-channel regression suite separately exercises
+delivery with no Chat relay, including replay, peer and network isolation.
 
 ## dotli callback boundary
 
