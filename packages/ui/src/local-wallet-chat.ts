@@ -70,10 +70,20 @@ function isCustodySlot(key: CoreStorageKey): boolean {
   );
 }
 
-/** A grant's key names only its product, so custody keys it under the wallet too. */
-function custodyKey(key: CoreStorageKey, walletId: string): string {
+/** Grants need both scopes explicitly; profile and peer keys already encode their wallet and network. */
+function custodyKey(key: CoreStorageKey, walletId: string, genesis: string): string {
   const encoded = bytesToHex(encodeCoreStorageKey(key)).slice(2);
-  return isChatAccessGrant(key) ? walletId + encoded : encoded;
+  return isChatAccessGrant(key) ? walletId + genesis.replace(/^0x/, '') + encoded : encoded;
+}
+
+function hasLegacyCustodySlot(key: CoreStorageKey): boolean {
+  // Legacy Chat grants contain no wallet/network binding. Keep their original
+  // bytes, but require fresh consent rather than grant another identity access.
+  return (
+    key.tag === 'ProfileDisclosure' ||
+    key.tag === 'ProfileReferencesReceived' ||
+    key.tag === 'ProfilePersonalReferencesReceived'
+  );
 }
 
 /** Acquisition starts now, so booting never waits on it; only native Chat's own operations do. */
@@ -97,10 +107,11 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   const custody = async (
     operation: (lease: string) => CoreCustodyOperation,
   ): Promise<string | Uint8Array | Blob | undefined> => {
-    if (disposed) {
+    const token = await lease;
+    if (disposed || !isLive() || genesis !== getActiveServicesConfig().people.genesis) {
       throw new Error('Native Chat custody was released');
     }
-    return requestCoreCustody(SITE_ID, operation(await lease));
+    return requestCoreCustody(SITE_ID, operation(token));
   };
 
   const genesis = getActiveServicesConfig().people.genesis;
@@ -108,6 +119,42 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
     () => !disposed && isLive() && genesis === getActiveServicesConfig().people.genesis,
   );
   let walletPublicKey: string | undefined;
+
+  // The custody lease excludes other documents. Within its owner, serialize all
+  // operations on a slot, including migration, so a delayed legacy read cannot
+  // overwrite a fresh write or resurrect a cleared reference.
+  const pendingSlots = new Map<string, Promise<unknown>>();
+  const withSlot = async <T>(key: CoreStorageKey, operation: (slot: string) => Promise<T>): Promise<T> => {
+    const slot = custodyKey(key, await walletId, genesis);
+    const previous = pendingSlots.get(slot) ?? Promise.resolve();
+    const pending = previous.catch(() => undefined).then(() => operation(slot));
+    pendingSlots.set(slot, pending);
+    try {
+      return await pending;
+    } finally {
+      if (pendingSlots.get(slot) === pending) {
+        pendingSlots.delete(slot);
+      }
+    }
+  };
+  const readRecord = async (slot: string): Promise<Uint8Array | undefined> => {
+    const result = await custody(token => ({ action: 'read', lease: token, key: slot }));
+    if (result !== undefined && !(result instanceof Uint8Array)) {
+      throw new Error('Invalid private custody record');
+    }
+    return result;
+  };
+  const retireLegacy = async (storage: CoreStorage, key: CoreStorageKey, slot: string): Promise<void> => {
+    if (!hasLegacyCustodySlot(key)) {
+      return;
+    }
+    // A durable tombstone survives clears and stale copies on another product
+    // origin. Commit it before clearing either copy, never before copying data.
+    if ((await readRecord(`ff${slot}`)) === undefined) {
+      await custody(token => ({ action: 'write', lease: token, key: `ff${slot}`, value: new Uint8Array([1]) }));
+    }
+    await storage.clearCoreStorage(key);
+  };
 
   const nativeChatFiles = createBrowserNativeChatFilesHost({
     async putSources(sources) {
@@ -132,28 +179,41 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
           if (!isCustodySlot(key)) {
             return storage.readCoreStorage(key);
           }
-          const storageKey = custodyKey(key, await walletId);
-          const result = await custody(token => ({ action: 'read', lease: token, key: storageKey }));
-          if (result !== undefined && !(result instanceof Uint8Array)) {
-            throw new Error('Invalid private custody record');
-          }
-          return result;
+          return withSlot(key, async slot => {
+            let result = await readRecord(slot);
+            if (hasLegacyCustodySlot(key)) {
+              if (result === undefined && (await readRecord(`ff${slot}`)) === undefined) {
+                const legacy = await storage.readCoreStorage(key);
+                if (legacy === undefined) {
+                  return undefined;
+                }
+                await custody(token => ({ action: 'write', lease: token, key: slot, value: legacy }));
+                result = legacy;
+              }
+              await retireLegacy(storage, key, slot);
+            }
+            return result;
+          });
         },
         async writeCoreStorage(key, value) {
           if (!isCustodySlot(key)) {
             await storage.writeCoreStorage(key, value);
             return;
           }
-          const storageKey = custodyKey(key, await walletId);
-          await custody(token => ({ action: 'write', lease: token, key: storageKey, value }));
+          await withSlot(key, async slot => {
+            await custody(token => ({ action: 'write', lease: token, key: slot, value }));
+            await retireLegacy(storage, key, slot);
+          });
         },
         async clearCoreStorage(key) {
           if (!isCustodySlot(key)) {
             await storage.clearCoreStorage(key);
             return;
           }
-          const storageKey = custodyKey(key, await walletId);
-          await custody(token => ({ action: 'clear', lease: token, key: storageKey }));
+          await withSlot(key, async slot => {
+            await retireLegacy(storage, key, slot);
+            await custody(token => ({ action: 'clear', lease: token, key: slot }));
+          });
         },
       });
     },

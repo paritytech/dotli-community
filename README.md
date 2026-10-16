@@ -362,7 +362,7 @@ private slots and offers no contacts.
 
 The local wallet core keeps Chat's main purse, device records, attachment chunks and product index in the protocol
 origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Each Chat app's Chat access grant is kept
-there too, under the wallet, because the core checks it before any product page's contact picker lists that app's
+there too, under the wallet and People network, because the core checks it before any product page's contact picker lists that app's
 contacts. Every other grant stays in the host `localStorage` of the product page that asked for it. The profile
 disclosure, the received profile references and the host channel's peer keys sit in custody as well: a profile is shared
 from one product page and relayed, posted or shown from another. Records are authenticated-encrypted with a
@@ -373,6 +373,14 @@ replacing it ends the lease's authority. A Web Lock admits one holder per browse
 same page waits for its predecessor to release, and a core in another tab is refused after a bounded wait, so its Chat
 operations fail while the tab's other products keep working. There is no handover between tabs at this layer. Closing a
 product connection does not stop receiving while the page core remains alive.
+
+On upgrade, the first read of a root-and-network-bound profile disclosure or received-reference slot copies the existing
+product-origin bytes through the session storage adapter into custody. A newer custody value wins. The source is cleared
+only after the value and a durable migration marker are saved; that marker prevents a later clear from resurrecting a stale
+copy on another product origin. Operations on the same custody slot are serialized, including migration.
+Legacy Chat permission records have no wallet or network provenance. Their bytes remain untouched in the original
+storage, but they cannot authorize the current or a replacement identity: Chat asks for fresh consent. New decisions are
+shared across product pages only for their own product, wallet and People network.
 
 Each payment requires a new host review of the authenticated product and recipient, exact amount, maximum debit
 including fees, selected chain and Coinage asset, and payment operation. Chat or automatic-signing grants never approve
