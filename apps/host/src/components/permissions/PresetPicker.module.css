@@ -5,6 +5,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 6px;
   padding: 0 4px 2px;
 }
 .readout {
@@ -20,7 +21,7 @@
 }
 .title {
   color: var(--chrome-text);
-  font: var(--fw-semibold) 14px / 1.3 var(--font-sans);
+  font: var(--fw-semibold) var(--fs-title) / var(--lh-tight) var(--font-sans);
 }
 /* The row's own selector outranks the Spinner's default size and margin. */
 .name > .spinner {
@@ -37,12 +38,13 @@
 @media (max-width: 560px) {
   .picker {
     gap: 10px;
+    margin-top: 4px;
   }
   .readout {
     gap: 4px;
   }
   .title {
-    font-size: 15px;
+    font-size: var(--fs-title-lg);
   }
   .line {
     font-size: 13px;

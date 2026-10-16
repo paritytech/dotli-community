@@ -101,7 +101,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--chrome-text-muted);
+  color: var(--text-secondary);
   font: var(--fw-medium) var(--fs-caption) / 16px var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
