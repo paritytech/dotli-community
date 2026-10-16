@@ -1066,6 +1066,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                         coinageWallet: callbacks.nativeCoinage !== undefined,
                         game: host.game !== undefined,
                         contacts: host.contacts !== undefined,
+                        scanner: host.scanner !== undefined,
                     },
                     debuggerUrl: debuggerDial,
                 });

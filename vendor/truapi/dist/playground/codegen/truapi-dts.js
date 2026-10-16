@@ -806,6 +806,9 @@ export interface ChatRoom {
     participatingAs: ChatRoomParticipation;
 }
 export const ChatRoom: Codec<ChatRoom>;
+/** What a room shows below its messages. */
+export type ChatRoomFooter = "TextInput" | "Empty";
+export const ChatRoomFooter: Codec<ChatRoomFooter>;
 /** How the product participates in a chat room. */
 export type ChatRoomParticipation = "RoomHost" | "Bot";
 export const ChatRoomParticipation: Codec<ChatRoomParticipation>;
@@ -1297,25 +1300,25 @@ export type VersionedHostChatListSubscribeRequest =
 export const VersionedHostChatListSubscribeRequest: Codec<VersionedHostChatListSubscribeRequest>;
 /** Versioned envelope for [\`HostChatPostMessageError\`]. */
 export type VersionedHostChatPostMessageError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageError;
 };
 export const VersionedHostChatPostMessageError: Codec<VersionedHostChatPostMessageError>;
 /** Versioned envelope for [\`HostChatPostMessageRequest\`]. */
 export type VersionedHostChatPostMessageRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageRequest;
 };
 export const VersionedHostChatPostMessageRequest: Codec<VersionedHostChatPostMessageRequest>;
 /** Versioned envelope for [\`HostChatPostMessageResponse\`]. */
 export type VersionedHostChatPostMessageResponse = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageResponse;
 };
 export const VersionedHostChatPostMessageResponse: Codec<VersionedHostChatPostMessageResponse>;
@@ -1343,6 +1346,30 @@ export type VersionedHostChatRegisterBotResponse =
     value: HostChatRegisterBotResponse;
 };
 export const VersionedHostChatRegisterBotResponse: Codec<VersionedHostChatRegisterBotResponse>;
+/** Versioned envelope for [\`HostChatSetRoomFooterError\`]. */
+export type VersionedHostChatSetRoomFooterError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterError;
+};
+export const VersionedHostChatSetRoomFooterError: Codec<VersionedHostChatSetRoomFooterError>;
+/** Versioned envelope for [\`HostChatSetRoomFooterRequest\`]. */
+export type VersionedHostChatSetRoomFooterRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterRequest;
+};
+export const VersionedHostChatSetRoomFooterRequest: Codec<VersionedHostChatSetRoomFooterRequest>;
+/** Versioned envelope for [\`HostChatSetRoomFooterResponse\`]. */
+export type VersionedHostChatSetRoomFooterResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostChatSetRoomFooterResponse: Codec<VersionedHostChatSetRoomFooterResponse>;
 /** Versioned envelope for [\`HostCoinPaymentCreateChequeError\`]. */
 export type VersionedHostCoinPaymentCreateChequeError = 
 /** Version 1 payload. */
@@ -3070,76 +3097,6 @@ export type Modifier =
     value: BlendingMode;
 };
 export const Modifier: Codec<Modifier>;
-/**
- * A host-admitted notification activation for the authenticated product,
- * account and environment bound to this runtime.
- */
-export interface NotificationActivation {
-    /** Host-assigned sequence, unique within the bound activation queue. */
-    sequence: bigint;
-    /** Identifier of the activated notification. */
-    notificationId: number;
-    /** Validated product-relative route beginning with exactly one slash. */
-    route: string;
-}
-export const NotificationActivation: Codec<NotificationActivation>;
-/** Versioned envelope for [\`NotificationActivationAcknowledgeError\`]. */
-export type VersionedNotificationActivationAcknowledgeError = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: GenericError;
-};
-export const VersionedNotificationActivationAcknowledgeError: Codec<VersionedNotificationActivationAcknowledgeError>;
-/** Versioned envelope for [\`NotificationActivationAcknowledgeRequest\`]. */
-export type VersionedNotificationActivationAcknowledgeRequest = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: NotificationActivationAcknowledgeRequest;
-};
-export const VersionedNotificationActivationAcknowledgeRequest: Codec<VersionedNotificationActivationAcknowledgeRequest>;
-/** Versioned envelope for [\`NotificationActivationAcknowledgeResponse\`]. */
-export type VersionedNotificationActivationAcknowledgeResponse = 
-/** Version 1 (no payload). */
-{
-    tag: "V1";
-    value?: undefined;
-};
-export const VersionedNotificationActivationAcknowledgeResponse: Codec<VersionedNotificationActivationAcknowledgeResponse>;
-/** Versioned envelope for [\`NotificationActivationEventsError\`]. */
-export type VersionedNotificationActivationEventsError = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: GenericError;
-};
-export const VersionedNotificationActivationEventsError: Codec<VersionedNotificationActivationEventsError>;
-/** Versioned envelope for [\`NotificationActivationEventsRequest\`]. */
-export type VersionedNotificationActivationEventsRequest = 
-/** Version 1 (no payload). */
-{
-    tag: "V1";
-    value?: undefined;
-};
-export const VersionedNotificationActivationEventsRequest: Codec<VersionedNotificationActivationEventsRequest>;
-/** Versioned envelope for [\`NotificationActivationEventsResponse\`]. */
-export type VersionedNotificationActivationEventsResponse = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: NotificationActivations;
-};
-export const VersionedNotificationActivationEventsResponse: Codec<VersionedNotificationActivationEventsResponse>;
-/**
- * Pending activations, retained until individually acknowledged. Hosts return
- * at most 32 events in sequence order, without consuming them on retrieval.
- */
-export interface NotificationActivations {
-    /** Pending events in ascending sequence order. */
-    events: Array<NotificationActivation>;
-}
-export const NotificationActivations: Codec<NotificationActivations>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -4622,13 +4579,13 @@ export type HostChatPostMessageError =
 };
 export const HostChatPostMessageError: Codec<HostChatPostMessageError>;
 /** Request to post a message to a chat room. */
-export interface HostChatPostMessageRequest {
+export interface V01HostChatPostMessageRequest {
     /** Room to post to. */
     roomId: string;
     /** Message content. */
     payload: ChatMessageContent;
 }
-export const HostChatPostMessageRequest: Codec<HostChatPostMessageRequest>;
+export const V01HostChatPostMessageRequest: Codec<V01HostChatPostMessageRequest>;
 /** Result of posting a message. */
 export interface HostChatPostMessageResponse {
     /**
@@ -4669,6 +4626,29 @@ export interface HostChatRegisterBotResponse {
     status: ChatBotRegistrationStatus;
 }
 export const HostChatRegisterBotResponse: Codec<HostChatRegisterBotResponse>;
+/** Room footer failure. */
+export type HostChatSetRoomFooterError = 
+/** The calling product created no room with this id. */
+{
+    tag: "UnknownRoom";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostChatSetRoomFooterError: Codec<HostChatSetRoomFooterError>;
+/** Request to set what a room shows below its messages. */
+export interface HostChatSetRoomFooterRequest {
+    /** A room the calling product created. */
+    roomId: string;
+    /** What the room shows below its messages. */
+    footer: ChatRoomFooter;
+}
+export const HostChatSetRoomFooterRequest: Codec<HostChatSetRoomFooterRequest>;
 /** Request to create a cheque from a local purse to a receivable. */
 export interface HostCoinPaymentCreateChequeRequest {
     /** Source purse. */
@@ -5473,7 +5453,7 @@ export const HostScannerScanError: Codec<HostScannerScanError>;
  * Only \`hint\` is product text, shown as one plain line under the title.
  */
 export interface HostScannerScanRequest {
-    /** Formats the product accepts. At least one. */
+    /** Formats the product accepts. At least one, each named once. */
     formats: Array<CodeFormat>;
     /**
      * Start the text must have, compared ignoring ASCII letter case, since QR
@@ -5483,8 +5463,8 @@ export interface HostScannerScanRequest {
     /**
      * What to point the camera at, shown as the product's words. At most 80
      * Unicode scalar values (\`[...hint].length\` in TypeScript). No control
-     * characters, line or paragraph separators, or bidirectional formatting
-     * characters.
+     * characters, line or paragraph separators, invisible characters, or
+     * bidirectional formatting characters.
      */
     hint?: string;
 }
@@ -5593,12 +5573,6 @@ export interface HostWorkerEndOperationRequest {
     id: number;
 }
 export const HostWorkerEndOperationRequest: Codec<HostWorkerEndOperationRequest>;
-/** Acknowledge one handled activation in the runtime's bound queue. */
-export interface NotificationActivationAcknowledgeRequest {
-    /** Exact sequence to acknowledge; never a cumulative watermark. */
-    sequence: bigint;
-}
-export const NotificationActivationAcknowledgeRequest: Codec<NotificationActivationAcknowledgeRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */
@@ -5984,6 +5958,25 @@ export type RemoteStatementStoreSubscribeRequest =
     value: Array<HexString>;
 };
 export const RemoteStatementStoreSubscribeRequest: Codec<RemoteStatementStoreSubscribeRequest>;
+/**
+ * Request to post a message to a chat room.
+ *
+ * v0.2 adds \`alt\`, the text a host shows wherever it lists a custom message
+ * without drawing it, such as a chat list preview.
+ */
+export interface HostChatPostMessageRequest {
+    /** Room to post to. */
+    roomId: string;
+    /** Message content. */
+    payload: ChatMessageContent;
+    /**
+     * One line describing a custom message. \`None\` leaves the host its own
+     * placeholder. Every other kind previews from its own content, so its
+     * \`alt\` is dropped.
+     */
+    alt?: string;
+}
+export const HostChatPostMessageRequest: Codec<HostChatPostMessageRequest>;
 /** Local storage read failure. */
 export type HostLocalStorageReadError = 
 /** Storage quota exceeded. */
@@ -6337,6 +6330,7 @@ export import ChatMessageContent = T.ChatMessageContent;
 export import ChatReaction = T.ChatReaction;
 export import ChatRichText = T.ChatRichText;
 export import ChatRoom = T.ChatRoom;
+export import ChatRoomFooter = T.ChatRoomFooter;
 export import ChatRoomParticipation = T.ChatRoomParticipation;
 export import ChatRoomRegistrationStatus = T.ChatRoomRegistrationStatus;
 export import CodeFormat = T.CodeFormat;
@@ -6400,6 +6394,9 @@ export import VersionedHostChatPostMessageResponse = T.VersionedHostChatPostMess
 export import VersionedHostChatRegisterBotError = T.VersionedHostChatRegisterBotError;
 export import VersionedHostChatRegisterBotRequest = T.VersionedHostChatRegisterBotRequest;
 export import VersionedHostChatRegisterBotResponse = T.VersionedHostChatRegisterBotResponse;
+export import VersionedHostChatSetRoomFooterError = T.VersionedHostChatSetRoomFooterError;
+export import VersionedHostChatSetRoomFooterRequest = T.VersionedHostChatSetRoomFooterRequest;
+export import VersionedHostChatSetRoomFooterResponse = T.VersionedHostChatSetRoomFooterResponse;
 export import VersionedHostCoinPaymentCreateChequeError = T.VersionedHostCoinPaymentCreateChequeError;
 export import VersionedHostCoinPaymentCreateChequeRequest = T.VersionedHostCoinPaymentCreateChequeRequest;
 export import VersionedHostCoinPaymentCreateChequeResponse = T.VersionedHostCoinPaymentCreateChequeResponse;
@@ -6581,14 +6578,6 @@ export import ImageSource = T.ImageSource;
 export import LegacyAccount = T.LegacyAccount;
 export import LegacyAccountTxPayload = T.LegacyAccountTxPayload;
 export import Modifier = T.Modifier;
-export import NotificationActivation = T.NotificationActivation;
-export import VersionedNotificationActivationAcknowledgeError = T.VersionedNotificationActivationAcknowledgeError;
-export import VersionedNotificationActivationAcknowledgeRequest = T.VersionedNotificationActivationAcknowledgeRequest;
-export import VersionedNotificationActivationAcknowledgeResponse = T.VersionedNotificationActivationAcknowledgeResponse;
-export import VersionedNotificationActivationEventsError = T.VersionedNotificationActivationEventsError;
-export import VersionedNotificationActivationEventsRequest = T.VersionedNotificationActivationEventsRequest;
-export import VersionedNotificationActivationEventsResponse = T.VersionedNotificationActivationEventsResponse;
-export import NotificationActivations = T.NotificationActivations;
 export import OperationStartedResult = T.OperationStartedResult;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
 export import PocketCard = T.PocketCard;
@@ -6715,11 +6704,13 @@ export import HostChatCreateRoomRequest = T.HostChatCreateRoomRequest;
 export import HostChatCreateRoomResponse = T.HostChatCreateRoomResponse;
 export import HostChatListSubscribeItem = T.HostChatListSubscribeItem;
 export import HostChatPostMessageError = T.HostChatPostMessageError;
-export import HostChatPostMessageRequest = T.HostChatPostMessageRequest;
+export import V01HostChatPostMessageRequest = T.V01HostChatPostMessageRequest;
 export import HostChatPostMessageResponse = T.HostChatPostMessageResponse;
 export import HostChatRegisterBotError = T.HostChatRegisterBotError;
 export import HostChatRegisterBotRequest = T.HostChatRegisterBotRequest;
 export import HostChatRegisterBotResponse = T.HostChatRegisterBotResponse;
+export import HostChatSetRoomFooterError = T.HostChatSetRoomFooterError;
+export import HostChatSetRoomFooterRequest = T.HostChatSetRoomFooterRequest;
 export import HostCoinPaymentCreateChequeRequest = T.HostCoinPaymentCreateChequeRequest;
 export import HostCoinPaymentCreateChequeResponse = T.HostCoinPaymentCreateChequeResponse;
 export import HostCoinPaymentCreatePurseRequest = T.HostCoinPaymentCreatePurseRequest;
@@ -6804,7 +6795,6 @@ export import HostThemeSubscribeItem = T.HostThemeSubscribeItem;
 export import HostWorkerBeginOperationRequest = T.HostWorkerBeginOperationRequest;
 export import HostWorkerBeginOperationResponse = T.HostWorkerBeginOperationResponse;
 export import HostWorkerEndOperationRequest = T.HostWorkerEndOperationRequest;
-export import NotificationActivationAcknowledgeRequest = T.NotificationActivationAcknowledgeRequest;
 export import ProductRendererRenderRequest = T.ProductRendererRenderRequest;
 export import RemoteChainHeadBodyRequest = T.RemoteChainHeadBodyRequest;
 export import RemoteChainHeadBodyResponse = T.RemoteChainHeadBodyResponse;
@@ -6840,6 +6830,7 @@ export import RemoteStatementStoreCreateProofRequest = T.RemoteStatementStoreCre
 export import RemoteStatementStoreCreateProofResponse = T.RemoteStatementStoreCreateProofResponse;
 export import RemoteStatementStoreSubscribeItem = T.RemoteStatementStoreSubscribeItem;
 export import RemoteStatementStoreSubscribeRequest = T.RemoteStatementStoreSubscribeRequest;
+export import HostChatPostMessageRequest = T.HostChatPostMessageRequest;
 export import HostLocalStorageReadError = T.HostLocalStorageReadError;
 export import HostLocalStorageReadRequest = T.HostLocalStorageReadRequest;
 export import HostLocaleLocalizeTimestampsRequest = T.HostLocaleLocalizeTimestampsRequest;
@@ -7307,7 +7298,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "c3d0557ff827e0a7";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "c62f51d3168b6df1";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -7440,6 +7431,12 @@ export declare class ChatClient {
     postMessage(request: T.HostChatPostMessageRequest, options?: CallOptions): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
     actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
+    /**
+     * Set what a room the product created shows below its messages. A room
+     * keeps the footer until the product sets another, and a new room shows
+     * the text input.
+     */
+    setRoomFooter(request: T.HostChatSetRoomFooterRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostChatSetRoomFooterError>>;
 }
 /**
  * CoinPayment operations.
@@ -7604,18 +7601,6 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
-    /**
-     * Retrieve up to 32 pending activations for this runtime's authenticated
-     * product, account and environment. Retrieval does not consume events,
-     * prompt for permissions or enroll a background receiver.
-     */
-    activationEvents(options?: CallOptions): ResultAsync<T.NotificationActivations, S.CallErrorValue<T.VersionedNotificationActivationEventsError>>;
-    /**
-     * Acknowledge exactly one activation after the product router handles it.
-     * Unknown or already acknowledged sequences are idempotent, and can never
-     * remove an activation from another product, account or environment.
-     */
-    acknowledgeActivation(request: T.NotificationActivationAcknowledgeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedNotificationActivationAcknowledgeError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {
@@ -7678,7 +7663,14 @@ export declare class PreimageClient {
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
     }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
-    /** Submit a preimage. Returns the preimage key (hash) on success. */
+    /**
+     * Submit a preimage. Returns the preimage key (hash) on success.
+     *
+     * Requires the \`PreimageSubmit\` permission. Upload consent is separate
+     * from that capability grant. The host reviews each upload unless an
+     * explicit bounded automatic-upload policy approves it. Allocating or
+     * renewing the Bulletin allowance may also require approval.
+     */
     submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */

@@ -12,6 +12,7 @@ export interface RawCallbacks {
     createChatRoom?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     registerChatBot?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     postChatMessage?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    setChatRoomFooter?(product: Uint8Array, request: Uint8Array): Promise<void>;
     subscribeChatRooms?(product: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     nativeCoinage?(request: Uint8Array): Promise<Uint8Array>;
     contacts?(lookup: Uint8Array): Promise<Uint8Array>;
@@ -38,8 +39,6 @@ export interface RawCallbacks {
     navigateTo(url: string): Promise<void>;
     pushNotification(notification: Uint8Array): Promise<Uint8Array>;
     cancelNotification(id: number): Promise<void>;
-    activationEvents(): Promise<Uint8Array>;
-    acknowledgeActivation(request: Uint8Array): Promise<void>;
     devicePermissionStatus?(request: Uint8Array): Promise<Uint8Array>;
     devicePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     remotePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
@@ -52,6 +51,7 @@ export interface RawCallbacks {
     write(key: string, value: Uint8Array): Promise<void>;
     clear(key: string): Promise<void>;
     subscribeStorage(key: string, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    scanCode?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     subscribeTheme(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     confirmPermission(review: Uint8Array): Promise<Uint8Array>;
     confirmUserAction(review: Uint8Array): Promise<boolean>;

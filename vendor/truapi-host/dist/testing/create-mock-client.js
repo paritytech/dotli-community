@@ -14,9 +14,9 @@
 // It uses a real `MessageChannel`, so the wire is the production transport
 // rather than a direct function call. What it does NOT exercise is the iframe
 // boundary and the browser's origin checks; the fixture covers those.
-import { createClient, createMessagePortProvider, createTransport } from "@parity/truapi";
+import { createClient, createMessagePortProvider, createTransport, } from "@parity/truapi";
 import { createMockHost, mockRuntimeConfig, } from "../web/create-mock-host.js";
-import { resolveAccount } from "./dev-accounts.js";
+import { resolveAccount, } from "./dev-accounts.js";
 /**
  * Build a product client against a mock host and a real core.
  *

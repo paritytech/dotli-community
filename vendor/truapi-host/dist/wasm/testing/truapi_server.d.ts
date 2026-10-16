@@ -281,11 +281,19 @@ export class WasmSigningHostRuntime {
      */
     notifyContactsChanged(): void;
     /**
-     * Read one permission authorization status for a product.
+     * Read a permission authorization status for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      */
     permissionAuthorizationStatus(product_id: string, payload: Uint8Array): Promise<any>;
     /**
      * Read permission authorization statuses for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      */
     permissionAuthorizationStatuses(product_id: string, payloads: Array<any>): Promise<Array<any>>;
     /**
@@ -326,7 +334,7 @@ export class WasmSigningHostRuntime {
      */
     setGrantAllowancesUnchecked(granted: boolean): void;
     /**
-     * Update one stored permission authorization status for a product.
+     * Update a stored permission authorization status for a product.
      */
     setPermissionAuthorizationStatus(product_id: string, payload: Uint8Array, status: string): Promise<void>;
     /**
@@ -494,12 +502,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_9703: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9761: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4508: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4501: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_9584: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4505: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9772: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9830: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4487: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4480: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_9653: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4484: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
