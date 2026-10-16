@@ -169,9 +169,8 @@ export function ChainGroup(props: { chain: ChainSummary; sinceLast: number | nul
         >
           <Show when={peers() !== null}>
             <Chip
-              tone="mono"
+              tone={peers() === 0 ? 'warn' : 'mono'}
               testId="chains-group-peers"
-              alert={peers() === 0}
               label={`${props.chain.label}: ${String(peers())} ${peers() === 1 ? 'peer' : 'peers'} connected`}
             >
               {peers() === 1 ? '1 peer' : `${String(peers())} peers`}

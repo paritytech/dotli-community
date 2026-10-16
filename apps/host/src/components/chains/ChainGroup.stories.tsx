@@ -87,7 +87,7 @@ export const NoPeers: Story = {
     await step('Then the chip says 0 peers, is marked and is named for the chain', async () => {
       const chip = canvas.getByTestId('chains-group-peers');
       await expect(chip).toHaveTextContent('0 peers');
-      await expect(chip).toHaveAttribute('data-alert');
+      await expect(chip).toHaveAttribute('data-tone', 'warn');
       await expect(chip).toHaveAccessibleName('Polkadot: 0 peers connected');
     });
   },
