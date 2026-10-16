@@ -14,6 +14,7 @@ const custody = vi.hoisted(() => ({
   operations: [] as CoreCustodyOperation[],
   acquisition: Promise.resolve<string>('lease-1'),
   records: new Map<string, Uint8Array>(),
+  failNextWrite: false,
 }));
 
 vi.mock('../../protocol/src/client.js', () => ({
@@ -23,6 +24,10 @@ vi.mock('../../protocol/src/client.js', () => ({
       case 'acquire':
         return custody.acquisition;
       case 'write':
+        if (custody.failNextWrite) {
+          custody.failNextWrite = false;
+          return Promise.reject(new Error('custody unavailable'));
+        }
         custody.records.set(operation.key, operation.value);
         return Promise.resolve(undefined);
       case 'read':
@@ -84,6 +89,7 @@ beforeEach(() => {
   custody.operations.length = 0;
   custody.records.clear();
   custody.acquisition = Promise.resolve('lease-1');
+  custody.failNextWrite = false;
 });
 
 describe('native Chat beside the local wallet core', () => {
@@ -218,6 +224,35 @@ describe('native Chat beside the local wallet core', () => {
     const storage = chat.coreStorage(legacy);
     await expect(storage.readCoreStorage(key)).rejects.toThrow('storage unavailable');
     expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([3]));
+    chat.dispose();
+  });
+
+  it('retains legacy data when custody persistence fails, then retries without data loss', async () => {
+    const key = PROFILE_KEYS[0]!;
+    const legacy = memoryStorage();
+    await legacy.writeCoreStorage(key, new Uint8Array([3]));
+    const chat = createLocalWalletChat(WALLET, () => true);
+    const storage = chat.coreStorage(legacy);
+    custody.failNextWrite = true;
+    await expect(storage.readCoreStorage(key)).rejects.toThrow('custody unavailable');
+    expect(await legacy.readCoreStorage(key)).toEqual(new Uint8Array([3]));
+    expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([3]));
+    expect(await legacy.readCoreStorage(key)).toBeUndefined();
+    chat.dispose();
+  });
+
+  it('recovers a failed source cleanup without replacing an already migrated value', async () => {
+    const key = PROFILE_KEYS[0]!;
+    const legacy = memoryStorage();
+    await legacy.writeCoreStorage(key, new Uint8Array([3]));
+    const originalClear = legacy.clearCoreStorage;
+    legacy.clearCoreStorage = vi.fn().mockRejectedValueOnce(new Error('cleanup unavailable')).mockImplementation(originalClear);
+    const chat = createLocalWalletChat(WALLET, () => true);
+    const storage = chat.coreStorage(legacy);
+    await expect(storage.readCoreStorage(key)).rejects.toThrow('cleanup unavailable');
+    await chat.coreStorage(memoryStorage()).writeCoreStorage(key, new Uint8Array([9]));
+    expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([9]));
+    expect(await legacy.readCoreStorage(key)).toBeUndefined();
     chat.dispose();
   });
 
