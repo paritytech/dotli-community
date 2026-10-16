@@ -52,9 +52,9 @@ function isChatAccessGrant(key: CoreStorageKey): boolean {
 }
 
 /**
- * Native Chat's records and the host channel's peer keys, wallet-scoped by their own keys, and the Chat access grants.
- * The host posts on the channel from whichever product page the user is on, so the keys cannot stay with the Chat
- * app's page that received them.
+ * Native Chat's records, the profile disclosure and received references, and the host channel's peer keys, all
+ * wallet-scoped by their own keys, plus the Chat access grants. A profile is shared from one product page and relayed
+ * or shown from another, so none of these can stay with the page that wrote them.
  */
 function isCustodySlot(key: CoreStorageKey): boolean {
   return (
@@ -62,6 +62,9 @@ function isCustodySlot(key: CoreStorageKey): boolean {
     key.tag === 'NativeChatDevice' ||
     key.tag === 'NativeChatFileChunk' ||
     key.tag === 'NativeChatProducts' ||
+    key.tag === 'ProfileDisclosure' ||
+    key.tag === 'ProfileReferencesReceived' ||
+    key.tag === 'ProfilePersonalReferencesReceived' ||
     key.tag === 'HostChannelPeers' ||
     isChatAccessGrant(key)
   );
