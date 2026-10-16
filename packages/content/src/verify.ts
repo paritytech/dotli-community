@@ -33,7 +33,7 @@ export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
   const actual = recomputeDigest(cid.multihash.code, bytes);
   if (!bytesEqual(actual, expected)) {
     throw named(
-      new Error(`Content hash mismatch for ${cid.toString()} — refusing tampered content`),
+      new Error(`Content hash mismatch for ${cid.toString()}, refusing tampered content`),
       CONTENT_ERRORS.VERIFICATION,
     );
   }

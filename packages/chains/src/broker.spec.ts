@@ -1479,9 +1479,9 @@ describe('broker warnings', () => {
 
     // Then the first three are logged in full, then only the count at each power of ten
     expect(warnings.slice(0, 3)).toEqual([
-      '[dot.li broker] ← upstream response for unknown id=stray-0',
-      '[dot.li broker] ← upstream response for unknown id=stray-1',
-      '[dot.li broker] ← upstream response for unknown id=stray-2',
+      '[dot.li broker] from upstream: response for unknown id=stray-0',
+      '[dot.li broker] from upstream: response for unknown id=stray-1',
+      '[dot.li broker] from upstream: response for unknown id=stray-2',
     ]);
     expect(warnings.slice(3).map(warning => /^\[dot\.li broker\] \w+: (\d+) so far$/.exec(warning)?.[1])).toEqual([
       '10',

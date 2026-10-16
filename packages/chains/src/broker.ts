@@ -436,7 +436,7 @@ export class ChainBroker {
       return;
     }
 
-    brokerLog(`→ upstream [${sessionId}] method=${parsed.method as string} id=${String(parsed.id)}`);
+    brokerLog(`to upstream [${sessionId}] method=${parsed.method as string} id=${String(parsed.id)}`);
 
     if ((parsed.method as string) === 'chainHead_v1_follow') {
       this.handleLocalFollowRequest(session, parsed);
@@ -574,7 +574,7 @@ export class ChainBroker {
       // Recover the id from the raw text so its pending request is rejected instead of waiting forever.
       const reason = err instanceof Error ? err.message : String(err);
       const size = typeof message === 'string' ? message.length : JSON.stringify(message).length;
-      this.warn('upstream_unparseable', `← upstream: unparseable message of ${String(size)} chars (${reason})`);
+      this.warn('upstream_unparseable', `from upstream: unparseable message of ${String(size)} chars (${reason})`);
       if (typeof message === 'string') {
         const matchedId = /"id"\s*:\s*("?)([^",}\s]+)\1/.exec(message)?.[2];
         if (matchedId !== undefined && this.pending.has(matchedId)) {
@@ -589,7 +589,7 @@ export class ChainBroker {
     }
 
     if (Array.isArray(parsed)) {
-      this.warn('upstream_batch', `← upstream: unexpected batch message, ignoring`);
+      this.warn('upstream_batch', `from upstream: unexpected batch message, ignoring`);
       return;
     }
 
@@ -606,12 +606,12 @@ export class ChainBroker {
             : 'unknown';
         if (event === 'newBlock') {
           brokerLog(
-            `← raw newBlock [${sessionTag}] hash=${String(result['blockHash']).slice(0, 18)}… parent=${String(result['parentBlockHash']).slice(0, 18)}… token=${token.slice(0, 12)}…`,
+            `from upstream: raw newBlock [${sessionTag}] hash=${String(result['blockHash']).slice(0, 18)}… parent=${String(result['parentBlockHash']).slice(0, 18)}… token=${token.slice(0, 12)}…`,
           );
         } else if (event === 'initialized') {
           const hashes = result['finalizedBlockHashes'];
           const hashList = Array.isArray(hashes) ? (hashes as string[]).map(h => h.slice(0, 18) + '…').join(', ') : '?';
-          brokerLog(`← raw initialized [${sessionTag}] blocks=[${hashList}] token=${token.slice(0, 12)}…`);
+          brokerLog(`from upstream: raw initialized [${sessionTag}] blocks=[${hashList}] token=${token.slice(0, 12)}…`);
         }
       }
       this.handleUpstreamSubscription(parsed);
@@ -623,14 +623,14 @@ export class ChainBroker {
       return;
     }
 
-    this.warn('upstream_unrecognized', `← upstream: unrecognized message type`);
+    this.warn('upstream_unrecognized', `from upstream: unrecognized message type`);
   }
 
   private handleUpstreamResponse(response: JsonRpcResponse): void {
     const id = String(response.id);
     const owner = this.pending.get(id);
     if (owner === undefined) {
-      this.warn('response_unknown_id', `← upstream response for unknown id=${id}`);
+      this.warn('response_unknown_id', `from upstream: response for unknown id=${id}`);
       return;
     }
     this.pending.delete(id);
@@ -780,7 +780,7 @@ export class ChainBroker {
   private handleUpstreamSubscription(message: SubscriptionMessage): void {
     const upstreamToken = message.params?.subscription;
     if (typeof upstreamToken !== 'string') {
-      this.warn('subscription_bad_token', `← upstream subscription with non-string token`);
+      this.warn('subscription_bad_token', `from upstream: subscription with non-string token`);
       return;
     }
 
@@ -815,7 +815,7 @@ export class ChainBroker {
         if (!session.connected || !sharedFollow.localTokens.has(localToken)) {
           continue;
         }
-        brokerLog(`← subscription [${session.id}] event=${eventType} method=${String(message.method)}`);
+        brokerLog(`subscription to [${session.id}] event=${eventType} method=${String(message.method)}`);
         this.sendToSession(session, {
           ...message,
           params: {
@@ -838,7 +838,7 @@ export class ChainBroker {
         this.bufferEarlySubscription(upstreamToken, message);
         return;
       }
-      this.warn('subscription_unknown_token', `← upstream subscription for unknown token: ${upstreamToken}`);
+      this.warn('subscription_unknown_token', `from upstream: subscription for unknown token: ${upstreamToken}`);
       return;
     }
 
@@ -859,7 +859,7 @@ export class ChainBroker {
       if (session?.connected !== true) {
         this.warn(
           'subscription_disconnected_session',
-          `← upstream subscription for disconnected session: ${owned.sessionId}`,
+          `from upstream: subscription for disconnected session: ${owned.sessionId}`,
         );
         continue;
       }
@@ -882,7 +882,7 @@ export class ChainBroker {
       if (!session.connected || (!ends && !this.localToOwned.has(owned.localToken))) {
         continue;
       }
-      brokerLog(`← subscription [${owned.sessionId}] event=${eventType} method=${String(message.method)}`);
+      brokerLog(`subscription to [${owned.sessionId}] event=${eventType} method=${String(message.method)}`);
       this.sendToSession(session, {
         ...message,
         params: {
@@ -938,7 +938,7 @@ export class ChainBroker {
       return;
     }
     brokerLog(
-      `disconnectSession(${sessionId}) called — pending=${String(this.pending.size)}, tokens=${String(session.ownedTokens.size)}`,
+      `disconnectSession(${sessionId}) called, pending=${String(this.pending.size)}, tokens=${String(session.ownedTokens.size)}`,
     );
     brokerLog(`disconnectSession stack: ${new Error().stack?.split('\n').slice(1, 5).join(' <- ') ?? ''}`);
     session.connected = false;
@@ -1086,7 +1086,7 @@ export class ChainBroker {
       }
     }
     for (const { session, localToken } of recipients) {
-      brokerLog(`← subscription [${session.id}] event=stop method=${String(message.method)}`);
+      brokerLog(`subscription to [${session.id}] event=stop method=${String(message.method)}`);
       this.sendToSession(session, { ...message, params: { ...message.params, subscription: localToken } });
     }
   }

@@ -92,8 +92,8 @@ describe('block cache', () => {
 
   it('As a user, a malformed cache entry is a miss rather than a hang', async () => {
     // Given a `blocks` record whose `bytes` field isn't a `Uint8Array`, with
-    // a matching `block_meta` row so the entry otherwise looks valid — the
-    // shape a corrupted write or a future schema change could leave behind
+    // a matching `block_meta` row so the entry otherwise looks valid. It is
+    // the shape a corrupted write or a future schema change could leave behind
     const db = await idb.connect();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(['blocks', 'block_meta'], 'readwrite');
