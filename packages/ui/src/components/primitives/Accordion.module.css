@@ -1,0 +1,92 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+:where(.accordion) {
+  margin: 0;
+}
+/* Only the name and its chevron take presses and the focus ring, not the row's width. */
+.summary {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  min-height: 36px;
+  padding: 6px 4px;
+  border-radius: var(--r-xs);
+  color: var(--chrome-text);
+  font: var(--fw-medium) 13px / var(--lh-tight) var(--font-sans);
+  list-style: none;
+  cursor: pointer;
+}
+/* WebKit draws its marker through its own pseudo-element, which `list-style` does not reach. */
+.summary::-webkit-details-marker {
+  display: none;
+}
+.summary:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--chrome-text-muted);
+  transition:
+    transform var(--dur) var(--ease-out),
+    color var(--dur-fast);
+}
+.summary:hover > .chevron {
+  color: var(--chrome-text);
+}
+.accordion[open] > .summary > .chevron {
+  transform: rotate(180deg);
+}
+/* Padding, not a margin, so the closed section folds it away with the body. */
+.body {
+  padding-top: 10px;
+}
+/* A browser that cannot size to `auto` in a transition opens the section at once with its native styles. */
+@supports (interpolate-size: allow-keywords) {
+  .accordion {
+    interpolate-size: allow-keywords;
+  }
+  .accordion::details-content {
+    block-size: 0;
+    overflow: clip;
+    /* Room for a focus ring on the body's edge, which the clip would cut. */
+    overflow-clip-margin: 4px;
+    /* Closing keeps the body shown while it folds away. */
+    transition:
+      block-size var(--dur) var(--ease-out),
+      content-visibility var(--dur) var(--ease-out) allow-discrete;
+  }
+  /* Opening shows the body at once, so what is in it takes focus while it unfolds. */
+  .accordion[open]::details-content {
+    block-size: auto;
+    transition: block-size var(--dur) var(--ease-out);
+  }
+}
+@media (max-width: 560px) {
+  .summary {
+    min-height: 44px;
+    margin: 2px 0;
+    font-size: 14px;
+  }
+  .chevron {
+    width: 16px;
+    height: 16px;
+  }
+  .body {
+    padding-top: 4px;
+  }
+}
+/* Two rules, since a browser that does not know the pseudo-element drops every selector listed with it. */
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+  .accordion::details-content {
+    transition: none;
+  }
+}

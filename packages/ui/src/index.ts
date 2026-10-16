@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Primitives and what the page gives them.
+export { Accordion, type AccordionProps } from './components/primitives/Accordion.js';
 export { Button, ButtonLink, type ButtonVariant } from './components/primitives/Button.js';
 export { Chip } from './components/primitives/Chip.js';
 export { IconButton } from './components/primitives/IconButton.js';

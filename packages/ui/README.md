@@ -8,8 +8,8 @@ and no data source.
 
 - The toast and modal stores, where everything that decides how a toast or dialog settles lives, and page helpers: the
   controls Tab reaches, idle preload, the phone viewport, reduced motion and the status tones.
-- Primitives (`Button`, `Switch`, `StepSlider`, `Chip`, `Surface`, `Well` and others) and the floating layers (`Modal`,
-  `Popover`, `Tooltip`).
+- Primitives (`Button`, `Switch`, `StepSlider`, `Accordion`, `Chip`, `Surface`, `Well` and others) and the floating
+  layers (`Modal`, `Popover`, `Tooltip`).
 - The action group: a row of actions that moves what does not fit into a More menu.
 - The toast view, which the overlays render from the toast store.
 - Mounting a view inside an error boundary, and the overlay container.
@@ -42,6 +42,10 @@ and no data source.
   its owner decides what a repeat means. A step key commits only a step, so at an end it commits nothing. A pointer the
   browser cancels commits nothing. While a pointer is held the thumb follows it freely and the nearest stop is the one
   shown. `marked` hollows the thumb for a value that is a stop only approximately, and sets `data-marked` on the track.
+- `Accordion` is the native disclosure element, so the keyboard and screen readers get its semantics from the browser.
+  Without `open` the browser opens and closes it. With `open` its owner holds the state, and a press on the header only
+  reports the next state through `onToggle`. It animates its height where the browser can transition to `auto`, opens at
+  once elsewhere, and never animates under reduced motion.
 - `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
   screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first. `clearScreen`
   takes it down and keeps what the page put beside it, such as the product frame. `pageContentStore` says `screen` while
@@ -62,9 +66,9 @@ and no data source.
 
 ### `@dotli/ui`
 
-- Primitives: `Button`, `ButtonLink`, `Chip`, `IconButton`, `IconTile`, `Choice`, `SegmentedControl`, `StepSlider`,
-  `Spinner`, `StatusDot`, `Surface` (with `SurfaceHead`, `SurfaceFoot`, `Hint`), `Switch`, `Well`, `Callout`, `Row`,
-  `Stack`, `SectionLabel`.
+- Primitives: `Accordion` with `AccordionProps`, `Button`, `ButtonLink`, `Chip`, `IconButton`, `IconTile`, `Choice`,
+  `SegmentedControl`, `StepSlider`, `Spinner`, `StatusDot`, `Surface` (with `SurfaceHead`, `SurfaceFoot`, `Hint`),
+  `Switch`, `Well`, `Callout`, `Row`, `Stack`, `SectionLabel`.
 - Floating layers: `Modal`, `Popover` and `usePopover`, `Tooltip`, plus the layer tracking (`LayerTracker`,
   `ModalFocusFallback`).
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
