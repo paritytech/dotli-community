@@ -4,7 +4,7 @@
 .source {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--sp-2);
   padding: var(--sp-4);
   color: var(--chrome-text);
   font-family: var(--font-sans);

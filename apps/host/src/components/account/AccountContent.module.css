@@ -4,7 +4,7 @@
 .identity {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
   min-width: 0;
   padding: var(--sp-1) var(--sp-1) 0;
 }

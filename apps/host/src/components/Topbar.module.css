@@ -52,10 +52,10 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   height: var(--h-bar);
-  padding: 6px;
+  padding: var(--sp-1_5);
   transition: opacity var(--dur) var(--delay-content) ease-out;
 }
 /* Collapsed, the row keeps its tab stops, so tabbing into it reveals the bar. */

@@ -9,10 +9,10 @@
 .room-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
   box-sizing: border-box;
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--sp-2);
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -39,7 +39,7 @@
   box-sizing: border-box;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
+  padding: 0 var(--sp-1);
   border-radius: 8px;
   background: var(--inverse-bg);
   color: var(--inverse-fg);

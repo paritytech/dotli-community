@@ -7,7 +7,7 @@
   left: 50%;
   z-index: 1001;
   margin: 0;
-  padding: 6px 12px;
+  padding: var(--sp-1_5) var(--sp-3);
   border: 0;
   border-radius: var(--r-full);
   background: var(--chrome-glass);

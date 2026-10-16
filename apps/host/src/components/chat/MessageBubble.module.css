@@ -15,7 +15,7 @@
   box-sizing: border-box;
   max-width: 85%;
   margin: 0;
-  padding: 7px 11px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: 12px;
   background: var(--fill);
   color: var(--text);
@@ -38,7 +38,7 @@
 .bubble[data-custom] {
   width: 85%;
   max-width: 85%;
-  padding: 10px 12px;
+  padding: var(--sp-2) var(--sp-3);
 }
 
 .meta {
@@ -49,7 +49,7 @@
 .time {
   display: block;
   box-sizing: border-box;
-  margin: 3px 0 0;
+  margin: var(--sp-hair) 0 0;
   padding: 0;
   color: var(--text-muted);
   font-size: 0.62rem;
@@ -61,19 +61,19 @@
 }
 .bubble[data-custom] .time,
 .actions + .time {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }
 
 .actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   box-sizing: border-box;
-  margin: 10px 0 2px;
+  margin: var(--sp-2) 0 var(--sp-hair);
   padding: 0;
 }
 .actions:first-child {
-  margin-top: 2px;
+  margin-top: var(--sp-hair);
 }
 .actions[data-layout='grid'] {
   flex-direction: row;

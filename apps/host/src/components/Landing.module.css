@@ -14,8 +14,8 @@
   box-sizing: border-box;
   min-height: 100dvh;
   margin: 0;
-  padding: calc(32px + var(--safe-top)) calc(32px + var(--safe-right)) calc(32px + var(--safe-bottom))
-    calc(32px + var(--safe-left));
+  padding: calc(var(--sp-8) + var(--safe-top)) calc(var(--sp-8) + var(--safe-right))
+    calc(var(--sp-8) + var(--safe-bottom)) calc(var(--sp-8) + var(--safe-left));
   background: var(--bg-page);
   color: var(--text-strong);
   font-family: var(--font-sans);
@@ -91,8 +91,8 @@
 
 @media (max-width: 560px) {
   .landing {
-    padding-right: calc(16px + var(--safe-right));
-    padding-left: calc(16px + var(--safe-left));
+    padding-right: calc(var(--sp-4) + var(--safe-right));
+    padding-left: calc(var(--sp-4) + var(--safe-left));
   }
 }
 

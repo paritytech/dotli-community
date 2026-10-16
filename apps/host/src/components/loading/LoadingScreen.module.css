@@ -16,7 +16,7 @@
   box-sizing: border-box;
   min-height: var(--content-height);
   margin: 0;
-  padding: 0 calc(32px + var(--safe-right)) 80px calc(32px + var(--safe-left));
+  padding: 0 calc(var(--sp-8) + var(--safe-right)) 80px calc(var(--sp-8) + var(--safe-left));
   color: var(--text-strong);
   font-family: var(--font-sans);
   text-align: center;
@@ -36,7 +36,7 @@
 
 @media (max-width: 560px) {
   .screen {
-    padding: 0 calc(16px + var(--safe-right)) 60px calc(16px + var(--safe-left));
+    padding: 0 calc(var(--sp-4) + var(--safe-right)) var(--sp-14) calc(var(--sp-4) + var(--safe-left));
   }
 }
 

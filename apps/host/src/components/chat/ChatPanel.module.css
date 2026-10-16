@@ -4,10 +4,10 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   margin: 0;
-  padding: 10px 14px;
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -49,10 +49,10 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-hair);
   box-sizing: border-box;
   margin: 0;
-  padding: 8px;
+  padding: var(--sp-2);
   overflow-y: auto;
   list-style: none;
 }
@@ -64,14 +64,14 @@
   flex: 1;
   box-sizing: border-box;
   margin: 0;
-  padding: 12px 14px;
+  padding: var(--sp-3);
   overflow-y: auto;
 }
 
 .thread {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -80,17 +80,17 @@
 .hint {
   box-sizing: border-box;
   margin: 0;
-  padding: 8px 14px;
+  padding: var(--sp-2) var(--sp-3);
   color: var(--text-muted);
   font-size: 0.75rem;
 }
 
 .composer {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   box-sizing: border-box;
   margin: 0;
-  padding: 10px 14px;
+  padding: var(--sp-2) var(--sp-3);
   border-top: 1px solid var(--border-subtle);
 }
 .composer[hidden] {
@@ -102,7 +102,7 @@
   min-width: 0;
   box-sizing: border-box;
   margin: 0;
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--fill-subtle);

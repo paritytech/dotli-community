@@ -4,7 +4,7 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-2);
 }
 @media (max-width: 560px) {
   .list {
@@ -14,7 +14,7 @@
 .groups {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-2);
 }
 @media (max-width: 560px) {
   .groups {

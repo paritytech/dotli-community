@@ -9,12 +9,12 @@
 /* The Button scaled to the bar's control height. */
 .sign-in,
 .chip {
-  gap: 6px;
+  gap: var(--sp-1_5);
   --button-h: var(--h-bar-control);
   font-size: 13px;
 }
 .sign-in {
-  padding: 0 16px 0 13px;
+  padding: 0 var(--sp-4) 0 var(--sp-3);
 }
 .sign-in-icon {
   width: 14px;
@@ -23,7 +23,7 @@
 /* The avatar sits as far from the chip's left edge as from its top and bottom. */
 .chip {
   max-width: 132px;
-  padding: 0 13px 0 calc((var(--h-bar-control) - 26px) / 2);
+  padding: 0 var(--sp-3) 0 calc((var(--h-bar-control) - 26px) / 2);
   box-shadow: none;
   font-weight: var(--fw-semibold);
 }

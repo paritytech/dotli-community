@@ -12,7 +12,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
+  gap: var(--sp-1_5);
   margin: 0;
   color: var(--chrome-text);
   font-size: var(--fs-body);

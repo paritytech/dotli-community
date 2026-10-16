@@ -6,7 +6,7 @@
 .button {
   box-sizing: border-box;
   margin: 0;
-  padding: 7px 14px;
+  padding: var(--sp-2) var(--sp-3);
   border: none;
   border-radius: 8px;
   font-family: inherit;

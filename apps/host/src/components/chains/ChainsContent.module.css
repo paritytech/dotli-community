@@ -6,7 +6,7 @@
 .status {
   flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
 }
 .status-text {
   display: flex;
@@ -44,7 +44,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--sp-2);
   margin: 0;
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
