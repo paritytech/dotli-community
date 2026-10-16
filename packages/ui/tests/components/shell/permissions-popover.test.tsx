@@ -41,6 +41,7 @@ function nameOf(request: PermissionAuthorizationRequest): string {
       return request.value.permission.tag;
     case 'IdentityDisclosure':
     case 'AccountAccess':
+    case 'CrossProductSignature':
       return request.tag;
   }
 }
