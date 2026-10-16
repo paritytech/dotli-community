@@ -5,8 +5,8 @@
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
 import * as S from "@parity/truapi/scale";
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, ReceivingWatch, RemotePermissionRequest, } from "@parity/truapi";
-import { AuthState, ContactSelection, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, PlacedAvatars, PlacedContactLabels, PresentedContactProfile, ProductContext, ReceivingAuthority, UserConfirmationReview, } from "./host-callbacks.js";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostChatSetRoomFooterRequest, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostScannerScanRequest, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, ReceivingWatch, RemotePermissionRequest, } from "@parity/truapi";
+import { AuthState, ContactSelection, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, HostScan, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, PlacedAvatars, PlacedContactLabels, PresentedContactProfile, ProductContext, ReceivingAuthority, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, coinageWalletHostAdapter, contactsHostAdapter, driveResultStream, hopConnectAdapter, profileHostAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
 const allowedHopEndpointsResultCodec = S.Vector(S.str);
 const identityUsernameCandidatesResultCodec = S.Vector(S.Bytes(32));
@@ -22,6 +22,7 @@ export function createWasmRawCallbacks(callbacks) {
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
     const profile = profileHostAdapter(callbacks.profile);
+    const scanner = callbacks.scanner;
     const hop = callbacks.hop ?? unavailableHopProvider;
     const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
     return {
@@ -32,6 +33,7 @@ export function createWasmRawCallbacks(callbacks) {
                 createChatRoom: async (product, request) => HostChatCreateRoomResponse.enc(await chat.createChatRoom(ProductContext.dec(product), HostChatCreateRoomRequest.dec(request))),
                 registerChatBot: async (product, request) => HostChatRegisterBotResponse.enc(await chat.registerChatBot(ProductContext.dec(product), HostChatRegisterBotRequest.dec(request))),
                 postChatMessage: async (product, request) => HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), HostChatPostMessageRequest.dec(request))),
+                setChatRoomFooter: async (product, request) => await chat.setChatRoomFooter(ProductContext.dec(product), HostChatSetRoomFooterRequest.dec(request)),
                 subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(HostChatListSubscribeItem.enc(item)), sendError),
             }
             : {}),
@@ -109,6 +111,11 @@ export function createWasmRawCallbacks(callbacks) {
                 presentProfile: async (product, request) => await profile.presentProfile(ProductContext.dec(product), HostProfilePresentRequest.dec(request)),
                 presentContactProfile: async (product, presented) => await profile.presentContactProfile(ProductContext.dec(product), PresentedContactProfile.dec(presented)),
                 placeContactAvatars: async (product, placed) => await profile.placeContactAvatars(ProductContext.dec(product), PlacedAvatars.dec(placed)),
+            }
+            : {}),
+        ...(scanner
+            ? {
+                scanCode: async (product, request) => HostScan.enc(await scanner.scanCode(ProductContext.dec(product), HostScannerScanRequest.dec(request))),
             }
             : {}),
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),

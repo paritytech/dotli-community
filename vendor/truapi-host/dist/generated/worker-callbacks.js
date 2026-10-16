@@ -9,6 +9,7 @@ export const CALLBACK_NAMES = [
     "createChatRoom",
     "registerChatBot",
     "postChatMessage",
+    "setChatRoomFooter",
     "nativeCoinage",
     "contacts",
     "pickContact",
@@ -52,6 +53,7 @@ export const CALLBACK_NAMES = [
     "presentProfile",
     "presentContactProfile",
     "placeContactAvatars",
+    "scanCode",
     "confirmPermission",
     "confirmUserAction",
 ];
@@ -113,6 +115,7 @@ function chatRawCallbacks(bridge) {
         createChatRoom: (product, request) => bridge.callbackRequest("createChatRoom", [product, request]),
         registerChatBot: (product, request) => bridge.callbackRequest("registerChatBot", [product, request]),
         postChatMessage: (product, request) => bridge.callbackRequest("postChatMessage", [product, request]),
+        setChatRoomFooter: (product, request) => bridge.callbackRequest("setChatRoomFooter", [product, request]),
         subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", product, sendItem, sendError),
     };
 }
@@ -158,6 +161,11 @@ function profileRawCallbacks(bridge) {
         placeContactAvatars: (product, placed) => bridge.callbackRequest("placeContactAvatars", [product, placed]),
     };
 }
+function scannerRawCallbacks(bridge) {
+    return {
+        scanCode: (product, request) => bridge.callbackRequest("scanCode", [product, request]),
+    };
+}
 export function createWorkerRawCallbacks(bridge, capabilities = {}) {
     const callbacks = {
         ...rawCallbacks(bridge),
@@ -181,6 +189,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, pocketRawCallbacks(bridge));
     if (capabilities.profile)
         Object.assign(callbacks, profileRawCallbacks(bridge));
+    if (capabilities.scanner)
+        Object.assign(callbacks, scannerRawCallbacks(bridge));
     return callbacks;
 }
 export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {

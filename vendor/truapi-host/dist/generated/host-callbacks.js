@@ -4,7 +4,7 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, ReceivingWatch, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
+import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, CodeFormat, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, ReceivingWatch, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -34,7 +34,7 @@ export const ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(Bytes
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NotificationReceiving: S._void }));
+export const CoreStorageKey = S.lazy(() => S.indexedTaggedUnion({ AuthSession: [0, S._void], PairingDeviceIdentity: [1, S._void], PermissionAuthorization: [2, S.Struct({ productId: S.str, request: PermissionAuthorizationRequest })], AllowanceKeys: [3, S.Struct({ sessionId: S.str })], LastProcessedPairingStatement: [4, S._void], AutoSigningKey: [5, S.Struct({ productId: S.str })], AutoSigningKeys: [6, S._void], RingVrfRegistry: [7, S.Struct({ rootPublicKey: S.Bytes(32) })], StatementRenewalTargets: [8, S._void], DeviceEncryptionKey: [9, S._void], ProductSubtree: [10, S.Struct({ sessionId: S.str, productId: S.str })], SsoResponderRequestLedger: [11, S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) })], ProductManifest: [12, S.Struct({ productId: S.str })], MainPurseCoinage: [13, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) })], NativeChatDevice: [14, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str })], NativeChatFileChunk: [15, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 })], NativeChatProducts: [16, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) })], ProfileDisclosure: [17, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) })], ProfileReferencesReceived: [18, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str })], ProfilePersonalReferencesReceived: [19, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) })], NotificationReceiving: [20, S._void], HostChannelPeers: [22, S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) })] }));
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
  */
@@ -43,6 +43,13 @@ export const CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str
  * Review shown before a transaction-creation request is sent to the paired wallet.
  */
 export const CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: ProductAccountTxPayload }), LegacyAccount: LegacyAccountTxPayload }));
+/**
+ * A kind of signature a product makes with another product's account.
+ *
+ * The user approves each kind separately: approving one never lets another
+ * through without a prompt.
+ */
+export const CrossProductSignatureKind = S.lazy(() => S.Status("Payload", "Transaction", "Raw", "StatementProof"));
 /**
  * What the operating system currently says about a device capability.
  *
@@ -89,6 +96,10 @@ export const HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ a
  * The user's complete selection in a host-owned multi-contact picker.
  */
 export const HostContactsPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ accounts: S.Vector(Bytes32) }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
+/**
+ * How the host's scanner ended.
+ */
+export const HostScan = S.lazy(() => S.TaggedUnion({ Scanned: S.Struct({ text: S.str, format: CodeFormat }), Dismissed: S._void, CameraUnavailable: S._void, NotVisible: S._void }));
 /**
  * Review shown before a product learns the user's primary identity.
  */
@@ -154,7 +165,7 @@ export const NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
-export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(DerivationIndex) }), ProfileDisclosure: S._void }));
+export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(DerivationIndex) }), ProfileDisclosure: S._void, CrossProductSignature: S.Struct({ targetProductId: S.str, kind: CrossProductSignatureKind }) }));
 /**
  * Authorization status for a permission request.
  *

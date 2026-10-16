@@ -282,6 +282,9 @@ export interface ChatRoom {
     participatingAs: ChatRoomParticipation;
 }
 export declare const ChatRoom: S.Codec<ChatRoom>;
+/** What a room shows below its messages. */
+export type ChatRoomFooter = "TextInput" | "Empty";
+export declare const ChatRoomFooter: S.Codec<ChatRoomFooter>;
 /** How the product participates in a chat room. */
 export type ChatRoomParticipation = "RoomHost" | "Bot";
 export declare const ChatRoomParticipation: S.Codec<ChatRoomParticipation>;
@@ -805,25 +808,25 @@ export type VersionedHostChatListSubscribeRequest =
 export declare const VersionedHostChatListSubscribeRequest: S.Codec<VersionedHostChatListSubscribeRequest>;
 /** Versioned envelope for [`HostChatPostMessageError`]. */
 export type VersionedHostChatPostMessageError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageError;
 };
 export declare const VersionedHostChatPostMessageError: S.Codec<VersionedHostChatPostMessageError>;
 /** Versioned envelope for [`HostChatPostMessageRequest`]. */
 export type VersionedHostChatPostMessageRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageRequest;
 };
 export declare const VersionedHostChatPostMessageRequest: S.Codec<VersionedHostChatPostMessageRequest>;
 /** Versioned envelope for [`HostChatPostMessageResponse`]. */
 export type VersionedHostChatPostMessageResponse = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostChatPostMessageResponse;
 };
 export declare const VersionedHostChatPostMessageResponse: S.Codec<VersionedHostChatPostMessageResponse>;
@@ -851,6 +854,30 @@ export type VersionedHostChatRegisterBotResponse =
     value: HostChatRegisterBotResponse;
 };
 export declare const VersionedHostChatRegisterBotResponse: S.Codec<VersionedHostChatRegisterBotResponse>;
+/** Versioned envelope for [`HostChatSetRoomFooterError`]. */
+export type VersionedHostChatSetRoomFooterError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterError;
+};
+export declare const VersionedHostChatSetRoomFooterError: S.Codec<VersionedHostChatSetRoomFooterError>;
+/** Versioned envelope for [`HostChatSetRoomFooterRequest`]. */
+export type VersionedHostChatSetRoomFooterRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostChatSetRoomFooterRequest;
+};
+export declare const VersionedHostChatSetRoomFooterRequest: S.Codec<VersionedHostChatSetRoomFooterRequest>;
+/** Versioned envelope for [`HostChatSetRoomFooterResponse`]. */
+export type VersionedHostChatSetRoomFooterResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostChatSetRoomFooterResponse: S.Codec<VersionedHostChatSetRoomFooterResponse>;
 /** Versioned envelope for [`HostCoinPaymentCreateChequeError`]. */
 export type VersionedHostCoinPaymentCreateChequeError = 
 /** Version 1 payload. */
@@ -4799,13 +4826,13 @@ export type HostChatPostMessageError =
 };
 export declare const HostChatPostMessageError: S.Codec<HostChatPostMessageError>;
 /** Request to post a message to a chat room. */
-export interface HostChatPostMessageRequest {
+export interface V01HostChatPostMessageRequest {
     /** Room to post to. */
     roomId: string;
     /** Message content. */
     payload: ChatMessageContent;
 }
-export declare const HostChatPostMessageRequest: S.Codec<HostChatPostMessageRequest>;
+export declare const V01HostChatPostMessageRequest: S.Codec<V01HostChatPostMessageRequest>;
 /** Result of posting a message. */
 export interface HostChatPostMessageResponse {
     /**
@@ -4846,6 +4873,29 @@ export interface HostChatRegisterBotResponse {
     status: ChatBotRegistrationStatus;
 }
 export declare const HostChatRegisterBotResponse: S.Codec<HostChatRegisterBotResponse>;
+/** Room footer failure. */
+export type HostChatSetRoomFooterError = 
+/** The calling product created no room with this id. */
+{
+    tag: "UnknownRoom";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostChatSetRoomFooterError: S.Codec<HostChatSetRoomFooterError>;
+/** Request to set what a room shows below its messages. */
+export interface HostChatSetRoomFooterRequest {
+    /** A room the calling product created. */
+    roomId: string;
+    /** What the room shows below its messages. */
+    footer: ChatRoomFooter;
+}
+export declare const HostChatSetRoomFooterRequest: S.Codec<HostChatSetRoomFooterRequest>;
 /** Request to create a cheque from a local purse to a receivable. */
 export interface HostCoinPaymentCreateChequeRequest {
     /** Source purse. */
@@ -6125,7 +6175,7 @@ export declare const HostScannerScanError: S.Codec<HostScannerScanError>;
  * Only `hint` is product text, shown as one plain line under the title.
  */
 export interface HostScannerScanRequest {
-    /** Formats the product accepts. At least one. */
+    /** Formats the product accepts. At least one, each named once. */
     formats: Array<CodeFormat>;
     /**
      * Start the text must have, compared ignoring ASCII letter case, since QR
@@ -6135,8 +6185,8 @@ export interface HostScannerScanRequest {
     /**
      * What to point the camera at, shown as the product's words. At most 80
      * Unicode scalar values (`[...hint].length` in TypeScript). No control
-     * characters, line or paragraph separators, or bidirectional formatting
-     * characters.
+     * characters, line or paragraph separators, invisible characters, or
+     * bidirectional formatting characters.
      */
     hint?: string;
 }
@@ -6636,6 +6686,25 @@ export type RemoteStatementStoreSubscribeRequest =
     value: Array<HexString>;
 };
 export declare const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreSubscribeRequest>;
+/**
+ * Request to post a message to a chat room.
+ *
+ * v0.2 adds `alt`, the text a host shows wherever it lists a custom message
+ * without drawing it, such as a chat list preview.
+ */
+export interface HostChatPostMessageRequest {
+    /** Room to post to. */
+    roomId: string;
+    /** Message content. */
+    payload: ChatMessageContent;
+    /**
+     * One line describing a custom message. `None` leaves the host its own
+     * placeholder. Every other kind previews from its own content, so its
+     * `alt` is dropped.
+     */
+    alt?: string;
+}
+export declare const HostChatPostMessageRequest: S.Codec<HostChatPostMessageRequest>;
 /** Local storage read failure. */
 export type HostLocalStorageReadError = 
 /** Storage quota exceeded. */

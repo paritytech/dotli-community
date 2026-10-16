@@ -1,7 +1,8 @@
 // The core authorizes `Notifications` before calling here, so this adapter must not re-check:
 // a second check would find a consumed "Allow once" gone and prompt the user again.
 
-import type { NotificationActivation, Notifications } from '@parity/truapi-host';
+import type { NotificationActivation } from '@parity/truapi';
+import type { Notifications } from '@parity/truapi-host';
 import { log } from '@dotli/shared';
 import {
   retainNotification,

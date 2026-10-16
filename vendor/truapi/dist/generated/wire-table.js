@@ -189,6 +189,11 @@ export const CHAT_ACTION_SUBSCRIBE = {
     method: 4,
     kind: "subscription",
 };
+export const CHAT_SET_ROOM_FOOTER = {
+    trait: 4,
+    method: 6,
+    kind: "request",
+};
 export const COIN_PAYMENT_CREATE_PURSE = {
     trait: 5,
     method: 0,

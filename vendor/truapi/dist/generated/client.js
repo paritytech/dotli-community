@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "ec0d28820f74178d";
+export const TRUAPI_WIRE_SCHEMA_HASH = "d44437abe1ed6f80";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -560,7 +560,7 @@ export class ChatClient {
     postMessage(request, options) {
         return this.#transport.request({
             ids: W.CHAT_POST_MESSAGE,
-            payload: T.VersionedHostChatPostMessageRequest.enc({ tag: "V1", value: request }),
+            payload: T.VersionedHostChatPostMessageRequest.enc({ tag: "V2", value: request }),
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostChatPostMessageResponse, S.CallError(T.VersionedHostChatPostMessageError)).dec(payload);
@@ -576,6 +576,22 @@ export class ChatClient {
             payload: T.VersionedHostChatActionSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostChatActionSubscribeItem.dec(payload).value,
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostChatActionSubscribeError)),
+        });
+    }
+    /**
+     * Set what a room the product created shows below its messages. A room
+     * keeps the footer until the product sets another, and a new room shows
+     * the text input.
+     */
+    setRoomFooter(request, options) {
+        return this.#transport.request({
+            ids: W.CHAT_SET_ROOM_FOOTER,
+            payload: T.VersionedHostChatSetRoomFooterRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostChatSetRoomFooterResponse, S.CallError(T.VersionedHostChatSetRoomFooterError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -1349,7 +1365,14 @@ export class PreimageClient {
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedRemotePreimageLookupSubscribeError)),
         });
     }
-    /** Submit a preimage. Returns the preimage key (hash) on success. */
+    /**
+     * Submit a preimage. Returns the preimage key (hash) on success.
+     *
+     * Requires the `PreimageSubmit` permission. Upload consent is separate
+     * from that capability grant. The host reviews each upload unless an
+     * explicit bounded automatic-upload policy approves it. Allocating or
+     * renewing the Bulletin allowance may also require approval.
+     */
     submit(request, options) {
         return this.#transport.request({
             ids: W.PREIMAGE_SUBMIT,

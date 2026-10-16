@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "ec0d28820f74178d";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "d44437abe1ed6f80";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -141,6 +141,12 @@ export declare class ChatClient {
     postMessage(request: T.HostChatPostMessageRequest, options?: CallOptions): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
     actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
+    /**
+     * Set what a room the product created shows below its messages. A room
+     * keeps the footer until the product sets another, and a new room shows
+     * the text input.
+     */
+    setRoomFooter(request: T.HostChatSetRoomFooterRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostChatSetRoomFooterError>>;
 }
 /**
  * CoinPayment operations.
@@ -446,7 +452,14 @@ export declare class PreimageClient {
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
     }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
-    /** Submit a preimage. Returns the preimage key (hash) on success. */
+    /**
+     * Submit a preimage. Returns the preimage key (hash) on success.
+     *
+     * Requires the `PreimageSubmit` permission. Upload consent is separate
+     * from that capability grant. The host reviews each upload unless an
+     * explicit bounded automatic-upload policy approves it. Allocating or
+     * renewing the Bulletin allowance may also require approval.
+     */
     submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
 /**

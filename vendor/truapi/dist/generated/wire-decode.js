@@ -158,6 +158,10 @@ export const WIRE_DECODE_TABLE = {
         2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostChatActionSubscribeError)).dec(payload),
         3: () => undefined,
     },
+    [W.CHAT_SET_ROOM_FOOTER.trait * 256 + W.CHAT_SET_ROOM_FOOTER.method]: {
+        0: (payload) => T.VersionedHostChatSetRoomFooterRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostChatSetRoomFooterResponse, S.CallError(T.VersionedHostChatSetRoomFooterError)).dec(payload),
+    },
     [W.COIN_PAYMENT_CREATE_PURSE.trait * 256 + W.COIN_PAYMENT_CREATE_PURSE.method]: {
         0: (payload) => T.VersionedHostCoinPaymentCreatePurseRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostCoinPaymentCreatePurseResponse, S.CallError(T.VersionedHostCoinPaymentCreatePurseError)).dec(payload),
