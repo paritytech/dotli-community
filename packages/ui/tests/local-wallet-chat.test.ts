@@ -9,6 +9,7 @@ import { encodeCoreStorageKey } from '@parity/truapi-host';
 import { bytesToHex } from '@parity/truapi/scale';
 import { createLocalWalletChat } from '../src/local-wallet-chat.js';
 import type { LocalWalletBoot } from '../src/wallet-boot.js';
+import { nth } from './helpers/nth.js';
 
 const custody = vi.hoisted(() => ({
   operations: [] as CoreCustodyOperation[],
@@ -226,10 +227,10 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a returning person, I can retry a failed profile read without losing my old data', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
-    const originalRead = legacy.readCoreStorage;
+    const originalRead = legacy.readCoreStorage.bind(legacy);
     legacy.readCoreStorage = vi
       .fn()
       .mockRejectedValueOnce(new Error('storage unavailable'))
@@ -245,7 +246,7 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a returning person, I retain my old profile when shared storage fails and can retry safely', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
     const chat = createLocalWalletChat(WALLET, () => true);
@@ -262,10 +263,10 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a person, I keep my latest profile after retrying failed migration cleanup', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
-    const originalClear = legacy.clearCoreStorage;
+    const originalClear = legacy.clearCoreStorage.bind(legacy);
     legacy.clearCoreStorage = vi
       .fn()
       .mockRejectedValueOnce(new Error('cleanup unavailable'))
@@ -283,12 +284,12 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a person, I can update my profile during migration without an older read overwriting it', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
-    const started = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<undefined>();
     const delayed = Promise.withResolvers<Uint8Array>();
     legacy.readCoreStorage = () => {
-      started.resolve();
+      started.resolve(undefined);
       return delayed.promise;
     };
     const chat = createLocalWalletChat(WALLET, () => true);
