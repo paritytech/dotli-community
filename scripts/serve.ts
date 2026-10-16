@@ -88,7 +88,12 @@ const runtimeConfigBody = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETW
 const server = createServer((req, res) => {
   const route = routeFor((req.headers.host ?? '').split(':')[0] ?? '');
   const dir = DIRS[route.site];
-  const url = new URL(req.url ?? '/', 'http://placeholder');
+  // A request line no URL can hold, such as `//[`, is the client's error. Throwing here would stop the server.
+  const url = URL.parse(req.url ?? '/', 'http://placeholder');
+  if (url === null) {
+    res.writeHead(400).end('Bad Request');
+    return;
+  }
   const acceptEncoding = req.headers['accept-encoding'] ?? '';
   const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
 
