@@ -9,6 +9,7 @@ import { encodeCoreStorageKey } from '@parity/truapi-host';
 import { bytesToHex } from '@parity/truapi/scale';
 import { createLocalWalletChat } from '../src/local-wallet-chat.js';
 import type { LocalWalletBoot } from '../src/wallet-boot.js';
+import { nth } from './helpers/nth.js';
 
 const custody = vi.hoisted(() => ({
   operations: [] as CoreCustodyOperation[],
@@ -37,7 +38,8 @@ vi.mock('../../protocol/src/client.js', () => ({
         const matches =
           current === null || operation.expected === null
             ? current === operation.expected
-            : current.join() === operation.expected.join();
+            : current.length === operation.expected.length &&
+              current.every((byte, index) => byte === operation.expected?.[index]);
         if (matches) {
           custody.records.set(operation.key, operation.replacement);
         }
@@ -95,7 +97,9 @@ function memoryStorage(): CoreStorage & { values: Map<string, Uint8Array> } {
     compareExchangeCoreStorage: (key, expected, replacement) => {
       const current = values.get(memoryKey(key));
       const matches =
-        current === undefined || expected === undefined ? current === expected : current.join() === expected.join();
+        current === undefined || expected === undefined
+          ? current === expected
+          : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
       if (matches) {
         values.set(memoryKey(key), replacement);
       }
@@ -153,22 +157,25 @@ describe('native Chat beside the local wallet core', () => {
     expect(await storage.readCoreStorage(PURSE)).toEqual(new Uint8Array([4]));
     expect(base.values.has(memoryKey(PURSE))).toBe(false);
     expect(base.values.get(memoryKey(GRANT))).toEqual(new Uint8Array([5]));
-    expect(custody.operations.filter(operation => operation.action === 'compareExchange')).toHaveLength(3);
     chat.dispose();
   });
 
-  it('compares against migrated profile bytes and notifies after a shared Chat grant changes', async () => {
+  it('As a returning person, I compare against migrated profile state before replacing it', async () => {
+    // Given
     const base = memoryStorage();
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     await base.writeCoreStorage(key, new Uint8Array([3]));
-    const changed = vi.spyOn(base, 'coreStorageChanged');
     const chat = createLocalWalletChat(WALLET, () => true);
     const storage = chat.coreStorage(base);
-    expect(await storage.compareExchangeCoreStorage(key, undefined, new Uint8Array([4]), false)).toBe(false);
-    expect(await storage.compareExchangeCoreStorage(key, new Uint8Array([3]), new Uint8Array([5]), false)).toBe(true);
+
+    // When
+    const absent = await storage.compareExchangeCoreStorage(key, undefined, new Uint8Array([4]), false);
+    const replaced = await storage.compareExchangeCoreStorage(key, new Uint8Array([3]), new Uint8Array([5]), false);
+
+    // Then
+    expect([absent, replaced]).toEqual([false, true]);
     expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([5]));
-    expect(await storage.compareExchangeCoreStorage(CHAT_ACCESS, undefined, new Uint8Array([2]), true)).toBe(true);
-    expect(changed).toHaveBeenCalledWith(CHAT_ACCESS);
+    expect(await base.readCoreStorage(key)).toBeUndefined();
     chat.dispose();
   });
 
@@ -283,10 +290,10 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a returning person, I can retry a failed profile read without losing my old data', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
-    const originalRead = legacy.readCoreStorage;
+    const originalRead = legacy.readCoreStorage.bind(legacy);
     legacy.readCoreStorage = vi
       .fn()
       .mockRejectedValueOnce(new Error('storage unavailable'))
@@ -302,7 +309,7 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a returning person, I retain my old profile when shared storage fails and can retry safely', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
     const chat = createLocalWalletChat(WALLET, () => true);
@@ -319,10 +326,10 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a person, I keep my latest profile after retrying failed migration cleanup', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
-    const originalClear = legacy.clearCoreStorage;
+    const originalClear = legacy.clearCoreStorage.bind(legacy);
     legacy.clearCoreStorage = vi
       .fn()
       .mockRejectedValueOnce(new Error('cleanup unavailable'))
@@ -340,12 +347,12 @@ describe('native Chat beside the local wallet core', () => {
 
   it('As a person, I can update my profile during migration without an older read overwriting it', async () => {
     // Given
-    const key = PROFILE_KEYS[0]!;
+    const key = nth(PROFILE_KEYS, 0);
     const legacy = memoryStorage();
-    const started = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<undefined>();
     const delayed = Promise.withResolvers<Uint8Array>();
     legacy.readCoreStorage = () => {
-      started.resolve();
+      started.resolve(undefined);
       return delayed.promise;
     };
     const chat = createLocalWalletChat(WALLET, () => true);

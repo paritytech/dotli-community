@@ -297,12 +297,16 @@ const callbacks: HostCallbacks = {
   profile, // optional: shows profiles and draws contact avatars in host UI
   game, // optional: holds the host's game reminders
   contacts, // optional: leave it out and contacts calls get `Unsupported`
+  scanner, // optional: draws the host's QR and barcode viewfinder
 };
 ```
 
 `permissionStatus.devicePermissionStatus` must answer from the OS without prompting. Supply it and the core revalidates
 a stored device grant against it before answering the product, so a capability the OS has since revoked or reset stops
 reading as usable. Omit it and a stored grant answers on its own.
+
+Worker-backed hosts route permission reads, writes and refreshes through the currently active pairing or signing
+runtime. Local-session activation must not leave `refreshPermissionAuthorization` bound to a superseded runtime.
 
 `pocket` serves the host's card collection. `subscribePocketCards` emits the calling product's cards and every later
 replacement, and `removePocketCard` takes one out. The host owns the collection: removing an absent card succeeds, and a
@@ -511,6 +515,11 @@ has no enumeration API. Directory reads share native commit gates, and native st
 cached handles. A browser adapter must also cancel pending picker/lookup work when its wallet, network, provider or
 directory generation changes. Provider-scoped `contacts` callbacks control that provider's UI; absent overrides inherit
 the runtime-wide Contacts adapter. Keep the runtime-wide source alive for host-owned rendering until the owner closes.
+
+`scanner.scanCode(product, request)` opens the host's viewfinder. The rules it
+follows are on `ScannerPlatform` in the generated callbacks. The mock test host
+serves a scanner only when created with `createMockHost({ scanner: answer })`,
+and `setScanAnswer(answer)` changes the next answer.
 
 ## Generated WASM artefacts
 

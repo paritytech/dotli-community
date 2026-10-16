@@ -682,6 +682,25 @@ export const types = [
         ],
     },
     {
+        id: "chat-room-footer",
+        name: "ChatRoomFooter",
+        category: "chat",
+        definition: 'export type ChatRoomFooter = "TextInput" | "Empty";',
+        description: "What a room shows below its messages.",
+        variants: [
+            {
+                name: "TextInput",
+                type: '{ tag: "TextInput"; value?: undefined }',
+                description: "The text field the user types messages into.",
+            },
+            {
+                name: "Empty",
+                type: '{ tag: "Empty"; value?: undefined }',
+                description: "Nothing, for a room the product drives through actions alone.",
+            },
+        ],
+    },
+    {
         id: "chat-room-participation",
         name: "ChatRoomParticipation",
         category: "chat",
@@ -1891,8 +1910,8 @@ export const types = [
         id: "host-chat-post-message-request",
         name: "HostChatPostMessageRequest",
         category: "chat",
-        definition: "export interface HostChatPostMessageRequest {\n  roomId: string;\n  payload: ChatMessageContent;\n}",
-        description: "Request to post a message to a chat room.",
+        definition: "export interface HostChatPostMessageRequest {\n  roomId: string;\n  payload: ChatMessageContent;\n  alt?: string;\n}",
+        description: "Request to post a message to a chat room.\n\nv0.2 adds `alt`, the text a host shows wherever it lists a custom message\nwithout drawing it, such as a chat list preview.",
         fields: [
             {
                 name: "room_id",
@@ -1903,6 +1922,11 @@ export const types = [
                 name: "payload",
                 type: "ChatMessageContent",
                 description: "Message content.",
+            },
+            {
+                name: "alt",
+                type: "string | undefined",
+                description: "One line describing a custom message. `None` leaves the host its own\nplaceholder. Every other kind previews from its own content, so its\n`alt` is dropped.",
             },
         ],
     },
@@ -1974,6 +1998,44 @@ export const types = [
                 name: "status",
                 type: "ChatBotRegistrationStatus",
                 description: "`New` or `Exists`.",
+            },
+        ],
+    },
+    {
+        id: "host-chat-set-room-footer-error",
+        name: "HostChatSetRoomFooterError",
+        category: "chat",
+        definition: 'export type HostChatSetRoomFooterError =\n  | { tag: "UnknownRoom"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Room footer failure.",
+        variants: [
+            {
+                name: "UnknownRoom",
+                type: '{ tag: "UnknownRoom"; value?: undefined }',
+                description: "The calling product created no room with this id.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-chat-set-room-footer-request",
+        name: "HostChatSetRoomFooterRequest",
+        category: "chat",
+        definition: "export interface HostChatSetRoomFooterRequest {\n  roomId: string;\n  footer: ChatRoomFooter;\n}",
+        description: "Request to set what a room shows below its messages.",
+        fields: [
+            {
+                name: "room_id",
+                type: "string",
+                description: "A room the calling product created.",
+            },
+            {
+                name: "footer",
+                type: "ChatRoomFooter",
+                description: "What the room shows below its messages.",
             },
         ],
     },
@@ -5560,7 +5622,7 @@ export const types = [
             {
                 name: "formats",
                 type: "Array<CodeFormat>",
-                description: "Formats the product accepts. At least one.",
+                description: "Formats the product accepts. At least one, each named once.",
             },
             {
                 name: "prefix",
@@ -5570,7 +5632,7 @@ export const types = [
             {
                 name: "hint",
                 type: "string | undefined",
-                description: "What to point the camera at, shown as the product's words. At most 80\nUnicode scalar values (`[...hint].length` in TypeScript). No control\ncharacters, line or paragraph separators, or bidirectional formatting\ncharacters.",
+                description: "What to point the camera at, shown as the product's words. At most 80\nUnicode scalar values (`[...hint].length` in TypeScript). No control\ncharacters, line or paragraph separators, invisible characters, or\nbidirectional formatting characters.",
             },
         ],
     },
@@ -9017,6 +9079,25 @@ export const types = [
                 name: "BodySmallRegular",
                 type: '{ tag: "BodySmallRegular"; value?: undefined }',
                 description: "Small body text, regular weight.",
+            },
+        ],
+    },
+    {
+        id: "v-01-host-chat-post-message-request",
+        name: "V01HostChatPostMessageRequest",
+        category: "chat",
+        definition: "export interface V01HostChatPostMessageRequest {\n  roomId: string;\n  payload: ChatMessageContent;\n}",
+        description: "Request to post a message to a chat room.",
+        fields: [
+            {
+                name: "room_id",
+                type: "string",
+                description: "Room to post to.",
+            },
+            {
+                name: "payload",
+                type: "ChatMessageContent",
+                description: "Message content.",
             },
         ],
     },

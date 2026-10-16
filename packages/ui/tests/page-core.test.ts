@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
+import type { AuthState, CoreStorage, CoreStorageKey, RequiredHostCallbacks } from '@parity/truapi-host';
 import type * as PageCoreNamespace from '../src/page-core.js';
 
 interface MockRuntime {
@@ -22,7 +23,12 @@ const mocks = vi.hoisted(() => ({
   reportLocalWalletFailure: vi.fn(),
   refreshLiteUsername: vi.fn(),
   acquireLocalWalletOwner: vi.fn(() => Promise.resolve()),
-  createHostCallbacks: vi.fn(() => ({ auth: { authStateChanged: vi.fn() }, coreStorage: {} })),
+  createHostCallbacks: vi.fn(() => ({ auth: { authStateChanged: vi.fn() }, coreStorage: {}, notifications: {} })),
+  registerCoreStoragePermissionProvider: vi.fn(),
+  unregisterRefresh: vi.fn(),
+  waitForCoreStoragePermissionRefresh: vi.fn(),
+  provider: { subscribeClose: vi.fn(), dispose: vi.fn() },
+  createProvider: vi.fn(),
   chats: [] as {
     wallet: unknown;
     storage: object;
@@ -45,7 +51,11 @@ vi.mock('../src/wallet-boot.js', () => ({
 vi.mock('../src/local-wallet-identity.js', () => ({ refreshLiteUsername: mocks.refreshLiteUsername }));
 vi.mock('../src/wallet-handover.js', () => ({ acquireLocalWalletOwner: mocks.acquireLocalWalletOwner }));
 vi.mock('../src/host-callbacks/handlers.js', () => ({ createHostCallbacks: mocks.createHostCallbacks }));
-vi.mock('../src/host-callbacks/SessionStore.js', () => ({ onStoredSessionChanged: () => () => {} }));
+vi.mock('../src/host-callbacks/SessionStore.js', () => ({
+  onStoredSessionChanged: () => () => {},
+  registerCoreStoragePermissionProvider: mocks.registerCoreStoragePermissionProvider,
+  waitForCoreStoragePermissionRefresh: mocks.waitForCoreStoragePermissionRefresh,
+}));
 vi.mock('../../metrics/src/metrics.js', () => ({ m: { count: vi.fn() }, getResolutionId: vi.fn(() => null) }));
 vi.mock('../src/local-wallet-chat.js', () => ({
   createLocalWalletChat: (wallet: unknown) => {
@@ -82,8 +92,8 @@ function makeRuntime(): MockRuntime {
     cancelPairing: vi.fn(),
     notifySessionStoreChanged: vi.fn(),
     dispose: vi.fn(),
-    getPermissionAuthorizationStatuses: () =>
-      Promise.reject(new TypeError('runtime.permissionAuthorizationStatuses is not a function')),
+    getPermissionAuthorizationStatuses: () => Promise.resolve(['Denied']),
+    createProvider: mocks.createProvider,
   };
   mocks.runtimes.push(runtime);
   return runtime;
@@ -106,6 +116,9 @@ beforeEach(() => {
   mocks.chats.length = 0;
   mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
   mocks.refreshLiteUsername.mockResolvedValue(undefined);
+  mocks.registerCoreStoragePermissionProvider.mockResolvedValue(mocks.unregisterRefresh);
+  mocks.waitForCoreStoragePermissionRefresh.mockResolvedValue(undefined);
+  mocks.createProvider.mockResolvedValue(mocks.provider);
 });
 
 describe('page core wallet mode', () => {
@@ -158,7 +171,7 @@ describe('page core wallet mode', () => {
     expect(mocks.createHostCallbacks).toHaveBeenCalledWith(expect.objectContaining({ local: true }));
   });
 
-  it('As a local wallet user, I open a product and its permissions are answered without the signing worker', async () => {
+  it('As a local wallet user, my native core remains authoritative for permission decisions', async () => {
     // Given
     mocks.readWalletBoot.mockResolvedValue(WALLET);
     const { acquireCore } = await loadPageCore();
@@ -169,7 +182,55 @@ describe('page core wallet mode', () => {
     // Then
     await expect(
       mocks.runtimes[0]?.getPermissionAuthorizationStatuses('app.dot', [{ tag: 'IdentityDisclosure' }]),
-    ).resolves.toEqual(['NotDetermined']);
+    ).resolves.toEqual(['Denied']);
+  });
+
+  it('As a Media connection, I share core storage and refresh permissions until I close', async () => {
+    mocks.readWalletBoot.mockResolvedValue(null);
+    const { acquireCore } = await loadPageCore();
+    const lease = await acquireCore();
+    const media = {
+      platform: {} as PageCoreNamespace.ConnectionMedia['platform'],
+      authChanged: vi.fn(),
+      observeStorage: vi.fn(),
+    };
+    const connection = await lease.connect('App', { media });
+    const callbacks = mocks.createProvider.mock.calls[0]?.[1] as RequiredHostCallbacks;
+    const original = mocks.createHostCallbacks.mock.results[0]?.value as { coreStorage: CoreStorage };
+    const registrationStorage = mocks.registerCoreStoragePermissionProvider.mock.calls[0]?.[0] as CoreStorage;
+    expect(callbacks.media).toBe(media.platform);
+    expect(callbacks.coreStorage).toBe(original.coreStorage);
+    expect(callbacks.coreStorage).not.toBe(registrationStorage);
+    expect(mocks.registerCoreStoragePermissionProvider).toHaveBeenCalledWith(
+      registrationStorage,
+      connection.productId,
+      mocks.provider,
+    );
+
+    const state: AuthState = { tag: 'Disconnected' };
+    callbacks.auth.authStateChanged(state);
+    expect(media.authChanged).toHaveBeenCalledExactlyOnceWith(state);
+    const request = { tag: 'Device', value: 'Camera' } as const;
+    const key: CoreStorageKey = {
+      tag: 'PermissionAuthorization',
+      value: { productId: connection.productId, request },
+    };
+    registrationStorage.readCoreStorage = vi.fn().mockResolvedValue(undefined);
+    await callbacks.coreStorage.readCoreStorage(key);
+    expect(media.observeStorage).toHaveBeenCalledExactlyOnceWith(key);
+    await connection.waitForPermissionRefresh(request);
+    expect(mocks.waitForCoreStoragePermissionRefresh).toHaveBeenCalledWith(
+      registrationStorage,
+      connection.productId,
+      request,
+    );
+    connection.close();
+    connection.close();
+    expect(mocks.unregisterRefresh).toHaveBeenCalledTimes(1);
+    expect(mocks.provider.dispose).toHaveBeenCalledTimes(1);
+    callbacks.auth.authStateChanged(state);
+    expect(media.authChanged).toHaveBeenCalledTimes(1);
+    lease.release();
   });
 
   it('As a Polkadot App user, I boot a core that keeps my paired session', async () => {

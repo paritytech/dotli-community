@@ -274,12 +274,10 @@ export function waitForCoreStoragePermissionRefresh(
 function withPhysicalCoreSlot<T>(slot: string, operation: () => Promise<T>, atomic: boolean): Promise<T> {
   const locks = navigator.locks as LockManager | null | undefined;
   if (locks === null || locks === undefined) {
-    // Only compare-exchange needs cross-document atomicity; it fails closed.
-    // Plain reads, writes and clears are last-writer-wins and stay usable.
+    // Ordinary operations remain usable; compare-exchange must fail closed.
     return atomic ? Promise.reject(new Error('Atomic cross-document core storage is unavailable')) : operation();
   }
-  // Never pass a caller's AbortSignal: dropping a core future must not release
-  // this lock while its encryption/storage callback is still in flight.
+  // A dropped core future must not release the lock while persistence is still in flight.
   return locks.request(`dotli:core-slot:${slot}`, operation);
 }
 
@@ -289,7 +287,7 @@ export function createSessionStoreAdapters(options: SessionStoreOptions = {}): C
   const group = createCorePermissionRefreshGroup(coreLocalStorageKey);
   // The protocol frame serializes the shared auth session; other browser slots
   // serialize on a Web Lock across this origin's documents.
-  const locked = async <T>(key: CoreStorageKey, operation: () => Promise<T>, atomic = false): Promise<T> =>
+  const locked = <T>(key: CoreStorageKey, operation: () => Promise<T>, atomic = false): Promise<T> =>
     key.tag === 'AuthSession' ? operation() : withPhysicalCoreSlot(coreLocalStorageKey(key), operation, atomic);
   const storage: CoreStorage = {
     async readCoreStorage(key) {
@@ -306,11 +304,11 @@ export function createSessionStoreAdapters(options: SessionStoreOptions = {}): C
       }
     },
     async compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess) {
-      let changed: boolean;
       if (skips(key)) {
-        // The in-memory session slot always reads absent and drops writes.
-        changed = expected === undefined;
-      } else if (key.tag === 'AuthSession') {
+        return expected === undefined;
+      }
+      let changed: boolean;
+      if (key.tag === 'AuthSession') {
         changed = await compareExchangeSharedAuthStorage(
           SITE_ID,
           SHARED_CORE_SESSION_KEY,
@@ -341,7 +339,7 @@ export function createSessionStoreAdapters(options: SessionStoreOptions = {}): C
           true,
         );
       }
-      // Enqueued before completion, even if the requesting core future was dropped.
+      // Enqueue even if the requesting core future was dropped.
       if (changed && notifyOnSuccess) {
         group.notify(key);
       }
@@ -489,7 +487,7 @@ async function decodeCoreStorageValue(
     if (bytes === undefined) {
       return undefined;
     }
-    // A compare-exchange probe runs under the slot lock and must not rewrite it.
+    // An atomic comparison must leave the probed slot unchanged.
     if (migrate) {
       log.event('re-encrypting legacy plaintext core storage', { flow: 'wallet', slot: key.tag });
       localStorage.setItem(coreLocalStorageKey(key), await encodeCoreStorageValue(key, bytes));

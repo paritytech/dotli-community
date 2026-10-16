@@ -185,6 +185,7 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   return {
     coreStorage(storage) {
       return directory.observeStorage({
+        ...storage,
         async readCoreStorage(key) {
           if (!isCustodySlot(key)) {
             return storage.readCoreStorage(key);

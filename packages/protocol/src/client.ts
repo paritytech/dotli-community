@@ -896,7 +896,6 @@ export function subscribeLocalWalletChanged(listener: () => void): () => void {
     localWalletChangedListeners.delete(listener);
   };
 }
-
 /**
  * Hears shared-auth writes from sibling tabs of the same root domain, relayed by the host iframe
  * over `BroadcastChannel`. A tab's own writes do not arrive here.

@@ -559,7 +559,7 @@ function buildCoreCallbacks(coreId) {
         },
     };
 }
-let runtime = null;
+let host = null;
 const cores = new Map();
 // Outstanding receiveFrame calls per core. wasm-bindgen holds a borrow of the
 // core for the whole duration of an async method, so `free()` throws while one
@@ -575,16 +575,16 @@ let allowanceGeneration = 0;
 const allowanceOperations = new Set();
 const nativeChatContactsOperations = new Set();
 function handleNativeChatContacts(requestId) {
-    const rt = runtime;
+    const rt = host?.role === "signing" ? host.runtime : null;
     const generation = allowanceGeneration;
     const operation = (async () => {
         try {
-            if (!rt || !isSigningRuntime(rt)) {
+            if (!rt) {
                 throw new Error("native Chat contacts are unsupported on a pairing host");
             }
             const activation = rt.localIdentityContext().activationId;
             const snapshot = await rt.getNativeChatContacts();
-            if (runtime !== rt ||
+            if (host?.runtime !== rt ||
                 generation !== allowanceGeneration ||
                 rt.localIdentityContext().activationId !== activation) {
                 throw new Error("local identity activation changed");
@@ -609,17 +609,17 @@ function handleNativeChatContacts(requestId) {
     void operation.finally(() => nativeChatContactsOperations.delete(operation));
 }
 function handleWalletAllowanceSnapshot(requestId, input) {
-    const rt = runtime;
+    const rt = host?.role === "signing" ? host.runtime : null;
     const generation = allowanceGeneration;
     const operation = (async () => {
         try {
-            if (!rt || !isSigningRuntime(rt) || allowanceNetworkSuffix === null) {
+            if (!rt || allowanceNetworkSuffix === null) {
                 throw new Error("wallet allowance inspection requires a signing runtime");
             }
             const productIds = validateAllowanceProductIds(input);
             const context = rt.localIdentityContext();
             const snapshot = await rt.getWalletAllowanceSnapshot(context.activationId, productIds);
-            if (runtime !== rt ||
+            if (host?.runtime !== rt ||
                 generation !== allowanceGeneration ||
                 rt.localIdentityContext().activationId !== context.activationId) {
                 throw new Error("local identity activation changed during allowance inspection");
@@ -645,8 +645,8 @@ function handleWalletAllowanceSnapshot(requestId, input) {
     void operation.finally(() => allowanceOperations.delete(operation));
 }
 function handleLocalIdentity(requestId, registration) {
-    const rt = runtime;
-    if (!rt || !isSigningRuntime(rt) || identityAbort) {
+    const rt = host?.role === "signing" ? host.runtime : null;
+    if (!rt || identityAbort) {
         postToMain({
             kind: "localIdentityResponse",
             requestId,
@@ -690,12 +690,6 @@ function handleLocalIdentity(requestId, registration) {
     identityOperations.add(operation);
     void operation.finally(() => identityOperations.delete(operation));
 }
-function isPairingRuntime(candidate) {
-    return "cancelPairing" in candidate;
-}
-function isSigningRuntime(candidate) {
-    return "activateLocalSession" in candidate;
-}
 (async () => {
     try {
         wasm = await wasmModulePromise;
@@ -717,7 +711,7 @@ ctx.addEventListener("message", (ev) => {
                 });
                 break;
             }
-            if (runtime) {
+            if (host) {
                 postToMain({
                     kind: "fatalError",
                     error: "init: runtime already initialized",
@@ -751,10 +745,16 @@ ctx.addEventListener("message", (ev) => {
                     if (typeof hostConfig?.networkSuffix === "string") {
                         allowanceNetworkSuffix = hostConfig.networkSuffix;
                     }
-                    runtime = new SigningRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig);
+                    host = {
+                        role: "signing",
+                        runtime: new SigningRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig),
+                    };
                 }
                 else {
-                    runtime = new wasm.WasmPairingHostRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig);
+                    host = {
+                        role: "pairing",
+                        runtime: new wasm.WasmPairingHostRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig),
+                    };
                 }
                 postToMain({ kind: "ready", schema: coreWireSchemaHash(wasm) });
             }
@@ -763,7 +763,7 @@ ctx.addEventListener("message", (ev) => {
             }
             break;
         case "createCore":
-            if (!runtime) {
+            if (!host) {
                 postToMain({
                     kind: "coreError",
                     coreId: msg.coreId,
@@ -772,7 +772,7 @@ ctx.addEventListener("message", (ev) => {
                 break;
             }
             try {
-                const core = runtime.productRuntime(msg.product, buildCoreCallbacks(msg.coreId), msg.capabilities === undefined
+                const core = host.runtime.productRuntime(msg.product, buildCoreCallbacks(msg.coreId), msg.capabilities === undefined
                     ? undefined
                     : buildRawCallbacks(msg.capabilities, msg.coreId));
                 cores.set(msg.coreId, core);
@@ -801,9 +801,9 @@ ctx.addEventListener("message", (ev) => {
             void handleDisconnectSession(msg.requestId);
             break;
         case "cancelPairing":
-            if (runtime && isPairingRuntime(runtime)) {
-                runtime.cancelPairing();
-            }
+            // A signing host has no pairing to cancel.
+            if (host?.role === "pairing")
+                host.runtime.cancelPairing();
             break;
         case "getSessionChatIdentityKey":
             handleGetSessionChatIdentityKey(msg.requestId);
@@ -818,42 +818,32 @@ ctx.addEventListener("message", (ev) => {
             void handleGetProductSubtreePublicKey(msg.requestId, msg.productId, msg.timeoutMs);
             break;
         case "notifySessionStoreChanged":
-            if (runtime && isPairingRuntime(runtime)) {
-                runtime.notifySessionStoreChanged();
-            }
+            // Only a pairing host restores its session from the store.
+            if (host?.role === "pairing")
+                host.runtime.notifySessionStoreChanged();
             break;
         case "notifyContactsChanged":
-            runtime?.notifyContactsChanged();
+            host?.runtime.notifyContactsChanged();
             break;
         case "acquireWorker":
-            runtime?.acquireWorker(msg.productId);
+            host?.runtime.acquireWorker(msg.productId);
             break;
         case "releaseWorker":
-            runtime?.releaseWorker(msg.productId);
+            host?.runtime.releaseWorker(msg.productId);
             break;
         case "activateStoredSession":
-            void handleSessionActivation(msg.requestId, "activateStoredSession", (rt) => isPairingRuntime(rt)
-                ? rt.activateStoredSession()
-                : Promise.reject(new Error("pairing runtime is not active")));
+            void handleSessionActivation(msg.requestId, "activateStoredSession", (booted) => pairingRuntime(booted, "activateStoredSession").activateStoredSession());
             break;
         case "activateExternalSession": {
             const { blob } = msg;
-            void handleSessionActivation(msg.requestId, "activateExternalSession", (rt) => isPairingRuntime(rt)
-                ? rt.activateExternalSession(blob)
-                : Promise.reject(new Error("pairing runtime is not active")));
+            void handleSessionActivation(msg.requestId, "activateExternalSession", (booted) => pairingRuntime(booted, "activateExternalSession").activateExternalSession(blob));
             break;
         }
         case "activateLocalSession": {
             identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;
-            void handleSessionActivation(msg.requestId, "activateLocalSession", (rt) => {
-                const signing = rt;
-                if (typeof signing.activateLocalSession !== "function") {
-                    // A pairing host has no local secret to activate; saying so beats
-                    // a TypeError about an undefined function.
-                    return Promise.reject(new Error("activateLocalSession needs a signing host; this runtime is " +
-                        'a pairing host (pass role: "signing" to init)'));
-                }
+            void handleSessionActivation(msg.requestId, "activateLocalSession", (booted) => {
+                const signing = signingRuntime(booted, "activateLocalSession");
                 // Activating with a name is a separate core entry point. Fall back
                 // when the name is absent, or when a core predating it is loaded.
                 if (liteUsername !== undefined &&
@@ -866,8 +856,8 @@ ctx.addEventListener("message", (ev) => {
         }
         case "setGrantAllowancesUnchecked": {
             const { granted } = msg;
-            void handleSessionActivation(msg.requestId, "setGrantAllowancesUnchecked", (rt) => {
-                const signing = rt;
+            void handleSessionActivation(msg.requestId, "setGrantAllowancesUnchecked", (booted) => {
+                const signing = signingRuntime(booted, "setGrantAllowancesUnchecked");
                 if (typeof signing.setGrantAllowancesUnchecked !== "function") {
                     return Promise.reject(new Error("setGrantAllowancesUnchecked needs a signing host built with " +
                         "`test-host`; this core does not carry it"));
@@ -879,20 +869,20 @@ ctx.addEventListener("message", (ev) => {
         }
         case "setSubmitPreimagesLocally": {
             const { local } = msg;
-            void handleSessionActivation(msg.requestId, "setSubmitPreimagesLocally", (rt) => {
-                if (typeof rt.setSubmitPreimagesLocally !== "function") {
+            void handleSessionActivation(msg.requestId, "setSubmitPreimagesLocally", ({ runtime }) => {
+                if (typeof runtime.setSubmitPreimagesLocally !== "function") {
                     return Promise.reject(new Error("setSubmitPreimagesLocally needs a core built with " +
                         "`test-host`; this core does not carry it"));
                 }
-                rt.setSubmitPreimagesLocally(local);
+                runtime.setSubmitPreimagesLocally(local);
                 return Promise.resolve();
             }, false);
             break;
         }
         case "setWithheldResources": {
             const { tags } = msg;
-            void handleSessionActivation(msg.requestId, "setWithheldResources", (rt) => {
-                const signing = rt;
+            void handleSessionActivation(msg.requestId, "setWithheldResources", (booted) => {
+                const signing = signingRuntime(booted, "setWithheldResources");
                 if (typeof signing.setWithheldResources !== "function") {
                     return Promise.reject(new Error("setWithheldResources needs a signing host built with " +
                         "`test-host`; this core does not carry it"));
@@ -903,16 +893,13 @@ ctx.addEventListener("message", (ev) => {
             break;
         }
         case "resetSessionState":
-            void handleSessionActivation(msg.requestId, "resetSessionState", (rt) => isPairingRuntime(rt)
-                ? rt.resetSessionState()
-                : Promise.reject(new Error("pairing runtime is not active")));
+            void handleSessionActivation(msg.requestId, "resetSessionState", (booted) => pairingRuntime(booted, "resetSessionState").resetSessionState());
             break;
         case "activateLocalSessionWithIdentity": {
             identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;
-            void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (rt) => isSigningRuntime(rt)
-                ? rt.activateLocalSessionWithIdentity(secret, liteUsername)
-                : Promise.reject(new Error("signing runtime is not active")));
+            void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (booted) => signingRuntime(booted, "activateLocalSessionWithIdentity")
+                .activateLocalSessionWithIdentity(secret, liteUsername));
             break;
         }
         case "refreshLocalIdentity":
@@ -928,16 +915,16 @@ ctx.addEventListener("message", (ev) => {
             handleNativeChatContacts(msg.requestId);
             break;
         case "getPermissionAuthorizationStatus":
-            void handleGetPermissionAuthorizationStatus(runtime, postToMain, msg.productId, msg.requestId, msg.request);
+            void handleGetPermissionAuthorizationStatus(host?.runtime ?? null, postToMain, msg.productId, msg.requestId, msg.request);
             break;
         case "getPermissionAuthorizationStatuses":
-            void handleGetPermissionAuthorizationStatuses(runtime, postToMain, msg.productId, msg.requestId, msg.requests);
+            void handleGetPermissionAuthorizationStatuses(host?.runtime ?? null, postToMain, msg.productId, msg.requestId, msg.requests);
             break;
         case "setPermissionAuthorizationStatus":
-            void handleSetPermissionAuthorizationStatus(runtime, postToMain, msg.productId, msg.requestId, msg.request, msg.status);
+            void handleSetPermissionAuthorizationStatus(host?.runtime ?? null, postToMain, msg.productId, msg.requestId, msg.request, msg.status);
             break;
         case "refreshPermissionAuthorization":
-            void handleRefreshPermissionAuthorization(runtime, postToMain, msg.productId, msg.requestId, msg.request);
+            void handleRefreshPermissionAuthorization(host?.runtime ?? null, postToMain, msg.productId, msg.requestId, msg.request);
             break;
         case "callbackResponse": {
             const cb = pendingCallbacks.get(msg.requestId);
@@ -992,10 +979,10 @@ ctx.addEventListener("message", (ev) => {
             break;
         case "dispose": {
             // Null the runtime synchronously so a message arriving mid-disposal takes
-            // its `if (!runtime)` path instead of calling into a runtime being torn
+            // its `if (!host)` path instead of calling into a runtime being torn
             // down; free the captured handle after the cores finish disposing.
-            const disposing = runtime;
-            runtime = null;
+            const disposing = host;
+            host = null;
             allowanceGeneration++;
             identityAbort?.abort(new Error("runtime disposed"));
             connectionsDisposed = true;
@@ -1009,13 +996,13 @@ ctx.addEventListener("message", (ev) => {
             }
             void (async () => {
                 try {
-                    if (disposing && isSigningRuntime(disposing))
-                        await disposing.disconnectSession();
+                    if (disposing?.role === "signing")
+                        await disposing.runtime.disconnectSession();
                     await Promise.allSettled(identityOperations);
                     await Promise.allSettled(allowanceOperations);
                     await Promise.allSettled(nativeChatContactsOperations);
                     await Promise.all([...cores.keys()].map((coreId) => disposeCore(coreId)));
-                    disposing?.free();
+                    disposing?.runtime.free();
                 }
                 catch (err) {
                     postToMain({ kind: "disposeError", error: errorMessage(err) });
@@ -1043,8 +1030,21 @@ async function disposeCore(coreId) {
         postToMain({ kind: "disposeError", error: errorMessage(err) });
     }
 }
+function pairingRuntime(booted, label) {
+    if (booted.role === "signing") {
+        throw new Error(`${label} needs a pairing host; this runtime is a signing host`);
+    }
+    return booted.runtime;
+}
+function signingRuntime(booted, label) {
+    if (booted.role === "pairing") {
+        throw new Error(`${label} needs a signing host; this runtime is a pairing host ` +
+            '(pass role: "signing" to init)');
+    }
+    return booted.runtime;
+}
 async function handleSessionActivation(requestId, label, activate, changesIdentity = true) {
-    if (!runtime) {
+    if (!host) {
         postToMain({
             kind: "sessionActivationResponse",
             requestId,
@@ -1058,7 +1058,7 @@ async function handleSessionActivation(requestId, label, activate, changesIdenti
         identityAbort?.abort(new Error("local identity activation changed"));
     }
     try {
-        await activate(runtime);
+        await activate(host);
         postToMain({ kind: "sessionActivationResponse", requestId, ok: true });
     }
     catch (err) {
@@ -1071,7 +1071,7 @@ async function handleSessionActivation(requestId, label, activate, changesIdenti
     }
 }
 async function handleDisconnectSession(requestId) {
-    if (!runtime) {
+    if (!host) {
         postToMain({
             kind: "disconnectSessionResponse",
             requestId,
@@ -1083,7 +1083,7 @@ async function handleDisconnectSession(requestId) {
     allowanceGeneration++;
     identityAbort?.abort(new Error("local identity disconnected"));
     try {
-        await runtime.disconnectSession();
+        await host.runtime.disconnectSession();
         postToMain({ kind: "disconnectSessionResponse", requestId, ok: true });
     }
     catch (err) {
@@ -1096,7 +1096,7 @@ async function handleDisconnectSession(requestId) {
     }
 }
 function handleGetSessionChatIdentityKey(requestId) {
-    if (!runtime) {
+    if (!host) {
         postToMain({
             kind: "sessionChatIdentityKeyResponse",
             requestId,
@@ -1110,7 +1110,7 @@ function handleGetSessionChatIdentityKey(requestId) {
             kind: "sessionChatIdentityKeyResponse",
             requestId,
             ok: true,
-            key: runtime.sessionChatIdentityKey(),
+            key: host.runtime.sessionChatIdentityKey(),
         });
     }
     catch (err) {
@@ -1123,7 +1123,7 @@ function handleGetSessionChatIdentityKey(requestId) {
     }
 }
 function handleGetDeviceStatementKey(requestId) {
-    if (!runtime) {
+    if (!host) {
         postToMain({
             kind: "deviceStatementKeyResponse",
             requestId,
@@ -1137,7 +1137,7 @@ function handleGetDeviceStatementKey(requestId) {
             kind: "deviceStatementKeyResponse",
             requestId,
             ok: true,
-            key: runtime.deviceStatementKey(),
+            key: pairingRuntime(host, "getDeviceStatementKey").deviceStatementKey(),
         });
     }
     catch (err) {
@@ -1150,7 +1150,7 @@ function handleGetDeviceStatementKey(requestId) {
     }
 }
 async function handleGetProductSubtreePublicKey(requestId, productId, timeoutMs) {
-    if (!runtime) {
+    if (!host) {
         postToMain({
             kind: "productSubtreePublicKeyResponse",
             requestId,
@@ -1164,7 +1164,7 @@ async function handleGetProductSubtreePublicKey(requestId, productId, timeoutMs)
             kind: "productSubtreePublicKeyResponse",
             requestId,
             ok: true,
-            key: await runtime.productSubtreePublicKey(productId, timeoutMs),
+            key: await host.runtime.productSubtreePublicKey(productId, timeoutMs),
         });
     }
     catch (err) {
@@ -1177,7 +1177,7 @@ async function handleGetProductSubtreePublicKey(requestId, productId, timeoutMs)
     }
 }
 async function handleGetDeviceEncryptionKey(requestId) {
-    if (!runtime) {
+    if (!host) {
         postToMain({
             kind: "deviceEncryptionKeyResponse",
             requestId,
@@ -1191,7 +1191,7 @@ async function handleGetDeviceEncryptionKey(requestId) {
             kind: "deviceEncryptionKeyResponse",
             requestId,
             ok: true,
-            key: await runtime.deviceEncryptionKey(),
+            key: await host.runtime.deviceEncryptionKey(),
         });
     }
     catch (err) {

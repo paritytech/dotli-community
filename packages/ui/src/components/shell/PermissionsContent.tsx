@@ -171,7 +171,6 @@ export function PermissionsContent(): JSX.Element {
     );
   };
 
-  /** Receives the focus handed back once a reset disables it. */
   let resetButton: HTMLButtonElement | undefined;
   const [resetting, setResetting] = createSignal(false);
 

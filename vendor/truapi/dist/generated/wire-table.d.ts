@@ -178,6 +178,11 @@ export declare const CHAT_ACTION_SUBSCRIBE: {
     readonly method: 4;
     readonly kind: "subscription";
 };
+export declare const CHAT_SET_ROOM_FOOTER: {
+    readonly trait: 4;
+    readonly method: 6;
+    readonly kind: "request";
+};
 export declare const COIN_PAYMENT_CREATE_PURSE: {
     readonly trait: 5;
     readonly method: 0;

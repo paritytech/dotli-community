@@ -347,7 +347,7 @@ function hex(bytes) {
  * did.
  */
 export function createMockHost(config = {}) {
-    const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, faults = {}, supportedChains = {
+    const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, faults = {}, scanner, supportedChains = {
         network: "mock",
         chains: [
             { identifier: "People", genesisHash: MOCK_GENESIS.people },
@@ -355,6 +355,7 @@ export function createMockHost(config = {}) {
             { identifier: "AssetHub", genesisHash: MOCK_GENESIS.assetHub },
         ],
     }, } = config;
+    const scan = scanner === undefined ? undefined : { answer: scanner };
     const storage = new Map();
     const coreStorageChanges = [];
     const preimages = new Map();
@@ -443,13 +444,6 @@ export function createMockHost(config = {}) {
         });
         return approved;
     };
-    // Product keys are namespaced from core slots so neither can shadow the other.
-    // This in-JS key scheme is internal and independent from the Rust MockPlatform's
-    // (state never crosses the boundary), so the two need not match byte-for-byte.
-    // What they do have to share is which slots are distinct: keying on the tag
-    // alone would put every product's manifest in one slot, so a test writing one
-    // product's and reading another's reads back the wrong one here and a miss on
-    // Rust.
     const productKey = (key) => `product:${key}`;
     const coreKey = (key) => key.value === undefined
         ? `core:${key.tag}`
@@ -458,26 +452,11 @@ export function createMockHost(config = {}) {
             `core:${key.tag}:${JSON.stringify(key.value, (_, inner) => inner !== null && typeof inner === "object" && !Array.isArray(inner)
                 ? Object.fromEntries(Object.entries(inner).sort(([left], [right]) => left.localeCompare(right)))
                 : inner)}`;
-    /**
-     * Drop the core's stored answer for `permission`, so the next request asks
-     * again.
-     *
-     * The core answers a settled permission from its own storage without calling
-     * the host, which is the real behaviour. It also means that changing the
-     * mock's answer after the first request changes nothing a product can see:
-     * the decision it is now going to get was recorded before. A suite setting an
-     * answer is saying what the host should reply, so the recorded one has to go
-     * with it.
-     *
-     * Matched on the serialised key because the mock holds keys as strings: every
-     * permission is named in its own key, a device one as `"Camera"` and a remote
-     * one as `"ChainSubmit"`, so the quoted name selects that permission's slots
-     * and no others.
-     */
+    /** Replacing a mock decision must invalidate the core's settled answer. */
     const forgetStoredAuthorization = (permission) => {
         const prefix = "core:PermissionAuthorization:";
         const needle = JSON.stringify(permission);
-        for (const key of [...storage.keys()]) {
+        for (const key of storage.keys()) {
             if (key.startsWith(prefix) && key.includes(needle))
                 storage.delete(key);
         }
@@ -671,6 +650,15 @@ export function createMockHost(config = {}) {
             async scheduleGameReminder() { },
             async cancelGameReminder() { },
         },
+        ...(scan === undefined
+            ? {}
+            : {
+                scanner: {
+                    async scanCode() {
+                        return scan.answer;
+                    },
+                },
+            }),
         permissions: {
             async devicePermission(_product, request) {
                 if (faults.permissionError)
@@ -825,6 +813,10 @@ export function createMockHost(config = {}) {
                 });
                 return { messageId };
             },
+            async setChatRoomFooter() {
+                if (faults.chatError)
+                    throw new Error(faults.chatError);
+            },
             subscribeChatRooms() {
                 // The other chat calls fail with this reason, so the subscription
                 // reports it too rather than handing back a stream that looks healthy
@@ -963,6 +955,12 @@ export function createMockHost(config = {}) {
             enforcePermissions = enforce;
         },
         getTheme: () => currentTheme,
+        setScanAnswer: (answer) => {
+            if (scan === undefined) {
+                throw new Error("this mock serves no scanner: create it with a `scanner` answer");
+            }
+            scan.answer = answer;
+        },
         setTheme: (variant) => {
             currentTheme = variant;
             const item = {

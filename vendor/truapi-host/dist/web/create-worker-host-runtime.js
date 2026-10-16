@@ -1133,6 +1133,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                         media: typeof host.media?.mediaBackendCapabilities === "function" &&
                             typeof host.media?.mediaBackendEvents === "function" &&
                             typeof host.media?.mediaBackendCommand === "function",
+                        scanner: host.scanner !== undefined,
                     },
                     debuggerUrl: debuggerDial,
                 });

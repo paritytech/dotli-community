@@ -172,126 +172,124 @@ export async function handleCoreCustody(
     await owner.released;
     return;
   }
-  let result: Uint8Array | Blob | boolean | undefined;
-  await assertLocalWallet(owner.wallet);
-  if (leases.get(operation.lease) !== owner) {
-    throw new Error('Private custody lease changed');
-  }
-  const db = await openDatabase();
-  try {
-    if (operation.action === 'putSources') {
-      // IndexedDB commits immutable Blob snapshots without materializing an
-      // entire attachment as a JavaScript byte array. No names or paths persist.
-      await transaction(db, 'readwrite', store => {
-        let last: IDBRequest<IDBValidKey> | undefined;
-        for (const source of operation.sources) {
-          last = store.add(
-            source.blob.slice(0, source.blob.size, 'application/octet-stream'),
-            `source:${source.sourceId}`,
-          );
-        }
-        if (!last) {
-          throw new Error('No Chat sources supplied');
-        }
-        return last;
-      });
-      return;
-    }
-    if (operation.action === 'readSource') {
-      const blob: unknown = await transaction(db, 'readonly', store => store.get(`source:${operation.sourceId}`));
-      if (blob !== undefined && !(blob instanceof Blob)) {
-        throw new Error('Private Chat source is corrupt');
-      }
-      return blob;
-    }
-    if (operation.action === 'releaseSource') {
-      await transaction(db, 'readwrite', store => store.delete(`source:${operation.sourceId}`));
-      return;
-    }
-    const storageKey = `core:${operation.key}`;
-    if (operation.action === 'clear') {
-      await transaction(db, 'readwrite', store => store.delete(storageKey));
-      return;
-    }
-    const storedKey: unknown = await transaction(db, 'readonly', store => store.get(KEY));
-    const stored: unknown =
-      operation.action === 'write' ? undefined : await transaction(db, 'readonly', store => store.get(storageKey));
-    if (operation.action === 'read' && stored === undefined) {
-      return;
-    }
-    let key: CryptoKey;
-    if (storedKey === undefined) {
-      if (stored !== undefined) {
-        throw new Error('Private custody encryption key is missing');
-      }
-      const existing = await transaction(db, 'readonly', store => store.count(IDBKeyRange.bound('core:', 'core;')));
-      if (existing > 0) {
-        throw new Error('Private custody encryption key is missing');
-      }
-      key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-      await transaction(db, 'readwrite', store => store.add(key, KEY));
-    } else {
-      if (
-        !(storedKey instanceof CryptoKey) ||
-        storedKey.type !== 'secret' ||
-        storedKey.algorithm.name !== 'AES-GCM' ||
-        storedKey.extractable
-      ) {
-        throw new Error('Private custody encryption key is invalid');
-      }
-      key = storedKey;
-    }
-    const additionalData = new TextEncoder().encode(storageKey);
-    const decrypt = async (record: unknown): Promise<Uint8Array> => {
-      if (!(record instanceof Uint8Array) || record.length < 28) {
-        throw new Error('Private custody record is corrupt');
-      }
-      // Failure is not absence: never delete/recreate an undecryptable purse or device.
-      return new Uint8Array(
-        await crypto.subtle.decrypt(
-          {
-            name: 'AES-GCM',
-            iv: new Uint8Array(record.subarray(0, 12)),
-            additionalData,
-          },
-          key,
-          new Uint8Array(record.subarray(12)),
-        ),
-      );
-    };
-    if (operation.action === 'read') {
-      result = await decrypt(stored);
-      return result;
-    }
-    if (operation.action === 'compareExchange') {
-      // The custody lock above serializes this read with every write and clear.
-      const current = stored === undefined ? null : await decrypt(stored);
-      const expected = operation.expected;
-      const matches =
-        current === null || expected === null
-          ? current === expected
-          : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
-      if (!matches) {
-        return false;
-      }
-    }
-    const value = operation.action === 'write' ? operation.value : operation.replacement;
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ciphertext = new Uint8Array(
-      await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData }, key, new Uint8Array(value)),
-    );
-    const record = new Uint8Array(iv.length + ciphertext.length);
-    record.set(iv);
-    record.set(ciphertext, iv.length);
+  // The lifetime lock selects an owner. This separate lock also serializes overlapping
+  // read/decrypt/write operations and operations still settling during a lease handover.
+  return navigator.locks.request(`${CUSTODY_LOCK}:operation`, { mode: 'exclusive' }, async () => {
+    await assertLocalWallet(owner.wallet);
     if (leases.get(operation.lease) !== owner) {
       throw new Error('Private custody lease changed');
     }
-    await transaction(db, 'readwrite', store => store.put(record, storageKey));
-    if (operation.action === 'compareExchange') {
-      result = true;
+    const db = await openDatabase();
+    try {
+      if (operation.action === 'putSources') {
+        // IndexedDB commits immutable Blob snapshots without materializing an
+        // entire attachment as a JavaScript byte array. No names or paths persist.
+        await transaction(db, 'readwrite', store => {
+          let last: IDBRequest<IDBValidKey> | undefined;
+          for (const source of operation.sources) {
+            last = store.add(
+              source.blob.slice(0, source.blob.size, 'application/octet-stream'),
+              `source:${source.sourceId}`,
+            );
+          }
+          if (!last) {
+            throw new Error('No Chat sources supplied');
+          }
+          return last;
+        });
+        return;
+      }
+      if (operation.action === 'readSource') {
+        const blob: unknown = await transaction(db, 'readonly', store => store.get(`source:${operation.sourceId}`));
+        if (blob !== undefined && !(blob instanceof Blob)) {
+          throw new Error('Private Chat source is corrupt');
+        }
+        return blob;
+      }
+      if (operation.action === 'releaseSource') {
+        await transaction(db, 'readwrite', store => store.delete(`source:${operation.sourceId}`));
+        return;
+      }
+      const storageKey = `core:${operation.key}`;
+      if (operation.action === 'clear') {
+        await transaction(db, 'readwrite', store => store.delete(storageKey));
+        return;
+      }
+      const storedKey: unknown = await transaction(db, 'readonly', store => store.get(KEY));
+      const stored: unknown =
+        operation.action === 'write' ? undefined : await transaction(db, 'readonly', store => store.get(storageKey));
+      if (operation.action === 'read' && stored === undefined) {
+        return;
+      }
+      let key: CryptoKey;
+      if (storedKey === undefined) {
+        if (stored !== undefined) {
+          throw new Error('Private custody encryption key is missing');
+        }
+        const existing = await transaction(db, 'readonly', store => store.count(IDBKeyRange.bound('core:', 'core;')));
+        if (existing > 0) {
+          throw new Error('Private custody encryption key is missing');
+        }
+        key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+        await transaction(db, 'readwrite', store => store.add(key, KEY));
+      } else {
+        if (
+          !(storedKey instanceof CryptoKey) ||
+          storedKey.type !== 'secret' ||
+          storedKey.algorithm.name !== 'AES-GCM' ||
+          storedKey.extractable
+        ) {
+          throw new Error('Private custody encryption key is invalid');
+        }
+        key = storedKey;
+      }
+      const additionalData = new TextEncoder().encode(storageKey);
+      const decrypt = async (record: unknown): Promise<Uint8Array> => {
+        if (!(record instanceof Uint8Array) || record.length < 28) {
+          throw new Error('Private custody record is corrupt');
+        }
+        // Failure is not absence: never delete/recreate an undecryptable purse or device.
+        return new Uint8Array(
+          await crypto.subtle.decrypt(
+            {
+              name: 'AES-GCM',
+              iv: new Uint8Array(record.subarray(0, 12)),
+              additionalData,
+            },
+            key,
+            new Uint8Array(record.subarray(12)),
+          ),
+        );
+      };
+      if (operation.action === 'read') {
+        return await decrypt(stored);
+      }
+      if (operation.action === 'compareExchange') {
+        const current = stored === undefined ? null : await decrypt(stored);
+        const expected = operation.expected;
+        const matches =
+          current === null || expected === null
+            ? current === expected
+            : current.length === expected.length && current.every((byte, index) => byte === expected[index]);
+        if (!matches) {
+          return false;
+        }
+      }
+      const value = operation.action === 'write' ? operation.value : operation.replacement;
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = new Uint8Array(
+        await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData }, key, new Uint8Array(value)),
+      );
+      const record = new Uint8Array(iv.length + ciphertext.length);
+      record.set(iv);
+      record.set(ciphertext, iv.length);
+      if (leases.get(operation.lease) !== owner) {
+        throw new Error('Private custody lease changed');
+      }
+      await transaction(db, 'readwrite', store => store.put(record, storageKey));
+      return operation.action === 'compareExchange' ? true : undefined;
+    } finally {
+      db.close();
     }
-  } finally {
-    db.close();
-  }
-  return result;
+  });
 }

@@ -87,7 +87,7 @@ interface Core {
   runtime: Promise<WorkerPairingHostRuntime>;
   leases: number;
   faulted: boolean;
-  /** The session-store adapters, before any observing wrapper. */
+  /** The session-store adapter before the Chat and Media observing wrappers. */
   permissionStorage(): CoreStorage;
   /** Callbacks scoped to one product connection, so its prompts end with it. */
   openCallbacks(options: CoreConnectionOptions): { callbacks: RequiredHostCallbacks; dispose(): void };
@@ -233,8 +233,8 @@ function createCore(product: PageProduct): Core {
       profileSignal: () => profileLifetime.signal,
       contactsDirectory: chat?.contactsDirectory,
     });
-    const sessionStorage = coreCallbacks.coreStorage;
-    permissionStorage = sessionStorage;
+    const storage = coreCallbacks.coreStorage;
+    permissionStorage = storage;
     // Live Media connections learn the persisted Calling scopes the core uses,
     // so trusted settings can list and revoke them.
     const observePermission = (key: CoreStorageKey): void => {
@@ -245,17 +245,17 @@ function createCore(product: PageProduct): Core {
       }
     };
     coreCallbacks.coreStorage = {
-      ...sessionStorage,
+      ...storage,
       readCoreStorage: key => {
         observePermission(key);
-        return sessionStorage.readCoreStorage(key);
+        return storage.readCoreStorage(key);
       },
       writeCoreStorage: async (key, value) => {
-        await sessionStorage.writeCoreStorage(key, value);
+        await storage.writeCoreStorage(key, value);
         observePermission(key);
       },
       compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => {
-        const changed = await sessionStorage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
+        const changed = await storage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
         if (changed) {
           observePermission(key);
         }
@@ -472,7 +472,6 @@ async function connect(
     if (!cores.has(core)) {
       throw new Error('Page core closed while connecting the product');
     }
-    // Decisions persisted by any core sharing this storage reach this one.
     unregisterRefresh = await registerCoreStoragePermissionProvider(storage, productId, provider);
     if (!cores.has(core)) {
       unregisterRefresh();

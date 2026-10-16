@@ -34,7 +34,7 @@ const NO_PAYMENT_SEAM = "is not available in the TrUAPI test host: the protocol 
     "to record or simulate. See docs/rfcs/0006-payments.md.";
 /** Why login behaviour is fixed once the host page has booted. */
 const LOGIN_BEHAVIOR_IS_CONSTRUCTION_TIME = "cannot be changed after boot in the TrUAPI test host: the host page reads " +
-    "it once at start. Pass `loginBehavior: \"auto\" | \"manual\"` to " +
+    'it once at start. Pass `loginBehavior: "auto" | "manual"` to ' +
     "createTestHostFixture instead.";
 /** Why a product account cannot be pinned to a chosen key. */
 const NO_PINNED_PRODUCT_ACCOUNT = "is not supported by the TrUAPI test host: a product account is DERIVED " +
@@ -211,7 +211,9 @@ export function createTestHostFixture(defaults) {
         ? fromNetworks(chains, loopbackStatements)
         : undefined;
     // Explicit settings win over anything derived from `networks`.
-    const mock = expanded ? { ...expanded.mock, ...defaults.mock } : defaults.mock;
+    const mock = expanded
+        ? { ...expanded.mock, ...defaults.mock }
+        : defaults.mock;
     const runtimeConfig = expanded
         ? { ...expanded.runtimeConfig, ...defaults.runtimeConfig }
         : defaults.runtimeConfig;
@@ -306,6 +308,7 @@ export function createTestHostFixture(defaults) {
                 clearPreimages: () => call("clearPreimages"),
                 getTheme: () => call("getTheme"),
                 setTheme: (variant) => call("setTheme", variant),
+                setScanAnswer: (answer) => call("setScanAnswer", answer),
                 getIsAuthenticated: () => call("getIsAuthenticated"),
                 getChainStatus: () => call("getChainStatus"),
                 getConnectionStatus: () => call("getConnectionStatus"),
