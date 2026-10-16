@@ -11,11 +11,9 @@ export type StatusCallback = (status: string) => void;
 export type BitswapBlockSource = (cid: string) => Promise<Uint8Array>;
 
 import { isCarFile, parseIpfsResponse, walkUnixFsDag, type ArchiveFiles, type BlockSource } from './archive.js';
+import { DAG_PB, RAW } from './codecs.js';
 import { defaultGateway, fetchFromIpfs, fetchCarFromIpfs, gatewayHost } from './ipfs.js';
 import { assertBlockMatchesCid, rootVerifyingBlockSource, verifyingBlockSource } from './verify.js';
-
-const CODEC_DAG_PB = 0x70;
-const CODEC_RAW = 0x55;
 
 async function fetchViaBitswapRpc(
   cidString: string,
@@ -61,12 +59,12 @@ async function readViaBitswap(
   verifiedSource: BlockSource,
   onStatus?: StatusCallback,
 ): Promise<FetchResult> {
-  if (rootCid.code === CODEC_RAW) {
+  if (rootCid.code === RAW) {
     onStatus?.('Fetching block via bitswap...');
     return readRawRoot(await verifiedSource(rootCid));
   }
 
-  if (rootCid.code === CODEC_DAG_PB) {
+  if (rootCid.code === DAG_PB) {
     onStatus?.('Walking dag-pb via bitswap...');
     return toFetchResult(await walkUnixFsDag(rootCid, verifiedSource));
   }
@@ -108,7 +106,7 @@ async function readViaGateway(
   const cid = CID.parse(cidString);
   const gateway = defaultGateway();
   const host = gatewayHost(gateway);
-  if (cid.code === CODEC_DAG_PB) {
+  if (cid.code === DAG_PB) {
     onStatus?.('Fetching archive from IPFS gateway...');
     log.event(`Requesting CAR of ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();
@@ -123,7 +121,7 @@ async function readViaGateway(
     const files = await parseIpfsResponse(carBuffer, cid);
     return toFetchResult(files);
   }
-  if (cid.code === CODEC_RAW) {
+  if (cid.code === RAW) {
     onStatus?.('Fetching content via IPFS gateway...');
     log.event(`Requesting raw block ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();

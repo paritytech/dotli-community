@@ -7,6 +7,7 @@ import { UnixFS } from 'ipfs-unixfs';
 import type { CID } from 'multiformats/cid';
 import { concatBytes } from '@noble/hashes/utils.js';
 import { createAsyncTaskPool, log } from '@dotli/shared';
+import { DAG_PB, RAW } from './codecs.js';
 import { assertBlockMatchesCid, assertSameContentId, verifyingBlockSource } from './verify.js';
 
 export type ArchiveFiles = Record<string, Uint8Array>;
@@ -49,9 +50,6 @@ export function isCarFile(buffer: Uint8Array): boolean {
     buffer[headerStart + 6] === 0x73
   );
 }
-
-const DAG_PB = 0x70;
-const RAW = 0x55;
 
 /** Throws when it cannot deliver the block. The walker never retries, so retries belong to the source. */
 export type BlockSource = (cid: CID) => Promise<Uint8Array>;
