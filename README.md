@@ -271,7 +271,8 @@ run, and runs the same host-product suite used in CI.
 ### Running an approved build
 
 Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published tag is what the hosted dotli deployment
-runs). To reproduce a specific approved version from a fresh checkout:
+runs). Pushing a `vX.Y.Z` tag deploys it to `paseo.li` and `testnet.li`, and the release is published with generated
+notes only after both deploys succeed. To reproduce a specific approved version from a fresh checkout:
 
 ```bash
 git checkout v0.5.0       # any published release tag

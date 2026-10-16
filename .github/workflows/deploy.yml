@@ -5,8 +5,7 @@ on:
     types: [labeled, synchronize]
   push:
     branches: [main]
-  release:
-    types: [published]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
 permissions:
   contents: read
@@ -26,19 +25,21 @@ jobs:
           ADDED_LABEL: ${{ github.event.label.name }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           # PR labels may target only these development environments.
           ALLOWED='["paseoli.dev","paseo.fyi"]'
           case "$EVENT_NAME" in
-            release)
-              echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
-              echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-              ;;
             push)
-              echo 'environments=["paseoli.dev"]' >> "$GITHUB_OUTPUT"
-              echo "ref=" >> "$GITHUB_OUTPUT"
+              if [ "$REF_TYPE" = "tag" ]; then
+                echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
+                echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
+              else
+                echo 'environments=["paseoli.dev"]' >> "$GITHUB_OUTPUT"
+                echo "ref=" >> "$GITHUB_OUTPUT"
+              fi
               ;;
             pull_request)
               # On `labeled` only the added label counts, on `synchronize` every label on the PR.
@@ -114,9 +115,9 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Sync package versions to release tag
-        if: github.event_name == 'release'
+        if: github.ref_type == 'tag'
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: node scripts/set-version.ts "$RELEASE_TAG"
 
       # No VITE_COMMIT_SHA: the build reads it from the checkout, which is the PR head on a PR deploy.
@@ -141,3 +142,37 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+  # The release goes out only once every environment runs the tag, so its announcement never runs ahead of the deploy.
+  publish-release:
+    name: Publish release
+    needs: deploy
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        # A re-run after a failed artifacts build finds the release already published.
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null; then
+            echo "Release $TAG is already published"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG"
+          fi
+
+  # A release published with the workflow token starts no workflow, so the artifacts build is called here.
+  release-artifacts:
+    name: Release artifacts
+    needs: publish-release
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/release-artifacts.yml
+    with:
+      tag: ${{ github.ref_name }}
+      latest: true

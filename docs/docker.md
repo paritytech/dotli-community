@@ -249,9 +249,9 @@ and a read-only mount makes the entrypoint's write fail.
 
 ## How releases are built
 
-`.github/workflows/release-artifacts.yml` builds both artifacts on
-`release: published`, and accepts a tag via `workflow_dispatch` for releases
-published before it existed (a tag-triggered run cannot backfill one). The tarball and the image build only
+`.github/workflows/release-artifacts.yml` builds both artifacts. The deploy
+calls it once the release is published, and it accepts a tag via `workflow_dispatch` for releases
+published before it existed. The tarball and the image build only
 after the same checks as a PR pass on the tag.
 
 Two build settings are load-bearing, and the workflow asserts both rather than
@@ -272,8 +272,8 @@ config.
 
 The image is built on native runners per architecture (`linux/amd64`,
 `linux/arm64`) and joined into one manifest list. There is no macOS container
-platform. Apple Silicon runs `linux/arm64`. `latest` only moves for a real,
-non-prerelease publish, so backfilling an old tag by hand cannot repoint it.
+platform. Apple Silicon runs `linux/arm64`. `latest` only moves for a release the
+deploy publishes, so backfilling an old tag by hand cannot repoint it.
 
 The image has no `.git`, so the workflow passes the tag's version and commit as the `RELEASE_VERSION` and
 `RELEASE_COMMIT` build arguments, and `host_version.json` and the diagnostics report the release. A local

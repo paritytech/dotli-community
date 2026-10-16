@@ -1,11 +1,20 @@
 name: Release artifacts
 
-# Attaches a runnable tarball to the release and pushes the image to GHCR. `workflow_dispatch` backfills an existing
-# tag.
+# Attaches a runnable tarball to the release and pushes the image to GHCR. The deploy calls it once the release is
+# published, and `workflow_dispatch` backfills an existing tag.
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Published release tag to build and attach artifacts to'
+        required: true
+        type: string
+      latest:
+        description: 'Move the image `latest` tag to this release'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
@@ -18,7 +27,7 @@ permissions:
   packages: write # push to ghcr.io
 
 concurrency:
-  group: release-artifacts-${{ inputs.tag || github.event.release.tag_name }}
+  group: release-artifacts-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
@@ -37,22 +46,15 @@ jobs:
     steps:
       - id: tag
         env:
-          INPUT_TAG: ${{ inputs.tag }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          TAG: ${{ inputs.tag }}
+          # Only the release flow moves `latest`. A manual backfill of an older tag must not repoint it.
+          LATEST: ${{ inputs.latest == true }}
         run: |
           set -euo pipefail
-          TAG="${INPUT_TAG:-$RELEASE_TAG}"
           test -n "$TAG" || { echo "No tag to build"; exit 1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          # `latest` only moves for a real, non-prerelease publish. A manual
-          # backfill of an older tag must not repoint it.
-          if [ -n "$RELEASE_TAG" ] && [ "$IS_PRERELEASE" != "true" ]; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "latest=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
 
   # The PR checks' own scripts, as the deploy gate runs them. The builds below do not type-check.
   quality-gate:
