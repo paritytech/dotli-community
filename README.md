@@ -380,10 +380,10 @@ never a mutable URL claimed as immutable content. A session without an optional 
 authenticated root public key. OS notifications carry only an opaque token; the existing host service worker records
 activation before focusing or opening the host entry page. It does not navigate the product's route.
 
-The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
-`{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
-consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
-product, account, network or artifact cannot read or acknowledge the retained activation.
+The vendored TrUAPI host serves `notifications.send` and `notifications.cancel` only; it carries no product-facing
+activation feed, which belongs to the separate generic notification feature. The retained activation records stay scoped
+to the product execution, authenticated account, network and artifact, and another product, account, network or artifact
+cannot read them.
 
 Notification authority follows live native auth transitions, not the UI-state cache or shared-session storage hints. An
 unchanged stored-session reload emits no new auth transition and leaves ordinary notifications usable. A native account
@@ -423,6 +423,8 @@ replies from the docked chat panel, and each reply reaches the product as a `Mes
 persist in IndexedDB on the product origin and never leave the device. The core denies chat calls without an active
 session, so chat requires being logged in. The localhost debug paths enable chat unconditionally so local products can
 be tested without publishing a manifest.
+Products may select a room's footer with `chat.set_room_footer`: `Empty` hides the reply composer, while `TextInput`
+retains it. Recreating an existing room updates its name and icon without resetting that preference.
 
 Custom messages (`ChatMessageContent::Custom`) render live: when a custom message cell scrolls into view, the panel asks
 the product to draw it through the Renderer service (`renderer.render`, with a `ChatMessage` render context) and renders
@@ -440,7 +442,11 @@ local wallet is the active signer. With a Polkadot App session the phone holds C
 private slots and offers no contacts.
 
 The local wallet core keeps Chat's main purse, device records, attachment chunks and product index in the protocol
-origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Records are authenticated-encrypted with a
+origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Each Chat app's Chat access grant is kept
+there too, under the wallet and People network, because the core checks it before any product page's contact picker lists that app's
+contacts. Every other grant stays in the host `localStorage` of the product page that asked for it. The profile
+disclosure, the received profile references and the host channel's peer keys sit in custody as well: a profile is shared
+from one product page and relayed, posted or shown from another. Records are authenticated-encrypted with a
 non-extractable key; immutable attachment source Blobs are host-private but not encrypted at rest. They never enter
 product storage or the product RPC interface. Each core takes a custody lease for the wallet it booted, named by a
 domain-separated hash of the wallet's entropy, and every operation rechecks the stored wallet, so forgetting or
@@ -448,6 +454,14 @@ replacing it ends the lease's authority. A Web Lock admits one holder per browse
 same page waits for its predecessor to release, and a core in another tab is refused after a bounded wait, so its Chat
 operations fail while the tab's other products keep working. There is no handover between tabs at this layer. Closing a
 product connection does not stop receiving while the page core remains alive.
+
+On upgrade, the first read of a root-and-network-bound profile disclosure or received-reference slot copies the existing
+product-origin bytes through the session storage adapter into custody. A newer custody value wins. The source is cleared
+only after the value and a durable migration marker are saved; that marker prevents a later clear from resurrecting a stale
+copy on another product origin. Operations on the same custody slot are serialized, including migration.
+Legacy Chat permission records have no wallet or network provenance. Their bytes remain untouched in the original
+storage, but they cannot authorize the current or a replacement identity: Chat asks for fresh consent. New decisions are
+shared across product pages only for their own product, wallet and People network.
 
 Each payment requires a new host review of the authenticated product and recipient, exact amount, maximum debit
 including fees, selected chain and Coinage asset, and payment operation. Chat or automatic-signing grants never approve

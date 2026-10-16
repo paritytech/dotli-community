@@ -87,6 +87,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `AccountAccess:${request.value.targetProductId}`;
     case 'Calling':
       return 'Calling';
+    case 'CrossProductSignature':
+      return `CrossProductSignature:${request.value.targetProductId}:${request.value.kind}`;
   }
 }
 

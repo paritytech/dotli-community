@@ -210,6 +210,44 @@ describe('chain pool brokering', () => {
     expect(release.params[0]).toBe('up-tx');
   });
 
+  it('routes a legacy author_submitAndWatchExtrinsic watch to its session and releases it on disconnect', () => {
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote('asset-hub', 'conn-a', message => messages.push(message));
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'author_submitAndWatchExtrinsic',
+        params: ['0x0102'],
+      }),
+    );
+
+    const upstreamRequest = harness.sent[0] as { id: string; method: string };
+    expect(upstreamRequest.method).toBe('author_submitAndWatchExtrinsic');
+    harness.emit({ jsonrpc: '2.0', id: upstreamRequest.id, result: 'up-legacy' });
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'author_extrinsicUpdate',
+      params: { subscription: 'up-legacy', result: { inBlock: '0xabc' } },
+    });
+
+    const response = JSON.parse(messages[0] ?? '{}') as { result: string };
+    expect(JSON.parse(messages[1] ?? '{}')).toEqual({
+      jsonrpc: '2.0',
+      method: 'author_extrinsicUpdate',
+      params: { subscription: response.result, result: { inBlock: '0xabc' } },
+    });
+
+    connection?.disconnect();
+
+    const release = harness.sent[1] as { method: string; params: string[] };
+    expect(release.method).toBe('author_unwatchExtrinsic');
+    expect(release.params[0]).toBe('up-legacy');
+  });
+
   it('delivers transactionWatch events received before the subscribe response', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);

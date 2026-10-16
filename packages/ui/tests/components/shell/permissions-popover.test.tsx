@@ -47,6 +47,7 @@ function nameOf(request: PermissionAuthorizationRequest): string {
     case 'ProfileDisclosure':
     case 'Calling':
     case 'AutomaticPreimageSubmit':
+    case 'CrossProductSignature':
       return request.tag;
   }
 }
