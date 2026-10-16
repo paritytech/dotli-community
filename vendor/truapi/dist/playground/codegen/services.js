@@ -732,7 +732,7 @@ export const services = [
                 type: "unary",
                 signature: "submit(request: HexString): Promise<Result<HexString, S.CallErrorValue<VersionedRemotePreimageSubmitError>>>",
                 docUrl: "api/preimage/trait.Preimage.html#method.submit",
-                description: "Submit a preimage. Returns the preimage key (hash) on success.\n\nRequires the `PreimageSubmit` permission and raises no per-upload\nconfirmation. `AllowAlways` covers every upload; `AllowOnce` covers a\nsingle upload. Allocating or renewing the Bulletin allowance may still\nask the paired wallet.",
+                description: "Submit a preimage. Returns the preimage key (hash) on success.\n\nRequires the `PreimageSubmit` permission. Upload consent is separate\nfrom that capability grant. The host reviews each upload unless an\nexplicit bounded automatic-upload policy approves it. Allocating or\nrenewing the Bulletin allowance may also require approval.",
                 requestDescription: "HexString",
                 exampleSource: 'const value = `0x${crypto.getRandomValues(new Uint8Array(4)).toHex()}` as `0x${string}`;\nconst result = await truapi.preimage.submit(value);\nassert(result.isOk(), "submit failed:", result);\nconsole.log("preimage submitted:", result.value);',
             },

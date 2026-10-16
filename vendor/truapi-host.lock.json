@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/pvm-app-runtime",
-  "upstreamRevision": "4301f50e29b78ba117a1b9d0827ba6d492411352",
+  "upstreamRevision": "e7c0f6be7b66774afa3a4edc7f08e1fba736b332",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.25.0",
-      "sourceArchiveSha256": "9b5d98175c770c46ac1f26012873bdbc34ba1f97b8385c2bce0584857f655a10",
-      "clientSha256": "a9a1a6fedde69ec1835cdcada055c8b914065e3c1444bd3d66a9b8e716aaea21"
+      "sourceArchiveSha256": "ff22194101bb59532c39bc95811d894353473e3cb4710fa998ff16f72cb3b60f",
+      "clientSha256": "3bb821fe4639723b89a61c0dfa4224bdd60956bd0216bd21eb7a7b51f86f4926"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
@@ -27,6 +27,6 @@
       }
     }
   },
-  "wasmUpstreamRevision": "4301f50e29b78ba117a1b9d0827ba6d492411352",
+  "wasmUpstreamRevision": "e7c0f6be7b66774afa3a4edc7f08e1fba736b332",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/540"
 }
