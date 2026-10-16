@@ -233,6 +233,7 @@ export function registryProviders(records: RegistryRecord[]): CacheProvider[] {
       if (record.region !== '') {
         provider.region = record.region;
       }
+      provider.operator = record.operator;
       return provider;
     });
 }

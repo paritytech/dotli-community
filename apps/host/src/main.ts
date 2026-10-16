@@ -40,6 +40,8 @@ import {
   initScheduledNotifications,
   loadTruapiDebugMount,
   loadBridge,
+  readSiteBlock,
+  setDotNameResolver,
 } from '@dotli/ui';
 
 import type { LoadingPhase, ShieldState, BridgeModule as RenderModule } from '@dotli/ui';
@@ -98,6 +100,7 @@ import {
   SITE_ID,
   isLocalhost,
   setBackend,
+  getBackend,
   isVerifiedSession,
   getCacheSettings,
   type Backend,
@@ -302,6 +305,17 @@ function loadRpcResolve(): Promise<RpcResolveModule> {
   });
   return ready;
 }
+
+// A product can keep a site by its name on cache nodes (Preimage.retain). The host resolves the name as a load does,
+// `app.<label>` first, so the product keeps the CID that the host loads.
+setDotNameResolver(async label => {
+  const resolve =
+    getBackend() === 'rpc-gateway'
+      ? (await loadRpcResolve()).resolveDotNameViaRpc
+      : (name: string) => resolveDotNameRemote(name);
+  return (await resolve(`app.${label}`)) ?? (await resolve(label));
+});
+
 type RenderChunk = RenderModule;
 
 /**
@@ -738,9 +752,10 @@ async function main(): Promise<void> {
   const blockCache = cacheSettings.skipArchiveCache
     ? undefined
     : { get: getCachedBlock, put: putCachedBlock, delete: deleteCachedBlock };
-  const blocksServed = { cache: 0, network: 0 };
+  const blocksServed = { cache: 0, 'cache-node': 0, network: 0 };
   listenForSandboxBitswap({
     ...(blockCache !== undefined ? { blockCache } : {}),
+    cacheNodeBlock: cid => readSiteBlock(cid),
     onBlockServed: from => {
       blocksServed[from] += 1;
     },
@@ -748,8 +763,8 @@ async function main(): Promise<void> {
   if (blockCache !== undefined) {
     // Fires once per page load, on the first sandbox done.
     onSandboxDone(() => {
-      const { cache: hits, network: misses } = blocksServed;
-      if (hits + misses === 0) {
+      const { cache: hits, 'cache-node': cacheNodes, network: misses } = blocksServed;
+      if (hits + cacheNodes + misses === 0) {
         return;
       }
       emitDotliDebugEvent({
@@ -757,7 +772,7 @@ async function main(): Promise<void> {
         event: 'block_cache',
         flowId: bootFlowId,
         timestamp: Date.now(),
-        payload: { hits, misses },
+        payload: { hits, misses, cacheNodes },
       });
       m.count(misses === 0 ? S.CACHE_HIT : S.CACHE_MISS, {
         surface: 'block_cache',

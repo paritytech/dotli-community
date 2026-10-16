@@ -63,11 +63,14 @@ async function cacheAccountText(): Promise<string> {
   try {
     const account = await nodes.account();
     const node = account.provider.name ?? account.provider.api;
+    const read =
+      account.readPricePerMib === 0 ? String(account.readPrice) : `${String(account.readPricePerMib)} for each MiB`;
+    const unit = account.retentionUnitSecs === 86_400 ? 'MiB-day' : 'MiB-hour';
     return (
       `Payer ${account.payer.slice(0, 8)}… at node ${node}: allowance ${String(account.allowance)} of ` +
       `${String(account.allowancePerDay)} left today (${String(account.allowanceRetention)} for retention), ` +
-      `${String(account.paid)} paid. A read costs ${String(account.readPrice)}; retention ` +
-      `${String(account.retentionPrice)} for each MiB-hour.`
+      `${String(account.paid)} paid. A read costs ${read}; retention ` +
+      `${String(account.retentionPrice)} for each ${unit}.`
     );
   } catch (error) {
     return `The ledger of the cache nodes did not answer: ${String(error)}`;

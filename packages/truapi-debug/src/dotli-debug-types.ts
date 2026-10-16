@@ -249,6 +249,8 @@ export type BootEvent =
         /** Blocks the relay answered from the host's block cache. */
         hits: number;
         misses: number;
+        /** Blocks the relay answered from cache nodes. */
+        cacheNodes?: number;
       };
     }
   | {

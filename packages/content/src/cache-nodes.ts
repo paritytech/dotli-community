@@ -14,12 +14,17 @@
 //
 // Retention: the payer pays a provider in advance to keep content until a time. It signs a retention authorization
 // for the size and the window, and the provider fetches the content, checks it against its CID, keeps it and charges.
+// A lease is retention by the day. The payer signs one lease authorization with the most that it pays for one day. The
+// provider charges day 0 at the pin and each next day itself, until the end of the lease or until the payer stops it.
 
+import * as dagPb from '@ipld/dag-pb';
+import { CID } from 'multiformats/cid';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { getPublicKey, secretFromSeed, sign } from '@scure/sr25519';
 import { log } from '@dotli/shared';
 
 import { parseMagnet, type TorrentListedFile, torrentId, verifySpan } from './torrent.js';
+import { blockMatchesCid } from './verify.js';
 
 /** One provider of the provider set that a browser can call. */
 export interface CacheProvider {
@@ -29,6 +34,16 @@ export interface CacheProvider {
   api: string;
   name?: string;
   region?: string;
+  /** The operator account of the provider (0x and 64 hex digits), from the registry. */
+  operator?: string;
+}
+
+/** A provider as a person can pick it: whether it is a home node of the content, and what the host measured. */
+export interface CacheProviderChoice {
+  provider: CacheProvider;
+  home: boolean;
+  latencyMs?: number;
+  failedRecently: boolean;
 }
 
 /** Where a provider got the content: its own store, another provider (by endpoint id), or Bulletin. */
@@ -53,7 +68,7 @@ export interface CacheServed {
   providerMs?: number;
   /** The provider's trace of its steps (`x-cache-trace`), as JSON text. */
   trace?: string;
-  /** The price of the read in the provider's ledger (`x-cache-price`), which the receipt pays. */
+  /** The price of the read in the provider's ledger (`x-cache-price`) for the bytes that it sent. The receipt pays it. */
   price?: number;
 }
 
@@ -69,8 +84,14 @@ export interface CacheAccount {
   paid: number;
   allowancePerDay: number;
   retentionAllowancePerDay: number;
+  /** The price of one read, when `readPricePerMib` is 0. */
   readPrice: number;
+  /** When not 0, a read costs this for each started MiB, and `readPrice` does not apply. */
+  readPricePerMib: number;
+  /** The price of retention for each started MiB and each started unit of `retentionUnitSecs`. */
   retentionPrice: number;
+  /** The unit of time of `retentionPrice` in seconds: 3600 (MiB-hour) or 86400 (MiB-day). */
+  retentionUnitSecs: number;
 }
 
 /** What a provider keeps after a pin: the end, the size that the retention paid for, the chunks and the charge. */
@@ -79,10 +100,94 @@ export interface CacheRetention {
   /** Unix seconds. */
   until: number;
   size: number;
-  /** The chunks of a chunked file that the provider keeps with its manifest. */
+  /** The blocks that the provider keeps with the first one: the chunks of a chunked file, or the blocks of a DAG. */
   chunks: number;
   charged: number;
+  /** `fetching`: the provider still gets the pieces in the background, and charges when it has all of them. */
+  state: 'kept' | 'fetching';
+  /** The id of a pin in the background, for `pinProgress`. */
+  pinId?: string;
+  /** The provider charges one day at a time, and `until` is the end of the paid day. */
+  lease?: boolean;
 }
+
+/** One retention of the payer, as the ledger records it and as its provider holds it. */
+export interface CacheLease {
+  content: string;
+  /** The provider of the provider set, or only its endpoint id when the set does not have it. */
+  provider: CacheProvider | { id: string };
+  from: number;
+  /** The end that the payer chose. For a lease that renews, the end of the paid days. */
+  until: number;
+  /** The end of the time that the payer paid for. */
+  paidUntil: number;
+  /** For a lease: the price of one day. 0 for a retention that the payer paid in advance. */
+  perDay: number;
+  /** The provider renews the lease each day until the payer stops it. */
+  renews: boolean;
+  size: number;
+  charged: number;
+  state: 'kept' | 'fetching' | 'lost' | 'ended' | 'unknown';
+  /** The blocks that the provider keeps for it, and for a fetch the pieces that it has. */
+  pieces: number;
+  total: number;
+}
+
+/** The progress of a pin in the background at a provider. */
+export interface CachePinProgress {
+  state: 'fetching' | 'kept' | 'failed';
+  pieces: number;
+  totalPieces: number;
+  bytes: number;
+  totalBytes: number;
+  retention?: CacheRetention;
+  error?: CacheRetainError;
+}
+
+/**
+ * The raw CID of the block that `cid` names: the same multihash with the raw codec. A provider serves and keeps one block
+ * of a dag-pb DAG under this CID. Bulletin finds a block by its multihash, so it answers it too.
+ */
+export function rawTwin(cid: string): string {
+  const parsed = CID.parse(cid);
+  return parsed.code === RAW_CODEC ? parsed.toV1().toString() : CID.createV1(RAW_CODEC, parsed.multihash).toString();
+}
+
+/** A CID in its CIDv1 text form. Throws for text that is not a CID. */
+export function normalCid(text: string): string {
+  return CID.parse(text.trim()).toV1().toString();
+}
+
+/** Whether `cid` names a dag-pb block. */
+export function isDagPb(cid: string): boolean {
+  return CID.parse(cid).code === DAG_PB_CODEC;
+}
+
+/**
+ * The size that a retention of the DAG with the root block `root` pays for: the root block and the Tsize of each link,
+ * which is the size of all the blocks under it. Null when the block is not dag-pb, or a link has no Tsize.
+ */
+export function dagSize(root: Uint8Array): { size: number; links: number } | null {
+  let node: dagPb.PBNode;
+  try {
+    node = dagPb.decode(root);
+  } catch {
+    return null;
+  }
+  let size = root.length;
+  for (const link of node.Links) {
+    if (link.Tsize === undefined) {
+      return null;
+    }
+    size += link.Tsize;
+  }
+  return { size, links: node.Links.length };
+}
+
+const RAW_CODEC = 0x55;
+const DAG_PB_CODEC = 0x70;
+const PIN_POLL_MS = 1_000;
+const PIN_STATE_TIMEOUT_MS = 5_000;
 
 /** Why a provider did not keep content. */
 export type CacheRetainFailure = 'not-found' | 'period-too-long' | 'not-available' | 'failed';
@@ -117,12 +222,57 @@ export function pinError(status: number, text: string): CacheRetainError {
   return new CacheRetainError('failed', `${String(status)}: ${text}`);
 }
 
+/** A retention from the answer of a provider to a pin. */
+function retentionOf(provider: CacheProvider, reply: Record<string, unknown>): CacheRetention {
+  const count = (name: string): number => (typeof reply[name] === 'number' ? reply[name] : 0);
+  return {
+    provider,
+    until: count('until'),
+    size: count('size'),
+    chunks: count('chunks'),
+    charged: count('charged'),
+    state: 'kept',
+  };
+}
+
 const MIB = 1024 * 1024;
 const HOUR_SECS = 3600;
+export const DAY_SECS = 86_400;
 
-/** The price of retention as the ledger calculates it: `price` for each started MiB of `size` and started hour. */
-export function retentionPrice(size: number, secs: number, price: number): number {
-  return price * Math.max(1, Math.ceil(size / MIB)) * Math.ceil(secs / HOUR_SECS);
+/**
+ * The price of retention as the ledger calculates it: `price` for each started MiB of `size` and each started unit of
+ * `unitSecs`. The unit is an hour for ledgers that do not give it.
+ */
+export function retentionPrice(size: number, secs: number, price: number, unitSecs = HOUR_SECS): number {
+  return price * Math.max(1, Math.ceil(size / MIB)) * Math.ceil(secs / Math.max(1, unitSecs));
+}
+
+/** The price of one day of a lease of `size` bytes in the ledger of `account`. */
+export function leaseDayPrice(
+  size: number,
+  account: Pick<CacheAccount, 'retentionPrice' | 'retentionUnitSecs'>,
+): number {
+  return retentionPrice(size, DAY_SECS, account.retentionPrice, account.retentionUnitSecs);
+}
+
+/** The price of a read of `size` bytes: one price for each read, or a price for each started MiB. */
+export function readPrice(size: number, account: Pick<CacheAccount, 'readPrice' | 'readPricePerMib'>): number {
+  return account.readPricePerMib === 0
+    ? account.readPrice
+    : account.readPricePerMib * Math.max(1, Math.ceil(size / MIB));
+}
+
+/**
+ * The part of a retention `price` that the free allowance for retention pays, the part that paid credits pay, and the
+ * part that the payer cannot pay, as the ledger takes them.
+ */
+export function retentionSplit(
+  price: number,
+  account: Pick<CacheAccount, 'allowance' | 'allowanceRetention' | 'paid'>,
+): { free: number; paid: number; short: number } {
+  const free = Math.min(price, account.allowance, account.allowanceRetention);
+  const paid = Math.min(price - free, account.paid);
+  return { free, paid, short: price - free - paid };
 }
 
 /** The facts of a served read from the headers of the provider's answer. */
@@ -255,6 +405,10 @@ const PROVIDERS_TTL_MS = 60_000;
 const QUALITY_KEY = 'dotli:cache-quality';
 const READ_PREFIX = 'cache-read/1';
 const RECEIPT_PREFIX = 'cache-receipt/2';
+const LEASE_PREFIX = 'cache-receipt/3';
+const LEASES_PREFIX = 'cache-leases/1';
+const STOP_PREFIX = 'cache-stop/1';
+const ENROLL_PREFIX = 'cache-enroll/1';
 
 const encoder = new TextEncoder();
 
@@ -320,9 +474,22 @@ export function readMessage(fields: SignedFields & { issuedAt: number }): Uint8A
   return concat(signedFields(READ_PREFIX, fields), u64(fields.issuedAt));
 }
 
-/** The bytes that a payer signs for one delivery: the shared fields, service 0, and size, from and until, all 0. */
-export function receiptMessage(fields: SignedFields): Uint8Array {
-  return concat(signedFields(RECEIPT_PREFIX, fields), Uint8Array.of(0), u64(0), u64(0), u64(0));
+/** The bytes that a payer signs to list its retentions: the prefix, the payer key and `issuedAt` (Unix seconds). */
+export function leasesMessage(payer: string, issuedAt: number): Uint8Array {
+  return concat(encoder.encode(LEASES_PREFIX), fromHex(payer), u64(issuedAt));
+}
+
+/** The bytes that a new payer signs to join a ledger that enrolls payers: the same layout with its own prefix. */
+export function enrollMessage(payer: string, issuedAt: number): Uint8Array {
+  return concat(encoder.encode(ENROLL_PREFIX), fromHex(payer), u64(issuedAt));
+}
+
+/**
+ * The bytes that a payer signs for one delivery: the shared fields, service 0, the size that the payer checked, and
+ * from and until, both 0. A ledger that prices reads by the MiB charges for this size.
+ */
+export function receiptMessage(fields: SignedFields & { size: number }): Uint8Array {
+  return concat(signedFields(RECEIPT_PREFIX, fields), Uint8Array.of(0), u64(fields.size), u64(0), u64(0));
 }
 
 /**
@@ -336,6 +503,37 @@ export function retentionMessage(fields: SignedFields & { size: number; from: nu
     u64(fields.size),
     u64(fields.from),
     u64(fields.until),
+  );
+}
+
+/**
+ * The bytes that a payer signs for a lease: its own prefix, the layout of a retention with service 2, then `maxPerDay`
+ * (u64 LE), the most that the payer pays for one day. An `until` of 0 makes a lease that renews until the payer stops it.
+ */
+export function leaseMessage(
+  fields: SignedFields & { size: number; from: number; until: number; maxPerDay: number },
+): Uint8Array {
+  return concat(
+    signedFields(LEASE_PREFIX, fields),
+    Uint8Array.of(2),
+    u64(fields.size),
+    u64(fields.from),
+    u64(fields.until),
+    u64(fields.maxPerDay),
+  );
+}
+
+/**
+ * The bytes that a payer signs to stop its leases of one content on one provider: the prefix, the payer and provider
+ * keys, the content id (with its u32 LE length) and `issuedAt` (u64 LE).
+ */
+export function stopMessage(fields: Omit<SignedFields, 'transfer'> & { issuedAt: number }): Uint8Array {
+  return concat(
+    encoder.encode(STOP_PREFIX),
+    fromHex(fields.payer),
+    fromHex(fields.provider),
+    field(encoder.encode(fields.content)),
+    u64(fields.issuedAt),
   );
 }
 
@@ -459,6 +657,8 @@ export class CacheNodes {
   private known: { providers: CacheProvider[]; at: number } | null = null;
   private reads = 0;
   private transfers = 0;
+  // The retentions that a provider lost, by content and provider. Each one counts as one failure of the provider.
+  private readonly lost = new Set<string>();
   // The provider that downloads each torrent file for this page, by content id. Each read asks it first, so the
   // progress is that of one download.
   private readonly torrentProviders = new Map<string, string>();
@@ -499,6 +699,34 @@ export class CacheNodes {
     return (this.options.fetch ?? globalThis.fetch)(input, init);
   }
 
+  /**
+   * The provider set in the order for `contentId` (the home nodes of the content first), with what the host measured of
+   * each provider. Without a content id, the order for reads in general.
+   */
+  async choices(contentId?: string): Promise<CacheProviderChoice[]> {
+    const all = await this.providers();
+    const homes =
+      contentId === undefined
+        ? []
+        : homeNodes(
+            contentId,
+            all.map(provider => provider.id),
+          );
+    const now = Date.now();
+    return orderProviders(all, homes, this.quality, false, now).map(provider => {
+      const measured = this.quality.get(provider.id);
+      const choice: CacheProviderChoice = {
+        provider,
+        home: homes.includes(provider.id),
+        failedRecently: measured?.failedAt !== undefined && now - measured.failedAt < FAILURE_COOLDOWN_MS,
+      };
+      if (measured?.latencyMs !== undefined) {
+        choice.latencyMs = measured.latencyMs;
+      }
+      return choice;
+    });
+  }
+
   /** The measurements of each provider, for display. */
   measurements(): ReadonlyMap<string, CacheQuality> {
     return this.quality;
@@ -509,6 +737,24 @@ export class CacheNodes {
    * provider that sends bytes with the right hash serves the read, and gets a receipt.
    */
   async read(key: Uint8Array, cid: string, options: { only?: string } = {}): Promise<CacheRead> {
+    return this.readChecked(cid, value => compare(blake2b(value, { dkLen: 32 }), key) === 0, options);
+  }
+
+  /**
+   * Read one block of Bulletin by its CID, through the providers in quality order: a raw block, or one block of a
+   * dag-pb DAG (by its raw twin). The bytes must match the multihash of the CID. The provider that serves gets a
+   * receipt, as for a read.
+   */
+  async readBlock(cid: string, options: { only?: string } = {}): Promise<CacheRead> {
+    const twin = rawTwin(cid);
+    return this.readChecked(twin, value => blockMatchesCid(twin, value), options);
+  }
+
+  private async readChecked(
+    cid: string,
+    check: (value: Uint8Array) => boolean,
+    options: { only?: string },
+  ): Promise<CacheRead> {
     const all = await this.providers();
     const homes = homeNodes(
       cid,
@@ -549,7 +795,7 @@ export class CacheNodes {
         continue;
       }
       const value = new Uint8Array(await response.arrayBuffer());
-      if (compare(blake2b(value, { dkLen: 32 }), key) !== 0) {
+      if (!check(value)) {
         measured.failures += 1;
         measured.failedAt = Date.now();
         attempts.push({ provider, outcome: 'bad-bytes', ms: Date.now() - started });
@@ -562,7 +808,7 @@ export class CacheNodes {
       delete measured.failedAt;
       this.saveQuality();
       attempts.push({ provider, outcome: 'served', ms: latency });
-      this.pay(provider, cid, transfer);
+      this.pay(provider, cid, transfer, value.length);
       return { value, served: servedFrom(response, provider, rank, homes.includes(provider.id)), attempts };
     }
     this.saveQuality();
@@ -676,6 +922,19 @@ export class CacheNodes {
     return { attempts, file: selected, contentId };
   }
 
+  // A provider that lost paid content gets one failure for it, so the order of the host puts it later.
+  private penalize(id: string, content: string): void {
+    const key = `${content}|${id}`;
+    if (this.lost.has(key)) {
+      return;
+    }
+    this.lost.add(key);
+    const measured = this.measure(id);
+    measured.failures += 1;
+    measured.failedAt = Date.now();
+    this.saveQuality();
+  }
+
   private measure(id: string): CacheQuality {
     let measured = this.quality.get(id);
     if (!measured) {
@@ -741,7 +1000,7 @@ export class CacheNodes {
       delete measured.failedAt;
       this.saveQuality();
       const attempt: CacheAttempt = { provider, outcome: 'served', ms: Date.now() - started };
-      this.pay(provider, contentId, transfer);
+      this.pay(provider, contentId, transfer, span.length);
       const served = servedFrom(response, provider, rank, homes.includes(provider.id));
       return { attempt, value: checked.value, name: checked.name, files: checked.files, served };
     };
@@ -816,7 +1075,12 @@ export class CacheNodes {
     if (!response.ok) {
       throw new Error(`${String(response.status)}: ${(await response.text().catch(() => '')).slice(0, 200)}`);
     }
-    const quote = (await response.json()) as Record<string, unknown>;
+    let quote = (await response.json()) as Record<string, unknown>;
+    // A ledger that does not know this payer yet can enroll it, so it gets the daily allowance. A ledger that does not
+    // enroll payers refuses, and the account stays as it is.
+    if (quote['known'] === false && typeof quote['allowance_per_day'] === 'number' && quote['allowance_per_day'] > 0) {
+      quote = (await this.enroll(provider)) ?? quote;
+    }
     const count = (name: string): number => (typeof quote[name] === 'number' ? quote[name] : 0);
     return {
       payer: this.payer.id,
@@ -827,8 +1091,30 @@ export class CacheNodes {
       allowancePerDay: count('allowance_per_day'),
       retentionAllowancePerDay: count('retention_allowance_per_day'),
       readPrice: count('price'),
+      readPricePerMib: count('read_price_per_mib'),
       retentionPrice: count('retention_price'),
+      // An older ledger does not give the unit, and prices retention by the MiB-hour.
+      retentionUnitSecs: count('retention_unit_secs') || HOUR_SECS,
     };
+  }
+
+  /** Enroll the payer at the ledger of `provider`: its quote after the enrollment, or null when the ledger refuses. */
+  private async enroll(provider: CacheProvider): Promise<Record<string, unknown> | null> {
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const request = { payer: this.payer.id, issued_at: issuedAt };
+    const signature = toHex(sign(this.payer.secret, enrollMessage(this.payer.id, issuedAt)));
+    const response = await this.fetch(`${provider.api}/enroll`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request, signature }),
+      signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      log.debug(`[cache] ${provider.api} did not enroll payer ${this.payer.id}: ${String(response.status)}`);
+      return null;
+    }
+    log.debug(`[cache] ${provider.api} enrolled payer ${this.payer.id}`);
+    return (await response.json()) as Record<string, unknown>;
   }
 
   /**
@@ -856,15 +1142,38 @@ export class CacheNodes {
    * Pay `provider` in advance to keep the Bulletin preimage `cid` of `size` bytes for `periodSecs` from now. For a
    * chunked file, `cid` is the manifest and `size` the size of the manifest and all its chunks. The provider then keeps
    * the chunks too. A retention that a previous one covers costs 0.
+   *
+   * With `renew`, the payer signs a lease instead: the provider charges one day at a time until `periodSecs` from now,
+   * or with a `periodSecs` of 0 until the payer stops it. The lease pays at most `maxPerDay` for one day. Without
+   * `maxPerDay`, the limit is the price of one day in the ledger of the provider.
    */
-  async retain(provider: CacheProvider, cid: string, size: number, periodSecs: number): Promise<CacheRetention> {
+  async retain(
+    provider: CacheProvider,
+    cid: string,
+    size: number,
+    periodSecs: number,
+    options: { background?: boolean; waitMs?: number; renew?: boolean; maxPerDay?: number } = {},
+  ): Promise<CacheRetention> {
     const from = Math.floor(Date.now() / 1000);
-    const until = from + periodSecs;
+    const lease = options.renew === true;
+    const until = lease && periodSecs === 0 ? 0 : from + periodSecs;
     const fields = { transfer: this.transferId(), payer: this.payer.id, provider: provider.id, content: cid };
-    const signature = toHex(sign(this.payer.secret, retentionMessage({ ...fields, size, from, until })));
+    let authorization: { receipt: Record<string, unknown>; signature: string };
+    if (lease) {
+      const maxPerDay = options.maxPerDay ?? leaseDayPrice(size, await this.account({ only: provider.id }));
+      const signature = toHex(sign(this.payer.secret, leaseMessage({ ...fields, size, from, until, maxPerDay })));
+      authorization = {
+        receipt: { ...fields, service: 'Lease', size, from, until, max_per_day: maxPerDay },
+        signature,
+      };
+    } else {
+      const signature = toHex(sign(this.payer.secret, retentionMessage({ ...fields, size, from, until })));
+      authorization = { receipt: { ...fields, service: 'Retention', size, from, until }, signature };
+    }
     const body = {
       reference: { source: `bulletin:${cid}`, cid: null, size },
-      authorization: { receipt: { ...fields, service: 'Retention', size, from, until }, signature },
+      authorization,
+      ...(options.background === true ? { background: true } : {}),
     };
     const response = await this.fetch(`${provider.api}/pin`, {
       method: 'POST',
@@ -876,8 +1185,183 @@ export class CacheNodes {
       throw pinError(response.status, (await response.text().catch(() => '')).slice(0, 300));
     }
     const reply = (await response.json()) as Record<string, unknown>;
-    const count = (name: string): number => (typeof reply[name] === 'number' ? reply[name] : 0);
-    return { provider, until: count('until'), size: count('size'), chunks: count('chunks'), charged: count('charged') };
+    const leased = (retention: CacheRetention): CacheRetention => (lease ? { ...retention, lease: true } : retention);
+    if (response.status !== 202) {
+      return leased(retentionOf(provider, reply));
+    }
+    // The provider gets the pieces in the background. Wait for it a short time, then give its pin id.
+    const pinId = typeof reply['pin_id'] === 'string' ? reply['pin_id'] : fields.transfer;
+    const deadline = Date.now() + (options.waitMs ?? 20_000);
+    for (;;) {
+      const progress = await this.pinProgress(provider, pinId);
+      if (progress.state === 'kept' && progress.retention !== undefined) {
+        return leased(progress.retention);
+      }
+      if (progress.state === 'failed') {
+        throw progress.error ?? new CacheRetainError('failed', 'the provider could not keep the content');
+      }
+      if (Date.now() >= deadline) {
+        // A lease pays one day at the pin: the provider keeps the content until the end of that day.
+        const day = until === 0 ? from + DAY_SECS : Math.min(until, from + DAY_SECS);
+        return leased({
+          provider,
+          until: lease ? day : until,
+          size,
+          chunks: Math.max(0, progress.totalPieces - 1),
+          charged: 0,
+          state: 'fetching',
+          pinId,
+        });
+      }
+      await new Promise(resolve => setTimeout(resolve, PIN_POLL_MS));
+    }
+  }
+
+  /** The progress of the pin `pinId` in the background at `provider`. */
+  async pinProgress(provider: CacheProvider, pinId: string): Promise<CachePinProgress> {
+    const response = await this.fetch(`${provider.api}/pin/${encodeURIComponent(pinId)}`, {
+      signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw pinError(response.status, (await response.text().catch(() => '')).slice(0, 300));
+    }
+    const view = (await response.json()) as Record<string, unknown>;
+    const count = (name: string): number => (typeof view[name] === 'number' ? view[name] : 0);
+    const state = view['state'] === 'kept' ? 'kept' : view['state'] === 'failed' ? 'failed' : 'fetching';
+    const progress: CachePinProgress = {
+      state,
+      pieces: count('pieces'),
+      totalPieces: count('total_pieces'),
+      bytes: count('bytes'),
+      totalBytes: count('total_bytes'),
+    };
+    if (state === 'kept' && typeof view['pin'] === 'object' && view['pin'] !== null) {
+      progress.retention = retentionOf(provider, view['pin'] as Record<string, unknown>);
+    }
+    if (state === 'failed') {
+      progress.error = pinError(count('status') || 502, typeof view['error'] === 'string' ? view['error'] : '');
+    }
+    return progress;
+  }
+
+  /**
+   * The retentions of the payer, from the ledger of the provider `only` or of the first provider in quality order, with
+   * what each provider holds now (`GET /pin-state`). A provider that does not answer gives the state `unknown`.
+   */
+  async retentions(options: { only?: string } = {}): Promise<{ payer: string; leases: CacheLease[] }> {
+    const all = await this.providers();
+    const ordered = orderProviders(all, [], this.quality, false, Date.now());
+    const provider = options.only === undefined ? ordered[0] : ordered.find(candidate => candidate.id === options.only);
+    if (provider === undefined) {
+      throw new Error(
+        options.only === undefined
+          ? 'no cache providers'
+          : `the cache provider ${options.only} is not in the provider set`,
+      );
+    }
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const request = { payer: this.payer.id, issued_at: issuedAt };
+    const signature = toHex(sign(this.payer.secret, leasesMessage(this.payer.id, issuedAt)));
+    const response = await this.fetch(`${provider.api}/leases`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request, signature }),
+      signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new Error(`${String(response.status)}: ${(await response.text().catch(() => '')).slice(0, 200)}`);
+    }
+    const view = (await response.json()) as { payer?: string; leases?: Record<string, unknown>[] };
+    const now = Math.floor(Date.now() / 1000);
+    const leases = await Promise.all(
+      (view.leases ?? []).map(async (entry): Promise<CacheLease> => {
+        const count = (name: string): number => (typeof entry[name] === 'number' ? entry[name] : 0);
+        const content = typeof entry['content'] === 'string' ? entry['content'] : '';
+        const id = typeof entry['provider'] === 'string' ? entry['provider'] : '';
+        const holder = all.find(candidate => candidate.id === id);
+        const lease: CacheLease = {
+          content,
+          provider: holder ?? { id },
+          from: count('from'),
+          until: count('until'),
+          // An older ledger has only retentions that the payer paid in advance, up to `until`.
+          paidUntil: count('paid_until') || count('until'),
+          perDay: count('per_day'),
+          renews: entry['renews'] === true,
+          size: count('size'),
+          charged: count('charged'),
+          state: 'unknown',
+          pieces: 1,
+          total: 1,
+        };
+        if (holder === undefined) {
+          return lease;
+        }
+        try {
+          const answer = await this.fetch(`${holder.api}/pin-state/${encodeURIComponent(content)}`, {
+            signal: AbortSignal.timeout(PIN_STATE_TIMEOUT_MS),
+          });
+          if (!answer.ok) {
+            return lease;
+          }
+          const held = (await answer.json()) as Record<string, unknown>;
+          const number = (name: string): number => (typeof held[name] === 'number' ? held[name] : 0);
+          const blocks = number('blocks');
+          lease.pieces = blocks > 0 ? blocks : 1;
+          lease.total = lease.pieces;
+          switch (held['state']) {
+            case 'kept':
+              lease.state = 'kept';
+              break;
+            case 'fetching':
+              lease.state = 'fetching';
+              lease.pieces = number('pieces');
+              lease.total = Math.max(number('total_pieces'), lease.pieces);
+              break;
+            case 'lost':
+              lease.state = 'lost';
+              break;
+            case 'ended':
+              lease.state = 'ended';
+              break;
+            default:
+              lease.state = lease.until <= now ? 'ended' : 'lost';
+          }
+          if (lease.state === 'lost') {
+            this.penalize(holder.id, content);
+          }
+        } catch (err) {
+          // The provider did not answer: the state stays unknown.
+          log.debug(`[cache] ${holder.api} gave no state for ${content}:`, err);
+        }
+        return lease;
+      }),
+    );
+    return { payer: view.payer ?? this.payer.id, leases };
+  }
+
+  /**
+   * Stop the leases of the payer for `content` on `provider`. The provider keeps the content until the end of the paid
+   * day, and the ledger charges no more days. Gives the number of leases that the ledger stopped.
+   */
+  async stop(content: string, provider: CacheProvider): Promise<number> {
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const request = { payer: this.payer.id, provider: provider.id, content, issued_at: issuedAt };
+    const signature = toHex(
+      sign(this.payer.secret, stopMessage({ payer: this.payer.id, provider: provider.id, content, issuedAt })),
+    );
+    const response = await this.fetch(`${provider.api}/leases/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request, signature }),
+      signal: AbortSignal.timeout(NODE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      const text = (await response.text().catch(() => '')).slice(0, 300);
+      throw new CacheRetainError('failed', `${String(response.status)}: ${text}`);
+    }
+    const view = (await response.json()) as Record<string, unknown>;
+    return typeof view['stopped'] === 'number' ? view['stopped'] : 0;
   }
 
   // Ask one provider for content `content` with a read request that the payer signs. The default reference is the
@@ -907,10 +1391,11 @@ export class CacheNodes {
     });
   }
 
-  // Sign the receipt for a checked delivery and send it to the provider that served it. The read does not wait.
-  private pay(provider: CacheProvider, cid: string, transfer: string): void {
-    const fields = { transfer, payer: this.payer.id, provider: provider.id, content: cid };
-    const receipt = { ...fields, service: 'Delivery', size: 0, from: 0, until: 0 };
+  // Sign the receipt for a checked delivery of `size` bytes and send it to the provider that served it. The read does
+  // not wait. A node refuses a receipt for fewer bytes than it sent when the ledger prices reads by the MiB.
+  private pay(provider: CacheProvider, cid: string, transfer: string, size: number): void {
+    const fields = { transfer, payer: this.payer.id, provider: provider.id, content: cid, size };
+    const receipt = { ...fields, service: 'Delivery', from: 0, until: 0 };
     const signature = toHex(sign(this.payer.secret, receiptMessage(fields)));
     void this.fetch(`${provider.api}/receipt`, {
       method: 'POST',

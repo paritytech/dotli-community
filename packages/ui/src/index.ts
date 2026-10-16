@@ -41,6 +41,8 @@ export {
 } from './topbar-autohide.js';
 export { initTopBar } from './topbar.js';
 export { startSessionState } from './host-callbacks/SessionStore.js';
+export { readSiteBlock } from './host-callbacks/cache-nodes.js';
+export { setDotNameResolver, type DotNameResolver } from './host-callbacks/dot-names.js';
 export { SETTINGS_GLYPH } from './settings-glyph.js';
 export { RELOAD_GLYPH } from './reload-glyph.js';
 export { showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';

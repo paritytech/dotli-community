@@ -51,7 +51,9 @@ describe('the provider registry', () => {
       active: true,
     };
     const usable = (change: Partial<RegistryRecord>): number => registryProviders([{ ...record, ...change }]).length;
-    expect(registryProviders([record])).toEqual([{ id: '07'.repeat(32), api: 'https://cache.example.org' }]);
+    expect(registryProviders([record])).toEqual([
+      { id: '07'.repeat(32), api: 'https://cache.example.org', operator: `0x${'11'.repeat(32)}` },
+    ]);
     expect(usable({ api: 'http://127.0.0.1:18081' })).toBe(1);
     expect(usable({ api: 'http://localhost:18081' })).toBe(1);
     expect(usable({ api: 'http://cache.example.org' })).toBe(0);

@@ -19,29 +19,45 @@ import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 
 const SEED_PATTERN = /^(0x)?[0-9a-fA-F]{64}$/;
 
-let current: { settings: string; nodes: CacheNodes } | null = null;
+// The cache nodes of the setting, one instance for each payer. They all read the same provider set and quality store.
+const instances = new Map<string, CacheNodes>();
+let settingsKey = '';
 
 /**
  * The cache nodes of the setting, or null when the setting is off or has no source of providers. The provider registry
- * on Asset Hub is the source when the setting names one, else the provider set URL.
+ * on Asset Hub is the source when the setting names one, else the provider set URL. With `payerSeed` (the cache payer
+ * of a product for the signed-in person), they pay with that payer; else with the payer seed of the setting, or the
+ * shared test payer `dotli`.
  */
-export function getCacheNodes(): CacheNodes | null {
+export function getCacheNodes(payerSeed?: Uint8Array): CacheNodes | null {
   const settings = getCacheNodeSettings();
   if (!settings.enabled || (settings.registry === '' && settings.providersUrl === '')) {
     return null;
   }
   const key = JSON.stringify(settings);
-  if (current?.settings !== key) {
-    const payerSeed = SEED_PATTERN.test(settings.payerSeed) ? fromHex(settings.payerSeed) : testPayerSeed('dotli');
+  if (key !== settingsKey) {
+    instances.clear();
+    settingsKey = key;
+  }
+  const seed =
+    payerSeed?.length === 32
+      ? payerSeed
+      : SEED_PATTERN.test(settings.payerSeed)
+        ? fromHex(settings.payerSeed)
+        : testPayerSeed('dotli');
+  const seedKey = Array.from(seed, byte => byte.toString(16).padStart(2, '0')).join('');
+  let nodes = instances.get(seedKey);
+  if (nodes === undefined) {
     const source =
       settings.registry !== ''
         ? { loadProviders: registryLoader(settings.registry, assetHub) }
         : { providersUrl: settings.providersUrl };
-    current = { settings: key, nodes: new CacheNodes({ ...source, payerSeed }) };
+    nodes = new CacheNodes({ ...source, payerSeed: seed });
+    instances.set(seedKey, nodes);
     const from = settings.registry !== '' ? `the registry ${settings.registry}` : settings.providersUrl;
-    log.debug(`[cache] reading through cache nodes of ${from}, payer ${current.nodes.payer.id}`);
+    log.debug(`[cache] reading through cache nodes of ${from}, payer ${nodes.payer.id}`);
   }
-  return current.nodes;
+  return nodes;
 }
 
 /** The name of a cache node for people: its name, else its API URL. */
@@ -77,4 +93,20 @@ export function reportCacheRead(key: string, cid: string, read: CacheRead, laten
       `[cache] ${nodeName(served.provider)} served ${cid} (origin ${origin ?? '?'}) in ${String(latencyMs)} ms`,
     );
   }
+}
+
+/**
+ * One block of a site (or of any DAG on Bulletin) through the cache nodes of the setting, checked against its CID: the
+ * bytes, or null when the setting is off or no cache node had the block. The site loader asks it before bitswap, so a
+ * site that a cache node keeps loads from that node.
+ */
+export async function readSiteBlock(cid: string): Promise<Uint8Array | null> {
+  const cache = getCacheNodes();
+  if (cache === null) {
+    return null;
+  }
+  const started = Date.now();
+  const read = await cache.readBlock(cid);
+  reportCacheRead(cid, cid, read, Date.now() - started);
+  return read.value ?? null;
 }

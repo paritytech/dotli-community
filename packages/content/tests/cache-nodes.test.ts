@@ -7,16 +7,24 @@ import { describe, it, expect } from 'vitest';
 
 import {
   CacheNodes,
+  dagSize,
+  enrollMessage,
   homeNodes,
+  leaseDayPrice,
+  leaseMessage,
+  leasesMessage,
   orderProviders,
   parseOrigin,
   payerFromSeed,
   pinError,
+  rawTwin,
   readMessage,
+  readPrice,
   receiptMessage,
   rendezvousScore,
   retentionMessage,
   retentionPrice,
+  stopMessage,
   testPayerSeed,
   type CacheProvider,
   type CacheQuality,
@@ -44,14 +52,18 @@ describe('cache node messages', () => {
       payer: payer.id,
       score: toHex(rendezvousScore(CID, SEVENS)),
       read: toHex(readMessage({ ...fields, issuedAt: 1_791_500_000 })),
-      receipt: toHex(receiptMessage(fields)),
+      receipt: toHex(receiptMessage({ ...fields, size: 0 })),
       retention: toHex(retentionMessage({ ...fields, size: 1 << 20, from: 1000, until: 4600 })),
+      lease: toHex(leaseMessage({ ...fields, size: 1 << 20, from: 1000, until: 0, maxPerDay: 5 })),
+      stop: toHex(stopMessage({ payer: payer.id, provider: SEVENS, content: CID, issuedAt: 1_790_000_000 })),
     }).toEqual({
       payer: '189dac29296d31814dc8c56cf3d36a0543372bba7538fa322a4aebfebc39e056',
       score: '1b90bef8509cc25b45d94885d8a1eca44bd751212310efc75c9e2628a663b98f',
       read: `63616368652d726561642f31${shared}e01ec86a00000000`,
       receipt: `63616368652d726563656970742f32${shared}${'00'.repeat(25)}`,
       retention: `63616368652d726563656970742f32${shared}010000100000000000e803000000000000f811000000000000`,
+      lease: `63616368652d726563656970742f33${shared}020000100000000000e80300000000000000000000000000000500000000000000`,
+      stop: `63616368652d73746f702f31${payer.id}${SEVENS}3e000000${toHex(new TextEncoder().encode(CID))}803bb16a00000000`,
     });
   });
 
@@ -148,12 +160,13 @@ describe('CacheNodes.read', () => {
 
     // Then the third node served it, and only it got a receipt, with the payer's signature over the receipt message
     const receipt = requests.find(r => r.url.endsWith('/receipt'));
-    const body = receipt?.body as { receipt: { transfer: string }; signature: string };
+    const body = receipt?.body as { receipt: { transfer: string; size: number }; signature: string };
     const message = receiptMessage({
       transfer: body.receipt.transfer,
       payer: cache.payer.id,
       provider: holder.id,
       content: CID,
+      size: value.length,
     });
     expect({
       value: read.value && new TextDecoder().decode(read.value),
@@ -167,6 +180,7 @@ describe('CacheNodes.read', () => {
         price: read.served.price,
       },
       receipts: requests.filter(r => r.url.endsWith('/receipt')).map(r => r.url),
+      size: body.receipt.size,
       signed: verify(message, fromHex(body.signature), fromHex(cache.payer.id)),
     }).toEqual({
       value: 'cache put test',
@@ -180,6 +194,7 @@ describe('CacheNodes.read', () => {
         price: 10,
       },
       receipts: ['http://node-3/receipt'],
+      size: value.length,
       signed: true,
     });
   });
@@ -208,6 +223,8 @@ describe('CacheNodes.account', () => {
               allowance_per_day: 500,
               retention_allowance_per_day: 48,
               day: 20740,
+              read_price_per_mib: 2,
+              retention_unit_secs: 86_400,
             })
           : Response.json({ balance: 940, price: 10, retention_price: 1 }),
       );
@@ -231,7 +248,13 @@ describe('CacheNodes.account', () => {
     expect({
       asked: asked.filter(url => url.includes('/account/')),
       first: { ...account, provider: account.provider.api },
-      older: { paid: atOlder.paid, allowance: atOlder.allowance, readPrice: atOlder.readPrice },
+      older: {
+        paid: atOlder.paid,
+        allowance: atOlder.allowance,
+        readPrice: atOlder.readPrice,
+        readPricePerMib: atOlder.readPricePerMib,
+        retentionUnitSecs: atOlder.retentionUnitSecs,
+      },
     }).toEqual({
       asked: [`http://node-1/account/${cache.payer.id}`, `http://node-2/account/${cache.payer.id}`],
       first: {
@@ -243,9 +266,11 @@ describe('CacheNodes.account', () => {
         allowancePerDay: 500,
         retentionAllowancePerDay: 48,
         readPrice: 10,
+        readPricePerMib: 2,
         retentionPrice: 1,
+        retentionUnitSecs: 86_400,
       },
-      older: { paid: 940, allowance: 0, readPrice: 10 },
+      older: { paid: 940, allowance: 0, readPrice: 10, readPricePerMib: 0, retentionUnitSecs: 3600 },
     });
   });
 });
@@ -312,6 +337,7 @@ describe('torrent reads through cache nodes', () => {
       content: acquire.read.request.content,
       file: acquire.reference.file,
       receipts: requests.filter(r => r.url.endsWith('/receipt')).map(r => r.url),
+      paidSize: (requests.find(r => r.url.endsWith('/receipt'))?.body as { receipt: { size: number } }).receipt.size,
     }).toEqual({
       value: 300_007,
       same: true,
@@ -321,6 +347,7 @@ describe('torrent reads through cache nodes', () => {
       content: `bt:${infoHash}:1`,
       file: 1,
       receipts: ['http://node-2/receipt'],
+      paidSize: good.length,
     });
   });
 
@@ -457,6 +484,23 @@ describe('retention on cache nodes', () => {
     ]).toEqual([1, 2, 5, 2016]);
   });
 
+  it('As a user agent, I calculate the prices of a ledger that counts MiB-days and prices reads by the MiB', () => {
+    // Given a ledger with 3 credits for each MiB-day and 2 credits for each MiB of a read, and an older ledger
+    const byDay = { readPrice: 10, readPricePerMib: 2, retentionPrice: 3, retentionUnitSecs: 86_400 };
+    const byHour = { readPrice: 10, readPricePerMib: 0, retentionPrice: 1, retentionUnitSecs: 3600 };
+
+    // When the host prices retention, one day of a lease and reads
+    const prices = {
+      week: retentionPrice(5 * 1024 * 1024 + 1, 7 * 86_400, byDay.retentionPrice, byDay.retentionUnitSecs),
+      hour: retentionPrice(165, 3600, byDay.retentionPrice, byDay.retentionUnitSecs),
+      days: [leaseDayPrice(165, byDay), leaseDayPrice(3 * 1024 * 1024, byHour)],
+      reads: [readPrice(0, byDay), readPrice(2 * 1024 * 1024 + 1, byDay), readPrice(50 * 1024 * 1024, byHour)],
+    };
+
+    // Then a started day and a started MiB count whole, and a ledger without a price by the MiB has one read price
+    expect(prices).toEqual({ week: 126, hour: 3, days: [3, 72], reads: [2, 6, 10] });
+  });
+
   it('As a user agent, I give a product a reason that it can act on when a node does not keep content', () => {
     const errors = [
       pinError(402, 'refused: payer ab has 0 credits'),
@@ -539,7 +583,342 @@ describe('retention on cache nodes', () => {
       size: 2_621_440,
       window: 3600,
       signed: true,
-      kept: { provider: chosen.api, until: 9, size: 2_621_440, chunks: 3, charged: 3 },
+      kept: { provider: chosen.api, until: 9, size: 2_621_440, chunks: 3, charged: 3, state: 'kept' },
     });
+  });
+
+  it('As a user agent, I sign a lease that renews until I stop it, with the price of one day as its limit, and later stop it', async () => {
+    // Given a node whose ledger charges 2 credits for each MiB-day, and that keeps the content until the end of day 0
+    const node = provider(5);
+    const posts: { url: string; body: Record<string, unknown> }[] = [];
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      storage: null,
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url === 'http://set/providers') {
+          return Promise.resolve(Response.json([node]));
+        }
+        if (url.includes('/account/')) {
+          return Promise.resolve(
+            Response.json({ balance: 100, paid: 100, price: 10, retention_price: 2, retention_unit_secs: 86_400 }),
+          );
+        }
+        posts.push({ url, body: JSON.parse(init?.body as string) as Record<string, unknown> });
+        if (url.endsWith('/leases/stop')) {
+          return Promise.resolve(Response.json({ stopped: 1 }));
+        }
+        return Promise.resolve(Response.json({ until: 86_400, size: 3 << 20, chunks: 0, charged: 6 }));
+      },
+    });
+
+    // When the host keeps 3 MiB with a lease without an end, then stops the lease
+    const kept = await cache.retain(node, CID, 3 << 20, 0, { renew: true });
+    const stopped = await cache.stop(CID, node);
+
+    // Then the pin has a lease authorization that the payer signed, for at most 6 credits a day, and no end
+    const pin = posts.find(post => post.url.endsWith('/pin'));
+    const authorization = pin?.body['authorization'] as { receipt: Record<string, unknown>; signature: string };
+    const receipt = authorization.receipt;
+    const lease = leaseMessage({
+      transfer: String(receipt['transfer']),
+      payer: cache.payer.id,
+      provider: node.id,
+      content: CID,
+      size: 3 << 20,
+      from: Number(receipt['from']),
+      until: 0,
+      maxPerDay: 6,
+    });
+    // And the stop request names the payer, the node and the content, with the signature of the payer
+    const stop = posts.find(post => post.url.endsWith('/leases/stop'))?.body as {
+      request: { payer: string; provider: string; content: string; issued_at: number };
+      signature: string;
+    };
+    const stopBytes = stopMessage({ ...stop.request, issuedAt: stop.request.issued_at });
+    expect({
+      service: receipt['service'],
+      until: receipt['until'],
+      maxPerDay: receipt['max_per_day'],
+      signed: verify(lease, fromHex(authorization.signature), fromHex(cache.payer.id)),
+      kept: { until: kept.until, charged: kept.charged, lease: kept.lease },
+      stop: [stop.request.provider, stop.request.content, stopped],
+      stopSigned: verify(stopBytes, fromHex(stop.signature), fromHex(cache.payer.id)),
+    }).toEqual({
+      service: 'Lease',
+      until: 0,
+      maxPerDay: 6,
+      signed: true,
+      kept: { until: 86_400, charged: 6, lease: true },
+      stop: [node.id, CID, 1],
+      stopSigned: true,
+    });
+  });
+});
+
+// The root block of the site cache-demo.paseo on Paseo Bulletin Next: the dag-pb file node (sha2-256) that bulletin-deploy
+// wrote over the three raw chunks of the site's CAR. The cache (src/bulletin.rs) and ctest (vectors/site-root.json) have
+// it too.
+const SITE_ROOT = fromHex(
+  '122b0a2401551220790e8fe960819b22c3e0aa271bf9f60b060e6ac93aa627cde27885ea897f92a5120018a50c122c0a2401551220b2e01a32e5ca22d806c76069e53d8986f3767e513de1e4d501b7bb47cfb4f342120018d4fa0e122b0a240155122018658392ed83c55d5e0e31e3c8c3eb2bbbde991e6064fefac153f93061652b221200188e070a10080218878e0f20a50c20d4fa0e208e07',
+);
+const SITE = 'bafybeicepvbzj6i4yflvozwz464yxasywzpf6uvabuz5ol2bs3johuoxxe';
+const SITE_TWIN = 'bafkreicepvbzj6i4yflvozwz464yxasywzpf6uvabuz5ol2bs3johuoxxe';
+
+describe('sites on cache nodes', () => {
+  it('As a user agent, I ask for a block of a site by its raw twin, and I learn the size of a site from its root block', () => {
+    expect([rawTwin(SITE), rawTwin(SITE_TWIN), dagSize(SITE_ROOT), dagSize(new Uint8Array([1, 2, 3]))]).toEqual([
+      SITE_TWIN,
+      SITE_TWIN,
+      { size: 247_713, links: 3 },
+      null,
+    ]);
+  });
+
+  it('As a user agent that loads a site, I take a block from a node only when it matches the CID, and I pay for it', async () => {
+    // Given a node that has the root block, and a node that sends other bytes
+    const requests: { url: string; body: string }[] = [];
+    const nodes = [
+      { id: '01'.repeat(32), api: 'http://liar' },
+      { id: '02'.repeat(32), api: 'http://good' },
+    ];
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        requests.push({ url, body: typeof init?.body === 'string' ? init.body : '' });
+        if (url === 'http://set/providers') {
+          return Promise.resolve(Response.json(nodes));
+        }
+        if (url.endsWith('/acquire')) {
+          return Promise.resolve(
+            new Response(url.startsWith('http://good') ? SITE_ROOT.slice().buffer : new Uint8Array([9, 9]).buffer, {
+              status: 200,
+            }),
+          );
+        }
+        return Promise.resolve(Response.json({}));
+      },
+    });
+
+    // When the host reads the root block of the site
+    const read = await cache.readBlock(SITE);
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Then the good node served the block by its raw twin, the liar got nothing, and only the good node got a receipt
+    const asked = requests
+      .filter(r => r.url.endsWith('/acquire'))
+      .map(r => JSON.parse(r.body) as { reference: { source: string } });
+    expect({
+      value: read.value?.length,
+      outcomes: read.attempts.map(a => [a.provider.api, a.outcome]).sort(),
+      sources: [...new Set(asked.map(a => a.reference.source))],
+      receipts: requests.filter(r => r.url.endsWith('/receipt')).map(r => r.url),
+    }).toEqual({
+      value: 154,
+      outcomes: [
+        ['http://good', 'served'],
+        ['http://liar', 'bad-bytes'],
+      ].filter(([api]) => read.attempts.some(a => a.provider.api === api)),
+      sources: [`bulletin:${SITE_TWIN}`],
+      receipts: ['http://good/receipt'],
+    });
+  });
+
+  it('As a user agent, I keep a site in the background: the node answers at once, and I follow its progress to the end', async () => {
+    // Given a node that fetches in the background, and is done at the second look
+    const node = { id: '03'.repeat(32), api: 'http://node' };
+    let looks = 0;
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url === 'http://set/providers') {
+          return Promise.resolve(Response.json([node]));
+        }
+        if (url === 'http://node/pin') {
+          const body = JSON.parse(init?.body as string) as { background?: boolean };
+          expect(body.background).toBe(true);
+          return Promise.resolve(Response.json({ pin_id: 'p-1', state: 'fetching' }, { status: 202 }));
+        }
+        looks += 1;
+        return Promise.resolve(
+          Response.json(
+            looks < 2
+              ? { pin_id: 'p-1', state: 'fetching', pieces: 1, total_pieces: 4, bytes: 154, total_bytes: 247_713 }
+              : {
+                  pin_id: 'p-1',
+                  state: 'kept',
+                  pieces: 4,
+                  total_pieces: 4,
+                  bytes: 247_713,
+                  total_bytes: 247_713,
+                  pin: { until: 99, size: 247_713, chunks: 3, charged: 1 },
+                },
+          ),
+        );
+      },
+    });
+
+    // When the host keeps the site with a wait long enough for two looks
+    const kept = await cache.retain(node, SITE, 247_713, 3600, { background: true, waitMs: 5_000 });
+
+    // Then the answer is the pin of the node, after its progress
+    expect({ ...kept, provider: kept.provider.api, looks }).toEqual({
+      provider: 'http://node',
+      until: 99,
+      size: 247_713,
+      chunks: 3,
+      charged: 1,
+      state: 'kept',
+      looks: 2,
+    });
+  });
+});
+
+describe('the retentions of a payer', () => {
+  it('As a user agent, I sign the same request for my retentions as the cache and the CLI host', () => {
+    const payer = payerFromSeed(new Uint8Array(32).fill(1));
+    expect(toHex(leasesMessage(payer.id, 1_790_000_000))).toBe(
+      '63616368652d6c65617365732f31189dac29296d31814dc8c56cf3d36a0543372bba7538fa322a4aebfebc39e056803bb16a00000000',
+    );
+  });
+
+  it('As a person, I see each retention with what its node holds now', async () => {
+    // Given a ledger with four retentions: kept on A, fetching on A, lost on B, and on a node not in the set
+    const a = { id: '0a'.repeat(32), api: 'http://a', name: 'A', region: 'Paris' };
+    const b = { id: '0b'.repeat(32), api: 'http://b' };
+    const now = Math.floor(Date.now() / 1000);
+    const lease = (content: string, provider: string, until: number) => ({
+      content,
+      provider,
+      from: 1,
+      until,
+      size: 10,
+      charged: 2,
+    });
+    const renewing = { ...lease('daily', a.id, now + 50), paid_until: now + 50, per_day: 3, renews: true };
+    let signed: { request: { payer: string; issued_at: number }; signature: string } | undefined;
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: testPayerSeed('dotli'),
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url === 'http://set/providers') {
+          return Promise.resolve(Response.json([a, b]));
+        }
+        if (url.endsWith('/leases')) {
+          signed = JSON.parse(init?.body as string) as typeof signed;
+          return Promise.resolve(
+            Response.json({
+              payer: signed?.request.payer,
+              leases: [
+                lease('kept', a.id, now + 99),
+                lease('fetching', a.id, now + 99),
+                lease('gone', b.id, now + 99),
+                lease('far', '0c'.repeat(32), now + 99),
+                renewing,
+              ],
+            }),
+          );
+        }
+        const content = url.split('/').pop();
+        const states: Record<string, object> = {
+          kept: { state: 'kept', blocks: 4 },
+          fetching: { state: 'fetching', blocks: 0, pieces: 1, total_pieces: 4 },
+          gone: { state: 'none', blocks: 0 },
+          daily: { state: 'kept', blocks: 1 },
+        };
+        return Promise.resolve(Response.json(states[content ?? ''] ?? {}));
+      },
+    });
+
+    // When the host asks for the retentions of its payer
+    const answer = await cache.retentions();
+
+    // Then the request is signed by the payer, and each retention has the state of its node
+    expect(
+      signed &&
+        verify(
+          leasesMessage(signed.request.payer, signed.request.issued_at),
+          fromHex(signed.signature),
+          fromHex(signed.request.payer),
+        ),
+    ).toBe(true);
+    expect(answer.leases.map(item => [item.content, item.state, item.pieces, item.total])).toEqual([
+      ['kept', 'kept', 4, 4],
+      ['fetching', 'fetching', 1, 4],
+      ['gone', 'lost', 1, 1],
+      ['far', 'unknown', 1, 1],
+      ['daily', 'kept', 1, 1],
+    ]);
+    // And a retention paid in advance is paid to its end, and a lease that renews has its paid days and its day price
+    expect(answer.leases.map(item => [item.content, item.paidUntil - now, item.perDay, item.renews])).toEqual([
+      ['kept', 99, 0, false],
+      ['fetching', 99, 0, false],
+      ['gone', 99, 0, false],
+      ['far', 99, 0, false],
+      ['daily', 50, 3, true],
+    ]);
+    // And node B, which lost paid content, counts a failure, so the order of the host puts it after A
+    const order = await cache.choices();
+    expect(order.map(choice => [choice.provider.id, choice.failedRecently])).toEqual([
+      [a.id, false],
+      [b.id, true],
+    ]);
+  });
+});
+
+describe('a new payer', () => {
+  it('As a new payer on a test network, my user agent enrolls me once, and I get the daily allowance', async () => {
+    // Given a ledger that does not know the payer, and enrolls payers
+    let enrolled = false;
+    let signed: { request: { payer: string; issued_at: number }; signature: string } | undefined;
+    const node = { id: '0d'.repeat(32), api: 'http://node' };
+    const cache = new CacheNodes({
+      providersUrl: 'http://set/providers',
+      payerSeed: new Uint8Array(32).fill(9),
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url === 'http://set/providers') {
+          return Promise.resolve(Response.json([node]));
+        }
+        const quote = (known: boolean) => ({
+          balance: known ? 500 : 0,
+          allowance: known ? 500 : 0,
+          paid: 0,
+          price: 10,
+          retention_price: 1,
+          allowance_per_day: 500,
+          known,
+        });
+        if (url.endsWith('/enroll')) {
+          signed = JSON.parse(init?.body as string) as typeof signed;
+          enrolled = true;
+          return Promise.resolve(Response.json(quote(true)));
+        }
+        return Promise.resolve(Response.json(quote(enrolled)));
+      },
+    });
+
+    // When the user agent asks for the account
+    const account = await cache.account();
+
+    // Then it enrolled the payer with a request that the payer signed, and the account has the allowance
+    expect(
+      signed &&
+        verify(
+          enrollMessage(signed.request.payer, signed.request.issued_at),
+          fromHex(signed.signature),
+          fromHex(signed.request.payer),
+        ),
+    ).toBe(true);
+    expect([account.allowance, toHex(enrollMessage(SEVENS, 1)).slice(0, 28)]).toEqual([
+      500,
+      toHex(new TextEncoder().encode('cache-enroll/1')),
+    ]);
   });
 });

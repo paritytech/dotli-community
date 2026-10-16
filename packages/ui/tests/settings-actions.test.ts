@@ -39,7 +39,7 @@ const prior: ModeDraft = {
   chain: 'smoldot-direct',
   network: 'paseo-next-v2',
   cache: CACHE_ON,
-  cacheNodes: { enabled: false, providersUrl: '', payerSeed: '' },
+  cacheNodes: { enabled: false, registry: '', providersUrl: '', payerSeed: '' },
 };
 
 describe('applyAndReset: archive cache', () => {

@@ -418,12 +418,17 @@ export interface BlockCache {
 
 export interface SandboxBitswapOptions {
   blockCache?: BlockCache;
-  onBlockServed?: (from: 'cache' | 'network') => void;
+  /**
+   * A source that the relay asks after the block cache and before bitswap: the cache nodes. It gives the block, or null
+   * when no cache node had it. The relay checks the bytes against the CID before it uses them.
+   */
+  cacheNodeBlock?: (cid: string, signal: AbortSignal) => Promise<Uint8Array | null>;
+  onBlockServed?: (from: 'cache' | 'cache-node' | 'network') => void;
 }
 
 interface ServedBlock {
   bytes: Uint8Array;
-  from: 'cache' | 'network';
+  from: 'cache' | 'cache-node' | 'network';
 }
 
 async function blockMatches(cid: string, bytes: Uint8Array): Promise<boolean> {
@@ -459,12 +464,39 @@ async function readCachedBlock(cache: BlockCache, cid: string): Promise<Uint8Arr
   return null;
 }
 
-async function serveBlock(cid: string, signal: AbortSignal, cache: BlockCache | undefined): Promise<ServedBlock> {
+async function fromCacheNodes(
+  cid: string,
+  signal: AbortSignal,
+  source: SandboxBitswapOptions['cacheNodeBlock'],
+): Promise<Uint8Array | null> {
+  if (source === undefined) {
+    return null;
+  }
+  try {
+    const bytes = await source(cid, signal);
+    return bytes !== null && (await blockMatches(cid, bytes)) ? bytes : null;
+  } catch (err) {
+    log.debug(`[dot.li bitswap-relay] cache nodes failed for ${cid}: ${serializeError(err)}`);
+    return null;
+  }
+}
+
+async function serveBlock(cid: string, signal: AbortSignal, options: SandboxBitswapOptions): Promise<ServedBlock> {
+  const cache = options.blockCache;
   if (cache !== undefined) {
     const cached = await readCachedBlock(cache, cid);
     if (cached !== null) {
       return { bytes: cached, from: 'cache' };
     }
+  }
+  const fromNode = await fromCacheNodes(cid, signal, options.cacheNodeBlock);
+  if (fromNode !== null) {
+    if (cache !== undefined) {
+      void cache.put(cid, fromNode.slice()).catch((err: unknown) => {
+        log.warn(`[dot.li bitswap-relay] block cache write failed: ${serializeError(err)}`);
+      });
+    }
+    return { bytes: fromNode, from: 'cache-node' };
   }
   const bytes = await bitswapGet(cid, signal);
   if (cache !== undefined && (await blockMatches(cid, bytes))) {
@@ -534,7 +566,7 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
       inFlight.set(source, own);
     }
     own.set(data.id, aborter);
-    void serveBlock(data.cid, aborter.signal, options.blockCache)
+    void serveBlock(data.cid, aborter.signal, options)
       .finally(() => {
         // A reused id must not have the earlier fetch's cleanup drop the newer entry.
         if (own.get(data.id) === aborter) {
