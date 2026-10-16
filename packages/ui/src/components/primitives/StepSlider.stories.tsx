@@ -172,17 +172,22 @@ export const DragFollowsPointer: Story = {
   render: Owned,
   play: async ({ args, canvas, step }) => {
     const track = slider(canvas);
-    const thumb = (): number => canvas.getByTestId('step-slider-thumb').getBoundingClientRect().left;
-    await step('When I hold the pointer a third of the way between Mid and High', () => {
+    // The thumb is the last element of the stop layer, the track's last child.
+    const thumbCenter = (): number => {
+      const rect = track.lastElementChild?.lastElementChild?.getBoundingClientRect();
+      return rect === undefined ? Number.NaN : rect.left + rect.width / 2;
+    };
+    const held = 0.5 - 1 / 12;
+    let pointerX = 0;
+    await step('When I hold the pointer between Mid and High, nearer Mid', () => {
       pointer(track, 'pointerdown', 0.4);
-      pointer(track, 'pointermove', 0.5 - 1 / 12);
-    });
-    await step('Then Mid is current while the thumb is off its stop', async () => {
-      await waitFor(() => expect(canvas.getByTestId('stop-mid')).toHaveAttribute('data-current'));
+      pointer(track, 'pointermove', held);
       const rect = track.getBoundingClientRect();
-      const midThumb = rect.left + 8 + (rect.width - 16) / 3 - 8;
-      await waitFor(() => expect(Math.abs(thumb() - midThumb)).toBeGreaterThan(2));
-      await expect(thumb()).toBeGreaterThan(midThumb);
+      pointerX = rect.left + rect.width * held;
+    });
+    await step('Then Mid is current while the thumb sits under the pointer', async () => {
+      await waitFor(() => expect(canvas.getByTestId('stop-mid')).toHaveAttribute('data-current'));
+      await waitFor(() => expect(Math.abs(thumbCenter() - pointerX)).toBeLessThanOrEqual(1));
     });
     await step('When I release', () => {
       pointer(track, 'pointerup', 0.5 - 1 / 12);

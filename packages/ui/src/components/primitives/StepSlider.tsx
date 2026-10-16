@@ -134,7 +134,7 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
               />
             )}
           </For>
-          <span class={s['thumb']} data-testid="step-slider-thumb" style={{ left: `${String(percent())}%` }} />
+          <span class={s['thumb']} style={{ left: `${String(percent())}%` }} />
         </div>
       </div>
       <div class={s['stops']}>
