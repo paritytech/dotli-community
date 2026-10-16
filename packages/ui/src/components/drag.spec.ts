@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { createSelectionLock, startDrag, type DragTarget } from './drag.js';
+import { createDrags, createSelectionLock, startDrag, type DragTarget } from './drag.js';
 
 /** A drag handle over a plain event target, with the capture it was asked for. */
 class FakeHandle extends EventTarget implements DragTarget {
@@ -127,6 +127,45 @@ describe('startDrag', () => {
     expect(first).toEqual([10]);
     expect(second).toEqual([20, 30]);
     expect(afterFirstLifts).toEqual([true]);
+    expect(locks).toEqual([true, false]);
+  });
+});
+
+describe('createDrags', () => {
+  it('As a component unmounting under two fingers, stopping my drags ends both and gives text selection back', () => {
+    // Given two drags whose pointers never lift, as when the handle leaves the page under them
+    const target = new FakeHandle();
+    const ends: number[] = [];
+    const { lock, locks } = recordedLock();
+    const drags = createDrags(lock);
+    drags.start(target, { pointerId: 1 }, { move: () => undefined, end: () => ends.push(1) });
+    drags.start(target, { pointerId: 2 }, { move: () => undefined, end: () => ends.push(2) });
+
+    // When the component cleans up
+    drags.stopAll();
+    pointer(target, 'pointerup', 0, 1);
+
+    // Then each drag ended once and the page is selectable again
+    expect(ends).toEqual([1, 2]);
+    expect(locks).toEqual([true, false]);
+  });
+
+  it('As a component whose drag already ended, stopping my drags ends only the one still going', () => {
+    // Given one drag that ended on its own pointerup and one still held
+    const target = new FakeHandle();
+    const ends: number[] = [];
+    const { lock, locks } = recordedLock();
+    const drags = createDrags(lock);
+    drags.start(target, { pointerId: 1 }, { move: () => undefined, end: () => ends.push(1) });
+    drags.start(target, { pointerId: 2 }, { move: () => undefined, end: () => ends.push(2) });
+    pointer(target, 'pointerup', 0, 1);
+
+    // When the component cleans up
+    drags.stopAll();
+    drags.stopAll();
+
+    // Then the ended drag did not end again, and the held one ended
+    expect(ends).toEqual([1, 2]);
     expect(locks).toEqual([true, false]);
   });
 });

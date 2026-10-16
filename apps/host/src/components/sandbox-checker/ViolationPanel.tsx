@@ -6,7 +6,7 @@
 
 import { createEffect, createSignal, For, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { startDrag } from '@dotli/ui';
+import { createDrags } from '@dotli/ui';
 import { ChevronDownIcon } from '@dotli/ui/icons';
 import { appendViolation, clampPanelHeight, violationFrom } from './violations.js';
 import s from './ViolationPanel.module.css';
@@ -42,7 +42,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
   let log: HTMLDivElement | undefined;
   let handle: HTMLDivElement | undefined;
   let nextId = 0;
-  let stopDrag: (() => void) | undefined;
+  const drags = createDrags();
 
   const reserve = (bottom: number): void => {
     props.onReserve(bottom);
@@ -70,7 +70,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
   window.addEventListener('message', onMessage);
   onCleanup(() => {
     window.removeEventListener('message', onMessage);
-    stopDrag?.();
+    drags.stopAll();
     reserve(0);
   });
 
@@ -117,7 +117,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
         }}
         onPointerDown={event => {
           if (!collapsed() && handle !== undefined) {
-            stopDrag = startDrag(handle, event, { move: onDragMove });
+            drags.start(handle, event, { move: onDragMove });
           }
         }}
       />

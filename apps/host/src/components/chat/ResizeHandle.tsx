@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { Accessor } from 'solid-js';
+import { onCleanup, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { startDrag } from '@dotli/ui';
+import { createDrags } from '@dotli/ui';
 import s from './ResizeHandle.module.css';
 
 /** Drag handle on the panel's left edge. */
@@ -14,6 +14,8 @@ export function ResizeHandle(props: {
   onResizeEnd: () => void;
 }): JSX.Element {
   let handle: HTMLDivElement | undefined;
+  const drags = createDrags();
+  onCleanup(drags.stopAll);
 
   const onPointerDown = (down: PointerEvent): void => {
     if (handle === undefined) {
@@ -23,7 +25,7 @@ export function ResizeHandle(props: {
     const startX = down.clientX;
     // The panel is border-box: its width is the prop's.
     const startWidth = props.width();
-    startDrag(handle, down, {
+    drags.start(handle, down, {
       move: move => {
         props.onResize(startWidth + (startX - move.clientX));
       },

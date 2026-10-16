@@ -6,7 +6,7 @@
 
 import { onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { startDrag } from '@dotli/ui';
+import { createDrags } from '@dotli/ui';
 import { keyDelta, type DividerSize } from '../resize-clamp.js';
 import s from './Resizer.module.css';
 
@@ -32,10 +32,8 @@ export function Resizer(props: {
   onReset?: () => void;
 }): JSX.Element {
   let el: HTMLDivElement | undefined;
-  let stopDrag: (() => void) | undefined;
-  onCleanup(() => {
-    stopDrag?.();
-  });
+  const drags = createDrags();
+  onCleanup(drags.stopAll);
 
   // Written straight to the node, as the drags write the panel, so a move costs no render.
   const report = (): void => {
@@ -82,7 +80,7 @@ export function Resizer(props: {
         }
         props.onDragStart?.(target);
         target.setAttribute('data-dragging', '');
-        stopDrag = startDrag(target, e, {
+        drags.start(target, e, {
           move: props.onDrag,
           end: () => {
             target.removeAttribute('data-dragging');

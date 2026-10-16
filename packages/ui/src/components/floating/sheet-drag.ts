@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { startDrag } from '../drag.js';
+import type { Drags } from '../drag.js';
 
 /** A swipe past this share of the sheet's height closes it. */
 const SWIPE_CLOSE_FRACTION = 0.3;
@@ -11,14 +11,20 @@ const SWIPE_CLOSE_SPEED = 0.5;
 const SWIPE_FLICK_MIN_PX = 24;
 
 /**
- * Drags a bottom sheet down from its head and closes it on a long drag or a flick. Returns an early-end for unmount.
+ * Drags a bottom sheet down from its head and closes it on a long drag or a flick. `drags` owns it, for unmount.
  */
-export function dragSheet(head: HTMLElement, surface: HTMLElement, down: PointerEvent, close: () => void): () => void {
+export function dragSheet(
+  drags: Drags,
+  head: HTMLElement,
+  surface: HTMLElement,
+  down: PointerEvent,
+  close: () => void,
+): void {
   const startY = down.clientY;
   const startTime = performance.now();
   let dy = 0;
   surface.setAttribute('data-dragging', '');
-  return startDrag(head, down, {
+  drags.start(head, down, {
     move: ev => {
       dy = Math.max(0, ev.clientY - startY);
       surface.style.transform = `translateY(${String(dy)}px)`;

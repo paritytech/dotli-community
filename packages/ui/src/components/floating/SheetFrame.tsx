@@ -3,6 +3,7 @@
 
 import { flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { createDrags } from '../drag.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { InSheet } from './in-sheet.js';
@@ -123,8 +124,8 @@ export interface SheetFrameProps {
 export function SheetFrame(props: SheetFrameProps): JSX.Element {
   let sheet: HTMLDivElement | undefined;
   let head: HTMLDivElement | undefined;
-  let stopDrag: (() => void) | undefined;
-  onCleanup(() => stopDrag?.());
+  const drags = createDrags();
+  onCleanup(drags.stopAll);
 
   const onPointerDown = (down: PointerEvent): void => {
     if (head === undefined || sheet === undefined || down.button !== 0) {
@@ -133,7 +134,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
     if (down.target instanceof Element && down.target.closest('button') !== null) {
       return;
     }
-    stopDrag = dragSheet(head, sheet, down, props.onDismiss);
+    dragSheet(drags, head, sheet, down, props.onDismiss);
   };
 
   return (

@@ -41,7 +41,8 @@ const bodySelection = createSelectionLock(locked => {
 
 /**
  * Follow one captured pointer drag until pointerup or pointercancel, which no pointerup follows.
- * `end` runs once however the drag ends. The returned function ends it early, for an unmount mid-drag.
+ * `end` runs once however the drag ends. The returned function ends it early. Components start drags through
+ * `createDrags`, which keeps that early end for their cleanup.
  */
 export function startDrag(
   target: DragTarget,
@@ -83,4 +84,46 @@ export function startDrag(
   target.addEventListener('pointerup', onEnd);
   target.addEventListener('pointercancel', onEnd);
   return end;
+}
+
+/** The drags one component runs. Its cleanup calls `stopAll`, so no hold outlives it. */
+export interface Drags {
+  /** Starts a drag that ends on its own pointer's release, or on `stopAll`. */
+  start: (
+    target: DragTarget,
+    down: Pick<PointerEvent, 'pointerId'>,
+    handlers: { move: (event: PointerEvent) => void; end?: () => void },
+  ) => void;
+  /** Ends every drag still going. Safe to call twice. */
+  stopAll: () => void;
+}
+
+/**
+ * One owner for a component's drags. A handle that leaves the page under a held pointer loses its capture, so its
+ * pointerup never comes, and only its owner can end that drag.
+ */
+export function createDrags(selection: SelectionLock = bodySelection): Drags {
+  const live = new Set<() => void>();
+  return {
+    start: (target, down, handlers) => {
+      const stop = startDrag(
+        target,
+        down,
+        {
+          move: handlers.move,
+          end: () => {
+            live.delete(stop);
+            handlers.end?.();
+          },
+        },
+        selection,
+      );
+      live.add(stop);
+    },
+    stopAll: () => {
+      for (const stop of [...live]) {
+        stop();
+      }
+    },
+  };
 }

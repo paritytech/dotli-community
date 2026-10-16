@@ -29,7 +29,7 @@ export {
 export { PINNED } from './components/actions/fit.js';
 export { LayerTracker, ModalFocusFallback, type TrackedLayer } from './components/floating/layer-context.js';
 export { useStore } from './components/use-store.js';
-export { startDrag } from './components/drag.js';
+export { createDrags, type Drags } from './components/drag.js';
 export { focusLostOrInside, focusTrigger } from './components/focus.js';
 
 // Mounting a view inside an error boundary, and the overlays container.
