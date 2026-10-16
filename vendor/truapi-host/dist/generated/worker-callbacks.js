@@ -9,6 +9,7 @@ export const CALLBACK_NAMES = [
     "createChatRoom",
     "registerChatBot",
     "postChatMessage",
+    "setChatRoomFooter",
     "nativeCoinage",
     "contacts",
     "pickContact",
@@ -34,8 +35,6 @@ export const CALLBACK_NAMES = [
     "navigateTo",
     "pushNotification",
     "cancelNotification",
-    "activationEvents",
-    "acknowledgeActivation",
     "devicePermissionStatus",
     "devicePermission",
     "remotePermission",
@@ -48,6 +47,7 @@ export const CALLBACK_NAMES = [
     "presentProfile",
     "presentContactProfile",
     "placeContactAvatars",
+    "scanCode",
     "confirmPermission",
     "confirmUserAction",
 ];
@@ -79,8 +79,6 @@ function rawCallbacks(bridge) {
         navigateTo: (url) => bridge.callbackRequest("navigateTo", [url]),
         pushNotification: (notification) => bridge.callbackRequest("pushNotification", [notification]),
         cancelNotification: (id) => bridge.callbackRequest("cancelNotification", [id]),
-        activationEvents: () => bridge.callbackRequest("activationEvents", []),
-        acknowledgeActivation: (request) => bridge.callbackRequest("acknowledgeActivation", [request]),
         devicePermission: (product, request) => bridge.callbackRequest("devicePermission", [product, request]),
         remotePermission: (product, request) => bridge.callbackRequest("remotePermission", [product, request]),
         beginOperation: (product, label) => bridge.callbackRequest("beginOperation", [product, label]),
@@ -105,6 +103,7 @@ function chatRawCallbacks(bridge) {
         createChatRoom: (product, request) => bridge.callbackRequest("createChatRoom", [product, request]),
         registerChatBot: (product, request) => bridge.callbackRequest("registerChatBot", [product, request]),
         postChatMessage: (product, request) => bridge.callbackRequest("postChatMessage", [product, request]),
+        setChatRoomFooter: (product, request) => bridge.callbackRequest("setChatRoomFooter", [product, request]),
         subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", product, sendItem, sendError),
     };
 }
@@ -150,6 +149,11 @@ function profileRawCallbacks(bridge) {
         placeContactAvatars: (product, placed) => bridge.callbackRequest("placeContactAvatars", [product, placed]),
     };
 }
+function scannerRawCallbacks(bridge) {
+    return {
+        scanCode: (product, request) => bridge.callbackRequest("scanCode", [product, request]),
+    };
+}
 export function createWorkerRawCallbacks(bridge, capabilities = {}) {
     const callbacks = {
         ...rawCallbacks(bridge),
@@ -173,6 +177,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, pocketRawCallbacks(bridge));
     if (capabilities.profile)
         Object.assign(callbacks, profileRawCallbacks(bridge));
+    if (capabilities.scanner)
+        Object.assign(callbacks, scannerRawCallbacks(bridge));
     return callbacks;
 }
 export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {

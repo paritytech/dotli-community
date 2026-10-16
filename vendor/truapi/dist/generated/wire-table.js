@@ -189,6 +189,11 @@ export const CHAT_ACTION_SUBSCRIBE = {
     method: 4,
     kind: "subscription",
 };
+export const CHAT_SET_ROOM_FOOTER = {
+    trait: 4,
+    method: 6,
+    kind: "request",
+};
 export const COIN_PAYMENT_CREATE_PURSE = {
     trait: 5,
     method: 0,
@@ -267,16 +272,6 @@ export const NOTIFICATIONS_SEND_PUSH_NOTIFICATION = {
 export const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION = {
     trait: 8,
     method: 1,
-    kind: "request",
-};
-export const NOTIFICATIONS_ACTIVATION_EVENTS = {
-    trait: 8,
-    method: 8,
-    kind: "request",
-};
-export const NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION = {
-    trait: 8,
-    method: 9,
     kind: "request",
 };
 export const PAYMENT_BALANCE_SUBSCRIBE = {

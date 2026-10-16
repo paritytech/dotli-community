@@ -294,10 +294,13 @@ export class WasmSigningHostRuntime {
      */
     productRuntime(product: any, core_callbacks: any, platform_callbacks?: any | null): WasmProductRuntime;
     /**
-     * Resolve a product's hard-subtree public key from the active local
-     * signing session.
+     * The product's hard-subtree public key, derived from the active session
+     * root. `undefined` while no session is active.
+     *
+     * Paired with `deriveProductAccountPublicKey` and `productAccountAddress`
+     * this gives a host the product's address without asking the product.
      */
-    productSubtreePublicKey(product_id: string, timeout_ms?: number | null): Promise<Uint8Array | undefined>;
+    productSubtreePublicKey(product_id: string): Uint8Array | undefined;
     /**
      * Install freshly verified dotNS metadata only for the captured local activation.
      */
@@ -485,7 +488,7 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmsigninghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
     readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number, e: number) => void;
-    readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => void;
     readonly wasmsigninghostruntime_refreshLocalIdentity: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
@@ -494,12 +497,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_10075: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_10133: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4698: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4691: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4695: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9956: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10125: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10181: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_2273: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2266: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_10012: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_2270: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
