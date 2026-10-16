@@ -6,7 +6,7 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  height: 18px;
+  height: var(--h-chip);
   margin: 0;
   padding: 0 var(--sp-2);
   border-radius: var(--r-full);
@@ -35,14 +35,4 @@
   letter-spacing: 0;
   text-overflow: ellipsis;
   text-transform: none;
-}
-/* After the tones, so it wins over each tone's color. */
-.chip[data-alert] {
-  color: var(--chrome-err-text);
-}
-@media (max-width: 560px) {
-  :where(.chip) {
-    height: var(--h-chip);
-    padding: 0 var(--sp-2);
-  }
 }
