@@ -2,10 +2,13 @@
 // a second check would find a consumed "Allow once" gone and prompt the user again.
 
 import type { Notifications } from '@parity/truapi-host';
+import type { NotificationActivation } from '@parity/truapi';
 import { log } from '@dotli/shared';
 import {
   retainNotification,
   findNotification,
+  pendingNotificationActivations,
+  acknowledgeNotificationActivation,
   cancelNotificationActivation,
   validNotificationRoute,
 } from '@dotli/storage/notification-activations';
@@ -77,5 +80,34 @@ export function createNotificationAdapters(label: string): Required<Notification
   return {
     pushNotification,
     cancelNotification: cancelPushNotification,
+    activationEvents: async () => {
+      // A click focuses one tab; background siblings must not route the same event.
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+        return { events: [] };
+      }
+      const { scope } = notificationContext(label);
+      const records = await pendingNotificationActivations(scope);
+      if (!notificationContextIsCurrent(scope)) {
+        return { events: [] };
+      }
+      const events: NotificationActivation[] = [];
+      for (const record of records) {
+        if (record.route !== null) {
+          events.push({
+            sequence: BigInt(record.sequence),
+            notificationId: record.notificationId,
+            route: record.route,
+          });
+        }
+      }
+      return { events };
+    },
+    acknowledgeActivation: async ({ sequence }) => {
+      if (sequence < 0n || sequence > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error('Invalid activation sequence');
+      }
+      const { scope } = notificationContext(label);
+      await acknowledgeNotificationActivation(scope, Number(sequence));
+    },
   };
 }

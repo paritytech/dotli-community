@@ -304,7 +304,7 @@ describe('bridge render lifecycle', () => {
     spy.mockRestore();
   });
 
-  it('delivers direct-frame notifications and scopes a replacement execution separately', async ({
+  it('delivers direct-frame notifications without carrying activations into a replacement execution', async ({
     onTestFinished,
   }) => {
     const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
@@ -332,8 +332,10 @@ describe('bridge render lifecycle', () => {
     const notification = document.querySelector<HTMLButtonElement>('[data-testid="notif-body"]');
     expect(notification?.textContent).toBe('Preview notification');
     notification?.click();
-    await vi.waitFor(() => {
-      expect(focus).toHaveBeenCalled();
+    await vi.waitFor(async () => {
+      expect((await api.activationEvents()).events).toEqual([
+        { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/message/1' },
+      ]);
     });
 
     const replacement = renderIframe('https://preview.example/app', label);
@@ -341,6 +343,7 @@ describe('bridge render lifecycle', () => {
     nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
     await replacement;
     setNotificationAccount(label, '11'.repeat(32));
+    expect((await api.activationEvents()).events).toEqual([]);
     const next = await api.pushNotification({ text: 'New execution', deeplink: '/message/2' });
     const nextRecord = await findNotification(label, next.id);
     assert.isDefined(nextRecord);

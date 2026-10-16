@@ -7,6 +7,7 @@ import type {
   IdentityDisclosureReview,
   MainPurseChatPaymentReview,
   PermissionDecision,
+  PreimageSubmitReview,
   ProductSubtreeReview,
   ProfileDisclosureReview,
   ResourceAllocationReview,
@@ -28,8 +29,9 @@ import type {
 import { hexToBytes } from '@parity/truapi/scale';
 import { getActiveServicesConfig } from '@dotli/config';
 import { iconMarkup, PERMISSION_ICONS } from '../permission-icons.js';
+import { showPreimageSubmitModal } from '../preimage-modal.js';
 import { ERRORS } from '../errors.js';
-import { createBlockingModalScope, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { presentModal } from '../overlays/load.js';
 import type { ModalButton, ModalField } from '../state/modals.js';
 
@@ -48,10 +50,13 @@ type ConfirmationField = ModalField;
 
 type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismissed';
 
+/** PreimageSubmit gets its own modal. */
+type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' }>;
+
 async function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
-  review: UserConfirmationReview,
+  review: ModalReview,
   signal: AbortSignal,
   allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
@@ -92,7 +97,7 @@ function formatBytes(value: Uint8Array): string {
   return `0x${Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function confirmationDisplay(label: string, review: UserConfirmationReview): { fields: ConfirmationField[] } {
+function confirmationDisplay(label: string, review: ModalReview): { fields: ConfirmationField[] } {
   switch (review.tag) {
     case 'SignPayload':
       return { fields: createSignPayloadFields(label, review.value) };
@@ -388,7 +393,7 @@ function createResourceAllocationFields(review: ResourceAllocationReview): Confi
   ];
 }
 
-function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
+function confirmationCopy(review: ModalReview): ConfirmationCopy {
   switch (review.tag) {
     case 'SignPayload':
       return { title: 'Sign Transaction', action: 'Sign', icon: PEN_ICON };
@@ -458,9 +463,19 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
   }
 }
 
+async function handlePreimageSubmitReview(review: PreimageSubmitReview, signal: AbortSignal): Promise<boolean> {
+  try {
+    await showPreimageSubmitModal(Number(review.size), signal);
+    return true;
+  } catch {
+    throwIfAborted(signal);
+    return false;
+  }
+}
+
 async function handleConfirmationReview(
   label: string,
-  review: UserConfirmationReview,
+  review: ModalReview,
   signal: AbortSignal,
   allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
@@ -496,11 +511,19 @@ export function createUserConfirmationAdapters(
     // Per-action reviews confirm a single operation, so there is no lifetime
     // to choose and the modal keeps two buttons.
     confirmUserAction: review =>
-      modalScope.enqueue(async signal => (await handleConfirmationReview(label, review, signal, false)) === 'accepted'),
+      modalScope.enqueue(async signal =>
+        review.tag === 'PreimageSubmit'
+          ? handlePreimageSubmitReview(review.value, signal)
+          : (await handleConfirmationReview(label, review, signal, false)) === 'accepted',
+      ),
     // The core stores AllowAlways and Deny, and honours AllowOnce for this request only.
     confirmPermission: review =>
       modalScope.enqueue(async signal =>
-        permissionDecision(await handleConfirmationReview(label, review, signal, true)),
+        review.tag === 'PreimageSubmit'
+          ? (await handlePreimageSubmitReview(review.value, signal))
+            ? 'AllowOnce'
+            : 'Deny'
+          : permissionDecision(await handleConfirmationReview(label, review, signal, true)),
       ),
   };
 }
