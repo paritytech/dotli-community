@@ -416,6 +416,83 @@ describe('Light client sync reporting is opt-in', () => {
   });
 });
 
+/** Every line the logger hands its sink, until the test ends. `next` resolves on the next one. */
+function recordLogLines(): {
+  lines: { level: LogLevel; message: string; attrs: Record<string, unknown> | undefined }[];
+  next: () => Promise<void>;
+} {
+  const lines: { level: LogLevel; message: string; attrs: Record<string, unknown> | undefined }[] = [];
+  let heard: (() => void) | null = null;
+  onTestFinished(
+    bindLogSink({
+      emit: (level, message, attrs) => {
+        lines.push({ level, message, attrs });
+        heard?.();
+      },
+    }),
+  );
+  return {
+    lines,
+    next: () =>
+      new Promise(resolve => {
+        heard = resolve;
+      }),
+  };
+}
+
+describe('An expected lifecycle watch state is a breadcrumb', () => {
+  it('As a maintainer, a chain that refuses a lifecycle watch leaves a flow event and no warning', () => {
+    // Given sync reporting on the relay chain
+    const log = recordLogLines();
+    reporter.enableSyncReporting(['relay']);
+
+    // When the chain refuses the watch
+    reporter.attachChainSync(
+      'relay',
+      () => undefined,
+      () => {
+        throw new Error('chain is not connected');
+      },
+    );
+
+    // Then the loading screen's fallback is recorded as progress, not as a failure
+    expect(log.lines).toEqual([
+      {
+        level: 'info',
+        message: 'Chain lifecycle watch unavailable',
+        attrs: { flow: 'protocol', chain: 'relay', reason: 'chain is not connected' },
+      },
+    ]);
+  });
+
+  it('As a maintainer, a lifecycle watch that ends in an error leaves a flow event and no warning', async () => {
+    // Given sync reporting on the relay chain, and a watch whose stream fails
+    const log = recordLogLines();
+    const logged = log.next();
+    reporter.enableSyncReporting(['relay']);
+
+    // When the chain attaches and its watch fails
+    reporter.attachChainSync(
+      'relay',
+      () => undefined,
+      () => ({
+        next: () => Promise.reject(new Error('chain removed')),
+        close: () => undefined,
+      }),
+    );
+    await logged;
+
+    // Then the failure is recorded as progress, not as a warning
+    expect(log.lines).toEqual([
+      {
+        level: 'info',
+        message: 'Chain lifecycle watch ended',
+        attrs: { flow: 'protocol', chain: 'relay', reason: 'chain removed' },
+      },
+    ]);
+  });
+});
+
 describe('Chain detail reporting works', () => {
   it('As a maintainer, a second connection to the same chain cannot rewrite a warm start as cold', () => {
     // Given

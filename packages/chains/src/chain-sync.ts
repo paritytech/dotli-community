@@ -321,8 +321,8 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
     try {
       watch = watchLifecycle();
     } catch (err: unknown) {
-      // The loading screen falls back to its own timings, so this is a warning, not a failure.
-      log.warn(`[dot.li chain-sync] lifecycle watch unavailable for ${chain}: ${errorMessage(err)}`, err);
+      // The loading screen falls back to its own timings, so this is progress, not a failure.
+      log.event('Chain lifecycle watch unavailable', { flow: 'protocol', chain, reason: errorMessage(err) });
       return { intercept, stop: () => undefined };
     }
 
@@ -333,7 +333,8 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
           applyLifecycleState(state);
         }
       } catch (err: unknown) {
-        log.warn(`[dot.li chain-sync] lifecycle watch failed for ${chain}: ${errorMessage(err)}`, err);
+        // As when the watch is refused, the loading screen falls back to its own timings.
+        log.event('Chain lifecycle watch ended', { flow: 'protocol', chain, reason: errorMessage(err) });
       }
     })();
 
