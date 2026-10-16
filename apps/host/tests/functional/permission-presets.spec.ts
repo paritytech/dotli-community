@@ -43,6 +43,7 @@ test('As a user moving from Secure to Restricted to Secure to Trusted, only Trus
   await settled('restricted');
   await page.getByTestId('permissions-preset-stop-secure').click();
   await settled('secure');
+  expect(navigations).toBe(0);
   const reloaded = page.waitForEvent('framenavigated', {
     predicate: frame => isSandboxUrl(frame.url()),
     timeout: 15_000,
@@ -54,4 +55,15 @@ test('As a user moving from Secure to Restricted to Secure to Trusted, only Trus
   // Then
   expect(navigations).toBe(1);
   expect(first.isDetached()).toBe(true);
+  await page.getByTestId('permissions-advanced-toggle').click();
+  await expect(page.getByTestId('permissions-advanced')).toHaveAttribute('open');
+  const pressed = (name: string, status: string) =>
+    page
+      .getByTestId('permissions-popover-row')
+      .filter({ has: page.locator(`#permissions-popover-name-${name}`) })
+      .getByTestId(`permissions-popover-segment-${status}`);
+  await expect(pressed('Camera', 'granted')).toHaveAttribute('aria-pressed', 'true');
+  await expect(pressed('ChainSubmit', 'granted')).toHaveAttribute('aria-pressed', 'true');
+  await expect(pressed('Location', 'ask')).toHaveAttribute('aria-pressed', 'true');
+  await expect(pressed('Bluetooth', 'ask')).toHaveAttribute('aria-pressed', 'true');
 });
