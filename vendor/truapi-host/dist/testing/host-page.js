@@ -163,7 +163,9 @@ export async function startTestHost(options) {
         onPort(port) {
             void (async () => {
                 if (workerRuntime) {
-                    const provider = await workerRuntime.createProvider({ productId: hostProduct });
+                    const provider = await workerRuntime.createProvider({
+                        productId: hostProduct,
+                    });
                     const unsubscribe = provider.subscribe((frame) => {
                         port.postMessage(frame);
                     });

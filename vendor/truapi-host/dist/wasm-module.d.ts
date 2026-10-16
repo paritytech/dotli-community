@@ -39,7 +39,6 @@ export interface WorkerHostRuntime extends PermissionAuthorizationRuntime {
     disconnectSession(): Promise<void>;
     notifyContactsChanged(): void;
     sessionChatIdentityKey(): Uint8Array | undefined;
-    deviceStatementKey(): Uint8Array | undefined;
     deviceEncryptionKey(): Promise<Uint8Array>;
     productSubtreePublicKey(productId: string, timeoutMs?: number): Promise<Uint8Array | undefined>;
     clearProductState(productId: string): Promise<void>;
@@ -60,6 +59,7 @@ export interface WorkerHostRuntime extends PermissionAuthorizationRuntime {
 export interface WorkerPairingHostRuntime extends WorkerHostRuntime {
     cancelPairing(): void;
     notifySessionStoreChanged(): void;
+    deviceStatementKey(): Uint8Array | undefined;
     activateStoredSession(): Promise<void>;
     activateExternalSession(blob: Uint8Array): Promise<void>;
     resetSessionState(): Promise<void>;
@@ -74,13 +74,15 @@ export interface WorkerPairingHostRuntime extends WorkerHostRuntime {
  */
 export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     activateLocalSession(secret: Uint8Array): Promise<void>;
+    /** Only on a core built with `wasm-signing-host`. */
+    setGrantAllowancesUnchecked?(granted: boolean): void;
+    /** Only on a core built with `wasm-signing-host`. */
+    setWithheldResources?(tags: string[]): void;
     /**
      * Activate and give the session a display name, which is what
      * `account.get_user_id` answers with.
      */
     activateLocalSessionWithIdentity(secret: Uint8Array, liteUsername?: string): Promise<void>;
-    /** Only on a core built with `test-host`. */
-    setGrantAllowancesUnchecked?(granted: boolean): void;
     localIdentityContext(): {
         activationId: string;
         identityAccountId: string;
@@ -89,8 +91,6 @@ export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     localLiteRegistrationBody(activationId: string, usernameBase: string, verifier: Uint8Array): Promise<string>;
     refreshLocalIdentity(activationId: string): Promise<LocalIdentity>;
     getWalletAllowanceSnapshot(activationId: string, productIds: string[]): Promise<WalletAllowanceSnapshot>;
-    /** Only on a core built with `test-host`. */
-    setWithheldResources?(tags: string[]): void;
 }
 /** Module surface the wasm-pack glue exports. */
 export interface WasmModuleShape {

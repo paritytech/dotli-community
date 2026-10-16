@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "2d84a4c2f5f09522";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "841ea8fac7e2a0bc";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -118,6 +118,12 @@ export declare class ChatClient {
     postMessage(request: T.HostChatPostMessageRequest, options?: CallOptions): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
     actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
+    /**
+     * Set what a room the product created shows below its messages. A room
+     * keeps the footer until the product sets another, and a new room shows
+     * the text input.
+     */
+    setRoomFooter(request: T.HostChatSetRoomFooterRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostChatSetRoomFooterError>>;
 }
 /**
  * CoinPayment operations.
@@ -282,18 +288,6 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
-    /**
-     * Retrieve up to 32 pending activations for this runtime's authenticated
-     * product, account and environment. Retrieval does not consume events,
-     * prompt for permissions or enroll a background receiver.
-     */
-    activationEvents(options?: CallOptions): ResultAsync<T.NotificationActivations, S.CallErrorValue<T.VersionedNotificationActivationEventsError>>;
-    /**
-     * Acknowledge exactly one activation after the product router handles it.
-     * Unknown or already acknowledged sequences are idempotent, and can never
-     * remove an activation from another product, account or environment.
-     */
-    acknowledgeActivation(request: T.NotificationActivationAcknowledgeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedNotificationActivationAcknowledgeError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {
@@ -356,7 +350,14 @@ export declare class PreimageClient {
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
     }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
-    /** Submit a preimage. Returns the preimage key (hash) on success. */
+    /**
+     * Submit a preimage. Returns the preimage key (hash) on success.
+     *
+     * Requires the `PreimageSubmit` permission and raises no per-upload
+     * confirmation. `AllowAlways` covers every upload; `AllowOnce` covers a
+     * single upload. Allocating or renewing the Bulletin allowance may still
+     * ask the paired wallet.
+     */
     submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */

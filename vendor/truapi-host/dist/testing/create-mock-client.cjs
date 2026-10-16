@@ -547,7 +547,7 @@ var require_index_cjs = __commonJS({
 });
 
 // dist/generated/host-callbacks.js
-var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, CrossProductSignatureKind, DevicePermissionStatus, ExpandedCardFaceOutcome, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostScan, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -559,6 +559,7 @@ var init_host_callbacks = __esm({
     CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi3.ProductAccountTxPayload }), LegacyAccount: import_truapi3.LegacyAccountTxPayload }));
+    CrossProductSignatureKind = S.lazy(() => S.Status("Payload", "Transaction", "Raw", "StatementProof"));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
     ExpandedCardFaceOutcome = S.lazy(() => S.Status("Applied", "NotPresented", "UserMoving", "Unsupported"));
     HostChainEntry = S.lazy(() => S.Struct({ identifier: import_truapi3.ChainIdentifier, genesisHash: import_truapi3.Bytes32 }));
@@ -566,9 +567,10 @@ var init_host_callbacks = __esm({
     HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi3.Bytes32, handles: S.Vector(import_truapi3.Bytes32) }));
     HostContactMatches = S.lazy(() => S.Struct({ accounts: S.Vector(S.Option(import_truapi3.Bytes32)) }));
     HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: import_truapi3.Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
+    HostScan = S.lazy(() => S.TaggedUnion({ Scanned: S.Struct({ text: S.str, format: import_truapi3.CodeFormat }), Dismissed: S._void, CameraUnavailable: S._void, NotVisible: S._void }));
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
-    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi3.HostDevicePermissionRequest, Remote: import_truapi3.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }) }));
+    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi3.HostDevicePermissionRequest, Remote: import_truapi3.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), CrossProductSignature: S.Struct({ targetProductId: S.str, kind: CrossProductSignatureKind }) }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
@@ -685,6 +687,7 @@ function createWasmRawCallbacks(callbacks) {
   const game = callbacks.game;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
+  const scanner = callbacks.scanner;
   return {
     authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
     chainConnect: chainConnectAdapter(callbacks.chain),
@@ -692,6 +695,7 @@ function createWasmRawCallbacks(callbacks) {
       createChatRoom: async (product, request) => import_truapi4.HostChatCreateRoomResponse.enc(await chat.createChatRoom(ProductContext.dec(product), import_truapi4.HostChatCreateRoomRequest.dec(request))),
       registerChatBot: async (product, request) => import_truapi4.HostChatRegisterBotResponse.enc(await chat.registerChatBot(ProductContext.dec(product), import_truapi4.HostChatRegisterBotRequest.dec(request))),
       postChatMessage: async (product, request) => import_truapi4.HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), import_truapi4.HostChatPostMessageRequest.dec(request))),
+      setChatRoomFooter: async (product, request) => await chat.setChatRoomFooter(ProductContext.dec(product), import_truapi4.HostChatSetRoomFooterRequest.dec(request)),
       subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(import_truapi4.HostChatListSubscribeItem.enc(item)), sendError)
     } : {},
     ...contacts ? {
@@ -712,8 +716,6 @@ function createWasmRawCallbacks(callbacks) {
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
     pushNotification: async (notification) => import_truapi4.HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(import_truapi4.HostPushNotificationRequest.dec(notification))),
     cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
-    activationEvents: async () => import_truapi4.NotificationActivations.enc(await callbacks.notifications.activationEvents()),
-    acknowledgeActivation: async (request) => await callbacks.notifications.acknowledgeActivation(import_truapi4.NotificationActivationAcknowledgeRequest.dec(request)),
     ...permissionStatus ? {
       devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(import_truapi4.HostDevicePermissionRequest.dec(request)))
     } : {},
@@ -730,6 +732,9 @@ function createWasmRawCallbacks(callbacks) {
     write: async (key, value) => await callbacks.productStorage.write(key, value),
     clear: async (key) => await callbacks.productStorage.clear(key),
     subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(import_truapi4.HostLocalStorageChangeItem.enc(item)), sendError),
+    ...scanner ? {
+      scanCode: async (product, request) => HostScan.enc(await scanner.scanCode(ProductContext.dec(product), import_truapi4.HostScannerScanRequest.dec(request)))
+    } : {},
     subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(import_truapi4.HostThemeSubscribeItem.enc(item)), sendError),
     confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review))
@@ -1859,7 +1864,7 @@ function hex2(bytes2) {
   return Array.from(bytes2, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 function createMockHost(config = {}) {
-  const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, faults = {}, supportedChains = {
+  const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, faults = {}, scanner, supportedChains = {
     network: "mock",
     chains: [
       { identifier: "People", genesisHash: MOCK_GENESIS.people },
@@ -1867,6 +1872,7 @@ function createMockHost(config = {}) {
       { identifier: "AssetHub", genesisHash: MOCK_GENESIS.assetHub }
     ]
   } } = config;
+  const scan = scanner === void 0 ? void 0 : { answer: scanner };
   const storage = /* @__PURE__ */ new Map();
   const preimages = /* @__PURE__ */ new Map();
   const navigations = [];
@@ -1927,7 +1933,7 @@ function createMockHost(config = {}) {
   const forgetStoredAuthorization = (permission) => {
     const prefix = "core:PermissionAuthorization:";
     const needle = JSON.stringify(permission);
-    for (const key of [...storage.keys()]) {
+    for (const key of storage.keys()) {
       if (key.startsWith(prefix) && key.includes(needle))
         storage.delete(key);
     }
@@ -2052,18 +2058,19 @@ function createMockHost(config = {}) {
         const entry = pushedNotifications.find((n) => n.id === id);
         if (entry)
           entry.cancelled = true;
-      },
-      async activationEvents() {
-        throw new Error("notification activation is unsupported");
-      },
-      async acknowledgeActivation() {
-        throw new Error("notification activation is unsupported");
       }
     },
     game: {
       async scheduleGameReminder() {
       },
       async cancelGameReminder() {
+      }
+    },
+    ...scan === void 0 ? {} : {
+      scanner: {
+        async scanCode() {
+          return scan.answer;
+        }
       }
     },
     permissions: {
@@ -2200,6 +2207,10 @@ function createMockHost(config = {}) {
         });
         return { messageId };
       },
+      async setChatRoomFooter() {
+        if (faults.chatError)
+          throw new Error(faults.chatError);
+      },
       subscribeChatRooms() {
         if (faults.chatError) {
           return failedSubscription(faults.chatError);
@@ -2306,6 +2317,12 @@ function createMockHost(config = {}) {
       enforcePermissions = enforce;
     },
     getTheme: () => currentTheme,
+    setScanAnswer: (answer) => {
+      if (scan === void 0) {
+        throw new Error("this mock serves no scanner: create it with a `scanner` answer");
+      }
+      scan.answer = answer;
+    },
     setTheme: (variant) => {
       currentTheme = variant;
       const item = {

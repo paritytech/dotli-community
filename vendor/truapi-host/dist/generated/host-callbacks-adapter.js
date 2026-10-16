@@ -4,8 +4,8 @@
 // callback surface the WASM core invokes. Codec-backed wire and
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, RemotePermissionRequest, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostChatSetRoomFooterRequest, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostScannerScanRequest, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
+import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostScan, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
 /** Adapt typed host callbacks into the raw SCALE callback surface the
  *  WASM core invokes. */
@@ -15,6 +15,7 @@ export function createWasmRawCallbacks(callbacks) {
     const game = callbacks.game;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
+    const scanner = callbacks.scanner;
     return {
         authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
         chainConnect: chainConnectAdapter(callbacks.chain),
@@ -23,6 +24,7 @@ export function createWasmRawCallbacks(callbacks) {
                 createChatRoom: async (product, request) => HostChatCreateRoomResponse.enc(await chat.createChatRoom(ProductContext.dec(product), HostChatCreateRoomRequest.dec(request))),
                 registerChatBot: async (product, request) => HostChatRegisterBotResponse.enc(await chat.registerChatBot(ProductContext.dec(product), HostChatRegisterBotRequest.dec(request))),
                 postChatMessage: async (product, request) => HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), HostChatPostMessageRequest.dec(request))),
+                setChatRoomFooter: async (product, request) => await chat.setChatRoomFooter(ProductContext.dec(product), HostChatSetRoomFooterRequest.dec(request)),
                 subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(HostChatListSubscribeItem.enc(item)), sendError),
             }
             : {}),
@@ -48,8 +50,6 @@ export function createWasmRawCallbacks(callbacks) {
         navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
         pushNotification: async (notification) => HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(HostPushNotificationRequest.dec(notification))),
         cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
-        activationEvents: async () => NotificationActivations.enc(await callbacks.notifications.activationEvents()),
-        acknowledgeActivation: async (request) => await callbacks.notifications.acknowledgeActivation(NotificationActivationAcknowledgeRequest.dec(request)),
         ...(permissionStatus
             ? {
                 devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(HostDevicePermissionRequest.dec(request))),
@@ -70,6 +70,11 @@ export function createWasmRawCallbacks(callbacks) {
         write: async (key, value) => await callbacks.productStorage.write(key, value),
         clear: async (key) => await callbacks.productStorage.clear(key),
         subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(HostLocalStorageChangeItem.enc(item)), sendError),
+        ...(scanner
+            ? {
+                scanCode: async (product, request) => HostScan.enc(await scanner.scanCode(ProductContext.dec(product), HostScannerScanRequest.dec(request))),
+            }
+            : {}),
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),
         confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
         confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
