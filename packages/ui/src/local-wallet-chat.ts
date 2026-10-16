@@ -11,7 +11,7 @@ import {
   requestCoreCustody,
   type CoreCustodyOperation,
 } from '@dotli/protocol';
-import { log } from '@dotli/shared';
+import { createAsyncTaskPool, log } from '@dotli/shared';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
 import type { AuthState, ContactsPlatform, CoreStorage, CoreStorageKey } from '@parity/truapi-host';
 import {
@@ -123,19 +123,10 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   // The custody lease excludes other documents. Within its owner, serialize all
   // operations on a slot, including migration, so a delayed legacy read cannot
   // overwrite a fresh write or resurrect a cleared reference.
-  const pendingSlots = new Map<string, Promise<unknown>>();
+  const slots = createAsyncTaskPool({ poolSize: 1 });
   const withSlot = async <T>(key: CoreStorageKey, operation: (slot: string) => Promise<T>): Promise<T> => {
     const slot = custodyKey(key, await walletId, genesis);
-    const previous = pendingSlots.get(slot) ?? Promise.resolve();
-    const pending = previous.catch(() => undefined).then(() => operation(slot));
-    pendingSlots.set(slot, pending);
-    try {
-      return await pending;
-    } finally {
-      if (pendingSlots.get(slot) === pending) {
-        pendingSlots.delete(slot);
-      }
-    }
+    return slots.call(() => operation(slot), { pool: slot });
   };
   const readRecord = async (slot: string): Promise<Uint8Array | undefined> => {
     const result = await custody(token => ({ action: 'read', lease: token, key: slot }));
