@@ -83,6 +83,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return 'ProfileDisclosure';
     case 'AccountAccess':
       return `AccountAccess:${request.value.targetProductId}`;
+    case 'CrossProductSignature':
+      return `CrossProductSignature:${request.value.targetProductId}:${request.value.kind}`;
   }
 }
 

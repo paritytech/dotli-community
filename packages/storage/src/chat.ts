@@ -10,6 +10,9 @@ const MESSAGE_STORE = 'chat_messages';
 const BOT_STORE = 'chat_bots';
 const BY_ROOM = 'byRoom';
 
+/** TrUAPI `ChatRoomFooter`: what a room shows below its messages. */
+export type ChatRoomFooter = 'TextInput' | 'Empty';
+
 export interface ChatRoomRecord {
   productId: string;
   roomId: string;
@@ -17,6 +20,8 @@ export interface ChatRoomRecord {
   /** URL or base64 image, as supplied by the product. */
   icon: string;
   createdAt: number;
+  /** Absent for a room the product never set a footer on, which shows the text input. */
+  footer?: ChatRoomFooter;
 }
 
 export interface ChatBotRecord {
@@ -54,8 +59,8 @@ function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-/** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon. */
-export async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
+/** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon and keeps the footer. */
+export async function createRoom(room: Omit<ChatRoomRecord, 'createdAt' | 'footer'>): Promise<'New' | 'Exists'> {
   const db = await getDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ROOM_STORE, 'readwrite');
@@ -66,6 +71,7 @@ export async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promi
       const existing = getReq.result;
       status = existing === undefined ? 'New' : 'Exists';
       store.put({
+        ...existing,
         ...room,
         createdAt: existing?.createdAt ?? Date.now(),
       } satisfies ChatRoomRecord);
@@ -79,6 +85,30 @@ export async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promi
     };
     tx.onerror = () => {
       reject(tx.error ?? new Error('createRoom tx errored'));
+    };
+  });
+}
+
+/** Records what the room shows below its messages. `false` when the product has no such room. */
+export async function setRoomFooter(productId: string, roomId: string, footer: ChatRoomFooter): Promise<boolean> {
+  const db = await getDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ROOM_STORE, 'readwrite');
+    const store = tx.objectStore(ROOM_STORE);
+    let found = false;
+    const getReq = store.get([productId, roomId]) as IDBRequest<ChatRoomRecord | undefined>;
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (existing !== undefined) {
+        found = true;
+        store.put({ ...existing, footer } satisfies ChatRoomRecord);
+      }
+    };
+    tx.oncomplete = () => {
+      resolve(found);
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error('setRoomFooter tx errored'));
     };
   });
 }

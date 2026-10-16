@@ -11,6 +11,7 @@ import {
   chatRooms,
   productCreateRoom,
   productPostMessage,
+  productSetRoomFooter,
   registerBot,
 } from '../chat/service.js';
 import { createResultStream } from './result-stream.js';
@@ -38,6 +39,10 @@ export function createChatPlatform(): Required<ChatPlatform> {
     async postChatMessage(product, request) {
       const messageId = await productPostMessage(product.productId, request.roomId, request.payload);
       return { messageId };
+    },
+
+    async setChatRoomFooter(product, request) {
+      await productSetRoomFooter(product.productId, request.roomId, request.footer);
     },
 
     subscribeChatRooms(product) {
