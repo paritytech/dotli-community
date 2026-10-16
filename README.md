@@ -361,7 +361,11 @@ local wallet is the active signer. With a Polkadot App session the phone holds C
 private slots and offers no contacts.
 
 The local wallet core keeps Chat's main purse, device records, attachment chunks and product index in the protocol
-origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Records are authenticated-encrypted with a
+origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Each Chat app's Chat access grant is kept
+there too, under the wallet, because the core checks it before any product page's contact picker lists that app's
+contacts. Every other grant stays in the host `localStorage` of the product page that asked for it. The profile
+disclosure, the received profile references and the host channel's peer keys sit in custody as well: a profile is shared
+from one product page and relayed, posted or shown from another. Records are authenticated-encrypted with a
 non-extractable key; immutable attachment source Blobs are host-private but not encrypted at rest. They never enter
 product storage or the product RPC interface. Each core takes a custody lease for the wallet it booted, named by a
 domain-separated hash of the wallet's entropy, and every operation rechecks the stored wallet, so forgetting or

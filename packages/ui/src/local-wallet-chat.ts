@@ -43,23 +43,43 @@ export interface LocalWalletChat {
   dispose(): void;
 }
 
-/** Wallet-scoped by their own keys, unlike the core's other slots. */
+/**
+ * A Chat app's Chat access, which the core checks before any product page lists that app's contacts. The other grants
+ * are only read on their own product's page and stay in its storage.
+ */
+function isChatAccessGrant(key: CoreStorageKey): boolean {
+  return key.tag === 'PermissionAuthorization' && key.value.request.tag === 'ChatAuthority';
+}
+
+/**
+ * Native Chat's records, the profile disclosure and received references, and the host channel's peer keys, all
+ * wallet-scoped by their own keys, plus the Chat access grants. A profile is shared from one product page and relayed
+ * or shown from another, so none of these can stay with the page that wrote them.
+ */
 function isCustodySlot(key: CoreStorageKey): boolean {
   return (
     key.tag === 'MainPurseCoinage' ||
     key.tag === 'NativeChatDevice' ||
     key.tag === 'NativeChatFileChunk' ||
-    key.tag === 'NativeChatProducts'
+    key.tag === 'NativeChatProducts' ||
+    key.tag === 'ProfileDisclosure' ||
+    key.tag === 'ProfileReferencesReceived' ||
+    key.tag === 'ProfilePersonalReferencesReceived' ||
+    key.tag === 'HostChannelPeers' ||
+    isChatAccessGrant(key)
   );
 }
 
-function custodyKey(key: CoreStorageKey): string {
-  return bytesToHex(encodeCoreStorageKey(key)).slice(2);
+/** A grant's key names only its product, so custody keys it under the wallet too. */
+function custodyKey(key: CoreStorageKey, walletId: string): string {
+  const encoded = bytesToHex(encodeCoreStorageKey(key)).slice(2);
+  return isChatAccessGrant(key) ? walletId + encoded : encoded;
 }
 
 /** Acquisition starts now, so booting never waits on it; only native Chat's own operations do. */
 export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boolean): LocalWalletChat {
-  const lease = localWalletCustodyId(wallet.entropy).then(async id => {
+  const walletId = localWalletCustodyId(wallet.entropy);
+  const lease = walletId.then(async id => {
     const acquired = await requestCoreCustody(SITE_ID, { action: 'acquire', wallet: id });
     if (typeof acquired !== 'string') {
       throw new Error('Native Chat custody was not acquired');
@@ -112,7 +132,8 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
           if (!isCustodySlot(key)) {
             return storage.readCoreStorage(key);
           }
-          const result = await custody(token => ({ action: 'read', lease: token, key: custodyKey(key) }));
+          const storageKey = custodyKey(key, await walletId);
+          const result = await custody(token => ({ action: 'read', lease: token, key: storageKey }));
           if (result !== undefined && !(result instanceof Uint8Array)) {
             throw new Error('Invalid private custody record');
           }
@@ -123,14 +144,16 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
             await storage.writeCoreStorage(key, value);
             return;
           }
-          await custody(token => ({ action: 'write', lease: token, key: custodyKey(key), value }));
+          const storageKey = custodyKey(key, await walletId);
+          await custody(token => ({ action: 'write', lease: token, key: storageKey, value }));
         },
         async clearCoreStorage(key) {
           if (!isCustodySlot(key)) {
             await storage.clearCoreStorage(key);
             return;
           }
-          await custody(token => ({ action: 'clear', lease: token, key: custodyKey(key) }));
+          const storageKey = custodyKey(key, await walletId);
+          await custody(token => ({ action: 'clear', lease: token, key: storageKey }));
         },
       });
     },
