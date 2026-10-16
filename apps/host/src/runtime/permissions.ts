@@ -24,6 +24,9 @@ export type EnforceablePermissionName = Exclude<PermissionName, AutoGrantDeviceP
 
 export type PermissionStatus = 'ask' | 'granted' | 'denied';
 
+/** Statuses for some of an app's permissions, as one change writes them. */
+export type PermissionTargets = Readonly<Partial<Record<EnforceablePermissionName, PermissionStatus>>>;
+
 /** A variant absent here is still persisted by the core but leaves the iframe `allow` attribute alone. */
 export const DEVICE_PERMISSION_POLICY: Partial<Record<DevicePermissionName, string>> = {
   Camera: 'camera',
@@ -95,8 +98,6 @@ export interface PermissionAuthorizations {
   status(label: string, permission: PermissionName): Promise<PermissionStatus>;
   /** A no-op while no connection of `label` is open. */
   setStatus(label: string, permission: PermissionName, status: PermissionStatus): Promise<void>;
-  /** Each write may fail on its own, so the caller learns which landed and can announce them as one change. */
-  resetAll(label: string): Promise<ResetAllResult>;
   grantedDevicePermissions(label: string): Promise<DevicePermissionName[]>;
   /** The iframe `allow` attribute for `label`'s granted device permissions. */
   allowAttribute(label: string): Promise<string>;
@@ -135,13 +136,6 @@ function toAuthorizationStatus(status: PermissionStatus): PermissionAuthorizatio
     case 'ask':
       return 'NotDetermined';
   }
-}
-
-export interface ResetAllResult {
-  /** In menu order. */
-  reset: EnforceablePermissionName[];
-  /** What each failed write threw. Their permissions keep their status. */
-  errors: unknown[];
 }
 
 export function createPermissionAuthorizations(): PermissionAuthorizations {
@@ -191,16 +185,6 @@ export function createPermissionAuthorizations(): PermissionAuthorizations {
     statuses,
     status: async (label, permission) => (await statuses(label, [permission])).at(0) ?? 'ask',
     setStatus,
-    async resetAll(label) {
-      const names = ALL_PERMISSIONS.map(({ name }) => name);
-      const answered = await statuses(label, names);
-      const decided = names.filter((_, index) => (answered[index] ?? 'ask') !== 'ask');
-      const writes = await Promise.allSettled(decided.map(name => setStatus(label, name, 'ask')));
-      return {
-        reset: decided.filter((_, index) => writes[index]?.status === 'fulfilled'),
-        errors: writes.flatMap((write): unknown[] => (write.status === 'rejected' ? [write.reason] : [])),
-      };
-    },
     grantedDevicePermissions,
     async allowAttribute(label) {
       const policies = ['clipboard-write'];

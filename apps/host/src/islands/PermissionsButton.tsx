@@ -15,8 +15,11 @@ export function PermissionsButton(): JSX.Element {
     product: productStore,
     state: productPermissions.state,
     refresh: productPermissions.refresh,
-    choose: productPermissions.choose,
-    reset: productPermissions.reset,
+    choose: (label, name, status) => productPermissions.change(label, { [name]: status }).then(() => undefined),
+    reset: label =>
+      productPermissions
+        .change(label, Object.fromEntries(ALL_PERMISSIONS.map(({ name }) => [name, 'ask'])))
+        .then(() => undefined),
   });
   return <PermissionsItem {...panel} />;
 }

@@ -169,7 +169,7 @@ function harness(
     },
     announce(change) {
       for (const listener of [...permissionListeners]) {
-        listener({ permissions: [], device: true, fromPrompt: false, ...change });
+        listener({ permissions: [], allowChanged: true, fromPrompt: false, ...change });
       }
     },
   };
@@ -768,7 +768,7 @@ describe('product frame rebuilds', () => {
     await settle(fakes, subdomainProduct('notifications'), 0);
 
     // When
-    fakes.announce({ label: 'notifications', permissions: ['Notifications'], device: false });
+    fakes.announce({ label: 'notifications', permissions: ['Notifications'], allowChanged: false });
 
     // Then
     expect(frameView.statuses.at(-1)).toBe('connected');

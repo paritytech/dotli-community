@@ -114,14 +114,14 @@ describe('device permission prompts', () => {
   it('As a product, a notifications grant is announced as not a device change', async () => {
     // When / Then
     expect(await grantAndRecordChanges('Notifications')).toEqual([
-      { label: 'myapp', permissions: ['Notifications'], device: false, fromPrompt: true },
+      { label: 'myapp', permissions: ['Notifications'], allowChanged: false, fromPrompt: true },
     ]);
   });
 
   it('As a product, a camera grant is announced as a device change from the prompt', async () => {
     // When / Then
     expect(await grantAndRecordChanges('Camera')).toEqual([
-      { label: 'myapp', permissions: ['Camera'], device: true, fromPrompt: true },
+      { label: 'myapp', permissions: ['Camera'], allowChanged: true, fromPrompt: true },
     ]);
   });
 });
@@ -157,7 +157,7 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).resolves.toBe('AllowAlways');
     expect(await registry.status('myapp', 'ChainSubmit')).toBe('granted');
-    expect(changes).toEqual([{ label: 'myapp', permissions: ['ChainSubmit'], device: false, fromPrompt: true }]);
+    expect(changes).toEqual([{ label: 'myapp', permissions: ['ChainSubmit'], allowChanged: false, fromPrompt: true }]);
     stop();
   });
 

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ALL_PERMISSIONS,
   AUTO_GRANT_DEVICE_PERMISSIONS,
@@ -176,126 +176,6 @@ describe('status / setStatus', () => {
 
     // Then
     expect(await permissions.status('myapp', 'Camera')).toBe('granted');
-  });
-});
-
-describe('resetAll', () => {
-  it('As a user, Reset all to Ask sets every granted and denied permission of my app back to ask and reports them in menu order', async () => {
-    // Given
-    await permissions.setStatus('myapp', 'ChainSubmit', 'denied');
-    await permissions.setStatus('myapp', 'Camera', 'granted');
-    await permissions.setStatus('myapp', 'Notifications', 'granted');
-
-    // When
-    const result = await permissions.resetAll('myapp');
-
-    // Then
-    expect(result).toEqual({ reset: ['Notifications', 'Camera', 'ChainSubmit'], errors: [] });
-    expect(
-      await permissions.statuses(
-        'myapp',
-        ALL_PERMISSIONS.map(({ name }) => name),
-      ),
-    ).toEqual(ALL_PERMISSIONS.map(() => 'ask'));
-    expect(myappStore).toEqual(new Map());
-  });
-
-  it("As a user, Reset all to Ask leaves other apps' permissions alone", async () => {
-    // Given
-    const unregister = registerTestProvider('other', new Map());
-    try {
-      await permissions.setStatus('other', 'Camera', 'granted');
-      await permissions.setStatus('myapp', 'Camera', 'granted');
-
-      // When
-      await permissions.resetAll('myapp');
-
-      // Then
-      expect(await permissions.status('other', 'Camera')).toBe('granted');
-      expect(await permissions.status('myapp', 'Camera')).toBe('ask');
-    } finally {
-      unregister();
-    }
-  });
-
-  it('As a user with nothing granted or denied, Reset all to Ask writes nothing', async () => {
-    // Given
-    const set = vi.fn(() => Promise.resolve());
-    const unregister = permissions.register('quiet', {
-      getPermissionAuthorizationStatuses: requests => Promise.resolve(requests.map(() => 'NotDetermined' as const)),
-      setPermissionAuthorizationStatus: set,
-    });
-    try {
-      // When
-      const result = await permissions.resetAll('quiet');
-
-      // Then
-      expect(result).toEqual({ reset: [], errors: [] });
-      expect(set).not.toHaveBeenCalled();
-    } finally {
-      unregister();
-    }
-  });
-
-  it('As a user, a write that fails keeps that permission as it was and is reported, while the others are reset', async () => {
-    // Given: the core refuses to change the camera.
-    const store = new Map<string, PermissionAuthorizationStatus>([
-      ['Device:Camera', 'Authorized'],
-      ['Device:Microphone', 'Denied'],
-    ]);
-    const unregister = permissions.register('flaky', {
-      getPermissionAuthorizationStatuses: requests =>
-        Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined')),
-      setPermissionAuthorizationStatus: (request, status) => {
-        const key = requestKey(request);
-        if (key === 'Device:Camera') {
-          return Promise.reject(new Error('core down'));
-        }
-        if (status === 'NotDetermined') {
-          store.delete(key);
-        } else {
-          store.set(key, status);
-        }
-        return Promise.resolve();
-      },
-    });
-    try {
-      // When
-      const result = await permissions.resetAll('flaky');
-
-      // Then
-      expect(result).toEqual({ reset: ['Microphone'], errors: [new Error('core down')] });
-      expect(store).toEqual(new Map([['Device:Camera', 'Authorized']]));
-    } finally {
-      unregister();
-    }
-  });
-
-  it('As a user whose permissions cannot be read, Reset all to Ask rejects and writes nothing', async () => {
-    // Given
-    const set = vi.fn(() => Promise.resolve());
-    const unregister = permissions.register('unreadable', {
-      getPermissionAuthorizationStatuses: () => Promise.reject(new Error('core down')),
-      setPermissionAuthorizationStatus: set,
-    });
-    try {
-      // When
-      const result = permissions.resetAll('unreadable');
-
-      // Then
-      await expect(result).rejects.toThrow('core down');
-      expect(set).not.toHaveBeenCalled();
-    } finally {
-      unregister();
-    }
-  });
-
-  it('As a product without a permission provider, Reset all to Ask has nothing to reset', async () => {
-    // When
-    const result = await permissions.resetAll('nobody');
-
-    // Then
-    expect(result).toEqual({ reset: [], errors: [] });
   });
 });
 

@@ -177,8 +177,8 @@ export const WALLET_LOGOUT = 'wallet.logout';
 export const PERMISSIONS_READ = 'permissions.read';
 
 /**
- * A permission change from the menu. Tagged `outcome` and, on error, `reason` (the intent that failed), as a failed one
- * leaves the permission as it was.
+ * A permission change, from the panel or a prompt, counted once when it settles. Tagged `outcome` and, on error,
+ * `reason` (`write`), as a failed one leaves the permissions it names as they were.
  */
 export const PERMISSIONS_CHANGE = 'permissions.change';
 

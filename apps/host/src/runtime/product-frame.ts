@@ -522,7 +522,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
   // before the change, so it is built again at once rather than after an answer for the frame it replaces.
   deps.onPermissionsChanged(change => {
-    if (!change.device || change.label !== target?.label) {
+    if (!change.allowChanged || change.label !== target?.label) {
       return;
     }
     const host = mounted;
