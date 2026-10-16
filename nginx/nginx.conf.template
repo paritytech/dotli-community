@@ -48,7 +48,8 @@ server {
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
-    # The landing page. Every other path gets the shell, which sends a URL with no product back here.
+    # The landing page. Every other path gets the shell, which opens the product `/<label>` names and sends a URL with no
+    # product back here.
     location = / {
         try_files /landing.html =404;
     }

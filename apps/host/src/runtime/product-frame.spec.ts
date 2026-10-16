@@ -363,6 +363,32 @@ describe('product frame renders', () => {
     },
   );
 
+  it('As a visitor who opened a product by its name in the path, the product gets only its own path', async () => {
+    // Given
+    location = {
+      ...location,
+      href: 'http://localhost:3000/Doom.dot/level/2?skill=3#boss',
+      pathname: '/Doom.dot/level/2',
+      search: '?skill=3',
+      hash: '#boss',
+    };
+    const fakes = harness();
+
+    // When
+    await settle(
+      fakes,
+      { mode: 'subdomain', label: 'doom', cid: 'cid', base: '/Doom.dot', chat: Promise.resolve(false) },
+      0,
+    );
+
+    // Then
+    const url = new URL(nth(fakes.hosts, 0).options.iframeUrl);
+    expect(url.hostname).toBe('doom.app.localhost');
+    expect(url.pathname).toBe('/level/2');
+    expect(url.searchParams.get('skill')).toBe('3');
+    expect(url.hash).toBe('#boss');
+  });
+
   it('As a user who reset everything, only the first product frame after the reload purges the sandbox origin', async () => {
     // Given
     const fakes = harness();

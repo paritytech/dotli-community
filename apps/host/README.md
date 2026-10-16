@@ -5,7 +5,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 
 ## Responsibility
 
-- Route a page load to a product, a local or preview target, or the landing page.
+- Route a page load to a product, a local or preview target, or the landing page. A product is named by its host
+  (`<label>.<domain>`) or, on the bare host, by the first path segment (`<domain>/<label>`), and gets only the path
+  after it.
 - Take a `.dot` label to a product on screen, or to the screen that says why not.
 - Own the page chrome: topbar, URL pill, loading screen, settings, account, permissions and network views.
 - Own the domain building blocks the chrome composes: account, chat, permission, appearance and chain views and their
@@ -95,7 +97,7 @@ flowchart LR
 ## Entry points
 
 - The shell page. Dev server on port 4321.
-- The landing page, served for the bare host.
+- The landing page, served for the bare host's root.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
 - `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
   local functional run needs `VITE_METRICS=true` in both the build and the run.

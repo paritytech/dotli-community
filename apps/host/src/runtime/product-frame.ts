@@ -28,10 +28,17 @@ import type { ManifestFacts } from './manifest-facts.js';
 /**
  * A product the host loads from a URL it was given, or from its content id on the app subdomain. `chat` says whether it
  * declares chat, which picks its connection's execution kind, so the frame awaits it before it connects the product.
+ * `base` is the page path ahead of the product's own, which its frame does not get.
  */
 export type FrameProduct =
   | { mode: 'iframe'; label: string; url: string; productId?: string | undefined; chat: Promise<boolean> }
-  | ({ mode: 'subdomain'; label: string; cid: string; chat: Promise<boolean> } & ManifestFacts);
+  | ({
+      mode: 'subdomain';
+      label: string;
+      cid: string;
+      base?: string | undefined;
+      chat: Promise<boolean>;
+    } & ManifestFacts);
 
 /** `lost` is a product whose core went down, was refused or turned stale, until its render on a replacement begins. */
 export type ProductFrameStatus = 'idle' | 'connecting' | 'connected' | 'lost' | 'failed';
@@ -604,7 +611,7 @@ type PageLocation = ReturnType<ProductFramePage['location']>;
 
 function sandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, location: PageLocation): URL {
   const origin = appOrigin(product.label, location);
-  const deepPath = getDeepPath(location);
+  const deepPath = getDeepPath(location, product.base ?? '');
   const url = new URL(deepPath ? `${origin}${deepPath}` : origin);
   if (url.origin !== origin) {
     throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
@@ -637,12 +644,15 @@ function appOrigin(label: string, location: PageLocation): string {
   return `https://${label}.app.${BASE_DOMAIN}`;
 }
 
-function getDeepPath(location: PageLocation): string {
+function getDeepPath(location: PageLocation, productBase: string): string {
   const { pathname, search, hash } = location;
   let p = pathname;
   const base = import.meta.env.BASE_URL;
   if (base !== '/' && p.startsWith(base)) {
     p = '/' + p.slice(base.length);
+  }
+  if (productBase !== '' && p.startsWith(productBase)) {
+    p = p.slice(productBase.length);
   }
   const isRoot = p === '' || p === '/';
   if (isRoot) {

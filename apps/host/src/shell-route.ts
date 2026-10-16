@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Which page the shell is: a product by its `.dot` label, a local or preview target in debug builds, or no product at
-// all. Read from the URL alone.
+// Which page the shell is: a product by its `.dot` label in the hostname or the path, a local or preview target in debug
+// builds, or no product at all. Read from the URL alone.
 
 import { BASE_DOMAIN } from '@dotli/config';
-import { dotNsUrl } from '@dotli/resolver';
+import { dotNsUrl, isValidDotLabel } from '@dotli/resolver';
 import { log } from '@dotli/shared';
 import { parseDotLabel } from './dot-label.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
@@ -43,7 +43,12 @@ export interface LocalTarget {
 }
 
 export type ShellRoute =
-  | { kind: 'product'; label: string }
+  | {
+      kind: 'product';
+      label: string;
+      /** The page path ahead of the product's own: `/<label>` where the path names the product, else empty. */
+      base: string;
+    }
   | LocalTarget
   /** A nested dot.li, which would draw a second topbar. */
   | { kind: 'nested' }
@@ -56,7 +61,7 @@ export function readShellRoute(location: ShellLocation, options: RouteOptions): 
   }
   const label = parseDotLabel(location.hostname);
   if (label !== null) {
-    return { kind: 'product', label };
+    return { kind: 'product', label, base: '' };
   }
   const productId = options.localhost ? readProductIdOverride(location.search) : undefined;
   if (previewUrl !== null) {
@@ -66,7 +71,18 @@ export function readShellRoute(location: ShellLocation, options: RouteOptions): 
   if (localhostUrl !== null) {
     return { kind: 'localhost', url: localhostUrl, host: new URL(localhostUrl).host, productId };
   }
-  return { kind: 'landing' };
+  return readPathProduct(location.pathname) ?? { kind: 'landing' };
+}
+
+/** A link to a product on the bare host: `/<label>` or `/<label>.dot`, then the product's own path. */
+function readPathProduct(pathname: string): ShellRoute | null {
+  const segment = /^\/([^/]+)/.exec(pathname)?.[1];
+  if (segment === undefined) {
+    return null;
+  }
+  // Lowercased as the browser lowercases a hostname, so both spellings of a link reach the same name.
+  const label = segment.replace(/\.dot$/i, '').toLowerCase();
+  return isValidDotLabel(label) ? { kind: 'product', label, base: `/${segment}` } : null;
 }
 
 function readProductIdOverride(search: string): string | undefined {

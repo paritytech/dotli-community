@@ -199,7 +199,7 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
   }
 }
 
-async function openProduct(label: string, shell: Shell): Promise<void> {
+async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product' }>, shell: Shell): Promise<void> {
   const { settings, bridgeModule } = shell.startup;
   const protocol = protocolClient();
   boot.step = 'resolve_setup';
@@ -221,6 +221,7 @@ async function openProduct(label: string, shell: Shell): Promise<void> {
     flowId: shell.flowId,
     startedAt: T0,
     names,
+    base,
     frame: {
       setPageProduct: bridgeModule.setPageProduct,
       render: product => shell.productFrame.render(product),
@@ -323,7 +324,7 @@ async function main(): Promise<void> {
       return;
     case 'product':
       announceRoute(route, shell.flowId);
-      await openProduct(route.label, shell);
+      await openProduct(route, shell);
       return;
     case 'landing':
       announceRoute(route, shell.flowId);

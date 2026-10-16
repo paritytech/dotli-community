@@ -70,6 +70,8 @@ export interface ProductLoaderOptions {
   startedAt: number;
   names: NameSource;
   frame: LoaderFrame;
+  /** The page path ahead of the product's own, which its frame does not get. */
+  base?: string | undefined;
   cidCache: LoaderCidCache;
   /** The names this visitor opened, kept in the store every subdomain shares. */
   recents: Pick<RecentLabels, 'record'>;
@@ -182,7 +184,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     progress.contentFetch();
     enterStep('render_handoff');
     settleOnContent();
-    await frame.render({ mode: 'subdomain', label, cid, chat, ...manifestFacts(manifests) });
+    await frame.render({ mode: 'subdomain', label, cid, base: options.base, chat, ...manifestFacts(manifests) });
   };
   const rendered = (manifests: ProductManifests): void => {
     options.failureScreen.forget();

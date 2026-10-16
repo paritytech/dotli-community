@@ -32,7 +32,25 @@ describe('readShellRoute', () => {
     const route = readShellRoute(at('http://doom.localhost:5173/localhost:3000/deep'), LOCAL_DEBUG);
 
     // Then
-    expect(route).toEqual({ kind: 'product', label: 'doom' });
+    expect(route).toEqual({ kind: 'product', label: 'doom', base: '' });
+  });
+
+  it('As a visitor on the bare host, I open a product by its name in the path, with or without .dot', () => {
+    // When
+    const plain = readShellRoute(at('https://example.li/doom/level/2?skill=3#boss'), RELEASE);
+    const dotted = readShellRoute(at('https://example.li/Doom.dot'), RELEASE);
+
+    // Then
+    expect(plain).toEqual({ kind: 'product', label: 'doom', base: '/doom' });
+    expect(dotted).toEqual({ kind: 'product', label: 'doom', base: '/Doom.dot' });
+  });
+
+  it('As a visitor on the bare host, a path that cannot be a name gets me no product', () => {
+    // When
+    const route = readShellRoute(at('https://example.li/not_a-name-/deep'), RELEASE);
+
+    // Then
+    expect(route).toEqual({ kind: 'landing' });
   });
 
   it('As a visitor on a sandbox host or the bare host, I am given no product, so the shell can send me to the landing page', () => {

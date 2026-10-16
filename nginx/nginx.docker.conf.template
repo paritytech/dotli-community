@@ -14,7 +14,8 @@ server {
     include /etc/nginx/snippets/dotli-headers-host.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
-    # The landing page. Every other path gets the shell, which sends a URL with no product back here.
+    # The landing page. Every other path gets the shell, which opens the product `/<label>` names and sends a URL with no
+    # product back here.
     location = / {
         try_files /landing.html =404;
     }
